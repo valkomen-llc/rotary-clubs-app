@@ -322,11 +322,13 @@ export function getSegmentText(
     segment?: SubtitleSegment | null,
     activeLang?: string,
     fallbackLang?: string,
-    translationsCatalog?: Record<string, SubtitleTrackVersion> | null
+    translationsCatalog?: Record<string, SubtitleTrackVersion> | null,
+    segmentIndex: number = -1
 ): string {
     if (!segment) return '';
     const normActive = normalizeLangCode(activeLang);
     const normFallback = normalizeLangCode(fallbackLang || 'es');
+    const segIdLower = (segment.id || '').toLowerCase();
 
     // 1. Buscar en segment.translations haciendo match con normalización de claves
     if (segment.translations && typeof segment.translations === 'object') {
@@ -337,11 +339,12 @@ export function getSegmentText(
         }
     }
 
-    // 2. Buscar en el catálogo global de traducciones si existe
+    // 2. Buscar en el catálogo global de traducciones si existe (coincidencia ID o índice)
     if (translationsCatalog && typeof translationsCatalog === 'object') {
         for (const [k, ver] of Object.entries(translationsCatalog)) {
             if (normalizeLangCode(k) === normActive && Array.isArray(ver?.segments)) {
-                const match = ver.segments.find(s => s.id === segment.id);
+                const match = ver.segments.find(s => s.id === segment.id || (s.id && segIdLower && s.id.toLowerCase() === segIdLower))
+                    || (segmentIndex >= 0 ? ver.segments[segmentIndex] : undefined);
                 if (match?.text && typeof match.text === 'string' && match.text.trim()) {
                     return match.text;
                 }
@@ -362,7 +365,8 @@ export function getSegmentText(
     if (translationsCatalog && typeof translationsCatalog === 'object') {
         for (const [k, ver] of Object.entries(translationsCatalog)) {
             if (normalizeLangCode(k) === normFallback && Array.isArray(ver?.segments)) {
-                const match = ver.segments.find(s => s.id === segment.id);
+                const match = ver.segments.find(s => s.id === segment.id || (s.id && segIdLower && s.id.toLowerCase() === segIdLower))
+                    || (segmentIndex >= 0 ? ver.segments[segmentIndex] : undefined);
                 if (match?.text && typeof match.text === 'string' && match.text.trim()) {
                     return match.text;
                 }
@@ -405,6 +409,7 @@ export function resolveActiveSubtitleSegments(
 
     return subtitles.segments.map((seg, idx) => {
         const segTranslations: Record<string, string> = {};
+        const segIdLower = (seg.id || '').toLowerCase();
 
         // Copiar traducciones existentes normalizando claves
         if (seg.translations && typeof seg.translations === 'object') {
@@ -416,30 +421,34 @@ export function resolveActiveSubtitleSegments(
         }
 
         // Registrar el texto fuente SIN etiquetar erróneamente el texto activo como origen:
-        // - Si el idioma activo es el fuente, seg.text sí es el original.
-        // - Si el activo es otro idioma, el original debe venir del catálogo fuente;
-        //   jamás se copia seg.text (podría contener la traducción activa) a la ranura fuente.
         if (!segTranslations[sourceLang]) {
-            if (activeLang === sourceLang && seg.text) {
-                segTranslations[sourceLang] = seg.text;
-            } else if (Array.isArray(sourceVersionSegments)) {
-                const srcMatch = sourceVersionSegments.find(vs => vs.id === seg.id) || sourceVersionSegments[idx];
+            if (Array.isArray(sourceVersionSegments)) {
+                const srcMatch = sourceVersionSegments.find(vs => vs.id === seg.id || (vs.id && segIdLower && vs.id.toLowerCase() === segIdLower)) || sourceVersionSegments[idx];
                 if (srcMatch?.text) {
                     segTranslations[sourceLang] = srcMatch.text;
                 }
+            } else if (activeLang === sourceLang && seg.text) {
+                segTranslations[sourceLang] = seg.text;
             }
         }
 
-        // Obtener texto para activeLang
+        // Obtener texto para activeLang del catálogo o de translations
         let resolvedText = segTranslations[activeLang];
         if (!resolvedText && Array.isArray(versionSegments)) {
-            const match = versionSegments.find(vs => vs.id === seg.id) || versionSegments[idx];
+            const match = versionSegments.find(vs => vs.id === seg.id || (vs.id && segIdLower && vs.id.toLowerCase() === segIdLower)) || versionSegments[idx];
             if (match?.text) {
                 resolvedText = match.text;
                 segTranslations[activeLang] = match.text;
             }
         }
 
+        // Si no se encontró en catálogo ni mapa, y activeLang es sourceLang, usar seg.text
+        if (!resolvedText && activeLang === sourceLang) {
+            resolvedText = seg.text;
+            if (resolvedText) segTranslations[sourceLang] = resolvedText;
+        }
+
+        // Si sigue sin resolución, recurrir al texto fuente
         if (!resolvedText) {
             resolvedText = segTranslations[sourceLang] || seg.text || '';
         }
@@ -481,7 +490,7 @@ export function switchSubtitleLanguage(
     const currentActive = normalizeLangCode(subtitles.activeLanguage || subtitles.language || sourceLang);
     const targetNorm = normalizeLangCode(targetLang);
 
-    // Normalizar catálogo de traducciones
+    // Normalizar catálogo de traducciones existente preservando las versiones guardadas
     const currentTranslations: Record<string, SubtitleTrackVersion> = {};
     if (subtitles.translations && typeof subtitles.translations === 'object') {
         for (const [k, ver] of Object.entries(subtitles.translations)) {
@@ -491,43 +500,65 @@ export function switchSubtitleLanguage(
         }
     }
 
-    // 1. Respaldar el texto actual del idioma saliente en translations.
-    // NUNCA sobrescribir una traducción existente con seg.text: el texto directo
-    // puede estar rancio (p. ej. español con EN activo) y eso destruiría la
-    // traducción guardada. Solo se rellena cuando la ranura está vacía.
-    const segmentsWithSavedCurrent = (subtitles.segments || []).map(seg => {
+    // 1. Respaldar traducciones existentes por segmento
+    const segmentsWithSavedCurrent = (subtitles.segments || []).map((seg, idx) => {
         const trs: Record<string, string> = {};
+        const segIdLower = (seg.id || '').toLowerCase();
+
         if (seg.translations && typeof seg.translations === 'object') {
             for (const [k, v] of Object.entries(seg.translations)) {
                 if (typeof v === 'string') trs[normalizeLangCode(k)] = v;
             }
         }
-        if (seg.text && !trs[currentActive]) {
-            trs[currentActive] = seg.text;
+
+        // Si el catálogo ya tenía una versión para currentActive, preservarla
+        const existingCurrentVer = currentTranslations[currentActive]?.segments;
+        if (!trs[currentActive] && Array.isArray(existingCurrentVer)) {
+            const match = existingCurrentVer.find(s => s.id === seg.id || (s.id && segIdLower && s.id.toLowerCase() === segIdLower)) || existingCurrentVer[idx];
+            if (match?.text) {
+                trs[currentActive] = match.text;
+            }
         }
+
+        // Solo asociar seg.text al idioma saliente si currentActive es el original o si la ranura está vacía
+        // Y seg.text no es una traducción de otro idioma
+        if (seg.text && !trs[currentActive]) {
+            if (currentActive === sourceLang) {
+                trs[sourceLang] = seg.text;
+            } else if (!trs[sourceLang]) {
+                // Si no sabemos de qué idioma es seg.text, asignarlo al sourceLang
+                trs[sourceLang] = seg.text;
+            }
+        }
+
         return {
             ...seg,
             translations: trs
         };
     });
 
-    currentTranslations[currentActive] = {
-        language: currentActive,
-        isOriginal: currentActive === sourceLang,
-        segments: segmentsWithSavedCurrent.map(s => ({
-            ...s,
-            text: s.translations?.[currentActive] || s.text
-        }))
-    };
+    // 2. Si no existía entrada para sourceLang en el catálogo, asegurar que exista
+    if (!currentTranslations[sourceLang]) {
+        currentTranslations[sourceLang] = {
+            language: sourceLang,
+            languageName: subtitles.sourceLanguageName || (sourceLang === 'es' ? 'Español' : sourceLang.toUpperCase()),
+            isOriginal: true,
+            segments: segmentsWithSavedCurrent.map((s, idx) => ({
+                ...s,
+                text: s.translations?.[sourceLang] || s.text
+            }))
+        };
+    }
 
-    // 2. Resolver segmentos para targetNorm
+    // 3. Resolver segmentos para targetNorm consultando el catálogo de la versión destino
     const targetVersionSegments = currentTranslations[targetNorm]?.segments;
     const resolvedSegments = segmentsWithSavedCurrent.map((seg, idx) => {
         const trs: Record<string, string> = { ...(seg.translations || {}) };
+        const segIdLower = (seg.id || '').toLowerCase();
         let targetText = trs[targetNorm];
 
         if (!targetText && Array.isArray(targetVersionSegments)) {
-            const match = targetVersionSegments.find(s => s.id === seg.id) || targetVersionSegments[idx];
+            const match = targetVersionSegments.find(s => s.id === seg.id || (s.id && segIdLower && s.id.toLowerCase() === segIdLower)) || targetVersionSegments[idx];
             if (match?.text) {
                 targetText = match.text;
                 trs[targetNorm] = match.text;
@@ -548,12 +579,15 @@ export function switchSubtitleLanguage(
         };
     });
 
-    // 3. Actualizar registro del targetNorm en currentTranslations
-    currentTranslations[targetNorm] = {
-        language: targetNorm,
-        isOriginal: targetNorm === sourceLang,
-        segments: resolvedSegments
-    };
+    // 4. Actualizar o crear registro de targetNorm en currentTranslations
+    if (!currentTranslations[targetNorm] || targetNorm !== sourceLang) {
+        currentTranslations[targetNorm] = {
+            ...(currentTranslations[targetNorm] || {}),
+            language: targetNorm,
+            isOriginal: targetNorm === sourceLang,
+            segments: resolvedSegments
+        };
+    }
 
     const available = Array.from(new Set([
         sourceLang,
@@ -596,8 +630,10 @@ export function updateSubtitleSegmentText(
         }
     }
 
+    const segTargetLower = (segmentId || '').toLowerCase();
     const updatedSegments = (subtitles.segments || []).map(seg => {
-        if (seg.id !== segmentId) return seg;
+        const matches = seg.id === segmentId || (seg.id && segTargetLower && seg.id.toLowerCase() === segTargetLower);
+        if (!matches) return seg;
         const trs: Record<string, string> = {};
         if (seg.translations && typeof seg.translations === 'object') {
             for (const [k, v] of Object.entries(seg.translations)) {
@@ -617,7 +653,8 @@ export function updateSubtitleSegmentText(
         currentTranslations[lang] = {
             ...currentTranslations[lang],
             segments: (currentTranslations[lang].segments || []).map(s => {
-                if (s.id !== segmentId) return s;
+                const matches = s.id === segmentId || (s.id && segTargetLower && s.id.toLowerCase() === segTargetLower);
+                if (!matches) return s;
                 return { ...s, text: newText };
             }),
             updatedAt: new Date().toISOString()

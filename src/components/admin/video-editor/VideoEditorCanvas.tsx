@@ -21,7 +21,7 @@ import {
     Square
 } from 'lucide-react';
 import type { AspectRatio, Clip, SubtitleConfig, SubtitleSegment, SubtitleStyle } from './types';
-import { formatTimecode, getSegmentText, getVisibleSubtitleSegments } from './timelineUtils';
+import { formatTimecode, getSegmentText, getVisibleSubtitleSegments, normalizeLangCode } from './timelineUtils';
 import { InteractiveTextOverlay } from './InteractiveTextOverlay';
 import { resolveEffectiveStyle, applyStyleToAllSubtitles } from './textStyleUtils';
 
@@ -329,11 +329,13 @@ export const VideoEditorCanvas: React.FC<VideoEditorCanvasProps> = ({
                     {activeSubtitleSegment && (() => {
                         const isSelected = (selectedItemIds && selectedItemIds.includes(activeSubtitleSegment.id)) || selectedClipId === activeSubtitleSegment.id;
                         const effectiveStyle = resolveEffectiveStyle(activeSubtitleSegment.style, subtitles.style);
-                        const activeText = getSegmentText(activeSubtitleSegment, subtitles.activeLanguage, subtitles.sourceLanguage, subtitles.translations);
+                        const activeLang = normalizeLangCode(subtitles.activeLanguage || subtitles.language || subtitles.sourceLanguage || 'es');
+                        const sourceLang = normalizeLangCode(subtitles.sourceLanguage || 'es');
+                        const activeText = getSegmentText(activeSubtitleSegment, activeLang, sourceLang, subtitles.translations) || activeSubtitleSegment.text;
 
                         return (
                             <InteractiveTextOverlay
-                                key={activeSubtitleSegment.id}
+                                key={`${activeSubtitleSegment.id}-${activeLang}`}
                                 id={activeSubtitleSegment.id}
                                 text={activeText}
                                 style={effectiveStyle}

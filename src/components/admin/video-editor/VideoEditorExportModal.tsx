@@ -37,13 +37,20 @@ interface VideoEditorExportModalProps {
     errorDetail?: string | null;
     onRenderStarted: () => void;
     onRefreshStatus: () => void;
+    subtitles?: any;
+    clips?: any[];
+    tracks?: any[];
 }
 
 const STAGES = [
-    'Preparando proyecto',
-    'Procesando multimedia',
-    'Renderizando',
-    'Finalizando',
+    'Preparando archivos',
+    'Descargando recursos',
+    'Normalizando video',
+    'Procesando audio',
+    'Componiendo línea de tiempo',
+    'Renderizando subtítulos',
+    'Codificando video',
+    'Generando archivo final',
     'Completado'
 ];
 
@@ -62,7 +69,10 @@ export const VideoEditorExportModal: React.FC<VideoEditorExportModalProps> = ({
     renderStage,
     errorDetail,
     onRenderStarted,
-    onRefreshStatus
+    onRefreshStatus,
+    subtitles,
+    clips,
+    tracks
 }) => {
     const [submitting, setSubmitting] = useState(false);
 
@@ -89,7 +99,13 @@ export const VideoEditorExportModal: React.FC<VideoEditorExportModalProps> = ({
                     'Content-Type': 'application/json',
                     ...(token ? { Authorization: `Bearer ${token}` } : {})
                 },
-                body: JSON.stringify({ resolution, format })
+                body: JSON.stringify({
+                    resolution,
+                    format,
+                    ...(subtitles ? { subtitles } : {}),
+                    ...(clips ? { clips } : {}),
+                    ...(tracks ? { tracks } : {})
+                })
             });
 
             if (!res.ok) {
@@ -109,7 +125,7 @@ export const VideoEditorExportModal: React.FC<VideoEditorExportModalProps> = ({
 
     const currentStageIndex = STAGES.indexOf(renderStage || '') !== -1
         ? STAGES.indexOf(renderStage || '')
-        : (renderProgress >= 85 ? 3 : renderProgress >= 50 ? 2 : renderProgress >= 25 ? 1 : 0);
+        : (renderProgress >= 95 ? 7 : renderProgress >= 85 ? 6 : renderProgress >= 75 ? 5 : renderProgress >= 65 ? 4 : renderProgress >= 50 ? 3 : renderProgress >= 35 ? 2 : renderProgress >= 15 ? 1 : 0);
 
     return (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 select-none animate-in fade-in duration-150">
@@ -232,15 +248,17 @@ export const VideoEditorExportModal: React.FC<VideoEditorExportModalProps> = ({
                             </div>
 
                             {/* Etapas */}
-                            <div className="grid grid-cols-5 gap-1 pt-2">
+                            <div className="grid grid-cols-9 gap-1 pt-2">
                                 {STAGES.map((stg, i) => (
-                                    <div key={stg} className="text-center space-y-1">
+                                    <div key={stg} className="text-center space-y-1" title={stg}>
                                         <div
                                             className={`h-1.5 rounded-full transition-colors ${
                                                 i <= currentStageIndex ? 'bg-[#013388]' : 'bg-gray-200'
                                             }`}
                                         />
-                                        <span className="text-[9px] text-gray-500 block truncate leading-tight">
+                                        <span className={`text-[8px] block truncate leading-tight transition-colors ${
+                                            i === currentStageIndex ? 'font-bold text-[#013388]' : (i < currentStageIndex ? 'text-gray-600 font-medium' : 'text-gray-400')
+                                        }`}>
                                             {stg.split(' ')[0]}
                                         </span>
                                     </div>

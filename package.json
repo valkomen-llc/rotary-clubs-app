@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1150.1",
-  "cache_bust": "4.1150.1",
+  "version": "4.1151.0",
+  "cache_bust": "4.1151.0",
   "type": "module",
   "//": "UI V4.1150.0 | 2026-10-02 (Editor de Video: Herramientas Visuales de Edición de Textos/Subtítulos, Bounding Box Interactivo, Galería de Plantillas y Aplicar a Todos)",
   "scripts": {

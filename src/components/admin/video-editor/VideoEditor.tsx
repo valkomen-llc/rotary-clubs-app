@@ -411,37 +411,38 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
         };
     }, [project, loading]);
 
-    const saveProjectNow = useCallback(async () => {
-        if (!project || !project.id || loading) return;
+    const saveProjectNow = useCallback(async (overrideProject?: VideoEditorProjectData) => {
+        const target = overrideProject || project;
+        if (!target || !target.id || loading) return;
         if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
         try {
             setSaveStatus('saving');
             const token = getStudioAuthToken();
-            const res = await fetch(`/api/video-editor/projects/${project.id}`, {
+            const res = await fetch(`/api/video-editor/projects/${target.id}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
                     ...(token ? { Authorization: `Bearer ${token}` } : {})
                 },
                 body: JSON.stringify({
-                    title: project.title,
-                    format: project.format,
-                    resolution: project.resolution,
-                    duration: project.duration,
-                    tracks: project.tracks,
-                    clips: project.clips,
-                    subtitles: project.subtitles
+                    title: target.title,
+                    format: target.format,
+                    resolution: target.resolution,
+                    duration: target.duration,
+                    tracks: target.tracks,
+                    clips: target.clips,
+                    subtitles: target.subtitles
                 })
             });
             if (res.ok) {
                 lastSavedDataRef.current = JSON.stringify({
-                    title: project.title,
-                    format: project.format,
-                    resolution: project.resolution,
-                    duration: project.duration,
-                    tracks: project.tracks,
-                    clips: project.clips,
-                    subtitles: project.subtitles
+                    title: target.title,
+                    format: target.format,
+                    resolution: target.resolution,
+                    duration: target.duration,
+                    tracks: target.tracks,
+                    clips: target.clips,
+                    subtitles: target.subtitles
                 });
                 setSaveStatus('saved');
             } else {
@@ -706,7 +707,8 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
         };
         setProject(updatedProject);
         pushHistorySnapshot(updatedProject.tracks, updatedProject.clips, updatedSubtitles, updatedProject.duration);
-    }, [project, pushHistorySnapshot]);
+        saveProjectNow(updatedProject);
+    }, [project, pushHistorySnapshot, saveProjectNow]);
 
     // División precisa (Split) en posición del playhead
     const handleSplit = useCallback((atTime: number = currentTime) => {
@@ -1490,8 +1492,11 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
                 renderProgress={project.renderProgress}
                 renderStage={project.renderStage}
                 errorDetail={project.errorDetail}
+                subtitles={project.subtitles}
+                clips={project.clips}
+                tracks={project.tracks}
                 onRenderStarted={() => {
-                    setProject(prev => prev ? ({ ...prev, renderStatus: 'rendering', renderProgress: 5, renderStage: 'Preparando proyecto' }) : null);
+                    setProject(prev => prev ? ({ ...prev, renderStatus: 'rendering', renderProgress: 5, renderStage: 'Preparando archivos' }) : null);
                 }}
                 onRefreshStatus={async () => {
                     try {

@@ -722,7 +722,7 @@ export async function startRender(req, res) {
     try {
         await ensureVideoEditorSchema();
         const { id } = req.params;
-        const { resolution, format } = req.body || {};
+        const { resolution, format, subtitles, clips, tracks } = req.body || {};
 
         const { rows } = await db.query(
             `SELECT * FROM "VideoEditorProject" WHERE id = $1`,
@@ -733,19 +733,43 @@ export async function startRender(req, res) {
             return res.status(404).json({ error: 'Proyecto no encontrado' });
         }
 
-        const project = rows[0];
+        // Actualizar parámetros y estado en memoria del editor si fueron provistos
+        const updateFields = [];
+        const updateParams = [];
+        let p = 1;
 
-        // Actualizar parámetros si fueron provistos
-        if (resolution || format) {
-            await db.query(
-                `UPDATE "VideoEditorProject"
-                    SET resolution = COALESCE($1, resolution),
-                        format = COALESCE($2, format),
-                        "updatedAt" = NOW()
-                  WHERE id = $3`,
-                [resolution || null, format || null, id]
-            );
+        if (resolution !== undefined) {
+            updateFields.push(`resolution = $${p++}`);
+            updateParams.push(resolution);
         }
+        if (format !== undefined) {
+            updateFields.push(`format = $${p++}`);
+            updateParams.push(format);
+        }
+        if (subtitles !== undefined) {
+            updateFields.push(`subtitles = $${p++}::jsonb`);
+            updateParams.push(JSON.stringify(subtitles));
+        }
+        if (clips !== undefined) {
+            updateFields.push(`clips = $${p++}::jsonb`);
+            updateParams.push(JSON.stringify(clips));
+        }
+        if (tracks !== undefined) {
+            updateFields.push(`tracks = $${p++}::jsonb`);
+            updateParams.push(JSON.stringify(tracks));
+        }
+
+        // Marcar estado inicial del render
+        updateFields.push(`"renderStatus" = 'rendering'`);
+        updateFields.push(`"renderStage" = 'Preparando archivos'`);
+        updateFields.push(`"renderProgress" = 5`);
+        updateFields.push(`status = 'rendering'`);
+        updateFields.push(`"errorDetail" = NULL`);
+        updateFields.push(`"updatedAt" = NOW()`);
+
+        updateParams.push(id);
+        const updateSql = `UPDATE "VideoEditorProject" SET ${updateFields.join(', ')} WHERE id = $${p} RETURNING *`;
+        await db.query(updateSql, updateParams);
 
         // Iniciar renderizado en segundo plano (asíncrono)
         renderProjectAsync(id).catch(err => {
@@ -755,8 +779,8 @@ export async function startRender(req, res) {
         res.json({
             ok: true,
             status: 'rendering',
-            renderStage: 'Preparando proyecto',
-            renderProgress: 10
+            renderStage: 'Preparando archivos',
+            renderProgress: 5
         });
     } catch (err) {
         console.error('[VideoEditorController] startRender error:', err);

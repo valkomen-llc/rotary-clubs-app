@@ -36,15 +36,30 @@ async function getS3Client() {
 }
 
 /**
- * Descarga un recurso remoto a un archivo local temporal.
+ * Descarga un recurso remoto a un archivo local temporal con validación de cabeceras, tamaño y timeout.
  */
-async function downloadToFile(url, destPath) {
-    const res = await fetch(url);
-    if (!res.ok) {
-        throw new Error(`Error descargando recurso (${res.status}): ${url}`);
+async function downloadToFile(url, destPath, timeoutMs = 45_000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const res = await fetch(url, {
+            signal: controller.signal,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (ClubPlatform VideoEditor/4.1150)'
+            }
+        });
+        if (!res.ok) {
+            throw new Error(`Error HTTP ${res.status} al descargar recurso desde ${url.split('?')[0]}`);
+        }
+        const stream = createWriteStream(destPath);
+        await pipeline(res.body, stream);
+        const s = await stat(destPath).catch(() => ({ size: 0 }));
+        if (!s.size || s.size === 0) {
+            throw new Error(`El archivo descargado está vacío (0 bytes): ${url.split('?')[0]}`);
+        }
+    } finally {
+        clearTimeout(timer);
     }
-    const stream = createWriteStream(destPath);
-    await pipeline(res.body, stream);
 }
 
 /**
@@ -131,6 +146,7 @@ export function resolveActiveSubtitleText(segment, activeLang, subtitles, index 
     if (!segment) return '';
     const normActive = normalizeLanguageCode(activeLang || 'es');
     const normFallback = normalizeLanguageCode(subtitles?.sourceLanguage || subtitles?.language || 'es');
+    const segIdLower = (segment.id || '').toLowerCase();
 
     if (segment.translations && typeof segment.translations === 'object') {
         for (const [k, v] of Object.entries(segment.translations)) {
@@ -144,7 +160,7 @@ export function resolveActiveSubtitleText(segment, activeLang, subtitles, index 
     if (catalog && typeof catalog === 'object') {
         for (const [k, ver] of Object.entries(catalog)) {
             if (normalizeLanguageCode(k) === normActive && Array.isArray(ver?.segments)) {
-                const match = ver.segments.find(vs => vs.id === segment.id)
+                const match = ver.segments.find(vs => vs.id === segment.id || (vs.id && segIdLower && vs.id.toLowerCase() === segIdLower))
                     || (index >= 0 ? ver.segments[index] : undefined);
                 if (match?.text && typeof match.text === 'string' && match.text.trim()) {
                     return match.text;
@@ -164,7 +180,7 @@ export function resolveActiveSubtitleText(segment, activeLang, subtitles, index 
     if (catalog && typeof catalog === 'object') {
         for (const [k, ver] of Object.entries(catalog)) {
             if (normalizeLanguageCode(k) === normFallback && Array.isArray(ver?.segments)) {
-                const match = ver.segments.find(vs => vs.id === segment.id)
+                const match = ver.segments.find(vs => vs.id === segment.id || (vs.id && segIdLower && vs.id.toLowerCase() === segIdLower))
                     || (index >= 0 ? ver.segments[index] : undefined);
                 if (match?.text && typeof match.text === 'string' && match.text.trim()) {
                     return match.text;
@@ -268,9 +284,22 @@ export function buildSubtitleForceStyle(style = {}, videoHeight = 1080) {
 }
 
 /**
- * Ejecuta el proceso de renderizado de forma asíncrona y actualiza el progreso en la base de datos.
+ * Ejecuta el proceso de renderizado de forma asíncrona y actualiza el progreso en la base de datos
+ * atravesando 9 etapas granulares con diagnóstico técnico y codificación optimizada.
  */
 export async function renderProjectAsync(projectId) {
+    let currentStage = 'Preparando archivos';
+
+    const updateProgress = async (progress, stage, status = 'rendering') => {
+        currentStage = stage;
+        await db.query(
+            `UPDATE "VideoEditorProject"
+                SET "renderProgress" = $1, "renderStage" = $2, "renderStatus" = $3, status = $4, "updatedAt" = NOW()
+              WHERE id = $5`,
+            [progress, stage, status, status, projectId]
+        );
+    };
+
     // 1. Obtener proyecto
     const { rows } = await db.query(
         `SELECT * FROM "VideoEditorProject" WHERE id = $1`,
@@ -284,25 +313,12 @@ export async function renderProjectAsync(projectId) {
 
     const project = rows[0];
 
-    // Verificar si ya se está renderizando para evitar duplicación
-    if (project.renderStatus === 'rendering') {
-        console.warn(`[VideoEditorRender] El proyecto ${projectId} ya se encuentra en renderizado.`);
-        return;
-    }
-
     const dir = await mkdtemp(path.join(tmpdir(), `v-editor-render-${projectId}-`));
 
-    const updateProgress = async (progress, stage, status = 'rendering') => {
-        await db.query(
-            `UPDATE "VideoEditorProject"
-                SET "renderProgress" = $1, "renderStage" = $2, "renderStatus" = $3, status = $4, "updatedAt" = NOW()
-              WHERE id = $5`,
-            [progress, stage, status, status, projectId]
-        );
-    };
-
     try {
-        await updateProgress(10, 'Preparando proyecto');
+        // ─── ETAPA 1: Preparando archivos (5%) ───
+        currentStage = 'Preparando archivos';
+        await updateProgress(5, 'Preparando archivos');
 
         const { width, height } = resolveDimensions(project.format, project.resolution);
         const tracks = Array.isArray(project.tracks) ? project.tracks : [];
@@ -310,6 +326,7 @@ export async function renderProjectAsync(projectId) {
         const subtitles = project.subtitles || {};
         const activeLang = normalizeLanguageCode(subtitles.activeLanguage || subtitles.language || subtitles.sourceLanguage || 'es');
         const rawSegments = Array.isArray(subtitles.segments) ? subtitles.segments : [];
+
         // Texto del idioma activo con la misma prioridad que el frontend
         // (translations → catálogo → respaldo → seg.text). El estilo viaja intacto en `s.style`.
         const subtitleSegments = rawSegments.map((s, idx) => ({
@@ -331,58 +348,98 @@ export async function renderProjectAsync(projectId) {
             throw new Error('El proyecto no contiene clips visuales (videos o imágenes) para renderizar.');
         }
 
-        await updateProgress(25, 'Procesando multimedia');
+        // ─── ETAPA 2: Descargando recursos (15%) ───
+        currentStage = 'Descargando recursos';
+        await updateProgress(15, 'Descargando recursos');
 
-        // 2. Descargar y normalizar cada clip visual
-        const localClips = [];
+        const downloadedVisuals = [];
         for (let i = 0; i < visualClips.length; i++) {
             const clip = visualClips[i];
             const ext = clip.type === 'image' ? '.jpg' : '.mp4';
             const rawPath = path.join(dir, `clip_raw_${i}${ext}`);
+            try {
+                await downloadToFile(clip.url, rawPath, 60_000);
+            } catch (dlErr) {
+                throw new Error(`Fallo al descargar recurso visual #${i + 1} (${clip.name || clip.type}): ${dlErr.message}`);
+            }
+            downloadedVisuals.push({ ...clip, rawPath });
+        }
+
+        // Descargar pistas de audio complementarias
+        const downloadedAudios = [];
+        for (let i = 0; i < audioClips.length; i++) {
+            const clip = audioClips[i];
+            const audioPath = path.join(dir, `audio_raw_${i}.mp3`);
+            try {
+                await downloadToFile(clip.url, audioPath, 60_000);
+                downloadedAudios.push({ ...clip, localPath: audioPath });
+            } catch (dlAudioErr) {
+                console.warn(`[VideoEditorRender] Warning al descargar audio adicional #${i}: ${dlAudioErr.message}`);
+            }
+        }
+
+        // ─── ETAPA 3: Normalizando video (35%) ───
+        currentStage = 'Normalizando video';
+        await updateProgress(35, 'Normalizando video');
+
+        const localClips = [];
+        for (let i = 0; i < downloadedVisuals.length; i++) {
+            const clip = downloadedVisuals[i];
             const normPath = path.join(dir, `clip_norm_${i}.mp4`);
-
-            await downloadToFile(clip.url, rawPath);
-
-            const duration = Math.max(1, Number(clip.duration) || 5);
+            const duration = Math.max(0.5, Number(clip.duration) || 5);
             const scaleFilter = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,fps=30,setsar=1`;
 
             if (clip.type === 'image') {
                 // Animar imagen fija como clip de video con duración especificada
                 await runFfmpeg([
                     '-loop', '1',
+                    '-i', clip.rawPath,
                     '-t', String(duration),
-                    '-i', rawPath,
                     '-vf', scaleFilter,
                     '-c:v', 'libx264',
+                    '-preset', 'veryfast',
+                    '-crf', '22',
+                    '-threads', '0',
                     '-pix_fmt', 'yuv420p',
                     '-y', normPath
-                ], { timeoutMs: 45_000, label: `normalize-image-${i}` });
+                ], { timeoutMs: 120_000, label: `normalize-image-${i}` });
             } else {
-                // Normalizar video
-                const trimArgs = [];
+                // Normalizar video asegurando -ss antes de -i, -t después de -i, y preset veloz
+                const seekArgs = [];
                 if (clip.trimStart && Number(clip.trimStart) > 0) {
-                    trimArgs.push('-ss', String(clip.trimStart));
+                    seekArgs.push('-ss', String(clip.trimStart));
                 }
-                trimArgs.push('-t', String(duration));
 
                 await runFfmpeg([
-                    ...trimArgs,
-                    '-i', rawPath,
+                    ...seekArgs,
+                    '-i', clip.rawPath,
+                    '-t', String(duration),
                     '-vf', scaleFilter,
                     '-c:v', 'libx264',
+                    '-preset', 'veryfast',
+                    '-crf', '22',
+                    '-threads', '0',
                     '-c:a', 'aac',
                     '-b:a', '128k',
+                    '-ar', '44100',
+                    '-ac', '2',
                     '-pix_fmt', 'yuv420p',
+                    '-avoid_negative_ts', 'make_zero',
                     '-y', normPath
-                ], { timeoutMs: 60_000, label: `normalize-video-${i}` });
+                ], { timeoutMs: 120_000, label: `normalize-video-${i}` });
             }
 
             localClips.push({ ...clip, localPath: normPath, duration });
         }
 
-        await updateProgress(50, 'Renderizando');
+        // ─── ETAPA 4: Procesando audio (50%) ───
+        currentStage = 'Procesando audio';
+        await updateProgress(50, 'Procesando audio');
 
-        // 3. Montar concat list para los clips visuales
+        // ─── ETAPA 5: Componiendo línea de tiempo (65%) ───
+        currentStage = 'Componiendo línea de tiempo';
+        await updateProgress(65, 'Componiendo línea de tiempo');
+
         const concatTxtPath = path.join(dir, 'concat.txt');
         const concatLines = localClips.map(c => `file '${c.localPath}'`).join('\n');
         await writeFile(concatTxtPath, concatLines, 'utf8');
@@ -394,16 +451,19 @@ export async function renderProjectAsync(projectId) {
             '-i', concatTxtPath,
             '-c', 'copy',
             '-y', mergedVideoPath
-        ], { timeoutMs: 60_000, label: 'concat-visual-clips' });
+        ], { timeoutMs: 90_000, label: 'concat-visual-clips' });
 
-        // 4. Preparar subtítulos si existen
-        let finalVideoPath = mergedVideoPath;
+        // ─── ETAPA 6: Renderizando subtítulos (75%) ───
+        currentStage = 'Renderizando subtítulos';
+        await updateProgress(75, 'Renderizando subtítulos');
+
+        let subbedVideoPath = mergedVideoPath;
         if (subtitleSegments.length > 0) {
             const srtPath = path.join(dir, 'subtitles.srt');
             const srtContent = generateSrtContent(subtitleSegments);
             await writeFile(srtPath, srtContent, 'utf8');
 
-            const subbedVideoPath = path.join(dir, 'subbed_video.mp4');
+            const outSubbed = path.join(dir, 'subbed_video.mp4');
 
             // Resolver estilo efectivo de subtítulos: estilo global o primer segmento personalizado
             const firstStyledSegment = subtitleSegments.find(s => s.style && Object.keys(s.style).length > 0);
@@ -413,43 +473,58 @@ export async function renderProjectAsync(projectId) {
             };
             const forceStyleStr = buildSubtitleForceStyle(effectiveSubtitleStyle, height);
 
-            // Incrustar subtítulos con el estilo visual y tipográfico exacto del proyecto
+            // Incrustar subtítulos con aceleración y estilo visual fiel
             await runFfmpeg([
                 '-i', mergedVideoPath,
                 '-vf', `subtitles=${srtPath}:force_style='${forceStyleStr}'`,
                 '-c:v', 'libx264',
+                '-preset', 'veryfast',
+                '-crf', '22',
+                '-threads', '0',
                 '-c:a', 'copy',
                 '-pix_fmt', 'yuv420p',
-                '-y', subbedVideoPath
-            ], { timeoutMs: 90_000, label: 'burn-subtitles' });
+                '-y', outSubbed
+            ], { timeoutMs: 120_000, label: 'burn-subtitles' }).catch(async (burnErr) => {
+                console.warn('[VideoEditorRender] Fallback burn subtitles sin copy de audio:', burnErr.message);
+                await runFfmpeg([
+                    '-i', mergedVideoPath,
+                    '-vf', `subtitles=${srtPath}:force_style='${forceStyleStr}'`,
+                    '-c:v', 'libx264',
+                    '-preset', 'veryfast',
+                    '-crf', '22',
+                    '-threads', '0',
+                    '-pix_fmt', 'yuv420p',
+                    '-y', outSubbed
+                ], { timeoutMs: 120_000, label: 'burn-subtitles-fallback' });
+            });
 
-            finalVideoPath = subbedVideoPath;
+            subbedVideoPath = outSubbed;
         }
 
-        // 5. Procesar pistas de audio adicionales si existen
-        const outputVideoPath = path.join(dir, 'final_rendered.mp4');
-        if (audioClips.length > 0) {
-            const primaryAudio = audioClips[0];
-            const audioRawPath = path.join(dir, 'bg_audio.mp3');
-            await downloadToFile(primaryAudio.url, audioRawPath);
+        // ─── ETAPA 7: Codificando video (85%) ───
+        currentStage = 'Codificando video';
+        await updateProgress(85, 'Codificando video');
 
+        const outputVideoPath = path.join(dir, 'final_rendered.mp4');
+        if (downloadedAudios.length > 0) {
+            const primaryAudio = downloadedAudios[0];
             const audioVolume = Number(primaryAudio.volume ?? 80) / 100;
 
             await runFfmpeg([
-                '-i', finalVideoPath,
-                '-i', audioRawPath,
+                '-i', subbedVideoPath,
+                '-i', primaryAudio.localPath,
                 '-filter_complex', `[1:a]volume=${audioVolume}[a1];[0:a][a1]amix=inputs=2:duration=first:dropout_transition=2[aout]`,
                 '-map', '0:v',
                 '-map', '[aout]',
                 '-c:v', 'copy',
                 '-c:a', 'aac',
                 '-b:a', '192k',
+                '-movflags', '+faststart',
                 '-y', outputVideoPath
-            ], { timeoutMs: 60_000, label: 'mix-audio-tracks' }).catch(async () => {
-                // Fallback si el video original no tenía canal de audio previo
+            ], { timeoutMs: 90_000, label: 'mix-audio-tracks' }).catch(async () => {
                 await runFfmpeg([
-                    '-i', finalVideoPath,
-                    '-i', audioRawPath,
+                    '-i', subbedVideoPath,
+                    '-i', primaryAudio.localPath,
                     '-filter_complex', `[1:a]volume=${audioVolume}[aout]`,
                     '-map', '0:v',
                     '-map', '[aout]',
@@ -457,34 +532,36 @@ export async function renderProjectAsync(projectId) {
                     '-c:a', 'aac',
                     '-b:a', '192k',
                     '-shortest',
-                    '-y', outputVideoPath
-                ], { timeoutMs: 60_000, label: 'mix-single-audio' });
-            });
-        } else {
-            // Asegurar que el video tenga una pista de audio (aunque sea silenciosa) para máxima compatibilidad
-            await runFfmpeg([
-                '-i', finalVideoPath,
-                '-f', 'lavfi',
-                '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
-                '-c:v', 'copy',
-                '-c:a', 'aac',
-                '-shortest',
-                '-movflags', '+faststart',
-                '-y', outputVideoPath
-            ], { timeoutMs: 60_000, label: 'finalize-faststart' }).catch(async () => {
-                // Si ya tenía audio
-                await runFfmpeg([
-                    '-i', finalVideoPath,
-                    '-c', 'copy',
                     '-movflags', '+faststart',
                     '-y', outputVideoPath
-                ], { timeoutMs: 30_000, label: 'finalize-faststart-copy' });
+                ], { timeoutMs: 90_000, label: 'mix-single-audio' });
+            });
+        } else {
+            // Optimizar contenedor final con +faststart preservando audio original
+            await runFfmpeg([
+                '-i', subbedVideoPath,
+                '-c', 'copy',
+                '-movflags', '+faststart',
+                '-y', outputVideoPath
+            ], { timeoutMs: 60_000, label: 'finalize-faststart-copy' }).catch(async () => {
+                await runFfmpeg([
+                    '-i', subbedVideoPath,
+                    '-f', 'lavfi',
+                    '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
+                    '-c:v', 'copy',
+                    '-c:a', 'aac',
+                    '-shortest',
+                    '-movflags', '+faststart',
+                    '-y', outputVideoPath
+                ], { timeoutMs: 60_000, label: 'finalize-faststart-silent' });
             });
         }
 
-        await updateProgress(85, 'Finalizando');
+        // ─── ETAPA 8: Generando archivo final (95%) ───
+        currentStage = 'Generando archivo final';
+        await updateProgress(95, 'Generando archivo final');
 
-        // 6. Extraer fotograma póster / miniatura
+        // Extraer fotograma póster / miniatura
         const posterPath = path.join(dir, 'poster.jpg');
         await runFfmpeg([
             '-y',
@@ -493,8 +570,7 @@ export async function renderProjectAsync(projectId) {
             '-frames:v', '1',
             '-q:v', '2',
             posterPath
-        ], { timeoutMs: 15_000, label: 'extract-poster' }).catch(async () => {
-            // Si el video dura menos de 1s extraer en el segundo 0
+        ], { timeoutMs: 20_000, label: 'extract-poster' }).catch(async () => {
             await runFfmpeg([
                 '-y',
                 '-ss', '0',
@@ -502,10 +578,10 @@ export async function renderProjectAsync(projectId) {
                 '-frames:v', '1',
                 '-q:v', '2',
                 posterPath
-            ], { timeoutMs: 15_000, label: 'extract-poster-0' });
+            ], { timeoutMs: 20_000, label: 'extract-poster-0' });
         });
 
-        // 7. Subir a S3 y registrar en la Biblioteca Multimedia de Club Platform
+        // Subir a S3 y registrar en la Biblioteca Multimedia de Club Platform
         const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
         const s3 = await getS3Client();
         const aws = await import('@aws-sdk/client-s3');
@@ -544,10 +620,8 @@ export async function renderProjectAsync(projectId) {
             thumbUrl = `https://${bucket}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${encodedPosterKey}`;
         }
 
-        // Calcular duración total
         const totalDuration = localClips.reduce((acc, c) => acc + (Number(c.duration) || 0), 0);
 
-        // 8. Registrar en tabla "Media" de la Biblioteca Multimedia de Club Platform
         try {
             await db.query(
                 `INSERT INTO "Media" (
@@ -571,7 +645,8 @@ export async function renderProjectAsync(projectId) {
             console.warn('[VideoEditorRender] Warning al registrar en Media table:', mediaErr.message);
         }
 
-        // 9. Actualizar proyecto como Completado
+        // ─── ETAPA 9: Completado (100%) ───
+        currentStage = 'Completado';
         await db.query(
             `UPDATE "VideoEditorProject"
                 SET "renderProgress" = 100,
@@ -593,16 +668,21 @@ export async function renderProjectAsync(projectId) {
 
         console.log(`[VideoEditorRender] Render exitoso para el proyecto ${projectId}: ${videoUrl}`);
     } catch (err) {
-        console.error(`[VideoEditorRender] Error renderizando proyecto ${projectId}:`, err);
+        console.error(`[VideoEditorRender] Error en etapa "${currentStage}" para el proyecto ${projectId}:`, err);
+        const stderrSnippet = err.ffmpeg?.stderrTail
+            ? ` — Diagnóstico: ${err.ffmpeg.stderrTail.split('\n').filter(Boolean).slice(-3).join(' ')}`
+            : '';
+        const userFriendlyDetail = `[${currentStage}] ${err.message}${stderrSnippet}`.slice(0, 1000);
+
         await db.query(
             `UPDATE "VideoEditorProject"
                 SET "renderStatus" = 'error',
-                    "renderStage" = 'Error en el render',
+                    "renderStage" = $1,
                     status = 'error',
-                    "errorDetail" = $1,
+                    "errorDetail" = $2,
                     "updatedAt" = NOW()
-              WHERE id = $2`,
-            [err.message?.slice(0, 1000) || 'Error desconocido durante el render', projectId]
+              WHERE id = $3`,
+            [currentStage, userFriendlyDetail, projectId]
         );
     } finally {
         await rm(dir, { recursive: true, force: true }).catch(() => {});

@@ -37,7 +37,7 @@ import {
     Split
 } from 'lucide-react';
 import type { Track, Clip, SubtitleConfig, SubtitleSegment } from './types';
-import { findSnapPoint, formatTimecode, getVisibleSubtitleSegments } from './timelineUtils';
+import { findSnapPoint, formatTimecode, getSegmentText, getVisibleSubtitleSegments, normalizeLangCode } from './timelineUtils';
 
 interface VideoEditorTimelineProps {
     tracks: Track[];
@@ -636,17 +636,19 @@ export const VideoEditorTimeline: React.FC<VideoEditorTimelineProps> = ({
 
                         {/* 2. Pista de Subtítulos Carril Interactivo (Primer Nivel) */}
                         <div className="h-12 border-b border-gray-200 relative bg-emerald-50/20">
-                            {visibleSegments.map(seg => {
-                                const left = seg.start * pixelsPerSecond;
-                                const width = Math.max(16, (seg.end - seg.start) * pixelsPerSecond);
-                                const isSelected = effectiveSelectedIds.includes(seg.id);
-                                // Contenido ya resuelto al idioma activo por
-                                // getVisibleSubtitleSegments; el estilo vive en seg.style.
-                                const segText = seg.text;
+                            {(() => {
+                                const activeLang = normalizeLangCode(subtitles.activeLanguage || subtitles.language || subtitles.sourceLanguage || 'es');
+                                const sourceLang = normalizeLangCode(subtitles.sourceLanguage || 'es');
+                                return visibleSegments.map((seg, idx) => {
+                                    const left = seg.start * pixelsPerSecond;
+                                    const width = Math.max(16, (seg.end - seg.start) * pixelsPerSecond);
+                                    const isSelected = effectiveSelectedIds.includes(seg.id);
+                                    // Contenido resuelto al idioma activo de forma estrictamente reactiva
+                                    const segText = getSegmentText(seg, activeLang, sourceLang, subtitles.translations, idx) || seg.text;
 
-                                return (
-                                    <div
-                                        key={seg.id}
+                                    return (
+                                        <div
+                                            key={seg.id}
                                         style={{ left: `${left}px`, width: `${width}px` }}
                                         onClick={(e) => {
                                             e.stopPropagation();
@@ -701,7 +703,8 @@ export const VideoEditorTimeline: React.FC<VideoEditorTimelineProps> = ({
                                         />
                                     </div>
                                 );
-                            })}
+                            });
+                        })()}
                         </div>
 
                         {/* 3. Carriles de Pistas Normales (Video, Audio, Texto) */}
