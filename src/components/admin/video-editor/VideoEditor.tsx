@@ -27,6 +27,15 @@ import type {
     SubtitleConfig,
     SubtitleSegment
 } from './types';
+import {
+    computeProjectDuration,
+    splitClip,
+    splitSubtitleSegment,
+    separateAudioFromVideo,
+    resolveActiveSubtitleSegments,
+    switchSubtitleLanguage,
+    updateSubtitleSegmentText
+} from './timelineUtils';
 import { VideoEditorHeader } from './VideoEditorHeader';
 import { VideoEditorSidebar } from './VideoEditorSidebar';
 import { VideoEditorCanvas } from './VideoEditorCanvas';
@@ -106,7 +115,11 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
     const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(false);
     const [isRightInspectorCollapsed, setIsRightInspectorCollapsed] = useState(false);
 
-    const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
+    // ── Sistema Unificado de Selección y Portapapeles (CapCut standard) ────────
+    const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
+    const [primarySelectedId, setPrimarySelectedId] = useState<string | null>(null);
+    const clipboardRef = useRef<{ clips: Clip[]; subtitles: SubtitleSegment[] }>({ clips: [], subtitles: [] });
+
     const [currentTime, setCurrentTime] = useState<number>(0);
     const [isPlaying, setIsPlaying] = useState<boolean>(false);
     const [zoomLevel, setZoomLevel] = useState<number>(100);
@@ -192,34 +205,56 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
     }, [clubId]);
 
     const initProjectState = (projData: VideoEditorProjectData) => {
+        const rawClips = Array.isArray(projData.clips) ? projData.clips : [];
+        const sourceLang = projData.subtitles?.sourceLanguage || projData.subtitles?.language || 'es';
+        const activeLang = projData.subtitles?.activeLanguage || projData.subtitles?.language || sourceLang;
+        const baseSubtitles: SubtitleConfig = {
+            ...DEFAULT_PROJECT_STATE.subtitles,
+            ...(projData.subtitles || {}),
+            segments: Array.isArray(projData.subtitles?.segments) ? projData.subtitles.segments : [],
+            style: {
+                ...DEFAULT_SUBTITLE_STYLE,
+                ...(projData.subtitles?.style || {})
+            },
+            transcript: projData.subtitles?.transcript || '',
+            language: activeLang,
+            sourceLanguage: sourceLang,
+            sourceLanguageName: projData.subtitles?.sourceLanguageName || 'Español',
+            activeLanguage: activeLang,
+            translations: (projData.subtitles?.translations && typeof projData.subtitles.translations === 'object')
+                ? projData.subtitles.translations
+                : {}
+        };
+
+        const resolvedSegments = resolveActiveSubtitleSegments(baseSubtitles, activeLang);
+        const rawSubtitles: SubtitleConfig = {
+            ...baseSubtitles,
+            segments: resolvedSegments,
+            availableLanguages: Array.from(new Set([
+                sourceLang,
+                activeLang,
+                ...Object.keys(baseSubtitles.translations || {}),
+                ...(projData.subtitles?.availableLanguages || [])
+            ]))
+        };
+
+        // Duración global calculada dinámicamente como max(clip.end, subtitle.end)
+        const dynamicDuration = computeProjectDuration(rawClips, rawSubtitles, projData.duration || 10);
+
         // Garantizar estructura completa y defensiva
         const sanitized: VideoEditorProjectData = {
             ...DEFAULT_PROJECT_STATE,
             ...projData,
+            duration: dynamicDuration,
             tracks: Array.isArray(projData.tracks) && projData.tracks.length > 0 ? projData.tracks : (DEFAULT_TRACKS as Track[]),
-            clips: Array.isArray(projData.clips) ? projData.clips : [],
-            subtitles: {
-                ...DEFAULT_PROJECT_STATE.subtitles,
-                ...(projData.subtitles || {}),
-                segments: Array.isArray(projData.subtitles?.segments) ? projData.subtitles.segments : [],
-                style: {
-                    ...DEFAULT_SUBTITLE_STYLE,
-                    ...(projData.subtitles?.style || {})
-                },
-                transcript: projData.subtitles?.transcript || '',
-                language: projData.subtitles?.language || 'es',
-                sourceLanguage: projData.subtitles?.sourceLanguage || projData.subtitles?.language || 'es',
-                sourceLanguageName: projData.subtitles?.sourceLanguageName || 'Español',
-                activeLanguage: projData.subtitles?.activeLanguage || projData.subtitles?.language || 'es',
-                translations: (projData.subtitles?.translations && typeof projData.subtitles.translations === 'object')
-                    ? projData.subtitles.translations
-                    : {}
-            }
+            clips: rawClips,
+            subtitles: rawSubtitles
         };
 
         setProject(sanitized);
         setCurrentTime(0);
-        setSelectedClipId(null);
+        setSelectedItemIds([]);
+        setPrimarySelectedId(null);
         setIsPlaying(false);
 
         // Inicializar historial
@@ -227,7 +262,7 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
             tracks: JSON.parse(JSON.stringify(sanitized.tracks)),
             clips: JSON.parse(JSON.stringify(sanitized.clips)),
             subtitles: JSON.parse(JSON.stringify(sanitized.subtitles)),
-            duration: sanitized.duration
+            duration: dynamicDuration
         };
         setHistory([initialSnapshot]);
         setHistoryIndex(0);
@@ -249,8 +284,10 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
     }, [loadProject, initialProjectId]);
 
     // ── 2. Guardar Instantánea en Historial (Undo / Redo) ─────────────────────
-    const pushHistorySnapshot = useCallback((tracks: Track[], clips: Clip[], subtitles: SubtitleConfig, duration: number) => {
+    const pushHistorySnapshot = useCallback((tracks: Track[], clips: Clip[], subtitles: SubtitleConfig, duration?: number) => {
         if (isUndoRedoActionRef.current) return;
+
+        const effectiveDuration = duration !== undefined ? duration : computeProjectDuration(clips, subtitles);
 
         setHistory(prev => {
             const nextHistory = prev.slice(0, historyIndex + 1);
@@ -258,10 +295,10 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
                 tracks: JSON.parse(JSON.stringify(tracks)),
                 clips: JSON.parse(JSON.stringify(clips)),
                 subtitles: JSON.parse(JSON.stringify(subtitles)),
-                duration
+                duration: effectiveDuration
             };
-            // Limitar a 30 pasos para no saturar memoria
-            if (nextHistory.length >= 30) nextHistory.shift();
+            // Limitar a 35 pasos de historial para no saturar memoria
+            if (nextHistory.length >= 35) nextHistory.shift();
             return [...nextHistory, snapshot];
         });
         setHistoryIndex(prev => prev + 1);
@@ -363,7 +400,49 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
         };
     }, [project, loading]);
 
-    // ── 4. Bucle de Reproducción del Playhead ─────────────────────────────────
+    const saveProjectNow = useCallback(async () => {
+        if (!project || !project.id || loading) return;
+        if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+        try {
+            setSaveStatus('saving');
+            const token = getStudioAuthToken();
+            const res = await fetch(`/api/video-editor/projects/${project.id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { Authorization: `Bearer ${token}` } : {})
+                },
+                body: JSON.stringify({
+                    title: project.title,
+                    format: project.format,
+                    resolution: project.resolution,
+                    duration: project.duration,
+                    tracks: project.tracks,
+                    clips: project.clips,
+                    subtitles: project.subtitles
+                })
+            });
+            if (res.ok) {
+                lastSavedDataRef.current = JSON.stringify({
+                    title: project.title,
+                    format: project.format,
+                    resolution: project.resolution,
+                    duration: project.duration,
+                    tracks: project.tracks,
+                    clips: project.clips,
+                    subtitles: project.subtitles
+                });
+                setSaveStatus('saved');
+            } else {
+                setSaveStatus('error');
+            }
+        } catch (err) {
+            console.error('Error al guardar proyecto inmediatamente:', err);
+            setSaveStatus('error');
+        }
+    }, [project, loading]);
+
+    // ── 4. Bucle de Reproducción del Playhead Unificado ────────────────────────
     useEffect(() => {
         if (!isPlaying) {
             if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
@@ -379,11 +458,11 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
             lastPlaybackTimestampRef.current = timestamp;
 
             setCurrentTime(prevTime => {
-                const maxDur = project?.duration || 30;
+                const maxDur = computeProjectDuration(project?.clips || [], project?.subtitles, project?.duration || 10);
                 const nextTime = prevTime + deltaSec;
                 if (nextTime >= maxDur) {
                     setIsPlaying(false);
-                    return 0; // Reiniciar al inicio al terminar
+                    return 0; // Reiniciar al inicio al culminar la composición completa
                 }
                 return nextTime;
             });
@@ -396,12 +475,512 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
         return () => {
             if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
         };
-    }, [isPlaying, project?.duration]);
+    }, [isPlaying, project?.clips, project?.subtitles, project?.duration]);
 
-    // ── 5. Atajos de Teclado Profesionales ─────────────────────────────────────
+    // ── 5. Selección Individual, Múltiple y Rango ──────────────────────────────
+    const handleSelectItem = useCallback((id: string | null, isMulti = false, isRange = false) => {
+        if (!id) {
+            setSelectedItemIds([]);
+            setPrimarySelectedId(null);
+            return;
+        }
+
+        if (isMulti) {
+            setSelectedItemIds(prev => {
+                if (prev.includes(id)) {
+                    const next = prev.filter(x => x !== id);
+                    if (primarySelectedId === id) {
+                        setPrimarySelectedId(next[next.length - 1] || null);
+                    }
+                    return next;
+                } else {
+                    setPrimarySelectedId(id);
+                    return [...prev, id];
+                }
+            });
+        } else {
+            setSelectedItemIds([id]);
+            setPrimarySelectedId(id);
+        }
+    }, [primarySelectedId]);
+
+    const handleSelectAll = useCallback(() => {
+        if (!project) return;
+        const allIds = [
+            ...project.clips.map(c => c.id),
+            ...(project.subtitles.segments || []).map(s => s.id)
+        ];
+        setSelectedItemIds(allIds);
+        if (allIds.length > 0) {
+            setPrimarySelectedId(allIds[0]);
+        }
+    }, [project]);
+
+    // ── 6. Acciones de Edición Profesional (CapCut Standard) ───────────────────
+
+    // Eliminación masiva de elementos seleccionados (clips + subtítulos)
+    const handleDeleteSelected = useCallback(() => {
+        if (!project) return;
+        const idsToDelete = new Set(selectedItemIds);
+        if (idsToDelete.size === 0 && primarySelectedId) {
+            idsToDelete.add(primarySelectedId);
+        }
+        if (idsToDelete.size === 0) return;
+
+        const updatedClips = project.clips.filter(c => !idsToDelete.has(c.id));
+        const updatedSegments = (project.subtitles.segments || []).filter(s => !idsToDelete.has(s.id));
+
+        const updatedTranslations = { ...(project.subtitles.translations || {}) };
+        for (const [langKey, langObj] of Object.entries(updatedTranslations)) {
+            if (langObj && Array.isArray(langObj.segments)) {
+                updatedTranslations[langKey] = {
+                    ...langObj,
+                    segments: langObj.segments.filter(s => !idsToDelete.has(s.id))
+                };
+            }
+        }
+
+        const updatedSubtitles: SubtitleConfig = {
+            ...project.subtitles,
+            segments: updatedSegments,
+            translations: updatedTranslations
+        };
+
+        const newDuration = computeProjectDuration(updatedClips, updatedSubtitles);
+        const countDeleted = (project.clips.length - updatedClips.length) +
+                             ((project.subtitles.segments?.length || 0) - updatedSegments.length);
+
+        const updatedProject: VideoEditorProjectData = {
+            ...project,
+            clips: updatedClips,
+            subtitles: updatedSubtitles,
+            duration: newDuration
+        };
+
+        setProject(updatedProject);
+        setSelectedItemIds([]);
+        setPrimarySelectedId(null);
+        pushHistorySnapshot(updatedProject.tracks, updatedClips, updatedSubtitles, newDuration);
+        toast.info(`${countDeleted} elemento(s) eliminado(s)`);
+    }, [project, selectedItemIds, primarySelectedId, pushHistorySnapshot]);
+
+    const handleDeleteClip = (clipId: string) => {
+        if (!project) return;
+        const updatedClips = project.clips.filter(c => c.id !== clipId);
+        const newDuration = computeProjectDuration(updatedClips, project.subtitles);
+        const updatedProject: VideoEditorProjectData = {
+            ...project,
+            clips: updatedClips,
+            duration: newDuration
+        };
+
+        setProject(updatedProject);
+        setSelectedItemIds(prev => prev.filter(x => x !== clipId));
+        if (primarySelectedId === clipId) setPrimarySelectedId(null);
+        pushHistorySnapshot(updatedProject.tracks, updatedClips, updatedProject.subtitles, newDuration);
+        toast.info('Clip eliminado');
+    };
+
+    const handleDeleteSubtitleSegment = (segmentId: string) => {
+        if (!project) return;
+        const updatedSegments = (project.subtitles.segments || []).filter(s => s.id !== segmentId);
+        const updatedTranslations = { ...(project.subtitles.translations || {}) };
+        for (const [langKey, langObj] of Object.entries(updatedTranslations)) {
+            if (langObj && Array.isArray(langObj.segments)) {
+                updatedTranslations[langKey] = {
+                    ...langObj,
+                    segments: langObj.segments.filter(s => s.id !== segmentId)
+                };
+            }
+        }
+        const updatedSubtitles: SubtitleConfig = {
+            ...project.subtitles,
+            segments: updatedSegments,
+            translations: updatedTranslations
+        };
+        const newDuration = computeProjectDuration(project.clips, updatedSubtitles);
+        const updatedProject: VideoEditorProjectData = {
+            ...project,
+            subtitles: updatedSubtitles,
+            duration: newDuration
+        };
+
+        setProject(updatedProject);
+        setSelectedItemIds(prev => prev.filter(x => x !== segmentId));
+        if (primarySelectedId === segmentId) setPrimarySelectedId(null);
+        pushHistorySnapshot(updatedProject.tracks, project.clips, updatedSubtitles, newDuration);
+        toast.info('Subtítulo eliminado');
+    };
+
+    const handleUpdateSubtitleSegment = (segmentId: string, updates: Partial<SubtitleSegment>) => {
+        if (!project) return;
+        const activeLang = project.subtitles.activeLanguage || project.subtitles.sourceLanguage || 'es';
+
+        let updatedSubtitles: SubtitleConfig;
+
+        if (updates.text !== undefined && Object.keys(updates).length === 1) {
+            // Edición exclusiva de texto: aislar por versión de idioma sin tocar los otros idiomas
+            updatedSubtitles = updateSubtitleSegmentText(
+                project.subtitles,
+                segmentId,
+                updates.text,
+                activeLang
+            );
+        } else {
+            // Actualización de tiempos (start, end) u otros atributos
+            // Sincronizar timestamps en todas las versiones de idiomas manteniendo los textos independientes
+            const updatedSegments = (project.subtitles.segments || []).map(s => {
+                if (s.id !== segmentId) return s;
+                const nextSeg = { ...s, ...updates };
+                if (updates.text !== undefined) {
+                    nextSeg.translations = {
+                        ...(nextSeg.translations || {}),
+                        [activeLang]: updates.text
+                    };
+                }
+                return nextSeg;
+            });
+
+            const updatedTranslations = { ...(project.subtitles.translations || {}) };
+            for (const [langKey, langObj] of Object.entries(updatedTranslations)) {
+                if (langObj && Array.isArray(langObj.segments)) {
+                    updatedTranslations[langKey] = {
+                        ...langObj,
+                        segments: langObj.segments.map(seg => {
+                            if (seg.id !== segmentId) return seg;
+                            const modSeg = { ...seg };
+                            if (updates.start !== undefined) modSeg.start = updates.start;
+                            if (updates.end !== undefined) modSeg.end = updates.end;
+                            if (langKey === activeLang && updates.text !== undefined) {
+                                modSeg.text = updates.text;
+                            }
+                            return modSeg;
+                        })
+                    };
+                }
+            }
+
+            updatedSubtitles = {
+                ...project.subtitles,
+                segments: updatedSegments,
+                translations: updatedTranslations
+            };
+        }
+
+        const newDuration = computeProjectDuration(project.clips, updatedSubtitles);
+        const updatedProject: VideoEditorProjectData = {
+            ...project,
+            subtitles: updatedSubtitles,
+            duration: newDuration
+        };
+
+        setProject(updatedProject);
+        pushHistorySnapshot(updatedProject.tracks, project.clips, updatedSubtitles, newDuration);
+    };
+
+    const handleSwitchSubtitleLanguage = useCallback((targetLang: string) => {
+        if (!project || !project.subtitles) return;
+        const updatedSubtitles = switchSubtitleLanguage(project.subtitles, targetLang);
+        const updatedProject: VideoEditorProjectData = {
+            ...project,
+            subtitles: updatedSubtitles
+        };
+        setProject(updatedProject);
+        pushHistorySnapshot(updatedProject.tracks, updatedProject.clips, updatedSubtitles, updatedProject.duration);
+    }, [project, pushHistorySnapshot]);
+
+    // División precisa (Split) en posición del playhead
+    const handleSplit = useCallback((atTime: number = currentTime) => {
+        if (!project) return;
+
+        let didSplit = false;
+        let newClips = [...project.clips];
+        let newSegments = [...(project.subtitles.segments || [])];
+        let newlySelectedId: string | null = null;
+
+        // 1. Si hay clips seleccionados que contengan atTime
+        const selectedClipsToSplit = project.clips.filter(
+            c => selectedItemIds.includes(c.id) && atTime > c.startTime && atTime < (c.startTime + c.duration)
+        );
+
+        if (selectedClipsToSplit.length > 0) {
+            for (const target of selectedClipsToSplit) {
+                const res = splitClip(target, atTime);
+                if (res) {
+                    const [c1, c2] = res;
+                    newClips = newClips.map(c => c.id === target.id ? c1 : c).concat(c2);
+                    newlySelectedId = c2.id;
+                    didSplit = true;
+                }
+            }
+        }
+
+        // 2. Si hay subtítulos seleccionados que contengan atTime
+        const selectedSubsToSplit = (project.subtitles.segments || []).filter(
+            s => selectedItemIds.includes(s.id) && atTime > s.start && atTime < s.end
+        );
+
+        if (selectedSubsToSplit.length > 0) {
+            for (const target of selectedSubsToSplit) {
+                const res = splitSubtitleSegment(target, atTime);
+                if (res) {
+                    const [s1, s2] = res;
+                    newSegments = newSegments.map(s => s.id === target.id ? s1 : s).concat(s2);
+                    newlySelectedId = s2.id;
+                    didSplit = true;
+                }
+            }
+        }
+
+        // 3. Si no hay selección explícita, dividir el clip o subtítulo activo en atTime
+        if (!didSplit && selectedItemIds.length === 0) {
+            const activeClips = project.clips.filter(
+                c => atTime > c.startTime && atTime < (c.startTime + c.duration)
+            );
+            if (activeClips.length > 0) {
+                const target = activeClips[activeClips.length - 1];
+                const res = splitClip(target, atTime);
+                if (res) {
+                    const [c1, c2] = res;
+                    newClips = newClips.map(c => c.id === target.id ? c1 : c).concat(c2);
+                    newlySelectedId = c2.id;
+                    didSplit = true;
+                }
+            } else {
+                const activeSub = (project.subtitles.segments || []).find(
+                    s => atTime > s.start && atTime < s.end
+                );
+                if (activeSub) {
+                    const res = splitSubtitleSegment(activeSub, atTime);
+                    if (res) {
+                        const [s1, s2] = res;
+                        newSegments = newSegments.map(s => s.id === activeSub.id ? s1 : s).concat(s2);
+                        newlySelectedId = s2.id;
+                        didSplit = true;
+                    }
+                }
+            }
+        }
+
+        if (!didSplit) {
+            toast.error('Ubica el cabezal dentro de un clip o subtítulo para dividirlo');
+            return;
+        }
+
+        const updatedTranslations = { ...(project.subtitles.translations || {}) };
+        for (const [langKey, langObj] of Object.entries(updatedTranslations)) {
+            if (langObj && Array.isArray(langObj.segments)) {
+                updatedTranslations[langKey] = {
+                    ...langObj,
+                    segments: newSegments.map(s => ({
+                        ...s,
+                        text: s.translations?.[langKey] || s.text
+                    }))
+                };
+            }
+        }
+
+        const updatedSubtitles: SubtitleConfig = {
+            ...project.subtitles,
+            segments: newSegments,
+            translations: updatedTranslations
+        };
+
+        const newDuration = computeProjectDuration(newClips, updatedSubtitles);
+        const updatedProject: VideoEditorProjectData = {
+            ...project,
+            clips: newClips,
+            subtitles: updatedSubtitles,
+            duration: newDuration
+        };
+
+        setProject(updatedProject);
+        if (newlySelectedId) {
+            setSelectedItemIds([newlySelectedId]);
+            setPrimarySelectedId(newlySelectedId);
+        }
+        pushHistorySnapshot(updatedProject.tracks, newClips, updatedSubtitles, newDuration);
+        toast.success('Elemento dividido en 2');
+    }, [project, currentTime, selectedItemIds, pushHistorySnapshot]);
+
+    // Separar / Extraer Audio de un Clip de Video
+    const handleSeparateAudio = useCallback((clipId?: string) => {
+        if (!project) return;
+        const targetId = clipId || primarySelectedId || selectedItemIds.find(id => project.clips.some(c => c.id === id));
+        const targetClip = project.clips.find(c => c.id === targetId);
+
+        if (!targetClip || targetClip.type !== 'video' || !targetClip.url) {
+            toast.error('Selecciona un clip de video con archivo para separar su audio');
+            return;
+        }
+
+        const { updatedVideoClip, newAudioClip, targetTrackId } = separateAudioFromVideo(targetClip, project.tracks);
+
+        let updatedTracks = [...project.tracks];
+        if (!updatedTracks.some(t => t.id === targetTrackId)) {
+            updatedTracks.push({
+                id: targetTrackId,
+                name: 'Locución / Audio',
+                type: 'audio',
+                order: updatedTracks.length + 1,
+                muted: false,
+                locked: false,
+                visible: true
+            });
+        }
+
+        const updatedClips = project.clips.map(c => c.id === targetClip.id ? updatedVideoClip : c).concat(newAudioClip);
+        const newDuration = computeProjectDuration(updatedClips, project.subtitles);
+
+        const updatedProject: VideoEditorProjectData = {
+            ...project,
+            tracks: updatedTracks,
+            clips: updatedClips,
+            duration: newDuration
+        };
+
+        setProject(updatedProject);
+        setSelectedItemIds([newAudioClip.id]);
+        setPrimarySelectedId(newAudioClip.id);
+        pushHistorySnapshot(updatedTracks, updatedClips, project.subtitles, newDuration);
+        toast.success('Audio extraído y separado en pista independiente');
+    }, [project, primarySelectedId, selectedItemIds, pushHistorySnapshot]);
+
+    // Duplicar elementos seleccionados
+    const handleDuplicateSelected = useCallback(() => {
+        if (!project || selectedItemIds.length === 0) return;
+
+        const newClips = [...project.clips];
+        const newSegments = [...(project.subtitles.segments || [])];
+        const newSelectedIds: string[] = [];
+
+        for (const clipId of selectedItemIds) {
+            const target = project.clips.find(c => c.id === clipId);
+            if (target) {
+                const duplicated: Clip = {
+                    ...JSON.parse(JSON.stringify(target)),
+                    id: `clip-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+                    name: `${target.name} (Copia)`,
+                    startTime: Number((target.startTime + target.duration + 0.1).toFixed(2))
+                };
+                newClips.push(duplicated);
+                newSelectedIds.push(duplicated.id);
+            }
+        }
+
+        for (const subId of selectedItemIds) {
+            const target = (project.subtitles.segments || []).find(s => s.id === subId);
+            if (target) {
+                const dur = target.end - target.start;
+                const duplicated: SubtitleSegment = {
+                    ...JSON.parse(JSON.stringify(target)),
+                    id: `sub-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+                    start: Number((target.end + 0.1).toFixed(2)),
+                    end: Number((target.end + 0.1 + dur).toFixed(2))
+                };
+                newSegments.push(duplicated);
+                newSelectedIds.push(duplicated.id);
+            }
+        }
+
+        const updatedSubtitles: SubtitleConfig = {
+            ...project.subtitles,
+            segments: newSegments
+        };
+
+        const newDuration = computeProjectDuration(newClips, updatedSubtitles);
+        const updatedProject: VideoEditorProjectData = {
+            ...project,
+            clips: newClips,
+            subtitles: updatedSubtitles,
+            duration: newDuration
+        };
+
+        setProject(updatedProject);
+        if (newSelectedIds.length > 0) {
+            setSelectedItemIds(newSelectedIds);
+            setPrimarySelectedId(newSelectedIds[0]);
+        }
+        pushHistorySnapshot(updatedProject.tracks, newClips, updatedSubtitles, newDuration);
+        toast.success(`${newSelectedIds.length} elemento(s) duplicado(s)`);
+    }, [project, selectedItemIds, pushHistorySnapshot]);
+
+    // Copiar y Pegar
+    const handleCopy = useCallback(() => {
+        if (!project || selectedItemIds.length === 0) return;
+        const clipsToCopy = project.clips.filter(c => selectedItemIds.includes(c.id));
+        const subsToCopy = (project.subtitles.segments || []).filter(s => selectedItemIds.includes(s.id));
+        clipboardRef.current = {
+            clips: JSON.parse(JSON.stringify(clipsToCopy)),
+            subtitles: JSON.parse(JSON.stringify(subsToCopy))
+        };
+        toast.success(`${clipsToCopy.length + subsToCopy.length} elemento(s) copiado(s) al portapapeles`);
+    }, [project, selectedItemIds]);
+
+    const handlePaste = useCallback(() => {
+        if (!project) return;
+        const { clips: copiedClips, subtitles: copiedSubs } = clipboardRef.current;
+        if (copiedClips.length === 0 && copiedSubs.length === 0) return;
+
+        let baseTime = Infinity;
+        for (const c of copiedClips) {
+            if (c.startTime < baseTime) baseTime = c.startTime;
+        }
+        for (const s of copiedSubs) {
+            if (s.start < baseTime) baseTime = s.start;
+        }
+        if (!isFinite(baseTime)) baseTime = 0;
+
+        const newSelectedIds: string[] = [];
+        const newClips = [...project.clips];
+        for (const c of copiedClips) {
+            const relOffset = c.startTime - baseTime;
+            const pastedClip: Clip = {
+                ...JSON.parse(JSON.stringify(c)),
+                id: `clip-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+                startTime: Number((currentTime + relOffset).toFixed(2))
+            };
+            newClips.push(pastedClip);
+            newSelectedIds.push(pastedClip.id);
+        }
+
+        const newSegments = [...(project.subtitles.segments || [])];
+        for (const s of copiedSubs) {
+            const relOffset = s.start - baseTime;
+            const dur = s.end - s.start;
+            const pastedSub: SubtitleSegment = {
+                ...JSON.parse(JSON.stringify(s)),
+                id: `sub-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+                start: Number((currentTime + relOffset).toFixed(2)),
+                end: Number((currentTime + relOffset + dur).toFixed(2))
+            };
+            newSegments.push(pastedSub);
+            newSelectedIds.push(pastedSub.id);
+        }
+
+        const updatedSubtitles: SubtitleConfig = {
+            ...project.subtitles,
+            segments: newSegments
+        };
+
+        const newDuration = computeProjectDuration(newClips, updatedSubtitles);
+        const updatedProject: VideoEditorProjectData = {
+            ...project,
+            clips: newClips,
+            subtitles: updatedSubtitles,
+            duration: newDuration
+        };
+
+        setProject(updatedProject);
+        setSelectedItemIds(newSelectedIds);
+        setPrimarySelectedId(newSelectedIds[0] || null);
+        pushHistorySnapshot(updatedProject.tracks, newClips, updatedSubtitles, newDuration);
+        toast.success(`${newSelectedIds.length} elemento(s) pegado(s)`);
+    }, [project, currentTime, pushHistorySnapshot]);
+
+    // ── 7. Atajos de Teclado Profesionales ─────────────────────────────────────
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            // Ignorar atajos si el usuario escribe en un input o textarea
             const targetTag = (e.target as HTMLElement)?.tagName?.toLowerCase();
             if (targetTag === 'input' || targetTag === 'textarea' || (e.target as HTMLElement)?.isContentEditable) {
                 return;
@@ -413,36 +992,29 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
                 setIsPlaying(prev => !prev);
             }
 
-            // Flecha Izquierda: Retroceder 1 segundo
+            // Flecha Izquierda: Retroceder 1s (5s con Shift)
             if (e.code === 'ArrowLeft') {
                 e.preventDefault();
                 setCurrentTime(t => Math.max(0, t - (e.shiftKey ? 5 : 1)));
             }
 
-            // Flecha Derecha: Avanzar 1 segundo
+            // Flecha Derecha: Avanzar 1s (5s con Shift)
             if (e.code === 'ArrowRight') {
                 e.preventDefault();
                 const maxDur = project?.duration || 30;
                 setCurrentTime(t => Math.min(maxDur, t + (e.shiftKey ? 5 : 1)));
             }
 
-            // Tecla S: Dividir/Cortar clip seleccionado en playhead
+            // Tecla S: Dividir/Cortar en playhead
             if (e.key === 's' || e.key === 'S') {
-                if (selectedClipId && project) {
-                    const sel = project.clips.find(c => c.id === selectedClipId);
-                    if (sel && currentTime > sel.startTime && currentTime < (sel.startTime + sel.duration)) {
-                        e.preventDefault();
-                        handleSplitClip(selectedClipId, currentTime);
-                    }
-                }
+                e.preventDefault();
+                handleSplit(currentTime);
             }
 
-            // Tecla Delete o Backspace: Eliminar clip seleccionado
+            // Tecla Delete o Backspace: Eliminar selección masiva
             if (e.key === 'Delete' || e.key === 'Backspace') {
-                if (selectedClipId) {
-                    e.preventDefault();
-                    handleDeleteClip(selectedClipId);
-                }
+                e.preventDefault();
+                handleDeleteSelected();
             }
 
             // Cmd/Ctrl + Z: Deshacer
@@ -457,13 +1029,31 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
                 e.preventDefault();
                 handleRedo();
             }
+
+            // Cmd/Ctrl + C: Copiar
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'c') {
+                e.preventDefault();
+                handleCopy();
+            }
+
+            // Cmd/Ctrl + V: Pegar
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'v') {
+                e.preventDefault();
+                handlePaste();
+            }
+
+            // Cmd/Ctrl + A: Seleccionar todo
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') {
+                e.preventDefault();
+                handleSelectAll();
+            }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [selectedClipId, currentTime, project, handleUndo, handleRedo]);
+    }, [currentTime, project, handleUndo, handleRedo, handleSplit, handleDeleteSelected, handleCopy, handlePaste, handleSelectAll]);
 
-    // ── 6. Manejadores de Clips y Pistas ──────────────────────────────────────
+    // ── 8. Manejadores de Clips y Pistas ──────────────────────────────────────
     const handleAddClip = (clipData: Omit<Clip, 'id'>) => {
         if (!project) return;
         const newClip: Clip = {
@@ -472,7 +1062,7 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
         };
 
         const updatedClips = [...project.clips, newClip];
-        const newTotalDuration = Math.max(project.duration, newClip.startTime + newClip.duration);
+        const newTotalDuration = computeProjectDuration(updatedClips, project.subtitles);
 
         const updatedProject: VideoEditorProjectData = {
             ...project,
@@ -481,7 +1071,8 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
         };
 
         setProject(updatedProject);
-        setSelectedClipId(newClip.id);
+        setSelectedItemIds([newClip.id]);
+        setPrimarySelectedId(newClip.id);
         pushHistorySnapshot(updatedProject.tracks, updatedClips, updatedProject.subtitles, newTotalDuration);
     };
 
@@ -498,27 +1089,15 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
             };
         });
 
+        const newDuration = computeProjectDuration(updatedClips, project.subtitles);
         const updatedProject: VideoEditorProjectData = {
             ...project,
-            clips: updatedClips
+            clips: updatedClips,
+            duration: newDuration
         };
 
         setProject(updatedProject);
-        pushHistorySnapshot(updatedProject.tracks, updatedClips, updatedProject.subtitles, updatedProject.duration);
-    };
-
-    const handleDeleteClip = (clipId: string) => {
-        if (!project) return;
-        const updatedClips = project.clips.filter(c => c.id !== clipId);
-        const updatedProject: VideoEditorProjectData = {
-            ...project,
-            clips: updatedClips
-        };
-
-        setProject(updatedProject);
-        if (selectedClipId === clipId) setSelectedClipId(null);
-        pushHistorySnapshot(updatedProject.tracks, updatedClips, updatedProject.subtitles, updatedProject.duration);
-        toast.info('Clip eliminado');
+        pushHistorySnapshot(updatedProject.tracks, updatedClips, updatedProject.subtitles, newDuration);
     };
 
     const handleDuplicateClip = (clipId: string) => {
@@ -530,11 +1109,11 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
             ...JSON.parse(JSON.stringify(target)),
             id: `clip-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
             name: `${target.name} (Copia)`,
-            startTime: Number((target.startTime + target.duration + 0.2).toFixed(2))
+            startTime: Number((target.startTime + target.duration + 0.1).toFixed(2))
         };
 
         const updatedClips = [...project.clips, duplicated];
-        const newTotalDuration = Math.max(project.duration, duplicated.startTime + duplicated.duration);
+        const newTotalDuration = computeProjectDuration(updatedClips, project.subtitles);
 
         const updatedProject: VideoEditorProjectData = {
             ...project,
@@ -543,49 +1122,10 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
         };
 
         setProject(updatedProject);
-        setSelectedClipId(duplicated.id);
+        setSelectedItemIds([duplicated.id]);
+        setPrimarySelectedId(duplicated.id);
         pushHistorySnapshot(updatedProject.tracks, updatedClips, updatedProject.subtitles, newTotalDuration);
         toast.success('Clip duplicado');
-    };
-
-    const handleSplitClip = (clipId: string, atTime: number) => {
-        if (!project) return;
-        const target = project.clips.find(c => c.id === clipId);
-        if (!target) return;
-
-        if (atTime <= target.startTime || atTime >= (target.startTime + target.duration)) {
-            toast.error('El cabezal debe estar dentro del clip para dividirlo');
-            return;
-        }
-
-        const firstDuration = Number((atTime - target.startTime).toFixed(2));
-        const secondDuration = Number((target.duration - firstDuration).toFixed(2));
-
-        const firstClip: Clip = {
-            ...target,
-            duration: firstDuration
-        };
-
-        const secondClip: Clip = {
-            ...JSON.parse(JSON.stringify(target)),
-            id: `clip-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-            name: `${target.name} (Parte 2)`,
-            startTime: atTime,
-            duration: secondDuration,
-            trimStart: (target.trimStart || 0) + firstDuration
-        };
-
-        const updatedClips = project.clips.map(c => c.id === clipId ? firstClip : c).concat(secondClip);
-
-        const updatedProject: VideoEditorProjectData = {
-            ...project,
-            clips: updatedClips
-        };
-
-        setProject(updatedProject);
-        setSelectedClipId(secondClip.id);
-        pushHistorySnapshot(updatedProject.tracks, updatedClips, updatedProject.subtitles, updatedProject.duration);
-        toast.success('Clip dividido en 2');
     };
 
     const handleAddTrack = (trackType: 'video' | 'audio' | 'text') => {
@@ -626,13 +1166,15 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
             style: updates.style ? { ...project.subtitles.style, ...updates.style } : project.subtitles.style
         };
 
+        const newDuration = computeProjectDuration(project.clips, updatedSubtitles);
         const updatedProject: VideoEditorProjectData = {
             ...project,
-            subtitles: updatedSubtitles
+            subtitles: updatedSubtitles,
+            duration: newDuration
         };
 
         setProject(updatedProject);
-        pushHistorySnapshot(project.tracks, project.clips, updatedSubtitles, project.duration);
+        pushHistorySnapshot(project.tracks, project.clips, updatedSubtitles, newDuration);
     };
 
     // Alternar Fullscreen nativo
@@ -645,7 +1187,7 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
         }
     };
 
-    // ── 7. Render de Pantalla de Carga y Error ────────────────────────────────
+    // ── 9. Render de Pantalla de Carga y Error ────────────────────────────────
     if (loading) {
         return (
             <div className={isStandalone ? "fixed inset-0 h-screen w-screen flex flex-col items-center justify-center bg-[#F8FAFC] text-gray-800 gap-4 z-[9999]" : "w-full min-h-[500px] flex flex-col items-center justify-center bg-[#F8FAFC] text-gray-800 gap-4"}>
@@ -690,7 +1232,9 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
         );
     }
 
-    const selectedClip = project.clips.find(c => c.id === selectedClipId) || null;
+    const selectedClipId = selectedItemIds.find(id => project.clips.some(c => c.id === id)) || null;
+    const selectedClip = project.clips.find(c => c.id === (primarySelectedId || selectedClipId)) || null;
+    const selectedSubtitleSegment = (project.subtitles?.segments || []).find(s => s.id === (primarySelectedId || selectedItemIds[0])) || null;
 
     const rootClasses = isStandalone
         ? 'fixed inset-0 h-screen w-screen bg-[#F8FAFC] text-slate-800 font-sans z-[9999] overflow-hidden flex flex-col select-none'
@@ -712,7 +1256,10 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
                 onUndo={handleUndo}
                 onRedo={handleRedo}
                 onOpenProjects={() => setIsProjectsModalOpen(true)}
-                onOpenExport={() => setIsExportModalOpen(true)}
+                onOpenExport={async () => {
+                    await saveProjectNow();
+                    setIsExportModalOpen(true);
+                }}
                 zoomLevel={zoomLevel}
                 onZoomLevelChange={setZoomLevel}
                 isFullscreen={isFullscreen}
@@ -741,6 +1288,9 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
                     selectedClip={selectedClip}
                     subtitles={project.subtitles}
                     onUpdateSubtitles={handleUpdateSubtitles}
+                    onSwitchSubtitleLanguage={handleSwitchSubtitleLanguage}
+                    onUpdateSubtitleSegment={handleUpdateSubtitleSegment}
+                    onDeleteSubtitleSegment={handleDeleteSubtitleSegment}
                     format={project.format}
                     onFormatChange={fmt => setProject({ ...project, format: fmt })}
                     resolution={project.resolution}
@@ -750,7 +1300,7 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
                     onToggleCollapse={() => setIsLeftSidebarCollapsed(p => !p)}
                 />
 
-                {/* Lienzo / Canvas Central Adaptativo */}
+                {/* Lienzo / Canvas Central Adaptativo con Sincronización Multi-capa */}
                 <div className="flex-1 flex flex-col bg-[#F8FAFC] relative overflow-hidden">
                     <VideoEditorCanvas
                         format={project.format}
@@ -762,19 +1312,29 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
                         clips={project.clips}
                         subtitles={project.subtitles}
                         selectedClipId={selectedClipId}
-                        onSelectClip={id => setSelectedClipId(id)}
+                        selectedItemIds={selectedItemIds}
+                        onSelectClip={id => handleSelectItem(id)}
                     />
                 </div>
 
                 {/* Inspector Contextual de Propiedades Derecho */}
                 <VideoEditorInspector
                     selectedClip={selectedClip}
+                    selectedSubtitleSegment={selectedSubtitleSegment}
+                    selectedItemIds={selectedItemIds}
+                    primarySelectedId={primarySelectedId}
                     tracks={project.tracks}
                     project={project}
                     onUpdateClip={handleUpdateClip}
                     onDeleteClip={handleDeleteClip}
                     onDuplicateClip={handleDuplicateClip}
+                    onDeleteSelected={handleDeleteSelected}
+                    onDuplicateSelected={handleDuplicateSelected}
+                    onSeparateAudio={handleSeparateAudio}
+                    onSplitSelected={handleSplit}
                     onUpdateSubtitles={handleUpdateSubtitles}
+                    onUpdateSubtitleSegment={handleUpdateSubtitleSegment}
+                    onDeleteSubtitleSegment={handleDeleteSubtitleSegment}
                     onUpdateProject={updates => setProject(prev => prev ? { ...prev, ...updates } : prev)}
                     isCollapsed={isRightInspectorCollapsed}
                     onToggleCollapse={() => setIsRightInspectorCollapsed(p => !p)}
@@ -790,12 +1350,21 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
                 duration={project.duration}
                 onSeek={time => setCurrentTime(time)}
                 selectedClipId={selectedClipId}
-                onSelectClip={id => setSelectedClipId(id)}
+                selectedItemIds={selectedItemIds}
+                primarySelectedId={primarySelectedId}
+                onSelectItem={handleSelectItem}
+                onSelectClip={id => handleSelectItem(id)}
                 onUpdateClip={handleUpdateClip}
                 onDeleteClip={handleDeleteClip}
+                onDeleteSelected={handleDeleteSelected}
                 onDuplicateClip={handleDuplicateClip}
-                onSplitClip={handleSplitClip}
+                onDuplicateSelected={handleDuplicateSelected}
+                onSplitClip={(clipId, atTime) => handleSplit(atTime)}
+                onSplitSelected={handleSplit}
+                onSeparateAudio={handleSeparateAudio}
                 onAddTrack={handleAddTrack}
+                onUpdateSubtitleSegment={handleUpdateSubtitleSegment}
+                onDeleteSubtitleSegment={handleDeleteSubtitleSegment}
             />
 
             {/* Modal de Gestor de Proyectos */}

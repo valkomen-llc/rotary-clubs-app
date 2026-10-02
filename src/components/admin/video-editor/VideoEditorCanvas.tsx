@@ -1,14 +1,16 @@
 // ════════════════════════════════════════════════════════════════════════════
-// Lienzo / Reproductor Central del Editor de Video (Tema Claro) — v4.1143.0
+// Lienzo / Reproductor Central del Editor de Video (Tema Claro) — v4.1148.0
 //
-// Visualización en tiempo real de la composición actual:
-// - Marco de lienzo nítido con aspect ratio adaptativo (16:9, 9:16, 1:1)
-// - Entorno circundante claro y ergonómico
-// - Sincronización precisa de video, imagen, texto y subtítulos IA
-// - Barra de transporte y control de reproducción flotante
+// Visualización y composición sincronizada en tiempo real:
+// - Marco de lienzo adaptativo con aspect ratio estricto (16:9, 9:16, 1:1, 4:5)
+// - Sincronización continua de video, audio multipista, texto y subtítulos IA
+// - Reproducción simultánea de pistas de audio independientes (Locución, Música)
+// - Supresión de eco/duplicación acústica para clips con audio separado (muted)
+// - Composición multi-capa (Fondo principal + B-Roll overlay con escala y posición)
+// - Barra de transporte y control ergonómico de reproducción
 // ════════════════════════════════════════════════════════════════════════════
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useMemo } from 'react';
 import {
     Play,
     Pause,
@@ -19,7 +21,7 @@ import {
     Square
 } from 'lucide-react';
 import type { AspectRatio, Clip, SubtitleConfig } from './types';
-import { formatTimecode } from '../../../../server/lib/videoEditorSpec.js';
+import { formatTimecode, getSegmentText } from './timelineUtils';
 
 interface VideoEditorCanvasProps {
     format: AspectRatio;
@@ -30,7 +32,8 @@ interface VideoEditorCanvasProps {
     onSeek: (time: number) => void;
     clips: Clip[];
     subtitles: SubtitleConfig;
-    selectedClipId: string | null;
+    selectedClipId?: string | null;
+    selectedItemIds?: string[];
     onSelectClip: (clipId: string | null) => void;
 }
 
@@ -43,50 +46,133 @@ export const VideoEditorCanvas: React.FC<VideoEditorCanvasProps> = ({
     onSeek,
     clips,
     subtitles,
-    selectedClipId,
+    selectedClipId = null,
+    selectedItemIds = [],
     onSelectClip
 }) => {
-    const videoRef = useRef<HTMLVideoElement>(null);
+    const mainVideoRef = useRef<HTMLVideoElement>(null);
+    const overlayVideoRef = useRef<HTMLVideoElement>(null);
+    const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
 
-    // Encontrar el clip visual activo en currentTime
-    const activeVisualClips = clips.filter(
-        c => (c.type === 'video' || c.type === 'image') &&
-             currentTime >= c.startTime &&
-             currentTime < (c.startTime + c.duration)
-    );
+    // ── 1. Determinar Clips Visuales Activos en currentTime ────────────────────
+    const activeVisualClips = useMemo(() => {
+        return clips.filter(
+            c => (c.type === 'video' || c.type === 'image') &&
+                 currentTime >= c.startTime &&
+                 currentTime < (c.startTime + c.duration)
+        );
+    }, [clips, currentTime]);
 
-    // Tomar el clip visual superior
-    const currentVisualClip = activeVisualClips[activeVisualClips.length - 1] || null;
-
-    // Encontrar los clips de texto activos en currentTime
-    const activeTextClips = clips.filter(
-        c => c.type === 'text' &&
-             currentTime >= c.startTime &&
-             currentTime < (c.startTime + c.duration)
-    );
-
-    // Encontrar el segmento de subtítulo activo en currentTime
-    const activeSubtitleSegment = (subtitles.segments || []).find(
-        s => currentTime >= s.start && currentTime <= s.end
-    );
-
-    // Sincronizar el video HTML si el clip visual es un video
-    useEffect(() => {
-        if (!videoRef.current || !currentVisualClip || currentVisualClip.type !== 'video') return;
-
-        const clipRelativeTime = Math.max(0, currentTime - currentVisualClip.startTime + (currentVisualClip.trimStart || 0));
-        
-        // Si hay una diferencia apreciable, sincronizar la posición
-        if (Math.abs(videoRef.current.currentTime - clipRelativeTime) > 0.25) {
-            videoRef.current.currentTime = clipRelativeTime;
+    // Separar capa principal de capa overlay (B-Roll o Pista Superior)
+    const { mainClip, overlayClip } = useMemo(() => {
+        if (activeVisualClips.length === 0) {
+            return { mainClip: null, overlayClip: null };
         }
+        if (activeVisualClips.length === 1) {
+            return { mainClip: activeVisualClips[0], overlayClip: null };
+        }
+        // Si hay varios, identificar si uno es overlay (track-video-overlay) o por orden
+        const overlay = activeVisualClips.find(c => c.trackId === 'track-video-overlay') || activeVisualClips[activeVisualClips.length - 1];
+        const main = activeVisualClips.find(c => c.id !== overlay.id) || activeVisualClips[0];
+        return { mainClip: main, overlayClip: overlay };
+    }, [activeVisualClips]);
+
+    // ── 2. Determinar Clips de Audio Activos en currentTime ────────────────────
+    const activeAudioClips = useMemo(() => {
+        return clips.filter(
+            c => c.type === 'audio' &&
+                 c.url &&
+                 currentTime >= c.startTime &&
+                 currentTime < (c.startTime + c.duration)
+        );
+    }, [clips, currentTime]);
+
+    // ── 3. Determinar Rótulos de Texto Activos en currentTime ──────────────────
+    const activeTextClips = useMemo(() => {
+        return clips.filter(
+            c => c.type === 'text' &&
+                 currentTime >= c.startTime &&
+                 currentTime < (c.startTime + c.duration)
+        );
+    }, [clips, currentTime]);
+
+    // ── 4. Determinar Subtítulo Activo en currentTime ──────────────────────────
+    const activeSubtitleSegment = useMemo(() => {
+        return (subtitles.segments || []).find(
+            s => currentTime >= s.start && currentTime <= s.end
+        ) || null;
+    }, [subtitles.segments, currentTime]);
+
+    // ── 5. Sincronización del Video Principal ─────────────────────────────────
+    useEffect(() => {
+        if (!mainVideoRef.current || !mainClip || mainClip.type !== 'video') return;
+
+        const clipRelativeTime = Math.max(0, currentTime - mainClip.startTime + (mainClip.trimStart || 0));
+
+        if (Math.abs(mainVideoRef.current.currentTime - clipRelativeTime) > 0.25) {
+            mainVideoRef.current.currentTime = clipRelativeTime;
+        }
+
+        // Volumen y Mute (garantiza que si se extrajo el audio, el video no duplique sonido)
+        mainVideoRef.current.muted = !!mainClip.muted;
+        mainVideoRef.current.volume = mainClip.muted ? 0 : Math.min(1, Math.max(0, (mainClip.volume ?? 100) / 100));
 
         if (isPlaying) {
-            videoRef.current.play().catch(() => {});
+            mainVideoRef.current.play().catch(() => {});
         } else {
-            videoRef.current.pause();
+            mainVideoRef.current.pause();
         }
-    }, [currentTime, isPlaying, currentVisualClip?.id]);
+    }, [currentTime, isPlaying, mainClip?.id, mainClip?.muted, mainClip?.volume, mainClip?.trimStart, mainClip?.startTime]);
+
+    // ── 6. Sincronización del Video Overlay / B-Roll ───────────────────────────
+    useEffect(() => {
+        if (!overlayVideoRef.current || !overlayClip || overlayClip.type !== 'video') return;
+
+        const clipRelativeTime = Math.max(0, currentTime - overlayClip.startTime + (overlayClip.trimStart || 0));
+
+        if (Math.abs(overlayVideoRef.current.currentTime - clipRelativeTime) > 0.25) {
+            overlayVideoRef.current.currentTime = clipRelativeTime;
+        }
+
+        overlayVideoRef.current.muted = !!overlayClip.muted;
+        overlayVideoRef.current.volume = overlayClip.muted ? 0 : Math.min(1, Math.max(0, (overlayClip.volume ?? 100) / 100));
+
+        if (isPlaying) {
+            overlayVideoRef.current.play().catch(() => {});
+        } else {
+            overlayVideoRef.current.pause();
+        }
+    }, [currentTime, isPlaying, overlayClip?.id, overlayClip?.muted, overlayClip?.volume, overlayClip?.trimStart, overlayClip?.startTime]);
+
+    // ── 7. Motor de Reproducción de Pistas de Audio Multipista ─────────────────
+    useEffect(() => {
+        activeAudioClips.forEach(audioClip => {
+            const el = audioElementsRef.current.get(audioClip.id);
+            if (!el) return;
+
+            const clipRelativeTime = Math.max(0, currentTime - audioClip.startTime + (audioClip.trimStart || 0));
+
+            if (Math.abs(el.currentTime - clipRelativeTime) > 0.25) {
+                el.currentTime = clipRelativeTime;
+            }
+
+            el.muted = !!audioClip.muted;
+            el.volume = audioClip.muted ? 0 : Math.min(1, Math.max(0, (audioClip.volume ?? 100) / 100));
+
+            if (isPlaying) {
+                el.play().catch(() => {});
+            } else {
+                el.pause();
+            }
+        });
+
+        // Pausar elementos de audio que ya no están activos
+        audioElementsRef.current.forEach((el, id) => {
+            if (!activeAudioClips.some(c => c.id === id)) {
+                el.pause();
+            }
+        });
+    }, [currentTime, isPlaying, activeAudioClips]);
 
     // Clases CSS para mantener la proporción estricta del lienzo
     const getAspectRatioClass = () => {
@@ -106,26 +192,41 @@ export const VideoEditorCanvas: React.FC<VideoEditorCanvasProps> = ({
 
     return (
         <div className="flex-1 flex flex-col bg-[#F8FAFC] items-center justify-between p-4 overflow-hidden relative select-none">
+            {/* Elementos de Audio HTML5 ocultos para reproducción multipista sincronizada */}
+            <div className="hidden pointer-events-none" aria-hidden="true">
+                {activeAudioClips.map(clip => (
+                    <audio
+                        key={clip.id}
+                        ref={el => {
+                            if (el) audioElementsRef.current.set(clip.id, el);
+                            else audioElementsRef.current.delete(clip.id);
+                        }}
+                        src={clip.url}
+                        preload="auto"
+                    />
+                ))}
+            </div>
+
             {/* ── Área del Lienzo de Previsualización ── */}
             <div className="flex-1 w-full flex items-center justify-center relative min-h-0">
                 <div
                     className={`relative bg-neutral-900 rounded-2xl overflow-hidden shadow-2xl border border-gray-300 flex items-center justify-center transition-all ${getAspectRatioClass()}`}
                     onClick={() => onSelectClip(null)}
                 >
-                    {/* Elemento Visual de Fondo (Video o Imagen) */}
-                    {currentVisualClip ? (
-                        currentVisualClip.type === 'video' ? (
+                    {/* Capa Visual 1: Recurso Principal */}
+                    {mainClip ? (
+                        mainClip.type === 'video' ? (
                             <video
-                                ref={videoRef}
-                                src={currentVisualClip.url}
-                                muted={currentVisualClip.muted}
+                                ref={mainVideoRef}
+                                src={mainClip.url}
+                                muted={mainClip.muted}
                                 playsInline
                                 className="w-full h-full object-contain pointer-events-none"
                             />
                         ) : (
                             <img
-                                src={currentVisualClip.url}
-                                alt={currentVisualClip.name}
+                                src={mainClip.url}
+                                alt={mainClip.name}
                                 className="w-full h-full object-contain pointer-events-none"
                             />
                         )
@@ -141,9 +242,36 @@ export const VideoEditorCanvas: React.FC<VideoEditorCanvasProps> = ({
                         </div>
                     )}
 
-                    {/* Rótulos de Texto Activos Superpuestos */}
+                    {/* Capa Visual 2: B-Roll / Overlay Superpuesto con Escala y Posición */}
+                    {overlayClip && (
+                        <div
+                            style={{
+                                transform: `translate(${overlayClip.transform?.x || 0}%, ${overlayClip.transform?.y || 0}%) scale(${overlayClip.transform?.scale || 1})`,
+                                transition: 'transform 0.1s ease-out'
+                            }}
+                            className="absolute inset-0 pointer-events-none flex items-center justify-center"
+                        >
+                            {overlayClip.type === 'video' ? (
+                                <video
+                                    ref={overlayVideoRef}
+                                    src={overlayClip.url}
+                                    muted={overlayClip.muted}
+                                    playsInline
+                                    className="max-w-full max-h-full object-contain shadow-2xl rounded-lg"
+                                />
+                            ) : (
+                                <img
+                                    src={overlayClip.url}
+                                    alt={overlayClip.name}
+                                    className="max-w-full max-h-full object-contain shadow-2xl rounded-lg"
+                                />
+                            )}
+                        </div>
+                    )}
+
+                    {/* Capa 3: Rótulos de Texto Activos Superpuestos */}
                     {activeTextClips.map((tClip) => {
-                        const isSelected = selectedClipId === tClip.id;
+                        const isSelected = (selectedItemIds && selectedItemIds.includes(tClip.id)) || selectedClipId === tClip.id;
                         return (
                             <div
                                 key={tClip.id}
@@ -164,7 +292,7 @@ export const VideoEditorCanvas: React.FC<VideoEditorCanvasProps> = ({
                                     padding: tClip.style?.backgroundColor !== 'transparent' ? '6px 16px' : '0',
                                     borderRadius: '8px'
                                 }}
-                                className={`absolute cursor-pointer transition-all ${
+                                className={`absolute cursor-pointer transition-all z-20 ${
                                     isSelected
                                         ? 'ring-2 ring-[#013388] shadow-xl'
                                         : 'hover:outline hover:outline-1 hover:outline-white/50'
@@ -175,9 +303,13 @@ export const VideoEditorCanvas: React.FC<VideoEditorCanvasProps> = ({
                         );
                     })}
 
-                    {/* Subtítulo Activo Superpuesto con Estilos Inteligentes */}
+                    {/* Capa 4: Subtítulo Activo Superpuesto con Estilos Inteligentes */}
                     {activeSubtitleSegment && (
                         <div
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onSelectClip(activeSubtitleSegment.id);
+                            }}
                             style={{
                                 fontFamily: subtitles.style?.fontFamily || 'Inter, sans-serif',
                                 fontSize: `${subtitles.style?.fontSize || 24}px`,
@@ -189,15 +321,19 @@ export const VideoEditorCanvas: React.FC<VideoEditorCanvasProps> = ({
                                 transform: subtitles.style?.position === 'center' ? 'translate(-50%, 50%)' : 'translateX(-50%)',
                                 borderRadius: `${subtitles.style?.borderRadius || 8}px`
                             }}
-                            className="absolute left-1/2 px-4 py-1.5 text-center max-w-[90%] shadow-lg pointer-events-none transition-all leading-tight"
+                            className={`absolute left-1/2 px-4 py-1.5 text-center max-w-[90%] shadow-lg transition-all leading-tight z-30 cursor-pointer ${
+                                selectedItemIds.includes(activeSubtitleSegment.id)
+                                    ? 'ring-2 ring-emerald-400 bg-black/85'
+                                    : 'hover:outline hover:outline-1 hover:outline-emerald-400/60'
+                            }`}
                         >
-                            {activeSubtitleSegment.text}
+                            {getSegmentText(activeSubtitleSegment, subtitles.activeLanguage, subtitles.sourceLanguage)}
                         </div>
                     )}
                 </div>
             </div>
 
-            {/* ── Barra de Transporte y Controles de Reproducción (Tema Claro) ── */}
+            {/* ── Barra de Transporte y Controles de Reproducción Sincronizados ── */}
             <div className="w-full max-w-xl bg-white/95 backdrop-blur-md border border-gray-200 rounded-2xl px-5 py-2 mt-3 flex items-center justify-between shadow-md">
                 {/* Salto 1s Atrás */}
                 <button
@@ -228,7 +364,7 @@ export const VideoEditorCanvas: React.FC<VideoEditorCanvasProps> = ({
 
                 <div className="h-4 w-[1px] bg-gray-200" />
 
-                {/* Código de Tiempo / Duración */}
+                {/* Código de Tiempo / Duración Total Dinámica */}
                 <div className="font-mono text-xs font-bold text-gray-700 bg-slate-50 border border-gray-200 px-3 py-1.5 rounded-lg tracking-wider">
                     <span className="text-[#013388]">{formatTimecode(currentTime)}</span>
                     <span className="text-gray-400 mx-1.5">/</span>

@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════════
-// Controlador del Editor de Video Profesional — v4.1141.0
+// Controlador del Editor de Video Profesional — v4.1148.0
 //
 // Gestión de proyectos, autoguardado, transcripción con timestamps,
 // traducción multilingüe de subtítulos y despacho asíncrono de renderizado.
@@ -95,22 +95,23 @@ export async function createProject(req, res) {
     try {
         await ensureVideoEditorSchema();
         const scope = resolveEditorScope(req);
-        const { title, format, resolution, tracks, clips, subtitles, config } = req.body || {};
+        const { title, format, resolution, duration, tracks, clips, subtitles, config } = req.body || {};
 
         const id = `vep-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
         const projectTitle = (title || '').trim() || `Video ${new Date().toLocaleDateString('es-CO')}`;
         const projectFormat = format || '16:9';
         const projectResolution = resolution || '1080p';
+        const projectDuration = Math.max(0, Number(duration) || 0);
         const projectTracks = Array.isArray(tracks) && tracks.length > 0 ? tracks : DEFAULT_TRACKS;
         const projectClips = Array.isArray(clips) ? clips : [];
         const projectSubtitles = subtitles || { segments: [], style: DEFAULT_SUBTITLE_STYLE };
 
         const { rows } = await db.query(
             `INSERT INTO "VideoEditorProject" (
-                id, title, "clubId", "userId", "userEmail", format, resolution,
+                id, title, "clubId", "userId", "userEmail", format, resolution, duration,
                 tracks, clips, subtitles, config, status, "renderStatus", "renderProgress", "createdAt", "updatedAt"
             ) VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'draft', 'idle', 0, NOW(), NOW()
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'draft', 'idle', 0, NOW(), NOW()
             ) RETURNING *`,
             [
                 id,
@@ -120,6 +121,7 @@ export async function createProject(req, res) {
                 req.user.email || null,
                 projectFormat,
                 projectResolution,
+                projectDuration,
                 JSON.stringify(projectTracks),
                 JSON.stringify(projectClips),
                 JSON.stringify(projectSubtitles),
@@ -158,7 +160,7 @@ export async function updateProject(req, res) {
         }
 
         const {
-            title, format, resolution, tracks, clips, subtitles,
+            title, format, resolution, duration, tracks, clips, subtitles,
             transcript, transitions, config, status
         } = req.body || {};
 
@@ -177,6 +179,10 @@ export async function updateProject(req, res) {
         if (resolution !== undefined) {
             fields.push(`resolution = $${p++}`);
             params.push(resolution);
+        }
+        if (duration !== undefined) {
+            fields.push(`duration = $${p++}`);
+            params.push(Math.max(0, Number(duration) || 0));
         }
         if (tracks !== undefined) {
             fields.push(`tracks = $${p++}`);
@@ -356,8 +362,21 @@ export async function transcribeProjectAudio(req, res) {
         const detectedLang = result.language || 'es';
         const langMeta = getLanguageMeta(detectedLang);
 
-        const prjPrev = await db.query(`SELECT subtitles FROM "VideoEditorProject" WHERE id = $1`, [id]);
+        const prjPrev = await db.query(`SELECT clips, subtitles, duration FROM "VideoEditorProject" WHERE id = $1`, [id]);
         const currentSubtitles = prjPrev.rows[0]?.subtitles || {};
+        const currentClips = prjPrev.rows[0]?.clips || [];
+        let maxEnd = Number(prjPrev.rows[0]?.duration) || 0;
+        if (Array.isArray(currentClips)) {
+            for (const c of currentClips) {
+                maxEnd = Math.max(maxEnd, (Number(c.startTime) || 0) + (Number(c.duration) || 0));
+            }
+        }
+        if (Array.isArray(result.segments)) {
+            for (const s of result.segments) {
+                maxEnd = Math.max(maxEnd, Number(s.end) || 0);
+            }
+        }
+        const updatedDuration = Math.max(10, Number(maxEnd.toFixed(2)));
 
         const initialTranslations = {
             ...(currentSubtitles.translations || {}),
@@ -385,11 +404,13 @@ export async function transcribeProjectAudio(req, res) {
                 `UPDATE "VideoEditorProject"
                     SET subtitles = $1::jsonb,
                         transcript = $2::jsonb,
+                        duration = $3,
                         "updatedAt" = NOW()
-                  WHERE id = $3`,
+                  WHERE id = $4`,
                 [
                     JSON.stringify(updatedSubtitles),
                     JSON.stringify({ text: result.transcript, language: result.language, provider: result.provider }),
+                    updatedDuration,
                     id
                 ]
             );
@@ -398,11 +419,12 @@ export async function transcribeProjectAudio(req, res) {
             throw new SubtitleError('SUBTITLE_PERSISTENCE_FAILED', 'No se pudieron guardar los subtítulos en la base de datos', persistErr.message);
         }
 
-        console.log(`[VideoEditorController] Transcripción exitosa para proyecto ${id}: ${result.segments.length} segmentos (${detectedLang}) con proveedor ${result.provider}`);
+        console.log(`[VideoEditorController] Transcripción exitosa para proyecto ${id}: ${result.segments.length} segmentos (${detectedLang}) con proveedor ${result.provider}, nueva duración: ${updatedDuration}s`);
 
         res.json({
             ok: true,
             subtitles: updatedSubtitles,
+            duration: updatedDuration,
             transcript: result.transcript,
             language: result.language,
             segments: result.segments,
@@ -503,7 +525,26 @@ export async function translateProjectSubtitles(req, res) {
         // Si ya existe una traducción generada para este idioma destino, usarla sin llamar a la IA
         if (existingTranslations[targetMeta.code]?.segments?.length > 0) {
             console.log(`[VideoEditorController] Activando traducción en caché para ${targetMeta.code} en proyecto ${id}`);
-            const cachedSegments = existingTranslations[targetMeta.code].segments;
+            const cachedRaw = existingTranslations[targetMeta.code].segments;
+            const cachedSegments = cachedRaw.map((cs, idx) => {
+                const orig = segments.find(s => s.id === cs.id) || segments[idx] || {};
+                return {
+                    ...cs,
+                    translations: {
+                        ...(orig.translations || {}),
+                        ...(cs.translations || {}),
+                        [sourceMeta.code]: orig.translations?.[sourceMeta.code] || orig.text || cs.translations?.[sourceMeta.code] || '',
+                        [targetMeta.code]: cs.text
+                    }
+                };
+            });
+
+            const availableLangs = Array.from(new Set([
+                sourceMeta.code,
+                targetMeta.code,
+                ...Object.keys(existingTranslations),
+                ...(currentSubtitles.availableLanguages || [])
+            ]));
 
             const updatedSubtitles = {
                 ...currentSubtitles,
@@ -511,6 +552,7 @@ export async function translateProjectSubtitles(req, res) {
                 sourceLanguageName: currentSubtitles.sourceLanguageName || sourceMeta.name,
                 activeLanguage: targetMeta.code,
                 language: targetMeta.code,
+                availableLanguages: availableLangs,
                 segments: cachedSegments,
                 translations: {
                     ...existingTranslations,
@@ -519,6 +561,12 @@ export async function translateProjectSubtitles(req, res) {
                         languageName: sourceMeta.name,
                         isOriginal: true,
                         segments: segments
+                    },
+                    [targetMeta.code]: {
+                        ...existingTranslations[targetMeta.code],
+                        language: targetMeta.code,
+                        languageName: targetMeta.name,
+                        segments: cachedSegments
                     }
                 }
             };
@@ -551,20 +599,47 @@ export async function translateProjectSubtitles(req, res) {
         // Ejecutar traducción contextual con IA
         const result = await translateSubtitles(segments, targetMeta.code, { sourceLang: sourceMeta.code });
 
+        const translatedSegmentsWithMap = result.segments.map((ts, idx) => {
+            const orig = segments.find(s => s.id === ts.id) || segments[idx] || {};
+            const origMap = orig.translations || {};
+            return {
+                ...ts,
+                translations: {
+                    ...origMap,
+                    [sourceMeta.code]: origMap[sourceMeta.code] || orig.text || '',
+                    [targetMeta.code]: ts.text
+                }
+            };
+        });
+
+        const availableLangs = Array.from(new Set([
+            sourceMeta.code,
+            targetMeta.code,
+            ...Object.keys(existingTranslations),
+            ...(currentSubtitles.availableLanguages || [])
+        ]));
+
         const updatedTranslations = {
             ...existingTranslations,
             [sourceMeta.code]: existingTranslations[sourceMeta.code] || {
                 language: sourceMeta.code,
-                languageName: result.sourceLanguageName,
+                languageName: result.sourceLanguageName || sourceMeta.name,
                 isOriginal: true,
-                segments: segments,
+                segments: segments.map((s, idx) => ({
+                    ...s,
+                    translations: {
+                        ...(s.translations || {}),
+                        [sourceMeta.code]: s.translations?.[sourceMeta.code] || s.text || '',
+                        [targetMeta.code]: translatedSegmentsWithMap[idx]?.text || ''
+                    }
+                })),
                 createdAt: new Date().toISOString()
             },
             [targetMeta.code]: {
                 language: targetMeta.code,
-                languageName: result.targetLanguageName,
+                languageName: result.targetLanguageName || targetMeta.name,
                 isOriginal: false,
-                segments: result.segments,
+                segments: translatedSegmentsWithMap,
                 provider: result.provider,
                 createdAt: new Date().toISOString()
             }
@@ -573,10 +648,11 @@ export async function translateProjectSubtitles(req, res) {
         const updatedSubtitles = {
             ...currentSubtitles,
             sourceLanguage: sourceMeta.code,
-            sourceLanguageName: result.sourceLanguageName,
+            sourceLanguageName: result.sourceLanguageName || sourceMeta.name,
             activeLanguage: targetMeta.code,
             language: targetMeta.code,
-            segments: result.segments,
+            availableLanguages: availableLangs,
+            segments: translatedSegmentsWithMap,
             translations: updatedTranslations
         };
 

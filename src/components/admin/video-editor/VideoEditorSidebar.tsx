@@ -48,6 +48,7 @@ import type {
 import { getStudioAuthToken } from '../../../lib/contentStudioFeatures';
 import { LOCALES } from '../../../lib/locale';
 import { toast } from 'sonner';
+import { probeMediaDuration, switchSubtitleLanguage } from './timelineUtils';
 
 interface VideoEditorSidebarProps {
     projectId: string;
@@ -62,6 +63,9 @@ interface VideoEditorSidebarProps {
     selectedClip: Clip | null;
     subtitles: SubtitleConfig;
     onUpdateSubtitles: (updates: Partial<SubtitleConfig>) => void;
+    onSwitchSubtitleLanguage?: (targetLang: string) => void;
+    onUpdateSubtitleSegment?: (segmentId: string, updates: Partial<SubtitleSegment>) => void;
+    onDeleteSubtitleSegment?: (segmentId: string) => void;
     format: AspectRatio;
     onFormatChange: (fmt: AspectRatio) => void;
     resolution: Resolution;
@@ -84,6 +88,9 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
     selectedClip,
     subtitles,
     onUpdateSubtitles,
+    onSwitchSubtitleLanguage,
+    onUpdateSubtitleSegment,
+    onDeleteSubtitleSegment,
     format,
     onFormatChange,
     resolution,
@@ -193,13 +200,21 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
             toast.success('Archivo subido con éxito');
             fetchMediaLibrary();
 
-            // Agregar de inmediato a la línea de tiempo
             const isVideo = file.type.startsWith('video');
             const isAudio = file.type.startsWith('audio');
             const isImage = file.type.startsWith('image');
+            const trackType: 'video' | 'audio' = isAudio ? 'audio' : 'video';
+            const targetTrack = tracks.find(t => t.type === trackType);
 
-            let trackType: 'video' | 'audio' = isAudio ? 'audio' : 'video';
-            let targetTrack = tracks.find(t => t.type === trackType);
+            // Obtener duración real del archivo multimedia mediante sondeo de metadatos
+            let mediaDuration = isImage ? 5 : 10;
+            if (isVideo || isAudio) {
+                try {
+                    mediaDuration = await probeMediaDuration(file);
+                } catch {
+                    mediaDuration = 10;
+                }
+            }
 
             onAddClip({
                 trackId: targetTrack?.id || (trackType === 'video' ? 'track-video-main' : 'track-audio-1'),
@@ -207,7 +222,7 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
                 name: file.name,
                 url: data.url || data.media?.url,
                 startTime: currentTime,
-                duration: isImage ? 5 : 8,
+                duration: mediaDuration,
                 volume: 100
             });
         } catch (err: any) {
@@ -219,8 +234,8 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
         }
     };
 
-    // Agregar un elemento multimedia a la línea de tiempo
-    const handleAddMediaToTimeline = (item: MediaLibraryItem) => {
+    // Agregar un elemento multimedia a la línea de tiempo con duración real investigada
+    const handleAddMediaToTimeline = async (item: MediaLibraryItem) => {
         const isAudio = item.type === 'audio';
         const isVideo = item.type === 'video';
         const isImage = item.type === 'image';
@@ -228,17 +243,26 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
         const trackType = isAudio ? 'audio' : 'video';
         const targetTrack = tracks.find(t => t.type === trackType);
 
+        let mediaDuration = 5;
+        if (isVideo || isAudio) {
+            try {
+                mediaDuration = await probeMediaDuration(item.url);
+            } catch {
+                mediaDuration = 10;
+            }
+        }
+
         onAddClip({
             trackId: targetTrack?.id || (isAudio ? 'track-audio-1' : 'track-video-main'),
             type: isVideo ? 'video' : isAudio ? 'audio' : 'image',
             name: item.filename,
             url: item.url,
             startTime: currentTime,
-            duration: isImage ? 5 : 10,
+            duration: mediaDuration,
             volume: 100
         });
 
-        toast.success(`'${item.filename}' agregado a la línea de tiempo`);
+        toast.success(`'${item.filename}' agregado a la línea de tiempo (${mediaDuration.toFixed(1)}s)`);
     };
 
     // Transcripción automática de audio con IA (Whisper / Gemini)
@@ -381,24 +405,16 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
 
     // Cambiar entre pistas de idioma ya generadas
     const handleSwitchLanguage = (langCode: string) => {
-        if (langCode === activeLangCode || translating) return;
+        if (translating) return;
 
-        const version = subtitles.translations?.[langCode];
-        if (version && Array.isArray(version.segments) && version.segments.length > 0) {
-            onUpdateSubtitles({
-                segments: version.segments,
-                activeLanguage: langCode,
-                language: langCode
-            });
-            const lName = version.languageName || LOCALES.find(l => l.code === langCode)?.name || langCode.toUpperCase();
-            toast.info(`Cambiado a subtítulos en ${lName}`);
-        } else if (langCode === sourceLangCode && subtitles.segments && subtitles.segments.length > 0) {
-            onUpdateSubtitles({
-                activeLanguage: sourceLangCode,
-                language: sourceLangCode
-            });
-            toast.info(`Cambiado a subtítulos originales (${sourceLangMeta.name})`);
+        if (onSwitchSubtitleLanguage) {
+            onSwitchSubtitleLanguage(langCode);
+        } else {
+            const nextSubs = switchSubtitleLanguage(subtitles, langCode);
+            onUpdateSubtitles(nextSubs);
         }
+        const lName = LOCALES.find(l => l.code === langCode)?.name || langCode.toUpperCase();
+        toast.info(`Cambiado a subtítulos en ${lName}`);
     };
 
     // Traducción de subtítulos con IA (Bidireccional y Multilingüe)
@@ -412,7 +428,9 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
         const targetMeta = LOCALES.find(l => l.code === targetLang) || { code: targetLang, name: targetLang.toUpperCase() };
 
         // Si ya existe una traducción generada para este idioma destino, cambiar de inmediato sin gastar tokens
-        if (subtitles.translations?.[targetLang]?.segments?.length) {
+        const hasExisting = Boolean(subtitles.translations?.[targetLang]?.segments?.length) ||
+            (subtitles.segments || []).some(s => s.translations && typeof s.translations[targetLang] === 'string' && s.translations[targetLang].trim().length > 0);
+        if (hasExisting) {
             handleSwitchLanguage(targetLang);
             return;
         }
@@ -484,6 +502,29 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
             const translatedSegments = data.segments || updatedSubtitles?.segments || [];
 
             if (translatedSegments.length > 0) {
+                const updatedTranslationsMap = updatedSubtitles?.translations || {
+                    ...(subtitles.translations || {}),
+                    [sourceLangCode]: subtitles.translations?.[sourceLangCode] || {
+                        language: sourceLangCode,
+                        languageName: sourceLangMeta.name,
+                        isOriginal: true,
+                        segments: subtitles.segments
+                    },
+                    [targetLang]: {
+                        language: targetLang,
+                        languageName: targetMeta.name,
+                        isOriginal: false,
+                        segments: translatedSegments
+                    }
+                };
+
+                const availableLangs = Array.from(new Set([
+                    data.sourceLang || sourceLangCode,
+                    targetLang,
+                    ...Object.keys(updatedTranslationsMap),
+                    ...(subtitles.availableLanguages || [])
+                ]));
+
                 // Actualizar pistas y segmentos en el estado global
                 onUpdateSubtitles({
                     ...(updatedSubtitles || {}),
@@ -492,21 +533,8 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
                     language: targetLang,
                     sourceLanguage: data.sourceLang || sourceLangCode,
                     sourceLanguageName: data.sourceLanguageName || sourceLangMeta.name,
-                    translations: updatedSubtitles?.translations || {
-                        ...(subtitles.translations || {}),
-                        [sourceLangCode]: subtitles.translations?.[sourceLangCode] || {
-                            language: sourceLangCode,
-                            languageName: sourceLangMeta.name,
-                            isOriginal: true,
-                            segments: subtitles.segments
-                        },
-                        [targetLang]: {
-                            language: targetLang,
-                            languageName: targetMeta.name,
-                            isOriginal: false,
-                            segments: translatedSegments
-                        }
-                    }
+                    availableLanguages: availableLangs,
+                    translations: updatedTranslationsMap
                 });
 
                 setTranslateStage('completed');
@@ -536,10 +564,27 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
 
     // Actualizar texto de segmento sincronizando versión de idioma activa
     const handleUpdateSegmentText = (idx: number, newText: string) => {
-        const updated = [...subtitles.segments];
-        updated[idx] = { ...updated[idx], text: newText };
+        const seg = subtitles.segments[idx];
+        if (!seg) return;
+
+        if (onUpdateSubtitleSegment) {
+            onUpdateSubtitleSegment(seg.id, { text: newText });
+            return;
+        }
 
         const currLang = activeLangCode;
+        const updated = subtitles.segments.map((s, i) => {
+            if (i !== idx) return s;
+            return {
+                ...s,
+                text: newText,
+                translations: {
+                    ...(s.translations || {}),
+                    [currLang]: newText
+                }
+            };
+        });
+
         const currentTranslations = { ...(subtitles.translations || {}) };
         if (currentTranslations[currLang]) {
             currentTranslations[currLang] = {
@@ -565,15 +610,21 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
 
     // Eliminar segmento sincronizando versión de idioma activa
     const handleDeleteSegment = (idx: number) => {
+        const seg = subtitles.segments[idx];
+        if (seg && onDeleteSubtitleSegment) {
+            onDeleteSubtitleSegment(seg.id);
+            return;
+        }
+
         const filtered = subtitles.segments.filter((_, i) => i !== idx);
-        const currLang = activeLangCode;
         const currentTranslations = { ...(subtitles.translations || {}) };
-        if (currentTranslations[currLang]) {
-            currentTranslations[currLang] = {
-                ...currentTranslations[currLang],
-                segments: filtered,
-                updatedAt: new Date().toISOString()
-            };
+        for (const [langKey, langObj] of Object.entries(currentTranslations)) {
+            if (langObj && Array.isArray(langObj.segments)) {
+                currentTranslations[langKey] = {
+                    ...langObj,
+                    segments: langObj.segments.filter((_, i) => i !== idx)
+                };
+            }
         }
         onUpdateSubtitles({
             segments: filtered,
@@ -587,17 +638,23 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
             id: `sub-${Date.now()}`,
             start: currentTime,
             end: currentTime + 3,
-            text: 'Nuevo subtítulo'
+            text: 'Nuevo subtítulo',
+            translations: {
+                [activeLangCode]: 'Nuevo subtítulo'
+            }
         };
         const updated = [...subtitles.segments, newSeg].sort((a, b) => a.start - b.start);
-        const currLang = activeLangCode;
         const currentTranslations = { ...(subtitles.translations || {}) };
-        if (currentTranslations[currLang]) {
-            currentTranslations[currLang] = {
-                ...currentTranslations[currLang],
-                segments: updated,
-                updatedAt: new Date().toISOString()
-            };
+        for (const [langKey, langObj] of Object.entries(currentTranslations)) {
+            if (langObj && Array.isArray(langObj.segments)) {
+                currentTranslations[langKey] = {
+                    ...langObj,
+                    segments: [...langObj.segments, {
+                        ...newSeg,
+                        text: langKey === activeLangCode ? 'Nuevo subtítulo' : ''
+                    }].sort((a, b) => a.start - b.start)
+                };
+            }
         }
         onUpdateSubtitles({
             segments: updated,
@@ -1014,7 +1071,8 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
                                     <div className="flex items-center gap-1.5 flex-wrap">
                                         {Array.from(new Set([
                                             sourceLangCode,
-                                            ...(subtitles.translations ? Object.keys(subtitles.translations) : [])
+                                            ...(subtitles.translations ? Object.keys(subtitles.translations) : []),
+                                            ...(subtitles.availableLanguages || [])
                                         ])).map((code) => {
                                             const lMeta = LOCALES.find(l => l.code === code) || { code, name: code.toUpperCase() };
                                             const isActive = code === activeLangCode;
@@ -1072,7 +1130,8 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
                                             >
                                                 {LOCALES.map((loc) => {
                                                     const isCurrentActive = loc.code === activeLangCode;
-                                                    const hasTranslation = Boolean(subtitles.translations?.[loc.code]?.segments?.length);
+                                                    const hasTranslation = Boolean(subtitles.translations?.[loc.code]?.segments?.length) ||
+                                                        Boolean(subtitles.segments?.some(s => s.translations && typeof s.translations[loc.code] === 'string' && s.translations[loc.code].trim().length > 0));
                                                     return (
                                                         <option
                                                             key={loc.code}
@@ -1091,7 +1150,7 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
                                                 className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1 shrink-0"
                                             >
                                                 <Languages className="w-3.5 h-3.5" />
-                                                <span>{subtitles.translations?.[targetLang]?.segments?.length ? 'Activar' : 'Traducir'}</span>
+                                                <span>{(subtitles.translations?.[targetLang]?.segments?.length || subtitles.segments?.some(s => s.translations && typeof s.translations[targetLang] === 'string' && s.translations[targetLang].trim().length > 0)) ? 'Activar' : 'Traducir'}</span>
                                             </button>
                                         </div>
                                     )}

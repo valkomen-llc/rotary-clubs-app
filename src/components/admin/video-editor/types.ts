@@ -12,9 +12,13 @@ export interface SubtitleSegment {
     start: number;
     end: number;
     text: string;
+    translations?: Record<string, string>; // Mapa de textos por idioma: { es: "...", en: "...", fr: "..." }
+    duration?: number;
+    trackId?: string;
     translated?: boolean;
     sourceText?: string;
     lang?: string;
+    style?: Partial<SubtitleStyle>;
 }
 
 export interface SubtitleStyle {
@@ -44,6 +48,7 @@ export interface SubtitleConfig {
     sourceLanguage?: string;
     sourceLanguageName?: string;
     activeLanguage?: string;
+    availableLanguages?: string[];
     translations?: Record<string, SubtitleTrackVersion>;
     originalSegments?: SubtitleSegment[];
     transcript?: string;

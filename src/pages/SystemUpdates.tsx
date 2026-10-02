@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1147.0 | 2026-10-01 (Estudio de Contenido: Reparación de Bucle de Carga de Outros IA, Acción Directa de Outro Predeterminado y Aislamiento Multi-Tenant Distrital)
+// UI V4.1148.0 | 2026-10-01 (Editor de Video: Arquitectura de Versiones de Subtítulos Traducidos, Fuente Única de Verdad y Sincronización Timeline/Canvas/Exportación)
 // Cache bust: 2026-10-01
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1148.0',
+        title: 'Editor de Video: Arquitectura de Versiones de Subtítulos Traducidos, Fuente Única de Verdad y Sincronización Timeline/Canvas/Exportación 🎬🌍✨',
+        description: 'Diagnóstico exhaustivo y resolución integral de la discrepancia de idiomas en el Editor de Video de Club Platform: 1) Diagnóstico y Causa Raíz: se detectó que el selector de idioma en la barra lateral conmutaba el estado visual de la lista de segmentos pero el timeline, el canvas y el inspector continuaban consultando el texto original estático (seg.text); al alternar de vuelta a español, no se restauraban los segmentos originales; y la exportación FFmpeg quemaba los subtítulos sin considerar el idioma activo. 2) Modelo de Versiones Independientes y No Destructivas: ampliación del esquema de SubtitleSegment con translations: Record<string, string> y registro histórico en subtitles.translations por idioma (es, en, fr, pt, etc.). Las traducciones coexisten sin sobreescribir el idioma original ni destruirse entre sí. 3) Fuente Única de Verdad (activeLanguage): sincronización reactiva inmediata en los 6 subsistemas del editor: panel lateral de segmentos, bloques interactivos de la pista "Subtítulos IA" en la línea de tiempo, rótulo superpuesto sobre el video en el canvas, inspector contextual de propiedades, bucle unificado de reproducción y renderizado asíncrono HD. 4) Cero Llamadas Redundantes a IA: verificación preventiva de traducciones persistidas en subtitles.translations y segment.translations; si el idioma destino ya fue traducido, se activa instantáneamente sin consumir tokens ni consultar la IA. 5) Aislamiento de Edición Manual: modificar el texto traducido de un segmento (ej. en inglés) conserva íntegro el texto original en español mediante updateSubtitleSegmentText. 6) Sincronización Temporal Invariante: recorte, eliminación y división (split) en playhead sincronizan automáticamente los timestamps en todas las versiones de idioma. 7) Persistencia Inmediata en Exportación: guardado forzado atómico (saveProjectNow) al abrir el modal de exportación para asegurar que la versión activa se envíe a la base de datos antes del procesamiento FFmpeg.',
+        date: new Date().toISOString(),
+        tags: ['video-editor', 'subtitles', 'multilingual', 'ai-translation', 'timeline', 'canvas', 'ffmpeg-render', 'persistence'],
+        type: 'fix',
+        impact: 'high',
+    },
     {
         version: '4.1147.0',
         title: 'Estudio de Contenido: Reparación de Bucle de Carga de Outros IA, Acción Directa de Outro Predeterminado y Alcance Multi-Tenant Distrital 🎬✨',

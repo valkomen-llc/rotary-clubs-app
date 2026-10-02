@@ -109,7 +109,24 @@ export async function renderProjectAsync(projectId) {
         const tracks = Array.isArray(project.tracks) ? project.tracks : [];
         const clips = Array.isArray(project.clips) ? project.clips : [];
         const subtitles = project.subtitles || {};
-        const subtitleSegments = Array.isArray(subtitles.segments) ? subtitles.segments : [];
+        const activeLang = subtitles.activeLanguage || subtitles.language || subtitles.sourceLanguage || 'es';
+        const rawSegments = Array.isArray(subtitles.segments) ? subtitles.segments : [];
+        const subtitleSegments = rawSegments.map((s, idx) => {
+            let activeText = '';
+            if (s.translations && typeof s.translations[activeLang] === 'string' && s.translations[activeLang].trim()) {
+                activeText = s.translations[activeLang];
+            } else if (subtitles.translations?.[activeLang]?.segments) {
+                const match = subtitles.translations[activeLang].segments.find(vs => vs.id === s.id) || subtitles.translations[activeLang].segments[idx];
+                if (match?.text) activeText = match.text;
+            }
+            if (!activeText) {
+                activeText = s.text || '';
+            }
+            return {
+                ...s,
+                text: activeText
+            };
+        }).filter(s => s.text && s.text.trim().length > 0);
 
         // Filtrar clips de video e imagen
         const visualClips = clips
