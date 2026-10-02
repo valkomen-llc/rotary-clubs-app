@@ -39,20 +39,34 @@ export const SUPPORTED_LANGUAGES = LOCALES.map(l => ({
 }));
 
 /**
+ * Normaliza cualquier variante de código de idioma al estándar ISO corto ('es', 'en', etc.).
+ */
+export function normalizeLanguageCode(langCode) {
+    if (!langCode || typeof langCode !== 'string') return 'es';
+    const clean = langCode.trim().toLowerCase();
+    if (clean === 'spanish' || clean === 'espanol' || clean === 'español' || clean.startsWith('es-') || clean.startsWith('es_') || clean === 'es') return 'es';
+    if (clean === 'english' || clean === 'ingles' || clean === 'inglés' || clean.startsWith('en-') || clean.startsWith('en_') || clean === 'en') return 'en';
+    if (clean === 'french' || clean === 'frances' || clean === 'francés' || clean.startsWith('fr-') || clean.startsWith('fr_') || clean === 'fr') return 'fr';
+    if (clean === 'portuguese' || clean === 'portugues' || clean === 'português' || clean.startsWith('pt-') || clean.startsWith('pt_') || clean === 'pt') return 'pt';
+    if (clean === 'german' || clean === 'aleman' || clean === 'alemán' || clean.startsWith('de-') || clean.startsWith('de_') || clean === 'de') return 'de';
+    if (clean === 'italian' || clean === 'italiano' || clean.startsWith('it-') || clean.startsWith('it_') || clean === 'it') return 'it';
+    if (clean === 'japanese' || clean === 'japones' || clean === 'japonés' || clean.startsWith('ja-') || clean.startsWith('ja_') || clean === 'ja') return 'ja';
+    if (clean === 'korean' || clean === 'coreano' || clean.startsWith('ko-') || clean.startsWith('ko_') || clean === 'ko') return 'ko';
+    return clean;
+}
+
+/**
  * Obtiene los metadatos de un idioma por su código ISO (ej: 'es', 'en').
  */
 export function getLanguageMeta(langCode) {
-    if (!langCode || typeof langCode !== 'string') {
-        return { code: 'es', name: 'Español', english: 'Spanish' };
-    }
-    const clean = langCode.trim().toLowerCase();
-    const found = SUPPORTED_LANGUAGES.find(l => l.code === clean);
+    const code = normalizeLanguageCode(langCode);
+    const found = SUPPORTED_LANGUAGES.find(l => l.code === code);
     if (found) return found;
 
     return {
-        code: clean,
-        name: clean.toUpperCase(),
-        english: clean.toUpperCase()
+        code,
+        name: code.toUpperCase(),
+        english: code.toUpperCase()
     };
 }
 

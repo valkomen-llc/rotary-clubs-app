@@ -101,7 +101,7 @@ export const VideoEditorCanvas: React.FC<VideoEditorCanvasProps> = ({
         return (subtitles.segments || []).find(
             s => currentTime >= s.start && currentTime <= s.end
         ) || null;
-    }, [subtitles.segments, currentTime]);
+    }, [subtitles.segments, subtitles.activeLanguage, subtitles.translations, currentTime]);
 
     // ── 5. Sincronización del Video Principal ─────────────────────────────────
     useEffect(() => {
@@ -327,7 +327,7 @@ export const VideoEditorCanvas: React.FC<VideoEditorCanvasProps> = ({
                                     : 'hover:outline hover:outline-1 hover:outline-emerald-400/60'
                             }`}
                         >
-                            {getSegmentText(activeSubtitleSegment, subtitles.activeLanguage, subtitles.sourceLanguage)}
+                            {getSegmentText(activeSubtitleSegment, subtitles.activeLanguage, subtitles.sourceLanguage, subtitles.translations)}
                         </div>
                     )}
                 </div>

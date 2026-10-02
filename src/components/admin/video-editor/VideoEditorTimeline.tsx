@@ -631,7 +631,7 @@ export const VideoEditorTimeline: React.FC<VideoEditorTimelineProps> = ({
                                 const left = seg.start * pixelsPerSecond;
                                 const width = Math.max(16, (seg.end - seg.start) * pixelsPerSecond);
                                 const isSelected = effectiveSelectedIds.includes(seg.id);
-                                const segText = getSegmentText(seg, subtitles.activeLanguage, subtitles.sourceLanguage);
+                                const segText = getSegmentText(seg, subtitles.activeLanguage, subtitles.sourceLanguage, subtitles.translations);
 
                                 return (
                                     <div

@@ -48,7 +48,7 @@ import type {
 import { getStudioAuthToken } from '../../../lib/contentStudioFeatures';
 import { LOCALES } from '../../../lib/locale';
 import { toast } from 'sonner';
-import { probeMediaDuration, switchSubtitleLanguage } from './timelineUtils';
+import { getSegmentText, normalizeLangCode, probeMediaDuration, switchSubtitleLanguage } from './timelineUtils';
 
 interface VideoEditorSidebarProps {
     projectId: string;
@@ -120,15 +120,15 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
     const [targetLang, setTargetLang] = useState('en');
     const [showTranscript, setShowTranscript] = useState(false);
 
-    // Helpers de Idiomas para subtítulos multilingües
-    const sourceLangCode = subtitles.sourceLanguage || subtitles.language || 'es';
+    // Helpers de Idiomas para subtítulos multilingües con normalización estricta
+    const sourceLangCode = normalizeLangCode(subtitles.sourceLanguage || subtitles.language || 'es');
     const sourceLangMeta = LOCALES.find(l => l.code === sourceLangCode) || {
         code: sourceLangCode,
         name: subtitles.sourceLanguageName || sourceLangCode.toUpperCase(),
         locale: '',
         flag: ''
     };
-    const activeLangCode = subtitles.activeLanguage || subtitles.language || sourceLangCode;
+    const activeLangCode = normalizeLangCode(subtitles.activeLanguage || subtitles.language || sourceLangCode);
     const activeLangMeta = LOCALES.find(l => l.code === activeLangCode) || {
         code: activeLangCode,
         name: activeLangCode.toUpperCase(),
@@ -406,14 +406,15 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
     // Cambiar entre pistas de idioma ya generadas
     const handleSwitchLanguage = (langCode: string) => {
         if (translating) return;
+        const normCode = normalizeLangCode(langCode);
 
         if (onSwitchSubtitleLanguage) {
-            onSwitchSubtitleLanguage(langCode);
+            onSwitchSubtitleLanguage(normCode);
         } else {
-            const nextSubs = switchSubtitleLanguage(subtitles, langCode);
+            const nextSubs = switchSubtitleLanguage(subtitles, normCode);
             onUpdateSubtitles(nextSubs);
         }
-        const lName = LOCALES.find(l => l.code === langCode)?.name || langCode.toUpperCase();
+        const lName = LOCALES.find(l => l.code === normCode)?.name || normCode.toUpperCase();
         toast.info(`Cambiado a subtítulos en ${lName}`);
     };
 
@@ -425,13 +426,16 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
             return;
         }
 
-        const targetMeta = LOCALES.find(l => l.code === targetLang) || { code: targetLang, name: targetLang.toUpperCase() };
+        const normTarget = normalizeLangCode(targetLang);
+        const normSource = normalizeLangCode(sourceLangCode);
+        const targetMeta = LOCALES.find(l => l.code === normTarget) || { code: normTarget, name: normTarget.toUpperCase() };
 
         // Si ya existe una traducción generada para este idioma destino, cambiar de inmediato sin gastar tokens
-        const hasExisting = Boolean(subtitles.translations?.[targetLang]?.segments?.length) ||
-            (subtitles.segments || []).some(s => s.translations && typeof s.translations[targetLang] === 'string' && s.translations[targetLang].trim().length > 0);
+        const hasExisting = Boolean(subtitles.translations && Object.entries(subtitles.translations).some(([k, ver]) => normalizeLangCode(k) === normTarget && (ver?.segments?.length || 0) > 0)) ||
+            (subtitles.segments || []).some(s => s.translations && Object.entries(s.translations).some(([k, v]) => normalizeLangCode(k) === normTarget && typeof v === 'string' && v.trim().length > 0));
+
         if (hasExisting) {
-            handleSwitchLanguage(targetLang);
+            handleSwitchLanguage(normTarget);
             return;
         }
 
@@ -456,10 +460,10 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
                 },
                 body: JSON.stringify({
                     segments: subtitles.segments,
-                    sourceLang: sourceLangCode,
-                    sourceLanguage: sourceLangCode,
-                    targetLang: targetLang,
-                    targetLanguage: targetLang
+                    sourceLang: normSource,
+                    sourceLanguage: normSource,
+                    targetLang: normTarget,
+                    targetLanguage: normTarget
                 })
             });
 
@@ -502,36 +506,59 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
             const translatedSegments = data.segments || updatedSubtitles?.segments || [];
 
             if (translatedSegments.length > 0) {
-                const updatedTranslationsMap = updatedSubtitles?.translations || {
+                const segmentsWithTranslations: SubtitleSegment[] = translatedSegments.map((ts: any, idx: number) => {
+                    const orig = (subtitles.segments || [])[idx] || {};
+                    const trs: Record<string, string> = {};
+                    if (orig.translations) {
+                        for (const [k, v] of Object.entries(orig.translations)) {
+                            if (typeof v === 'string') trs[normalizeLangCode(k)] = v;
+                        }
+                    }
+                    if (ts.translations) {
+                        for (const [k, v] of Object.entries(ts.translations)) {
+                            if (typeof v === 'string') trs[normalizeLangCode(k)] = v;
+                        }
+                    }
+                    trs[normSource] = trs[normSource] || orig.text || '';
+                    trs[normTarget] = ts.text;
+                    return {
+                        ...orig,
+                        ...ts,
+                        text: ts.text,
+                        translations: trs
+                    };
+                });
+
+                const updatedTranslationsMap = {
                     ...(subtitles.translations || {}),
-                    [sourceLangCode]: subtitles.translations?.[sourceLangCode] || {
-                        language: sourceLangCode,
+                    [normSource]: subtitles.translations?.[normSource] || {
+                        language: normSource,
                         languageName: sourceLangMeta.name,
                         isOriginal: true,
                         segments: subtitles.segments
                     },
-                    [targetLang]: {
-                        language: targetLang,
+                    [normTarget]: {
+                        language: normTarget,
                         languageName: targetMeta.name,
                         isOriginal: false,
-                        segments: translatedSegments
+                        segments: segmentsWithTranslations
                     }
                 };
 
                 const availableLangs = Array.from(new Set([
-                    data.sourceLang || sourceLangCode,
-                    targetLang,
-                    ...Object.keys(updatedTranslationsMap),
-                    ...(subtitles.availableLanguages || [])
+                    normSource,
+                    normTarget,
+                    ...Object.keys(updatedTranslationsMap).map(normalizeLangCode),
+                    ...(subtitles.availableLanguages ? subtitles.availableLanguages.map(normalizeLangCode) : [])
                 ]));
 
                 // Actualizar pistas y segmentos en el estado global
                 onUpdateSubtitles({
                     ...(updatedSubtitles || {}),
-                    segments: translatedSegments,
-                    activeLanguage: targetLang,
-                    language: targetLang,
-                    sourceLanguage: data.sourceLang || sourceLangCode,
+                    segments: segmentsWithTranslations,
+                    activeLanguage: normTarget,
+                    language: normTarget,
+                    sourceLanguage: normSource,
                     sourceLanguageName: data.sourceLanguageName || sourceLangMeta.name,
                     availableLanguages: availableLangs,
                     translations: updatedTranslationsMap
@@ -1071,8 +1098,8 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
                                     <div className="flex items-center gap-1.5 flex-wrap">
                                         {Array.from(new Set([
                                             sourceLangCode,
-                                            ...(subtitles.translations ? Object.keys(subtitles.translations) : []),
-                                            ...(subtitles.availableLanguages || [])
+                                            ...(subtitles.translations ? Object.keys(subtitles.translations).map(normalizeLangCode) : []),
+                                            ...(subtitles.availableLanguages ? subtitles.availableLanguages.map(normalizeLangCode) : [])
                                         ])).map((code) => {
                                             const lMeta = LOCALES.find(l => l.code === code) || { code, name: code.toUpperCase() };
                                             const isActive = code === activeLangCode;
@@ -1125,13 +1152,13 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
                                         <div className="flex items-center gap-2">
                                             <select
                                                 value={targetLang}
-                                                onChange={(e) => setTargetLang(e.target.value)}
+                                                onChange={(e) => setTargetLang(normalizeLangCode(e.target.value))}
                                                 className="flex-1 bg-white border border-gray-200 text-xs text-gray-800 rounded-lg px-2.5 py-1.5 outline-none focus:border-purple-600"
                                             >
                                                 {LOCALES.map((loc) => {
                                                     const isCurrentActive = loc.code === activeLangCode;
-                                                    const hasTranslation = Boolean(subtitles.translations?.[loc.code]?.segments?.length) ||
-                                                        Boolean(subtitles.segments?.some(s => s.translations && typeof s.translations[loc.code] === 'string' && s.translations[loc.code].trim().length > 0));
+                                                    const hasTranslation = Boolean(subtitles.translations && Object.entries(subtitles.translations).some(([k, ver]) => normalizeLangCode(k) === loc.code && (ver?.segments?.length || 0) > 0)) ||
+                                                        Boolean(subtitles.segments?.some(s => s.translations && Object.entries(s.translations).some(([k, v]) => normalizeLangCode(k) === loc.code && typeof v === 'string' && v.trim().length > 0)));
                                                     return (
                                                         <option
                                                             key={loc.code}
@@ -1150,7 +1177,7 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
                                                 className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1 shrink-0"
                                             >
                                                 <Languages className="w-3.5 h-3.5" />
-                                                <span>{(subtitles.translations?.[targetLang]?.segments?.length || subtitles.segments?.some(s => s.translations && typeof s.translations[targetLang] === 'string' && s.translations[targetLang].trim().length > 0)) ? 'Activar' : 'Traducir'}</span>
+                                                <span>{(Boolean(subtitles.translations && Object.entries(subtitles.translations).some(([k, ver]) => normalizeLangCode(k) === normalizeLangCode(targetLang) && (ver?.segments?.length || 0) > 0)) || subtitles.segments?.some(s => s.translations && Object.entries(s.translations).some(([k, v]) => normalizeLangCode(k) === normalizeLangCode(targetLang) && typeof v === 'string' && v.trim().length > 0))) ? 'Activar' : 'Traducir'}</span>
                                             </button>
                                         </div>
                                     )}
@@ -1192,33 +1219,36 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
                                     </div>
 
                                     <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                                        {subtitles.segments.map((seg, idx) => (
-                                            <div
-                                                key={seg.id || idx}
-                                                className="p-2.5 bg-slate-50 border border-gray-200 rounded-lg space-y-1.5"
-                                            >
-                                                <div className="flex items-center justify-between text-[10px] text-gray-500">
-                                                    <div className="flex items-center gap-1 font-mono">
-                                                        <span>{seg.start.toFixed(1)}s</span>
-                                                        <span>→</span>
-                                                        <span>{seg.end.toFixed(1)}s</span>
+                                        {subtitles.segments.map((seg, idx) => {
+                                            const segDisplayText = getSegmentText(seg, activeLangCode, sourceLangCode, subtitles.translations);
+                                            return (
+                                                <div
+                                                    key={seg.id || idx}
+                                                    className="p-2.5 bg-slate-50 border border-gray-200 rounded-lg space-y-1.5"
+                                                >
+                                                    <div className="flex items-center justify-between text-[10px] text-gray-500">
+                                                        <div className="flex items-center gap-1 font-mono">
+                                                            <span>{seg.start.toFixed(1)}s</span>
+                                                            <span>→</span>
+                                                            <span>{seg.end.toFixed(1)}s</span>
+                                                        </div>
+                                                        <button
+                                                            onClick={() => handleDeleteSegment(idx)}
+                                                            className="p-1 hover:bg-gray-200 rounded text-gray-400 hover:text-rose-600 transition-colors"
+                                                            title="Eliminar segmento"
+                                                        >
+                                                            <Trash2 className="w-3 h-3" />
+                                                        </button>
                                                     </div>
-                                                    <button
-                                                        onClick={() => handleDeleteSegment(idx)}
-                                                        className="p-1 hover:bg-gray-200 rounded text-gray-400 hover:text-rose-600 transition-colors"
-                                                        title="Eliminar segmento"
-                                                    >
-                                                        <Trash2 className="w-3 h-3" />
-                                                    </button>
+                                                    <input
+                                                        type="text"
+                                                        value={segDisplayText}
+                                                        onChange={(e) => handleUpdateSegmentText(idx, e.target.value)}
+                                                        className="w-full bg-white border border-gray-200 rounded px-2.5 py-1 text-xs text-gray-800 outline-none focus:border-[#013388]"
+                                                    />
                                                 </div>
-                                                <input
-                                                    type="text"
-                                                    value={seg.text}
-                                                    onChange={(e) => handleUpdateSegmentText(idx, e.target.value)}
-                                                    className="w-full bg-white border border-gray-200 rounded px-2.5 py-1 text-xs text-gray-800 outline-none focus:border-[#013388]"
-                                                />
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
 
                                     {/* Transcripción completa en acordeón */}

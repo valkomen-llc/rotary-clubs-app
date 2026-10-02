@@ -12,6 +12,7 @@
 import db from './db.js';
 import { runFfmpeg } from './reelFfmpeg.js';
 import { resolveDimensions } from './videoEditorSpec.js';
+import { normalizeLanguageCode } from './videoEditorTranslation.js';
 import { mkdtemp, writeFile, readFile, rm, stat } from 'node:fs/promises';
 import { createWriteStream } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
@@ -109,15 +110,28 @@ export async function renderProjectAsync(projectId) {
         const tracks = Array.isArray(project.tracks) ? project.tracks : [];
         const clips = Array.isArray(project.clips) ? project.clips : [];
         const subtitles = project.subtitles || {};
-        const activeLang = subtitles.activeLanguage || subtitles.language || subtitles.sourceLanguage || 'es';
+        const activeLang = normalizeLanguageCode(subtitles.activeLanguage || subtitles.language || subtitles.sourceLanguage || 'es');
         const rawSegments = Array.isArray(subtitles.segments) ? subtitles.segments : [];
         const subtitleSegments = rawSegments.map((s, idx) => {
             let activeText = '';
-            if (s.translations && typeof s.translations[activeLang] === 'string' && s.translations[activeLang].trim()) {
-                activeText = s.translations[activeLang];
-            } else if (subtitles.translations?.[activeLang]?.segments) {
-                const match = subtitles.translations[activeLang].segments.find(vs => vs.id === s.id) || subtitles.translations[activeLang].segments[idx];
-                if (match?.text) activeText = match.text;
+            if (s.translations && typeof s.translations === 'object') {
+                for (const [k, v] of Object.entries(s.translations)) {
+                    if (normalizeLanguageCode(k) === activeLang && typeof v === 'string' && v.trim()) {
+                        activeText = v;
+                        break;
+                    }
+                }
+            }
+            if (!activeText && subtitles.translations && typeof subtitles.translations === 'object') {
+                for (const [k, ver] of Object.entries(subtitles.translations)) {
+                    if (normalizeLanguageCode(k) === activeLang && Array.isArray(ver?.segments)) {
+                        const match = ver.segments.find(vs => vs.id === s.id) || ver.segments[idx];
+                        if (match?.text) {
+                            activeText = match.text;
+                            break;
+                        }
+                    }
+                }
             }
             if (!activeText) {
                 activeText = s.text || '';

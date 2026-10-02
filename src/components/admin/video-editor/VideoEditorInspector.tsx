@@ -41,7 +41,7 @@ import type {
     Resolution,
     VideoEditorProjectData
 } from './types';
-import { formatTimecode, getSegmentText } from './timelineUtils';
+import { formatTimecode, getSegmentText, normalizeLangCode } from './timelineUtils';
 
 interface VideoEditorInspectorProps {
     selectedClip: Clip | null;
@@ -258,25 +258,33 @@ export const VideoEditorInspector: React.FC<VideoEditorInspectorProps> = ({
                         </div>
 
                         {/* Edición del Texto */}
-                        <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                                <label className="block text-xs font-bold text-gray-800">
-                                    Texto del Subtítulo {project.subtitles.activeLanguage ? `(${project.subtitles.activeLanguage.toUpperCase()})` : ''}
-                                </label>
-                                {project.subtitles.activeLanguage && project.subtitles.sourceLanguage && project.subtitles.activeLanguage !== project.subtitles.sourceLanguage && (
-                                    <span className="text-[10px] text-purple-700 font-semibold bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded">
-                                        Traducción activa
-                                    </span>
-                                )}
-                            </div>
-                            <textarea
-                                value={getSegmentText(selectedSubtitleSegment, project.subtitles.activeLanguage, project.subtitles.sourceLanguage)}
-                                onChange={(e) => onUpdateSubtitleSegment?.(selectedSubtitleSegment.id, { text: e.target.value })}
-                                rows={3}
-                                className="w-full bg-slate-50 border border-gray-200 rounded-lg p-2.5 text-xs text-gray-800 focus:bg-white focus:border-[#013388] focus:ring-1 focus:ring-[#013388] outline-none"
-                                placeholder="Escribe el texto del subtítulo..."
-                            />
-                        </div>
+                        {(() => {
+                            const activeLang = normalizeLangCode(project.subtitles.activeLanguage || project.subtitles.sourceLanguage || 'es');
+                            const sourceLang = normalizeLangCode(project.subtitles.sourceLanguage || 'es');
+                            const isTranslatedActive = activeLang !== sourceLang;
+
+                            return (
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <label className="block text-xs font-bold text-gray-800">
+                                            Texto del Subtítulo ({activeLang.toUpperCase()})
+                                        </label>
+                                        {isTranslatedActive && (
+                                            <span className="text-[10px] text-purple-700 font-semibold bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded">
+                                                Traducción activa
+                                            </span>
+                                        )}
+                                    </div>
+                                    <textarea
+                                        value={getSegmentText(selectedSubtitleSegment, activeLang, sourceLang, project.subtitles.translations)}
+                                        onChange={(e) => onUpdateSubtitleSegment?.(selectedSubtitleSegment.id, { text: e.target.value })}
+                                        rows={3}
+                                        className="w-full bg-slate-50 border border-gray-200 rounded-lg p-2.5 text-xs text-gray-800 focus:bg-white focus:border-[#013388] focus:ring-1 focus:ring-[#013388] outline-none"
+                                        placeholder="Escribe el texto del subtítulo..."
+                                    />
+                                </div>
+                            );
+                        })()}
 
                         {/* Rango Temporal Preciso */}
                         <div className="space-y-2 pt-2 border-t border-gray-200">

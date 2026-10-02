@@ -521,19 +521,21 @@ export async function translateProjectSubtitles(req, res) {
         }
 
         const existingTranslations = currentSubtitles.translations || {};
+        const cachedTargetKey = Object.keys(existingTranslations).find(k => getLanguageMeta(k).code === targetMeta.code);
 
         // Si ya existe una traducción generada para este idioma destino, usarla sin llamar a la IA
-        if (existingTranslations[targetMeta.code]?.segments?.length > 0) {
+        if (cachedTargetKey && existingTranslations[cachedTargetKey]?.segments?.length > 0) {
             console.log(`[VideoEditorController] Activando traducción en caché para ${targetMeta.code} en proyecto ${id}`);
-            const cachedRaw = existingTranslations[targetMeta.code].segments;
+            const cachedRaw = existingTranslations[cachedTargetKey].segments;
             const cachedSegments = cachedRaw.map((cs, idx) => {
                 const orig = segments.find(s => s.id === cs.id) || segments[idx] || {};
+                const origMap = orig.translations || {};
                 return {
                     ...cs,
                     translations: {
-                        ...(orig.translations || {}),
+                        ...origMap,
                         ...(cs.translations || {}),
-                        [sourceMeta.code]: orig.translations?.[sourceMeta.code] || orig.text || cs.translations?.[sourceMeta.code] || '',
+                        [sourceMeta.code]: origMap[sourceMeta.code] || orig.text || cs.translations?.[sourceMeta.code] || '',
                         [targetMeta.code]: cs.text
                     }
                 };
@@ -542,13 +544,13 @@ export async function translateProjectSubtitles(req, res) {
             const availableLangs = Array.from(new Set([
                 sourceMeta.code,
                 targetMeta.code,
-                ...Object.keys(existingTranslations),
-                ...(currentSubtitles.availableLanguages || [])
+                ...Object.keys(existingTranslations).map(k => getLanguageMeta(k).code),
+                ...(currentSubtitles.availableLanguages ? currentSubtitles.availableLanguages.map(k => getLanguageMeta(k).code) : [])
             ]));
 
             const updatedSubtitles = {
                 ...currentSubtitles,
-                sourceLanguage: currentSubtitles.sourceLanguage || sourceMeta.code,
+                sourceLanguage: sourceMeta.code,
                 sourceLanguageName: currentSubtitles.sourceLanguageName || sourceMeta.name,
                 activeLanguage: targetMeta.code,
                 language: targetMeta.code,
@@ -563,7 +565,7 @@ export async function translateProjectSubtitles(req, res) {
                         segments: segments
                     },
                     [targetMeta.code]: {
-                        ...existingTranslations[targetMeta.code],
+                        ...existingTranslations[cachedTargetKey],
                         language: targetMeta.code,
                         languageName: targetMeta.name,
                         segments: cachedSegments
@@ -615,8 +617,8 @@ export async function translateProjectSubtitles(req, res) {
         const availableLangs = Array.from(new Set([
             sourceMeta.code,
             targetMeta.code,
-            ...Object.keys(existingTranslations),
-            ...(currentSubtitles.availableLanguages || [])
+            ...Object.keys(existingTranslations).map(k => getLanguageMeta(k).code),
+            ...(currentSubtitles.availableLanguages ? currentSubtitles.availableLanguages.map(k => getLanguageMeta(k).code) : [])
         ]));
 
         const updatedTranslations = {

@@ -10,7 +10,7 @@
 // - Snapping magnético inteligente a cabezal, cortes y bordes.
 // ════════════════════════════════════════════════════════════════════════════
 
-import type { Clip, SubtitleConfig, SubtitleSegment, Track } from './types';
+import type { Clip, SubtitleConfig, SubtitleSegment, SubtitleTrackVersion, Track } from './types';
 
 /**
  * Calcula la duración global del proyecto dinámicamente como el límite superior
@@ -288,21 +288,86 @@ export function formatTimecode(seconds: number = 0): string {
 }
 
 /**
+ * Normaliza cualquier variante de código de idioma al estándar ISO corto (es, en, fr, pt, de, it, ja, ko).
+ * Resuelve variantes como 'SPANISH', 'Spanish', 'es-CO', 'ENGLISH', 'English', etc.
+ */
+export function normalizeLangCode(raw?: string | null): string {
+    if (!raw || typeof raw !== 'string') return 'es';
+    const clean = raw.trim().toLowerCase();
+    if (clean === 'spanish' || clean === 'espanol' || clean === 'español' || clean.startsWith('es-') || clean.startsWith('es_') || clean === 'es') return 'es';
+    if (clean === 'english' || clean === 'ingles' || clean === 'inglés' || clean.startsWith('en-') || clean.startsWith('en_') || clean === 'en') return 'en';
+    if (clean === 'french' || clean === 'frances' || clean === 'francés' || clean.startsWith('fr-') || clean.startsWith('fr_') || clean === 'fr') return 'fr';
+    if (clean === 'portuguese' || clean === 'portugues' || clean === 'português' || clean.startsWith('pt-') || clean.startsWith('pt_') || clean === 'pt') return 'pt';
+    if (clean === 'german' || clean === 'aleman' || clean === 'alemán' || clean.startsWith('de-') || clean.startsWith('de_') || clean === 'de') return 'de';
+    if (clean === 'italian' || clean === 'italiano' || clean.startsWith('it-') || clean.startsWith('it_') || clean === 'it') return 'it';
+    if (clean === 'japanese' || clean === 'japones' || clean === 'japonés' || clean.startsWith('ja-') || clean.startsWith('ja_') || clean === 'ja') return 'ja';
+    if (clean === 'korean' || clean === 'coreano' || clean.startsWith('ko-') || clean.startsWith('ko_') || clean === 'ko') return 'ko';
+    return clean;
+}
+
+/**
  * Obtiene el texto específico para el idioma activo de un segmento,
- * consultando seg.translations[activeLang] y manteniendo compatibilidad hacia atrás.
+ * consultando seg.translations con normalización de claves, el catálogo global
+ * y manteniendo consistencia reactiva en todo el canvas y timeline.
  */
 export function getSegmentText(
     segment?: SubtitleSegment | null,
     activeLang?: string,
-    fallbackLang?: string
+    fallbackLang?: string,
+    translationsCatalog?: Record<string, SubtitleTrackVersion> | null
 ): string {
     if (!segment) return '';
-    if (activeLang && segment.translations && typeof segment.translations[activeLang] === 'string' && segment.translations[activeLang].trim()) {
-        return segment.translations[activeLang];
+    const normActive = normalizeLangCode(activeLang);
+    const normFallback = normalizeLangCode(fallbackLang || 'es');
+
+    // 1. Buscar en segment.translations haciendo match con normalización de claves
+    if (segment.translations && typeof segment.translations === 'object') {
+        for (const [k, v] of Object.entries(segment.translations)) {
+            if (normalizeLangCode(k) === normActive && typeof v === 'string' && v.trim()) {
+                return v;
+            }
+        }
     }
-    if (fallbackLang && segment.translations && typeof segment.translations[fallbackLang] === 'string' && segment.translations[fallbackLang].trim()) {
-        return segment.translations[fallbackLang];
+
+    // 2. Buscar en el catálogo global de traducciones si existe
+    if (translationsCatalog && typeof translationsCatalog === 'object') {
+        for (const [k, ver] of Object.entries(translationsCatalog)) {
+            if (normalizeLangCode(k) === normActive && Array.isArray(ver?.segments)) {
+                const match = ver.segments.find(s => s.id === segment.id);
+                if (match?.text && typeof match.text === 'string' && match.text.trim()) {
+                    return match.text;
+                }
+            }
+        }
     }
+
+    // 3. Si el segmento ya tiene un texto directo (seg.text) y coincide con el idioma activo
+    //    o no existen versiones traducidas:
+    if (segment.text && typeof segment.text === 'string' && segment.text.trim()) {
+        return segment.text;
+    }
+
+    // 4. Fallback al idioma original en segment.translations
+    if (segment.translations && typeof segment.translations === 'object') {
+        for (const [k, v] of Object.entries(segment.translations)) {
+            if (normalizeLangCode(k) === normFallback && typeof v === 'string' && v.trim()) {
+                return v;
+            }
+        }
+    }
+
+    // 5. Fallback en catálogo global para el idioma fallback
+    if (translationsCatalog && typeof translationsCatalog === 'object') {
+        for (const [k, ver] of Object.entries(translationsCatalog)) {
+            if (normalizeLangCode(k) === normFallback && Array.isArray(ver?.segments)) {
+                const match = ver.segments.find(s => s.id === segment.id);
+                if (match?.text && typeof match.text === 'string' && match.text.trim()) {
+                    return match.text;
+                }
+            }
+        }
+    }
+
     return segment.text || '';
 }
 
@@ -315,21 +380,38 @@ export function resolveActiveSubtitleSegments(
     targetLang?: string
 ): SubtitleSegment[] {
     if (!subtitles || !Array.isArray(subtitles.segments)) return [];
-    const sourceLang = subtitles.sourceLanguage || 'es';
-    const activeLang = targetLang || subtitles.activeLanguage || subtitles.language || sourceLang;
-    const versionSegments = subtitles.translations?.[activeLang]?.segments;
+    const sourceLang = normalizeLangCode(subtitles.sourceLanguage || 'es');
+    const activeLang = normalizeLangCode(targetLang || subtitles.activeLanguage || subtitles.language || sourceLang);
+
+    // Encontrar la versión correspondiente en el catálogo de traducciones con normalización de claves
+    let versionSegments: SubtitleSegment[] | undefined;
+    if (subtitles.translations && typeof subtitles.translations === 'object') {
+        for (const [k, ver] of Object.entries(subtitles.translations)) {
+            if (normalizeLangCode(k) === activeLang && Array.isArray(ver?.segments)) {
+                versionSegments = ver.segments;
+                break;
+            }
+        }
+    }
 
     return subtitles.segments.map((seg, idx) => {
-        const segTranslations: Record<string, string> = {
-            ...(seg.translations || {})
-        };
+        const segTranslations: Record<string, string> = {};
+
+        // Copiar traducciones existentes normalizando claves
+        if (seg.translations && typeof seg.translations === 'object') {
+            for (const [k, v] of Object.entries(seg.translations)) {
+                if (typeof v === 'string') {
+                    segTranslations[normalizeLangCode(k)] = v;
+                }
+            }
+        }
 
         // Si el segmento no tiene guardado el idioma fuente en translations, guardarlo
         if (!segTranslations[sourceLang] && seg.text) {
             segTranslations[sourceLang] = seg.text;
         }
 
-        // Obtener traducción desde el mapa del segmento o desde la versión histórica en translations
+        // Obtener texto para activeLang
         let resolvedText = segTranslations[activeLang];
         if (!resolvedText && Array.isArray(versionSegments)) {
             const match = versionSegments.find(vs => vs.id === seg.id) || versionSegments[idx];
@@ -353,20 +435,36 @@ export function resolveActiveSubtitleSegments(
 
 /**
  * Cambia el idioma activo de subtítulos sin regenerar con IA y sin modificar timestamps.
- * Retorna una nueva configuración de SubtitleConfig con los textos correspondientes al nuevo idioma.
+ * Retorna una nueva configuración de SubtitleConfig con los textos correspondientes al nuevo idioma
+ * asignados directamente a seg.text y sincronizados en translations.
  */
 export function switchSubtitleLanguage(
     subtitles: SubtitleConfig,
     targetLang: string
 ): SubtitleConfig {
     if (!subtitles) return subtitles;
-    const sourceLang = subtitles.sourceLanguage || 'es';
-    const currentActive = subtitles.activeLanguage || subtitles.language || sourceLang;
+    const sourceLang = normalizeLangCode(subtitles.sourceLanguage || 'es');
+    const currentActive = normalizeLangCode(subtitles.activeLanguage || subtitles.language || sourceLang);
+    const targetNorm = normalizeLangCode(targetLang);
 
-    // Respaldar el texto actual del idioma saliente en translations
-    const currentTranslations = { ...(subtitles.translations || {}) };
+    // Normalizar catálogo de traducciones
+    const currentTranslations: Record<string, SubtitleTrackVersion> = {};
+    if (subtitles.translations && typeof subtitles.translations === 'object') {
+        for (const [k, ver] of Object.entries(subtitles.translations)) {
+            if (ver && typeof ver === 'object') {
+                currentTranslations[normalizeLangCode(k)] = ver;
+            }
+        }
+    }
+
+    // 1. Respaldar el texto actual del idioma saliente en translations
     const segmentsWithSavedCurrent = (subtitles.segments || []).map(seg => {
-        const trs = { ...(seg.translations || {}) };
+        const trs: Record<string, string> = {};
+        if (seg.translations && typeof seg.translations === 'object') {
+            for (const [k, v] of Object.entries(seg.translations)) {
+                if (typeof v === 'string') trs[normalizeLangCode(k)] = v;
+            }
+        }
         if (seg.text) {
             trs[currentActive] = seg.text;
         }
@@ -376,35 +474,35 @@ export function switchSubtitleLanguage(
         };
     });
 
-    if (currentTranslations[currentActive]) {
-        currentTranslations[currentActive] = {
-            ...currentTranslations[currentActive],
-            segments: segmentsWithSavedCurrent.map(s => ({ ...s, text: s.translations?.[currentActive] || s.text }))
-        };
-    } else {
-        currentTranslations[currentActive] = {
-            language: currentActive,
-            isOriginal: currentActive === sourceLang,
-            segments: segmentsWithSavedCurrent.map(s => ({ ...s, text: s.translations?.[currentActive] || s.text }))
-        };
-    }
+    currentTranslations[currentActive] = {
+        language: currentActive,
+        isOriginal: currentActive === sourceLang,
+        segments: segmentsWithSavedCurrent.map(s => ({
+            ...s,
+            text: s.translations?.[currentActive] || s.text
+        }))
+    };
 
-    // Resolver segmentos para targetLang
+    // 2. Resolver segmentos para targetNorm
+    const targetVersionSegments = currentTranslations[targetNorm]?.segments;
     const resolvedSegments = segmentsWithSavedCurrent.map((seg, idx) => {
-        const trs = { ...(seg.translations || {}) };
-        let targetText = trs[targetLang];
+        const trs: Record<string, string> = { ...(seg.translations || {}) };
+        let targetText = trs[targetNorm];
 
-        if (!targetText && currentTranslations[targetLang]?.segments) {
-            const match = currentTranslations[targetLang].segments.find(s => s.id === seg.id) || currentTranslations[targetLang].segments[idx];
+        if (!targetText && Array.isArray(targetVersionSegments)) {
+            const match = targetVersionSegments.find(s => s.id === seg.id) || targetVersionSegments[idx];
             if (match?.text) {
                 targetText = match.text;
-                trs[targetLang] = match.text;
+                trs[targetNorm] = match.text;
             }
         }
 
         if (!targetText) {
-            targetText = trs[sourceLang] || seg.text;
+            targetText = trs[sourceLang] || seg.text || '';
         }
+
+        // Garantizar que la traducción quede persistida en el mapa
+        trs[targetNorm] = targetText;
 
         return {
             ...seg,
@@ -413,25 +511,25 @@ export function switchSubtitleLanguage(
         };
     });
 
-    // Actualizar registro del targetLang en translations si no existía
-    if (!currentTranslations[targetLang]) {
-        currentTranslations[targetLang] = {
-            language: targetLang,
-            isOriginal: targetLang === sourceLang,
-            segments: resolvedSegments
-        };
-    }
+    // 3. Actualizar registro del targetNorm en currentTranslations
+    currentTranslations[targetNorm] = {
+        language: targetNorm,
+        isOriginal: targetNorm === sourceLang,
+        segments: resolvedSegments
+    };
 
     const available = Array.from(new Set([
         sourceLang,
+        targetNorm,
         ...Object.keys(currentTranslations),
-        ...(subtitles.availableLanguages || [])
+        ...(subtitles.availableLanguages ? subtitles.availableLanguages.map(normalizeLangCode) : [])
     ]));
 
     return {
         ...subtitles,
-        activeLanguage: targetLang,
-        language: targetLang,
+        activeLanguage: targetNorm,
+        language: targetNorm,
+        sourceLanguage: sourceLang,
         availableLanguages: available,
         segments: resolvedSegments,
         translations: currentTranslations
@@ -447,17 +545,32 @@ export function updateSubtitleSegmentText(
     newText: string,
     targetLang?: string
 ): SubtitleConfig {
-    const sourceLang = subtitles.sourceLanguage || 'es';
-    const lang = targetLang || subtitles.activeLanguage || subtitles.language || sourceLang;
-    const currentTranslations = { ...(subtitles.translations || {}) };
+    const sourceLang = normalizeLangCode(subtitles.sourceLanguage || 'es');
+    const currentActive = normalizeLangCode(subtitles.activeLanguage || subtitles.language || sourceLang);
+    const lang = normalizeLangCode(targetLang || currentActive);
+
+    // Normalizar catálogo de traducciones
+    const currentTranslations: Record<string, SubtitleTrackVersion> = {};
+    if (subtitles.translations && typeof subtitles.translations === 'object') {
+        for (const [k, ver] of Object.entries(subtitles.translations)) {
+            if (ver && typeof ver === 'object') {
+                currentTranslations[normalizeLangCode(k)] = ver;
+            }
+        }
+    }
 
     const updatedSegments = (subtitles.segments || []).map(seg => {
         if (seg.id !== segmentId) return seg;
-        const trs = { ...(seg.translations || {}) };
+        const trs: Record<string, string> = {};
+        if (seg.translations && typeof seg.translations === 'object') {
+            for (const [k, v] of Object.entries(seg.translations)) {
+                if (typeof v === 'string') trs[normalizeLangCode(k)] = v;
+            }
+        }
         trs[lang] = newText;
         return {
             ...seg,
-            text: (lang === (subtitles.activeLanguage || sourceLang)) ? newText : seg.text,
+            text: (lang === currentActive) ? newText : seg.text,
             translations: trs
         };
     });
@@ -472,12 +585,26 @@ export function updateSubtitleSegmentText(
             }),
             updatedAt: new Date().toISOString()
         };
+    } else {
+        currentTranslations[lang] = {
+            language: lang,
+            isOriginal: lang === sourceLang,
+            segments: updatedSegments.map(s => ({
+                ...s,
+                text: s.translations?.[lang] || s.text
+            })),
+            updatedAt: new Date().toISOString()
+        };
     }
 
     return {
         ...subtitles,
+        sourceLanguage: sourceLang,
+        activeLanguage: currentActive,
+        language: currentActive,
         segments: updatedSegments,
         translations: currentTranslations
     };
 }
+
 

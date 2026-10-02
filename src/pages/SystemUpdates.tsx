@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1148.0 | 2026-10-01 (Editor de Video: Arquitectura de Versiones de Subtítulos Traducidos, Fuente Única de Verdad y Sincronización Timeline/Canvas/Exportación)
+// UI V4.1149.0 | 2026-10-01 (Editor de Video: Sincronización Estricta de Subtítulos Traducidos, Normalización Universal y Reactividad Extremo a Extremo)
 // Cache bust: 2026-10-01
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1149.0',
+        title: 'Editor de Video: Sincronización Estricta de Subtítulos Traducidos, Normalización Universal y Reactividad Extremo a Extremo 🎬🌍⚡',
+        description: 'Diagnóstico exhaustivo y resolución integral de la discrepancia de sincronización de subtítulos traducidos entre el panel lateral, el canvas de previsualización y la línea de tiempo: 1) Diagnóstico y Causa Raíz: se descubrió que los códigos de idioma presentaban inconsistencias de mayúsculas/minúsculas y formatos (SPANISH vs es, EN vs en). Cuando el panel conmutaba a inglés (\'en\'), getSegmentText no encontraba la clave exacta y retrocedía erróneamente al idioma de respaldo antes de evaluar el texto del segmento o el catálogo de traducciones; adicionalmente, VideoEditorCanvas memoizaba el segmento activo omitiendo subtitles.activeLanguage y subtitles.translations de sus dependencias, y los chips de idioma generaban duplicados visuales ([ SPANISH Original ] [ EN ] [ ES ]). 2) Normalización Universal de Idiomas (normalizeLangCode): estandarización bidireccional en cliente y servidor (frontend, translation controller, whisper pipeline y renderizador FFmpeg) de todas las variantes de nombres e identificadores ISO (\'spanish\', \'SPANISH\', \'es-CO\' -> \'es\'; \'english\', \'en-US\' -> \'en\'). 3) Sincronización Reactiva Cuádruple en Tiempo Real: actualización inmediata y coherente entre el panel lateral de segmentos, los bloques visuales interactivos de la pista "Subtítulos IA" en la línea de tiempo, el rótulo dinámico superpuesto en el reproductor de video del canvas y el inspector de propiedades. 4) Limpieza y Deduplicación de Idiomas Disponibles: eliminación de píldoras fantasma o duplicadas en la barra lateral garantizando una navegación limpia entre versiones de idiomas disponibles. 5) Preservación de Edición Manual y No Destructividad: editar el texto en un idioma traducido actualiza exclusivamente esa versión sin afectar ni reiniciar el idioma original en español, permitiendo conmutar entre idiomas de forma instantánea sin llamadas redundantes a la IA. 6) Exportación FFmpeg Coherente: el renderizado asíncrono resuelve el texto del segmento activo normalizado al quemar subtítulos en el video final.',
+        date: new Date().toISOString(),
+        tags: ['video-editor', 'subtitles', 'multilingual', 'ai-translation', 'timeline', 'canvas', 'normalization', 'ffmpeg-render'],
+        type: 'fix',
+        impact: 'high',
+    },
     {
         version: '4.1148.0',
         title: 'Editor de Video: Arquitectura de Versiones de Subtítulos Traducidos, Fuente Única de Verdad y Sincronización Timeline/Canvas/Exportación 🎬🌍✨',

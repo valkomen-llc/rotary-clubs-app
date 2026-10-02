@@ -25,7 +25,8 @@ import type {
     Clip,
     Track,
     SubtitleConfig,
-    SubtitleSegment
+    SubtitleSegment,
+    SubtitleTrackVersion
 } from './types';
 import {
     computeProjectDuration,
@@ -34,7 +35,8 @@ import {
     separateAudioFromVideo,
     resolveActiveSubtitleSegments,
     switchSubtitleLanguage,
-    updateSubtitleSegmentText
+    updateSubtitleSegmentText,
+    normalizeLangCode
 } from './timelineUtils';
 import { VideoEditorHeader } from './VideoEditorHeader';
 import { VideoEditorSidebar } from './VideoEditorSidebar';
@@ -206,8 +208,19 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
 
     const initProjectState = (projData: VideoEditorProjectData) => {
         const rawClips = Array.isArray(projData.clips) ? projData.clips : [];
-        const sourceLang = projData.subtitles?.sourceLanguage || projData.subtitles?.language || 'es';
-        const activeLang = projData.subtitles?.activeLanguage || projData.subtitles?.language || sourceLang;
+        const sourceLang = normalizeLangCode(projData.subtitles?.sourceLanguage || projData.subtitles?.language || 'es');
+        const activeLang = normalizeLangCode(projData.subtitles?.activeLanguage || projData.subtitles?.language || sourceLang);
+
+        // Normalizar catálogo de versiones de subtítulos
+        const normalizedTranslations: Record<string, SubtitleTrackVersion> = {};
+        if (projData.subtitles?.translations && typeof projData.subtitles.translations === 'object') {
+            for (const [k, ver] of Object.entries(projData.subtitles.translations)) {
+                if (ver && typeof ver === 'object') {
+                    normalizedTranslations[normalizeLangCode(k)] = ver;
+                }
+            }
+        }
+
         const baseSubtitles: SubtitleConfig = {
             ...DEFAULT_PROJECT_STATE.subtitles,
             ...(projData.subtitles || {}),
@@ -219,11 +232,9 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
             transcript: projData.subtitles?.transcript || '',
             language: activeLang,
             sourceLanguage: sourceLang,
-            sourceLanguageName: projData.subtitles?.sourceLanguageName || 'Español',
+            sourceLanguageName: projData.subtitles?.sourceLanguageName || (sourceLang === 'es' ? 'Español' : sourceLang.toUpperCase()),
             activeLanguage: activeLang,
-            translations: (projData.subtitles?.translations && typeof projData.subtitles.translations === 'object')
-                ? projData.subtitles.translations
-                : {}
+            translations: normalizedTranslations
         };
 
         const resolvedSegments = resolveActiveSubtitleSegments(baseSubtitles, activeLang);
@@ -233,8 +244,8 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
             availableLanguages: Array.from(new Set([
                 sourceLang,
                 activeLang,
-                ...Object.keys(baseSubtitles.translations || {}),
-                ...(projData.subtitles?.availableLanguages || [])
+                ...Object.keys(normalizedTranslations),
+                ...(projData.subtitles?.availableLanguages ? projData.subtitles.availableLanguages.map(normalizeLangCode) : [])
             ]))
         };
 
@@ -614,7 +625,7 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
 
     const handleUpdateSubtitleSegment = (segmentId: string, updates: Partial<SubtitleSegment>) => {
         if (!project) return;
-        const activeLang = project.subtitles.activeLanguage || project.subtitles.sourceLanguage || 'es';
+        const activeLang = normalizeLangCode(project.subtitles.activeLanguage || project.subtitles.sourceLanguage || 'es');
 
         let updatedSubtitles: SubtitleConfig;
 
@@ -644,14 +655,15 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
             const updatedTranslations = { ...(project.subtitles.translations || {}) };
             for (const [langKey, langObj] of Object.entries(updatedTranslations)) {
                 if (langObj && Array.isArray(langObj.segments)) {
-                    updatedTranslations[langKey] = {
+                    const normKey = normalizeLangCode(langKey);
+                    updatedTranslations[normKey] = {
                         ...langObj,
                         segments: langObj.segments.map(seg => {
                             if (seg.id !== segmentId) return seg;
                             const modSeg = { ...seg };
                             if (updates.start !== undefined) modSeg.start = updates.start;
                             if (updates.end !== undefined) modSeg.end = updates.end;
-                            if (langKey === activeLang && updates.text !== undefined) {
+                            if (normKey === activeLang && updates.text !== undefined) {
                                 modSeg.text = updates.text;
                             }
                             return modSeg;
@@ -680,7 +692,8 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
 
     const handleSwitchSubtitleLanguage = useCallback((targetLang: string) => {
         if (!project || !project.subtitles) return;
-        const updatedSubtitles = switchSubtitleLanguage(project.subtitles, targetLang);
+        const normTarget = normalizeLangCode(targetLang);
+        const updatedSubtitles = switchSubtitleLanguage(project.subtitles, normTarget);
         const updatedProject: VideoEditorProjectData = {
             ...project,
             subtitles: updatedSubtitles
