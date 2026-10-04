@@ -367,29 +367,45 @@ const LeadsManagement: React.FC = () => {
                         {selectedLead.metadata && (() => {
                             const meta = typeof selectedLead.metadata === 'string' ? JSON.parse(selectedLead.metadata) : selectedLead.metadata;
                             const files = meta.files || [];
-                            if (files.length === 0) return null;
                             return (
                                 <div className="mb-6">
-                                    <p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Archivos Adjuntos ({files.length})</p>
-                                    <div className="space-y-2">
-                                        {files.map((file: any, idx: number) => (
-                                            <a 
-                                                key={idx} 
-                                                href={file.url} 
-                                                target="_blank" 
+                                    <div className="flex items-center justify-between mb-2">
+                                        <p className="text-[10px] font-bold text-gray-400 uppercase">Archivos Adjuntos ({files.length})</p>
+                                        {selectedLead.source === 'district_multimedia_form' && (
+                                            <a
+                                                href={`/rotary-en-accion?id=${selectedLead.id}`}
+                                                target="_blank"
                                                 rel="noopener noreferrer"
-                                                className="flex items-center gap-3 p-2.5 bg-white border border-gray-100 rounded-xl hover:bg-gray-50 hover:border-blue-200 transition-all group"
+                                                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
                                             >
-                                                <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 group-hover:bg-blue-50 group-hover:text-blue-500">
-                                                    {file.mimetype?.includes('video') ? <ArrowUpRight className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="text-[11px] font-bold text-gray-700 truncate">{file.originalName}</p>
-                                                    <p className="text-[9px] text-gray-400">{(file.size / 1024 / 1024).toFixed(2)} MB · {file.mimetype?.split('/')[1]?.toUpperCase()}</p>
-                                                </div>
+                                                <ArrowUpRight className="w-3.5 h-3.5" />
+                                                Abrir en Rotary en Acción
                                             </a>
-                                        ))}
+                                        )}
                                     </div>
+                                    {files.length > 0 ? (
+                                        <div className="space-y-2">
+                                            {files.map((file: any, idx: number) => (
+                                                <a 
+                                                    key={idx} 
+                                                    href={file.url} 
+                                                    target="_blank" 
+                                                    rel="noopener noreferrer"
+                                                    className="flex items-center gap-3 p-2.5 bg-white border border-gray-100 rounded-xl hover:bg-gray-50 hover:border-blue-200 transition-all group"
+                                                >
+                                                    <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 group-hover:bg-blue-50 group-hover:text-blue-500">
+                                                        {file.mimetype?.includes('video') ? <ArrowUpRight className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-[11px] font-bold text-gray-700 truncate">{file.originalName}</p>
+                                                        <p className="text-[9px] text-gray-400">{(file.size / 1024 / 1024).toFixed(2)} MB · {file.mimetype?.split('/')[1]?.toUpperCase()}</p>
+                                                    </div>
+                                                </a>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="text-xs text-gray-400 italic">No se adjuntaron archivos en este envío.</p>
+                                    )}
                                 </div>
                             );
                         })()}

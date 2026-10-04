@@ -93,34 +93,179 @@ router.get('/documents/:clubIdOrSubdomain', async (req, res) => {
     }
 });
 
-// --- DISTRICT MULTIMEDIA UPLOAD LOGIC ---
+// --- DISTRICT MULTIMEDIA UPLOAD LOGIC ("Rotary En Acción") ---
 
-// 1. Endpoint para pre-firmar la carga directa a S3 desde el cliente (evita timeout y max-body en Vercel)
+// 1. Endpoint para pre-firmar la carga directa a S3 desde el cliente usando la ruta compliant 'clubs/...'
 router.get('/district-media/presign', async (req, res) => {
     try {
-        const { fileName, fileType } = req.query;
-        if (!fileName || !fileType) return res.status(400).json({ error: 'Faltan parámetros' });
+        let { fileName, fileType, clubId } = req.query;
+        if (!fileName) return res.status(400).json({ error: 'Falta el nombre del archivo' });
 
-        const submissionId = randomUUID();
-        const date = new Date().toISOString().split('T')[0];
+        // Fallback de MIME type si el navegador no lo envió
+        if (!fileType || fileType === 'application/octet-stream') {
+            const ext = fileName.split('.').pop()?.toLowerCase();
+            if (['mp4', 'm4v'].includes(ext)) fileType = 'video/mp4';
+            else if (ext === 'mov') fileType = 'video/quicktime';
+            else if (ext === 'webm') fileType = 'video/webm';
+            else if (['jpg', 'jpeg'].includes(ext)) fileType = 'image/jpeg';
+            else if (ext === 'png') fileType = 'image/png';
+            else if (ext === 'webp') fileType = 'image/webp';
+            else if (ext === 'svg') fileType = 'image/svg+xml';
+            else fileType = 'application/octet-stream';
+        }
+
+        // Buscar ID del club o distrito 4271 si no se proveyó
+        let targetClubId = clubId || null;
+        if (!targetClubId) {
+            try {
+                const districtRes = await db.query(
+                    'SELECT id FROM "Club" WHERE name ILIKE $1 OR domain ILIKE $1 OR subdomain ILIKE $1 LIMIT 1', 
+                    ['%4271%']
+                );
+                targetClubId = districtRes.rows[0]?.id || null;
+            } catch { }
+        }
+
+        const isVideo = fileType.startsWith('video/') || /\.(mp4|mov|webm|m4v)$/i.test(fileName);
+        const folderStr = isVideo ? 'videos' : 'images';
         const safeName = fileName.replace(/[^a-zA-Z0-9.\-_]/g, '');
-        const key = `district-submissions/${date}/${submissionId}/${Date.now()}-${safeName}`;
+        // CRÍTICO: La política IAM/S3 restringe las cargas a la ruta 'clubs/*'.
+        // Usar 'clubs/' garantiza permisos S3 válidos en producción.
+        const key = `clubs/${targetClubId || '4271'}/${folderStr}/${Date.now()}-${safeName}`;
         
         const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
-        const command = new PutObjectCommand({ Bucket: bucket, Key: key, ContentType: fileType });
+        const command = new PutObjectCommand({ 
+            Bucket: bucket, 
+            Key: key, 
+            ContentType: fileType 
+        });
         const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 3600 });
         
         const encodedKey = key.split('/').map(seg => encodeURIComponent(seg)).join('/');
         const url = `https://${bucket}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${encodedKey}`;
         
-        res.json({ uploadUrl, url, s3Key: key });
+        res.json({ uploadUrl, url, s3Key: key, fileType });
     } catch (e) {
-        console.error('Error presigning S3 URL:', e);
-        res.status(500).json({ error: 'Error presigning' });
+        console.error('Error presigning S3 URL for district media:', e);
+        res.status(500).json({ error: 'Error presigning S3 URL' });
     }
 });
 
-// 2. Endpoint final para guardar la Metadata en BD y S3 (payload liviano JSON)
+// 2. Endpoint GET para cargar un registro existente por ID (para editar / recargar)
+router.get('/district-media/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await db.query(
+            `SELECT id, name, email, phone, message, "clubId", metadata, "createdAt", "updatedAt"
+             FROM "Lead"
+             WHERE id = $1 OR metadata->>'submissionId' = $1
+             LIMIT 1`,
+            [id]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Registro no encontrado' });
+        }
+        const row = result.rows[0];
+        const meta = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : (row.metadata || {});
+        
+        const nameParts = (row.name || '').split(' ');
+        const firstName = meta.firstName || nameParts[0] || '';
+        const lastName = meta.lastName || nameParts.slice(1).join(' ') || '';
+
+        res.json({
+            id: row.id,
+            submissionId: meta.submissionId || row.id,
+            firstName,
+            lastName,
+            email: row.email || meta.email || '',
+            phone: row.phone || meta.phone || '',
+            clubName: meta.clubName || '',
+            role: meta.role || '',
+            message: row.message || meta.message || '',
+            files: meta.files || [],
+            createdAt: row.createdAt
+        });
+    } catch (error) {
+        console.error('Error fetching district media record:', error);
+        res.status(500).json({ error: 'Error al recuperar registro' });
+    }
+});
+
+// 3. Endpoint PUT para actualizar un registro existente (conservar archivos previos, agregar o reemplazar)
+router.put('/district-media/:id', express.json(), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { firstName, lastName, email, phone, clubName, role, message, uploadedFiles } = req.body;
+        
+        const existing = await db.query(
+            `SELECT id, "clubId", metadata FROM "Lead" WHERE id = $1 OR metadata->>'submissionId' = $1 LIMIT 1`,
+            [id]
+        );
+        if (existing.rows.length === 0) {
+            return res.status(404).json({ error: 'Registro no encontrado' });
+        }
+        const lead = existing.rows[0];
+        const oldMeta = typeof lead.metadata === 'string' ? JSON.parse(lead.metadata) : (lead.metadata || {});
+        const fileData = uploadedFiles || oldMeta.files || [];
+
+        const updatedMeta = {
+            ...oldMeta,
+            firstName,
+            lastName,
+            email,
+            phone,
+            clubName,
+            role,
+            files: fileData,
+            updatedAt: new Date().toISOString()
+        };
+
+        const fullName = `${firstName || ''} ${lastName || ''}`.trim() || 'Sin Nombre';
+
+        await db.query(
+            `UPDATE "Lead"
+             SET name = $1, email = $2, phone = $3, subject = $4, message = $5, metadata = $6, "updatedAt" = NOW()
+             WHERE id = $7`,
+            [
+                fullName,
+                email || lead.email,
+                phone || lead.phone,
+                `Multimedia: ${clubName || 'N/A'}`,
+                message || null,
+                JSON.stringify(updatedMeta),
+                lead.id
+            ]
+        );
+
+        // Registro centralizado en MediaLibrary (best-effort)
+        const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
+        for (const file of fileData) {
+            const isVid = file.mimetype?.startsWith('video/') || /\.(mp4|mov|webm|m4v)$/i.test(file.originalName || '');
+            await db.query(`
+                INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key", "sourceType", "sourceId", "sourceLabel", "createdAt")
+                VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, 'district_submission', $9, $10, NOW())
+            `, [
+                file.originalName, 
+                file.url, 
+                isVid ? 'video' : 'image', 
+                file.size || 0, 
+                bucket, 
+                process.env.AWS_REGION || 'us-east-1', 
+                lead.clubId, 
+                file.s3Key || null, 
+                lead.id, 
+                clubName || 'Rotary En Acción'
+            ]).catch(() => {});
+        }
+
+        res.json({ success: true, id: lead.id, submissionId: oldMeta.submissionId || lead.id, filesCount: fileData.length });
+    } catch (error) {
+        console.error('Error updating district media record:', error);
+        res.status(500).json({ error: error.message || 'Error al actualizar multimedia.' });
+    }
+});
+
+// 4. Endpoint final POST para guardar nuevo registro de Metadata en BD y S3 (payload liviano JSON)
 router.post('/district-media', express.json(), async (req, res) => {
     try {
         const { firstName, lastName, email, phone, clubName, role, message, uploadedFiles } = req.body;
@@ -143,24 +288,27 @@ router.post('/district-media', express.json(), async (req, res) => {
             files: fileData
         };
 
-        // 1. Guardar metadata en S3 como archivo JSON (Respaldo)
-        const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
-        const date = new Date().toISOString().split('T')[0];
-        const s3Key = `district-submissions/${date}/${submissionId}/metadata.json`;
-
-        await s3.send(new PutObjectCommand({
-            Bucket: bucket,
-            Key: s3Key,
-            Body: JSON.stringify(metadataPayload, null, 2),
-            ContentType: 'application/json'
-        }));
-
-        // Buscamos el ID del distrito 4271 para asociarlo, de lo contrario quedará huérfano
+        // Buscamos el ID del distrito 4271 para asociarlo
         const districtRes = await db.query(
             'SELECT id FROM "Club" WHERE name ILIKE $1 OR domain ILIKE $1 OR subdomain ILIKE $1 LIMIT 1', 
             ['%4271%']
         );
         const clubId = districtRes.rows[0]?.id || null;
+
+        // 1. Guardar metadata en S3 usando la ruta permitida 'clubs/...' (Respaldo best-effort)
+        const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
+        const s3Key = `clubs/${clubId || '4271'}/metadata/${Date.now()}-${submissionId}.json`;
+
+        try {
+            await s3.send(new PutObjectCommand({
+                Bucket: bucket,
+                Key: s3Key,
+                Body: JSON.stringify(metadataPayload, null, 2),
+                ContentType: 'application/json'
+            }));
+        } catch (s3MetaErr) {
+            console.warn('[DistrictMedia] S3 metadata backup non-blocking warning:', s3MetaErr.message);
+        }
 
         await db.query(`
         CREATE TABLE IF NOT EXISTS "Lead" (
@@ -180,9 +328,9 @@ router.post('/district-media', express.json(), async (req, res) => {
         );`);
         await db.query(`ALTER TABLE "Lead" ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'`).catch(() => { });
 
-        await db.query(
+        const leadInsert = await db.query(
             `INSERT INTO "Lead" (name, email, phone, subject, message, "clubId", source, metadata)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
             [
                 `${firstName || ''} ${lastName || ''}`.trim() || 'Sin Nombre',
                 email || 'sin-correo@example.com',
@@ -193,18 +341,40 @@ router.post('/district-media', express.json(), async (req, res) => {
                 'district_multimedia_form',
                 JSON.stringify({ 
                     ...(metadataPayload.user || {}),
+                    submissionId: submissionId,
                     files: fileData || [],
                     s3MetadataKey: s3Key || null
                 })
             ]
         );
 
+        const newLeadId = leadInsert.rows[0]?.id || submissionId;
+
+        // 2. Registrar en la Biblioteca Multimedia centralizada de Club Platform
+        for (const file of fileData) {
+            const isVid = file.mimetype?.startsWith('video/') || /\.(mp4|mov|webm|m4v)$/i.test(file.originalName || '');
+            await db.query(`
+                INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key", "sourceType", "sourceId", "sourceLabel", "createdAt")
+                VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, 'district_submission', $9, $10, NOW())
+            `, [
+                file.originalName, 
+                file.url, 
+                isVid ? 'video' : 'image', 
+                file.size || 0, 
+                bucket, 
+                process.env.AWS_REGION || 'us-east-1', 
+                clubId, 
+                file.s3Key || null, 
+                newLeadId, 
+                clubName || 'Rotary En Acción'
+            ]).catch(() => {});
+        }
+
         if (clubId) {
-            // Auto-heal leads huérfanos anteriores por culpa del error de mapeo
             await db.query(`UPDATE "Lead" SET "clubId" = $1 WHERE "clubId" IS NULL AND source = 'district_multimedia_form'`, [clubId]).catch(() => {});
         }
 
-        res.json({ success: true, submissionId: submissionId, filesCount: fileData.length });
+        res.json({ success: true, id: newLeadId, submissionId: submissionId, filesCount: fileData.length });
     } catch (error) {
         console.error('Error procesando metadata del distrito:', error);
         res.status(500).json({ error: error.message || 'Error finalizando el envío de multimedia.' });

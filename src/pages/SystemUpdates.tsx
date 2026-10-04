@@ -42,6 +42,14 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1154.0',
+        title: 'Reparación integral del campo de carga de fotos y videos en "Rotary En Acción" 🎬📸',
+        description: 'Se solucionó el fallo de carga (403 Forbidden por política IAM en S3) configurando presigned URLs bajo clubs/*. Se implementó medidor de progreso de carga en tiempo real con XMLHttpRequest, soporte para videos (MP4, MOV hasta 200MB) y fotos (JPG, PNG hasta 10MB) con previsualización dinámica, soporte para modo edición y recarga con persistencia de archivos, y registro automático en la Biblioteca Multimedia central.',
+        date: new Date().toISOString(),
+        tags: ['rotary-en-accion', 'multimedia', 's3', 'upload', 'video', 'fotos', 'fix'],
+        type: 'fix',
+    },
+    {
         version: '4.1153.1',
         title: 'Editor de Video: Validación de Snapshot de Exportación de Subtítulos (bloqueo de MP4 sin captions)',
         description: 'Cierre del pendiente funcional del MP4 renderizado sin subtítulos: 1) Nuevo buildSubtitleSnapshot en el controlador que resuelve la versión ACTIVA segmento por segmento (subtitleId, idioma, texto, tiempos, estilo) con la misma prioridad que timeline, canvas y renderer. 2) startRender valida el snapshot antes de despachar: si la pista tiene N segmentos pero 0 resolubles en el idioma activo, responde 409 EMPTY_SUBTITLE_SNAPSHOT y registra la inconsistencia en logs ([EXPORT_SNAPSHOT]) en lugar de un render exitoso silencioso sin captions. 3) La respuesta de inicio de render incluye el snapshot (idioma activo, conteos) para trazabilidad. 4) Nueva suite scripts/test-video-editor-export-snapshot.mjs con matriz EN/ES, inversa genérica, pista vacía legítima, inconsistencia 7→0 y texto rancio. Proyectos sin subtítulos siguen renderizando normal.',
@@ -7044,6 +7052,14 @@ const TRAMO_2: UpdateItem[] = [
         date: new Date().toISOString(),
         tags: ['portada', 'areas-de-interes', 'titulo', 'contenido', 'editor', 'identidad', 'feature'],
         type: 'feature'
+    },
+    {
+        version: '4.584.0',
+        title: 'Reparación integral del campo de carga de archivos en "Rotary En Acción" 🎬📸',
+        description: 'Se corrigió la generación de presigned URLs hacia la ruta permitida por la política IAM de S3 (clubs/*), permitiendo la subida directa y sin errores 403 Forbidden de fotos (JPG, PNG, WEBP, SVG) y videos (MP4, MOV, WEBM) de hasta 200MB. Se incorporó indicador de progreso de carga porcentual en tiempo real, previsualización de imágenes y reproductor de video integrado, soporte completo para modo edición y recarga conservando archivos anteriores, e inserción automática de los archivos en la Biblioteca Multimedia central.',
+        date: new Date().toISOString(),
+        tags: ['multimedia', 'rotary-en-accion', 's3', 'upload', 'video', 'fotos', 'fix'],
+        type: 'fix'
     },
     {
         version: '4.582.0',

@@ -22,10 +22,13 @@ export interface PdfResult { blob: Blob; filename: string; }
  */
 export const renderNodeToPdfBlob = async (node: HTMLElement, filename: string): Promise<PdfResult | null> => {
     try {
-        const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-            import('html2canvas'),
-            import('jspdf'),
-        ]);
+        const html2canvasPkg = await import(/* @vite-ignore */ 'html2canvas').catch(() => null);
+        const jspdfPkg = await import(/* @vite-ignore */ 'jspdf').catch(() => null);
+        const html2canvas = html2canvasPkg?.default || (html2canvasPkg as any);
+        const jsPDF = jspdfPkg?.jsPDF || (jspdfPkg as any);
+        if (!html2canvas || !jsPDF) {
+            return null;
+        }
 
         const canvas = await html2canvas(node, {
             scale: Math.min(2, window.devicePixelRatio || 1.5),

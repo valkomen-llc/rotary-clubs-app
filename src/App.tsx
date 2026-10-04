@@ -775,6 +775,12 @@ function App() {
                     botón, precios) copiado del de la Conferencia LATIR. */}
                 <Route path="/registro-feria" element={<RegistroFeria />} />
 
+                {/* Rotary en Acción / Galería Multimedia Distrital */}
+                <Route path="/rotary-en-accion" element={<DistrictMultimediaGallery />} />
+                <Route path="/rotary-en-accion/:id" element={<DistrictMultimediaGallery />} />
+                <Route path="/galeria-multimedia" element={<DistrictMultimediaGallery />} />
+                <Route path="/servicio-en-accion" element={<DistrictMultimediaGallery />} />
+
                 {/* Club preview (provisional URL) */}
                 <Route path="/preview/:subdomain" element={<ClubPreview />} />
 
