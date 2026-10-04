@@ -17,6 +17,13 @@ export async function treeTaxonomies() {
   const { rows } = await db.query(`SELECT * FROM "RotaryTaxonomy" WHERE active=TRUE ORDER BY kind, "sortOrder" ASC`);
   const tree = { tipo: [], area: [], programa: [], tema: [] };
   for (const r of rows) if (tree[r.kind]) tree[r.kind].push(r);
+  if (!tree.tipo.length) {
+    const { DEFAULT_TIPOS } = await import('./rotaryTaxonomySpec.js');
+    tree.tipo = DEFAULT_TIPOS.map((t, i) => ({
+      id: `seed-tipo-${t.slug}`, kind: 'tipo', slug: t.slug, name: t.name,
+      description: '', icon: t.icon || '', color: t.color || '', active: true, sortOrder: t.order ?? i
+    }));
+  }
   return tree;
 }
 export async function upsertTaxonomy(t, actor) {

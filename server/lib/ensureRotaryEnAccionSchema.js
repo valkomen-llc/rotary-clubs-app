@@ -81,10 +81,11 @@ async function seedTaxonomies() {
     await db.query(
       `INSERT INTO "RotaryTaxonomy"(id, kind, slug, name, description, icon, color, active, "sortOrder")
        VALUES($1,$2,$3,$4,$5,$6,$7,TRUE,$8)
-       ON CONFLICT(kind, slug) DO NOTHING`,
+       ON CONFLICT(kind, slug) DO UPDATE SET active=TRUE, name=EXCLUDED.name, icon=EXCLUDED.icon, "sortOrder"=EXCLUDED."sortOrder"`,
       [`seed-${t.kind}-${t.slug}`, t.kind, t.slug, t.name, t.description || '', t.icon || '', t.color || '', t.order ?? order++]
-    );
+    ).catch(() => {});
   }
+  await db.query(`UPDATE "RotaryTaxonomy" SET active=TRUE WHERE kind='tipo' AND active=FALSE`).catch(() => {});
   // Reglas de fotografía semilla desde el criterio.
   await db.query(`UPDATE "RotaryConfig" SET "photoRules"=$1 WHERE id='default' AND "photoRules" IS NULL`,
     [JSON.stringify(DEFAULT_PHOTO_RULES)]).catch(() => {});

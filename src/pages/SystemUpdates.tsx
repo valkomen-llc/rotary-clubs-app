@@ -42,6 +42,14 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1159.0',
+        title: 'Rotary en Acción: Garantía universal de opciones en Paso 1 (¿Qué quieres compartir?) en BD y API 🏗️✨',
+        description: 'Se reforzó la siembra y recuperación de tipos de actividad en RotaryTaxonomy (activación automática en caso de inactividad previa) y se blindó treeTaxonomies para suministrar la lista canónica completa de 15 tipos de iniciativas rotarias si la consulta a base de datos estuviera vacía. Esto asegura que la cuadrícula de opciones del Paso 1 se renderice de inmediato en cualquier circunstancia.',
+        date: new Date().toISOString(),
+        tags: ['rotary-en-accion', 'taxonomies', 'paso1', 'seeding', 'fix'],
+        type: 'fix',
+    },
+    {
         version: '4.1158.0',
         title: 'Rotary en Acción: Restauración de taxonomías en respuesta de configuración y fallbacks resilientes 🏗️📋',
         description: 'Restauración del campo taxonomies en la respuesta del endpoint /api/rotary-en-accion/config. Se incorporaron fallbacks canónicos completos (DEFAULT_TIPOS, DEFAULT_AREAS, DEFAULT_PROGRAMAS, DEFAULT_TEMAS) en el frontend para garantizar que las opciones de "¿Qué quieres compartir con Rotary?" y sus selectores se rendericen siempre con robustez incluso ante respuestas incompletas o retrasos de red.',
