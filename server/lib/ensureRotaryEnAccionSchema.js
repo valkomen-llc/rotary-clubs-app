@@ -47,13 +47,14 @@ export async function ensureRotaryEnAccionSchema() {
   )`);
   await db.query(`CREATE TABLE IF NOT EXISTS "RotaryConfig" (
     id TEXT PRIMARY KEY,
-    "photoRules" JSONB DEFAULT '{"minToSubmit":1,"recommended":3,"reelMin":5,"maxFiles":10}',
+    "photoRules" JSONB DEFAULT '{"minToSubmit":5,"recommended":5,"reelMin":5,"maxFiles":10}',
     "requireStory" BOOLEAN DEFAULT FALSE,
     "notifyOnPublish" BOOLEAN DEFAULT TRUE,
     "duplicateWindowDays" INT DEFAULT 90,
     "updatedAt" TIMESTAMPTZ DEFAULT NOW()
   )`);
   await db.query(`INSERT INTO "RotaryConfig"(id) VALUES('default') ON CONFLICT(id) DO NOTHING`);
+  await db.query(`UPDATE "RotaryConfig" SET "photoRules" = jsonb_set(COALESCE("photoRules", '{}'::jsonb), '{minToSubmit}', '5') WHERE id='default' AND (("photoRules"->>'minToSubmit')::int < 5 OR "photoRules"->>'minToSubmit' IS NULL)`).catch(() => {});
   await db.query(`CREATE TABLE IF NOT EXISTS "RotaryFormDraft" (
     id TEXT PRIMARY KEY,
     token TEXT UNIQUE NOT NULL,

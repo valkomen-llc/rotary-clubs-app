@@ -47,13 +47,12 @@ export const EXTRA_LABELS: Record<string, string> = {
 };
 
 export function photoAdvice(count: number, rules: any = {}) {
-  const min = rules.minToSubmit ?? 1;
-  const rec = rules.recommended ?? 3;
+  const min = rules.minToSubmit ?? 5;
+  const rec = rules.recommended ?? 5;
   const reel = rules.reelMin ?? 5;
-  if (!count) return { level: 'faltante', text: 'Agrega al menos una fotografía para poder enviar tu historia.' };
-  if (count < min) return { level: 'faltante', text: `Te faltan ${min - count} para poder enviar.` };
-  if (count < rec) return { level: 'ok', text: 'Tu historia puede enviarse. Con 3 o más fotografías habilitas más formatos.' };
-  if (count < reel) return { level: 'ok', text: `Tu historia puede enviarse, pero con ${reel - count} más generamos automáticamente un Reel.` };
+  if (!count) return { level: 'faltante', text: 'Agrega al menos 5 fotografías para poder enviar tu historia.' };
+  if (count < min) return { level: 'faltante', text: `Te faltan ${min - count} fotografía(s) para cumplir el mínimo de 5.` };
+  if (count < reel) return { level: 'ok', text: `Tu historia puede enviarse. Con ${reel - count} más generamos automáticamente un Reel.` };
   return { level: 'optimo', text: 'Material óptimo: habilita artículo, formatos y Reel automático.' };
 }
 

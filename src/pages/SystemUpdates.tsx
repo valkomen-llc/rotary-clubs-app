@@ -42,6 +42,14 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1156.0',
+        title: 'Rotary en Acción: Sincronización universal de regla de 5 fotografías mínimas en BD, API y especificaciones 📸✨',
+        description: 'Sincronización completa de la regla de 5 fotografías mínimas en todas las capas del sistema: migración automática de la configuración en base de datos (RotaryConfig), garantía de minToSubmit: 5 en el controlador de configuración (/api/rotary-en-accion/config), actualización de las reglas por defecto en especificaciones de backend y frontend, y ajuste de los mensajes de orientación y asesoría de material.',
+        date: new Date().toISOString(),
+        tags: ['rotary-en-accion', 'photoRules', 'config', 'validation', 'database', 'fix'],
+        type: 'fix',
+    },
+    {
         version: '4.1155.0',
         title: 'Rotary en Acción: Reparación a profundidad del uploader de evidencias (Paso 3) y regla de 5 fotos mínimas 📸🎬',
         description: 'Corrección de raíz en la validación de metadatos de archivos (checkFileMeta) que causaba el descarte de archivos seleccionados. Soporte completo nativo para Drag & Drop y selección por clic en toda el área; selección múltiple por lotes ("Agregar más"); previsualización inmediata con miniaturas para fotos y tarjetas identificables para videos; trazabilidad detallada en consola ([EVIDENCE_SELECTED], [EVIDENCE_STATE], [UPLOAD_START], [UPLOAD_SUCCESS], [UPLOAD_ERROR]); regla estricta de mínimo 5 fotografías (los videos son complementarios y no sustituyen las fotos requeridas) tanto en frontend como backend; persistencia completa entre pasos del formulario y eliminación individual.',
