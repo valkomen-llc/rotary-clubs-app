@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1154.0",
-  "cache_bust": "4.1154.0",
+  "version": "4.1155.0",
+  "cache_bust": "4.1155.0",
   "type": "module",
-  "//": "UI V4.1154.0 | 2026-10-04 (Reparación integral del campo de carga de fotos y videos en Rotary En Acción)",
+  "//": "UI V4.1155.0 | 2026-10-04 (Rotary en Acción: Reparación a profundidad del uploader de evidencias Paso 3 y mínimo 5 fotos)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs && node scripts/check-version-parity.mjs && node scripts/check-syntax.mjs && node scripts/check-hooks.mjs && node scripts/check-routes.mjs && node scripts/check-imports.mjs && node scripts/check-server-undef.mjs && node scripts/check-route-handlers.mjs",

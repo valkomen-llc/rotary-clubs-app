@@ -76,12 +76,15 @@ export const kindOf = (contentType: string, filename = ''): 'image' | 'video' | 
 };
 
 /** El mismo veredicto que el servidor, para avisar ANTES de subir 200 MB. */
-export const checkFileMeta = ({ contentType, filename, size }: { contentType?: string; filename?: string; size?: number }) => {
+export const checkFileMeta = (arg: { contentType?: string; type?: string; filename?: string; name?: string; size?: number } = {}) => {
+    const contentType = arg.contentType || arg.type || '';
+    const filename = arg.filename || arg.name || '';
+    const size = arg.size;
     const errores: string[] = [];
     const kind = kindOf(contentType || '', filename || '');
     if (!kind) {
         errores.push('Sólo se pueden enviar fotografías (JPG, PNG, WEBP, HEIC) y videos (MP4, MOV, WEBM).');
-        return { ok: false, errores, kind: null as null };
+        return { ok: false, errores, error: 'Sólo se pueden enviar fotografías (JPG, PNG, WEBP, HEIC) y videos (MP4, MOV, WEBM).', kind: null as null };
     }
     const bytes = Number(size) || 0;
     const max = kind === 'video' ? VIDEO_MAX_BYTES : IMAGE_MAX_BYTES;
@@ -89,7 +92,7 @@ export const checkFileMeta = ({ contentType, filename, size }: { contentType?: s
     else if (bytes > max) {
         errores.push(`${kind === 'video' ? 'El video' : 'La fotografía'} pesa ${(bytes / 1048576).toFixed(1)} MB y el máximo es ${max / 1048576} MB.`);
     }
-    return { ok: errores.length === 0, errores, kind };
+    return { ok: errores.length === 0, errores, error: errores[0] || undefined, kind };
 };
 
 /**

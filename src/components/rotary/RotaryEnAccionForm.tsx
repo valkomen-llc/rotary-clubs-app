@@ -28,6 +28,12 @@ const CAMPO = 'w-full p-3.5 rounded-xl border-2 border-gray-100 text-base bg-gra
 const ROTULO = 'block text-[11px] font-black text-gray-400 uppercase tracking-[0.15em] mb-2';
 const TARJETA = 'bg-white rounded-3xl p-6 shadow-sm border border-gray-100';
 const nuevoId = () => Math.random().toString(36).slice(2);
+const formatBytes = (bytes: number): string => {
+  if (!bytes || bytes <= 0) return '0 B';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
 
 const PASOS = ['Qué quieres compartir', 'Cuéntanos', 'Evidencias y contacto', 'Revisar y enviar'];
 
@@ -39,7 +45,7 @@ const leerJson = async (r: Response) => {
 };
 
 type Adjunto = {
-  id: string; file: File; key?: string; estado: 'pendiente' | 'subiendo' | 'listo' | 'error';
+  id: string; file: File; previewUrl: string; kind: 'image' | 'video'; key?: string; estado: 'pendiente' | 'subiendo' | 'listo' | 'error';
   progreso: number; error?: string; width?: number; height?: number;
 };
 
@@ -65,7 +71,7 @@ const TIPS: Record<string, string> = {
   programa: 'La comunidad o programa que la protagonizó, si aplica.',
   tema: 'La temática específica, si aplica.',
   tags: 'Palabras sueltas que ayuden a encontrar tu historia.',
-  fotos: 'Con 1 fotografía puedes enviar. Con 5 o más habilitas el Reel automático.',
+  fotos: 'Agrega al menos 5 fotografías para enviar tu historia. Los videos son bienvenidos como evidencia adicional.',
   distrito: 'Distrito al que pertenece el club que realizó la actividad.',
   club: 'El club que protagonizó la historia. Si participaron varios, agrégalos abajo.',
   clubes: 'Otros clubes que participaron, además del principal.',
@@ -242,6 +248,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
   const [draftToken, setDraftToken] = useState<string | null>(null);
   const [draftSaving, setDraftSaving] = useState(false);
   const [conPrefill, setConPrefill] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useSEO({ title: 'Rotary en Acción — Comparte lo que hace tu club', description: 'Tu club hace cosas extraordinarias. Cuéntanos qué está haciendo y nosotros te ayudamos a comunicarlo.' });
@@ -324,9 +331,17 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cargando]);
 
-  const rules = cfg?.photoRules || { minToSubmit: 1, recommended: 3, reelMin: 5, maxFiles: 10 };
+  const MIN_FOTOS = 5;
+  const rules = {
+    minToSubmit: 5,
+    recommended: 5,
+    reelMin: 5,
+    maxFiles: cfg?.photoRules?.maxFiles || MAX_FILES || 10,
+  };
   const listos = adjuntos.filter((a) => a.estado === 'listo');
-  const advice = photoAdvice(listos.length, rules);
+  const totalPhotos = adjuntos.filter((a) => a.estado !== 'error' && a.kind === 'image').length;
+  const totalVideos = adjuntos.filter((a) => a.estado !== 'error' && a.kind === 'video').length;
+  const advice = photoAdvice(totalPhotos, rules);
   const cond = fieldsForTipo(tipo);
   const distritos: any[] = cfg?.catalogs?.districts || [];
   const clubesDistrito: string[] = useMemo(() => {
@@ -340,43 +355,150 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
     setErrores([]);
     setAdjuntos((prev) => {
       const room = (rules.maxFiles || MAX_FILES) - prev.length;
+      if (room <= 0) {
+        setErrores([`Se pueden adjuntar hasta ${rules.maxFiles || MAX_FILES} archivos en total.`]);
+        return prev;
+      }
       const out = [...prev];
+      const nuevosErrores: string[] = [];
+
       for (const f of arr.slice(0, Math.max(0, room))) {
-        const meta = checkFileMeta({ name: f.name, type: f.type, size: f.size });
-        if (!meta.ok) { setErrores((e) => [...e, `${f.name}: ${meta.error}`]); continue; }
-        if (out.some((a) => a.file.name === f.name && a.file.size === f.size)) continue;
-        const item: Adjunto = { id: nuevoId(), file: f, estado: 'pendiente', progreso: 0 };
+        console.log('[EVIDENCE_SELECTED]', {
+          fileName: f.name,
+          fileType: f.type,
+          fileSize: f.size,
+        });
+
+        const meta = checkFileMeta({ filename: f.name, contentType: f.type, size: f.size });
+        if (!meta.ok) {
+          const errText = meta.error || meta.errores?.[0] || 'Archivo no compatible';
+          nuevosErrores.push(`${f.name}: ${errText}`);
+          console.warn('[EVIDENCE_REJECTED]', { fileName: f.name, error: errText });
+          continue;
+        }
+
+        if (out.some((a) => a.file.name === f.name && a.file.size === f.size)) {
+          continue;
+        }
+
+        const isImg = meta.kind === 'image';
+        const previewUrl = URL.createObjectURL(f);
+        const item: Adjunto = {
+          id: nuevoId(),
+          file: f,
+          previewUrl,
+          kind: isImg ? 'image' : 'video',
+          estado: 'pendiente',
+          progreso: 0,
+        };
         out.push(item);
-        if (f.type.startsWith('image/')) {
-          const url = URL.createObjectURL(f);
+
+        if (isImg) {
           const img = new Image();
           img.onload = () => {
             setAdjuntos((cur) => cur.map((a) => (a.id === item.id ? { ...a, width: img.width, height: img.height } : a)));
-            URL.revokeObjectURL(url);
           };
-          img.src = url;
+          img.src = previewUrl;
         }
       }
+
+      if (nuevosErrores.length > 0) {
+        setErrores((e) => [...e, ...nuevosErrores]);
+      }
+
+      const totalImages = out.filter((x) => x.kind === 'image').length;
+      const totalVids = out.filter((x) => x.kind === 'video').length;
+      console.log('[EVIDENCE_STATE]', {
+        totalFiles: out.length,
+        totalImages,
+        totalVideos: totalVids,
+      });
+
       return out;
     });
   };
 
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      agregarArchivos(e.dataTransfer.files);
+    }
+  };
+
+  const eliminarAdjunto = (id: string) => {
+    setAdjuntos((prev) => {
+      const item = prev.find((x) => x.id === id);
+      if (item?.previewUrl) {
+        try { URL.revokeObjectURL(item.previewUrl); } catch { /* noop */ }
+      }
+      const next = prev.filter((x) => x.id !== id);
+      const totalImages = next.filter((x) => x.kind === 'image').length;
+      const totalVids = next.filter((x) => x.kind === 'video').length;
+      console.log('[EVIDENCE_STATE]', {
+        totalFiles: next.length,
+        totalImages,
+        totalVideos: totalVids,
+      });
+      return next;
+    });
+  };
+
   const subirUno = async (a: Adjunto): Promise<string> => {
+    console.log('[UPLOAD_START]', { fileName: a.file.name });
+    const mime = a.file.type || (a.kind === 'image' ? 'image/jpeg' : 'video/mp4');
     const r = await fetch(`${API}/rotary-en-accion/presign`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ campaignId: cfg?.campaign?.id || undefined, contentType: a.file.type, filename: a.file.name, size: a.file.size }),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        campaignId: cfg?.campaign?.id || undefined,
+        contentType: mime,
+        filename: a.file.name,
+        size: a.file.size,
+      }),
     });
     const data = await leerJson(r);
-    if (!r.ok) throw new Error(data?.error || 'No se pudo preparar la carga.');
+    if (!r.ok || !data.ok) {
+      const errMsg = data?.error || data?.errores?.[0] || 'No se pudo preparar la carga.';
+      console.error('[UPLOAD_ERROR]', { fileName: a.file.name, status: r.status, error: errMsg });
+      throw new Error(errMsg);
+    }
     await new Promise<void>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open('PUT', data.uploadUrl);
-      xhr.setRequestHeader('Content-Type', a.file.type);
+      xhr.setRequestHeader('Content-Type', mime);
       xhr.upload.onprogress = (ev) => {
-        if (ev.lengthComputable) setAdjuntos((prev) => prev.map((x) => (x.id === a.id ? { ...x, estado: 'subiendo', progreso: Math.round((ev.loaded / ev.total) * 100) } : x)));
+        if (ev.lengthComputable) {
+          const pct = Math.round((ev.loaded / ev.total) * 100);
+          setAdjuntos((prev) => prev.map((x) => (x.id === a.id ? { ...x, estado: 'subiendo', progreso: pct } : x)));
+        }
       };
-      xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Carga fallida (${xhr.status}).`)));
-      xhr.onerror = () => reject(new Error('Se cortó la conexión. Tus archivos pendientes se reintentan al enviar.'));
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          console.log('[UPLOAD_SUCCESS]', { fileName: a.file.name, storagePath: data.key });
+          resolve();
+        } else {
+          console.error('[UPLOAD_ERROR]', { fileName: a.file.name, status: xhr.status, error: xhr.statusText });
+          reject(new Error(`Carga fallida (${xhr.status}).`));
+        }
+      };
+      xhr.onerror = () => {
+        console.error('[UPLOAD_ERROR]', { fileName: a.file.name, status: 'network_error', error: 'Conexión interrumpida' });
+        reject(new Error('Se cortó la conexión. Tus archivos pendientes se reintentan al enviar.'));
+      };
       xhr.send(a.file);
     });
     return data.key;
@@ -414,9 +536,9 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
   const validar = (s: number): string | null => {
     if (s === 0 && !tipo) return 'Elegí qué quieres compartir para continuar.';
     if (s === 2) {
-      // Los pendientes se suben al enviar: cuentan igual que los listos.
-      const validFiles = adjuntos.filter((a) => a.estado !== 'error').length;
-      if (validFiles < (rules.minToSubmit ?? 1)) return `Agregá al menos ${rules.minToSubmit ?? 1} fotografía(s).`;
+      if (totalPhotos < MIN_FOTOS) {
+        return `Agrega al menos 5 fotografías para continuar (has seleccionado ${totalPhotos}).`;
+      }
       if (!senderName.trim()) return 'Escribí tu nombre.';
       if (!senderEmail.trim()) return 'Escribí tu correo electrónico.';
       if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(senderEmail.trim())) return 'El correo electrónico no parece válido.';
@@ -642,29 +764,181 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
         {step === 2 && !enviado && (
           <div className={TARJETA + ' space-y-5'}>
             <div>
-              <h2 className="text-lg font-black text-gray-800">Evidencias y contacto</h2>
-              <p className="text-sm text-gray-500 mt-1">{listos.length} de {rules.minToSubmit} mínima(s) · {advice.text}</p>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-lg font-black text-gray-800">Evidencias y contacto</h2>
+                <span className={`text-xs font-bold px-3 py-1 rounded-full ${
+                  totalPhotos >= MIN_FOTOS
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    : 'bg-amber-50 text-amber-700 border border-amber-200'
+                }`}>
+                  {totalPhotos >= MIN_FOTOS
+                    ? `✓ ${totalPhotos} fotos seleccionadas (mínimo cumplido)`
+                    : `${totalPhotos} de ${MIN_FOTOS} fotografías mínimas`}
+                </span>
+              </div>
+              <p className="text-sm text-gray-500 mt-1">
+                Requerimos un mínimo de <strong>5 fotografías</strong> para publicar la actividad. Puedes adjuntar videos como complemento (los videos no reemplazan las fotos mínimas).
+              </p>
             </div>
-            <button onClick={() => inputRef.current?.click()} className="w-full border-2 border-dashed border-gray-200 rounded-2xl p-8 text-center hover:border-rotary-blue transition-colors">
-              <Upload className="w-8 h-8 mx-auto text-gray-300" />
-              <div className="text-sm font-bold text-gray-700 mt-2">Tocá acá para elegir, o arrastrá las fotos</div>
-              <div className="text-xs text-gray-400 mt-1">Desde el teléfono se abre la cámara o la galería.</div>
-            </button>
-            <input ref={inputRef} type="file" multiple accept={ACCEPT_ATTR} className="hidden" onChange={(e) => { if (e.target.files) agregarArchivos(e.target.files); e.target.value = ''; }} />
+
+            {/* Dropzone interactivo */}
+            <div
+              onClick={() => inputRef.current?.click()}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className={`w-full border-2 border-dashed rounded-2xl p-6 sm:p-8 text-center cursor-pointer transition-all ${
+                dragActive
+                  ? 'border-rotary-blue bg-blue-50/70 scale-[1.01]'
+                  : 'border-gray-200 hover:border-rotary-blue hover:bg-gray-50/50'
+              }`}
+            >
+              <Upload className={`w-9 h-9 mx-auto transition-colors ${dragActive ? 'text-rotary-blue animate-bounce' : 'text-gray-400'}`} />
+              <div className="text-sm font-bold text-gray-800 mt-2">
+                {dragActive ? 'Soltá las fotos o videos acá' : 'Tocá acá para elegir, o arrastrá las fotos y videos'}
+              </div>
+              <div className="text-xs text-gray-500 mt-1 max-w-md mx-auto">
+                Formatos: JPG, PNG, WEBP, MP4, MOV. Mínimo 5 fotos obligatorias. En celular abre la cámara o la galería.
+              </div>
+            </div>
+
+            <input
+              ref={inputRef}
+              type="file"
+              multiple
+              accept={ACCEPT_ATTR}
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files && e.target.files.length > 0) {
+                  agregarArchivos(e.target.files);
+                }
+                e.target.value = '';
+              }}
+            />
+
+            {/* Galería de evidencias seleccionadas */}
             {adjuntos.length > 0 && (
-              <div className="grid grid-cols-3 gap-2">
-                {adjuntos.map((a) => (
-                  <div key={a.id} className="relative rounded-xl overflow-hidden bg-gray-100 aspect-square">
-                    {a.file.type.startsWith('image/') ? <img src={URL.createObjectURL(a.file)} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Film className="w-6 h-6 text-gray-400" /></div>}
-                    {a.estado !== 'listo' && (
-                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-[11px] font-bold px-2 text-center">
-                        {a.estado === 'error' ? (a.error || 'Error. Se reintenta al enviar.') : `${a.progreso}%`}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-xs font-bold text-gray-600">
+                  <span>Evidencias cargadas ({adjuntos.length} de máx. {rules.maxFiles})</span>
+                  <button
+                    type="button"
+                    onClick={() => inputRef.current?.click()}
+                    className="flex items-center gap-1 text-rotary-blue hover:underline font-bold cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Agregar más evidencias
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                  {adjuntos.map((a) => (
+                    <div
+                      key={a.id}
+                      className="group relative rounded-2xl overflow-hidden bg-gray-900/5 border border-gray-200 aspect-square flex flex-col justify-between p-2 shadow-xs"
+                    >
+                      {/* Media preview */}
+                      <div className="absolute inset-0 z-0">
+                        {a.kind === 'image' ? (
+                          <img
+                            src={a.previewUrl}
+                            alt={a.file.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-slate-900 flex flex-col items-center justify-center text-white relative">
+                            <video
+                              src={a.previewUrl}
+                              className="w-full h-full object-cover opacity-60"
+                              muted
+                              playsInline
+                            />
+                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                              <div className="bg-black/60 rounded-full p-2 backdrop-blur-xs">
+                                <Film className="w-6 h-6 text-white" />
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    )}
-                    {a.width != null && a.width < 800 && <div className="absolute bottom-1 left-1 bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">Baja resolución</div>}
-                    <button onClick={() => setAdjuntos((p) => p.filter((x) => x.id !== a.id))} aria-label="Quitar archivo" className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-1"><X className="w-3.5 h-3.5" /></button>
+
+                      {/* Header de la tarjeta: Badge de tipo y botón eliminar */}
+                      <div className="relative z-10 flex items-center justify-between w-full">
+                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md shadow-xs ${
+                          a.kind === 'image'
+                            ? 'bg-blue-600/90 text-white'
+                            : 'bg-purple-600/90 text-white'
+                        }`}>
+                          {a.kind === 'image' ? 'Foto' : 'Video'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            eliminarAdjunto(a.id);
+                          }}
+                          aria-label={`Eliminar ${a.file.name}`}
+                          className="bg-black/70 hover:bg-red-600 text-white rounded-full p-1.5 transition-colors shadow-sm cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      {/* Overlays de estado de carga */}
+                      {a.estado === 'subiendo' && (
+                        <div className="absolute inset-0 z-20 bg-black/60 backdrop-blur-xs flex flex-col items-center justify-center text-white px-3 text-center">
+                          <Loader2 className="w-5 h-5 animate-spin text-rotary-blue mb-1" />
+                          <span className="text-xs font-bold">{a.progreso}%</span>
+                          <div className="w-full bg-white/20 rounded-full h-1.5 mt-2 overflow-hidden">
+                            <div className="bg-rotary-blue h-full transition-all" style={{ width: `${a.progreso}%` }} />
+                          </div>
+                        </div>
+                      )}
+
+                      {a.estado === 'error' && (
+                        <div className="absolute inset-0 z-20 bg-red-950/80 backdrop-blur-xs flex flex-col items-center justify-center text-white p-2 text-center">
+                          <AlertTriangle className="w-5 h-5 text-amber-300 mb-1" />
+                          <span className="text-[11px] font-bold text-amber-200 line-clamp-2 leading-tight">
+                            {a.error || 'Error. Se reintenta al enviar.'}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Footer de la tarjeta: Nombre y tamaño */}
+                      <div className="relative z-10 w-full bg-black/75 backdrop-blur-xs text-white rounded-lg px-2 py-1">
+                        <p className="text-[11px] font-medium truncate" title={a.file.name}>
+                          {a.file.name}
+                        </p>
+                        <div className="flex items-center justify-between text-[10px] text-gray-300">
+                          <span>{formatBytes(a.file.size)}</span>
+                          {a.estado === 'listo' && <span className="text-emerald-400 font-bold">✓ Listo</span>}
+                          {a.estado === 'pendiente' && <span className="text-gray-300">Pendiente</span>}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Tile adicional "Agregar más" en la cuadrícula si hay espacio */}
+                  {adjuntos.length < (rules.maxFiles || MAX_FILES) && (
+                    <button
+                      type="button"
+                      onClick={() => inputRef.current?.click()}
+                      className="rounded-2xl border-2 border-dashed border-gray-300 hover:border-rotary-blue hover:bg-blue-50/30 flex flex-col items-center justify-center p-4 aspect-square transition-all cursor-pointer group"
+                    >
+                      <Plus className="w-6 h-6 text-gray-400 group-hover:text-rotary-blue transition-colors" />
+                      <span className="text-xs font-bold text-gray-600 group-hover:text-rotary-blue mt-1">Agregar más</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Aviso si faltan fotos para llegar a las 5 */}
+                {totalPhotos < MIN_FOTOS && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2.5 text-xs text-amber-800">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <strong>Faltan {MIN_FOTOS - totalPhotos} fotografía(s):</strong> Has seleccionado {totalPhotos} de las 5 requeridas. Por favor selecciona al menos 5 fotografías para poder continuar al paso de envío.
+                    </div>
                   </div>
-                ))}
+                )}
               </div>
             )}
             <div>
@@ -735,8 +1009,32 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                 {impactoCargado.length > 0 && <p className="text-xs text-gray-500 mt-1">{impactoCargado.map(([k, v]) => `${IMPACT_META[k]?.label || k}: ${v}`).join(' · ')}</p>}
               </Bloque>
               <Bloque titulo="Evidencias y contacto" paso={2}>
-                <p className="text-sm">{adjuntos.length} archivo(s) · {club || 'Sin club'} · {senderName} ({senderEmail})</p>
-                {quiereResultados && <p className="text-xs text-gray-500 mt-1">Quiere recibir los resultados de la historia.</p>}
+                <div className="space-y-2">
+                  <p className="text-sm">
+                    <strong>{totalPhotos} fotografía(s)</strong> {totalVideos > 0 && `· ${totalVideos} video(s)`} · {club || 'Sin club'} · {senderName} ({senderEmail})
+                  </p>
+                  {adjuntos.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {adjuntos.slice(0, 10).map((a) => (
+                        <div key={a.id} className="w-12 h-12 rounded-lg overflow-hidden border border-gray-200 bg-gray-100 relative shadow-xs">
+                          {a.kind === 'image' ? (
+                            <img src={a.previewUrl} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full bg-slate-800 flex items-center justify-center text-white">
+                              <Film className="w-4 h-4" />
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      {adjuntos.length > 10 && (
+                        <div className="w-12 h-12 rounded-lg bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-600">
+                          +{adjuntos.length - 10}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {quiereResultados && <p className="text-xs text-gray-500 mt-1">Quiere recibir los resultados de la historia.</p>}
+                </div>
               </Bloque>
             </div>
             <button onClick={enviar} disabled={enviando} className="mt-4 w-full flex items-center justify-center gap-2 px-6 py-4 rounded-2xl bg-emerald-600 text-white text-base font-black min-h-[56px] disabled:opacity-60">

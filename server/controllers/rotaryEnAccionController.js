@@ -83,7 +83,7 @@ export const getEngineConfig = async (req, res) => {
       contextTax: ctx.tax,
       suggested,
       taxonomies: tax,
-      photoRules: cfg.photoRules || { minToSubmit: 1, recommended: 3, reelMin: 5, maxFiles: 10 },
+      photoRules: cfg.photoRules || { minToSubmit: 5, recommended: 5, reelMin: 5, maxFiles: 10 },
       requireStory: !!cfg.requireStory,
       catalogs: { districts: DISTRICT_CATALOG },
       platforms: POST_PLATFORMS,
@@ -115,7 +115,7 @@ export const submit = async (req, res) => {
     const camp = ctx.campaign || await db.query(`SELECT * FROM "ContributionCampaign" WHERE id=$1`, [await universalCampaignId()]).then((r) => r.rows[0]);
     if (!camp) return res.status(404).json({ error: 'No encontramos el canal de recepción.' });
     const cfg = await getConfig();
-    const minFiles = Number(cfg.photoRules?.minToSubmit ?? 1);
+    const minFiles = Math.max(5, Number(cfg.photoRules?.minToSubmit ?? 5));
 
     const data = shapeSubmission(req.body);
     const juicio = validateSubmission(data, { districtCatalog: DISTRICT_CATALOG, minFiles });

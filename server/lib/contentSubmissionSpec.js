@@ -145,12 +145,15 @@ export const extensionFor = (contentType, filename = '') => {
  * ¿Se puede subir este archivo? Se comprueba al prefirmar Y otra vez contra el
  * objeto REAL al enviar: lo que el navegador declara no obliga a nada.
  */
-export const checkFileMeta = ({ contentType, filename, size } = {}) => {
+export const checkFileMeta = (arg = {}) => {
+    const contentType = arg.contentType || arg.type || '';
+    const filename = arg.filename || arg.name || '';
+    const size = arg.size;
     const errores = [];
     const kind = kindOf(contentType, filename);
     if (!kind) {
         errores.push('Sólo se pueden enviar fotografías (JPG, PNG, WEBP, HEIC) y videos (MP4, MOV, WEBM).');
-        return { ok: false, errores, kind: null };
+        return { ok: false, errores, error: 'Sólo se pueden enviar fotografías (JPG, PNG, WEBP, HEIC) y videos (MP4, MOV, WEBM).', kind: null };
     }
     const bytes = Number(size) || 0;
     const max = kind === 'video' ? VIDEO_MAX_BYTES : IMAGE_MAX_BYTES;
@@ -158,7 +161,7 @@ export const checkFileMeta = ({ contentType, filename, size } = {}) => {
     else if (bytes > max) {
         errores.push(`${kind === 'video' ? 'El video' : 'La fotografía'} pesa ${(bytes / 1048576).toFixed(1)} MB y el máximo es ${max / 1048576} MB.`);
     }
-    return { ok: errores.length === 0, errores, kind };
+    return { ok: errores.length === 0, errores, error: errores[0] || undefined, kind };
 };
 
 // ─── El consentimiento ─────────────────────────────────────────────────
@@ -627,9 +630,9 @@ export const validateSubmission = (data, { consentRequired = true, districtCatal
     if (!data.senderEmail) errors.push('Escribí tu correo electrónico.');
     else if (!EMAIL_RE.test(data.senderEmail)) errors.push('El correo electrónico no parece válido.');
     if (consentRequired && !data.consent) errors.push('Hay que aceptar las condiciones para poder enviar el material.');
-    if (!data.files.length) errors.push('Adjuntá al menos una fotografía o un video.');
-    else if (data.files.length < minFiles) {
-        errors.push(`Adjuntá al menos ${minFiles} fotografías de la actividad o evento (necesarias para generar la cobertura editorial y el video Reel).`);
+    const photoCount = (data.files || []).filter(f => f.kind === 'image' || (f.contentType && f.contentType.startsWith('image/')) || /\.(jpe?g|png|webp|heic|heif)$/i.test(f.filename || '')).length;
+    if (!data.files.length || photoCount < minFiles) {
+        errors.push(`Agrega al menos ${minFiles} fotografías para continuar.`);
     }
     if (data.files.length > MAX_FILES) errors.push(`Se pueden enviar hasta ${MAX_FILES} archivos por envío.`);
 
