@@ -1,4 +1,4 @@
-// DISTRICT HEALTH IQ V4.258 | 2026-05-14 (EMAIL DB SYNC FIX 🛡️)
+// ROTARY EN ACCION MULTIMEDIA V4.1154.0 | 2026-10-04 (S3 UPLOAD & EDIT MODE FIX 🎬📸)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -143,7 +143,7 @@ app.get('/api/technical-requests', async (req, res) => {
 });
 
 app.get('/api', (req, res) => {
-    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.258', release: 'Email DB Sync Fix 🛡️' });
+    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.1154.0', release: 'Rotary En Accion S3 Fix 🎬' });
 });
 
 app.get('/api/health', async (req, res) => {
