@@ -1,4 +1,4 @@
-// ROTARY EN ACCION MULTIMEDIA V4.1156.0 | 2026-10-04 (EVIDENCIAS UPLOADER & MIN 5 FOTOS FIX 🎬📸)
+// ROTARY EN ACCION MULTIMEDIA V4.1157.0 | 2026-10-04 (SQL PARAMS & PERSISTENCE FIX 🎬📸)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';

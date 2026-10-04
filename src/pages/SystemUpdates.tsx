@@ -42,6 +42,14 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1157.0',
+        title: 'Rotary en Acción: Corrección de placeholders SQL en createSubmission para persistencia de envíos 🗄️✅',
+        description: 'Corrección de la indexación de parámetros posicionales en la consulta SQL de inserción en ContributionSubmission. Se eliminó el desfase posicional de parámetros ($22 saltado por NOW()), permitiendo que los envíos con evidencias asociadas se almacenen y persistan correctamente en la base de datos de producción sin errores de tipo.',
+        date: new Date().toISOString(),
+        tags: ['rotary-en-accion', 'sql', 'postgres', 'submissions', 'fix'],
+        type: 'fix',
+    },
+    {
         version: '4.1156.0',
         title: 'Rotary en Acción: Sincronización universal de regla de 5 fotografías mínimas en BD, API y especificaciones 📸✨',
         description: 'Sincronización completa de la regla de 5 fotografías mínimas en todas las capas del sistema: migración automática de la configuración en base de datos (RotaryConfig), garantía de minToSubmit: 5 en el controlador de configuración (/api/rotary-en-accion/config), actualización de las reglas por defecto en especificaciones de backend y frontend, y ajuste de los mensajes de orientación y asesoría de material.',

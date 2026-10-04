@@ -86,19 +86,19 @@ export async function createSubmission({ campaignId, data, files, consentText, w
             data.notifyUpdates === true,
     ];
     const ph = (vals, from) => vals.map((_, i) => `$${from + i}`).join(',');
-    // `consentAt` es NOW() literal (igual que antes): $1-21 valores, NOW(),
-    // $23-26 valores, $27+ columnas v4.1118.
+    // `consentAt` es NOW() literal: $1-22 valores, NOW(),
+    // $23-25 valores, $26+ columnas v4.1118.
     let rows;
     try {
         const r = await db.query(
             `INSERT INTO "ContributionSubmission" (${baseCols},${extraCols})
-             VALUES (${ph(baseVals.slice(0, 21), 1)},NOW(),${ph(baseVals.slice(21), 23)},${ph(extraVals, 27)}) RETURNING *`,
+             VALUES (${ph(baseVals.slice(0, 22), 1)},NOW(),${ph(baseVals.slice(22), 23)},${ph(extraVals, 26)}) RETURNING *`,
             [...baseVals, ...extraVals]);
         rows = r.rows;
     } catch (e) {
         if (!/column .* does not exist/i.test(e.message)) throw e;
         const r = await db.query(
-            `INSERT INTO "ContributionSubmission" (${baseCols}) VALUES (${ph(baseVals.slice(0, 21), 1)},NOW(),${ph(baseVals.slice(21), 23)}) RETURNING *`, baseVals);
+            `INSERT INTO "ContributionSubmission" (${baseCols}) VALUES (${ph(baseVals.slice(0, 22), 1)},NOW(),${ph(baseVals.slice(22), 23)}) RETURNING *`, baseVals);
         rows = r.rows;
     }
     const submission = rows[0];
