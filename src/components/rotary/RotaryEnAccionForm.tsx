@@ -9,7 +9,10 @@ import Navbar from '../../sections/Navbar';
 import Footer from '../../sections/Footer';
 import { ACCEPT_ATTR, MAX_FILES, checkFileMeta } from '../../lib/contentSubmissionSpec';
 import { COUNTRIES, DEFAULT_COUNTRY, findCountry, flagEmoji } from '../../lib/countryPhones';
-import { fieldsForTipo, IMPACT_META, EXTRA_LABELS, photoAdvice } from '../../lib/rotaryEnAccionSpec';
+import {
+  fieldsForTipo, IMPACT_META, EXTRA_LABELS, photoAdvice,
+  DEFAULT_TIPOS, DEFAULT_AREAS, DEFAULT_PROGRAMAS, DEFAULT_TEMAS,
+} from '../../lib/rotaryEnAccionSpec';
 
 // ════════════════════════════════════════════════════════════════════
 // Rotary en Acción — puerta universal de entrada (v4.1120).
@@ -621,10 +624,10 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
   if (cargando) return (<Marco><div className="flex items-center justify-center py-32"><Loader2 className="w-8 h-8 animate-spin text-rotary-blue" /></div></Marco>);
   if (errorCarga || !cfg) return (<Marco><div className="flex items-center justify-center px-4 py-20"><div className="bg-white rounded-3xl p-8 max-w-md w-full text-center shadow-sm border border-gray-100"><AlertTriangle className="w-10 h-10 text-amber-500 mx-auto" /><h1 className="text-lg font-bold text-gray-800 mt-4">No se pudo abrir Rotary en Acción</h1><p className="text-sm text-gray-500 mt-2">{errorCarga}</p><button onClick={cargar} className="mt-5 px-5 py-3 rounded-xl bg-rotary-blue text-white text-sm font-bold">Reintentar</button></div></div></Marco>);
 
-  const tipos: any[] = cfg.taxonomies?.tipo || [];
-  const areas: any[] = cfg.taxonomies?.area || [];
-  const programas: any[] = cfg.taxonomies?.programa || [];
-  const temas: any[] = cfg.taxonomies?.tema || [];
+  const tipos: any[] = (cfg.taxonomies?.tipo && cfg.taxonomies.tipo.length > 0) ? cfg.taxonomies.tipo : DEFAULT_TIPOS;
+  const areas: any[] = (cfg.taxonomies?.area && cfg.taxonomies.area.length > 0) ? cfg.taxonomies.area : DEFAULT_AREAS;
+  const programas: any[] = (cfg.taxonomies?.programa && cfg.taxonomies.programa.length > 0) ? cfg.taxonomies.programa : DEFAULT_PROGRAMAS;
+  const temas: any[] = (cfg.taxonomies?.tema && cfg.taxonomies.tema.length > 0) ? cfg.taxonomies.tema : DEFAULT_TEMAS;
   const impactoCargado = Object.entries(impact).filter(([, v]) => String(v).trim());
 
   const Bloque: React.FC<{ titulo: string; paso: number; children: React.ReactNode }> = ({ titulo, paso, children }) => (

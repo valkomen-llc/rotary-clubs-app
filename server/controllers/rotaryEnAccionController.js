@@ -82,6 +82,7 @@ export const getEngineConfig = async (req, res) => {
       campaign: camp ? { id: camp.id, slug: camp.slug, name: camp.name, headline: sub.headline || camp.name, intro: sub.intro || '', thanksMessage: sub.thanksMessage || '', consentText: consentTextFor(sub), consentIsProvisional: !consentIsConfigured(sub.consentText), image: content.hero?.image || '' } : null,
       contextTax: ctx.tax,
       suggested,
+      taxonomies: tax,
       photoRules: {
         ...(cfg.photoRules || {}),
         minToSubmit: Math.max(5, Number(cfg.photoRules?.minToSubmit ?? 5)),

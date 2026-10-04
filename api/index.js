@@ -1,4 +1,4 @@
-// ROTARY EN ACCION MULTIMEDIA V4.1157.0 | 2026-10-04 (SQL PARAMS & PERSISTENCE FIX 🎬📸)
+// ROTARY EN ACCION MULTIMEDIA V4.1158.0 | 2026-10-04 (TAXONOMIES RESTORE & UI RESILIENCE 🎬📸)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';

@@ -42,6 +42,14 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1158.0',
+        title: 'Rotary en Acción: Restauración de taxonomías en respuesta de configuración y fallbacks resilientes 🏗️📋',
+        description: 'Restauración del campo taxonomies en la respuesta del endpoint /api/rotary-en-accion/config. Se incorporaron fallbacks canónicos completos (DEFAULT_TIPOS, DEFAULT_AREAS, DEFAULT_PROGRAMAS, DEFAULT_TEMAS) en el frontend para garantizar que las opciones de "¿Qué quieres compartir con Rotary?" y sus selectores se rendericen siempre con robustez incluso ante respuestas incompletas o retrasos de red.',
+        date: new Date().toISOString(),
+        tags: ['rotary-en-accion', 'taxonomies', 'ui', 'resilience', 'fix'],
+        type: 'fix',
+    },
+    {
         version: '4.1157.0',
         title: 'Rotary en Acción: Corrección de placeholders SQL en createSubmission para persistencia de envíos 🗄️✅',
         description: 'Corrección de la indexación de parámetros posicionales en la consulta SQL de inserción en ContributionSubmission. Se eliminó el desfase posicional de parámetros ($22 saltado por NOW()), permitiendo que los envíos con evidencias asociadas se almacenen y persistan correctamente en la base de datos de producción sin errores de tipo.',

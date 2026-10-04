@@ -62,3 +62,52 @@ export const STEPS = [
   { id: 'evidencias', label: 'Evidencias y contacto' },
   { id: 'revision', label: 'Revisar y enviar' },
 ];
+
+export const DEFAULT_TIPOS = [
+  { slug: 'proyecto', name: 'Proyecto u obra', icon: '🏗️', color: '#1d4ed8' },
+  { slug: 'actividad', name: 'Actividad o jornada', icon: '🤝', color: '#059669' },
+  { slug: 'evento', name: 'Evento', icon: '📅', color: '#7c3aed' },
+  { slug: 'historia-servicio', name: 'Historia de servicio', icon: '💙', color: '#0284c7' },
+  { slug: 'emergencia', name: 'Emergencia o respuesta humanitaria', icon: '🚨', color: '#dc2626' },
+  { slug: 'campana', name: 'Campaña', icon: '📣', color: '#ea580c' },
+  { slug: 'reconocimiento', name: 'Reconocimiento o logro', icon: '🏆', color: '#ca8a04' },
+  { slug: 'alianza', name: 'Alianza', icon: '🤜🤛', color: '#4d7c0f' },
+  { slug: 'juventud', name: 'Actividad juvenil', icon: '🌱', color: '#16a34a' },
+  { slug: 'capacitacion', name: 'Capacitación', icon: '🎓', color: '#0d9488' },
+  { slug: 'recaudacion', name: 'Recaudación de fondos', icon: '💰', color: '#b45309' },
+  { slug: 'testimonio', name: 'Historia personal o testimonio', icon: '💬', color: '#9333ea' },
+  { slug: 'convocatoria', name: 'Convocatoria', icon: '📢', color: '#0891b2' },
+  { slug: 'proyecto-internacional', name: 'Proyecto internacional', icon: '🌍', color: '#1e40af' },
+  { slug: 'otra', name: 'Otra acción', icon: '✨', color: '#64748b' },
+];
+
+export const DEFAULT_AREAS = [
+  { slug: 'paz', name: 'Paz y prevención de conflictos' },
+  { slug: 'enfermedades', name: 'Prevención y tratamiento de enfermedades' },
+  { slug: 'agua', name: 'Agua, saneamiento e higiene' },
+  { slug: 'salud-materna', name: 'Salud materno-infantil' },
+  { slug: 'educacion', name: 'Alfabetización y educación básica' },
+  { slug: 'desarrollo-economico', name: 'Desarrollo económico e integral' },
+  { slug: 'medio-ambiente', name: 'Medio ambiente' },
+];
+
+export const DEFAULT_PROGRAMAS = [
+  { slug: 'rotary', name: 'Rotary' },
+  { slug: 'rotaract', name: 'Rotaract' },
+  { slug: 'interact', name: 'Interact' },
+  { slug: 'rye', name: 'Intercambio de Jóvenes (RYE)' },
+  { slug: 'ryla', name: 'RYLA' },
+  { slug: 'polio', name: 'End Polio Now' },
+  { slug: 'fundacion', name: 'La Fundación Rotaria' },
+  { slug: 'subvenciones', name: 'Subvenciones' },
+];
+
+export const DEFAULT_TEMAS = [
+  { slug: 'reforestacion', name: 'Reforestación' },
+  { slug: 'jornada-salud', name: 'Jornada de salud' },
+  { slug: 'banco-alimentos', name: 'Banco de alimentos' },
+  { slug: 'educacion-digital', name: 'Educación digital' },
+  { slug: 'agua-potable', name: 'Agua potable' },
+  { slug: 'respuesta-emergencia', name: 'Respuesta a emergencias' },
+];
+
