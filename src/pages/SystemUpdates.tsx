@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1164.0',
+        title: 'Hotfix: el formulario público de Rotary en Acción vuelve a abrir 🩹',
+        description: 'rotary-en-accion.org/rotary-en-accion caía en «Esta pantalla no se pudo mostrar». Causa: v4.1160.0 borró del formulario el import de countryPhones (COUNTRIES, DEFAULT_COUNTRY, findCountry, flagEmoji) dejando los usos, y el primer render lanzaba ReferenceError. Se restaura el import, se quita la ruta exacta duplicada que apuntaba a la galería (la galería solo vive en /rotary-en-accion/:id) y se agrega prueba de regresión que exige que todo identificador del módulo usado por el formulario esté exportado e importado.',
+        date: new Date().toISOString(),
+        tags: ['rotary-en-accion', 'hotfix', 'formulario-publico', 'regresion', 'production-release'],
+        type: 'fix',
+        impact: 'high',
+    },
+    {
         version: '4.1163.0',
         title: 'Campañas de Contenido: gestión completa del ciclo de vida 🛠️📋',
         description: 'Cada tarjeta de Campañas de Contenido (/admin/activacion-contenido) ya se administra durante todo su ciclo de vida sin crear una nueva: menú contextual por estado (editar, programar, cambiar fecha y hora, activar, pausar, reanudar, finalizar, cancelar programación, archivar, restaurar, duplicar, eliminar con confirmación y ver historial), reapertura del constructor con toda la configuración guardada, y tarjetas con última/próxima ejecución. Nuevos endpoints POST /:id/duplicate y DELETE /:id (borrado real sin historial, archivado con historial para auditoría). Puerta de escritura por campaña (el Super Admin administra lo global; los sitios solo lo suyo). Sin jobs por campaña: el tick central solo procesa activas y la inscripción es idempotente, así que reprogramar nunca duplica ejecuciones.',

@@ -775,8 +775,9 @@ function App() {
                     botón, precios) copiado del de la Conferencia LATIR. */}
                 <Route path="/registro-feria" element={<RegistroFeria />} />
 
-                {/* Rotary en Acción / Galería Multimedia Distrital */}
-                <Route path="/rotary-en-accion" element={<DistrictMultimediaGallery />} />
+                {/* Galería Multimedia Distrital (la ruta exacta de Rotary en
+                    Acción es del formulario; el duplicado que la pisaba se
+                    quitó en v4.1164 para no dejar dos verdades sobre lo mismo) */}
                 <Route path="/rotary-en-accion/:id" element={<DistrictMultimediaGallery />} />
                 <Route path="/galeria-multimedia" element={<DistrictMultimediaGallery />} />
                 <Route path="/servicio-en-accion" element={<DistrictMultimediaGallery />} />

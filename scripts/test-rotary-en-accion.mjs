@@ -6,6 +6,7 @@ import {
   suggestForCampaign, CONDITIONAL_FIELDS,
 } from '../server/lib/rotaryTaxonomySpec.js';
 import { shapeSubmission, validateSubmission } from '../server/lib/contentSubmissionSpec.js';
+import { readFileSync } from 'node:fs';
 
 let fails = 0;
 const assert = (c, m) => { if (!c) { fails++; console.error('FAIL:', m); } else { console.log('ok:', m); } };
@@ -63,6 +64,30 @@ for (const [slug, cfg] of Object.entries(CONDITIONAL_FIELDS)) {
 }
 assert(fieldsForTipo('evento').impacto.includes('recursos'), 'impacto general incluye recursos');
 assert(CONDITIONAL_FIELDS.recaudacion.impacto[0] === 'fondosRecaudados', 'recaudación prioriza fondos');
+
+// ── Regresión v4.1164: el formulario público no revienta al pintar ──────
+// v4.1160 borró el import de `countryPhones` dejando los usos: el primer
+// render lanzaba `ReferenceError: DEFAULT_COUNTRY is not defined` y la página
+// caía en «Esta pantalla no se pudo mostrar». Vite/esbuild no verifican
+// tipos, así que se comprueba acá: todo identificador del módulo que el
+// formulario nombra tiene que estar importado o definido en él.
+{
+  const form = readFileSync('src/components/rotary/RotaryEnAccionForm.tsx', 'utf8');
+  const spec = readFileSync('src/lib/countryPhones.ts', 'utf8');
+  const importados = new Set(
+    [...form.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"]\.\.\/\.\.\/lib\/countryPhones['"]/g)]
+      .flatMap((m) => m[1].split(',').map((s) => s.trim()).filter(Boolean))
+  );
+  for (const id of ['COUNTRIES', 'DEFAULT_COUNTRY', 'findCountry', 'flagEmoji']) {
+    const usado = new RegExp(`\\b${id}\\b`).test(form);
+    const exportado = new RegExp(`export\\s+(const|function)\\s+${id}\\b`).test(spec);
+    assert(!usado || (exportado && importados.has(id)), `countryPhones: ${id} usado ⇒ exportado e importado`);
+  }
+  // Sin duplicar la ruta exacta del formulario: la galería solo vive en :id.
+  const app = readFileSync('src/App.tsx', 'utf8');
+  const exactas = (app.match(/<Route path="\/rotary-en-accion" element/g) || []).length;
+  assert(exactas === 1, 'una sola ruta exacta /rotary-en-accion (la del formulario)');
+}
 
 if (fails) { console.error(`${fails} fallos`); process.exit(1); }
 console.log('rotary-en-accion: criterio OK');
