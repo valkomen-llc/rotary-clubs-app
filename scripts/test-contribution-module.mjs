@@ -71,7 +71,9 @@ grupo('2 · ⚠️ El ALCANCE lo resuelve el servidor, no la pantalla');
 // ════════════════════════════════════════════════════════════════════
 
 check('el criterio es el ROL, en el servidor',
-    /const isPlatformOperator = \(req\) => String\(req\.user\?\.role \|\| ''\) === 'administrator'/.test(CTRL));
+    /const isPlatformOperator = \(req\) => \{[\s\S]{0,600}const role = String\(req\.user\?\.role \|\| ''\)/.test(CTRL)
+    && /if \(role === 'superadmin' \|\| req\.user\?\.isSuperAdmin === true\) return true;/.test(CTRL)
+    && /if \(req\.user\?\.clubId\) return false;/.test(CTRL));
 check('⚠️ el sitio de quien pregunta sale del TOKEN, nunca del cuerpo',
     /const askingClubId = \(req\) => req\.user\?\.clubId \|\| null/.test(CTRL)
     && !/ownerClubId = .*req\.body/.test(CTRL));
@@ -215,7 +217,7 @@ check('⚠️ la bandeja TRANSVERSAL se declara ANTES de /:id (o «submissions»
     RUTAS.indexOf("router.get('/submissions/inbox'") > 0
     && RUTAS.indexOf("router.get('/submissions/inbox'") < RUTAS.indexOf("router.get('/:id'"));
 check('⚠️ el alcance de la bandeja transversal NO se decide en la ruta, sino en el WHERE',
-    /router\.get\('\/submissions\/inbox', authMiddleware, siteRead, listSubmissionsInbox\)/.test(RUTAS));
+    /router\.get\('\/submissions\/inbox', authMiddleware, siteRead, requireSubmissionInboxAccess, listSubmissionsInbox\)/.test(RUTAS));
 
 // ════════════════════════════════════════════════════════════════════
 grupo('7 · ⚠️ Borrar la pantalla vieja no perdió nada');

@@ -285,6 +285,17 @@ export const PLATFORM_HOSTS = [
  * NO tienen habilitado este módulo ni deben ver la trazabilidad ni el buzón de solicitudes.
  */
 export const isContentSubmissionsAllowedSite = ({ host = '', origin = '', user = null, club = null } = {}) => {
+    // ── Super Admin global de Club Platform (v4.1162) ─────────────────────
+    // Espejo del navegador (`src/lib/submissionInbox.ts`): la paridad se
+    // comprueba comparando SALIDAS. No depende de host ni de club asignado;
+    // la marca es el rol `superadmin` (o `isSuperAdmin`), nunca asignado a un
+    // administrador local. Quien decide QUÉ ve después es el alcance
+    // (`campaignIdsInScope` → `null` = todo, sólo operador), no esta puerta.
+    const superRole = String(user?.role || '');
+    if (superRole === 'superadmin' || user?.isSuperAdmin === true) {
+        return true;
+    }
+
     const rawHost = String(host || '').toLowerCase().trim();
     const rawOrigin = String(origin || '').toLowerCase().trim();
     const effectiveHost = (rawHost || rawOrigin).replace(/^https?:\/\//, '').split('/')[0].split(':')[0];
@@ -330,8 +341,12 @@ export const isContentSubmissionsAllowedSite = ({ host = '', origin = '', user =
         return false;
     }
 
-    const hasRegularClub = !!(club?.id || user?.clubId);
-    if (String(user?.role || '') === 'administrator' && !hasRegularClub) {
+    const hasAssignedClub = !!(user?.clubId && user.clubId !== 'platform' && user.clubId !== 'global');
+    const isSuperAdminRole = String(user?.role || '') === 'administrator' ||
+        String(user?.role || '') === 'superadmin' ||
+        user?.isSuperAdmin === true;
+
+    if (isSuperAdminRole && !hasAssignedClub) {
         return true;
     }
 

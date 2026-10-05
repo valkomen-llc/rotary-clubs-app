@@ -32,9 +32,18 @@ export const isOnPlatformDomain = (): boolean =>
     PLATFORM_HOSTS.includes(window.location.hostname);
 
 /**
- * Super administrador de la plataforma: el rol `administrator` EN el dominio
- * de la plataforma. El mismo rol en el sitio de un club administra ese club,
- * no la plataforma.
+ * Super administrador de la plataforma: el rol de operación global EN el
+ * dominio de la plataforma. El mismo rol en el sitio de un club administra
+ * ese club, no la plataforma.
+ *
+ * Se reconocen los dos rótulos de operación global (`administrator` y
+ * `superadmin`, más la marca `isSuperAdmin`): limitarlo a uno solo dejaba al
+ * otro sin el menú de Management en el panel central —incluido Rotary en
+ * Acción— aunque el servidor ya lo trataba como operador global.
  */
-export const isPlatformSuperAdmin = (user?: { role?: string } | null): boolean =>
-    isOnPlatformDomain() && String(user?.role || '') === 'administrator';
+export const isPlatformSuperAdmin = (user?: { role?: string; isSuperAdmin?: boolean } | null): boolean => {
+    if (!isOnPlatformDomain()) return false;
+    const role = String((user as unknown as { role?: string })?.role || '');
+    return role === 'administrator' || role === 'superadmin'
+        || (user as unknown as { isSuperAdmin?: boolean })?.isSuperAdmin === true;
+};

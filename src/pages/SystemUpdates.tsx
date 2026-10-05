@@ -42,6 +42,24 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1162.0',
+        title: 'Super Admin global en Rotary en Acción 🌐🛡️',
+        description: 'El Super Admin de Club Platform (rol superadmin) ya accede a Rotary en Acción y a Solicitudes de Contenido con alcance GLOBAL: todas las solicitudes de todos los sitios/distritos, sin depender de estar asociado a un sitio o distrito y sin duplicar el módulo. Puerta (isContentSubmissionsAllowedSite) y alcance (campaignIdsInScope, resolveScope, isOperator) unificados en cliente y servidor; el menú central reconoce ambos rótulos de operación global. Los administradores locales conservan su aislamiento estricto: sólo ven lo de su sitio.',
+        date: new Date().toISOString(),
+        tags: ['rotary-en-accion', 'superadmin', 'club-platform', 'solicitudes', 'alcance-global', 'production-release'],
+        type: 'feature',
+        impact: 'high',
+    },
+    {
+        version: '4.1161.0',
+        title: 'Habilitación de Rotary en Acción y Solicitudes de Contenido para Superadmin en Club Platform 🎛️🚀',
+        description: 'Habilitación integral de las herramientas y módulos de Rotary en Acción (/admin/rotary-en-accion), Bandeja de Solicitudes de Contenido (/admin/campanas-contribucion/solicitudes) y automatización de campañas para el usuario Superadmin en Club Platform (app.clubplatform.org). Corrección del criterio de exclusión en isContentSubmissionsAllowedSite donde el contexto de club por defecto en hosts de plataforma invalidaba erróneamente el acceso del administrador global. Se incorporaron accesos directos en el menú de navegación (Gestión), indicadores de solicitudes pendientes en tiempo real, iconos de buzón y campana en el encabezado, y rutas normalizadas en la especificación RBAC tanto en cliente como en servidor preservando el aislamiento estricto multi-tenant para clubes regulares.',
+        date: new Date().toISOString(),
+        tags: ['rotary-en-accion', 'superadmin', 'club-platform', 'solicitudes', 'submissions', 'rbac', 'production-release'],
+        type: 'feature',
+        impact: 'high',
+    },
+    {
         version: '4.1160.0',
         title: 'Rotary en Acción: Carga Definitiva de Evidencias, Acumulación Reactiva en Móviles y Validación Estricta 📸✨',
         description: 'Reparación definitiva y de extremo a extremo del sistema de carga de evidencias del formulario público Rotary en Acción (/rotary-en-accion), especialmente en dispositivos móviles Android/Chrome: 1) Corrección de discrepancia de parámetros en checkFileMeta (soporte universal para { name, type, size } y { contentType, filename, size }) que descartaba silenciosamente fotografías adicionales. 2) Carga asíncrona inmediata con ciclo de vida completo por archivo (pending, uploading con barra de progreso %, uploaded y error con botón de reintento interactivo), evitando que archivos o videos queden indefinidamente pendientes. 3) Regla de validación estricta: mínimo 5 fotografías obligatorias, máximo 10 fotografías, máximo 1 video (hasta 200 MB), con diferenciación clara donde el video no cuenta dentro de las 5 fotos mínimas (4 fotos + 1 video = inválido con aviso exacto; 5 fotos = válido; 10 fotos + 1 video = válido con 11 archivos admitidos). 4) Deduplicación por huella (name + size + lastModified), prevención de memory leaks de ObjectURL y eliminación limpia con cancelación XHR en vuelo. 5) Trazabilidad requerida en consola ([EVIDENCE_SELECTED], [EVIDENCE_MERGED], [EVIDENCE_UPLOAD_START], [EVIDENCE_UPLOAD_SUCCESS], [EVIDENCE_UPLOAD_ERROR], [EVIDENCE_VALIDATION]).',

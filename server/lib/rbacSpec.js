@@ -202,7 +202,7 @@ export const MODULES = [
         // una redirección que su dueño no puede abrir no redirige a nadie.
         key: 'contribution_campaigns', label: 'Campañas de Contribución', group: 'Contenido', scope: 'site',
         actions: ['view', 'edit', 'manage'],
-        routes: ['/admin/campanas-contribucion', '/admin/maneras-de-contribuir'], legacy: null,
+        routes: ['/admin/campanas-contribucion', '/admin/campanas-contribucion/solicitudes', '/admin/maneras-de-contribuir'], legacy: null,
         help: 'Las campañas de contribución que alcanzan a este sitio: su contacto local, su nota, su QR y sus centros de acopio. El contenido central lo define el Administrador del Sistema.',
     },
     {
@@ -351,7 +351,8 @@ export const MODULES = [
         key: 'platform_global', label: 'Contenido global', group: 'Plataforma', scope: 'platform',
         actions: ['view', 'create', 'edit', 'delete', 'publish', 'manage'],
         routes: [
-            '/admin/donaciones', '/admin/campanas-contribucion', '/admin/slider-global',
+            '/admin/donaciones', '/admin/campanas-contribucion', '/admin/campanas-contribucion/solicitudes',
+            '/admin/rotary-en-accion', '/admin/activacion-contenido', '/admin/slider-global',
             '/admin/notificaciones-aportes', '/admin/system-updates', '/admin/mission-control-vip',
         ],
         legacy: null, sensitive: true,

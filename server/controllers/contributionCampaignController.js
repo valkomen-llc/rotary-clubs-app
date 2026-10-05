@@ -308,7 +308,13 @@ const freeSlug = async (base) => {
 // cualquier otro rol administrativo del panel administra SU sitio. Deducirlo
 // del dominio acá sería un segundo criterio sobre lo mismo.
 const isPlatformOperator = (req) => {
+    // Alcance GLOBAL del Super Admin (v4.1162): el rol `superadmin` —o la marca
+    // `isSuperAdmin`— alcanza todas las campañas tenga o no club asignado, sin
+    // depender de un sitio o distrito. El `administrator` conserva la regla de
+    // siempre (sin club): un administrador local con club asignado sigue viendo
+    // sólo lo de su sitio y nunca hereda lo global.
     const role = String(req.user?.role || '');
+    if (role === 'superadmin' || req.user?.isSuperAdmin === true) return true;
     if (role !== 'administrator' && role !== 'superadmin') return false;
     if (req.user?.clubId) return false;
     return true;

@@ -486,7 +486,12 @@ check('⚠️ …y ese permiso sale del MISMO `menuItems` que filtra la barra la
     /const puedeVerSolicitudes = menuItems\.some/.test(LAYOUT));
 check('⚠️ la dirección de la bandeja se compone en UN solo sitio (`inboxLink`/`INBOX_PATH`)',
     /from '\.\.\/\.\.\/lib\/submissionInbox'/.test(LAYOUT)
-    && !/['"`]\/admin\/campanas-contribucion\/solicitudes/.test(codigo('src/components/admin/AdminLayout.tsx')));
+    // Las declaraciones `path:` del menú son DATOS (toda entrada del menú
+    // declara su ruta literal), no enlaces escritos a mano: lo que no puede
+    // haber es la dirección suelta en un `to=`, un `navigate()` o un
+    // `fetch`. v4.1161 agrega las entradas del módulo al menú central.
+    && !/['"`]\/admin\/campanas-contribucion\/solicitudes/.test(codigo('src/components/admin/AdminLayout.tsx')
+        .replace(/path:\s*['"`]\/admin\/campanas-contribucion\/solicitudes['"`]/g, '')));
 
 // ── El ancho ──
 const BANDEJA = leer('src/pages/admin/SubmissionsInbox.tsx');

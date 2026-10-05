@@ -359,6 +359,7 @@ export const MODULES: ModuleSpec[] = [
         ],
         "routes": [
             "/admin/campanas-contribucion",
+            "/admin/campanas-contribucion/solicitudes",
             "/admin/maneras-de-contribuir"
         ],
         "legacy": null,
@@ -724,6 +725,9 @@ export const MODULES: ModuleSpec[] = [
         "routes": [
             "/admin/donaciones",
             "/admin/campanas-contribucion",
+            "/admin/campanas-contribucion/solicitudes",
+            "/admin/rotary-en-accion",
+            "/admin/activacion-contenido",
             "/admin/slider-global",
             "/admin/notificaciones-aportes",
             "/admin/system-updates",

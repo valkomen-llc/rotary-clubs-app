@@ -626,6 +626,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                 { icon: Megaphone, label: 'Campañas de Contribución', path: '/admin/campanas-contribucion', category: 'Management', keywords: ['campana', 'campaña', 'contribucion', 'emergencia', 'terremoto', 'donaciones', 'acopio', 'maneras de contribuir'] },
                 { icon: Megaphone, label: 'Campañas de Contenido', path: '/admin/activacion-contenido', category: 'Management', keywords: ['campana', 'campaña', 'contenido', 'activacion', 'rotary en accion', 'segmentar', 'audiencia', 'destinatarios'] },
                 { icon: HeartHandshake, label: 'Rotary en Acción', path: '/admin/rotary-en-accion', category: 'Management', keywords: ['rotary en accion', 'historias', 'captacion', 'banco', 'testimonios', 'solicitudes'], badge: 'nuevo' },
+                { icon: Inbox, label: 'Solicitudes de Contenido', path: '/admin/campanas-contribucion/solicitudes', category: 'Management', keywords: ['solicitudes', 'contenido', 'rotary en accion', 'buzon', 'evidencias', 'bandeja'], badge: solicitudes.medido && solicitudes.count > 0 ? String(solicitudes.count > 99 ? '99+' : solicitudes.count) : undefined },
                 { icon: LayoutTemplate, label: 'Slider Global / Llamados a la Acción', path: '/admin/slider-global', category: 'Management', keywords: ['slider', 'slide', 'carrusel', 'llamado', 'accion', 'destacado', 'bloque destacado', 'polio', 'end polio', 'banner', 'portada', 'global', 'spotlight'] },
                 { icon: Mail, label: 'Notificaciones de Aportes', path: '/admin/notificaciones-aportes', category: 'Management', keywords: ['notificacion', 'notificaciones', 'correo', 'email', 'recibo', 'confirmacion', 'aporte', 'aportes', 'donacion', 'colrotarios', 'remitente', 'plantilla'] },
                 { icon: Bell, label: 'Comunicaciones CRM', path: '/admin/crm', category: 'General', keywords: ['crm', 'email', 'campana', 'whatsapp'] },
@@ -725,6 +726,12 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                 { icon: Megaphone, label: 'Campañas de Contribución', path: '/admin/campanas-contribucion', category: 'Contenido', keywords: ['campana', 'campaña', 'campanas', 'contribucion', 'contribuir', 'maneras de contribuir', 'aportes', 'donar', 'acopio', 'emergencia', 'qr', 'centros'] },
                 { icon: Megaphone, label: 'Campañas', path: '/admin/activacion-contenido', category: 'Contenido', keywords: ['campana', 'campaña', 'contenido', 'activacion', 'rotary en accion', 'audiencia', 'email', 'whatsapp'] },
             );
+            if (isSubmissionsAllowed) {
+                items.push(
+                    { icon: HeartHandshake, label: 'Rotary en Acción', path: '/admin/rotary-en-accion', category: 'Contenido', keywords: ['rotary en accion', 'historias', 'captacion', 'banco', 'testimonios', 'solicitudes'], badge: 'nuevo' },
+                    { icon: Inbox, label: 'Solicitudes de Contenido', path: '/admin/campanas-contribucion/solicitudes', category: 'Contenido', keywords: ['solicitudes', 'contenido', 'rotary en accion', 'buzon', 'evidencias', 'bandeja'], badge: solicitudes.medido && solicitudes.count > 0 ? String(solicitudes.count > 99 ? '99+' : solicitudes.count) : undefined },
+                );
+            }
         }
 
         if (user?.role !== 'editor') {

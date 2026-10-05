@@ -1,10 +1,13 @@
 // ════════════════════════════════════════════════════════════════════════════
 // Verificación del aislamiento del módulo de Solicitudes de Contenido (Rotary en Acción)
-// v4.1136.0
+// v4.1162.0
 //
 // Regla: El módulo de solicitudes de contenido / Rotary en Acción está reservado
-// EXCLUSIVAMENTE a las 4 entidades principales de la plataforma:
-//   1. Club Platform (app.clubplatform.org, localhost / superadmin global sin club)
+// a la capa de administración central y a las entidades principales:
+//   0. Super Admin global de Club Platform (rol `superadmin` o marca
+//      `isSuperAdmin`): acceso GLOBAL sin depender de sitio/distrito asociado
+//      ni del host desde el que abra el módulo.
+//   1. Club Platform (app.clubplatform.org, localhost / operador sin club)
 //   2. Rotary 4281 (rotary4281.org / entidad distrital 4281)
 //   3. Feria de Proyectos (feriadeproyectos.org)
 //   4. Colrotarios (colrotarios.org)
@@ -13,6 +16,11 @@
 // NO deben tener acceso al módulo, NO deben ver el icono en el encabezado,
 // NO deben ver la tarjeta en el editor de campañas, y las rutas de backend
 // deben bloquear el acceso con 403 o respuestas vacías en polling.
+//
+// ⚠️ El Super Admin con rol `administrator` conserva la regla de siempre (sin
+// club asignado). Un `administrator` CON club asignado sigue siendo un
+// administrador LOCAL y se rechaza en host de plataforma: esa es la línea que
+// impide ampliar por accidente los permisos de usuarios locales.
 // ════════════════════════════════════════════════════════════════════════════
 
 import assert from 'node:assert/strict';
@@ -20,6 +28,7 @@ import { readFileSync } from 'node:fs';
 import { isContentSubmissionsAllowedSite, PLATFORM_HOSTS } from '../server/lib/submissionInbox.js';
 import { isOperator } from '../server/lib/campaignScope.js';
 import { resolveScope } from '../server/lib/rotaryDashboard.js';
+import { campaignIdsInScope } from '../server/controllers/contributionCampaignController.js';
 import { requireSubmissionInboxAccess, isSubmissionInboxAllowed } from '../server/middleware/submissionInboxGuard.js';
 
 let passed = 0;
@@ -74,6 +83,37 @@ test('Club Platform superadmin sin club está permitido', () => {
         host: 'localhost',
         user: { role: 'administrator', clubId: null },
     }), true);
+    // Caso real: useClub() resuelve el club maestro por defecto (con club.id no nulo)
+    assert.equal(isContentSubmissionsAllowedSite({
+        host: 'app.clubplatform.org',
+        user: { role: 'administrator', clubId: null },
+        club: { id: 'master-club-id', name: 'Rotary Club Origen', subdomain: 'origen' },
+    }), true, 'Superadmin en app.clubplatform.org con contexto de club maestro debe estar permitido');
+    assert.equal(isContentSubmissionsAllowedSite({
+        host: 'app.clubplatform.org',
+        user: { role: 'administrator', isSuperAdmin: true },
+        club: { id: 'master-club-id', name: 'Rotary Club Origen' },
+    }), true, 'Superadmin con isSuperAdmin flag en app.clubplatform.org debe estar permitido');
+});
+
+test('Super Admin (rol superadmin) entra SIN depender de sitio/distrito asociado', () => {
+    // Con club asignado y en host de plataforma: global igual.
+    assert.equal(isContentSubmissionsAllowedSite({
+        host: 'app.clubplatform.org',
+        user: { role: 'superadmin', clubId: 'club-nuevo-cali' },
+        club: { id: 'club-nuevo-cali', type: 'club', name: 'Rotary Nuevo Cali' },
+    }), true, 'El Super Admin no depende de su asociación a un sitio');
+    // Y desde el dominio de un club: el alcance global viaja con el rol.
+    assert.equal(isContentSubmissionsAllowedSite({
+        host: 'rotarynuevocali.org',
+        user: { role: 'superadmin', clubId: 'club-nuevo-cali' },
+        club: { id: 'club-nuevo-cali', type: 'club', name: 'Rotary Nuevo Cali' },
+    }), true);
+    // Marca isSuperAdmin con rol administrator: también global.
+    assert.equal(isContentSubmissionsAllowedSite({
+        host: 'app.clubplatform.org',
+        user: { role: 'administrator', clubId: 'club-nuevo-cali', isSuperAdmin: true },
+    }), true);
 });
 
 console.log('\n── 2 · Bloqueo estricto para clubes regulares ──');
@@ -109,12 +149,25 @@ test('Administrador de club regular accediendo por host de plataforma es RECHAZA
     assert.equal(allowed, false, 'Un administrador con clubId asignado no es platform superadmin');
 });
 
+test('district_admin / club_admin / editor con club NUNCA heredan lo global', () => {
+    for (const role of ['district_admin', 'club_admin', 'editor', 'member']) {
+        assert.equal(isContentSubmissionsAllowedSite({
+            host: 'app.clubplatform.org',
+            user: { role, clubId: 'club-nuevo-cali' },
+            club: { id: 'club-nuevo-cali', type: 'club', name: 'Rotary Nuevo Cali' },
+        }), false, `rol ${role} con club no es global`);
+    }
+});
+
 console.log('\n── 3 · Aislamiento del operador de plataforma (campaignScope & dashboard) ──');
 
-test('isOperator solo es true para administradores globales SIN clubId', () => {
+test('isOperator solo es true para administradores globales SIN clubId, o Super Admin', () => {
     assert.equal(isOperator({ user: { role: 'administrator' } }), true);
     assert.equal(isOperator({ user: { role: 'administrator', clubId: 'club-nuevo-cali' } }), false);
     assert.equal(isOperator({ user: { role: 'club_admin', clubId: 'club-nuevo-cali' } }), false);
+    assert.equal(isOperator({ user: { role: 'superadmin', clubId: 'club-nuevo-cali' } }), true, 'Super Admin global aun con club asignado');
+    assert.equal(isOperator({ user: { role: 'administrator', clubId: 'club-nuevo-cali', isSuperAdmin: true } }), true);
+    assert.equal(isOperator({ user: { role: 'district_admin', clubId: 'club-4281' } }), false, 'Distrito nunca es operador global');
 });
 
 test('resolveScope en rotaryDashboard no otorga alcance global a administradores con clubId', async () => {
@@ -125,6 +178,15 @@ test('resolveScope en rotaryDashboard no otorga alcance global a administradores
     const scopeClubAdmin = await resolveScope({ user: { role: 'administrator', clubId: 'club-123' } }, ['camp-1']);
     assert.equal(scopeClubAdmin.isOperator, false);
     assert.equal(scopeClubAdmin.clubId, 'club-123');
+
+    const scopeSuper = await resolveScope({ user: { role: 'superadmin', clubId: 'club-123' } }, ['camp-1']);
+    assert.equal(scopeSuper.isOperator, true, 'Super Admin con club: alcance global');
+    assert.equal(scopeSuper.campaigns, null);
+});
+
+test('campaignIdsInScope devuelve null (todas) para el Super Admin con club asignado', async () => {
+    assert.equal(await campaignIdsInScope({ user: { role: 'superadmin', clubId: 'club-nuevo-cali' } }), null);
+    assert.equal(await campaignIdsInScope({ user: { role: 'administrator' } }), null);
 });
 
 console.log('\n── 4 · Middleware de protección backend (requireSubmissionInboxAccess) ──');
@@ -215,6 +277,16 @@ test('src/pages/admin/RotaryEnAccionAdmin.tsx protege la pantalla y redirige sit
     const src = leer('src/pages/admin/RotaryEnAccionAdmin.tsx');
     assert.ok(/isContentSubmissionsAllowedSite/.test(src));
     assert.ok(/navigate\('\/admin\/analytics'/.test(src));
+});
+
+test('el Super Admin ve Rotary en Acción en el menú central (Management, sin duplicar)', () => {
+    const layout = leer('src/components/admin/AdminLayout.tsx');
+    assert.ok(/label: 'Rotary en Acción', path: '\/admin\/rotary-en-accion', category: 'Management'/.test(layout));
+    assert.ok(/label: 'Solicitudes de Contenido', path: '\/admin\/campanas-contribucion\/solicitudes', category: 'Management'/.test(layout));
+    const apariciones = (layout.match(/path: '\/admin\/rotary-en-accion'/g) || []).length;
+    assert.equal(apariciones, 2, 'una entrada para el operador (Management) y una para sitios habilitados (Contenido), no dos módulos');
+    const plat = leer('src/lib/platformAdmin.ts');
+    assert.ok(/role === 'superadmin'/.test(plat), 'isPlatformSuperAdmin reconoce el rol superadmin');
 });
 
 console.log(`\n────────────────────────────────────────────────────────────`);

@@ -166,6 +166,18 @@ export const isContentSubmissionsAllowedSite = (ctx: ContentSubmissionsSiteConte
     const club = ctx.club;
     const user = ctx.user;
 
+    // ── Super Admin global de Club Platform (v4.1162) ─────────────────────
+    // No depende de estar asociado a un sitio o distrito: su alcance es todo
+    // el ecosistema, abra el módulo desde el dominio que lo abra y tenga o no
+    // un club asignado en su cuenta. La marca es el ROL `superadmin` (o el
+    // indicador `isSuperAdmin`), que nunca se asigna a un administrador local:
+    // los locales usan `administrator`/`district_admin`/`club_admin`/`editor`
+    // con su clubId, y siguen entrando por las reglas de entidad de abajo.
+    const superRole = String((user as any)?.role || '');
+    if (superRole === 'superadmin' || (user as any)?.isSuperAdmin === true) {
+        return true;
+    }
+
     const clubType = String(club?.type || '').toLowerCase().trim();
     const clubCategory = String(club?.category || '').toLowerCase().trim();
     const clubName = String(club?.name || '').toLowerCase().trim();
@@ -201,16 +213,23 @@ export const isContentSubmissionsAllowedSite = (ctx: ContentSubmissionsSiteConte
         return true;
     }
 
-    // 4. Club Platform (Super Admin o sesión de plataforma sin club asignado)
+    // 4. Club Platform (Super Admin en host de plataforma)
     const isPlatformHost = PLATFORM_HOSTS.includes(rawHost);
     if (!isPlatformHost) {
         // En un dominio propio de un club (ej. rotarynuevocali.org) nunca es Club Platform
         return false;
     }
 
-    // En host de plataforma: sólo permitido si el usuario es administrador global y no tiene contexto de un club regular
-    const hasRegularClub = !!(club?.id || user?.clubId);
-    if (String(user?.role || '') === 'administrator' && !hasRegularClub) {
+    // En host de plataforma: sólo permitido si el usuario es administrador global de la plataforma
+    // (rol administrator/superadmin o flag isSuperAdmin) y NO pertenece a un club regular específico.
+    // En frontend, club?.id suele resolver al club maestro por defecto en hosts de plataforma, por
+    // lo que la no pertenencia a un club regular se valida rigurosamente contra user?.clubId.
+    const hasAssignedClub = !!(user?.clubId && user.clubId !== 'platform' && user.clubId !== 'global');
+    const isSuperAdminRole = String(user?.role || '') === 'administrator' ||
+        String(user?.role || '') === 'superadmin' ||
+        (user as any)?.isSuperAdmin === true;
+
+    if (isSuperAdminRole && !hasAssignedClub) {
         return true;
     }
 

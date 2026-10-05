@@ -18,7 +18,15 @@ import ensureContributionSchema from './ensureContributionSchema.js';
 import { effectiveStatus, pickCampaignForSite } from './contributionSpec.js';
 import { siteOf, servableCampaigns } from '../controllers/contributionCampaignController.js';
 
-export const isOperator = (req) => (req.user?.role === 'administrator' || req.user?.role === 'superadmin') && !req.user?.clubId;
+export const isOperator = (req) => {
+    // El Super Admin global no depende de tener o no club asignado: el rol
+    // `superadmin` (o la marca `isSuperAdmin`) ya es alcance total. El resto
+    // conserva la regla de siempre —operador sin club—, así que un
+    // administrador local con club asignado nunca hereda lo global.
+    const role = String(req.user?.role || '');
+    if (role === 'superadmin' || req.user?.isSuperAdmin === true) return true;
+    return (role === 'administrator' || role === 'superadmin') && !req.user?.clubId;
+};
 
 /**
  * Las campañas que esta sesión puede usar para generar.

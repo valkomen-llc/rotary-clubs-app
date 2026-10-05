@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1160.0",
-  "cache_bust": "4.1160.0",
+  "version": "4.1162.0",
+  "cache_bust": "4.1162.0",
   "type": "module",
-  "//": "UI V4.1160.0 | 2026-10-05 (Rotary en Acción: Carga Definitiva de Evidencias, Acumulación Reactiva en Móviles y Validación Estricta)",
+  "//": "UI V4.1162.0 | 2026-10-05 (Super Admin global en Rotary en Acción: acceso y alcance centralizado en Club Platform)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs && node scripts/check-version-parity.mjs && node scripts/check-syntax.mjs && node scripts/check-hooks.mjs && node scripts/check-routes.mjs && node scripts/check-imports.mjs && node scripts/check-server-undef.mjs && node scripts/check-route-handlers.mjs",
