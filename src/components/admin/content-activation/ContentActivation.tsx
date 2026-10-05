@@ -94,6 +94,15 @@ export default function ContentActivation() {
   const [senderOptions, setSenderOptions] = useState<any[]>([]);
   const [senderSearch, setSenderSearch] = useState('');
   const [previewAs, setPreviewAs] = useState('');
+  // Gestión del ciclo de vida (v4.1163): menú por tarjeta, edición en el
+  // constructor, programación y eliminación con confirmación.
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [schedFor, setSchedFor] = useState<Campaign | null>(null);
+  const [schedForm, setSchedForm] = useState({ startAt: '', endAt: '', frecuencia: 'mensual' });
+  const [deleteFor, setDeleteFor] = useState<Campaign | null>(null);
+  const [deleteInfo, setDeleteInfo] = useState<{ executions: any[]; enrollments: number; events: number } | null>(null);
+  const [acting, setActing] = useState(false);
 
   const H = { Authorization: `Bearer ${token}` };
 
@@ -227,13 +236,14 @@ export default function ContentActivation() {
       setCreated(campaign);
       toast.success('Borrador guardado.');
       load();
+      if (editingId && campaign?.id) refreshAfter(campaign.id);
       return campaign;
     } catch (e: any) { toast.error(e.message); return null; }
     finally { setSaving(false); }
   };
 
-  const openDetail = async (c: Campaign) => {
-    setSelected(c); setDetailTab('flujo');
+  const openDetail = async (c: Campaign, tab: 'flujo' | 'tablero' | 'tracker' | 'analitica' | 'insights' = 'flujo') => {
+    setSelected(c); setDetailTab(tab);
     try {
       const r = await fetch(`${API}/content-activation/${c.id}`, { headers: H });
       const d = await r.json();
@@ -242,6 +252,19 @@ export default function ContentActivation() {
       const ex = (d.executions || [])[0];
       if (ex) { setActiveExec(ex.id); loadExecData(c.id, ex.id); }
     } catch { /* noop */ }
+  };
+
+  const refreshAfter = async (id?: string) => {
+    await load();
+    const target = id || selected?.id;
+    if (target && selected) {
+      try {
+        const r = await fetch(`${API}/content-activation/${target}`, { headers: H });
+        const d = await r.json();
+        if (d.campaign) setSelected(d.campaign);
+        setExecutions(d.executions || []);
+      } catch { /* la lista ya se recargó */ }
+    }
   };
 
   const loadExecData = async (campaignId: string, executionId: string) => {
@@ -263,6 +286,7 @@ export default function ContentActivation() {
     const target = campaign || selected;
     if (!target) return;
     if (to === 'activa' && !confirm('¿Activar la campaña? Se empezará a contactar según el flujo.')) return;
+    if (to === 'archivada' && !confirm(`¿Archivar "${target.name}"? Dejará de operar pero se conserva el historial.`)) return;
     try {
       const r = await fetch(`${API}/content-activation/${target.id}/status`, {
         method: 'POST', headers: { ...H, 'Content-Type': 'application/json' },
@@ -274,6 +298,223 @@ export default function ContentActivation() {
       if (!campaign) { openDetail(d.campaign); }
       load();
     } catch (e: any) { toast.error(e.message); }
+  };
+
+  // ── Acciones por estado (siguen el FLOW del servidor; él valida) ──────
+  const actionsFor = (c: Campaign): { id: string; label: string; danger?: boolean }[] => {
+    const ver = { id: 'detalle', label: 'Ver detalle' };
+    const hist = { id: 'historial', label: 'Ver historial / ejecuciones' };
+    const dup = { id: 'duplicar', label: 'Duplicar campaña' };
+    const del = { id: 'eliminar', label: 'Eliminar…', danger: true };
+    switch (c.status) {
+      case 'borrador':
+        return [
+          { id: 'editar', label: 'Editar campaña' },
+          { id: 'programar', label: 'Programar…' },
+          { id: 'activar', label: 'Activar campaña' },
+          dup, del, ver,
+        ];
+      case 'programada':
+        return [
+          { id: 'editar', label: 'Editar campaña' },
+          { id: 'fecha', label: 'Cambiar fecha y hora…' },
+          { id: 'activar', label: 'Activar campaña' },
+          { id: 'cancelarProg', label: 'Cancelar programación' },
+          dup, del, ver,
+        ];
+      case 'activa':
+        return [
+          { id: 'editar', label: 'Editar (limitado)' },
+          { id: 'pausar', label: 'Pausar campaña' },
+          { id: 'finalizar', label: 'Finalizar' },
+          dup, del, ver, hist,
+        ];
+      case 'pausada':
+        return [
+          { id: 'reanudar', label: 'Reanudar campaña' },
+          { id: 'editar', label: 'Editar y reprogramar fechas' },
+          { id: 'finalizar', label: 'Finalizar' },
+          dup, del, ver, hist,
+        ];
+      case 'finalizada':
+        return [
+          { id: 'reactivar', label: 'Reactivar campaña' },
+          { id: 'archivar', label: 'Archivar' },
+          dup, ver, hist,
+        ];
+      case 'archivada':
+        return [
+          { id: 'restaurar', label: 'Restaurar a borrador' },
+          dup,
+          { id: 'eliminar', label: 'Eliminar definitivo…', danger: true },
+          ver, hist,
+        ];
+      default:
+        return [ver];
+    }
+  };
+
+  const toLocalInput = (iso: string) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  };
+
+  // Editar: reabre el constructor con TODA la configuración guardada.
+  const openWizardForEdit = async (c: Campaign) => {
+    setMenuFor(null);
+    try {
+      const r = await fetch(`${API}/content-activation/${c.id}`, { headers: H });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'No se pudo cargar la campaña');
+      const full = d.campaign || c;
+      setForm({
+        ...emptyForm,
+        name: full.name || '', description: full.description || '', objetivo: full.objetivo || '',
+        contributionCampaignId: full.contributionCampaignId || '',
+        startAt: toLocalInput(full.startAt), endAt: toLocalInput(full.endAt),
+        timezone: full.timezone || 'America/Bogota', frecuencia: full.frecuencia || 'mensual',
+        customDays: full.customDays ?? '',
+        canales: Array.isArray(full.canales) && full.canales.length ? full.canales : ['email'],
+        scopeDef: full.scopeDef || { type: 'district', ids: [] },
+        senderSiteId: full.senderSiteId || '',
+        audienceMode: full.audienceMode || 'dynamic',
+        excludedContactIds: full.excludedContactIds || [],
+        manualRecipients: full.manualRecipients || [],
+        savedSegmentId: full.savedSegmentId || '',
+        contentDef: {
+          email: { ...emptyForm.contentDef.email, ...(full.contentDef?.email || {}) },
+          whatsapp: { ...emptyForm.contentDef.whatsapp, ...(full.contentDef?.whatsapp || {}) },
+        },
+        audienceDef: full.audienceDef || { match: 'all', rules: [], sources: ['crm_contacts', 'club_roles'] },
+        flowDef: Array.isArray(full.flowDef) && full.flowDef.length ? full.flowDef : emptyForm.flowDef,
+        followRules: { ...emptyForm.followRules, ...(full.followRules || {}) },
+        variables: full.variables || {},
+      });
+      setCreated(full);
+      setEditingId(full.id);
+      setStep(0); setPreview(null); setContacts([]); setReadiness(null);
+      setShowWizard(true);
+      loadSenderOptions('');
+      if (full.scopeDef?.type) loadScopeItems(full.scopeDef.type, '');
+    } catch (e: any) { toast.error(e.message); }
+  };
+
+  const openSchedule = (c: Campaign) => {
+    setMenuFor(null);
+    setSchedForm({
+      startAt: toLocalInput(c.startAt),
+      endAt: toLocalInput(c.endAt),
+      frecuencia: c.frecuencia || 'mensual',
+    });
+    setSchedFor(c);
+  };
+
+  // Guardar programación: PUT de fechas (reprogramación) y, si viene de
+  // borrador, transición a programada. No existen jobs por campaña que
+  // duplicar: el tick (cron cada 5 min) solo procesa `activa` y la
+  // inscripción es idempotente (ON CONFLICT), así que reprogramar solo
+  // mueve los datos que el próximo tick leerá.
+  const saveSchedule = async (andProgram: boolean) => {
+    if (!schedFor) return;
+    setActing(true);
+    try {
+      const r = await fetch(`${API}/content-activation/${schedFor.id}`, {
+        method: 'PUT', headers: { ...H, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          startAt: schedForm.startAt ? new Date(schedForm.startAt).toISOString() : null,
+          endAt: schedForm.endAt ? new Date(schedForm.endAt).toISOString() : null,
+          frecuencia: schedForm.frecuencia,
+        }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'No se pudo guardar la programación');
+      let row = d.campaign;
+      if (andProgram && schedFor.status === 'borrador') {
+        const r2 = await fetch(`${API}/content-activation/${schedFor.id}/status`, {
+          method: 'POST', headers: { ...H, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'programada' }),
+        });
+        const d2 = await r2.json();
+        if (!r2.ok) throw new Error(d2.error || 'No se pudo programar');
+        row = d2.campaign;
+      }
+      toast.success(andProgram && schedFor.status === 'borrador' ? 'Campaña programada.' : 'Programación actualizada.');
+      setSchedFor(null);
+      await refreshAfter(row?.id);
+    } catch (e: any) { toast.error(e.message); }
+    finally { setActing(false); }
+  };
+
+  const doDuplicate = async (c: Campaign) => {
+    setMenuFor(null);
+    setActing(true);
+    try {
+      const r = await fetch(`${API}/content-activation/${c.id}/duplicate`, { method: 'POST', headers: H });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'No se pudo duplicar');
+      toast.success(`Duplicada como "${d.campaign?.name}" (borrador).`);
+      load();
+    } catch (e: any) { toast.error(e.message); }
+    finally { setActing(false); }
+  };
+
+  const askDelete = async (c: Campaign) => {
+    setMenuFor(null);
+    setDeleteFor(c);
+    setDeleteInfo(null);
+    try {
+      const [e1, e2] = await Promise.all([
+        fetch(`${API}/content-activation/${c.id}/executions`, { headers: H }).then((r) => r.json()).catch(() => ({})),
+        fetch(`${API}/content-activation/${c.id}/timeline`, { headers: H }).then((r) => r.json()).catch(() => ({})),
+      ]);
+      const execs = e1.executions || [];
+      setDeleteInfo({
+        executions: execs,
+        enrollments: execs.reduce((a: number, x: any) => a + (Number(x.enrolled) || 0), 0),
+        events: (e2.events || []).length,
+      });
+    } catch { /* el servidor decide igual; el modal explica ambos casos */ }
+  };
+
+  const doDelete = async () => {
+    if (!deleteFor) return;
+    setActing(true);
+    try {
+      const r = await fetch(`${API}/content-activation/${deleteFor.id}`, {
+        method: 'DELETE', headers: { ...H, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: true }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'No se pudo eliminar');
+      if (d.deleted) toast.success(`"${deleteFor.name}" eliminada definitivamente (sin historial).`);
+      else toast.success(`"${deleteFor.name}" archivada: se conserva el historial para auditoría.`);
+      if (selected?.id === deleteFor.id) setSelected(null);
+      setDeleteFor(null);
+      load();
+    } catch (e: any) { toast.error(e.message); }
+    finally { setActing(false); }
+  };
+
+  const doAction = async (action: string, c: Campaign) => {
+    switch (action) {
+      case 'editar': return openWizardForEdit(c);
+      case 'programar': case 'fecha': return openSchedule(c);
+      case 'activar': return transition('activa', c);
+      case 'pausar': return transition('pausada', c);
+      case 'reanudar': case 'reactivar': return transition('activa', c);
+      case 'finalizar': return transition('finalizada', c);
+      case 'archivar': return transition('archivada', c);
+      case 'restaurar': return transition('borrador', c);
+      case 'cancelarProg': return transition('borrador', c);
+      case 'duplicar': return doDuplicate(c);
+      case 'eliminar': return askDelete(c);
+      case 'detalle': return openDetail(c);
+      case 'historial': return openDetail(c, 'tracker');
+      default: return null;
+    }
   };
 
   const setEmailField = (k: string, v: string) => {
@@ -397,23 +638,52 @@ export default function ContentActivation() {
           <h2 className="text-xl font-bold">Campañas de Contenido</h2>
           <p className="text-sm text-gray-500">Campaña → Ámbito → Audiencia → Destinatarios → Canal → Automatización.</p>
         </div>
-        <button onClick={() => { setShowWizard(true); setStep(0); setForm(emptyForm); setCreated(null); setPreview(null); setContacts([]); setPreviewAs(''); setSenderAuto(null); setSenderOptions([]); setSenderSearch(''); loadSenderOptions(''); }} className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold">+ Nueva campaña</button>
+        <button onClick={() => { setShowWizard(true); setStep(0); setForm(emptyForm); setCreated(null); setEditingId(null); setPreview(null); setContacts([]); setPreviewAs(''); setSenderAuto(null); setSenderOptions([]); setSenderSearch(''); loadSenderOptions(''); }} className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold">+ Nueva campaña</button>
       </div>
+
+      {menuFor && <div className="fixed inset-0 z-30" onClick={() => setMenuFor(null)} />}
 
       {list.length === 0 ? (
         <div className="bg-white border rounded-2xl p-8 text-center text-sm text-gray-500">Todavía no hay campañas de contenido. Crea la primera (p. ej. “Rotary en Acción”).</div>
       ) : (
         <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
           {list.map((c) => (
-            <button key={c.id} onClick={() => openDetail(c)} className="text-left bg-white border rounded-2xl p-4 hover:shadow">
-              <div className="flex items-center justify-between">
+            <div key={c.id} onClick={() => openDetail(c)} className="text-left bg-white border rounded-2xl p-4 hover:shadow cursor-pointer relative">
+              <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-bold px-2 py-1 rounded-full bg-gray-100">{STATUS_LABEL[c.status] || c.status}</span>
-                <span className="text-xs text-gray-400">{c.frecuencia}</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-gray-400 mr-1">{c.frecuencia}</span>
+                  <div className="relative">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setMenuFor(menuFor === c.id ? null : c.id); }}
+                      className="w-8 h-8 rounded-xl hover:bg-gray-100 text-gray-500 font-black text-lg leading-none"
+                      title="Acciones de la campaña"
+                      aria-label={`Acciones de ${c.name}`}
+                    >⋯</button>
+                    {menuFor === c.id && (
+                      <div className="absolute right-0 mt-1 w-60 bg-white border rounded-2xl shadow-xl p-1.5 z-40 text-sm" onClick={(e) => e.stopPropagation()}>
+                        <div className="px-3 py-2 text-[11px] font-bold text-gray-400 uppercase truncate">{c.name}</div>
+                        {actionsFor(c).map((a) => (
+                          <button
+                            key={a.id}
+                            disabled={acting}
+                            onClick={() => { const id = menuFor; setMenuFor(null); if (id) doAction(a.id, c); }}
+                            className={`w-full text-left px-3 py-2 rounded-xl hover:bg-gray-50 font-medium ${a.danger ? 'text-red-600' : 'text-gray-700'}`}
+                          >{a.label}</button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
               <div className="font-bold mt-2">{c.name}</div>
               <div className="text-xs text-gray-500 mt-1 line-clamp-2">{c.description}</div>
-              <div className="text-xs text-gray-400 mt-2">{c.scopeDef?.type || '—'} · {c.audienceMode === 'fixed' ? 'fija' : 'dinámica'} · {c.executionCount ?? 0} ejecuciones</div>
-            </button>
+              <div className="text-xs text-gray-400 mt-2">{c.scopeDef?.type || '—'} · {c.audienceMode === 'fixed' ? 'fija' : 'dinámica'} · {c.executionCount ?? 0} ejecuciones · {(c.enrollmentCount ?? 0)} inscripciones</div>
+              <div className="text-xs text-gray-400 mt-1">
+                Última: {c.lastPeriodoLabel ? `${c.lastPeriodoLabel} (${c.lastExecutionStatus})` : 'sin ejecuciones'}
+                {' · '}Próxima: {c.status === 'programada' && c.startAt ? new Date(c.startAt).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : c.status === 'activa' ? 'en curso' : '—'}
+              </div>
+            </div>
           ))}
         </div>
       )}
@@ -421,7 +691,7 @@ export default function ContentActivation() {
       {showWizard && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-auto p-6">
-            <h3 className="font-bold text-lg">Nueva campaña de contenido {step + 1}/5</h3>
+            <h3 className="font-bold text-lg">{editingId ? 'Editar campaña' : 'Nueva campaña de contenido'} {step + 1}/5</h3>
             <div className="text-xs text-gray-500 mt-1">{WIZARD_STEPS[step]}</div>
             <div className="flex gap-1 mt-3">
               {WIZARD_STEPS.map((s, i) => (
@@ -753,7 +1023,7 @@ export default function ContentActivation() {
             )}
 
             <div className="flex justify-between mt-6">
-              <button onClick={() => { setShowWizard(false); }} className="text-sm text-gray-500">Cancelar</button>
+              <button onClick={() => { setShowWizard(false); setEditingId(null); }} className="text-sm text-gray-500">Cancelar</button>
               <div className="flex gap-2">
                 {step > 0 && <button onClick={() => setStep(step - 1)} className="px-4 py-2 rounded-xl border text-sm">Atrás</button>}
                 {step === 2 && <button onClick={async () => { await saveDraft(); }} disabled={saving} className="px-4 py-2 rounded-xl border text-sm">Guardar borrador</button>}
@@ -779,11 +1049,59 @@ export default function ContentActivation() {
                       if (!c) return;
                       const r = await loadReadiness(c.id);
                       if (r && !r.ok) { toast.error(`Falta completar: ${r.items.filter((i: any) => !i.ok).map((i: any) => i.label).join(', ')}`); return; }
-                      await transition('activa', c); setShowWizard(false);
+                      await transition('activa', c); setShowWizard(false); setEditingId(null);
                     }} className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold">Activar campaña</button>
                   </>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {schedFor && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6">
+            <h3 className="font-bold text-lg">{schedFor.status === 'borrador' ? 'Programar campaña' : 'Cambiar fecha y hora'}</h3>
+            <p className="text-xs text-gray-500 mt-1">“{schedFor.name}” · la reprogramación actualiza la campaña existente: no se crean copias ni tareas duplicadas (la automatización lee estos datos en cada ciclo).</p>
+            <div className="grid gap-3 mt-4 text-sm">
+              <label className="text-xs">Inicio<input type="datetime-local" className="border rounded-xl px-3 py-2 text-sm w-full" value={schedForm.startAt} onChange={(e) => setSchedForm({ ...schedForm, startAt: e.target.value })} /></label>
+              <label className="text-xs">Fin (opcional)<input type="datetime-local" className="border rounded-xl px-3 py-2 text-sm w-full" value={schedForm.endAt} onChange={(e) => setSchedForm({ ...schedForm, endAt: e.target.value })} /></label>
+              <label className="text-xs">Frecuencia<select className="border rounded-xl px-3 py-2 text-sm w-full" value={schedForm.frecuencia} onChange={(e) => setSchedForm({ ...schedForm, frecuencia: e.target.value })}>{FREQUENCIES.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}</select></label>
+            </div>
+            <div className="flex justify-end gap-2 mt-6">
+              <button onClick={() => setSchedFor(null)} className="px-4 py-2 rounded-xl border text-sm">Cancelar</button>
+              <button onClick={() => saveSchedule(false)} disabled={acting || !schedForm.startAt} className="px-4 py-2 rounded-xl border text-sm font-bold disabled:opacity-50">Guardar fechas</button>
+              {schedFor.status === 'borrador' && (
+                <button onClick={() => saveSchedule(true)} disabled={acting || !schedForm.startAt} className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold disabled:opacity-50">Guardar y programar</button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteFor && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6">
+            <h3 className="font-bold text-lg text-red-700">Eliminar campaña</h3>
+            <p className="text-sm mt-2">Vas a eliminar <b>“{deleteFor.name}”</b> (estado: {STATUS_LABEL[deleteFor.status] || deleteFor.status}).</p>
+            <div className="text-xs text-gray-600 mt-3 space-y-1 bg-gray-50 border rounded-xl p-3">
+              {deleteInfo ? (
+                <>
+                  <div>Ejecuciones: <b>{deleteInfo.executions.length}</b> · Inscripciones: <b>{deleteInfo.enrollments}</b> · Eventos: <b>{deleteInfo.events}</b></div>
+                  {(deleteInfo.executions.length + deleteInfo.enrollments + deleteInfo.events) > 0 ? (
+                    <div>Con este historial se <b>archivará</b>: dejará de operar, pero las ejecuciones y el historial se conservan para auditoría y la campaña podrá restaurarse a borrador.</div>
+                  ) : (
+                    <div>Sin historial que conservar: se <b>eliminará definitivamente</b> la campaña.</div>
+                  )}
+                </>
+              ) : (
+                <div>Verificando historial… Si tiene ejecuciones se archivará (conserva auditoría); si no, se eliminará definitivamente.</div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 mt-6">
+              <button onClick={() => { setDeleteFor(null); setDeleteInfo(null); }} className="px-4 py-2 rounded-xl border text-sm">Cancelar</button>
+              <button onClick={doDelete} disabled={acting} className="px-4 py-2 rounded-xl bg-red-600 text-white text-sm font-bold disabled:opacity-50">Sí, eliminar “{deleteFor.name}”</button>
             </div>
           </div>
         </div>
@@ -857,13 +1175,26 @@ export default function ContentActivation() {
               <div className="font-bold text-lg">{selected.name}</div>
               <div className="text-xs text-gray-500">{STATUS_LABEL[selected.status]} · {selected.frecuencia} · {(selected.canales || []).join('+')} · ámbito {selected.scopeDef?.type || '—'} · audiencia {selected.audienceMode === 'fixed' ? 'fija' : 'dinámica'}</div>
             </div>
-            <div className="flex gap-2 text-xs">
+            <div className="flex flex-wrap gap-2 text-xs">
               <button onClick={() => setSelected(null)} className="border rounded-xl px-3 py-2">Cerrar</button>
-              {selected.status === 'borrador' && <button onClick={() => transition('programada')} className="border rounded-xl px-3 py-2 font-bold">Programar</button>}
-              {selected.status === 'programada' && <button onClick={() => transition('activa')} className="bg-emerald-600 text-white rounded-xl px-3 py-2 font-bold">Activar</button>}
+              {(selected.status === 'borrador' || selected.status === 'programada' || selected.status === 'pausada') && (
+                <button onClick={() => openWizardForEdit(selected)} className="border rounded-xl px-3 py-2 font-bold">Editar</button>
+              )}
+              {(selected.status === 'activa') && (
+                <button onClick={() => openWizardForEdit(selected)} className="border rounded-xl px-3 py-2" title="En activa solo se editan descripción, objetivo, variables, reglas y contenido. Pausa para reprogramar fechas.">Editar</button>
+              )}
+              {selected.status === 'borrador' && <button onClick={() => openSchedule(selected)} className="border rounded-xl px-3 py-2 font-bold">Programar…</button>}
+              {selected.status === 'programada' && <button onClick={() => openSchedule(selected)} className="border rounded-xl px-3 py-2 font-bold">Cambiar fecha…</button>}
+              {(selected.status === 'borrador' || selected.status === 'programada') && <button onClick={() => transition('activa')} className="bg-emerald-600 text-white rounded-xl px-3 py-2 font-bold">Activar</button>}
+              {selected.status === 'programada' && <button onClick={() => transition('borrador')} className="border rounded-xl px-3 py-2" title="Vuelve a borrador y cancela la programación.">Cancelar programación</button>}
               {selected.status === 'activa' && <button onClick={() => transition('pausada')} className="border rounded-xl px-3 py-2 font-bold">Pausar</button>}
               {selected.status === 'pausada' && <button onClick={() => transition('activa')} className="bg-emerald-600 text-white rounded-xl px-3 py-2 font-bold">Reanudar</button>}
               {(selected.status === 'activa' || selected.status === 'pausada') && <button onClick={() => transition('finalizada')} className="border rounded-xl px-3 py-2">Finalizar</button>}
+              {selected.status === 'finalizada' && <button onClick={() => transition('activa')} className="bg-emerald-600 text-white rounded-xl px-3 py-2 font-bold">Reactivar</button>}
+              {selected.status === 'finalizada' && <button onClick={() => transition('archivada')} className="border rounded-xl px-3 py-2">Archivar</button>}
+              {selected.status === 'archivada' && <button onClick={() => transition('borrador')} className="border rounded-xl px-3 py-2 font-bold">Restaurar</button>}
+              <button onClick={() => doDuplicate(selected)} disabled={acting} className="border rounded-xl px-3 py-2">Duplicar</button>
+              <button onClick={() => askDelete(selected)} disabled={acting} className="border border-red-200 text-red-600 rounded-xl px-3 py-2">Eliminar…</button>
             </div>
           </div>
           <div className="flex gap-2 mt-4 text-xs">

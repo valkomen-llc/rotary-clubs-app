@@ -27,6 +27,8 @@ router.post('/:id/send-test', ctrl.sendTest);
 router.get('/:id', ctrl.detail);
 router.put('/:id', ctrl.update);
 router.post('/:id/status', ctrl.transition);
+router.post('/:id/duplicate', ctrl.duplicate);
+router.delete('/:id', ctrl.remove);
 router.post('/:id/preview', ctrl.preview);
 router.post('/preview', ctrl.preview);
 router.get('/:id/executions', ctrl.executions);

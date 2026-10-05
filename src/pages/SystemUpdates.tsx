@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1163.0',
+        title: 'Campañas de Contenido: gestión completa del ciclo de vida 🛠️📋',
+        description: 'Cada tarjeta de Campañas de Contenido (/admin/activacion-contenido) ya se administra durante todo su ciclo de vida sin crear una nueva: menú contextual por estado (editar, programar, cambiar fecha y hora, activar, pausar, reanudar, finalizar, cancelar programación, archivar, restaurar, duplicar, eliminar con confirmación y ver historial), reapertura del constructor con toda la configuración guardada, y tarjetas con última/próxima ejecución. Nuevos endpoints POST /:id/duplicate y DELETE /:id (borrado real sin historial, archivado con historial para auditoría). Puerta de escritura por campaña (el Super Admin administra lo global; los sitios solo lo suyo). Sin jobs por campaña: el tick central solo procesa activas y la inscripción es idempotente, así que reprogramar nunca duplica ejecuciones.',
+        date: new Date().toISOString(),
+        tags: ['campanas-de-contenido', 'ciclo-de-vida', 'programacion', 'duplicar', 'eliminar', 'permisos', 'production-release'],
+        type: 'feature',
+        impact: 'high',
+    },
+    {
         version: '4.1162.0',
         title: 'Super Admin global en Rotary en Acción 🌐🛡️',
         description: 'El Super Admin de Club Platform (rol superadmin) ya accede a Rotary en Acción y a Solicitudes de Contenido con alcance GLOBAL: todas las solicitudes de todos los sitios/distritos, sin depender de estar asociado a un sitio o distrito y sin duplicar el módulo. Puerta (isContentSubmissionsAllowedSite) y alcance (campaignIdsInScope, resolveScope, isOperator) unificados en cliente y servidor; el menú central reconoce ambos rótulos de operación global. Los administradores locales conservan su aislamiento estricto: sólo ven lo de su sitio.',

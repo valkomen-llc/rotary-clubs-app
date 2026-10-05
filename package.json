@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1162.0",
-  "cache_bust": "4.1162.0",
+  "version": "4.1163.0",
+  "cache_bust": "4.1163.0",
   "type": "module",
-  "//": "UI V4.1162.0 | 2026-10-05 (Super Admin global en Rotary en Acción: acceso y alcance centralizado en Club Platform)",
+  "//": "UI V4.1163.0 | 2026-10-05 (Campañas de Contenido: gestión completa del ciclo de vida — editar, programar, pausar, duplicar, eliminar)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs && node scripts/check-version-parity.mjs && node scripts/check-syntax.mjs && node scripts/check-hooks.mjs && node scripts/check-routes.mjs && node scripts/check-imports.mjs && node scripts/check-server-undef.mjs && node scripts/check-route-handlers.mjs",
@@ -80,6 +80,7 @@
     "test:media:focal": "node scripts/test-media-focal.mjs",
     "test:submissions": "node scripts/test-content-submissions.mjs",
     "test:content:activation": "node scripts/test-content-activation.mjs",
+    "test:content:activation:lifecycle": "node scripts/test-content-activation-lifecycle.mjs",
     "test:rotary:accion": "node scripts/test-rotary-en-accion.mjs",
     "test:submissions:ui": "node scripts/test-submission-form-ui.mjs",
     "test:submissions:inbox": "node scripts/test-submission-inbox.mjs",

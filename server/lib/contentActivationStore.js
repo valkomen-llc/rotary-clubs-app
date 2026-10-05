@@ -10,7 +10,10 @@ export async function listCampaigns({ clubId } = {}) {
   const { rows } = await db.query(
     `SELECT c.*,
       (SELECT COUNT(*)::int FROM "ContentActivationExecution" e WHERE e."campaignId"=c.id) AS "executionCount",
-      (SELECT COUNT(*)::int FROM "ContentActivationEnrollment" n WHERE n."campaignId"=c.id) AS "enrollmentCount"
+      (SELECT COUNT(*)::int FROM "ContentActivationEnrollment" n WHERE n."campaignId"=c.id) AS "enrollmentCount",
+      (SELECT MAX(e."createdAt") FROM "ContentActivationExecution" e WHERE e."campaignId"=c.id) AS "lastExecutionAt",
+      (SELECT e.status FROM "ContentActivationExecution" e WHERE e."campaignId"=c.id ORDER BY e."createdAt" DESC LIMIT 1) AS "lastExecutionStatus",
+      (SELECT e."periodoLabel" FROM "ContentActivationExecution" e WHERE e."campaignId"=c.id ORDER BY e."createdAt" DESC LIMIT 1) AS "lastPeriodoLabel"
      FROM "ContentActivationCampaign" c
      ${clubId ? 'WHERE c."clubId"=$1 OR c."clubId" IS NULL' : ''}
      ORDER BY c."updatedAt" DESC LIMIT 100`,
@@ -57,6 +60,28 @@ export async function setCampaignStatus(id, status) {
   await ensureContentActivationSchema();
   await db.query(`UPDATE "ContentActivationCampaign" SET status=$2,"updatedAt"=NOW() WHERE id=$1`, [id, status]);
   return getCampaign(id);
+}
+// Cuánto historial cuelga de una campaña: decide borrado real vs. archivado.
+export async function countCampaignHistory(id) {
+  await ensureContentActivationSchema();
+  const { rows } = await db.query(
+    `SELECT (SELECT COUNT(*)::int FROM "ContentActivationExecution" WHERE "campaignId"=$1) AS executions,
+            (SELECT COUNT(*)::int FROM "ContentActivationEnrollment" WHERE "campaignId"=$1) AS enrollments,
+            (SELECT COUNT(*)::int FROM "ContentActivationEvent" WHERE "campaignId"=$1) AS events`, [id]);
+  return rows[0] || { executions: 0, enrollments: 0, events: 0 };
+}
+// Borrado REAL de la fila de campaña. Solo se usa sin historial (ver
+// `deletionPolicy`): ejecuciones e inscripciones, al no tener FK, se
+// conservan como auditoría huérfana consultable por campaignId.
+export async function deleteCampaign(id) {
+  await ensureContentActivationSchema();
+  await db.query(`DELETE FROM "ContentActivationCampaign" WHERE id=$1`, [id]);
+  return true;
+}
+export async function getEnrollment(id) {
+  await ensureContentActivationSchema();
+  const { rows } = await db.query(`SELECT * FROM "ContentActivationEnrollment" WHERE id=$1`, [id]);
+  return rows[0] || null;
 }
 export async function listExecutions(campaignId) {
   await ensureContentActivationSchema();

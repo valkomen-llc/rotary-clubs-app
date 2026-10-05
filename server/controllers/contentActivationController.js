@@ -1,8 +1,8 @@
 // Controlador de Campañas de Activación de Contenido (Fases 1-5 + ámbito/audiencia v4.1130).
 import db from '../lib/db.js';
 import { ensureContentActivationSchema } from '../lib/ensureContentActivationSchema.js';
-import { shapeActivation, validateActivation, canTransitionActivation, draftFromPrompt, kpiRates, SCOPE_TYPES, AUDIENCE_SOURCES, normalizeContentDef, readinessCheck } from '../lib/contentActivationSpec.js';
-import { listCampaigns, getCampaign, upsertCampaign, setCampaignStatus, listExecutions, listEnrollments, listEvents, addEvent, getProfile, nid, createLinkToken } from '../lib/contentActivationStore.js';
+import { shapeActivation, validateActivation, canTransitionActivation, draftFromPrompt, kpiRates, SCOPE_TYPES, AUDIENCE_SOURCES, normalizeContentDef, readinessCheck, EDITABLE_FULL_STATES, EDITABLE_PARTIAL_FIELDS, EDITABLE_PAUSADA_FIELDS, duplicateName, deletionPolicy, transitionEventType } from '../lib/contentActivationSpec.js';
+import { listCampaigns, getCampaign, upsertCampaign, setCampaignStatus, deleteCampaign, countCampaignHistory, getEnrollment, listExecutions, listEnrollments, listEvents, addEvent, getProfile, nid, createLinkToken } from '../lib/contentActivationStore.js';
 import { previewAudience } from '../lib/contentActivationAudience.js';
 import { assertScopeAllowed, listScopeEntities, getUserGrant, normalizeScopeDef } from '../lib/contentActivationScope.js';
 import { ensureExecutionFor, enrollExecution, tickActivation, buildInsights, periodoLabel, nextPeriodStart } from '../lib/contentActivationEngine.js';
@@ -29,6 +29,28 @@ function campaignVisibleToGrant(campaign, grant) {
   if (scope.type === 'district') return (scope.ids || []).some((id) => (grant.districtIds || []).includes(id));
   if (scope.type === 'club' || scope.type === 'site') return (scope.ids || []).some((id) => (grant.clubIds || []).includes(id));
   return true;
+}
+
+// ── Puerta de ESCRITURA (v4.1163) ──────────────────────────────────────
+// Ver no es modificar: una campaña visible por regla de lectura (p. ej.
+// legado sin ámbito) no necesariamente se puede operar. El global escribe
+// todo; el resto solo lo de SU sitio/distrito: remitente propio, club
+// propietario heredado o ámbito que intersecta su permiso. Lanza 403.
+async function assertCampaignWritable(campaign, req) {
+  const grant = await getUserGrant(req).catch(() => ({ isGlobal: true, districtIds: [], clubIds: [] }));
+  if (grant.isGlobal) return grant;
+  if (campaign.senderSiteId) {
+    const ref = String(campaign.senderSiteId);
+    if ((grant.clubIds || []).includes(ref)) return grant;
+    if (ref.startsWith('district:') && (grant.districtIds || []).includes(ref.slice(9))) return grant;
+  }
+  if (campaign.clubId && (grant.clubIds || []).includes(campaign.clubId)) return grant;
+  const scope = campaign.scopeDef || {};
+  if (scope.type === 'district' && (scope.ids || []).some((id) => (grant.districtIds || []).includes(id))) return grant;
+  if ((scope.type === 'club' || scope.type === 'site') && (scope.ids || []).some((id) => (grant.clubIds || []).includes(id))) return grant;
+  const e = new Error('No tienes permiso para modificar esta campaña.');
+  e.status = 403;
+  throw e;
 }
 
 // Remitente de la campaña: explícito (global) o automático (sitio/ámbito).
@@ -108,21 +130,35 @@ export const update = async (req, res) => {
     if (!cur) return res.status(404).json({ error: 'No encontrada' });
     const grant = await getUserGrant(req).catch(() => ({ isGlobal: true }));
     if (!campaignVisibleToGrant(cur, grant)) return res.status(403).json({ error: 'Fuera de tus permisos.' });
+    try {
+      await assertCampaignWritable(cur, req);
+    } catch (e) {
+      return res.status(e.status || 403).json({ error: e.message });
+    }
     const nextScope = req.body.scopeDef ? normalizeScopeDef(req.body.scopeDef) : cur.scopeDef;
     try {
       await assertScopeAllowed(req, nextScope);
     } catch (e) {
       return res.status(e.status || 403).json({ error: e.message });
     }
-    if (!['borrador', 'programada'].includes(cur.status)) {
+    if (!EDITABLE_FULL_STATES.includes(cur.status)) {
       // Regla aditiva: en otros estados solo se permite pausar/finalizar vía transition.
-      const allowed = ['description', 'objetivo', 'variables', 'followRules', 'contentDef'];
+      const fields = cur.status === 'pausada' ? EDITABLE_PAUSADA_FIELDS : EDITABLE_PARTIAL_FIELDS;
       const body = {};
-      for (const k of allowed) if (req.body[k] !== undefined) body[k] = req.body[k];
-      const row = await upsertCampaign({ ...cur, ...shapeActivation({ ...cur, ...body }), id: cur.id, status: cur.status }, clubOf(req));
+      for (const k of fields) if (req.body[k] !== undefined) body[k] = req.body[k];
+      const merged = shapeActivation({ ...cur, ...body });
+      if (merged.startAt && merged.endAt && new Date(merged.endAt) < new Date(merged.startAt)) {
+        return res.status(400).json({ error: 'La fecha final no puede ser anterior a la inicial.' });
+      }
+      const row = await upsertCampaign({ ...cur, ...merged, id: cur.id, status: cur.status }, clubOf(req));
+      await addEvent({ executionId: 'none', campaignId: cur.id, type: 'campana_reprogramada', metadata: { by: req.user?.id || null, fields: Object.keys(body) } }).catch(() => {});
       return ok(res, { campaign: row });
     }
     const shaped = shapeActivation({ ...cur, ...req.body, scopeDef: nextScope });
+    // Misma vara que al crear: reprogramar no puede dejar fechas invertidas
+    // ni campos obligatorios vacíos.
+    const v = validateActivation({ ...shaped, contributionCampaignId: shaped.contributionCampaignId || cur.contributionCampaignId });
+    if (!v.ok) return res.status(400).json({ error: v.errors[0], errors: v.errors });
     try {
       const sender = await resolveSenderForWrite(req, { ...req.body, scopeDef: nextScope }, cur);
       if (sender !== undefined) shaped.senderSiteId = sender;
@@ -148,6 +184,11 @@ export const transition = async (req, res) => {
   try {
     const cur = await getCampaign(req.params.id);
     if (!cur) return res.status(404).json({ error: 'No encontrada' });
+    try {
+      await assertCampaignWritable(cur, req);
+    } catch (e) {
+      return res.status(e.status || 403).json({ error: e.message });
+    }
     const to = String(req.body.status || '');
     if (!canTransitionActivation(cur.status, to)) return res.status(400).json({ error: `Transición ${cur.status} → ${to} no permitida` });
     // Activar exige dependencias completas: nunca activar en silencio una incompleta.
@@ -176,12 +217,78 @@ export const transition = async (req, res) => {
     }
     // IA nunca auto-activa: si la campaña nació del asistente exige revisión explícita.
     const row = await setCampaignStatus(cur.id, to);
-    await addEvent({ executionId: 'none', campaignId: cur.id, type: to === 'activa' ? 'campana_activada' : 'campana_pausada', metadata: { from: cur.status, to } }).catch(() => {});
+    await addEvent({ executionId: 'none', campaignId: cur.id, type: transitionEventType(cur.status, to), metadata: { from: cur.status, to, by: req.user?.id || null } }).catch(() => {});
     if (to === 'activa') {
+      // Idempotente: reutiliza la ejecución programada/activa vigente en vez de
+      // crear una duplicada, e inscribe sin duplicar (ON CONFLICT).
       const exec = await ensureExecutionFor(row);
       await enrollExecution(row, exec).catch(() => {});
     }
     return ok(res, { campaign: row });
+  } catch (e) { return fail(res, e); }
+};
+
+// ── Duplicar: nace como borrador con la configuración, sin historial ────
+// Las ejecuciones/inscripciones/eventos NO se copian: el historial pertenece a
+// la campaña original y duplicarlo partiría la auditoría en dos.
+export const duplicate = async (req, res) => {
+  try {
+    const cur = await getCampaign(req.params.id);
+    if (!cur) return res.status(404).json({ error: 'No encontrada' });
+    try {
+      await assertCampaignWritable(cur, req);
+    } catch (e) {
+      return res.status(e.status || 403).json({ error: e.message });
+    }
+    const shaped = shapeActivation({ ...cur, scopeDef: cur.scopeDef });
+    try {
+      await assertScopeAllowed(req, shaped.scopeDef);
+    } catch (e) {
+      return res.status(e.status || 403).json({ error: e.message });
+    }
+    const row = await upsertCampaign({
+      ...shaped,
+      name: duplicateName(cur.name),
+      startAt: shaped.startAt, endAt: shaped.endAt,
+      audienceSnapshot: null, savedSegmentId: null,
+      status: 'borrador', createdBy: req.user?.id || null,
+    }, clubOf(req));
+    await addEvent({ executionId: 'none', campaignId: row.id, type: 'campana_duplicada', metadata: { duplicadaDe: cur.id, by: req.user?.id || null } }).catch(() => {});
+    return res.status(201).json({ ok: true, campaign: row, duplicadaDe: cur.id });
+  } catch (e) { return fail(res, e); }
+};
+
+// ── Eliminar: confirmación explícita + borrado real o archivado ──────────
+// Sin historial (ni ejecuciones, ni inscripciones, ni eventos) se elimina la
+// fila. Con historial se ARCHIVA: la auditoría se conserva y la tarjeta deja
+// de operar (el tick solo procesa `activa`). Nada se destruye en silencio.
+export const remove = async (req, res) => {
+  try {
+    const cur = await getCampaign(req.params.id);
+    if (!cur) return res.status(404).json({ error: 'No encontrada' });
+    try {
+      await assertCampaignWritable(cur, req);
+    } catch (e) {
+      return res.status(e.status || 403).json({ error: e.message });
+    }
+    if (req.body?.confirm !== true) {
+      return res.status(400).json({ error: 'Confirma la eliminación enviando { confirm: true }.' });
+    }
+    const h = await countCampaignHistory(cur.id).catch(() => ({ executions: 0, enrollments: 0, events: 0 }));
+    const policy = deletionPolicy({ executions: h.executions, enrollments: h.enrollments });
+    if (policy === 'hard') {
+      await deleteCampaign(cur.id);
+      return ok(res, { deleted: true, policy: 'hard', campaign: { id: cur.id, name: cur.name } });
+    }
+    if (cur.status === 'archivada') {
+      return ok(res, { archived: true, already: true, policy: 'soft', campaign: cur, historial: h });
+    }
+    if (!canTransitionActivation(cur.status, 'archivada')) {
+      return res.status(400).json({ error: `No se puede archivar desde ${cur.status}.` });
+    }
+    const row = await setCampaignStatus(cur.id, 'archivada');
+    await addEvent({ executionId: 'none', campaignId: cur.id, type: 'campana_archivada', metadata: { from: cur.status, by: req.user?.id || null, historial: h } }).catch(() => {});
+    return ok(res, { archived: true, policy: 'soft', campaign: row, historial: h });
   } catch (e) { return fail(res, e); }
 };
 
@@ -267,6 +374,11 @@ export const excludeContact = async (req, res) => {
   try {
     const cur = await getCampaign(req.params.id);
     if (!cur) return res.status(404).json({ error: 'No encontrada' });
+    try {
+      await assertCampaignWritable(cur, req);
+    } catch (e) {
+      return res.status(e.status || 403).json({ error: e.message });
+    }
     const contactId = String(req.body.contactId || req.params.contactId || '');
     if (!contactId) return res.status(400).json({ error: 'contactId requerido' });
     const excluded = [...new Set([...(cur.excludedContactIds || []), contactId])].slice(0, 5000);
@@ -282,6 +394,11 @@ export const addManualRecipient = async (req, res) => {
     if (!email) return res.status(400).json({ error: 'Email requerido' });
     const entry = { name: String(name || email).slice(0, 120), email: String(email).slice(0, 160), phone: phone ? String(phone).slice(0, 40) : null, organization: String(organization || club || '').slice(0, 160), club: String(club || organization || '').slice(0, 160), district: String(district || '').slice(0, 120), role: String(role || 'Manual').slice(0, 80) };
     if (cur) {
+      try {
+        await assertCampaignWritable(cur, req);
+      } catch (e) {
+        return res.status(e.status || 403).json({ error: e.message });
+      }
       const manual = [...(cur.manualRecipients || []), entry].slice(0, 500);
       const row = await upsertCampaign({ ...cur, manualRecipients: manual }, clubOf(req));
       return ok(res, { campaign: row, total: manual.length });
@@ -295,6 +412,11 @@ export const saveSegment = async (req, res) => {
     await ensureContentActivationSchema();
     const cur = await getCampaign(req.params.id);
     if (!cur) return res.status(404).json({ error: 'No encontrada' });
+    try {
+      await assertCampaignWritable(cur, req);
+    } catch (e) {
+      return res.status(e.status || 403).json({ error: e.message });
+    }
     const name = String(req.body.name || `Segmento · ${cur.name}`).slice(0, 160);
     const id = nid('sg_');
     await db.query(`CREATE TABLE IF NOT EXISTS "ContentActivationSegment"(id TEXT PRIMARY KEY,"campaignId" TEXT,name TEXT,"scopeDef" JSONB,"audienceDef" JSONB,"createdBy" TEXT,"createdAt" TIMESTAMPTZ DEFAULT NOW())`).catch(() => {});
@@ -312,6 +434,11 @@ export const sendTest = async (req, res) => {
   try {
     const cur = await getCampaign(req.params.id);
     if (!cur) return res.status(404).json({ error: 'No encontrada' });
+    try {
+      await assertCampaignWritable(cur, req);
+    } catch (e) {
+      return res.status(e.status || 403).json({ error: e.message });
+    }
     const channel = req.body.channel === 'whatsapp' ? 'whatsapp' : 'email';
     const { resolveChannelContent, whatsappStatus } = await import('../lib/contentActivationContent.js');
     if (channel === 'whatsapp') {
@@ -409,6 +536,11 @@ export const updateContent = async (req, res) => {
   try {
     const cur = await getCampaign(req.params.id);
     if (!cur) return res.status(404).json({ error: 'No encontrada' });
+    try {
+      await assertCampaignWritable(cur, req);
+    } catch (e) {
+      return res.status(e.status || 403).json({ error: e.message });
+    }
     if (!['borrador', 'programada'].includes(cur.status)) {
       return res.status(400).json({ error: 'La plantilla solo se edita en borrador o programada. Pausa la campaña para editarla.' });
     }
@@ -490,6 +622,11 @@ export const enroll = async (req, res) => {
   try {
     const c = await getCampaign(req.params.id);
     if (!c) return res.status(404).json({ error: 'No encontrada' });
+    try {
+      await assertCampaignWritable(c, req);
+    } catch (e) {
+      return res.status(e.status || 403).json({ error: e.message });
+    }
     const exec = await ensureExecutionFor(c);
     const r = await enrollExecution(c, exec);
     return ok(res, r);
@@ -634,6 +771,16 @@ export const board = async (req, res) => {
 
 export const pauseEnrollment = async (req, res) => {  try {
     await ensureContentActivationSchema();
+    const en = await getEnrollment(req.params.enrollmentId);
+    if (!en) return res.status(404).json({ error: 'Inscripción no encontrada' });
+    const camp = await getCampaign(en.campaignId).catch(() => null);
+    if (camp) {
+      try {
+        await assertCampaignWritable(camp, req);
+      } catch (e) {
+        return res.status(e.status || 403).json({ error: e.message });
+      }
+    }
     await db.query(`UPDATE "ContentActivationEnrollment" SET status='pausada',"updatedAt"=NOW() WHERE id=$1`, [req.params.enrollmentId]);
     return ok(res, {});
   } catch (e) { return fail(res, e); }
@@ -642,6 +789,16 @@ export const pauseEnrollment = async (req, res) => {  try {
 export const retryEnrollment = async (req, res) => {
   try {
     await ensureContentActivationSchema();
+    const en = await getEnrollment(req.params.enrollmentId);
+    if (!en) return res.status(404).json({ error: 'Inscripción no encontrada' });
+    const camp = await getCampaign(en.campaignId).catch(() => null);
+    if (camp) {
+      try {
+        await assertCampaignWritable(camp, req);
+      } catch (e) {
+        return res.status(e.status || 403).json({ error: e.message });
+      }
+    }
     await db.query(`UPDATE "ContentActivationEnrollment" SET status='por_enviar',attempts=0,"nextActionAt"=NOW(),"updatedAt"=NOW() WHERE id=$1`, [req.params.enrollmentId]);
     return ok(res, {});
   } catch (e) { return fail(res, e); }
@@ -656,6 +813,13 @@ export const linkForEnrollment = async (req, res) => {
     const en = rows[0];
     if (!en) return res.status(404).json({ error: 'Inscripción no encontrada' });
     const camp = await getCampaign(en.campaignId);
+    if (camp) {
+      try {
+        await assertCampaignWritable(camp, req);
+      } catch (e) {
+        return res.status(e.status || 403).json({ error: e.message });
+      }
+    }
     const { utm_source, utm_medium, utm_campaign, channel, messageId, segmentId } = req.body || {};
     const t = await createLinkToken({
       executionId: en.executionId, enrollmentId: en.id, campaignId: en.campaignId, contactId: en.contactId,
@@ -690,6 +854,11 @@ export const newExecution = async (req, res) => {
     await ensureContentActivationSchema();
     const c = await getCampaign(req.params.id);
     if (!c) return res.status(404).json({ error: 'No encontrada' });
+    try {
+      await assertCampaignWritable(c, req);
+    } catch (e) {
+      return res.status(e.status || 403).json({ error: e.message });
+    }
     const label = req.body.periodoLabel || periodoLabel(c.frecuencia, req.body.startAt || new Date().toISOString(), 0);
     const id = nid('ex_');
     await db.query(`INSERT INTO "ContentActivationExecution"(id,"campaignId","periodoLabel","startAt","endAt",status) VALUES($1,$2,$3,$4,$5,'programada')`,

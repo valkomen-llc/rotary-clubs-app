@@ -15,18 +15,19 @@
 // campaña vería la bandeja entera y la prueba lo daría por bueno.
 // ════════════════════════════════════════════════════════════════════════════
 
-export const datos = {
+export const datos = (globalThis.__INBOX_STUB__ ??= {
     submissions: [],
     campaigns: [],
     clubs: [],
     consultas: [],
-};
+});
 
 export const reset = () => {
-    datos.submissions = [];
-    datos.campaigns = [];
-    datos.clubs = [];
-    datos.consultas = [];
+    const d = globalThis.__INBOX_STUB__;
+    d.submissions = [];
+    d.campaigns = [];
+    d.clubs = [];
+    d.consultas = [];
 };
 
 const norm = (sql) => String(sql).replace(/\s+/g, ' ').trim();

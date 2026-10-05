@@ -25,6 +25,58 @@ const FLOW = {
 export const canTransitionActivation = (from, to) =>
   Array.isArray(FLOW[from]) && FLOW[from].includes(to);
 
+// ─── Vocabulario del ciclo de vida (v4.1163) ─────────────────────────────
+// Los 6 estados canónicos cubren el ciclo pedido sin lógica paralela:
+//   · «En curso» ES `activa`: el tick (`tickActivation`) solo procesa campañas
+//     `activa`, así que lo que la tarjeta muestra como Activa es lo que el
+//     motor está ejecutando de verdad.
+//   · «Cancelada» ES `archivada`: terminal, conserva ejecuciones,
+//     inscripciones y eventos para auditoría, y puede restaurarse a borrador.
+// Un séptimo estado duplicaría esa semántica y abriría la puerta a dos
+// verdades sobre lo mismo (regla de la bandeja única, v4.999).
+
+// Edición por estado: en borrador/programada, edición TOTAL (el constructor
+// reabre con toda la configuración); en el resto, solo campos operativos que
+// no alteran lo ya ejecutado. Pausar/reactivar/finalizar van por `transition`.
+export const EDITABLE_FULL_STATES = ['borrador', 'programada'];
+export const EDITABLE_PARTIAL_FIELDS = ['description', 'objetivo', 'variables', 'followRules', 'contentDef'];
+// En `pausada` el motor está detenido (el tick solo procesa `activa`), así
+// que es la ventana segura para reprogramar: las próximas ejecuciones leerán
+// las nuevas fechas/frecuencia y el historial queda intacto.
+export const EDITABLE_PAUSADA_FIELDS = [...EDITABLE_PARTIAL_FIELDS, 'startAt', 'endAt', 'timezone', 'frecuencia', 'customDays'];
+
+// Nombre de la copia: no se apila «(copia) (copia)»; se numera.
+export function duplicateName(name = '') {
+  const base = String(name || 'Campaña').trim() || 'Campaña';
+  const m = base.match(/^(.*)\s\(copia(?:\s(\d+))?\)$/);
+  if (!m) return `${base} (copia)`;
+  const root = m[1].trim() || base;
+  const n = m[2] ? Number(m[2]) + 1 : 2;
+  return `${root} (copia ${n})`;
+}
+
+// Política de eliminación: con ejecuciones o inscripciones se ARCHIVA (son el
+// historial que la auditoría debe conservar); los eventos sueltos de ciclo de
+// vida (creada, duplicada…) no obligan a conservar la campaña. Pura: el
+// controlador cuenta y decide.
+export function deletionPolicy({ executions = 0, enrollments = 0 } = {}) {
+  const total = (Number(executions) || 0) + (Number(enrollments) || 0);
+  return total > 0 ? 'soft' : 'hard';
+}
+
+// Evento de trazabilidad que deja cada transición de estado.
+export function transitionEventType(from, to) {
+  if (to === 'activa' && from !== 'programada') return 'campana_reactivada';
+  if (to === 'activa') return 'campana_activada';
+  if (to === 'pausada') return 'campana_pausada';
+  if (to === 'finalizada') return 'campana_finalizada';
+  if (to === 'archivada') return 'campana_archivada';
+  if (to === 'borrador' && from === 'programada') return 'programacion_cancelada';
+  if (to === 'programada' && from === 'borrador') return 'campana_programada';
+  if (to === 'programada') return 'campana_reprogramada';
+  return 'nota';
+}
+
 export const FREQUENCIES = [
   { id: 'unica', label: 'Única' },
   { id: 'semanal', label: 'Semanal' },
@@ -60,7 +112,9 @@ export const ENROLLMENT_ORDER = [
 ];
 
 export const EVENT_TYPES = [
-  'campana_creada', 'campana_activada', 'campana_pausada',
+  'campana_creada', 'campana_activada', 'campana_pausada', 'campana_finalizada',
+  'campana_archivada', 'campana_reactivada', 'campana_duplicada',
+  'campana_programada', 'programacion_cancelada', 'campana_reprogramada',
   'ejecucion_creada', 'ejecucion_cerrada',
   'audience_resuelta', 'preview',
   'whatsapp_enviado', 'whatsapp_entregado', 'whatsapp_leido', 'whatsapp_fallido',
