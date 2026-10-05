@@ -7,9 +7,10 @@ import {
 } from 'lucide-react';
 import { useSEO } from '../../hooks/useSEO';
 import { COUNTRIES, DEFAULT_COUNTRY, findCountry, flagEmoji } from '../../lib/countryPhones';
+import { toast } from 'sonner';
 import Navbar from '../../sections/Navbar';
 import Footer from '../../sections/Footer';
-import { ACCEPT_ATTR, MAX_FILES, MIN_PHOTOS, MAX_PHOTOS, MAX_VIDEOS, checkFileMeta } from '../../lib/contentSubmissionSpec';
+import { ACCEPT_ATTR, MIN_PHOTOS, MAX_PHOTOS, MAX_VIDEOS, checkFileMeta, overweightMessage, DUPLICATE_MESSAGE, duplicateKey, partialFileHash, countValidPhotos } from '../../lib/contentSubmissionSpec';
 import {
   fieldsForTipo, IMPACT_META, EXTRA_LABELS, photoAdvice,
   DEFAULT_TIPOS, DEFAULT_AREAS, DEFAULT_PROGRAMAS, DEFAULT_TEMAS,
@@ -48,12 +49,20 @@ type Adjunto = {
   kind: 'image' | 'video';
   preview: string | null;
   key?: string;
-  estado: 'pending' | 'uploading' | 'uploaded' | 'error';
+  // pending: en cola · uploading: subiendo · uploaded: carga completada ·
+  // error: falló y se puede reintentar · too-heavy: supera el tope (no se
+  // sube ni se reintenta) · duplicate: ya agregado (no se sube ni se reintenta)
+  estado: 'pending' | 'uploading' | 'uploaded' | 'error' | 'too-heavy' | 'duplicate';
   progreso: number;
   error?: string;
   width?: number;
   height?: number;
+  hash?: string;
 };
+
+// Lo rechazado (demasiado pesado/duplicado) no ocupa cupo: nunca se sube.
+const CUENTA_CUPO = ['pending', 'uploading', 'uploaded', 'error'] as const;
+const ocupaCupo = (estado: string): boolean => (CUENTA_CUPO as readonly string[]).includes(estado);
 
 const formatoTamano = (bytes: number): string => {
   if (!bytes || bytes <= 0) return '0 B';
@@ -239,7 +248,16 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
   const adjuntosRef = useRef<Adjunto[]>([]);
   adjuntosRef.current = adjuntos;
   const xhrMapRef = useRef<Map<string, XMLHttpRequest>>(new Map());
+  const hashesRef = useRef<Map<string, string>>(new Map());
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Escribe el estado en la referencia Y en el estado de React, en el mismo
+  // tick: la bomba de la cola lee la referencia para no arrancar dos veces
+  // lo mismo, y `setAdjuntos` solo no alcanzaría (es asíncrono).
+  const aplicarEstado = useCallback((id: string, patch: Partial<Adjunto>) => {
+    adjuntosRef.current = adjuntosRef.current.map((x) => (x.id === id ? { ...x, ...patch } : x));
+    setAdjuntos((prev) => prev.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+  }, []);
 
   // Limpieza al desmontar: abortar cargas en vuelo y revocar Object URLs
   useEffect(() => {
@@ -364,7 +382,12 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
   const rules = cfg?.photoRules || { minToSubmit: 5, recommended: 5, reelMin: 5, maxFiles: 11 };
   const selectedImages = adjuntos.filter((a) => a.kind === 'image');
   const uploadedImages = adjuntos.filter((a) => a.kind === 'image' && a.estado === 'uploaded');
+  const uploadedVideos = adjuntos.filter((a) => a.kind === 'video' && a.estado === 'uploaded');
+  const enCupo = adjuntos.filter((a) => ocupaCupo(a.estado));
   const videos = adjuntos.filter((a) => a.kind === 'video');
+  // El mínimo cuenta ÚNICAMENTE lo cargado con éxito: 5 elegidas con 1
+  // fallida son 4 válidas y falta 1 (v4.1165).
+  const fotosValidas = countValidPhotos(adjuntos);
   const advice = photoAdvice(selectedImages.length, rules);
   const cond = fieldsForTipo(tipo);
   const distritos: any[] = cfg?.catalogs?.districts || [];
@@ -374,9 +397,10 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
   }, [distritos, district]);
   const tipoNombre = (cfg?.taxonomies?.tipo || []).find((t: any) => t.slug === tipo)?.name || tipo;
 
-  const faltanFotos = Math.max(0, MIN_PHOTOS - selectedImages.length);
+  const faltanFotos = Math.max(0, MIN_PHOTOS - fotosValidas);
   const haySubiendo = adjuntos.some((a) => a.estado === 'uploading' || a.estado === 'pending');
   const hayErrores = adjuntos.some((a) => a.estado === 'error');
+  const hayRechazados = adjuntos.some((a) => a.estado === 'too-heavy' || a.estado === 'duplicate');
 
   // Trazabilidad de validación en tiempo real
   useEffect(() => {
@@ -404,11 +428,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
       size: item.file.size,
     });
 
-    setAdjuntos((prev) =>
-      prev.map((x) =>
-        x.id === item.id ? { ...x, estado: 'uploading' as const, progreso: 0, error: undefined } : x
-      )
-    );
+    aplicarEstado(item.id, { estado: 'uploading', progreso: 0, error: undefined });
 
     let presignData: any = null;
     try {
@@ -424,33 +444,27 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
       });
       presignData = await leerJson(r);
       if (!r.ok || !presignData?.uploadUrl || !presignData?.key) {
-        const errMsg = presignData?.error || `Error al preparar la carga (${r.status}).`;
+        const errMsg = presignData?.error || presignData?.errores?.[0] || `El servidor no autorizó la carga (${r.status}). Reintentá.`;
         console.log('[EVIDENCE_UPLOAD_ERROR]', {
           id: item.id,
           name: item.file.name,
+          etapa: 'presign',
           status: r.status,
           error: errMsg,
         });
-        setAdjuntos((prev) =>
-          prev.map((x) =>
-            x.id === item.id ? { ...x, estado: 'error' as const, error: errMsg } : x
-          )
-        );
+        aplicarEstado(item.id, { estado: 'error', error: errMsg });
         return;
       }
     } catch (err: any) {
-      const errMsg = err?.message || 'Error de conexión al preparar la carga.';
+      const errMsg = 'No se pudo contactar al servidor para preparar la carga. Revisá tu conexión e intentá de nuevo.';
       console.log('[EVIDENCE_UPLOAD_ERROR]', {
         id: item.id,
         name: item.file.name,
+        etapa: 'presign',
         status: 0,
-        error: errMsg,
+        error: err?.message || errMsg,
       });
-      setAdjuntos((prev) =>
-        prev.map((x) =>
-          x.id === item.id ? { ...x, estado: 'error' as const, error: errMsg } : x
-        )
-      );
+      aplicarEstado(item.id, { estado: 'error', error: errMsg });
       return;
     }
 
@@ -479,59 +493,46 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
           name: item.file.name,
           storagePath: presignData.key,
         });
-        setAdjuntos((prev) =>
-          prev.map((x) =>
-            x.id === item.id
-              ? { ...x, estado: 'uploaded' as const, progreso: 100, key: presignData.key, error: undefined }
-              : x
-          )
-        );
+        aplicarEstado(item.id, { estado: 'uploaded', progreso: 100, key: presignData.key, error: undefined });
       } else {
-        const errMsg = `Error del servidor (${xhr.status}).`;
+        const errMsg = xhr.status === 403
+          ? 'El almacenamiento rechazó la carga (403). Reintentá: se genera una autorización nueva.'
+          : `La transferencia falló (${xhr.status}). Tocá Reintentar.`;
         console.log('[EVIDENCE_UPLOAD_ERROR]', {
           id: item.id,
           name: item.file.name,
+          etapa: 'put',
           status: xhr.status,
           error: errMsg,
         });
-        setAdjuntos((prev) =>
-          prev.map((x) =>
-            x.id === item.id ? { ...x, estado: 'error' as const, error: errMsg } : x
-          )
-        );
+        aplicarEstado(item.id, { estado: 'error', error: errMsg });
       }
     };
 
     xhr.onerror = () => {
       xhrMapRef.current.delete(item.id);
-      const errMsg = 'Error de conexión al transferir archivo.';
+      const errMsg = 'Se cortó la conexión durante la transferencia. Reintentá.';
       console.log('[EVIDENCE_UPLOAD_ERROR]', {
         id: item.id,
         name: item.file.name,
+        etapa: 'put',
         status: 0,
         error: errMsg,
       });
-      setAdjuntos((prev) =>
-        prev.map((x) =>
-          x.id === item.id ? { ...x, estado: 'error' as const, error: errMsg } : x
-        )
-      );
+      aplicarEstado(item.id, { estado: 'error', error: errMsg });
     };
 
     xhr.ontimeout = () => {
       xhrMapRef.current.delete(item.id);
-      const errMsg = 'Tiempo de espera agotado al cargar el archivo.';
+      const errMsg = 'La carga tardó demasiado y se detuvo. Reintentá con mejor conexión.';
       console.log('[EVIDENCE_UPLOAD_ERROR]', {
         id: item.id,
         name: item.file.name,
+        etapa: 'put',
         status: 408,
         error: errMsg,
       });
-      setAdjuntos((prev) =>
-        prev.map((x) =>
-          x.id === item.id ? { ...x, estado: 'error' as const, error: errMsg } : x
-        )
-      );
+      aplicarEstado(item.id, { estado: 'error', error: errMsg });
     };
 
     xhr.onabort = () => {
@@ -539,7 +540,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
     };
 
     xhr.send(item.file);
-  }, []);
+  }, [aplicarEstado]);
 
   const quitarArchivo = useCallback((id: string) => {
     const xhr = xhrMapRef.current.get(id);
@@ -547,6 +548,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
       xhr.abort();
       xhrMapRef.current.delete(id);
     }
+    hashesRef.current.delete(id);
     setAdjuntos((prev) => {
       const item = prev.find((x) => x.id === id);
       if (item?.preview) {
@@ -554,20 +556,72 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
       }
       return prev.filter((x) => x.id !== id);
     });
+    adjuntosRef.current = adjuntosRef.current.filter((x) => {
+      if (x.id === id && x.preview) {
+        try { URL.revokeObjectURL(x.preview); } catch { /* noop */ }
+      }
+      return x.id !== id;
+    });
   }, []);
 
+  // Reintentar es solo para fallos RECUPERABLES (estado `error`): vuelve a la
+  // cola y la bomba la arranca. Lo rechazado (too-heavy/duplicate) no tiene
+  // botón de reintento porque no hay nada que reintentar.
   const reintentarSubida = useCallback((id: string) => {
     const item = adjuntosRef.current.find((x) => x.id === id);
-    if (!item) return;
+    if (!item || item.estado !== 'error') return;
     const existingXhr = xhrMapRef.current.get(id);
     if (existingXhr) {
       existingXhr.abort();
       xhrMapRef.current.delete(id);
     }
-    iniciarSubida(item, cfg?.campaign?.id);
+    aplicarEstado(id, { estado: 'pending', progreso: 0, error: undefined });
+  }, [aplicarEstado]);
+
+  // Segunda capa anti-duplicados: huella de los primeros 256 KB. Atrapa copias
+  // renombradas (mismo contenido, distinta metadata). Si choca con otro
+  // archivo, el SEGUNDO se marca duplicado y se aborta su subida si arrancó.
+  const verificarHuellas = useCallback(async (ids: string[]) => {
+    try {
+      for (const id of ids) {
+        const item = adjuntosRef.current.find((x) => x.id === id);
+        if (!item || item.estado !== 'pending') continue;
+        let h: string | null = null;
+        try { h = await partialFileHash(item.file); } catch { continue; }
+        if (!h) continue;
+        hashesRef.current.set(id, h);
+        const otro = [...hashesRef.current.entries()].find(([oid, oh]) => oid !== id && oh === h)?.[0];
+        if (!otro) continue;
+        const primero = adjuntosRef.current.find((x) => x.id === otro);
+        // Si el primero ya no está (lo quitaron), este queda como válido.
+        if (!primero || !ocupaCupo(primero.estado)) continue;
+        const xhr = xhrMapRef.current.get(id);
+        if (xhr) { try { xhr.abort(); } catch { /* noop */ } xhrMapRef.current.delete(id); }
+        aplicarEstado(id, { estado: 'duplicate', error: DUPLICATE_MESSAGE, progreso: 0 });
+        toast.error(DUPLICATE_MESSAGE);
+      }
+    } catch { /* la primera capa (metadata) ya cubre lo esencial */ }
+  }, [aplicarEstado]);
+
+  // Bomba de la cola: máximo 3 subidas simultáneas. Evita saturar el enlace
+  // (la causa típica de fallos masivos al elegir 8 fotos de 4 MB a la vez) y
+  // las ráfagas contra el endpoint de presign. Corre con cada cambio de la
+  // lista; lo pendiente arranca solo, sin tocar nada más.
+  const MAX_SUBIDAS_SIMULTANEAS = 3;
+  const bombearCola = useCallback(() => {
+    const cur = adjuntosRef.current;
+    const activos = cur.filter((a) => a.estado === 'uploading').length;
+    const libres = MAX_SUBIDAS_SIMULTANEAS - activos;
+    if (libres <= 0) return;
+    const pendientes = cur.filter((a) => a.estado === 'pending').slice(0, libres);
+    for (const p of pendientes) {
+      void iniciarSubida(p, cfg?.campaign?.id);
+    }
   }, [cfg?.campaign?.id, iniciarSubida]);
 
-  const agregarArchivos = useCallback((files: FileList | File[]) => {
+  useEffect(() => { bombearCola(); }, [adjuntos, bombearCola]);
+
+  const agregarArchivos = useCallback(async (files: FileList | File[]) => {
     const rawList = Array.from(files);
     if (!rawList.length) return;
 
@@ -581,38 +635,59 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
     }
 
     const prev = adjuntosRef.current;
-    let currentPhotos = prev.filter((a) => a.kind === 'image').length;
-    let currentVideos = prev.filter((a) => a.kind === 'video').length;
+    let fotosCupo = prev.filter((a) => a.kind === 'image' && ocupaCupo(a.estado)).length;
+    let videosCupo = prev.filter((a) => a.kind === 'video' && ocupaCupo(a.estado)).length;
 
     const nuevosErrores: string[] = [];
     const itemsToAdd: Adjunto[] = [];
+    const vistos = new Set(prev.map((a) => duplicateKey(a.file)));
+    let avisosDuplicado = 0;
+
+    const tarjetaRechazada = (f: File, kind: 'image' | 'video', estado: 'too-heavy' | 'duplicate', error: string): Adjunto => {
+      let previewUrl: string | null = null;
+      if (kind === 'image') {
+        try { previewUrl = URL.createObjectURL(f); } catch { previewUrl = null; }
+      }
+      return { id: nuevoId(), file: f, kind, preview: previewUrl, estado, progreso: 0, error };
+    };
 
     for (const f of rawList) {
       const meta = checkFileMeta({ contentType: f.type, filename: f.name, size: f.size });
+      const kind = meta.kind as 'image' | 'video' | null;
+      // Demasiado pesado: se muestra con su motivo, pero JAMÁS se sube ni se
+      // reintenta. No ocupa cupo de fotos/videos.
+      if (!meta.ok && kind && f.size > 0) {
+        itemsToAdd.push(tarjetaRechazada(f, kind, 'too-heavy', overweightMessage({ filename: f.name, size: f.size, kind })));
+        vistos.add(duplicateKey(f));
+        continue;
+      }
       if (!meta.ok) {
         nuevosErrores.push(`${f.name}: ${meta.errores?.[0] || meta.error || 'Archivo no permitido'}`);
         continue;
       }
 
-      // Deduplicación por nombre, tamaño y fecha de modificación
-      const yaExiste =
-        prev.some((a) => a.file.name === f.name && a.file.size === f.size && a.file.lastModified === f.lastModified) ||
-        itemsToAdd.some((a) => a.file.name === f.name && a.file.size === f.size && a.file.lastModified === f.lastModified);
-      if (yaExiste) continue;
+      // Duplicado (capa 1, síncrona): nombre + tamaño + tipo + modificación.
+      // Se avisa y se muestra, pero JAMÁS se vuelve a subir.
+      const llave = duplicateKey(f);
+      if (vistos.has(llave)) {
+        avisosDuplicado++;
+        itemsToAdd.push(tarjetaRechazada(f, kind as 'image' | 'video', 'duplicate', DUPLICATE_MESSAGE));
+        continue;
+      }
+      vistos.add(llave);
 
-      const kind = meta.kind as 'image' | 'video';
       if (kind === 'video') {
-        if (currentVideos >= MAX_VIDEOS) {
+        if (videosCupo >= MAX_VIDEOS) {
           nuevosErrores.push(`Solo se permite un máximo de ${MAX_VIDEOS} video. Se ignoró el video adicional: ${f.name}.`);
           continue;
         }
-        currentVideos++;
+        videosCupo++;
       } else {
-        if (currentPhotos >= MAX_PHOTOS) {
+        if (fotosCupo >= MAX_PHOTOS) {
           nuevosErrores.push(`Solo se permite un máximo de ${MAX_PHOTOS} fotografías. Se ignoró la fotografía adicional: ${f.name}.`);
           continue;
         }
-        currentPhotos++;
+        fotosCupo++;
       }
 
       let previewUrl: string | null = null;
@@ -627,7 +702,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
       const item: Adjunto = {
         id: nuevoId(),
         file: f,
-        kind,
+        kind: kind as 'image' | 'video',
         preview: previewUrl,
         estado: 'pending',
         progreso: 0,
@@ -649,8 +724,10 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
       itemsToAdd.push(item);
     }
 
+    if (avisosDuplicado > 0) toast.error(DUPLICATE_MESSAGE);
+
     if (itemsToAdd.length > 0) {
-      const nextAdjuntos = [...prev, ...itemsToAdd];
+      const nextAdjuntos = [...adjuntosRef.current, ...itemsToAdd];
       adjuntosRef.current = nextAdjuntos;
       setAdjuntos(nextAdjuntos);
 
@@ -662,15 +739,15 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
         videosCount: nextAdjuntos.filter((a) => a.kind === 'video').length,
       });
 
-      for (const item of itemsToAdd) {
-        iniciarSubida(item, cfg?.campaign?.id);
-      }
+      // La bomba de la cola (efecto sobre `adjuntos`) arranca las pendientes
+      // de a 3; la segunda capa anti-duplicados corre antes en segundo plano.
+      void verificarHuellas(itemsToAdd.filter((i) => i.estado === 'pending').map((i) => i.id));
     }
 
     if (nuevosErrores.length > 0) {
       setErrores((e) => [...e, ...nuevosErrores]);
     }
-  }, [cfg?.campaign?.id, iniciarSubida]);
+  }, [verificarHuellas]);
 
   const pedirAyudaIA = async () => {
     setAssistLoading(true);
@@ -704,22 +781,34 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
   const validar = (s: number): string | null => {
     if (s === 0 && !tipo) return 'Elegí qué quieres compartir para continuar.';
     if (s === 2) {
-      const selectedImgs = adjuntos.filter((a) => a.kind === 'image');
-      const vids = adjuntos.filter((a) => a.kind === 'video');
-      if (selectedImgs.length < MIN_PHOTOS) {
-        return `Faltan ${MIN_PHOTOS - selectedImgs.length} fotografía(s): Has seleccionado ${selectedImgs.length} de las ${MIN_PHOTOS} requeridas. Por favor selecciona al menos ${MIN_PHOTOS} fotografías para poder continuar al paso de envío.`;
+      const utiles = adjuntos.filter((a) => ocupaCupo(a.estado));
+      const imgsUtiles = utiles.filter((a) => a.kind === 'image');
+      const vidsUtiles = utiles.filter((a) => a.kind === 'video');
+      const validImgs = utiles.filter((a) => a.kind === 'image' && a.estado === 'uploaded');
+      const dupes = adjuntos.filter((a) => a.estado === 'duplicate');
+      const heavy = adjuntos.filter((a) => a.estado === 'too-heavy');
+      const failed = adjuntos.filter((a) => a.estado === 'error');
+      const busy = adjuntos.filter((a) => a.estado === 'uploading' || a.estado === 'pending');
+      if (dupes.length > 0) {
+        return `Hay ${dupes.length} archivo(s) duplicado(s): ya están agregados. Eliminalos de la lista para poder continuar.`;
       }
-      if (selectedImgs.length > MAX_PHOTOS) {
-        return `Has superado el máximo de ${MAX_PHOTOS} fotografías permitidas.`;
+      if (heavy.length > 0) {
+        return `Hay ${heavy.length} archivo(s) que superan el peso máximo (5 MB por foto, 300 MB por video). Eliminalos o reemplazalos para poder continuar.`;
       }
-      if (vids.length > MAX_VIDEOS) {
-        return `Solo se permite un máximo de ${MAX_VIDEOS} video.`;
-      }
-      if (adjuntos.some((a) => a.estado === 'error')) {
+      if (failed.length > 0) {
         return 'Uno o más archivos no se pudieron cargar. Tocá "Reintentar" en la tarjeta o elimínalos para poder continuar.';
       }
-      if (adjuntos.some((a) => a.estado === 'uploading' || a.estado === 'pending')) {
+      if (busy.length > 0) {
         return 'Por favor espera a que todos los archivos terminen de cargarse para continuar.';
+      }
+      if (validImgs.length < MIN_PHOTOS) {
+        return `Tenés ${validImgs.length} fotografía(s) válida(s) de las ${MIN_PHOTOS} requeridas. Faltan ${MIN_PHOTOS - validImgs.length}: agregá más fotografías y esperá a que se carguen.`;
+      }
+      if (imgsUtiles.length > MAX_PHOTOS) {
+        return `Has superado el máximo de ${MAX_PHOTOS} fotografías permitidas.`;
+      }
+      if (vidsUtiles.length > MAX_VIDEOS) {
+        return `Solo se permite un máximo de ${MAX_VIDEOS} video.`;
       }
       if (!senderName.trim()) return 'Escribí tu nombre.';
       if (!senderEmail.trim()) return 'Escribí tu correo electrónico.';
@@ -947,7 +1036,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
             >
               <Upload className="w-8 h-8 mx-auto text-gray-400" />
               <div className="text-sm font-bold text-gray-700 mt-2">Tocá acá para elegir, o arrastrá las fotos o video</div>
-              <div className="text-xs text-gray-400 mt-1">Desde el teléfono se abre la cámara o la galería (Mínimo 5 fotos, máx 10 fotos y 1 video).</div>
+              <div className="text-xs text-gray-400 mt-1">Desde el teléfono se abre la cámara o la galería (Mínimo 5 fotos, máx 10 fotos y 1 video · máx 5 MB por foto, 300 MB el video).</div>
             </button>
             <input
               ref={inputRef}
@@ -986,12 +1075,12 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                         <span className="text-gray-300 font-medium">{formatoTamano(a.file.size)}</span>
                         {a.estado === 'uploaded' && (
                           <span className="inline-flex items-center gap-0.5 text-emerald-400 font-bold">
-                            <CheckCircle2 className="w-3 h-3" /> Cargada
+                            <CheckCircle2 className="w-3 h-3" /> Carga completada
                           </span>
                         )}
                         {a.estado === 'uploading' && (
                           <span className="inline-flex items-center gap-1 text-blue-300 font-bold">
-                            <Loader2 className="w-3 h-3 animate-spin" /> {a.progreso}%
+                            <Loader2 className="w-3 h-3 animate-spin" /> Subiendo {a.progreso}%
                           </span>
                         )}
                         {a.estado === 'pending' && (
@@ -1000,7 +1089,17 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                         {a.estado === 'error' && (
                           <span className="text-red-400 font-bold">Error</span>
                         )}
+                        {a.estado === 'too-heavy' && (
+                          <span className="text-orange-300 font-bold">Archivo demasiado pesado</span>
+                        )}
+                        {a.estado === 'duplicate' && (
+                          <span className="text-violet-300 font-bold">Archivo duplicado</span>
+                        )}
                       </div>
+                      {/* Motivo visible en la tarjeta: qué pasó y qué hacer */}
+                      {a.error && a.estado !== 'uploading' && a.estado !== 'pending' && (
+                        <div className="text-[10px] leading-tight mt-1 text-gray-200/90 line-clamp-3">{a.error}</div>
+                      )}
 
                       {/* Barra de progreso al subir */}
                       {a.estado === 'uploading' && (
@@ -1049,7 +1148,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                 <div className="text-sm leading-relaxed">
                   <span className="font-black text-amber-900">Faltan {faltanFotos} fotografía(s): </span>
                   <span>
-                    Has seleccionado {selectedImages.length} de las {MIN_PHOTOS} requeridas. Por favor selecciona al menos {MIN_PHOTOS} fotografías para poder continuar al paso de envío.
+                    Has cargado {fotosValidas} de las {MIN_PHOTOS} requeridas (cuentan solo las cargadas con éxito). Por favor selecciona al menos {MIN_PHOTOS} fotografías para poder continuar al paso de envío.
                   </span>
                 </div>
               </div>
@@ -1059,7 +1158,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
             {faltanFotos === 0 && haySubiendo && (
               <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3.5 flex items-center gap-2.5 text-blue-900 text-xs font-bold">
                 <Loader2 className="w-4 h-4 animate-spin text-blue-600 shrink-0" />
-                <span>Subiendo evidencias al servidor seguro ({uploadedImages.length} de {adjuntos.length} completadas)...</span>
+                <span>Subiendo evidencias al servidor seguro ({uploadedImages.length + uploadedVideos.length} de {enCupo.length} completadas)...</span>
               </div>
             )}
 
@@ -1073,11 +1172,20 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
               </div>
             )}
 
+            {/* Aviso gris si hay archivos rechazados (peso o duplicados): no se
+                reintentan, se quitan */}
+            {hayRechazados && (
+              <div className="bg-gray-50 border border-gray-200 rounded-2xl p-3.5 flex items-center gap-2 text-gray-700 text-xs font-bold">
+                <AlertTriangle className="w-4 h-4 text-gray-500 shrink-0" />
+                <span>Hay archivos que no se pueden enviar (demasiado pesados o duplicados). Eliminalos con la × de la tarjeta para continuar.</span>
+              </div>
+            )}
+
             {/* Banner verde cuando se cumple todo y están cargadas */}
-            {faltanFotos === 0 && !haySubiendo && !hayErrores && (
+            {faltanFotos === 0 && !haySubiendo && !hayErrores && !hayRechazados && (
               <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5 flex items-center gap-2 text-emerald-900 text-xs font-bold">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>{selectedImages.length} fotografías {videos.length > 0 ? `+ ${videos.length} video ` : ''}cargadas con éxito. Puedes continuar al paso de envío.</span>
+                <span>{fotosValidas} fotografías {uploadedVideos.length > 0 ? `+ ${uploadedVideos.length} video ` : ''}cargadas con éxito. Puedes continuar al paso de envío.</span>
               </div>
             )}
             <div>

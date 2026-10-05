@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1165.0',
+        title: 'Evidencias de Rotary en Acción: topes claros, duplicados y subidas en cola 📸✅',
+        description: 'El paso de evidencias aplica los topes en las tres capas iguales (5 MB por foto, 300 MB por video, mín. 5 y máx. 10 fotos, 1 video): lo que supera el tope se rechaza ANTES de subir con su motivo ("La imagen X pesa Y MB. El tamaño máximo permitido es de 5 MB.") y nunca se reintenta. Duplicados con aviso (nombre+tamaño+tipo+modificación más huella parcial de 256 KB) y tarjeta propia. Estados por archivo (pendiente, subiendo, carga completada, error con Reintentar, demasiado pesado, duplicado), mínimo contado solo sobre lo cargado y subidas de a 3 para no saturar el enlace. Sin compresión: el PUT manda el archivo tal cual a S3.',
+        date: new Date().toISOString(),
+        tags: ['rotary-en-accion', 'evidencias', 'subidas', 'duplicados', 'limites', 'production-release'],
+        type: 'feature',
+        impact: 'high',
+    },
+    {
         version: '4.1164.0',
         title: 'Hotfix: el formulario público de Rotary en Acción vuelve a abrir 🩹',
         description: 'rotary-en-accion.org/rotary-en-accion caía en «Esta pantalla no se pudo mostrar». Causa: v4.1160.0 borró del formulario el import de countryPhones (COUNTRIES, DEFAULT_COUNTRY, findCountry, flagEmoji) dejando los usos, y el primer render lanzaba ReferenceError. Se restaura el import, se quita la ruta exacta duplicada que apuntaba a la galería (la galería solo vive en /rotary-en-accion/:id) y se agrega prueba de regresión que exige que todo identificador del módulo usado por el formulario esté exportado e importado.',

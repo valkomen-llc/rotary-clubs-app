@@ -15,7 +15,7 @@
 //
 // PROMOVER NO RE-SUBE EL ARCHIVO. `CopyObject` va de objeto a objeto dentro
 // del bucket: los bytes NUNCA pasan por la función —la misma técnica del
-// recorte de un video grande (v4.936)—, así que un clip de 200 MB se promueve
+// recorte de un video grande (v4.936)—, así que un clip de 300 MB se promueve
 // sin tocar el `/tmp` de 512 MB ni el cuerpo de la petición.
 //
 // El de staging se borra DESPUÉS de que la fila de `Media` existe, y es de
@@ -30,7 +30,7 @@
 // prefijo.
 // ════════════════════════════════════════════════════════════════════
 import { randomUUID } from 'node:crypto';
-import { checkFileMeta, extensionFor, kindOf, IMAGE_MAX_BYTES, VIDEO_MAX_BYTES } from './contentSubmissionSpec.js';
+import { checkFileMeta, extensionFor, kindOf, IMAGE_MAX_BYTES, VIDEO_MAX_BYTES, overweightMessage } from './contentSubmissionSpec.js';
 
 export const STAGING_PREFIX = 'private/campaign-submissions';
 
@@ -74,7 +74,7 @@ export const stagingKeyBelongs = (key, campaignId) => {
         && !value.includes('..');
 };
 
-/** URL prefirmada de subida (10 minutos — un video de 200 MB desde un móvil
+/** URL prefirmada de subida (10 minutos — un video de 300 MB desde un móvil
  *  tarda). El tipo de contenido queda FIRMADO: el PUT tiene que mandarlo igual
  *  o S3 lo rechaza. */
 export const presignSubmissionUpload = async ({ campaignId, contentType, filename, size }) => {
@@ -114,7 +114,7 @@ export const headSubmissionFile = async (key, { filename, contentType } = {}) =>
         if (bytes <= 0) return { ok: false, error: 'El archivo llegó vacío.' };
         if (!kind) return { ok: false, error: 'Ese tipo de archivo no se admite.' };
         const max = kind === 'video' ? VIDEO_MAX_BYTES : IMAGE_MAX_BYTES;
-        if (bytes > max) return { ok: false, error: `El archivo pesa ${(bytes / 1048576).toFixed(1)} MB y el máximo es ${max / 1048576} MB.` };
+        if (bytes > max) return { ok: false, error: overweightMessage({ filename: filename || key.split('/').pop(), size: bytes, kind }) };
         return { ok: true, bytes, mime, kind };
     } catch {
         return { ok: false, error: 'No encontramos el archivo subido. Volvé a adjuntarlo.' };

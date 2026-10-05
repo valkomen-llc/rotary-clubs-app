@@ -49,8 +49,8 @@ export const MIN_PHOTOS = 5;
 export const MAX_PHOTOS = 10;
 export const MAX_VIDEOS = 1;
 export const MAX_FILES = 11;
-export const IMAGE_MAX_BYTES = 25 * 1024 * 1024;
-export const VIDEO_MAX_BYTES = 200 * 1024 * 1024;
+export const IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+export const VIDEO_MAX_BYTES = 300 * 1024 * 1024;
 
 export const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
 export const VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/webm'];
@@ -78,7 +78,7 @@ export const kindOf = (contentType: string, filename = ''): 'image' | 'video' | 
     return null;
 };
 
-/** El mismo veredicto que el servidor, para avisar ANTES de subir 200 MB. */
+/** El mismo veredicto que el servidor, para avisar ANTES de subir 300 MB. */
 export const checkFileMeta = ({
     contentType, filename, size, type, name,
 }: {
@@ -96,10 +96,50 @@ export const checkFileMeta = ({
     const max = kind === 'video' ? VIDEO_MAX_BYTES : IMAGE_MAX_BYTES;
     if (bytes <= 0) errores.push('El archivo llegó vacío.');
     else if (bytes > max) {
-        errores.push(`${kind === 'video' ? 'El video' : 'La fotografía'} pesa ${(bytes / 1048576).toFixed(1)} MB y el máximo es ${max / 1048576} MB.`);
+        errores.push(overweightMessage({ filename: resolvedName || 'El archivo', size: bytes, kind }));
     }
     return { ok: errores.length === 0, errores, error: errores[0], kind };
 };
+
+// ─── Límites y duplicados del paso de evidencias (v4.1165) ──────────────
+// Espejo en `server/lib/contentSubmissionSpec.js`: al tocar uno, tocar el
+// otro — la paridad se comprueba comparando SALIDAS en
+// `npm run test:submissions`.
+
+/** "4.6 MB" — una sola forma de decir el peso en todo el formulario. */
+export const formatMB = (bytes: number): string => `${(Number(bytes) / 1048576).toFixed(1)} MB`;
+
+/** El motivo de rechazo por peso, con nombre, peso real y tope. */
+export const overweightMessage = ({ filename, size, kind }: { filename?: string; size?: number; kind?: string | null }): string => {
+    const esVideo = kind === 'video';
+    return `${esVideo ? 'El video' : 'La imagen'} ${String(filename || 'El archivo')} pesa ${formatMB(Number(size) || 0)}. El tamaño máximo permitido es de ${esVideo ? '300' : '5'} MB.`;
+};
+
+/** Aviso de duplicado: se muestra, no se reintenta (nada que reintentar). */
+export const DUPLICATE_MESSAGE = 'Este archivo ya fue agregado. No puedes cargar el mismo archivo dos veces.';
+
+/**
+ * Identidad síncrona de un archivo: nombre + tamaño + tipo + modificación.
+ * El nombre solo no basta (dos fotos pueden llamarse igual); estas cuatro
+ * juntas identifican la re-selección del MISMO archivo en la práctica.
+ */
+export const duplicateKey = (f: { name?: string; size?: number; type?: string; lastModified?: number }): string =>
+    [String(f?.name || ''), Number(f?.size) || 0, String(f?.type || ''), Number(f?.lastModified) || 0].join('|');
+
+/**
+ * Segunda capa: huella de los primeros 256 KB. Detecta el mismo contenido
+ * aunque cambien nombre o fecha (renombrados, copias). Solo se leen 256 KB
+ * para no cargar un video de 300 MB entero en memoria por comparar.
+ */
+export const partialFileHash = async (f: Blob): Promise<string> => {
+    const buf = await f.slice(0, 262144).arrayBuffer();
+    const digest = await crypto.subtle.digest('SHA-256', buf);
+    return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+};
+
+/** Fotografías que cuentan para el mínimo: solo las CARGADAS con éxito. */
+export const countValidPhotos = (items: { kind?: string; estado?: string }[] = []): number =>
+    (Array.isArray(items) ? items : []).filter((a) => a?.kind === 'image' && a?.estado === 'uploaded').length;
 
 /**
  * El marcador de posición del consentimiento en el panel.
@@ -215,4 +255,6 @@ export default {
     POST_PLATFORMS, POST_PLATFORM_IDS, POST_PLATFORM_OTHER, postPlatformLabel,
     normalizePostUrl, MAX_POSTS, MAX_PARTICIPATING_CLUBS, POST_URL_MAX,
     activityDateLabel,
+    formatMB, overweightMessage, DUPLICATE_MESSAGE, duplicateKey,
+    partialFileHash, countValidPhotos,
 };
