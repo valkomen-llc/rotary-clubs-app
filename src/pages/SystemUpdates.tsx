@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1160.0',
+        title: 'Rotary en Acción: Carga Definitiva de Evidencias, Acumulación Reactiva en Móviles y Validación Estricta 📸✨',
+        description: 'Reparación definitiva y de extremo a extremo del sistema de carga de evidencias del formulario público Rotary en Acción (/rotary-en-accion), especialmente en dispositivos móviles Android/Chrome: 1) Corrección de discrepancia de parámetros en checkFileMeta (soporte universal para { name, type, size } y { contentType, filename, size }) que descartaba silenciosamente fotografías adicionales. 2) Carga asíncrona inmediata con ciclo de vida completo por archivo (pending, uploading con barra de progreso %, uploaded y error con botón de reintento interactivo), evitando que archivos o videos queden indefinidamente pendientes. 3) Regla de validación estricta: mínimo 5 fotografías obligatorias, máximo 10 fotografías, máximo 1 video (hasta 200 MB), con diferenciación clara donde el video no cuenta dentro de las 5 fotos mínimas (4 fotos + 1 video = inválido con aviso exacto; 5 fotos = válido; 10 fotos + 1 video = válido con 11 archivos admitidos). 4) Deduplicación por huella (name + size + lastModified), prevención de memory leaks de ObjectURL y eliminación limpia con cancelación XHR en vuelo. 5) Trazabilidad requerida en consola ([EVIDENCE_SELECTED], [EVIDENCE_MERGED], [EVIDENCE_UPLOAD_START], [EVIDENCE_UPLOAD_SUCCESS], [EVIDENCE_UPLOAD_ERROR], [EVIDENCE_VALIDATION]).',
+        date: new Date().toISOString(),
+        tags: ['rotary-en-accion', 'evidence-upload', 'mobile-fix', 'validation', 'android-chrome', 'production-release'],
+        type: 'fix',
+        impact: 'critical',
+    },
+    {
         version: '4.1159.0',
         title: 'Rotary en Acción: Garantía universal de opciones en Paso 1 (¿Qué quieres compartir?) en BD y API 🏗️✨',
         description: 'Se reforzó la siembra y recuperación de tipos de actividad en RotaryTaxonomy (activación automática en caso de inactividad previa) y se blindó treeTaxonomies para suministrar la lista canónica completa de 15 tipos de iniciativas rotarias si la consulta a base de datos estuviera vacía. Esto asegura que la cuadrícula de opciones del Paso 1 se renderice de inmediato en cualquier circunstancia.',

@@ -139,6 +139,7 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
     const [saveStatus, setSaveStatus] = useState<'draft' | 'saving' | 'saved' | 'error'>('saved');
     const autosaveTimerRef = useRef<NodeJS.Timeout | null>(null);
     const lastSavedDataRef = useRef<string>('');
+    const initialLoadedProjectIdRef = useRef<string | null>(null);
 
     // ── Pila de Deshacer / Rehacer (Undo / Redo) ──────────────────────────────
     const [history, setHistory] = useState<HistoryState[]>([]);
@@ -294,9 +295,21 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
             subtitles: sanitized.subtitles
         });
         setSaveStatus('saved');
+        console.log('[HYDRATE] Proyecto inicializado en memoria:', {
+            id: sanitized.id,
+            title: sanitized.title,
+            activeLanguage: sanitized.subtitles.activeLanguage,
+            sourceLanguage: sanitized.subtitles.sourceLanguage,
+            segmentsCount: sanitized.subtitles.segments?.length
+        });
     };
 
     useEffect(() => {
+        if (initialProjectId && initialLoadedProjectIdRef.current === initialProjectId) {
+            return;
+        }
+        initialLoadedProjectIdRef.current = initialProjectId || null;
+        console.log('[HYDRATE] Ejecutando carga inicial de proyecto:', initialProjectId || '(reciente)');
         loadProject(initialProjectId);
     }, [loadProject, initialProjectId]);
 
@@ -382,6 +395,11 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
 
         autosaveTimerRef.current = setTimeout(async () => {
             try {
+                console.log('[AUTOSAVE] Ejecutando autoguardado en background:', {
+                    id: project.id,
+                    activeLang: project.subtitles?.activeLanguage,
+                    segmentsCount: project.subtitles?.segments?.length
+                });
                 const token = getStudioAuthToken();
                 const res = await fetch(`/api/video-editor/projects/${project.id}`, {
                     method: 'PUT',
@@ -403,11 +421,13 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
                 if (res.ok) {
                     lastSavedDataRef.current = currentDataString;
                     setSaveStatus('saved');
+                    console.log('[AUTOSAVE] Autoguardado completado OK:', { id: project.id });
                 } else {
                     setSaveStatus('error');
+                    console.warn('[AUTOSAVE] Error devuelto por servidor al autoguardar:', res.status);
                 }
             } catch (err) {
-                console.error('Error al autoguardar proyecto:', err);
+                console.error('[AUTOSAVE] Excepción al autoguardar proyecto:', err);
                 setSaveStatus('error');
             }
         }, 1500);
@@ -423,6 +443,11 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
         if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
         try {
             setSaveStatus('saving');
+            console.log('[AUTOSAVE] Guardado inmediato iniciado:', {
+                id: target.id,
+                activeLang: target.subtitles?.activeLanguage,
+                segmentsCount: target.subtitles?.segments?.length
+            });
             const token = getStudioAuthToken();
             const res = await fetch(`/api/video-editor/projects/${target.id}`, {
                 method: 'PUT',
@@ -451,8 +476,10 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
                     subtitles: target.subtitles
                 });
                 setSaveStatus('saved');
+                console.log('[AUTOSAVE] Guardado inmediato completado OK:', { id: target.id });
             } else {
                 setSaveStatus('error');
+                console.warn('[AUTOSAVE] Error devuelto por servidor en guardado inmediato:', res.status);
             }
         } catch (err) {
             console.error('Error al guardar proyecto inmediatamente:', err);
@@ -707,6 +734,10 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
         const currentProject = projectRef.current || project;
         if (!currentProject || !currentProject.subtitles) return;
         const normTarget = normalizeLangCode(targetLang);
+        console.log('[SUBTITLES] Conmutación de idioma solicitada en editor:', {
+            targetLang: normTarget,
+            currentActive: currentProject.subtitles.activeLanguage
+        });
         const updatedSubtitles = switchSubtitleLanguage(currentProject.subtitles, normTarget);
         const updatedProject: VideoEditorProjectData = {
             ...currentProject,
@@ -1238,6 +1269,12 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
         };
 
         const activeLang = normalizeLangCode(updates.activeLanguage || updatedSubtitles.activeLanguage || updatedSubtitles.language || 'es');
+        console.log('[SUBTITLES] handleUpdateSubtitles ejecutado:', {
+            activeLang,
+            receivedActive: updates.activeLanguage,
+            segmentsCount: updatedSubtitles.segments?.length,
+            hasTranslations: Boolean(updatedSubtitles.translations && Object.keys(updatedSubtitles.translations).length > 0)
+        });
 
         if (updates.segments && updates.translations) {
             // Si updates ya trae segments y translations completos y conmutados, resolver directamente

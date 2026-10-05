@@ -45,7 +45,10 @@ export const STATE_CHIP: Record<string, string> = {
 export const stateChip = (id: string) => STATE_CHIP[SUBMISSION_STATES[id]?.tone || 'gray'] || STATE_CHIP.gray;
 
 export const MIN_FILES_REEL = 5;
-export const MAX_FILES = 10;
+export const MIN_PHOTOS = 5;
+export const MAX_PHOTOS = 10;
+export const MAX_VIDEOS = 1;
+export const MAX_FILES = 11;
 export const IMAGE_MAX_BYTES = 25 * 1024 * 1024;
 export const VIDEO_MAX_BYTES = 200 * 1024 * 1024;
 
@@ -76,15 +79,18 @@ export const kindOf = (contentType: string, filename = ''): 'image' | 'video' | 
 };
 
 /** El mismo veredicto que el servidor, para avisar ANTES de subir 200 MB. */
-export const checkFileMeta = (arg: { contentType?: string; type?: string; filename?: string; name?: string; size?: number } = {}) => {
-    const contentType = arg.contentType || arg.type || '';
-    const filename = arg.filename || arg.name || '';
-    const size = arg.size;
+export const checkFileMeta = ({
+    contentType, filename, size, type, name,
+}: {
+    contentType?: string; filename?: string; size?: number; type?: string; name?: string;
+} = {}) => {
+    const resolvedType = contentType || type || '';
+    const resolvedName = filename || name || '';
     const errores: string[] = [];
-    const kind = kindOf(contentType || '', filename || '');
+    const kind = kindOf(resolvedType, resolvedName);
     if (!kind) {
         errores.push('Sólo se pueden enviar fotografías (JPG, PNG, WEBP, HEIC) y videos (MP4, MOV, WEBM).');
-        return { ok: false, errores, error: 'Sólo se pueden enviar fotografías (JPG, PNG, WEBP, HEIC) y videos (MP4, MOV, WEBM).', kind: null as null };
+        return { ok: false, errores, error: errores[0], kind: null as null };
     }
     const bytes = Number(size) || 0;
     const max = kind === 'video' ? VIDEO_MAX_BYTES : IMAGE_MAX_BYTES;
@@ -92,7 +98,7 @@ export const checkFileMeta = (arg: { contentType?: string; type?: string; filena
     else if (bytes > max) {
         errores.push(`${kind === 'video' ? 'El video' : 'La fotografía'} pesa ${(bytes / 1048576).toFixed(1)} MB y el máximo es ${max / 1048576} MB.`);
     }
-    return { ok: errores.length === 0, errores, error: errores[0] || undefined, kind };
+    return { ok: errores.length === 0, errores, error: errores[0], kind };
 };
 
 /**

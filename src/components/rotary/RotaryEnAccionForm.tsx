@@ -3,12 +3,12 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import {
   Upload, X, Image as ImageIcon, Film, Loader2, CheckCircle2,
   AlertTriangle, MapPin, Users, Plus, ArrowLeft, ArrowRight, Sparkles, Save, Link2, Pencil, ChevronDown,
+  RotateCcw,
 } from 'lucide-react';
 import { useSEO } from '../../hooks/useSEO';
 import Navbar from '../../sections/Navbar';
 import Footer from '../../sections/Footer';
-import { ACCEPT_ATTR, MAX_FILES, checkFileMeta } from '../../lib/contentSubmissionSpec';
-import { COUNTRIES, DEFAULT_COUNTRY, findCountry, flagEmoji } from '../../lib/countryPhones';
+import { ACCEPT_ATTR, MAX_FILES, MIN_PHOTOS, MAX_PHOTOS, MAX_VIDEOS, checkFileMeta } from '../../lib/contentSubmissionSpec';
 import {
   fieldsForTipo, IMPACT_META, EXTRA_LABELS, photoAdvice,
   DEFAULT_TIPOS, DEFAULT_AREAS, DEFAULT_PROGRAMAS, DEFAULT_TEMAS,
@@ -30,13 +30,7 @@ const API = import.meta.env.VITE_API_URL || '/api';
 const CAMPO = 'w-full p-3.5 rounded-xl border-2 border-gray-100 text-base bg-gray-50/60 outline-none focus:border-rotary-blue transition-colors';
 const ROTULO = 'block text-[11px] font-black text-gray-400 uppercase tracking-[0.15em] mb-2';
 const TARJETA = 'bg-white rounded-3xl p-6 shadow-sm border border-gray-100';
-const nuevoId = () => Math.random().toString(36).slice(2);
-const formatBytes = (bytes: number): string => {
-  if (!bytes || bytes <= 0) return '0 B';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-};
+const nuevoId = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 
 const PASOS = ['Qué quieres compartir', 'Cuéntanos', 'Evidencias y contacto', 'Revisar y enviar'];
 
@@ -48,8 +42,22 @@ const leerJson = async (r: Response) => {
 };
 
 type Adjunto = {
-  id: string; file: File; previewUrl: string; kind: 'image' | 'video'; key?: string; estado: 'pendiente' | 'subiendo' | 'listo' | 'error';
-  progreso: number; error?: string; width?: number; height?: number;
+  id: string;
+  file: File;
+  kind: 'image' | 'video';
+  preview: string | null;
+  key?: string;
+  estado: 'pending' | 'uploading' | 'uploaded' | 'error';
+  progreso: number;
+  error?: string;
+  width?: number;
+  height?: number;
+};
+
+const formatoTamano = (bytes: number): string => {
+  if (!bytes || bytes <= 0) return '0 B';
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
 // Ayuda contextual ⓘ: hover en escritorio, tap en móvil, foco por teclado.
@@ -74,7 +82,7 @@ const TIPS: Record<string, string> = {
   programa: 'La comunidad o programa que la protagonizó, si aplica.',
   tema: 'La temática específica, si aplica.',
   tags: 'Palabras sueltas que ayuden a encontrar tu historia.',
-  fotos: 'Agrega al menos 5 fotografías para enviar tu historia. Los videos son bienvenidos como evidencia adicional.',
+  fotos: 'Con 1 fotografía puedes enviar. Con 5 o más habilitas el Reel automático.',
   distrito: 'Distrito al que pertenece el club que realizó la actividad.',
   club: 'El club que protagonizó la historia. Si participaron varios, agrégalos abajo.',
   clubes: 'Otros clubes que participaron, además del principal.',
@@ -227,6 +235,26 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
   const [location, setLocation] = useState('');
   // Paso 3
   const [adjuntos, setAdjuntos] = useState<Adjunto[]>([]);
+  const adjuntosRef = useRef<Adjunto[]>([]);
+  adjuntosRef.current = adjuntos;
+  const xhrMapRef = useRef<Map<string, XMLHttpRequest>>(new Map());
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Limpieza al desmontar: abortar cargas en vuelo y revocar Object URLs
+  useEffect(() => {
+    return () => {
+      xhrMapRef.current.forEach((xhr) => {
+        try { xhr.abort(); } catch { /* noop */ }
+      });
+      xhrMapRef.current.clear();
+      adjuntosRef.current.forEach((a) => {
+        if (a.preview) {
+          try { URL.revokeObjectURL(a.preview); } catch { /* noop */ }
+        }
+      });
+    };
+  }, []);
+
   const [enlaces, setEnlaces] = useState<string[]>([]);
   const [nuevoEnlace, setNuevoEnlace] = useState('');
   const [district, setDistrict] = useState('');
@@ -251,8 +279,6 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
   const [draftToken, setDraftToken] = useState<string | null>(null);
   const [draftSaving, setDraftSaving] = useState(false);
   const [conPrefill, setConPrefill] = useState(false);
-  const [dragActive, setDragActive] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
 
   useSEO({ title: 'Rotary en Acción — Comparte lo que hace tu club', description: 'Tu club hace cosas extraordinarias. Cuéntanos qué está haciendo y nosotros te ayudamos a comunicarlo.' });
 
@@ -334,17 +360,11 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cargando]);
 
-  const MIN_FOTOS = 5;
-  const rules = {
-    minToSubmit: 5,
-    recommended: 5,
-    reelMin: 5,
-    maxFiles: cfg?.photoRules?.maxFiles || MAX_FILES || 10,
-  };
-  const listos = adjuntos.filter((a) => a.estado === 'listo');
-  const totalPhotos = adjuntos.filter((a) => a.estado !== 'error' && a.kind === 'image').length;
-  const totalVideos = adjuntos.filter((a) => a.estado !== 'error' && a.kind === 'video').length;
-  const advice = photoAdvice(totalPhotos, rules);
+  const rules = cfg?.photoRules || { minToSubmit: 5, recommended: 5, reelMin: 5, maxFiles: 11 };
+  const selectedImages = adjuntos.filter((a) => a.kind === 'image');
+  const uploadedImages = adjuntos.filter((a) => a.kind === 'image' && a.estado === 'uploaded');
+  const videos = adjuntos.filter((a) => a.kind === 'video');
+  const advice = photoAdvice(selectedImages.length, rules);
   const cond = fieldsForTipo(tipo);
   const distritos: any[] = cfg?.catalogs?.districts || [];
   const clubesDistrito: string[] = useMemo(() => {
@@ -353,159 +373,303 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
   }, [distritos, district]);
   const tipoNombre = (cfg?.taxonomies?.tipo || []).find((t: any) => t.slug === tipo)?.name || tipo;
 
-  const agregarArchivos = (files: FileList | File[]) => {
-    const arr = Array.from(files);
-    setErrores([]);
-    setAdjuntos((prev) => {
-      const room = (rules.maxFiles || MAX_FILES) - prev.length;
-      if (room <= 0) {
-        setErrores([`Se pueden adjuntar hasta ${rules.maxFiles || MAX_FILES} archivos en total.`]);
-        return prev;
-      }
-      const out = [...prev];
-      const nuevosErrores: string[] = [];
+  const faltanFotos = Math.max(0, MIN_PHOTOS - selectedImages.length);
+  const haySubiendo = adjuntos.some((a) => a.estado === 'uploading' || a.estado === 'pending');
+  const hayErrores = adjuntos.some((a) => a.estado === 'error');
 
-      for (const f of arr.slice(0, Math.max(0, room))) {
-        console.log('[EVIDENCE_SELECTED]', {
-          fileName: f.name,
-          fileType: f.type,
-          fileSize: f.size,
-        });
+  // Trazabilidad de validación en tiempo real
+  useEffect(() => {
+    const minRequired = MIN_PHOTOS;
+    const canContinue =
+      selectedImages.length >= minRequired &&
+      selectedImages.length <= MAX_PHOTOS &&
+      videos.length <= MAX_VIDEOS &&
+      adjuntos.length > 0 &&
+      adjuntos.every((a) => a.estado === 'uploaded');
 
-        const meta = checkFileMeta({ filename: f.name, contentType: f.type, size: f.size });
-        if (!meta.ok) {
-          const errText = meta.error || meta.errores?.[0] || 'Archivo no compatible';
-          nuevosErrores.push(`${f.name}: ${errText}`);
-          console.warn('[EVIDENCE_REJECTED]', { fileName: f.name, error: errText });
-          continue;
-        }
-
-        if (out.some((a) => a.file.name === f.name && a.file.size === f.size)) {
-          continue;
-        }
-
-        const isImg = meta.kind === 'image';
-        const previewUrl = URL.createObjectURL(f);
-        const item: Adjunto = {
-          id: nuevoId(),
-          file: f,
-          previewUrl,
-          kind: isImg ? 'image' : 'video',
-          estado: 'pendiente',
-          progreso: 0,
-        };
-        out.push(item);
-
-        if (isImg) {
-          const img = new Image();
-          img.onload = () => {
-            setAdjuntos((cur) => cur.map((a) => (a.id === item.id ? { ...a, width: img.width, height: img.height } : a)));
-          };
-          img.src = previewUrl;
-        }
-      }
-
-      if (nuevosErrores.length > 0) {
-        setErrores((e) => [...e, ...nuevosErrores]);
-      }
-
-      const totalImages = out.filter((x) => x.kind === 'image').length;
-      const totalVids = out.filter((x) => x.kind === 'video').length;
-      console.log('[EVIDENCE_STATE]', {
-        totalFiles: out.length,
-        totalImages,
-        totalVideos: totalVids,
-      });
-
-      return out;
+    console.log('[EVIDENCE_VALIDATION]', {
+      selectedImages: selectedImages.length,
+      uploadedImages: uploadedImages.length,
+      videos: videos.length,
+      minimumRequired: minRequired,
+      canContinue,
     });
-  };
+  }, [selectedImages.length, uploadedImages.length, videos.length, adjuntos]);
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(true);
-  };
+  const iniciarSubida = useCallback(async (item: Adjunto, campaignId?: string) => {
+    console.log('[EVIDENCE_UPLOAD_START]', {
+      id: item.id,
+      name: item.file.name,
+      size: item.file.size,
+    });
 
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-  };
+    setAdjuntos((prev) =>
+      prev.map((x) =>
+        x.id === item.id ? { ...x, estado: 'uploading' as const, progreso: 0, error: undefined } : x
+      )
+    );
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      agregarArchivos(e.dataTransfer.files);
+    let presignData: any = null;
+    try {
+      const r = await fetch(`${API}/rotary-en-accion/presign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          campaignId,
+          contentType: item.file.type,
+          filename: item.file.name,
+          size: item.file.size,
+        }),
+      });
+      presignData = await leerJson(r);
+      if (!r.ok || !presignData?.uploadUrl || !presignData?.key) {
+        const errMsg = presignData?.error || `Error al preparar la carga (${r.status}).`;
+        console.log('[EVIDENCE_UPLOAD_ERROR]', {
+          id: item.id,
+          name: item.file.name,
+          status: r.status,
+          error: errMsg,
+        });
+        setAdjuntos((prev) =>
+          prev.map((x) =>
+            x.id === item.id ? { ...x, estado: 'error' as const, error: errMsg } : x
+          )
+        );
+        return;
+      }
+    } catch (err: any) {
+      const errMsg = err?.message || 'Error de conexión al preparar la carga.';
+      console.log('[EVIDENCE_UPLOAD_ERROR]', {
+        id: item.id,
+        name: item.file.name,
+        status: 0,
+        error: errMsg,
+      });
+      setAdjuntos((prev) =>
+        prev.map((x) =>
+          x.id === item.id ? { ...x, estado: 'error' as const, error: errMsg } : x
+        )
+      );
+      return;
     }
-  };
 
-  const eliminarAdjunto = (id: string) => {
+    const xhr = new XMLHttpRequest();
+    xhrMapRef.current.set(item.id, xhr);
+    // Timeout: 300s (5 min) para videos, 90s para fotos
+    xhr.timeout = item.kind === 'video' ? 300000 : 90000;
+
+    xhr.open('PUT', presignData.uploadUrl);
+    xhr.setRequestHeader('Content-Type', item.file.type || 'application/octet-stream');
+
+    xhr.upload.onprogress = (ev) => {
+      if (ev.lengthComputable && ev.total > 0) {
+        const pct = Math.min(99, Math.round((ev.loaded / ev.total) * 100));
+        setAdjuntos((prev) =>
+          prev.map((x) => (x.id === item.id ? { ...x, progreso: pct } : x))
+        );
+      }
+    };
+
+    xhr.onload = () => {
+      xhrMapRef.current.delete(item.id);
+      if (xhr.status >= 200 && xhr.status < 300) {
+        console.log('[EVIDENCE_UPLOAD_SUCCESS]', {
+          id: item.id,
+          name: item.file.name,
+          storagePath: presignData.key,
+        });
+        setAdjuntos((prev) =>
+          prev.map((x) =>
+            x.id === item.id
+              ? { ...x, estado: 'uploaded' as const, progreso: 100, key: presignData.key, error: undefined }
+              : x
+          )
+        );
+      } else {
+        const errMsg = `Error del servidor (${xhr.status}).`;
+        console.log('[EVIDENCE_UPLOAD_ERROR]', {
+          id: item.id,
+          name: item.file.name,
+          status: xhr.status,
+          error: errMsg,
+        });
+        setAdjuntos((prev) =>
+          prev.map((x) =>
+            x.id === item.id ? { ...x, estado: 'error' as const, error: errMsg } : x
+          )
+        );
+      }
+    };
+
+    xhr.onerror = () => {
+      xhrMapRef.current.delete(item.id);
+      const errMsg = 'Error de conexión al transferir archivo.';
+      console.log('[EVIDENCE_UPLOAD_ERROR]', {
+        id: item.id,
+        name: item.file.name,
+        status: 0,
+        error: errMsg,
+      });
+      setAdjuntos((prev) =>
+        prev.map((x) =>
+          x.id === item.id ? { ...x, estado: 'error' as const, error: errMsg } : x
+        )
+      );
+    };
+
+    xhr.ontimeout = () => {
+      xhrMapRef.current.delete(item.id);
+      const errMsg = 'Tiempo de espera agotado al cargar el archivo.';
+      console.log('[EVIDENCE_UPLOAD_ERROR]', {
+        id: item.id,
+        name: item.file.name,
+        status: 408,
+        error: errMsg,
+      });
+      setAdjuntos((prev) =>
+        prev.map((x) =>
+          x.id === item.id ? { ...x, estado: 'error' as const, error: errMsg } : x
+        )
+      );
+    };
+
+    xhr.onabort = () => {
+      xhrMapRef.current.delete(item.id);
+    };
+
+    xhr.send(item.file);
+  }, []);
+
+  const quitarArchivo = useCallback((id: string) => {
+    const xhr = xhrMapRef.current.get(id);
+    if (xhr) {
+      xhr.abort();
+      xhrMapRef.current.delete(id);
+    }
     setAdjuntos((prev) => {
       const item = prev.find((x) => x.id === id);
-      if (item?.previewUrl) {
-        try { URL.revokeObjectURL(item.previewUrl); } catch { /* noop */ }
+      if (item?.preview) {
+        try { URL.revokeObjectURL(item.preview); } catch { /* noop */ }
       }
-      const next = prev.filter((x) => x.id !== id);
-      const totalImages = next.filter((x) => x.kind === 'image').length;
-      const totalVids = next.filter((x) => x.kind === 'video').length;
-      console.log('[EVIDENCE_STATE]', {
-        totalFiles: next.length,
-        totalImages,
-        totalVideos: totalVids,
-      });
-      return next;
+      return prev.filter((x) => x.id !== id);
     });
-  };
+  }, []);
 
-  const subirUno = async (a: Adjunto): Promise<string> => {
-    console.log('[UPLOAD_START]', { fileName: a.file.name });
-    const mime = a.file.type || (a.kind === 'image' ? 'image/jpeg' : 'video/mp4');
-    const r = await fetch(`${API}/rotary-en-accion/presign`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        campaignId: cfg?.campaign?.id || undefined,
-        contentType: mime,
-        filename: a.file.name,
-        size: a.file.size,
-      }),
-    });
-    const data = await leerJson(r);
-    if (!r.ok || !data.ok) {
-      const errMsg = data?.error || data?.errores?.[0] || 'No se pudo preparar la carga.';
-      console.error('[UPLOAD_ERROR]', { fileName: a.file.name, status: r.status, error: errMsg });
-      throw new Error(errMsg);
+  const reintentarSubida = useCallback((id: string) => {
+    const item = adjuntosRef.current.find((x) => x.id === id);
+    if (!item) return;
+    const existingXhr = xhrMapRef.current.get(id);
+    if (existingXhr) {
+      existingXhr.abort();
+      xhrMapRef.current.delete(id);
     }
-    await new Promise<void>((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('PUT', data.uploadUrl);
-      xhr.setRequestHeader('Content-Type', mime);
-      xhr.upload.onprogress = (ev) => {
-        if (ev.lengthComputable) {
-          const pct = Math.round((ev.loaded / ev.total) * 100);
-          setAdjuntos((prev) => prev.map((x) => (x.id === a.id ? { ...x, estado: 'subiendo', progreso: pct } : x)));
+    iniciarSubida(item, cfg?.campaign?.id);
+  }, [cfg?.campaign?.id, iniciarSubida]);
+
+  const agregarArchivos = useCallback((files: FileList | File[]) => {
+    const rawList = Array.from(files);
+    if (!rawList.length) return;
+
+    for (const f of rawList) {
+      console.log('[EVIDENCE_SELECTED]', {
+        name: f.name,
+        type: f.type,
+        size: f.size,
+        lastModified: f.lastModified,
+      });
+    }
+
+    const prev = adjuntosRef.current;
+    let currentPhotos = prev.filter((a) => a.kind === 'image').length;
+    let currentVideos = prev.filter((a) => a.kind === 'video').length;
+
+    const nuevosErrores: string[] = [];
+    const itemsToAdd: Adjunto[] = [];
+
+    for (const f of rawList) {
+      const meta = checkFileMeta({ contentType: f.type, filename: f.name, size: f.size });
+      if (!meta.ok) {
+        nuevosErrores.push(`${f.name}: ${meta.errores?.[0] || meta.error || 'Archivo no permitido'}`);
+        continue;
+      }
+
+      // Deduplicación por nombre, tamaño y fecha de modificación
+      const yaExiste =
+        prev.some((a) => a.file.name === f.name && a.file.size === f.size && a.file.lastModified === f.lastModified) ||
+        itemsToAdd.some((a) => a.file.name === f.name && a.file.size === f.size && a.file.lastModified === f.lastModified);
+      if (yaExiste) continue;
+
+      const kind = meta.kind as 'image' | 'video';
+      if (kind === 'video') {
+        if (currentVideos >= MAX_VIDEOS) {
+          nuevosErrores.push(`Solo se permite un máximo de ${MAX_VIDEOS} video. Se ignoró el video adicional: ${f.name}.`);
+          continue;
         }
-      };
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          console.log('[UPLOAD_SUCCESS]', { fileName: a.file.name, storagePath: data.key });
-          resolve();
-        } else {
-          console.error('[UPLOAD_ERROR]', { fileName: a.file.name, status: xhr.status, error: xhr.statusText });
-          reject(new Error(`Carga fallida (${xhr.status}).`));
+        currentVideos++;
+      } else {
+        if (currentPhotos >= MAX_PHOTOS) {
+          nuevosErrores.push(`Solo se permite un máximo de ${MAX_PHOTOS} fotografías. Se ignoró la fotografía adicional: ${f.name}.`);
+          continue;
         }
+        currentPhotos++;
+      }
+
+      let previewUrl: string | null = null;
+      if (kind === 'image') {
+        try {
+          previewUrl = URL.createObjectURL(f);
+        } catch {
+          previewUrl = null;
+        }
+      }
+
+      const item: Adjunto = {
+        id: nuevoId(),
+        file: f,
+        kind,
+        preview: previewUrl,
+        estado: 'pending',
+        progreso: 0,
       };
-      xhr.onerror = () => {
-        console.error('[UPLOAD_ERROR]', { fileName: a.file.name, status: 'network_error', error: 'Conexión interrumpida' });
-        reject(new Error('Se cortó la conexión. Tus archivos pendientes se reintentan al enviar.'));
-      };
-      xhr.send(a.file);
-    });
-    return data.key;
-  };
+
+      if (previewUrl) {
+        const img = new Image();
+        const itemId = item.id;
+        img.onload = () => {
+          setAdjuntos((cur) =>
+            cur.map((a) =>
+              a.id === itemId ? { ...a, width: img.naturalWidth || img.width, height: img.naturalHeight || img.height } : a
+            )
+          );
+        };
+        img.src = previewUrl;
+      }
+
+      itemsToAdd.push(item);
+    }
+
+    if (itemsToAdd.length > 0) {
+      const nextAdjuntos = [...prev, ...itemsToAdd];
+      adjuntosRef.current = nextAdjuntos;
+      setAdjuntos(nextAdjuntos);
+
+      console.log('[EVIDENCE_MERGED]', {
+        previousCount: prev.length,
+        newFilesCount: itemsToAdd.length,
+        resultCount: nextAdjuntos.length,
+        imagesCount: nextAdjuntos.filter((a) => a.kind === 'image').length,
+        videosCount: nextAdjuntos.filter((a) => a.kind === 'video').length,
+      });
+
+      for (const item of itemsToAdd) {
+        iniciarSubida(item, cfg?.campaign?.id);
+      }
+    }
+
+    if (nuevosErrores.length > 0) {
+      setErrores((e) => [...e, ...nuevosErrores]);
+    }
+  }, [cfg?.campaign?.id, iniciarSubida]);
 
   const pedirAyudaIA = async () => {
     setAssistLoading(true);
@@ -539,8 +703,22 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
   const validar = (s: number): string | null => {
     if (s === 0 && !tipo) return 'Elegí qué quieres compartir para continuar.';
     if (s === 2) {
-      if (totalPhotos < MIN_FOTOS) {
-        return `Agrega al menos 5 fotografías para continuar (has seleccionado ${totalPhotos}).`;
+      const selectedImgs = adjuntos.filter((a) => a.kind === 'image');
+      const vids = adjuntos.filter((a) => a.kind === 'video');
+      if (selectedImgs.length < MIN_PHOTOS) {
+        return `Faltan ${MIN_PHOTOS - selectedImgs.length} fotografía(s): Has seleccionado ${selectedImgs.length} de las ${MIN_PHOTOS} requeridas. Por favor selecciona al menos ${MIN_PHOTOS} fotografías para poder continuar al paso de envío.`;
+      }
+      if (selectedImgs.length > MAX_PHOTOS) {
+        return `Has superado el máximo de ${MAX_PHOTOS} fotografías permitidas.`;
+      }
+      if (vids.length > MAX_VIDEOS) {
+        return `Solo se permite un máximo de ${MAX_VIDEOS} video.`;
+      }
+      if (adjuntos.some((a) => a.estado === 'error')) {
+        return 'Uno o más archivos no se pudieron cargar. Tocá "Reintentar" en la tarjeta o elimínalos para poder continuar.';
+      }
+      if (adjuntos.some((a) => a.estado === 'uploading' || a.estado === 'pending')) {
+        return 'Por favor espera a que todos los archivos terminen de cargarse para continuar.';
       }
       if (!senderName.trim()) return 'Escribí tu nombre.';
       if (!senderEmail.trim()) return 'Escribí tu correo electrónico.';
@@ -565,21 +743,12 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
     setErrores([]);
     const m = validar(2);
     if (m) { setErrores([m]); setStep(2); return; }
-    const pendientes = adjuntos.filter((a) => a.estado !== 'listo' && a.estado !== 'error');
     try {
       setEnviando(true);
-      const subidos: Array<{ key: string; filename: string; contentType: string }> = listos.map((a) => ({ key: a.key!, filename: a.file.name, contentType: a.file.type }));
-      for (const a of pendientes) {
-        setAdjuntos((prev) => prev.map((x) => (x.id === a.id ? { ...x, estado: 'subiendo' as const, progreso: 0 } : x)));
-        try {
-          const key = await subirUno(a);
-          setAdjuntos((prev) => prev.map((x) => (x.id === a.id ? { ...x, estado: 'listo' as const, progreso: 100, key } : x)));
-          subidos.push({ key, filename: a.file.name, contentType: a.file.type });
-        } catch (err: any) {
-          setAdjuntos((prev) => prev.map((x) => (x.id === a.id ? { ...x, estado: 'error' as const, error: err?.message } : x)));
-          throw new Error(`${a.file.name}: ${err?.message || 'no se pudo subir'}`);
-        }
-      }
+      const subidos = adjuntos.map((a) => {
+        if (!a.key) throw new Error(`El archivo ${a.file.name} no se ha terminado de cargar.`);
+        return { key: a.key, filename: a.file.name, contentType: a.file.type };
+      });
       const extrasTexto = Object.entries(extraFields).filter(([, v]) => String(v).trim()).map(([k, v]) => `${EXTRA_LABELS[k] || k}: ${v}`).join('\n');
       const impactNums: Record<string, any> = {};
       for (const [k, v] of Object.entries(impact)) {
@@ -767,44 +936,18 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
         {step === 2 && !enviado && (
           <div className={TARJETA + ' space-y-5'}>
             <div>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-lg font-black text-gray-800">Evidencias y contacto</h2>
-                <span className={`text-xs font-bold px-3 py-1 rounded-full ${
-                  totalPhotos >= MIN_FOTOS
-                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                    : 'bg-amber-50 text-amber-700 border border-amber-200'
-                }`}>
-                  {totalPhotos >= MIN_FOTOS
-                    ? `✓ ${totalPhotos} fotos seleccionadas (mínimo cumplido)`
-                    : `${totalPhotos} de ${MIN_FOTOS} fotografías mínimas`}
-                </span>
-              </div>
-              <p className="text-sm text-gray-500 mt-1">
-                Requerimos un mínimo de <strong>5 fotografías</strong> para publicar la actividad. Puedes adjuntar videos como complemento (los videos no reemplazan las fotos mínimas).
-              </p>
+              <h2 className="text-lg font-black text-gray-800">Evidencias y contacto</h2>
+              <p className="text-sm text-gray-500 mt-1">{selectedImages.length} de {MIN_PHOTOS} mínima(s) · {advice.text}</p>
             </div>
-
-            {/* Dropzone interactivo */}
-            <div
+            <button
+              type="button"
               onClick={() => inputRef.current?.click()}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              className={`w-full border-2 border-dashed rounded-2xl p-6 sm:p-8 text-center cursor-pointer transition-all ${
-                dragActive
-                  ? 'border-rotary-blue bg-blue-50/70 scale-[1.01]'
-                  : 'border-gray-200 hover:border-rotary-blue hover:bg-gray-50/50'
-              }`}
+              className="w-full border-2 border-dashed border-gray-200 rounded-2xl p-6 sm:p-8 text-center hover:border-rotary-blue hover:bg-blue-50/20 transition-all cursor-pointer"
             >
-              <Upload className={`w-9 h-9 mx-auto transition-colors ${dragActive ? 'text-rotary-blue animate-bounce' : 'text-gray-400'}`} />
-              <div className="text-sm font-bold text-gray-800 mt-2">
-                {dragActive ? 'Soltá las fotos o videos acá' : 'Tocá acá para elegir, o arrastrá las fotos y videos'}
-              </div>
-              <div className="text-xs text-gray-500 mt-1 max-w-md mx-auto">
-                Formatos: JPG, PNG, WEBP, MP4, MOV. Mínimo 5 fotos obligatorias. En celular abre la cámara o la galería.
-              </div>
-            </div>
-
+              <Upload className="w-8 h-8 mx-auto text-gray-400" />
+              <div className="text-sm font-bold text-gray-700 mt-2">Tocá acá para elegir, o arrastrá las fotos o video</div>
+              <div className="text-xs text-gray-400 mt-1">Desde el teléfono se abre la cámara o la galería (Mínimo 5 fotos, máx 10 fotos y 1 video).</div>
+            </button>
             <input
               ref={inputRef}
               type="file"
@@ -813,135 +956,127 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
               className="hidden"
               onChange={(e) => {
                 if (e.target.files && e.target.files.length > 0) {
-                  agregarArchivos(e.target.files);
+                  const selected = Array.from(e.target.files);
+                  e.target.value = '';
+                  agregarArchivos(selected);
+                } else {
+                  e.target.value = '';
                 }
-                e.target.value = '';
               }}
             />
 
-            {/* Galería de evidencias seleccionadas */}
             {adjuntos.length > 0 && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between text-xs font-bold text-gray-600">
-                  <span>Evidencias cargadas ({adjuntos.length} de máx. {rules.maxFiles})</span>
-                  <button
-                    type="button"
-                    onClick={() => inputRef.current?.click()}
-                    className="flex items-center gap-1 text-rotary-blue hover:underline font-bold cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Agregar más evidencias
-                  </button>
-                </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                {adjuntos.map((a) => (
+                  <div key={a.id} className="relative rounded-2xl overflow-hidden bg-gray-900 aspect-square border border-gray-200 shadow-sm group">
+                    {a.preview ? (
+                      <img src={a.preview} alt={a.file.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 gap-1.5 p-2 bg-gradient-to-b from-gray-800 to-gray-950">
+                        <Film className="w-8 h-8 text-blue-400" />
+                        <span className="text-[10px] font-bold text-gray-300 truncate max-w-full px-1">{a.file.name}</span>
+                      </div>
+                    )}
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                  {adjuntos.map((a) => (
-                    <div
-                      key={a.id}
-                      className="group relative rounded-2xl overflow-hidden bg-gray-900/5 border border-gray-200 aspect-square flex flex-col justify-between p-2 shadow-xs"
-                    >
-                      {/* Media preview */}
-                      <div className="absolute inset-0 z-0">
-                        {a.kind === 'image' ? (
-                          <img
-                            src={a.previewUrl}
-                            alt={a.file.name}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full bg-slate-900 flex flex-col items-center justify-center text-white relative">
-                            <video
-                              src={a.previewUrl}
-                              className="w-full h-full object-cover opacity-60"
-                              muted
-                              playsInline
-                            />
-                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                              <div className="bg-black/60 rounded-full p-2 backdrop-blur-xs">
-                                <Film className="w-6 h-6 text-white" />
-                              </div>
-                            </div>
-                          </div>
+                    {/* Overlay inferior con nombre, tamaño y estado */}
+                    <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/90 via-black/60 to-transparent flex flex-col justify-end text-white">
+                      <div className="text-[11px] font-bold truncate drop-shadow-sm leading-tight">{a.file.name}</div>
+                      <div className="flex items-center justify-between text-[10px] mt-0.5">
+                        <span className="text-gray-300 font-medium">{formatoTamano(a.file.size)}</span>
+                        {a.estado === 'uploaded' && (
+                          <span className="inline-flex items-center gap-0.5 text-emerald-400 font-bold">
+                            <CheckCircle2 className="w-3 h-3" /> Cargada
+                          </span>
+                        )}
+                        {a.estado === 'uploading' && (
+                          <span className="inline-flex items-center gap-1 text-blue-300 font-bold">
+                            <Loader2 className="w-3 h-3 animate-spin" /> {a.progreso}%
+                          </span>
+                        )}
+                        {a.estado === 'pending' && (
+                          <span className="text-amber-300 font-bold">Pendiente</span>
+                        )}
+                        {a.estado === 'error' && (
+                          <span className="text-red-400 font-bold">Error</span>
                         )}
                       </div>
 
-                      {/* Header de la tarjeta: Badge de tipo y botón eliminar */}
-                      <div className="relative z-10 flex items-center justify-between w-full">
-                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md shadow-xs ${
-                          a.kind === 'image'
-                            ? 'bg-blue-600/90 text-white'
-                            : 'bg-purple-600/90 text-white'
-                        }`}>
-                          {a.kind === 'image' ? 'Foto' : 'Video'}
-                        </span>
+                      {/* Barra de progreso al subir */}
+                      {a.estado === 'uploading' && (
+                        <div className="w-full bg-white/20 rounded-full h-1 mt-1.5 overflow-hidden">
+                          <div className="bg-rotary-blue h-full transition-all duration-300 rounded-full" style={{ width: `${a.progreso}%` }} />
+                        </div>
+                      )}
+
+                      {/* Botón de reintento en caso de error */}
+                      {a.estado === 'error' && (
                         <button
                           type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            eliminarAdjunto(a.id);
-                          }}
-                          aria-label={`Eliminar ${a.file.name}`}
-                          className="bg-black/70 hover:bg-red-600 text-white rounded-full p-1.5 transition-colors shadow-sm cursor-pointer"
+                          onClick={() => reintentarSubida(a.id)}
+                          className="mt-1.5 w-full flex items-center justify-center gap-1 py-1 px-2 rounded-lg bg-red-600/90 hover:bg-red-600 text-white text-[10px] font-black tracking-wide transition-colors"
                         >
-                          <X className="w-3.5 h-3.5" />
+                          <RotateCcw className="w-3 h-3" /> Reintentar
                         </button>
-                      </div>
-
-                      {/* Overlays de estado de carga */}
-                      {a.estado === 'subiendo' && (
-                        <div className="absolute inset-0 z-20 bg-black/60 backdrop-blur-xs flex flex-col items-center justify-center text-white px-3 text-center">
-                          <Loader2 className="w-5 h-5 animate-spin text-rotary-blue mb-1" />
-                          <span className="text-xs font-bold">{a.progreso}%</span>
-                          <div className="w-full bg-white/20 rounded-full h-1.5 mt-2 overflow-hidden">
-                            <div className="bg-rotary-blue h-full transition-all" style={{ width: `${a.progreso}%` }} />
-                          </div>
-                        </div>
                       )}
-
-                      {a.estado === 'error' && (
-                        <div className="absolute inset-0 z-20 bg-red-950/80 backdrop-blur-xs flex flex-col items-center justify-center text-white p-2 text-center">
-                          <AlertTriangle className="w-5 h-5 text-amber-300 mb-1" />
-                          <span className="text-[11px] font-bold text-amber-200 line-clamp-2 leading-tight">
-                            {a.error || 'Error. Se reintenta al enviar.'}
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Footer de la tarjeta: Nombre y tamaño */}
-                      <div className="relative z-10 w-full bg-black/75 backdrop-blur-xs text-white rounded-lg px-2 py-1">
-                        <p className="text-[11px] font-medium truncate" title={a.file.name}>
-                          {a.file.name}
-                        </p>
-                        <div className="flex items-center justify-between text-[10px] text-gray-300">
-                          <span>{formatBytes(a.file.size)}</span>
-                          {a.estado === 'listo' && <span className="text-emerald-400 font-bold">✓ Listo</span>}
-                          {a.estado === 'pendiente' && <span className="text-gray-300">Pendiente</span>}
-                        </div>
-                      </div>
                     </div>
-                  ))}
 
-                  {/* Tile adicional "Agregar más" en la cuadrícula si hay espacio */}
-                  {adjuntos.length < (rules.maxFiles || MAX_FILES) && (
+                    {/* Aviso de baja resolución */}
+                    {a.width != null && a.width < 800 && (
+                      <div className="absolute top-2 left-2 bg-amber-500/90 backdrop-blur-sm text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow">
+                        Baja resolución
+                      </div>
+                    )}
+
+                    {/* Botón para quitar evidencia */}
                     <button
                       type="button"
-                      onClick={() => inputRef.current?.click()}
-                      className="rounded-2xl border-2 border-dashed border-gray-300 hover:border-rotary-blue hover:bg-blue-50/30 flex flex-col items-center justify-center p-4 aspect-square transition-all cursor-pointer group"
+                      onClick={() => quitarArchivo(a.id)}
+                      aria-label={`Quitar ${a.file.name}`}
+                      className="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/70 hover:bg-black text-white flex items-center justify-center shadow transition-colors"
                     >
-                      <Plus className="w-6 h-6 text-gray-400 group-hover:text-rotary-blue transition-colors" />
-                      <span className="text-xs font-bold text-gray-600 group-hover:text-rotary-blue mt-1">Agregar más</span>
+                      <X className="w-3.5 h-3.5" />
                     </button>
-                  )}
-                </div>
-
-                {/* Aviso si faltan fotos para llegar a las 5 */}
-                {totalPhotos < MIN_FOTOS && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2.5 text-xs text-amber-800">
-                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                    <div>
-                      <strong>Faltan {MIN_FOTOS - totalPhotos} fotografía(s):</strong> Has seleccionado {totalPhotos} de las 5 requeridas. Por favor selecciona al menos 5 fotografías para poder continuar al paso de envío.
-                    </div>
                   </div>
-                )}
+                ))}
+              </div>
+            )}
+
+            {/* Aviso amarillo idéntico a la captura si faltan fotografías */}
+            {faltanFotos > 0 && (
+              <div className="bg-amber-50/90 border border-amber-200/80 rounded-2xl p-4 flex items-start gap-3 text-amber-900">
+                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="text-sm leading-relaxed">
+                  <span className="font-black text-amber-900">Faltan {faltanFotos} fotografía(s): </span>
+                  <span>
+                    Has seleccionado {selectedImages.length} de las {MIN_PHOTOS} requeridas. Por favor selecciona al menos {MIN_PHOTOS} fotografías para poder continuar al paso de envío.
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Aviso azul si se están subiendo evidencias */}
+            {faltanFotos === 0 && haySubiendo && (
+              <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3.5 flex items-center gap-2.5 text-blue-900 text-xs font-bold">
+                <Loader2 className="w-4 h-4 animate-spin text-blue-600 shrink-0" />
+                <span>Subiendo evidencias al servidor seguro ({uploadedImages.length} de {adjuntos.length} completadas)...</span>
+              </div>
+            )}
+
+            {/* Aviso rojo si algún archivo falló al subir */}
+            {hayErrores && (
+              <div className="bg-red-50 border border-red-200 rounded-2xl p-3.5 flex items-center justify-between gap-2 text-red-900 text-xs font-bold">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+                  <span>Uno o más archivos no se pudieron cargar. Tocá "Reintentar" en la tarjeta o elimínalos para continuar.</span>
+                </div>
+              </div>
+            )}
+
+            {/* Banner verde cuando se cumple todo y están cargadas */}
+            {faltanFotos === 0 && !haySubiendo && !hayErrores && (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5 flex items-center gap-2 text-emerald-900 text-xs font-bold">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{selectedImages.length} fotografías {videos.length > 0 ? `+ ${videos.length} video ` : ''}cargadas con éxito. Puedes continuar al paso de envío.</span>
               </div>
             )}
             <div>
@@ -1014,14 +1149,14 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
               <Bloque titulo="Evidencias y contacto" paso={2}>
                 <div className="space-y-2">
                   <p className="text-sm">
-                    <strong>{totalPhotos} fotografía(s)</strong> {totalVideos > 0 && `· ${totalVideos} video(s)`} · {club || 'Sin club'} · {senderName} ({senderEmail})
+                    <strong>{selectedImages.length} fotografía(s)</strong>{videos.length > 0 && ` · ${videos.length} video(s)`} · {club || 'Sin club'} · {senderName} ({senderEmail})
                   </p>
                   {adjuntos.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 pt-1">
                       {adjuntos.slice(0, 10).map((a) => (
                         <div key={a.id} className="w-12 h-12 rounded-lg overflow-hidden border border-gray-200 bg-gray-100 relative shadow-xs">
-                          {a.kind === 'image' ? (
-                            <img src={a.previewUrl} alt="" className="w-full h-full object-cover" />
+                          {a.kind === 'image' && a.preview ? (
+                            <img src={a.preview} alt="" className="w-full h-full object-cover" />
                           ) : (
                             <div className="w-full h-full bg-slate-800 flex items-center justify-center text-white">
                               <Film className="w-4 h-4" />
@@ -1057,7 +1192,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
               <div className="flex gap-2"><dt className="text-gray-400 w-32">Tipo</dt><dd className="font-bold">{tipoNombre || '—'}</dd></div>
               <div className="flex gap-2"><dt className="text-gray-400 w-32">Actividad</dt><dd className="font-bold">{title || '—'}</dd></div>
               <div className="flex gap-2"><dt className="text-gray-400 w-32">Club</dt><dd>{club || '—'}</dd></div>
-              <div className="flex gap-2"><dt className="text-gray-400 w-32">Material</dt><dd>{adjuntos.length} archivo(s)</dd></div>
+              <div className="flex gap-2"><dt className="text-gray-400 w-32">Material</dt><dd>{selectedImages.length} fotografía(s){videos.length > 0 ? ` + ${videos.length} video` : ''}</dd></div>
               <div className="flex gap-2"><dt className="text-gray-400 w-32">Estado inicial</dt><dd>Recibido</dd></div>
             </dl>
             <p className="text-xs text-gray-500 mt-4">Qué sigue: el equipo revisa tu historia, la convierte en contenido y te envía el enlace cuando se publique.</p>

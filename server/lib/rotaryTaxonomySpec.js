@@ -97,8 +97,7 @@ export const IMPACT_FIELDS = [
 export const fieldsForTipo = (slug) =>
   CONDITIONAL_FIELDS[slug] || { extra: [], impacto: ['beneficiarios', 'voluntarios', 'horas'] };
 
-// ─── Reglas de fotografía: enviar ≠ producir formatos ─────────────────
-export const DEFAULT_PHOTO_RULES = { minToSubmit: 5, recommended: 5, reelMin: 5, maxFiles: 10 };
+export const DEFAULT_PHOTO_RULES = { minToSubmit: 5, recommended: 5, reelMin: 5, maxFiles: 11 };
 
 // ─── Completitud: pesos administrativos (no visibles al usuario) ──────
 export const COMPLETENESS_WEIGHTS = { info: 25, fotos: 25, impacto: 20, ubicacion: 15, historia: 15 };

@@ -36,30 +36,137 @@ async function getS3Client() {
 }
 
 /**
- * Descarga un recurso remoto a un archivo local temporal con validación de cabeceras, tamaño y timeout.
+ * Descarga un recurso multimedia a un archivo local temporal.
+ * Estrategia de triple resolución con diagnóstico detallado:
+ * 1. Acceso directo a AWS S3 mediante SDK autenticado si la URL o el clip tienen clave S3 o coinciden con la tabla Media.
+ * 2. Descarga HTTP/HTTPS con resolución de rutas relativas locales y reintentos automáticos (3 intentos con backoff exponencial).
+ * 3. Preflight y verificación de integridad (tamaño > 0 bytes).
  */
-async function downloadToFile(url, destPath, timeoutMs = 45_000) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-        const res = await fetch(url, {
-            signal: controller.signal,
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (ClubPlatform VideoEditor/4.1150)'
-            }
-        });
-        if (!res.ok) {
-            throw new Error(`Error HTTP ${res.status} al descargar recurso desde ${url.split('?')[0]}`);
-        }
-        const stream = createWriteStream(destPath);
-        await pipeline(res.body, stream);
-        const s = await stat(destPath).catch(() => ({ size: 0 }));
-        if (!s.size || s.size === 0) {
-            throw new Error(`El archivo descargado está vacío (0 bytes): ${url.split('?')[0]}`);
-        }
-    } finally {
-        clearTimeout(timer);
+export async function downloadMediaAsset(clipOrUrl, destPath, timeoutMs = 60_000) {
+    const url = typeof clipOrUrl === 'string' ? clipOrUrl : (clipOrUrl?.url || '');
+    const clipName = typeof clipOrUrl === 'object' ? (clipOrUrl.name || clipOrUrl.type || 'recurso') : 'recurso';
+    const mediaId = typeof clipOrUrl === 'object' ? clipOrUrl.mediaId : null;
+
+    if (!url || typeof url !== 'string' || !url.trim()) {
+        throw new Error(`[ASSET] URL de recurso inválida o vacía para "${clipName}"`);
     }
+
+    const cleanUrl = url.trim();
+    console.log(`[ASSET] Iniciando descarga de recurso "${clipName}": ${cleanUrl.split('?')[0]}`);
+
+    // 1. Buscar en la tabla Media si tenemos URL, ID o nombre
+    let mediaRow = null;
+    try {
+        const queryRes = await db.query(
+            `SELECT id, filename, url, "s3Key", bucket, mimetype, type 
+               FROM "Media" 
+              WHERE url = $1 
+                 OR "s3Key" = $1 
+                 OR id::text = $1
+                 OR ($2::text IS NOT NULL AND id::text = $2::text)
+                 OR ($3::text IS NOT NULL AND filename = $3::text)
+              LIMIT 1`,
+            [cleanUrl, mediaId || null, clipName || null]
+        );
+        if (queryRes.rows && queryRes.rows.length > 0) {
+            mediaRow = queryRes.rows[0];
+        }
+    } catch (dbErr) {
+        console.warn(`[ASSET] Aviso al consultar tabla Media: ${dbErr.message}`);
+    }
+
+    // 2. Resolver bucket y s3Key
+    const bucket = mediaRow?.bucket || process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
+    let s3Key = mediaRow?.s3Key;
+
+    if (!s3Key) {
+        // Intentar deducir la clave S3 a partir de la URL (soporta amazonaws.com y s3.amazonaws.com)
+        const s3Regex = /https:\/\/[^/]+\.amazonaws\.com\/(.+)/i;
+        const match = cleanUrl.match(s3Regex);
+        if (match && match[1]) {
+            s3Key = decodeURIComponent(match[1].split('?')[0]);
+        }
+    }
+
+    // Si tenemos clave S3, descargar directamente vía AWS S3 Client
+    if (s3Key) {
+        try {
+            console.log(`[ASSET] Descargando desde AWS S3 (Bucket: ${bucket}, Key: ${s3Key})`);
+            const s3 = await getS3Client();
+            const { GetObjectCommand } = await import('@aws-sdk/client-s3');
+            const s3Response = await s3.send(new GetObjectCommand({
+                Bucket: bucket,
+                Key: s3Key
+            }));
+
+            const stream = createWriteStream(destPath);
+            await pipeline(s3Response.Body, stream);
+
+            const fileStat = await stat(destPath).catch(() => ({ size: 0 }));
+            if (fileStat.size > 0) {
+                console.log(`[ASSET] Descarga completada exitosamente desde S3: ${destPath} (${fileStat.size} bytes)`);
+                return destPath;
+            }
+            console.warn(`[ASSET] Archivo descargado desde S3 está vacío, intentando vía HTTP...`);
+        } catch (s3Err) {
+            console.warn(`[ASSET] Falló descarga directa desde S3 (${s3Key}): ${s3Err.message}, reintentando vía HTTP...`);
+        }
+    }
+
+    // 3. Descarga vía HTTP/HTTPS con reintentos
+    let fetchUrl = cleanUrl;
+    if (fetchUrl.startsWith('/')) {
+        const baseUrl = process.env.PUBLIC_APP_URL || `http://127.0.0.1:${process.env.PORT || 5001}`;
+        fetchUrl = `${baseUrl.replace(/\/$/, '')}${fetchUrl}`;
+    }
+
+    const maxRetries = 3;
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            console.log(`[ASSET] Intento ${attempt}/${maxRetries} descargando vía HTTP: ${fetchUrl.split('?')[0]}`);
+            const res = await fetch(fetchUrl, {
+                signal: controller.signal,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (ClubPlatform VideoEditor/4.1153)',
+                    'Accept': '*/*'
+                }
+            });
+
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status} ${res.statusText}`);
+            }
+
+            const stream = createWriteStream(destPath);
+            await pipeline(res.body, stream);
+
+            const fileStat = await stat(destPath).catch(() => ({ size: 0 }));
+            if (!fileStat.size || fileStat.size === 0) {
+                throw new Error(`Archivo recibido vacío (0 bytes)`);
+            }
+
+            console.log(`[ASSET] Descarga completada exitosamente vía HTTP: ${destPath} (${fileStat.size} bytes)`);
+            return destPath;
+        } catch (err) {
+            lastError = err;
+            console.warn(`[ASSET] Intento ${attempt}/${maxRetries} falló (${err.message})`);
+            if (attempt < maxRetries) {
+                const backoffMs = attempt * 1200;
+                await new Promise(r => setTimeout(r, backoffMs));
+            }
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+
+    throw new Error(`Fallo tras ${maxRetries} intentos al descargar recurso "${clipName}": ${lastError?.message || 'Error desconocido'}`);
+}
+
+export async function downloadToFile(url, destPath, timeoutMs = 60_000) {
+    return downloadMediaAsset(url, destPath, timeoutMs);
 }
 
 /**
@@ -148,17 +255,49 @@ export function resolveActiveSubtitleText(segment, activeLang, subtitles, index 
     const normFallback = normalizeLanguageCode(subtitles?.sourceLanguage || subtitles?.language || 'es');
     const segIdLower = (segment.id || '').toLowerCase();
 
-    // 1. Translations del segmento en idioma activo
+    // Determinar texto fuente original
+    let sourceText = '';
     if (segment.translations && typeof segment.translations === 'object') {
         for (const [k, v] of Object.entries(segment.translations)) {
-            if (normalizeLanguageCode(k) === normActive && typeof v === 'string' && v.trim()) {
-                return v;
+            if (normalizeLanguageCode(k) === normFallback && typeof v === 'string' && v.trim()) {
+                sourceText = v.trim();
+                break;
             }
         }
     }
-
-    // 2. Catálogo global en idioma activo (coincidencia por ID, timestamps o índice)
     const catalog = subtitles?.translations;
+    if (!sourceText && catalog && typeof catalog === 'object') {
+        for (const [k, ver] of Object.entries(catalog)) {
+            if (normalizeLanguageCode(k) === normFallback && Array.isArray(ver?.segments)) {
+                const srcMatch = ver.segments.find(vs => 
+                    (vs.id && segment.id && (vs.id === segment.id || (segIdLower && vs.id.toLowerCase() === segIdLower))) ||
+                    (Math.abs(vs.start - segment.start) < 0.08 && Math.abs(vs.end - segment.end) < 0.08)
+                ) || (index >= 0 ? ver.segments[index] : undefined);
+                if (srcMatch?.text && typeof srcMatch.text === 'string' && srcMatch.text.trim()) {
+                    sourceText = srcMatch.text.trim();
+                    break;
+                }
+            }
+        }
+    }
+    if (!sourceText && normActive !== normFallback && segment.text) {
+        sourceText = segment.text.trim();
+    }
+
+    // 1. Si el idioma activo es el de respaldo (origen), devolver texto fuente
+    if (normActive === normFallback) {
+        if (sourceText) return sourceText;
+        if (segment.translations && typeof segment.translations === 'object') {
+            for (const [k, v] of Object.entries(segment.translations)) {
+                if (normalizeLanguageCode(k) === normFallback && typeof v === 'string' && v.trim()) {
+                    return v;
+                }
+            }
+        }
+        return segment.text || '';
+    }
+
+    // 2. Idioma activo es traducción: prioridad 1 al catálogo global de versiones (fuente canónica)
     if (catalog && typeof catalog === 'object') {
         for (const [k, ver] of Object.entries(catalog)) {
             if (normalizeLanguageCode(k) === normActive && Array.isArray(ver?.segments)) {
@@ -167,47 +306,38 @@ export function resolveActiveSubtitleText(segment, activeLang, subtitles, index 
                     (Math.abs(vs.start - segment.start) < 0.08 && Math.abs(vs.end - segment.end) < 0.08)
                 ) || (index >= 0 ? ver.segments[index] : undefined);
                 if (match?.text && typeof match.text === 'string' && match.text.trim()) {
-                    return match.text;
+                    const matchTrim = match.text.trim();
+                    // Descartar si es idéntico al texto fuente original (contaminación)
+                    if (!sourceText || matchTrim.toLowerCase() !== sourceText.toLowerCase()) {
+                        return matchTrim;
+                    }
                 }
             }
         }
     }
 
-    // 3. Si normActive !== normFallback: comprobar si segment.text ya contiene la versión activa
-    if (normActive !== normFallback && segment.text && segment.text.trim()) {
-        const fallbackInTrs = segment.translations ? 
-            Object.entries(segment.translations).find(([k]) => normalizeLanguageCode(k) === normFallback)?.[1] : undefined;
-        if (!fallbackInTrs || fallbackInTrs.trim() !== segment.text.trim()) {
-            return segment.text;
-        }
-    }
-
-    // 4. Traducción del segmento en idioma de respaldo
+    // Prioridad 2: translations del segmento en idioma activo (verificando no contaminación)
     if (segment.translations && typeof segment.translations === 'object') {
         for (const [k, v] of Object.entries(segment.translations)) {
-            if (normalizeLanguageCode(k) === normFallback && typeof v === 'string' && v.trim()) {
-                return v;
-            }
-        }
-    }
-
-    // 5. Catálogo global en idioma de respaldo
-    if (catalog && typeof catalog === 'object') {
-        for (const [k, ver] of Object.entries(catalog)) {
-            if (normalizeLanguageCode(k) === normFallback && Array.isArray(ver?.segments)) {
-                const match = ver.segments.find(vs => 
-                    (vs.id && segment.id && (vs.id === segment.id || (segIdLower && vs.id.toLowerCase() === segIdLower))) ||
-                    (Math.abs(vs.start - segment.start) < 0.08 && Math.abs(vs.end - segment.end) < 0.08)
-                ) || (index >= 0 ? ver.segments[index] : undefined);
-                if (match?.text && typeof match.text === 'string' && match.text.trim()) {
-                    return match.text;
+            if (normalizeLanguageCode(k) === normActive && typeof v === 'string' && v.trim()) {
+                const vTrim = v.trim();
+                if (!sourceText || vTrim.toLowerCase() !== sourceText.toLowerCase()) {
+                    return vTrim;
                 }
             }
         }
     }
 
-    // 6. Texto directo del segmento
-    return segment.text || '';
+    // Prioridad 3: segment.text si ya contiene la traducción
+    if (segment.text && segment.text.trim()) {
+        const segTextTrim = segment.text.trim();
+        if (!sourceText || segTextTrim.toLowerCase() !== sourceText.toLowerCase()) {
+            return segTextTrim;
+        }
+    }
+
+    // Prioridad 4: Fallback al texto fuente de respaldo
+    return sourceText || segment.text || '';
 }
 
 /**
@@ -369,6 +499,7 @@ export async function renderProjectAsync(projectId) {
         // ─── ETAPA 2: Descargando recursos (15%) ───
         currentStage = 'Descargando recursos';
         await updateProgress(15, 'Descargando recursos');
+        console.log(`[RENDER] Etapa 2: Descargando ${visualClips.length} recursos visuales y ${audioClips.length} pistas de audio`);
 
         const downloadedVisuals = [];
         for (let i = 0; i < visualClips.length; i++) {
@@ -376,8 +507,9 @@ export async function renderProjectAsync(projectId) {
             const ext = clip.type === 'image' ? '.jpg' : '.mp4';
             const rawPath = path.join(dir, `clip_raw_${i}${ext}`);
             try {
-                await downloadToFile(clip.url, rawPath, 60_000);
+                await downloadMediaAsset(clip, rawPath, 60_000);
             } catch (dlErr) {
+                console.error(`[RENDER] Error crítico al descargar recurso visual #${i + 1} (${clip.name || clip.type}):`, dlErr.message);
                 throw new Error(`Fallo al descargar recurso visual #${i + 1} (${clip.name || clip.type}): ${dlErr.message}`);
             }
             downloadedVisuals.push({ ...clip, rawPath });
@@ -389,11 +521,21 @@ export async function renderProjectAsync(projectId) {
             const clip = audioClips[i];
             const audioPath = path.join(dir, `audio_raw_${i}.mp3`);
             try {
-                await downloadToFile(clip.url, audioPath, 60_000);
+                await downloadMediaAsset(clip, audioPath, 60_000);
                 downloadedAudios.push({ ...clip, localPath: audioPath });
             } catch (dlAudioErr) {
-                console.warn(`[VideoEditorRender] Warning al descargar audio adicional #${i}: ${dlAudioErr.message}`);
+                console.warn(`[RENDER] Aviso al descargar audio complementario #${i + 1}: ${dlAudioErr.message}`);
             }
+        }
+
+        // Preflight de integridad de activos descargados
+        for (let i = 0; i < downloadedVisuals.length; i++) {
+            const v = downloadedVisuals[i];
+            const s = await stat(v.rawPath).catch(() => null);
+            if (!s || s.size === 0) {
+                throw new Error(`[RENDER] Preflight falló: el recurso visual #${i + 1} (${v.name || v.type}) está vacío o no se guardó correctamente en disco.`);
+            }
+            console.log(`[RENDER] Preflight verificado: recurso visual #${i + 1} (${v.name || v.type}) en disco: ${s.size} bytes`);
         }
 
         // ─── ETAPA 3: Normalizando video (35%) ───
@@ -477,6 +619,7 @@ export async function renderProjectAsync(projectId) {
 
         let subbedVideoPath = mergedVideoPath;
         if (subtitleSegments.length > 0) {
+            console.log(`[RENDER] Etapa 6: Renderizando ${subtitleSegments.length} segmentos de subtítulos en idioma activo (${activeLang}): "${subtitleSegments[0]?.text?.slice(0, 40)}..."`);
             const srtPath = path.join(dir, 'subtitles.srt');
             const srtContent = generateSrtContent(subtitleSegments);
             await writeFile(srtPath, srtContent, 'utf8');

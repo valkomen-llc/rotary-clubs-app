@@ -1,4 +1,4 @@
-// ROTARY EN ACCION MULTIMEDIA V4.1159.0 | 2026-10-04 (STEP 1 OPTIONS & SEEDING FIX 🎬📸)
+// ROTARY EN ACCION MULTIMEDIA V4.1160.0 | 2026-10-05 (CARGA DEFINITIVA DE EVIDENCIAS Y VALIDACION ESTRICTA 🎬📸)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';

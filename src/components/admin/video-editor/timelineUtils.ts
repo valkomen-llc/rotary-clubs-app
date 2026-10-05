@@ -330,16 +330,49 @@ export function getSegmentText(
     const normFallback = normalizeLangCode(fallbackLang || 'es');
     const segIdLower = (segment.id || '').toLowerCase();
 
-    // 1. Buscar en segment.translations haciendo match con normalización de claves
+    // 0. Determinar el texto fuente original para detectar contaminaciones
+    let sourceText = '';
     if (segment.translations && typeof segment.translations === 'object') {
         for (const [k, v] of Object.entries(segment.translations)) {
-            if (normalizeLangCode(k) === normActive && typeof v === 'string' && v.trim()) {
-                return v;
+            if (normalizeLangCode(k) === normFallback && typeof v === 'string' && v.trim()) {
+                sourceText = v.trim();
+                break;
             }
         }
     }
+    if (!sourceText && translationsCatalog && typeof translationsCatalog === 'object') {
+        for (const [k, ver] of Object.entries(translationsCatalog)) {
+            if (normalizeLangCode(k) === normFallback && Array.isArray(ver?.segments)) {
+                const match = ver.segments.find(s => 
+                    (s.id && segment.id && (s.id === segment.id || (segIdLower && s.id.toLowerCase() === segIdLower))) ||
+                    (Math.abs(s.start - segment.start) < 0.08 && Math.abs(s.end - segment.end) < 0.08)
+                ) || (segmentIndex >= 0 ? ver.segments[segmentIndex] : undefined);
+                if (match?.text && typeof match.text === 'string' && match.text.trim()) {
+                    sourceText = match.text.trim();
+                    break;
+                }
+            }
+        }
+    }
+    if (!sourceText && normActive !== normFallback && segment.text) {
+        sourceText = segment.text.trim();
+    }
 
-    // 2. Buscar en el catálogo global de traducciones si existe (coincidencia ID, timestamps o índice)
+    // 1. Si el idioma activo es el de respaldo (origen), devolver texto fuente
+    if (normActive === normFallback) {
+        if (sourceText) return sourceText;
+        if (segment.translations && typeof segment.translations === 'object') {
+            for (const [k, v] of Object.entries(segment.translations)) {
+                if (normalizeLangCode(k) === normFallback && typeof v === 'string' && v.trim()) {
+                    return v;
+                }
+            }
+        }
+        return segment.text || '';
+    }
+
+    // 2. Idioma activo es traducción (normActive !== normFallback):
+    // Prioridad 1: Catálogo canónico global de versiones de subtítulos
     if (translationsCatalog && typeof translationsCatalog === 'object') {
         for (const [k, ver] of Object.entries(translationsCatalog)) {
             if (normalizeLangCode(k) === normActive && Array.isArray(ver?.segments)) {
@@ -348,23 +381,38 @@ export function getSegmentText(
                     (Math.abs(s.start - segment.start) < 0.08 && Math.abs(s.end - segment.end) < 0.08)
                 ) || (segmentIndex >= 0 ? ver.segments[segmentIndex] : undefined);
                 if (match?.text && typeof match.text === 'string' && match.text.trim()) {
-                    return match.text;
+                    const matchTrimmed = match.text.trim();
+                    // Verificar que no sea contaminación de texto fuente
+                    if (!sourceText || matchTrimmed.toLowerCase() !== sourceText.toLowerCase()) {
+                        return matchTrimmed;
+                    }
                 }
             }
         }
     }
 
-    // 3. Si normActive !== normFallback: comprobar si segment.text ya contiene la versión activa
-    // (es decir, no es igual al texto original de respaldo)
-    if (normActive !== normFallback && segment.text && segment.text.trim()) {
-        const fallbackInTrs = segment.translations ?
-            Object.entries(segment.translations).find(([k]) => normalizeLangCode(k) === normFallback)?.[1] : undefined;
-        if (!fallbackInTrs || fallbackInTrs.trim() !== segment.text.trim()) {
-            return segment.text;
+    // Prioridad 2: segment.translations haciendo match con normalización de claves y validación anti-contaminación
+    if (segment.translations && typeof segment.translations === 'object') {
+        for (const [k, v] of Object.entries(segment.translations)) {
+            if (normalizeLangCode(k) === normActive && typeof v === 'string' && v.trim()) {
+                const vTrimmed = v.trim();
+                if (!sourceText || vTrimmed.toLowerCase() !== sourceText.toLowerCase()) {
+                    return vTrimmed;
+                }
+            }
         }
     }
 
-    // 4. Traducción del segmento en el idioma de respaldo (origen)
+    // Prioridad 3: segment.text si ya contiene la versión activa (distinto al texto fuente)
+    if (segment.text && segment.text.trim()) {
+        const segTextTrimmed = segment.text.trim();
+        if (!sourceText || segTextTrimmed.toLowerCase() !== sourceText.toLowerCase()) {
+            return segTextTrimmed;
+        }
+    }
+
+    // Prioridad 4: Fallback al idioma de respaldo (origen)
+    if (sourceText) return sourceText;
     if (segment.translations && typeof segment.translations === 'object') {
         for (const [k, v] of Object.entries(segment.translations)) {
             if (normalizeLangCode(k) === normFallback && typeof v === 'string' && v.trim()) {
@@ -373,22 +421,6 @@ export function getSegmentText(
         }
     }
 
-    // 5. Catálogo global para el idioma de respaldo
-    if (translationsCatalog && typeof translationsCatalog === 'object') {
-        for (const [k, ver] of Object.entries(translationsCatalog)) {
-            if (normalizeLangCode(k) === normFallback && Array.isArray(ver?.segments)) {
-                const match = ver.segments.find(s => 
-                    (s.id && segment.id && (s.id === segment.id || (segIdLower && s.id.toLowerCase() === segIdLower))) ||
-                    (Math.abs(s.start - segment.start) < 0.08 && Math.abs(s.end - segment.end) < 0.08)
-                ) || (segmentIndex >= 0 ? ver.segments[segmentIndex] : undefined);
-                if (match?.text && typeof match.text === 'string' && match.text.trim()) {
-                    return match.text;
-                }
-            }
-        }
-    }
-
-    // 6. Último recurso: texto directo del segmento
     return segment.text || '';
 }
 
@@ -421,7 +453,7 @@ export function resolveActiveSubtitleSegments(
         }
     }
 
-    return subtitles.segments.map((seg, idx) => {
+    const resolved = subtitles.segments.map((seg, idx) => {
         const segTranslations: Record<string, string> = {};
         const segIdLower = (seg.id || '').toLowerCase();
 
@@ -434,45 +466,78 @@ export function resolveActiveSubtitleSegments(
             }
         }
 
-        // Registrar el texto fuente SIN etiquetar erróneamente el texto activo como origen:
-        if (!segTranslations[sourceLang]) {
+        // Determinar texto fuente
+        let sourceText = segTranslations[sourceLang];
+        if (!sourceText) {
             if (Array.isArray(sourceVersionSegments)) {
                 const srcMatch = sourceVersionSegments.find(vs => 
                     (vs.id && seg.id && (vs.id === seg.id || (segIdLower && vs.id.toLowerCase() === segIdLower))) ||
                     (Math.abs(vs.start - seg.start) < 0.08 && Math.abs(vs.end - seg.end) < 0.08)
                 ) || sourceVersionSegments[idx];
                 if (srcMatch?.text) {
-                    segTranslations[sourceLang] = srcMatch.text;
+                    sourceText = srcMatch.text;
                 }
             } else if (activeLang === sourceLang && seg.text) {
-                segTranslations[sourceLang] = seg.text;
+                sourceText = seg.text;
+            } else if (seg.text) {
+                sourceText = seg.text;
+            }
+            if (sourceText) segTranslations[sourceLang] = sourceText;
+        }
+
+        let resolvedText = '';
+        let isAuthenticActiveText = false;
+
+        // Si activeLang === sourceLang:
+        if (activeLang === sourceLang) {
+            resolvedText = sourceText || seg.text || '';
+            isAuthenticActiveText = true;
+        } else {
+            // activeLang !== sourceLang: prioridad 1 al catálogo oficial de versiones
+            if (Array.isArray(versionSegments)) {
+                const match = versionSegments.find(vs => 
+                    (vs.id && seg.id && (vs.id === seg.id || (segIdLower && vs.id.toLowerCase() === segIdLower))) ||
+                    (Math.abs(vs.start - seg.start) < 0.08 && Math.abs(vs.end - seg.end) < 0.08)
+                ) || versionSegments[idx];
+                if (match?.text && match.text.trim()) {
+                    const matchTrimmed = match.text.trim();
+                    if (!sourceText || matchTrimmed.toLowerCase() !== sourceText.toLowerCase()) {
+                        resolvedText = matchTrimmed;
+                        isAuthenticActiveText = true;
+                    }
+                }
+            }
+
+            // Prioridad 2: Buscar en segTranslations[activeLang] verificando que no sea texto fuente contaminado
+            if (!resolvedText && segTranslations[activeLang]) {
+                const candidate = segTranslations[activeLang].trim();
+                if (!sourceText || candidate.toLowerCase() !== sourceText.toLowerCase()) {
+                    resolvedText = candidate;
+                    isAuthenticActiveText = true;
+                }
+            }
+
+            // Prioridad 3: Verificar si seg.text contiene la traducción
+            if (!resolvedText && seg.text && seg.text.trim()) {
+                const segTextTrimmed = seg.text.trim();
+                if (!sourceText || segTextTrimmed.toLowerCase() !== sourceText.toLowerCase()) {
+                    resolvedText = segTextTrimmed;
+                    isAuthenticActiveText = true;
+                }
+            }
+
+            // Fallback al texto fuente
+            if (!resolvedText) {
+                resolvedText = sourceText || seg.text || '';
+                isAuthenticActiveText = false;
             }
         }
 
-        // Obtener texto para activeLang del catálogo o de translations
-        let resolvedText = segTranslations[activeLang];
-        if (!resolvedText && Array.isArray(versionSegments)) {
-            const match = versionSegments.find(vs => 
-                (vs.id && seg.id && (vs.id === seg.id || (segIdLower && vs.id.toLowerCase() === segIdLower))) ||
-                (Math.abs(vs.start - seg.start) < 0.08 && Math.abs(vs.end - seg.end) < 0.08)
-            ) || versionSegments[idx];
-            if (match?.text) {
-                resolvedText = match.text;
-                segTranslations[activeLang] = match.text;
-            }
-        }
-
-        // Si no se encontró en catálogo ni mapa:
-        if (!resolvedText) {
-            if (activeLang === sourceLang) {
-                resolvedText = seg.text || segTranslations[sourceLang] || '';
-                if (resolvedText) segTranslations[sourceLang] = resolvedText;
-            } else if (seg.text && (!segTranslations[sourceLang] || seg.text !== segTranslations[sourceLang])) {
-                resolvedText = seg.text;
-                segTranslations[activeLang] = seg.text;
-            } else {
-                resolvedText = segTranslations[sourceLang] || seg.text || '';
-            }
+        // Solo persistir en translations[activeLang] si es auténtico o si activeLang === sourceLang
+        if (isAuthenticActiveText || activeLang === sourceLang) {
+            segTranslations[activeLang] = resolvedText;
+        } else {
+            delete segTranslations[activeLang];
         }
 
         return {
@@ -481,6 +546,8 @@ export function resolveActiveSubtitleSegments(
             translations: segTranslations
         };
     });
+
+    return resolved;
 }
 
 /**
@@ -579,33 +646,60 @@ export function switchSubtitleLanguage(
     const resolvedSegments = segmentsWithSavedCurrent.map((seg, idx) => {
         const trs: Record<string, string> = { ...(seg.translations || {}) };
         const segIdLower = (seg.id || '').toLowerCase();
-        let targetText = trs[targetNorm];
-        let isRealTargetText = Boolean(trs[targetNorm]);
-        if (!targetText && Array.isArray(targetVersionSegments)) {
-            const match = targetVersionSegments.find(s => 
-                (s.id && seg.id && (s.id === seg.id || (segIdLower && s.id.toLowerCase() === segIdLower))) ||
-                (Math.abs(s.start - seg.start) < 0.08 && Math.abs(s.end - seg.end) < 0.08)
-            ) || targetVersionSegments[idx];
-            if (match?.text) {
-                targetText = match.text;
-                trs[targetNorm] = match.text;
-                isRealTargetText = true;
+        const sourceText = (trs[sourceLang] || seg.text || '').trim();
+
+        let targetText = '';
+        let isRealTargetText = false;
+
+        if (targetNorm === sourceLang) {
+            targetText = sourceText || seg.text || '';
+            isRealTargetText = true;
+        } else {
+            // Prioridad 1: catálogo de versiones guardadas
+            if (Array.isArray(targetVersionSegments)) {
+                const match = targetVersionSegments.find(s => 
+                    (s.id && seg.id && (s.id === seg.id || (segIdLower && s.id.toLowerCase() === segIdLower))) ||
+                    (Math.abs(s.start - seg.start) < 0.08 && Math.abs(s.end - seg.end) < 0.08)
+                ) || targetVersionSegments[idx];
+                if (match?.text && match.text.trim()) {
+                    const matchTrim = match.text.trim();
+                    if (!sourceText || matchTrim.toLowerCase() !== sourceText.toLowerCase()) {
+                        targetText = matchTrim;
+                        isRealTargetText = true;
+                    }
+                }
+            }
+
+            // Prioridad 2: traducción existente en trs[targetNorm] verificando no contaminación
+            if (!isRealTargetText && trs[targetNorm] && trs[targetNorm].trim()) {
+                const candidate = trs[targetNorm].trim();
+                if (!sourceText || candidate.toLowerCase() !== sourceText.toLowerCase()) {
+                    targetText = candidate;
+                    isRealTargetText = true;
+                }
+            }
+
+            // Prioridad 3: seg.text si ya contiene traducción
+            if (!isRealTargetText && seg.text && seg.text.trim()) {
+                const candidate = seg.text.trim();
+                if (!sourceText || candidate.toLowerCase() !== sourceText.toLowerCase()) {
+                    targetText = candidate;
+                    isRealTargetText = true;
+                }
+            }
+
+            // Fallback: texto fuente original
+            if (!isRealTargetText) {
+                targetText = sourceText || seg.text || '';
+                isRealTargetText = false;
             }
         }
 
-        if (!targetText) {
-            if (targetNorm !== sourceLang && seg.text && (!trs[sourceLang] || seg.text !== trs[sourceLang])) {
-                targetText = seg.text;
-                isRealTargetText = true;
-            } else {
-                targetText = trs[sourceLang] || seg.text || '';
-                isRealTargetText = (targetNorm === sourceLang);
-            }
-        }
-
-        // Solo persistir en trs[targetNorm] si realmente es el texto del idioma o si targetNorm === sourceLang
+        // Solo persistir en trs[targetNorm] si realmente es el texto traducido o si targetNorm === sourceLang
         if (isRealTargetText || targetNorm === sourceLang) {
             trs[targetNorm] = targetText;
+        } else {
+            delete trs[targetNorm];
         }
 
         return {
@@ -614,6 +708,10 @@ export function switchSubtitleLanguage(
             translations: trs
         };
     });
+
+    if (typeof console !== 'undefined' && console.log) {
+        console.log(`[SUBTITLES] switchSubtitleLanguage completado: ${currentActive} → ${targetNorm} (${resolvedSegments.length} segmentos)`);
+    }
 
     // 4. Actualizar o crear registro de targetNorm en currentTranslations
     // Solo registrar si targetNorm es sourceLang o si realmente existen traducciones reales

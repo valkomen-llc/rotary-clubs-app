@@ -92,6 +92,14 @@ export const VideoEditorExportModal: React.FC<VideoEditorExportModalProps> = ({
     const handleStartRender = async () => {
         try {
             setSubmitting(true);
+            console.log('[EXPORT] Iniciando solicitud de render:', {
+                projectId,
+                resolution,
+                format,
+                activeLanguage: subtitles?.activeLanguage,
+                segmentsCount: subtitles?.segments?.length,
+                clipsCount: clips?.length
+            });
             const token = getStudioAuthToken();
             const res = await fetch(`/api/video-editor/projects/${projectId}/render`, {
                 method: 'POST',

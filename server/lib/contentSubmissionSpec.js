@@ -106,7 +106,10 @@ export const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic
 export const VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/webm'];
 
 export const MIN_FILES_REEL = 5;
-export const MAX_FILES = 10;
+export const MIN_PHOTOS = 5;
+export const MAX_PHOTOS = 10;
+export const MAX_VIDEOS = 1;
+export const MAX_FILES = 11;
 export const IMAGE_MAX_BYTES = 25 * 1024 * 1024;   // una foto de móvil pesa 2-8 MB
 export const VIDEO_MAX_BYTES = 200 * 1024 * 1024;  // un clip de teléfono, decenas
 
@@ -145,15 +148,14 @@ export const extensionFor = (contentType, filename = '') => {
  * ¿Se puede subir este archivo? Se comprueba al prefirmar Y otra vez contra el
  * objeto REAL al enviar: lo que el navegador declara no obliga a nada.
  */
-export const checkFileMeta = (arg = {}) => {
-    const contentType = arg.contentType || arg.type || '';
-    const filename = arg.filename || arg.name || '';
-    const size = arg.size;
+export const checkFileMeta = ({ contentType, filename, size, type, name } = {}) => {
+    const resolvedType = contentType || type || '';
+    const resolvedName = filename || name || '';
     const errores = [];
-    const kind = kindOf(contentType, filename);
+    const kind = kindOf(resolvedType, resolvedName);
     if (!kind) {
         errores.push('Sólo se pueden enviar fotografías (JPG, PNG, WEBP, HEIC) y videos (MP4, MOV, WEBM).');
-        return { ok: false, errores, error: 'Sólo se pueden enviar fotografías (JPG, PNG, WEBP, HEIC) y videos (MP4, MOV, WEBM).', kind: null };
+        return { ok: false, errores, error: errores[0], kind: null };
     }
     const bytes = Number(size) || 0;
     const max = kind === 'video' ? VIDEO_MAX_BYTES : IMAGE_MAX_BYTES;
@@ -161,7 +163,7 @@ export const checkFileMeta = (arg = {}) => {
     else if (bytes > max) {
         errores.push(`${kind === 'video' ? 'El video' : 'La fotografía'} pesa ${(bytes / 1048576).toFixed(1)} MB y el máximo es ${max / 1048576} MB.`);
     }
-    return { ok: errores.length === 0, errores, error: errores[0] || undefined, kind };
+    return { ok: errores.length === 0, errores, error: errores[0], kind };
 };
 
 // ─── El consentimiento ─────────────────────────────────────────────────
@@ -622,7 +624,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i;
  * Lo que falta se DEVUELVE como aviso, no se descarta en silencio: es lo que
  * después le permite al panel pedirlo con «Requiere información».
  */
-export const validateSubmission = (data, { consentRequired = true, districtCatalog = [], minFiles = 1 } = {}) => {
+export const validateSubmission = (data, { consentRequired = true, districtCatalog = [], minFiles = 1, minPhotos, maxPhotos = 10, maxVideos = 1 } = {}) => {
     const errors = [];
     const warnings = [];
 
@@ -630,11 +632,33 @@ export const validateSubmission = (data, { consentRequired = true, districtCatal
     if (!data.senderEmail) errors.push('Escribí tu correo electrónico.');
     else if (!EMAIL_RE.test(data.senderEmail)) errors.push('El correo electrónico no parece válido.');
     if (consentRequired && !data.consent) errors.push('Hay que aceptar las condiciones para poder enviar el material.');
-    const photoCount = (data.files || []).filter(f => f.kind === 'image' || (f.contentType && f.contentType.startsWith('image/')) || /\.(jpe?g|png|webp|heic|heif)$/i.test(f.filename || '')).length;
-    if (!data.files.length || photoCount < minFiles) {
-        errors.push(`Agrega al menos ${minFiles} fotografías para continuar.`);
+    let photosCount = 0;
+    let videosCount = 0;
+    for (const f of arr(data.files)) {
+        const k = kindOf(f.contentType, f.filename || f.key);
+        if (k === 'video') videosCount++;
+        else if (k === 'image') photosCount++;
     }
-    if (data.files.length > MAX_FILES) errors.push(`Se pueden enviar hasta ${MAX_FILES} archivos por envío.`);
+
+    const minRequiredPhotos = typeof minPhotos === 'number' ? minPhotos : (typeof minFiles === 'number' && minFiles > 1 ? minFiles : 0);
+
+    if (!data.files.length) {
+        errors.push('Adjuntá al menos una fotografía o un video.');
+    } else if (minRequiredPhotos > 0 && photosCount < minRequiredPhotos) {
+        errors.push(`Adjuntá al menos ${minRequiredPhotos} fotografías de la actividad o evento (necesarias para generar la cobertura editorial y el video Reel).`);
+    } else if (data.files.length < minFiles) {
+        errors.push(`Adjuntá al menos ${minFiles} fotografías de la actividad o evento (necesarias para generar la cobertura editorial y el video Reel).`);
+    }
+
+    if (photosCount > maxPhotos) {
+        errors.push(`Se pueden enviar hasta ${maxPhotos} fotografías por envío.`);
+    }
+    if (videosCount > maxVideos) {
+        errors.push(`Se puede enviar como máximo ${maxVideos} video por envío.`);
+    }
+    if (data.files.length > MAX_FILES) {
+        errors.push(`Se pueden enviar hasta ${MAX_FILES} archivos por envío.`);
+    }
 
     // ⚠️ DECIR QUE SÍ SIN NINGUNA PUBLICACIÓN VÁLIDA ES UN ERROR, NO UN AVISO
     // (requisito 3): quien marcó «Sí» está afirmando que existe una difusión y
@@ -797,7 +821,7 @@ export const usageIsMeasured = (channel) => USAGE_CHANNELS[channel]?.auto === tr
 export default {
     SUBMISSION_STATES, SUBMISSION_STATE_IDS, INITIAL_STATE, stateLabel,
     canTransitionSubmission, nextStates, needsReason, REASON_REQUIRED,
-    IMAGE_TYPES, VIDEO_TYPES, MAX_FILES, IMAGE_MAX_BYTES, VIDEO_MAX_BYTES,
+    IMAGE_TYPES, VIDEO_TYPES, MIN_PHOTOS, MAX_PHOTOS, MAX_VIDEOS, MAX_FILES, IMAGE_MAX_BYTES, VIDEO_MAX_BYTES,
     kindOf, extensionFor, checkFileMeta,
     DEFAULT_CONSENT_TEXT, consentIsConfigured, consentTextFor,
     normalizeSubmissionsConfig, defaultInviteMessage, inviteMessageFor,

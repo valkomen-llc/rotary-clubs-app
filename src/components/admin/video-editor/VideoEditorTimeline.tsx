@@ -644,6 +644,15 @@ export const VideoEditorTimeline: React.FC<VideoEditorTimelineProps> = ({
                             {(() => {
                                 const activeLang = normalizeLangCode(subtitles.activeLanguage || subtitles.language || subtitles.sourceLanguage || 'es');
                                 const sourceLang = normalizeLangCode(subtitles.sourceLanguage || 'es');
+                                if (typeof window !== 'undefined' && effectiveSegments.length > 0 && !(window as any).__lastTimelineLog || (Date.now() - ((window as any).__lastTimelineLog || 0)) > 4000) {
+                                    (window as any).__lastTimelineLog = Date.now();
+                                    console.log('[TIMELINE] Renderizando pista subtítulos:', {
+                                        activeLang,
+                                        sourceLang,
+                                        count: effectiveSegments.length,
+                                        sampleText: getSegmentText(effectiveSegments[0], activeLang, sourceLang, subtitles.translations, 0)
+                                    });
+                                }
                                 return effectiveSegments.map((seg, idx) => {
                                     const left = seg.start * pixelsPerSecond;
                                     const width = Math.max(16, (seg.end - seg.start) * pixelsPerSecond);

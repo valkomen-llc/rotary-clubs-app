@@ -339,6 +339,16 @@ export const VideoEditorCanvas: React.FC<VideoEditorCanvasProps> = ({
                         const segIdx = effectiveSegments.findIndex(s => s.id === activeSubtitleSegment.id);
                         const activeText = getSegmentText(activeSubtitleSegment, activeLang, sourceLang, subtitles.translations, segIdx) || activeSubtitleSegment.text || '';
 
+                        if (typeof window !== 'undefined' && (!(window as any).__lastPreviewLog || (Date.now() - ((window as any).__lastPreviewLog || 0)) > 4000)) {
+                            (window as any).__lastPreviewLog = Date.now();
+                            console.log('[PREVIEW] Renderizando subtítulo en canvas:', {
+                                time: currentTime.toFixed(2),
+                                activeLang,
+                                activeText,
+                                segmentId: activeSubtitleSegment.id
+                            });
+                        }
+
                         return (
                             <InteractiveTextOverlay
                                 key={`${activeSubtitleSegment.id}-${activeLang}`}

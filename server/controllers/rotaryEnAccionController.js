@@ -83,16 +83,11 @@ export const getEngineConfig = async (req, res) => {
       contextTax: ctx.tax,
       suggested,
       taxonomies: tax,
-      photoRules: {
-        ...(cfg.photoRules || {}),
-        minToSubmit: Math.max(5, Number(cfg.photoRules?.minToSubmit ?? 5)),
-        reelMin: 5,
-        maxFiles: cfg.photoRules?.maxFiles || 10,
-      },
+      photoRules: { minToSubmit: 5, recommended: 5, reelMin: 5, maxFiles: 11, ...(cfg.photoRules || {}), minToSubmit: 5, maxFiles: 11 },
       requireStory: !!cfg.requireStory,
       catalogs: { districts: DISTRICT_CATALOG },
       platforms: POST_PLATFORMS,
-      limits: { maxFiles: 10, maxClubs: MAX_PARTICIPATING_CLUBS, maxPosts: MAX_POSTS },
+      limits: { maxFiles: 11, maxClubs: MAX_PARTICIPATING_CLUBS, maxPosts: MAX_POSTS },
       prefill,
     });
   } catch (e) { return fail(res, e); }
@@ -101,12 +96,17 @@ export const getEngineConfig = async (req, res) => {
 // ─── POST /presign — público ───────────────────────────────────────────
 export const presign = async (req, res) => {
   try {
-    const { campaignId, contentType, filename, size } = req.body || {};
+    const { campaignId, contentType, filename, size, type, name } = req.body || {};
+    const resolvedType = contentType || type;
+    const resolvedName = filename || name;
     const camp = campaignId
       ? (await db.query(`SELECT id FROM "ContributionCampaign" WHERE id=$1 OR slug=$1`, [String(campaignId)]).then((r) => r.rows[0]).catch(() => null))
       : null;
     const cid = camp?.id || (await universalCampaignId());
-    const out = await presignSubmissionUpload({ campaignId: cid, contentType, filename, size });
+    const out = await presignSubmissionUpload({ campaignId: cid, contentType: resolvedType, filename: resolvedName, size });
+    if (!out.ok) {
+      return res.status(400).json({ error: out.errores?.[0] || 'No se pudo preparar la subida.', errores: out.errores });
+    }
     res.json({ ...out, campaignId: cid });
   } catch (e) { return fail(res, e, 400); }
 };
@@ -120,10 +120,15 @@ export const submit = async (req, res) => {
     const camp = ctx.campaign || await db.query(`SELECT * FROM "ContributionCampaign" WHERE id=$1`, [await universalCampaignId()]).then((r) => r.rows[0]);
     if (!camp) return res.status(404).json({ error: 'No encontramos el canal de recepción.' });
     const cfg = await getConfig();
-    const minFiles = Math.max(5, Number(cfg.photoRules?.minToSubmit ?? 5));
+    const minPhotos = Math.max(5, Number(cfg.photoRules?.minToSubmit ?? 5));
 
     const data = shapeSubmission(req.body);
-    const juicio = validateSubmission(data, { districtCatalog: DISTRICT_CATALOG, minFiles });
+    const juicio = validateSubmission(data, {
+      districtCatalog: DISTRICT_CATALOG,
+      minPhotos,
+      maxPhotos: 10,
+      maxVideos: 1,
+    });
     if (!juicio.ok) return res.status(400).json({ error: juicio.errors[0], errors: juicio.errors });
 
     const archivos = [];

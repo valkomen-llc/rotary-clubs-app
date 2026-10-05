@@ -38,6 +38,7 @@ const { applyStyleToAllSubtitles } = textStyleUtils;
 
 const {
     buildSubtitleForceStyle,
+    downloadMediaAsset,
     normalizeOpacityFraction,
     resolveActiveSubtitleText,
     sanitizeFontName,
@@ -339,6 +340,74 @@ console.log('\n▸ 13. Conmutar a idioma no traducido no contamina el catálogo 
     assert.equal(switchedToDe.activeLanguage, 'de', 'Idioma activo sí conmuta');
     assert.equal(switchedToDe.segments[0].text, ES[0], 'Muestra fallback de texto para la vista sin corromper translations');
     assert.equal(switchedToDe.segments[0].translations?.de, undefined, 'No debe escribir texto en español dentro de translations.de');
+}
+console.log('  OK');
+
+console.log('\n▸ 14. Anti-contaminación: descarta traducciones envenenadas con texto fuente y prioriza catálogo canónico');
+{
+    const poisonedSeg = {
+        id: 'sub-1',
+        start: 0,
+        end: 3,
+        text: 'Hola, soy Jeferson Mosquera...',
+        translations: {
+            es: 'Hola, soy Jeferson Mosquera...',
+            en: 'Hola, soy Jeferson Mosquera...' // Contaminación previa con español
+        },
+        style: { ...STYLE_A }
+    };
+    const catalog = {
+        es: {
+            language: 'es',
+            isOriginal: true,
+            segments: [{ id: 'sub-1', start: 0, end: 3, text: 'Hola, soy Jeferson Mosquera...' }]
+        },
+        en: {
+            language: 'en',
+            isOriginal: false,
+            segments: [{ id: 'sub-1', start: 0, end: 3, text: "Hello, I'm Jeferson Mosquera..." }]
+        }
+    };
+    const poisonedSubs = {
+        sourceLanguage: 'es',
+        activeLanguage: 'en',
+        language: 'en',
+        segments: [poisonedSeg],
+        translations: catalog
+    };
+
+    // 1. getSegmentText
+    const resolvedText = getSegmentText(poisonedSeg, 'en', 'es', catalog, 0);
+    assert.equal(resolvedText, "Hello, I'm Jeferson Mosquera...", 'getSegmentText debe ignorar entrada envenenada y consultar catálogo');
+
+    // 2. resolveActiveSubtitleSegments
+    const resolvedSegments = resolveActiveSubtitleSegments(poisonedSubs, 'en');
+    assert.equal(resolvedSegments[0].text, "Hello, I'm Jeferson Mosquera...", 'resolveActiveSubtitleSegments debe resolver al inglés auténtico');
+    assert.equal(resolvedSegments[0].translations.en, "Hello, I'm Jeferson Mosquera...", 'translations.en debe corregirse con el texto auténtico');
+
+    // 3. switchSubtitleLanguage
+    const switched = switchSubtitleLanguage(poisonedSubs, 'en');
+    assert.equal(switched.segments[0].text, "Hello, I'm Jeferson Mosquera...", 'switchSubtitleLanguage debe conmutar al inglés auténtico');
+
+    // 4. resolveActiveSubtitleText (Backend Render)
+    const renderResolved = resolveActiveSubtitleText(poisonedSeg, 'en', poisonedSubs, 0);
+    assert.equal(renderResolved, "Hello, I'm Jeferson Mosquera...", 'resolveActiveSubtitleText de render debe resolver al inglés auténtico');
+}
+console.log('  OK');
+
+console.log('\n▸ 15. Pipeline de descarga: validación y diagnóstico de errores en downloadMediaAsset');
+{
+    // URL vacía
+    await assert.rejects(
+        () => downloadMediaAsset({ url: '', name: 'test_empty.mp4' }, '/tmp/null'),
+        /URL de recurso inválida o vacía/
+    );
+
+    // Servidor inalcanzable genera error descriptivo con nombre del clip
+    await assert.rejects(
+        () => downloadMediaAsset({ url: 'http://127.0.0.1:59999/test.mp4', name: 'WhatsApp_Video_Test.mp4' }, '/tmp/ve-unreachable-test', 800),
+        /Fallo tras 3 intentos al descargar recurso "WhatsApp_Video_Test.mp4"/
+    );
 }
 console.log('  OK');
 
