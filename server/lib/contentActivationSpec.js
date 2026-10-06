@@ -194,6 +194,17 @@ export function normalizeContentDef(raw = {}) {
   const bodyText = typeof email.bodyText === 'string' && email.bodyText
     ? email.bodyText
     : htmlToText(legacyBody);
+  // Diseño visual (v4.1166): el editor guarda bloques + HTML final. Se
+  // conservan tal cual (con topes); el render los resuelve con las mismas
+  // variables en preview, prueba y envío.
+  const design = email.design && typeof email.design === 'object' ? email.design : null;
+  const buttons = Array.isArray(whatsapp.buttons)
+    ? whatsapp.buttons.slice(0, 3).map((b) => ({
+      type: b?.type === 'url' ? 'url' : 'quick',
+      label: s(b?.label || '', 25),
+      url: s(b?.url || '', 2000),
+    }))
+    : [];
   return {
     email: {
       fromEmail: s(email.fromEmail || raw.fromEmail || '', 160),
@@ -206,9 +217,22 @@ export function normalizeContentDef(raw = {}) {
       showShareGrid: email.showShareGrid !== false && raw.showShareGrid !== false,
       showRecentPosts: email.showRecentPosts !== false && raw.showRecentPosts !== false,
       recentPostsCount: Number.isFinite(Number(email.recentPostsCount)) ? Number(email.recentPostsCount) : (Number.isFinite(Number(raw.recentPostsCount)) ? Number(raw.recentPostsCount) : 4),
+      design,
+      html: s(email.html || '', 200 * 1024),
+      templateId: s(email.templateId || '', 80) || null,
+      templateVersion: Number.isFinite(Number(email.templateVersion)) ? Number(email.templateVersion) : null,
     },
     whatsapp: {
       body: s(whatsapp.body || raw.whatsappBody || '', 4000),
+      headerType: ['text', 'image'].includes(whatsapp.headerType) ? whatsapp.headerType : 'none',
+      headerText: s(whatsapp.headerText || '', 60),
+      mediaUrl: s(whatsapp.mediaUrl || '', 2000),
+      footer: s(whatsapp.footer || '', 60),
+      buttons,
+      templateName: s(whatsapp.templateName || '', 120) || null,
+      templateLang: s(whatsapp.templateLang || '', 12) || null,
+      templateId: s(whatsapp.templateId || '', 80) || null,
+      templateVersion: Number.isFinite(Number(whatsapp.templateVersion)) ? Number(whatsapp.templateVersion) : null,
     },
   };
 }

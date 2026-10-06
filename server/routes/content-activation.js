@@ -2,6 +2,7 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
 import * as ctrl from '../controllers/contentActivationController.js';
+import * as tplCtrl from '../controllers/contentActivationTemplateController.js';
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -15,6 +16,16 @@ router.get('/catalog/scopes', ctrl.scopeCatalog);
 router.get('/catalog/audience-sources', ctrl.audienceSources);
 router.get('/catalog/sender-options', ctrl.senderOptions);
 router.post('/tick', ctrl.tickNow);
+// Biblioteca de plantillas (antes que /:id para que no las capture).
+router.get('/templates', tplCtrl.list);
+router.post('/templates', tplCtrl.create);
+router.get('/templates/:templateId/versions', tplCtrl.versions);
+router.get('/templates/:templateId', tplCtrl.detail);
+router.put('/templates/:templateId', tplCtrl.update);
+router.post('/templates/:templateId/duplicate', tplCtrl.duplicate);
+router.post('/templates/:templateId/archive', tplCtrl.archive);
+router.post('/templates/:templateId/set-default', tplCtrl.setDefault);
+router.delete('/templates/:templateId', tplCtrl.remove);
 router.get('/board', ctrl.board);
 router.get('/:id/recipients', ctrl.recipients);
 router.get('/:id/content', ctrl.getContent);

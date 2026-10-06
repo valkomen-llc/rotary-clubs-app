@@ -1,0 +1,163 @@
+// Biblioteca de plantillas de mensajes (v4.1166). Ver contentActivationTemplates.js
+// para la regla de separación plantilla/campaña.
+import { getUserGrant } from '../lib/contentActivationScope.js';
+import {
+  listTemplates, getTemplate, getTemplateVersions,
+  createTemplate, updateTemplate, duplicateTemplate,
+  archiveTemplate, removeTemplate, setDefaultTemplate,
+  templateVisibleTo, templateWritableBy,
+} from '../lib/contentActivationTemplates.js';
+import { assertEmailDesign, assertWhatsAppFields, DESIGN_BLOCKS_MAX } from '../lib/contentActivationMail.js';
+import { findUnknownVars } from '../lib/contentActivationVariables.js';
+
+const ok = (res, data) => res.json({ ok: true, ...data });
+const fail = (res, e, code = 500) => res.status(code).json({ error: e?.message || 'Error' });
+const grantOf = async (req) => getUserGrant(req).catch(() => ({ isGlobal: true, districtIds: [], clubIds: [] }));
+
+const EMAIL_BLOCKS = ['heading', 'text', 'image', 'button', 'columns', 'divider', 'spacer'];
+
+function validateTemplateBody(channel, { design = {}, html = '', subject = '', preheader = '' } = {}) {
+  if (channel === 'email') {
+    const blocks = Array.isArray(design?.blocks) ? design.blocks : null;
+    if (design && Object.keys(design).length && !blocks) {
+      const e = new Error('El diseño debe traer bloques.');
+      e.status = 400;
+      throw e;
+    }
+    if (blocks) {
+      if (blocks.length > DESIGN_BLOCKS_MAX) {
+        const e = new Error(`Máximo ${DESIGN_BLOCKS_MAX} bloques.`);
+        e.status = 400;
+        throw e;
+      }
+      for (let bi = 0; bi < blocks.length; bi++) {
+        const b = blocks[bi];
+        if (!b || !EMAIL_BLOCKS.includes(b.type)) {
+          const e = new Error(`Bloque ${bi + 1}: tipo no permitido.`);
+          e.status = 400;
+          throw e;
+        }
+        if (!b?.id) {
+          const e = new Error(`Bloque ${bi + 1}: sin identificador.`);
+          e.status = 400;
+          throw e;
+        }
+      }
+    }
+    assertEmailDesign({ subject, preheader, html });
+  } else {
+    assertWhatsAppFields(typeof design === 'object' && design !== null ? design : {});
+  }
+  return true;
+}
+
+export const list = async (req, res) => {
+  try {
+    const grant = await grantOf(req);
+    const rows = await listTemplates();
+    const visibles = rows.filter((t) => templateVisibleTo(t, grant));
+    return res.json({ templates: visibles });
+  } catch (e) { return fail(res, e); }
+};
+
+export const detail = async (req, res) => {
+  try {
+    const grant = await grantOf(req);
+    const t = await getTemplate(req.params.id, req.query.version ?? null);
+    if (!t) return res.status(404).json({ error: 'Plantilla no encontrada' });
+    if (!templateVisibleTo(t, grant)) return res.status(403).json({ error: 'Fuera de tus permisos.' });
+    return res.json({ template: t });
+  } catch (e) { return fail(res, e); }
+};
+
+export const versions = async (req, res) => {
+  try {
+    const grant = await grantOf(req);
+    const t = await getTemplate(req.params.id);
+    if (!t) return res.status(404).json({ error: 'Plantilla no encontrada' });
+    if (!templateVisibleTo(t, grant)) return res.status(403).json({ error: 'Fuera de tus permisos.' });
+    return res.json({ versions: await getTemplateVersions(req.params.id) });
+  } catch (e) { return fail(res, e); }
+};
+
+export const create = async (req, res) => {
+  try {
+    const grant = await grantOf(req);
+    const channel = req.body.channel === 'whatsapp' ? 'whatsapp' : 'email';
+    let scope = String(req.body.scope || 'global');
+    if (scope === 'global' && !grant.isGlobal) {
+      scope = grant.clubIds?.[0] || (grant.districtIds?.[0] ? `district:${grant.districtIds[0]}` : '');
+      if (!scope) return res.status(403).json({ error: 'Tu rol no puede crear plantillas globales.' });
+    }
+    validateTemplateBody(channel, req.body);
+    const tpl = await createTemplate({ ...req.body, channel, scope, createdBy: req.user?.id || null });
+    return res.status(201).json({ template: tpl });
+  } catch (e) { return fail(res, e, e.status || 500); }
+};
+
+export const update = async (req, res) => {
+  try {
+    const grant = await grantOf(req);
+    const cur = await getTemplate(req.params.id);
+    if (!cur) return res.status(404).json({ error: 'Plantilla no encontrada' });
+    if (!templateWritableBy(cur, grant)) return res.status(403).json({ error: 'No tienes permiso para modificar esta plantilla.' });
+    const channel = cur.channel;
+    validateTemplateBody(channel, {
+      design: req.body.design ?? cur.design,
+      html: req.body.html ?? cur.html,
+      subject: req.body.subject ?? cur.subject,
+      preheader: req.body.preheader ?? cur.preheader,
+    });
+    // Nueva versión: las campañas que usan la anterior NO se tocan.
+    const tpl = await updateTemplate(req.params.id, { ...req.body, createdBy: req.user?.id || null });
+    return ok(res, { template: tpl });
+  } catch (e) { return fail(res, e, e.status || 500); }
+};
+
+export const duplicate = async (req, res) => {
+  try {
+    const grant = await grantOf(req);
+    const cur = await getTemplate(req.params.id);
+    if (!cur) return res.status(404).json({ error: 'Plantilla no encontrada' });
+    if (!templateVisibleTo(cur, grant)) return res.status(403).json({ error: 'Fuera de tus permisos.' });
+    const scope = grant.isGlobal ? (req.body.scope || cur.scope) : (grant.clubIds?.[0] || cur.scope);
+    const tpl = await duplicateTemplate(req.params.id, { createdBy: req.user?.id || null, scope });
+    return res.status(201).json({ template: tpl });
+  } catch (e) { return fail(res, e, e.status || 500); }
+};
+
+export const archive = async (req, res) => {
+  try {
+    const grant = await grantOf(req);
+    const cur = await getTemplate(req.params.id);
+    if (!cur) return res.status(404).json({ error: 'Plantilla no encontrada' });
+    if (!templateWritableBy(cur, grant)) return res.status(403).json({ error: 'No tienes permiso para modificar esta plantilla.' });
+    const tpl = await archiveTemplate(req.params.id, req.body?.archived !== false);
+    return ok(res, { template: tpl });
+  } catch (e) { return fail(res, e, e.status || 500); }
+};
+
+export const remove = async (req, res) => {
+  try {
+    const grant = await grantOf(req);
+    const cur = await getTemplate(req.params.id);
+    if (!cur) return res.status(404).json({ error: 'Plantilla no encontrada' });
+    if (!templateWritableBy(cur, grant)) return res.status(403).json({ error: 'No tienes permiso para modificar esta plantilla.' });
+    if (req.body?.confirm !== true) return res.status(400).json({ error: 'Confirma la eliminación enviando { confirm: true }.' });
+    await removeTemplate(req.params.id);
+    return ok(res, { deleted: true });
+  } catch (e) { return fail(res, e, e.status || 500); }
+};
+
+export const setDefault = async (req, res) => {
+  try {
+    const grant = await grantOf(req);
+    const cur = await getTemplate(req.params.id);
+    if (!cur) return res.status(404).json({ error: 'Plantilla no encontrada' });
+    if (!templateWritableBy(cur, grant)) return res.status(403).json({ error: 'No tienes permiso para modificar esta plantilla.' });
+    const tpl = await setDefaultTemplate(req.params.id);
+    return ok(res, { template: tpl });
+  } catch (e) { return fail(res, e, e.status || 500); }
+};
+
+export default { list, detail, versions, create, update, duplicate, archive, remove, setDefault };

@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1166.0',
+        title: 'Diseñador de mensajes y biblioteca de plantillas en Campañas de Contenido 🎨✉️',
+        description: 'El paso de contenido del constructor ahora incluye Diseño del mensaje por canal: editor visual de email por bloques (títulos, textos, imágenes con Biblioteca, botones, columnas, separadores, colores, tipografías, fondos, drag & drop, duplicar/eliminar, vista desktop/móvil) y editor propio de WhatsApp (encabezado, texto con variables, multimedia, pie, botones, vista de teléfono, contadores y límites del proveedor). Variables centralizadas y validadas ({{club_name}}, {{recipient_name}}, {{district_name}}, {{campaign_name}}, {{form_url}}, {{site_name}}, {{fecha}} más alias en español), vista previa con datos de prueba y envío de prueba por canal. Biblioteca versionada (crear, editar con versiones, duplicar, archivar, eliminar, predeterminada): la campaña congela una copia al usarla y nunca muta en silencio. Las plantillas institucionales actuales migraron como predeterminadas editables. El HTML se sanea en servidor y preview/prueba/envío usan el mismo artefacto.',
+        date: new Date().toISOString(),
+        tags: ['campanas-de-contenido', 'disenador', 'plantillas', 'email', 'whatsapp', 'variables', 'production-release'],
+        type: 'feature',
+        impact: 'high',
+    },
+    {
         version: '4.1165.0',
         title: 'Evidencias de Rotary en Acción: topes claros, duplicados y subidas en cola 📸✅',
         description: 'El paso de evidencias aplica los topes en las tres capas iguales (5 MB por foto, 300 MB por video, mín. 5 y máx. 10 fotos, 1 video): lo que supera el tope se rechaza ANTES de subir con su motivo ("La imagen X pesa Y MB. El tamaño máximo permitido es de 5 MB.") y nunca se reintenta. Duplicados con aviso (nombre+tamaño+tipo+modificación más huella parcial de 256 KB) y tarjeta propia. Estados por archivo (pendiente, subiendo, carga completada, error con Reintentar, demasiado pesado, duplicado), mínimo contado solo sobre lo cargado y subidas de a 3 para no saturar el enlace. Sin compresión: el PUT manda el archivo tal cual a S3.',

@@ -544,6 +544,20 @@ export const updateContent = async (req, res) => {
     if (!['borrador', 'programada'].includes(cur.status)) {
       return res.status(400).json({ error: 'La plantilla solo se edita en borrador o programada. Pausa la campaña para editarla.' });
     }
+    // Validación del diseño (v4.1166): variables del catálogo, HTML saneable
+    // y campos de WhatsApp dentro de límites del proveedor. Lo desconocido se
+    // rechaza con su nombre para que no llegue roto al destinatario.
+    // Usa asserts que lanzan (nunca se leen arreglos intermedios): el catch
+    // responde 400 con el mensaje.
+    try {
+      const { assertEmailDesign, assertWhatsAppFields } = await import('../lib/contentActivationMail.js');
+      const merged = normalizeContentDef({ ...(cur.contentDef || {}), ...(req.body.contentDef || req.body || {}) });
+      assertEmailDesign({ subject: merged.email.subject, preheader: merged.email.preheader, html: merged.email.html });
+      assertWhatsAppFields(merged.whatsapp || {});
+    } catch (e) {
+      if (e.status === 400) return res.status(400).json({ error: e.message });
+      throw e;
+    }
     const contentDef = normalizeContentDef(req.body.contentDef || req.body || {});
     const patch = { contentDef };
     // El sitio remitente solo lo cambia el operador global, en borrador.

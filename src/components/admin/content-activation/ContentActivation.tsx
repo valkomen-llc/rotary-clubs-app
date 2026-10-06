@@ -2,6 +2,11 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
 import { toast } from 'sonner';
 import { STATUS_LABEL, FREQUENCIES, LEVEL_LABEL, SCOPE_TYPES, WIZARD_STEPS } from '../../../lib/contentActivationSpec';
+import EmailDesigner from './MessageDesigner/EmailDesigner';
+import WhatsAppDesigner from './MessageDesigner/WhatsAppDesigner';
+import TemplateLibrary from './MessageDesigner/TemplateLibrary';
+import { importClassicToDesign, applyTemplateToContent, validateDesign } from './MessageDesigner/designUtils';
+import { renderDesignToHtml } from '../../../lib/emailBlocks';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -94,6 +99,9 @@ export default function ContentActivation() {
   const [senderOptions, setSenderOptions] = useState<any[]>([]);
   const [senderSearch, setSenderSearch] = useState('');
   const [previewAs, setPreviewAs] = useState('');
+  // Diseño de mensajes y biblioteca (v4.1166).
+  const [libraryFor, setLibraryFor] = useState<null | 'email' | 'whatsapp'>(null);
+  const [tplFresh, setTplFresh] = useState<{ channel: string; latest: any } | null>(null);
   // Gestión del ciclo de vida (v4.1163): menú por tarjeta, edición en el
   // constructor, programación y eliminación con confirmación.
   const [menuFor, setMenuFor] = useState<string | null>(null);
@@ -399,6 +407,11 @@ export default function ContentActivation() {
       setShowWizard(true);
       loadSenderOptions('');
       if (full.scopeDef?.type) loadScopeItems(full.scopeDef.type, '');
+      // Si la campaña fijó una plantilla, avisar si hay versión nueva (la
+      // adopción es explícita).
+      setTplFresh(null);
+      void checkTemplateFresh('email', full.contentDef);
+      void checkTemplateFresh('whatsapp', full.contentDef);
     } catch (e: any) { toast.error(e.message); }
   };
 
@@ -520,9 +533,6 @@ export default function ContentActivation() {
   const setEmailField = (k: string, v: string) => {
     setForm((f: any) => ({ ...f, contentDef: { ...f.contentDef, email: { ...(f.contentDef?.email || {}), [k]: v } } }));
   };
-  const setWaField = (v: string) => {
-    setForm((f: any) => ({ ...f, contentDef: { ...f.contentDef, whatsapp: { body: v } } }));
-  };
 
   const wantsEmail = form.canales.includes('email') || form.canales.includes('ambos');
   const wantsWA = form.canales.includes('whatsapp') || form.canales.includes('ambos');
@@ -551,22 +561,98 @@ export default function ContentActivation() {
     } catch (e: any) { toast.error(e.message); }
   };
 
-  const saveContent = async () => {
+  const saveContent = async (overrideDef?: any) => {
     let campaign = created;
     if (!campaign) campaign = await saveDraft();
     if (!campaign) return null;
+    const payload = overrideDef ?? form.contentDef;
     try {
       const r = await fetch(`${API}/content-activation/${campaign.id}/content`, {
         method: 'PUT', headers: { ...H, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contentDef: form.contentDef }),
+        body: JSON.stringify({ contentDef: payload }),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Error');
+      if (!r.ok) throw new Error(d.error || (d.errores || []).join(' · ') || 'Error');
       setCreated(d.campaign);
+      if (d.campaign?.contentDef) {
+        setForm((f: any) => ({ ...f, contentDef: d.campaign.contentDef }));
+      }
       toast.success('Plantilla guardada.');
       await loadContent(d.campaign.id);
       return d.campaign;
     } catch (e: any) { toast.error(e.message); return null; }
+  };
+
+  // Guarda el diseño visual del email: valida, renderiza el HTML final y lo
+  // persiste junto al diseño. Preview, prueba y envío leen ese mismo HTML.
+  const saveDesign = async () => {
+    const design = form.contentDef?.email?.design;
+    if (!design || !Array.isArray(design.blocks) || !design.blocks.length) {
+      toast.error('Armá al menos un bloque en el diseñador (o importá el contenido actual).');
+      return null;
+    }
+    const errs = validateDesign(design);
+    if (errs.length) { toast.error(errs[0]); return null; }
+    let html = '';
+    try { html = renderDesignToHtml(design); } catch { toast.error('No se pudo renderizar el diseño.'); return null; }
+    return saveContent({ ...(form.contentDef || {}), email: { ...(form.contentDef?.email || {}), design, html } });
+  };
+
+  // Trae el contenido clásico (texto + CTA) al diseñador visual.
+  const importClassic = () => {
+    const email = form.contentDef?.email || {};
+    const design = importClassicToDesign({ subject: email.subject, bodyText: email.bodyText, ctaText: email.ctaText, ctaUrl: email.ctaUrl });
+    setForm((f: any) => ({ ...f, contentDef: { ...(f.contentDef || {}), email: { ...(f.contentDef?.email || {}), design } } }));
+    toast.success('Contenido importado al diseñador. Guardá el diseño para aplicarlo.');
+  };
+
+  // ¿La plantilla fijada en la campaña tiene versión nueva? Solo avisa: la
+  // adopción es explícita para no mutar campañas en silencio.
+  const checkTemplateFresh = async (channel: 'email' | 'whatsapp', content?: any) => {
+    const t = channel === 'email' ? content?.email : content?.whatsapp;
+    if (!t?.templateId) {
+      setTplFresh((cur) => (cur?.channel === channel ? null : cur));
+      return;
+    }
+    try {
+      const r = await fetch(`${API}/content-activation/templates/${t.templateId}`, { headers: H });
+      const d = await r.json();
+      if (r.ok && Number(d.template?.version) > Number(t.templateVersion || 0)) {
+        setTplFresh({ channel, latest: d.template });
+      } else {
+        setTplFresh((cur) => (cur?.channel === channel ? null : cur));
+      }
+    } catch { /* sin red: no se avisa */ }
+  };
+
+  // Copia una plantilla a la campaña (snapshot): queda congelada acá.
+  const applyTemplate = async (channel: 'email' | 'whatsapp', snap: any) => {
+    const patch = applyTemplateToContent(snap, channel);
+    const next = channel === 'email'
+      ? { ...(form.contentDef || {}), email: { ...(form.contentDef?.email || {}), ...patch } }
+      : { ...(form.contentDef || {}), whatsapp: { ...(form.contentDef?.whatsapp || {}), ...patch } };
+    setForm((f: any) => ({ ...f, contentDef: next }));
+    setLibraryFor(null);
+    const row = await saveContent(next);
+    if (row) {
+      toast.success(`Plantilla aplicada (v${snap.templateVersion}). Quedó congelada en la campaña.`);
+      checkTemplateFresh(channel, row.contentDef);
+    }
+    return row;
+  };
+
+  const updateToLatest = async () => {
+    if (!tplFresh) return;
+    try {
+      const r = await fetch(`${API}/content-activation/templates/${tplFresh.latest.id}`, { headers: H });
+      const d = await r.json();
+      if (!r.ok || !d.template) throw new Error(d.error || 'No se pudo leer la plantilla');
+      await applyTemplate(tplFresh.channel as 'email' | 'whatsapp', {
+        design: d.template.design, html: d.template.html,
+        subject: d.template.subject, preheader: d.template.preheader,
+        templateId: d.template.id, templateVersion: d.template.version,
+      });
+    } catch (e: any) { toast.error(e.message); }
   };
 
   const loadReadiness = async (campaignId?: string) => {
@@ -636,9 +722,9 @@ export default function ContentActivation() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold">Campañas de Contenido</h2>
-          <p className="text-sm text-gray-500">Campaña → Ámbito → Audiencia → Destinatarios → Canal → Automatización.</p>
+          <p className="text-sm text-gray-500">Campaña → Ámbito → Audiencia → Destinatarios → Canal → Diseño del mensaje → Automatización.</p>
         </div>
-        <button onClick={() => { setShowWizard(true); setStep(0); setForm(emptyForm); setCreated(null); setEditingId(null); setPreview(null); setContacts([]); setPreviewAs(''); setSenderAuto(null); setSenderOptions([]); setSenderSearch(''); loadSenderOptions(''); }} className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold">+ Nueva campaña</button>
+        <button onClick={() => { setShowWizard(true); setStep(0); setForm(emptyForm); setCreated(null); setEditingId(null); setTplFresh(null); setLibraryFor(null); setPreview(null); setContacts([]); setPreviewAs(''); setSenderAuto(null); setSenderOptions([]); setSenderSearch(''); loadSenderOptions(''); }} className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold">+ Nueva campaña</button>
       </div>
 
       {menuFor && <div className="fixed inset-0 z-30" onClick={() => setMenuFor(null)} />}
@@ -900,7 +986,7 @@ export default function ContentActivation() {
 
             {step === 3 && (
               <div className="mt-4 space-y-3">
-                <div className="text-xs font-bold text-gray-500">PASO 4 — CONTENIDO Y PLANTILLAS POR CANAL</div>
+                <div className="text-xs font-bold text-gray-500">PASO 4 — CONTENIDO, DISEÑO Y AUTOMATIZACIÓN</div>
                 <div className="grid md:grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <label className="text-xs font-bold">Canales</label>
@@ -921,6 +1007,17 @@ export default function ContentActivation() {
                       <input className="border rounded-xl px-3 py-2 text-sm w-full" placeholder="Se genera automáticamente (/rotary-en-accion?ca_token=…)" value={form.contentDef.ctaUrl} onChange={(e) => setForm({ ...form, contentDef: { ...form.contentDef, ctaUrl: e.target.value } })} />
                     </label>
                     <div className="text-[11px] text-gray-400">El CTA lleva al formulario público del ámbito seleccionado, con token atribuible por destinatario.</div>
+                    {form.contentDef?.email?.design && (
+                      <div className="text-xs bg-violet-50 border border-violet-200 rounded-xl p-2.5 flex flex-wrap items-center gap-2">
+                        <span className="font-bold text-violet-800">Diseño visual activo.</span>
+                        <span className="text-violet-700">El correo se compone con el diseñador de abajo; el texto clásico no se usa mientras el diseño esté activo.</span>
+                        <button onClick={() => setForm((f: any) => {
+                          const email = { ...(f.contentDef?.email || {}) };
+                          delete email.design; delete (email as any).html; delete (email as any).templateId; delete (email as any).templateVersion;
+                          return { ...f, contentDef: { ...(f.contentDef || {}), email } };
+                        })} className="px-2 py-1 rounded-lg border border-violet-300 text-violet-800 font-bold">Quitar diseño (volver a clásico)</button>
+                      </div>
+                    )}
                     {(wantsEmail && wantsWA) && (
                       <div className="flex gap-2 text-xs pt-1">
                         <button onClick={() => setContentTab('email')} className={`px-3 py-2 rounded-xl border font-bold ${contentTab === 'email' ? 'bg-gray-900 text-white' : ''}`}>✉ Correo electrónico</button>
@@ -935,9 +1032,23 @@ export default function ContentActivation() {
                         </div>
                         <label className="text-xs">Asunto<input className="border rounded-xl px-3 py-2 text-sm w-full font-bold" value={form.contentDef?.email?.subject || ''} onChange={(e) => setEmailField('subject', e.target.value)} /></label>
                         <label className="text-xs">Preheader<input className="border rounded-xl px-3 py-2 text-sm w-full" value={form.contentDef?.email?.preheader || ''} onChange={(e) => setEmailField('preheader', e.target.value)} /></label>
-                        <label className="text-xs">Texto del CTA principal<input className="border rounded-xl px-3 py-2 text-sm w-full" value={form.contentDef?.email?.ctaText || ''} onChange={(e) => setEmailField('ctaText', e.target.value)} /></label>
+                        {/* Diseño del mensaje (v4.1166) */}
+                        <div className="flex flex-wrap items-center gap-2 text-xs border-t pt-2">
+                          <span className="font-bold">Diseño del mensaje</span>
+                          {form.contentDef?.email?.templateId && (
+                            <span className="text-[11px] font-bold bg-violet-50 text-violet-700 px-2 py-0.5 rounded-full">Plantilla v{form.contentDef.email.templateVersion ?? '?'}</span>
+                          )}
+                          {tplFresh?.channel === 'email' && (
+                            <button onClick={updateToLatest} className="px-2 py-1 rounded-lg bg-amber-100 text-amber-800 font-bold">Actualizar a v{tplFresh.latest.version}</button>
+                          )}
+                          <button onClick={() => setLibraryFor('email')} className="px-2 py-1 rounded-lg border font-bold">Biblioteca…</button>
+                          <button onClick={importClassic} className="px-2 py-1 rounded-lg border font-bold" title="Trae el texto y CTA actuales al diseñador">Importar contenido actual</button>
+                        </div>
+                        <EmailDesigner
+                          design={form.contentDef?.email?.design || null}
+                          onChange={(design) => setForm((f: any) => ({ ...f, contentDef: { ...(f.contentDef || {}), email: { ...(f.contentDef?.email || {}), design } } }))} />
                         <div className="flex flex-wrap gap-2 text-xs">
-                          <button onClick={saveContent} className="px-3 py-2 rounded-xl border font-bold">Guardar plantilla</button>
+                          <button onClick={saveDesign} className="px-3 py-2 rounded-xl bg-emerald-600 text-white font-bold">Guardar diseño</button>
                           <button onClick={async () => { let c = created; if (!c) c = await saveDraft(); if (c) { await loadContent(c.id); setPreviewDevice('desktop'); setShowPreview(true); } }} className="px-3 py-2 rounded-xl border font-bold">Vista previa</button>
                           <input className="border rounded-xl px-3 py-2 text-xs" placeholder="Email de prueba" value={testEmail} onChange={(e) => setTestEmail(e.target.value)} />
                           <button onClick={() => sendTest('email')} disabled={sendingTest} className="px-3 py-2 rounded-xl bg-blue-600 text-white font-bold">Enviar prueba</button>
@@ -946,12 +1057,23 @@ export default function ContentActivation() {
                     )}
                     {(wantsWA && (contentTab === 'whatsapp' || !wantsEmail)) && (
                       <div className="space-y-2 border rounded-2xl p-3">
-                        <div className="text-xs font-bold">Mensaje de WhatsApp — usa {'{{form_url}}'} para el enlace dinámico</div>
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <span className="font-bold">Diseño del mensaje</span>
+                          {form.contentDef?.whatsapp?.templateId && (
+                            <span className="text-[11px] font-bold bg-violet-50 text-violet-700 px-2 py-0.5 rounded-full">Plantilla v{form.contentDef.whatsapp.templateVersion ?? '?'}</span>
+                          )}
+                          {tplFresh?.channel === 'whatsapp' && (
+                            <button onClick={updateToLatest} className="px-2 py-1 rounded-lg bg-amber-100 text-amber-800 font-bold">Actualizar a v{tplFresh.latest.version}</button>
+                          )}
+                          <button onClick={() => setLibraryFor('whatsapp')} className="px-2 py-1 rounded-lg border font-bold">Biblioteca…</button>
+                        </div>
                         {!waOperative && waNote && <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-2">{waNote}</div>}
-                        <textarea className="border rounded-xl px-3 py-2 text-sm w-full" rows={7} value={form.contentDef?.whatsapp?.body || ''} onChange={(e) => setWaField(e.target.value)} />
-                        <div className="border rounded-xl p-3 bg-[#e7ffdb] text-xs whitespace-pre-wrap max-w-md">📱 {waPreview?.body || form.contentDef?.whatsapp?.body || '—'}</div>
+                        <WhatsAppDesigner
+                          value={form.contentDef?.whatsapp || {}}
+                          onChange={(wa) => setForm((f: any) => ({ ...f, contentDef: { ...(f.contentDef || {}), whatsapp: { ...(f.contentDef?.whatsapp || {}), ...wa } } }))}
+                          operative={waOperative} operativeNote={waNote} />
                         <div className="flex flex-wrap gap-2 text-xs">
-                          <button onClick={saveContent} className="px-3 py-2 rounded-xl border font-bold">Guardar plantilla</button>
+                          <button onClick={saveContent} className="px-3 py-2 rounded-xl border font-bold">Guardar mensaje</button>
                           <button onClick={async () => { let c = created; if (!c) c = await saveDraft(); if (c) { await loadContent(c.id); setShowPreview(true); } }} className="px-3 py-2 rounded-xl border font-bold">Vista previa</button>
                           <button onClick={() => sendTest('whatsapp')} disabled={sendingTest} className="px-3 py-2 rounded-xl border font-bold">Validar prueba</button>
                         </div>
@@ -985,6 +1107,10 @@ export default function ContentActivation() {
                   <div><b>Clubes alcanzados:</b> {preview?.clubesAlcanzados ?? '—'} · <b>Destinatarios únicos:</b> {preview?.destinatariosUnicos ?? preview?.audienciaEstimada ?? '—'}</div>
                   <div><b>Canal:</b> {(form.canales || []).join(' + ')} · <b>Frecuencia:</b> {form.frecuencia} · <b>Inicio:</b> {form.startAt || '—'}</div>
                   <div><b>Formulario:</b> {(contrib.find((c: any) => c.id === form.contributionCampaignId)?.name) || form.contributionCampaignId || '—'}</div>
+                  <div><b>Diseño:</b> {form.contentDef?.email?.design ? 'email visual' : 'email clásico'}{form.contentDef?.email?.templateId ? ` (plantilla v${form.contentDef.email.templateVersion ?? '?'})` : ''} · {form.contentDef?.whatsapp?.headerType && form.contentDef.whatsapp.headerType !== 'none' ? 'WhatsApp estructurado' : 'WhatsApp texto'}{form.contentDef?.whatsapp?.templateId ? ` (plantilla v${form.contentDef.whatsapp.templateVersion ?? '?'})` : ''}</div>
+                  {editingId && created?.status !== 'borrador' && (
+                    <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">Los cambios al diseño aplican a la <b>próxima ejecución</b>; el historial y lo ya enviado no se alteran.</div>
+                  )}
                 </div>
                 {!preview && <div className="text-xs text-amber-600">Pulsa Actualizar audiencia en el paso 3 para ver destinatarios antes de activar.</div>}
                 <div className="border rounded-2xl p-4 space-y-2 bg-white">
@@ -1105,6 +1231,21 @@ export default function ContentActivation() {
             </div>
           </div>
         </div>
+      )}
+
+      {libraryFor && (
+        <TemplateLibrary
+          channel={libraryFor}
+          onClose={() => setLibraryFor(null)}
+          draft={libraryFor === 'email'
+            ? {
+              design: form.contentDef?.email?.design || null,
+              html: form.contentDef?.email?.html || (form.contentDef?.email?.design ? renderDesignToHtml(form.contentDef.email.design) : ''),
+              subject: form.contentDef?.email?.subject || '',
+              preheader: form.contentDef?.email?.preheader || '',
+            }
+            : { design: form.contentDef?.whatsapp || {} }}
+          onUse={(snap) => applyTemplate(libraryFor, snap)} />
       )}
 
       {showPreview && (

@@ -16,6 +16,8 @@ export const datos = (globalThis.__CA_STUB__ ??= {
   enrollments: [],
   events: [],
   consultas: [],
+  templates: [],
+  templateVersions: [],
 });
 
 export const reset = () => {
@@ -25,6 +27,8 @@ export const reset = () => {
   d.enrollments = [];
   d.events = [];
   d.consultas = [];
+  d.templates = [];
+  d.templateVersions = [];
 };
 
 const norm = (sql) => String(sql).replace(/\s+/g, ' ').trim();
@@ -64,6 +68,81 @@ const query = async (sql, params = []) => {
   if (/^(CREATE|ALTER|DROP|COMMENT|CREATE INDEX)/i.test(t)) return { rows: [] };
   if (/information_schema/.test(t)) {
     return { rows: [{ table_name: 'ContentActivationCampaign' }, { table_name: 'ContentActivationExecution' }, { table_name: 'ContentActivationEnrollment' }, { table_name: 'ContentActivationEvent' }] };
+  }
+
+  // ── Plantillas (v4.1166) ──────────────────────────────────────────────
+  if (/INSERT INTO "ContentActivationTemplateVersion"/.test(t)) {
+    const [id, templateId, version, design, html, subject, preheader, note, createdBy] = params;
+    datos.templateVersions.push({
+      id, templateId, version, design: J(design), html, subject, preheader, note, createdBy,
+      createdAt: ahora(),
+    });
+    return { rows: [] };
+  }
+  if (/INSERT INTO "ContentActivationTemplate"\(/.test(t)) {
+    const [id, scope, name, channel, design, html, subject, preheader, createdBy] = params;
+    datos.templates.push({
+      id, scope, name, channel, design: J(design), html, subject, preheader,
+      isDefault: false, status: 'activa', version: 1, createdBy,
+      createdAt: ahora(), updatedAt: ahora(),
+    });
+    return { rows: [] };
+  }
+  if (/FROM "ContentActivationTemplate" t WHERE/.test(t)) {
+    let rows = datos.templates.filter((x) => x.status === 'activa');
+    if (/AND scope=\$1/.test(t) && params[0]) rows = rows.filter((x) => String(x.scope) === String(params[0]));
+    rows = rows.map((x) => ({ ...x, versions: datos.templateVersions.filter((v) => String(v.templateId) === String(x.id)).length }));
+    return { rows };
+  }
+  if (/SELECT \* FROM "ContentActivationTemplate" WHERE id=\$1/.test(t)) {
+    const x = datos.templates.find((r) => String(r.id) === String(params[0]));
+    return { rows: x ? [{ ...x }] : [] };
+  }
+  if (/FROM "ContentActivationTemplateVersion" WHERE "templateId"=\$1 AND version=\$2/.test(t)) {
+    const v = datos.templateVersions.find((r) => String(r.templateId) === String(params[0]) && Number(r.version) === Number(params[1]));
+    return { rows: v ? [{ ...v }] : [] };
+  }
+  if (/FROM "ContentActivationTemplateVersion" WHERE "templateId"=\$1 ORDER BY version DESC/.test(t)) {
+    const rows = datos.templateVersions
+      .filter((r) => String(r.templateId) === String(params[0]))
+      .sort((a, b) => Number(b.version) - Number(a.version));
+    return { rows: rows.map((r) => ({ ...r })) };
+  }
+  if (/UPDATE "ContentActivationTemplate" SET design=\$2/.test(t)) {
+    const [id, design, html, subject, preheader, name, next] = params;
+    const x = datos.templates.find((r) => String(r.id) === String(id));
+    if (x) {
+      x.design = J(design); x.html = html; x.subject = subject; x.preheader = preheader;
+      x.name = name; x.version = next; x.updatedAt = ahora();
+    }
+    return { rows: [] };
+  }
+  if (/UPDATE "ContentActivationTemplate" SET status=\$2/.test(t)) {
+    const x = datos.templates.find((r) => String(r.id) === String(params[0]));
+    if (x) { x.status = params[1]; x.updatedAt = ahora(); }
+    return { rows: [] };
+  }
+  if (/UPDATE "ContentActivationTemplate" SET "isDefault"=FALSE WHERE channel=\$1 AND scope=\$2/.test(t)) {
+    for (const x of datos.templates) {
+      if (String(x.channel) === String(params[0]) && String(x.scope) === String(params[1])) x.isDefault = false;
+    }
+    return { rows: [] };
+  }
+  if (/UPDATE "ContentActivationTemplate" SET "isDefault"=TRUE WHERE id=\$1/.test(t)) {
+    const x = datos.templates.find((r) => String(r.id) === String(params[0]));
+    if (x) x.isDefault = true;
+    return { rows: [] };
+  }
+  if (/DELETE FROM "ContentActivationTemplateVersion" WHERE "templateId"=\$1/.test(t)) {
+    datos.templateVersions = datos.templateVersions.filter((r) => String(r.templateId) !== String(params[0]));
+    return { rows: [] };
+  }
+  if (/DELETE FROM "ContentActivationTemplate" WHERE id=\$1/.test(t)) {
+    datos.templates = datos.templates.filter((r) => String(r.id) !== String(params[0]));
+    return { rows: [] };
+  }
+  if (/SELECT COUNT\(\*\)::int AS n FROM "ContentActivationTemplate"/.test(t)) {
+    return { rows: [{ n: datos.templates.length }] };
   }
 
   // ── Campañas ──────────────────────────────────────────────────────────

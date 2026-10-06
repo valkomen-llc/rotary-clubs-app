@@ -152,15 +152,41 @@ export async function resolveChannelContent(campaign, channel, { testEmail = '',
   const formSlug = await resolveFormSlug(campaign?.contributionCampaignId);
   const formUrl = publicSiteUrl(senderCtx.host || '', formPathFor(formSlug));
   const districtName = senderCtx.districtName || senderCtx.siteName || '';
+  const { resolveCampaignVars } = await import('./contentActivationVariables.js');
+  const varsOf = (recipient) => resolveCampaignVars({ recipient, campaign, sender: senderCtx, formUrl });
   if (channel === 'email') {
     const recipient = contact
       ? buildRecipientCtx(contact, campaign, senderCtx, formUrl)
       : buildRecipientCtx({ name: testName, recipient_name: testName }, campaign, senderCtx, formUrl);
+    const stored = normalizeContentDef(campaign?.contentDef || {});
+    // Ruta diseño (v4.1166): el HTML guardado por el editor es el artefacto
+    // final; acá solo se sustituyen variables (escapadas), se sanea y se arma
+    // el documento. Preview, prueba y envío pasan por acá: idéntico siempre.
+    if (stored.email.design && stored.email.html) {
+      const { buildFinalEmail } = await import('./contentActivationMail.js');
+      const vars = varsOf(recipient);
+      const final = buildFinalEmail({
+        subject: stored.email.subject, preheader: stored.email.preheader,
+        htmlBody: stored.email.html,
+        footer: [senderCtx.siteName, 'Comunicación gestionada a través de Club Platform for Rotary'].filter(Boolean).join(' · '),
+        ctaUrl: stored.email.ctaUrl || formUrl, vars,
+      });
+      const fromName = stored.email.fromName || senderCtx.siteName || campaign?.name || 'Rotary en Acción';
+      return {
+        channel: 'email', formSlug, formUrl, districtName, sender: senderSummary(senderCtx, senderRef),
+        subject: final.subject, html: final.html, text: final.text,
+        missing: final.missing, isDefault: false, designMode: 'design',
+        fromEmail: stored.email.fromEmail, fromName,
+        preheader: final.preheader, ctaText: stored.email.ctaText, ctaUrl: final.ctaUrl,
+        template: stored.email.templateId ? { id: stored.email.templateId, version: stored.email.templateVersion } : null,
+      };
+    }
     // Sin nombre real: no inventar desde el email (eso produjo "Hola Presidente").
     const rendered = await renderCampaignEmail({ campaign, senderCtx, formUrl, recipient, content: campaign?.contentDef });
     return {
       channel: 'email', formSlug, formUrl, districtName, sender: senderSummary(senderCtx, senderRef),
-      ...rendered,
+      ...rendered, designMode: 'classic',
+      template: stored.email.templateId ? { id: stored.email.templateId, version: stored.email.templateVersion } : null,
     };
   }
   const stored = normalizeContentDef(campaign?.contentDef || {});
@@ -169,16 +195,29 @@ export async function resolveChannelContent(campaign, channel, { testEmail = '',
   const recipient = contact
     ? buildRecipientCtx(contact, campaign, senderCtx, formUrl)
     : buildRecipientCtx({ name: testName, recipient_name: testName }, campaign, senderCtx, formUrl);
-  const vars = {
-    recipient_name: recipient.recipient_name || 'hola', club_name: recipient.club_name,
-    district_name: recipient.district_name || districtName, campaign_name: recipient.campaign_name,
-    form_url: formUrl, site_name: recipient.site_name,
-    nombre: recipient.nombre, club: recipient.club, distrito: recipient.distrito, formulario_url: formUrl,
-  };
+  const vars = varsOf(recipient);
+  // Compatibilidad con el comportamiento previo en vista previa: el saludo
+  // cae a "hola" y el distrito al del remitente en vez de quedar vacío.
+  if (!vars.recipient_name) vars.recipient_name = 'hola';
+  if (!vars.district_name) vars.district_name = districtName;
+  const { substituteVars, waTextFallback } = await import('./contentActivationMail.js');
+  const parts = ['headerText', 'body', 'footer'].map((k) => substituteVars(k === 'body' ? bodyTpl : (stored.whatsapp[k] || ''), vars));
+  const buttons = (stored.whatsapp.buttons || []).map((b) => {
+    const url = substituteVars(b.url || '', vars);
+    const label = substituteVars(b.label || '', vars);
+    return { type: b.type, label: label.text, url: b.type === 'url' ? url.text : undefined, missing: [...label.missing, ...url.missing] };
+  });
+  const missing = [...new Set([...parts.flatMap((p) => p.missing), ...buttons.flatMap((b) => b.missing || [])])];
   return {
     channel: 'whatsapp', formSlug, formUrl, districtName, sender: senderSummary(senderCtx, senderRef),
-    body: renderContentVars(bodyTpl, vars),
-    isDefault: !stored.whatsapp.body,
+    headerType: stored.whatsapp.headerType || 'none',
+    headerText: parts[0].text, mediaUrl: stored.whatsapp.mediaUrl || '',
+    body: parts[1].text, footer: parts[2].text, buttons: buttons.map(({ missing, ...b }) => b),
+    text: waTextFallback({ headerText: parts[0].text, body: parts[1].text, footer: parts[2].text }),
+    missing,
+    isDefault: !stored.whatsapp.body && !stored.whatsapp.headerText,
+    template: stored.whatsapp.templateId ? { id: stored.whatsapp.templateId, version: stored.whatsapp.templateVersion } : null,
+    approvedTemplate: stored.whatsapp.templateName ? { name: stored.whatsapp.templateName, lang: stored.whatsapp.templateLang || 'es' } : null,
   };
 }
 
