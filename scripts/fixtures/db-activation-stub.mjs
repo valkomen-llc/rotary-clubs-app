@@ -89,11 +89,25 @@ const query = async (sql, params = []) => {
     });
     return { rows: [] };
   }
-  if (/FROM "ContentActivationTemplate" t WHERE/.test(t)) {
-    let rows = datos.templates.filter((x) => x.status === 'activa');
-    if (/AND scope=\$1/.test(t) && params[0]) rows = rows.filter((x) => String(x.scope) === String(params[0]));
+  if (/FROM "ContentActivationTemplate" t/.test(t)) {
+    let rows = [...datos.templates];
+    // `status = ANY($N)` (gestor con ?all=1 / ?status=) o literal `status='activa'`.
+    const anyM = t.match(/status = ANY\(\$(\d+)\)/);
+    if (anyM) {
+      const lista = params[Number(anyM[1]) - 1] || [];
+      rows = rows.filter((x) => lista.includes(x.status));
+    } else if (/status='activa'/.test(t)) {
+      rows = rows.filter((x) => x.status === 'activa');
+    }
+    const chanM = t.match(/channel=\$(\d+)/);
+    if (chanM) rows = rows.filter((x) => String(x.channel) === String(params[Number(chanM[1]) - 1]));
+    const scopeM = t.match(/scope=\$(\d+)/);
+    if (scopeM && params[Number(scopeM[1]) - 1]) rows = rows.filter((x) => String(x.scope) === String(params[Number(scopeM[1]) - 1]));
     rows = rows.map((x) => ({ ...x, versions: datos.templateVersions.filter((v) => String(v.templateId) === String(x.id)).length }));
-    return { rows };
+    // Orden del servidor: predeterminadas primero, luego recientes.
+    rows.sort((a, b) => Number(b.isDefault || false) - Number(a.isDefault || false)
+      || String(b.updatedAt).localeCompare(String(a.updatedAt)));
+    return { rows: rows.slice(0, 100) };
   }
   if (/SELECT \* FROM "ContentActivationTemplate" WHERE id=\$1/.test(t)) {
     const x = datos.templates.find((r) => String(r.id) === String(params[0]));

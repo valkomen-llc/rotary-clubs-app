@@ -317,6 +317,35 @@ grupo('8 · Ciclo de vida v4.1167: estados, default activa, duplicado y validaci
   check('pasos no-email no aportan vars', EMA.unknownVarsInSteps([{ actionType: 'wait' }, { actionType: 'notify', subject: 'x {{monto}}', content: '' }]).length === 0);
 }
 
+grupo('9 · Regresión v4.1168: la ruta real usa :templateId (no :id)');
+{
+  // Estos llamados usan la forma EXACTA que Express construye con la ruta
+  // `/templates/:templateId`. Antes del fix el controlador leía
+  // `req.params.id` → undefined → 404 "Plantilla no encontrada" en producción
+  // aunque la lista mostrara la plantilla.
+  const semilla = await correr(TPLC.list, { ...SUPER, query: {} });
+  const semillaEmail = (semilla.body?.templates || []).find((t) => t.channel === 'email');
+  check('lista expone la predeterminada global', !!semillaEmail?.id, `n=${semilla.body?.templates?.length}`);
+  const sid = semillaEmail.id;
+  const det = await correr(TPLC.detail, { ...SUPER, params: { templateId: sid }, query: {} });
+  check('detail con :templateId abre (era 404)', det.code === 200 && det.body?.template?.id === sid, `code=${det.code} ${det.body?.error || ''}`);
+  const ver = await correr(TPLC.versions, { ...SUPER, params: { templateId: sid } });
+  check('versions con :templateId (era 404)', ver.code === 200 && Array.isArray(ver.body?.versions), `code=${ver.code}`);
+  const upd = await correr(TPLC.update, { ...SUPER, params: { templateId: sid }, body: { subject: 'Asunto vía :templateId {{club_name}}', note: 'regresión' } });
+  check('update con :templateId crea versión (era 404)', upd.code === 200 && Number(upd.body?.template?.version) > 1, `code=${upd.code} ${upd.body?.error || ''}`);
+  const uso = await correr(TPLC.usage, { ...SUPER, params: { templateId: sid } });
+  check('usage con :templateId (era 404)', uso.code === 200 && typeof uso.body?.total === 'number', `code=${uso.code}`);
+  const met = await correr(TPLC.metrics, { ...SUPER, params: { templateId: sid } });
+  check('metrics con :templateId (era 404)', met.code === 200 && !!met.body?.email, `code=${met.code}`);
+  // Filtros de lista: canal y ciclo de vida completo.
+  const soloEmail = await correr(TPLC.list, { ...SUPER, query: { channel: 'email' } });
+  check('?channel=email excluye whatsapp', soloEmail.code === 200 && (soloEmail.body?.templates || []).every((t) => t.channel === 'email'), `n=${soloEmail.body?.templates?.length}`);
+  const todo = await correr(TPLC.list, { ...SUPER, query: { all: '1' } });
+  check('?all=1 incluye borradores', todo.code === 200 && (todo.body?.templates || []).some((t) => t.status === 'borrador'), `n=${todo.body?.templates?.length}`);
+  const soloBorrador = await correr(TPLC.list, { ...SUPER, query: { all: '1', status: 'borrador' } });
+  check('?status=borrador filtra', soloBorrador.code === 200 && (soloBorrador.body?.templates || []).every((t) => t.status === 'borrador'), `n=${soloBorrador.body?.templates?.length}`);
+}
+
 console.log('\n' + '─'.repeat(60));
 if (malos.length) {
   console.log(`❌ ${malos.length} fallo(s) de ${ok + malos.length}:`);

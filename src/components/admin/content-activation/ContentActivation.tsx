@@ -647,8 +647,12 @@ export default function ContentActivation() {
       const r = await fetch(`${API}/content-activation/templates/${tplFresh.latest.id}`, { headers: H });
       const d = await r.json();
       if (!r.ok || !d.template) throw new Error(d.error || 'No se pudo leer la plantilla');
+      let html = d.template.html || '';
+      if (!html && d.template.design && Array.isArray(d.template.design.blocks)) {
+        try { html = renderDesignToHtml(d.template.design); } catch { html = ''; }
+      }
       await applyTemplate(tplFresh.channel as 'email' | 'whatsapp', {
-        design: d.template.design, html: d.template.html,
+        design: d.template.design, html,
         subject: d.template.subject, preheader: d.template.preheader,
         templateId: d.template.id, templateVersion: d.template.version,
       });

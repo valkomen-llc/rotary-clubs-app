@@ -62,16 +62,30 @@ export function templateWritableBy(tpl, grant = {}) {
   return (grant.clubIds || []).includes(s);
 }
 
-export async function listTemplates({ scope = null } = {}) {
+export async function listTemplates({ scope = null, channel = null, statuses = ['activa'], includeArchived = false } = {}) {
   await ensureTemplateSchema();
   await seedDefaults().catch(() => {});
   const params = [];
-  let where = `status='activa'`;
-  if (scope) { params.push(String(scope)); where += ` AND scope=$${params.length}`; }
+  const conds = [];
+  // Por defecto solo activas (lo que se ofrece a campañas nuevas). El gestor
+  // (`?all=1`) pide todo el ciclo de vida para administrar borradores e inactivas.
+  let statusList = Array.isArray(statuses) ? statuses.filter(Boolean) : null;
+  if (!statusList && !includeArchived) statusList = ['activa'];
+  if (statusList) {
+    params.push(statusList.map(String));
+    conds.push(`status = ANY($${params.length})`);
+  } else if (!includeArchived) {
+    conds.push(`status='activa'`);
+  }
+  if (channel && ['email', 'whatsapp'].includes(String(channel))) {
+    params.push(String(channel)); conds.push(`channel=$${params.length}`);
+  }
+  if (scope) { params.push(String(scope)); conds.push(`scope=$${params.length}`); }
+  const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
   const { rows } = await db.query(
     `SELECT id, scope, name, channel, subject, preheader, "isDefault", status, version, "createdBy", "createdAt", "updatedAt",
       (SELECT COUNT(*)::int FROM "ContentActivationTemplateVersion" v WHERE v."templateId"=t.id) AS versions
-     FROM "ContentActivationTemplate" t WHERE ${where} ORDER BY "isDefault" DESC, "updatedAt" DESC LIMIT 100`, params);
+     FROM "ContentActivationTemplate" t ${where} ORDER BY "isDefault" DESC, "updatedAt" DESC LIMIT 100`, params);
   return rows;
 }
 

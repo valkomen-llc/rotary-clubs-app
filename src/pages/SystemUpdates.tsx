@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1168.0',
+        title: 'Plantillas centrales reparadas: adiós al “Plantilla no encontrada” 🔧📚',
+        description: 'Causa: las rutas declaran :templateId pero el controlador leía req.params.id (11 endpoints) → todo detalle daba 404 aunque la lista mostrara la plantilla. Ahora Plantillas abre, edita con el diseñador visual completo (bloques, imágenes, botones, colores, fondos, tipografías, tamaños, alineaciones) y cada guardado crea una versión inmutable; el listado filtra por canal y gestiona todo el ciclo de vida (borrador/activa/inactiva/archivada). Las campañas siguen congelando snapshot (design+html+versión) así que preview, prueba y envío resuelven exactamente la versión adoptada y lo enviado nunca muta; las futuras adoptan explícitamente con “actualizar a vN”. El almacén legado /communications queda solo como respaldo de lectura.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'email-marketing', 'campanas-de-contenido', 'fix', 'regresion', 'production-release'],
+        type: 'fix',
+        impact: 'high',
+    },
+    {
         version: '4.1167.0',
         title: 'Plantillas y Automatizaciones centrales: una biblioteca para todo 📚⚙️',
         description: 'Email Marketing suma la pestaña Plantillas: la misma biblioteca versionada de Campañas de Contenido (estados borrador/activa/inactiva/archivada, versiones inmutables, uso por campaña con último uso y métricas agregadas), sin tiendas paralelas. El modal de campaña carga y guarda en esa biblioteca central y fija la versión adoptada en design._template para rastrear uso sin acoplar vivo. Variables unificadas con ámbitos ({{contact.first_name}}, {{club.name}}, {{campaign.name}}, |default) y sustitución por destinatario en campañas, pruebas y automatizaciones; el envío y la programación bloquean variables desconocidas. Automatizaciones con etiquetas namespaced (ca:…), vista previa y prueba por paso sin inscribir, métricas por estado y Super Admin con acceso. La IA solo sugiere (nunca envía sola).',

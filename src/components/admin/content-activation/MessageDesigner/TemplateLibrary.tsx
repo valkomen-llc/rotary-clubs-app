@@ -4,6 +4,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { substituteVars, TEST_VARS } from '../../../../lib/contentActivationVariables';
+import { renderDesignToHtml } from '../../../../lib/emailBlocks';
 import { buildEmailShell } from './designUtils';
 import { useAuth } from '../../../../hooks/useAuth';
 
@@ -86,11 +87,19 @@ const TemplateLibrary: React.FC<{
     } catch (e: any) { toast.error(e.message); }
   };
 
+  const tplHtml = (() => {
+    if (sel?.html) return sel.html;
+    // Semilla sin HTML guardado: se deriva de sus bloques (igual que al usarla).
+    if (sel?.design && Array.isArray(sel.design.blocks)) {
+      try { return renderDesignToHtml(sel.design); } catch { return ''; }
+    }
+    return '';
+  })();
   const previewHtml = sel && channel === 'email'
     ? buildEmailShell({
       subject: substituteVars(sel.subject || '', TEST_VARS).text,
       preheader: substituteVars(sel.preheader || '', TEST_VARS).text,
-      bodyHtml: substituteVars(sel.html || '', TEST_VARS).text,
+      bodyHtml: substituteVars(tplHtml, TEST_VARS).text,
       footer: '',
     })
     : '';
@@ -137,7 +146,17 @@ const TemplateLibrary: React.FC<{
                   </div>
                 )}
                 <div className="flex flex-wrap gap-1.5 text-xs">
-                  <button onClick={() => onUse({ design: sel.design, html: sel.html, subject: sel.subject, preheader: sel.preheader, templateId: sel.id, templateVersion: sel.version })} className="px-3 py-1.5 rounded-xl bg-emerald-600 text-white font-bold">Usar en la campaña</button>
+                  <button onClick={() => {
+                    // El snapshot congela diseño+html+versión en la campaña. Si la
+                    // plantilla nació sin HTML (semilla institucional), se deriva
+                    // de sus bloques para que la campaña renderice esa versión
+                    // exacta (ruta diseño) en vez de caer al clásico.
+                    let html = sel.html || '';
+                    if (!html && sel.design && Array.isArray(sel.design.blocks)) {
+                      try { html = renderDesignToHtml(sel.design); } catch { html = ''; }
+                    }
+                    onUse({ design: sel.design, html, subject: sel.subject, preheader: sel.preheader, templateId: sel.id, templateVersion: sel.version });
+                  }} className="px-3 py-1.5 rounded-xl bg-emerald-600 text-white font-bold">Usar en la campaña</button>
                   <button onClick={() => acc(sel.id, 'duplicate', {}, 'Plantilla duplicada como borrador.')} className="px-3 py-1.5 rounded-xl border font-bold">Duplicar</button>
                   {sel.status === 'borrador' && <button onClick={() => acc(sel.id, 'status', { status: 'activa' }, 'Plantilla activada.')} className="px-3 py-1.5 rounded-xl border font-bold text-emerald-700">Activar</button>}
                   {sel.status === 'activa' && <button onClick={() => acc(sel.id, 'status', { status: 'inactiva' }, 'Desactivada (no se ofrece para campañas nuevas).')} className="px-3 py-1.5 rounded-xl border font-bold">Desactivar</button>}

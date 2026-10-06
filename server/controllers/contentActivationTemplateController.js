@@ -5,7 +5,7 @@ import {
   listTemplates, getTemplate, getTemplateVersions,
   createTemplate, updateTemplate, duplicateTemplate,
   archiveTemplate, setTemplateStatus, removeTemplate, setDefaultTemplate,
-  templateVisibleTo, templateWritableBy,
+  templateVisibleTo, templateWritableBy, TEMPLATE_STATUS_IDS,
 } from '../lib/contentActivationTemplates.js';
 import { assertEmailDesign, assertWhatsAppFields, DESIGN_BLOCKS_MAX } from '../lib/contentActivationMail.js';
 import { findUnknownVars } from '../lib/contentActivationVariables.js';
@@ -13,6 +13,9 @@ import { findUnknownVars } from '../lib/contentActivationVariables.js';
 const ok = (res, data) => res.json({ ok: true, ...data });
 const fail = (res, e, code = 500) => res.status(code).json({ error: e?.message || 'Error' });
 const grantOf = async (req) => getUserGrant(req).catch(() => ({ isGlobal: true, districtIds: [], clubIds: [] }));
+// La ruta declara `:templateId` (ver routes/content-activation.js). Se acepta
+// también `req.params.id` por compatibilidad con llamadas internas/tests viejos.
+const tid = (req) => req.params.templateId ?? req.params.id;
 
 const EMAIL_BLOCKS = ['heading', 'text', 'image', 'button', 'columns', 'divider', 'spacer'];
 
@@ -54,7 +57,17 @@ function validateTemplateBody(channel, { design = {}, html = '', subject = '', p
 export const list = async (req, res) => {
   try {
     const grant = await grantOf(req);
-    const rows = await listTemplates();
+    // Filtros: `?channel=email|whatsapp`, `?status=borrador|activa|inactiva|archivada`
+    // (o `?all=1` para gestionar todo el ciclo de vida). Sin filtros, solo
+    // activas: lo que se ofrece a campañas nuevas.
+    const channel = ['email', 'whatsapp'].includes(req.query.channel) ? req.query.channel : null;
+    const all = req.query.all === '1' || req.query.includeArchived === '1';
+    const status = TEMPLATE_STATUS_IDS.includes(req.query.status) ? req.query.status : null;
+    const rows = await listTemplates({
+      channel,
+      statuses: status ? [status] : (all ? null : ['activa']),
+      includeArchived: all,
+    });
     const visibles = rows.filter((t) => templateVisibleTo(t, grant));
     return res.json({ templates: visibles });
   } catch (e) { return fail(res, e); }
@@ -63,7 +76,7 @@ export const list = async (req, res) => {
 export const detail = async (req, res) => {
   try {
     const grant = await grantOf(req);
-    const t = await getTemplate(req.params.id, req.query.version ?? null);
+    const t = await getTemplate(tid(req), req.query.version ?? null);
     if (!t) return res.status(404).json({ error: 'Plantilla no encontrada' });
     if (!templateVisibleTo(t, grant)) return res.status(403).json({ error: 'Fuera de tus permisos.' });
     return res.json({ template: t });
@@ -73,10 +86,10 @@ export const detail = async (req, res) => {
 export const versions = async (req, res) => {
   try {
     const grant = await grantOf(req);
-    const t = await getTemplate(req.params.id);
+    const t = await getTemplate(tid(req));
     if (!t) return res.status(404).json({ error: 'Plantilla no encontrada' });
     if (!templateVisibleTo(t, grant)) return res.status(403).json({ error: 'Fuera de tus permisos.' });
-    return res.json({ versions: await getTemplateVersions(req.params.id) });
+    return res.json({ versions: await getTemplateVersions(tid(req)) });
   } catch (e) { return fail(res, e); }
 };
 
@@ -98,7 +111,7 @@ export const create = async (req, res) => {
 export const update = async (req, res) => {
   try {
     const grant = await grantOf(req);
-    const cur = await getTemplate(req.params.id);
+    const cur = await getTemplate(tid(req));
     if (!cur) return res.status(404).json({ error: 'Plantilla no encontrada' });
     if (!templateWritableBy(cur, grant)) return res.status(403).json({ error: 'No tienes permiso para modificar esta plantilla.' });
     const channel = cur.channel;
@@ -109,7 +122,7 @@ export const update = async (req, res) => {
       preheader: req.body.preheader ?? cur.preheader,
     });
     // Nueva versión: las campañas que usan la anterior NO se tocan.
-    const tpl = await updateTemplate(req.params.id, { ...req.body, createdBy: req.user?.id || null });
+    const tpl = await updateTemplate(tid(req), { ...req.body, createdBy: req.user?.id || null });
     return ok(res, { template: tpl });
   } catch (e) { return fail(res, e, e.status || 500); }
 };
@@ -117,11 +130,11 @@ export const update = async (req, res) => {
 export const duplicate = async (req, res) => {
   try {
     const grant = await grantOf(req);
-    const cur = await getTemplate(req.params.id);
+    const cur = await getTemplate(tid(req));
     if (!cur) return res.status(404).json({ error: 'Plantilla no encontrada' });
     if (!templateVisibleTo(cur, grant)) return res.status(403).json({ error: 'Fuera de tus permisos.' });
     const scope = grant.isGlobal ? (req.body.scope || cur.scope) : (grant.clubIds?.[0] || cur.scope);
-    const tpl = await duplicateTemplate(req.params.id, { createdBy: req.user?.id || null, scope });
+    const tpl = await duplicateTemplate(tid(req), { createdBy: req.user?.id || null, scope });
     return res.status(201).json({ template: tpl });
   } catch (e) { return fail(res, e, e.status || 500); }
 };
@@ -129,10 +142,10 @@ export const duplicate = async (req, res) => {
 export const archive = async (req, res) => {
   try {
     const grant = await grantOf(req);
-    const cur = await getTemplate(req.params.id);
+    const cur = await getTemplate(tid(req));
     if (!cur) return res.status(404).json({ error: 'Plantilla no encontrada' });
     if (!templateWritableBy(cur, grant)) return res.status(403).json({ error: 'No tienes permiso para modificar esta plantilla.' });
-    const tpl = await archiveTemplate(req.params.id, req.body?.archived !== false);
+    const tpl = await archiveTemplate(tid(req), req.body?.archived !== false);
     return ok(res, { template: tpl });
   } catch (e) { return fail(res, e, e.status || 500); }
 };
@@ -141,10 +154,10 @@ export const archive = async (req, res) => {
 export const transition = async (req, res) => {
   try {
     const grant = await grantOf(req);
-    const cur = await getTemplate(req.params.id);
+    const cur = await getTemplate(tid(req));
     if (!cur) return res.status(404).json({ error: 'Plantilla no encontrada' });
     if (!templateWritableBy(cur, grant)) return res.status(403).json({ error: 'No tienes permiso para modificar esta plantilla.' });
-    const tpl = await setTemplateStatus(req.params.id, String(req.body.status || ''));
+    const tpl = await setTemplateStatus(tid(req), String(req.body.status || ''));
     return ok(res, { template: tpl });
   } catch (e) { return fail(res, e, e.status || 500); }
 };
@@ -152,11 +165,11 @@ export const transition = async (req, res) => {
 export const remove = async (req, res) => {
   try {
     const grant = await grantOf(req);
-    const cur = await getTemplate(req.params.id);
+    const cur = await getTemplate(tid(req));
     if (!cur) return res.status(404).json({ error: 'Plantilla no encontrada' });
     if (!templateWritableBy(cur, grant)) return res.status(403).json({ error: 'No tienes permiso para modificar esta plantilla.' });
     if (req.body?.confirm !== true) return res.status(400).json({ error: 'Confirma la eliminación enviando { confirm: true }.' });
-    await removeTemplate(req.params.id);
+    await removeTemplate(tid(req));
     return ok(res, { deleted: true });
   } catch (e) { return fail(res, e, e.status || 500); }
 };
@@ -164,10 +177,10 @@ export const remove = async (req, res) => {
 export const setDefault = async (req, res) => {
   try {
     const grant = await grantOf(req);
-    const cur = await getTemplate(req.params.id);
+    const cur = await getTemplate(tid(req));
     if (!cur) return res.status(404).json({ error: 'Plantilla no encontrada' });
     if (!templateWritableBy(cur, grant)) return res.status(403).json({ error: 'No tienes permiso para modificar esta plantilla.' });
-    const tpl = await setDefaultTemplate(req.params.id);
+    const tpl = await setDefaultTemplate(tid(req));
     return ok(res, { template: tpl });
   } catch (e) { return fail(res, e, e.status || 500); }
 };
@@ -178,10 +191,10 @@ export const setDefault = async (req, res) => {
 export const usage = async (req, res) => {
   try {
     const grant = await grantOf(req);
-    const cur = await getTemplate(req.params.id);
+    const cur = await getTemplate(tid(req));
     if (!cur) return res.status(404).json({ error: 'Plantilla no encontrada' });
     if (!templateVisibleTo(cur, grant)) return res.status(403).json({ error: 'Fuera de tus permisos.' });
-    const id = String(req.params.id);
+    const id = String(tid(req));
     const { default: db } = await import('../lib/db.js');
     const { rows: activaciones } = await db.query(
       `SELECT id, name, status, "updatedAt",
@@ -217,10 +230,10 @@ export const usage = async (req, res) => {
 export const metrics = async (req, res) => {
   try {
     const grant = await grantOf(req);
-    const cur = await getTemplate(req.params.id);
+    const cur = await getTemplate(tid(req));
     if (!cur) return res.status(404).json({ error: 'Plantilla no encontrada' });
     if (!templateVisibleTo(cur, grant)) return res.status(403).json({ error: 'Fuera de tus permisos.' });
-    const id = String(req.params.id);
+    const id = String(tid(req));
     const { default: db } = await import('../lib/db.js');
     const { default: prisma } = await import('../lib/prisma.js');
     const emails = await prisma.emailCampaign.findMany({
