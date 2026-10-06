@@ -45,7 +45,7 @@ export const importClassicToDesign = (email: {
 export const renderDesignEmail = (design: EmailDesign, opts: { subject?: string; preheader?: string; footer?: string } = {}): string =>
   buildEmailShell({ subject: opts.subject || '', preheader: opts.preheader || '', bodyHtml: renderDesignToHtml(design), footer: opts.footer || '' });
 
-const EMAIL_BLOCKS = ['heading', 'text', 'image', 'button', 'columns', 'divider', 'spacer'];
+const EMAIL_BLOCKS = ['heading', 'text', 'image', 'button', 'columns', 'divider', 'spacer', 'social', 'video', 'html'];
 
 /** Validación liviana antes de guardar (el servidor revalida todo). */
 export const validateDesign = (design: EmailDesign | null | undefined): string[] => {

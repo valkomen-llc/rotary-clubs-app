@@ -17,7 +17,26 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import EmailDesigner from '../content-activation/MessageDesigner/EmailDesigner';
-import { renderDesignToHtml, type EmailDesign } from '../../../lib/emailBlocks';
+import EmailAiAssistant from './EmailAiAssistant';
+import { renderDesignToHtml, newId, DEFAULT_SETTINGS, type EmailDesign, type Block } from '../../../lib/emailBlocks';
+
+// HTML simple de la IA → bloques editables (h2/h3→encabezado, p/li→texto,
+// primer enlace→botón). La IA nunca escribe directo: el humano revisa en el
+// diseñador y guarda como nueva versión.
+const aiHtmlToDesign = (html: string): EmailDesign['blocks'] => {
+  const t = String(html || '');
+  const blocks: EmailDesign['blocks'] = [];
+  const push = (b: Block) => blocks.push(b);
+  const clean = (s: string) => s.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').trim();
+  const heads = [...t.matchAll(/<h[23][^>]*>([\s\S]*?)<\/h[23]>/gi)].map((m) => clean(m[1])).filter(Boolean);
+  const paras = [...t.matchAll(/<(p|li)[^>]*>([\s\S]*?)<\/(p|li)>/gi)].map((m) => clean(m[2])).filter(Boolean);
+  const link = t.match(/<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i);
+  heads.slice(0, 2).forEach((h) => push({ id: newId(), type: 'heading', text: h, level: 2, align: 'left', color: '#0c3c7c' }));
+  paras.slice(0, 8).forEach((p) => push({ id: newId(), type: 'text', text: p, align: 'left', color: '#333333', size: 15 }));
+  if (link) push({ id: newId(), type: 'button', text: clean(link[2]) || 'Ver más', href: link[1], bg: '#0c3c7c', color: '#ffffff', align: 'center', radius: 8 });
+  if (!blocks.length && clean(t)) push({ id: newId(), type: 'text', text: clean(t).slice(0, 2000), align: 'left', color: '#333333', size: 15 });
+  return blocks;
+};
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('rotary_token')}` });
@@ -68,6 +87,18 @@ const TemplatesTab: React.FC<{ initialTemplateId?: string | null }> = ({ initial
   const [editNote, setEditNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiWorking, setAiWorking] = useState(false);
+
+  // IA → bloques: el HTML propuesto se convierte a bloques editables y se
+  // anexa o reemplaza en el diseñador (nada se guarda sin revisión humana).
+  const applyAiHtml = (html: string, mode: 'append' | 'replace') => {
+    const base: EmailDesign = editDesign || { version: 1, settings: { ...DEFAULT_SETTINGS }, blocks: [] };
+    const blocks = aiHtmlToDesign(html);
+    if (!blocks.length) { toast.error('La IA no devolvió contenido utilizable'); return; }
+    setEditDesign(mode === 'replace' ? { ...base, blocks } : { ...base, blocks: [...base.blocks, ...blocks] });
+    toast.success(mode === 'replace' ? 'Contenido IA aplicado (revisá y guardá la versión)' : 'Bloques IA agregados al final');
+  };
 
   const load = useCallback(async (solo: boolean) => {
     setLoading(true);
@@ -223,6 +254,42 @@ const TemplatesTab: React.FC<{ initialTemplateId?: string | null }> = ({ initial
     }
   };
 
+  // Crear mediante IA: propone asunto + cuerpo, se guarda en borrador y se
+  // abre en el editor para revisión humana (la IA nunca publica sola).
+  const createWithAi = async () => {
+    const objective = window.prompt('¿Qué debe comunicar la plantilla?', 'Recordar a los clubes que compartan sus actividades en Rotary en Acción');
+    if (!objective) return;
+    setAiWorking(true);
+    try {
+      const H = { ...authHeaders(), 'Content-Type': 'application/json' };
+      const [rs, rb] = await Promise.all([
+        fetch(`${API}/email-marketing/ai/assist`, { method: 'POST', headers: H, body: JSON.stringify({ task: 'subjects', objective, tone: 'profesional' }) }),
+        fetch(`${API}/email-marketing/ai/assist`, { method: 'POST', headers: H, body: JSON.stringify({ task: 'body', objective, tone: 'profesional', length: 'media' }) }),
+      ]);
+      const ds = await rs.json().catch(() => ({}));
+      const db = await rb.json().catch(() => ({}));
+      if (!rs.ok) throw new Error(ds.error || 'La IA no pudo proponer asuntos');
+      if (!rb.ok) throw new Error(db.error || 'La IA no pudo redactar el cuerpo');
+      const design: EmailDesign = { version: 1, settings: { ...DEFAULT_SETTINGS }, blocks: aiHtmlToDesign(db.html || '') };
+      const r = await fetch(`${API}/content-activation/templates`, {
+        method: 'POST', headers: H,
+        body: JSON.stringify({
+          name: `IA: ${objective.slice(0, 60)}`, channel: 'email', design, html: renderDesignToHtml(design),
+          subject: ds.subjects?.[0] || 'Propuesta IA', preheader: ds.preheaders?.[0] || '',
+        }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Error');
+      toast.success('Borrador IA creado: revisalo en el editor antes de activar.');
+      setSoloActivas(false);
+      open(d.template.id);
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setAiWorking(false);
+    }
+  };
+
   const filtradas = list.filter((t) => !q || String(t.name || '').toLowerCase().includes(q.toLowerCase()));
   const editable = sel && !sel.pinned && ['borrador', 'activa'].includes(sel.status);
 
@@ -242,6 +309,14 @@ const TemplatesTab: React.FC<{ initialTemplateId?: string | null }> = ({ initial
             className="px-3 py-2 rounded-xl bg-gray-900 text-white text-xs font-bold disabled:opacity-50 whitespace-nowrap"
           >
             + Nueva
+          </button>
+          <button
+            onClick={createWithAi}
+            disabled={aiWorking}
+            title="La IA propone asunto y cuerpo; se guarda en borrador para tu revisión"
+            className="px-3 py-2 rounded-xl text-white text-xs font-bold disabled:opacity-50 whitespace-nowrap bg-gradient-to-r from-violet-600 to-fuchsia-600"
+          >
+            {aiWorking ? '…' : '✨ IA'}
           </button>
         </div>
         <label className="flex items-center gap-1 text-xs text-gray-500">
@@ -333,6 +408,13 @@ const TemplatesTab: React.FC<{ initialTemplateId?: string | null }> = ({ initial
                   <input className="border rounded-xl px-3 py-2" value={editNote} onChange={(e) => setEditNote(e.target.value)} placeholder="Ej: nuevo encabezado institucional" />
                 </label>
                 <button
+                  onClick={() => setAiOpen(true)}
+                  title="Generar asuntos, redactar, mejorar, variantes A/B y revisión antispam (la IA propone; vos guardás la versión)"
+                  className="px-4 py-2 rounded-xl text-white text-sm font-bold bg-gradient-to-r from-violet-600 to-fuchsia-600"
+                >
+                  ✨ Asistente IA
+                </button>
+                <button
                   onClick={save}
                   disabled={saving}
                   className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold disabled:opacity-50"
@@ -341,6 +423,16 @@ const TemplatesTab: React.FC<{ initialTemplateId?: string | null }> = ({ initial
                 </button>
               </div>
             )}
+            <EmailAiAssistant
+              open={aiOpen}
+              onClose={() => setAiOpen(false)}
+              subject={editSubject}
+              content={(() => { try { return editDesign ? renderDesignToHtml(editDesign) : ''; } catch { return ''; } })()}
+              objectiveDefault={editName}
+              onApplySubject={(s) => setEditSubject(s)}
+              onApplyPreheader={(p) => setEditPreheader(p)}
+              onApplyHtml={(html, mode) => applyAiHtml(html, mode)}
+            />
             <div className="flex flex-wrap gap-1.5 text-xs pt-1 border-t border-gray-100">
               {sel.status === 'borrador' && (
                 <button onClick={() => acc(sel.id, 'status', { status: 'activa' }, 'Plantilla activada: ya se ofrece a las campañas.')} className="px-3 py-1.5 rounded-xl bg-emerald-600 text-white font-bold">Activar</button>

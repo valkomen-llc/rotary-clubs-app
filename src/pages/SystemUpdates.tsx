@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1170.0',
+        title: 'Editor profesional e IA en plantillas: 10 bloques, clic en canvas y asistente ✍️✨',
+        description: 'FASE 1 del Marketing Inteligente. El diseñador suma bloques de redes sociales, video (miniatura+enlace) y HTML libre, más peso tipográfico y espaciado vertical por bloque, con la misma base de bloques del sistema (sin duplicar modelos) y validación sincronizada. Clic directo sobre la vista previa (Desktop/Mobile) selecciona el bloque a editar. El Asistente IA propone asuntos, cuerpo, mejoras, variantes A/B y revisión antispam, y crea borradores con IA —siempre con revisión humana: nada se publica solo. El HTML guardado y enviado sigue limpio y versionado como antes.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'editor', 'ia', 'bloques', 'fase-1', 'production-release'],
+        type: 'feature',
+        impact: 'high',
+    },
+    {
         version: '4.1169.0',
         title: 'Calendario editorial y flujo unificado con plantillas centrales 📅🔗',
         description: 'Cada campaña suma la pestaña Calendario (Mes/Semana/Lista, Lun–Dom, estados por color, modal por evento con vista previa exacta, omitir y cambiar fecha): proyecta TODAS las ejecuciones ciclo×paso desde inicio hasta el cierre con la hora pared de su zona horaria, con corte explícito —nada después de endAt— y la misma matemática que usa el scheduler (fuente única, probada oct-2026→jun-2027: 36 comunicaciones). Los pasos del flujo (invitación, recordatorios, último llamado) ya existen como 4 plantillas centrales administrables y cada paso referencia la suya con Ver/Editar que abre el gestor; editar versiona sin tocar lo enviado (snapshot) y las futuras adoptan explícitamente. Las pestañas del detalle quedan Flujo | Calendario | Plantillas | Tablero | Tracker | Analítica | Insights.',

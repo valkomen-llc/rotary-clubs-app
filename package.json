@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1169.0",
-  "cache_bust": "4.1169.0",
+  "version": "4.1170.0",
+  "cache_bust": "4.1170.0",
   "type": "module",
   "//": "UI V4.1166.0 | 2026-10-05 (Diseñador de mensajes y biblioteca de plantillas en Campañas de Contenido)",
   "scripts": {
@@ -174,7 +174,8 @@
     "test:meta:pages": "node scripts/test-meta-pages.mjs",
     "test:meta:oauth": "node scripts/test-meta-oauth.mjs",
     "test:content:activation:templates": "node scripts/test-content-activation-templates.mjs",
-    "test:content:activation:schedule": "node scripts/test-content-activation-schedule.mjs"
+    "test:content:activation:schedule": "node scripts/test-content-activation-schedule.mjs",
+    "test:template:editor": "node scripts/test-template-editor.mjs"
   },
   "engines": {
     "node": "22.x"
