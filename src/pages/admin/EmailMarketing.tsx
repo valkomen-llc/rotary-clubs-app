@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import AdminLayout from '../../components/admin/AdminLayout';
 import {
     Plus, Send, X, Trash2, Edit2, Mail, Users, Eye, EyeOff, Code,
@@ -140,6 +141,9 @@ const toLocalInput = (iso?: string | null) => {
 };
 
 const EmailMarketing: React.FC = () => {
+    // Deep link desde Campañas ("Ver / Editar plantilla"): ?plantilla=<id>
+    // abre directo la pestaña Plantillas con esa plantilla seleccionada.
+    const [searchParams] = useSearchParams();
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);
     const [lists, setLists] = useState<CrmList[]>([]);
     const [tags, setTags] = useState<string[]>([]);
@@ -155,7 +159,9 @@ const EmailMarketing: React.FC = () => {
     const [preview, setPreview] = useState(false);
     const [report, setReport] = useState<Report | null>(null);
     const [reportLoading, setReportLoading] = useState(false);
-    const [tab, setTab] = useState<'dashboard' | 'campaigns' | 'automations' | 'templates' | 'provider'>('dashboard');
+    const [tab, setTab] = useState<'dashboard' | 'campaigns' | 'automations' | 'templates' | 'provider'>(
+      searchParams.get('plantilla') ? 'templates' : 'dashboard'
+    );
     const [contentMode, setContentMode] = useState<'visual' | 'html'>('visual');
     const [builderDesign, setBuilderDesign] = useState<EmailDesign | null>(null);
     const [sendingTest, setSendingTest] = useState(false);
@@ -556,7 +562,7 @@ const EmailMarketing: React.FC = () => {
 
             {tab === 'automations' && <Automations />}
 
-            {tab === 'templates' && <TemplatesTab />}
+            {tab === 'templates' && <TemplatesTab initialTemplateId={searchParams.get('plantilla')} />}
 
             {tab === 'campaigns' && <>
 

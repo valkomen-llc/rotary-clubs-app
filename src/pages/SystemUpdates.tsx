@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1169.0',
+        title: 'Calendario editorial y flujo unificado con plantillas centrales 📅🔗',
+        description: 'Cada campaña suma la pestaña Calendario (Mes/Semana/Lista, Lun–Dom, estados por color, modal por evento con vista previa exacta, omitir y cambiar fecha): proyecta TODAS las ejecuciones ciclo×paso desde inicio hasta el cierre con la hora pared de su zona horaria, con corte explícito —nada después de endAt— y la misma matemática que usa el scheduler (fuente única, probada oct-2026→jun-2027: 36 comunicaciones). Los pasos del flujo (invitación, recordatorios, último llamado) ya existen como 4 plantillas centrales administrables y cada paso referencia la suya con Ver/Editar que abre el gestor; editar versiona sin tocar lo enviado (snapshot) y las futuras adoptan explícitamente. Las pestañas del detalle quedan Flujo | Calendario | Plantillas | Tablero | Tracker | Analítica | Insights.',
+        date: new Date().toISOString(),
+        tags: ['campanas-de-contenido', 'calendario', 'flujo', 'plantillas', 'scheduler', 'production-release'],
+        type: 'feature',
+        impact: 'high',
+    },
+    {
         version: '4.1168.0',
         title: 'Plantillas centrales reparadas: adiós al “Plantilla no encontrada” 🔧📚',
         description: 'Causa: las rutas declaran :templateId pero el controlador leía req.params.id (11 endpoints) → todo detalle daba 404 aunque la lista mostrara la plantilla. Ahora Plantillas abre, edita con el diseñador visual completo (bloques, imágenes, botones, colores, fondos, tipografías, tamaños, alineaciones) y cada guardado crea una versión inmutable; el listado filtra por canal y gestiona todo el ciclo de vida (borrador/activa/inactiva/archivada). Las campañas siguen congelando snapshot (design+html+versión) así que preview, prueba y envío resuelven exactamente la versión adoptada y lo enviado nunca muta; las futuras adoptan explícitamente con “actualizar a vN”. El almacén legado /communications queda solo como respaldo de lectura.',

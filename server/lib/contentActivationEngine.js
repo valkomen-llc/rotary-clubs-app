@@ -4,24 +4,11 @@ import { ensureContentActivationSchema } from './ensureContentActivationSchema.j
 import { nid, addEvent, createLinkToken, upsertProfile, getProfile } from './contentActivationStore.js';
 import { previewAudience } from './contentActivationAudience.js';
 import { participationScore, participationLevel, renderMessage } from './contentActivationSpec.js';
+// Fuente única de recurrencia/etiquetas: el calendario proyecta con estas
+// mismas funciones (v4.1169). Sin `tz` conservan la aritmética histórica.
+import { periodoLabel, nextPeriodStart, cycleIndexOf, occurrencesForCampaign } from './contentActivationSchedule.js';
 
-export function periodoLabel(frecuencia, startAt, index = 0) {
-  const d = startAt ? new Date(startAt) : new Date();
-  const months = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-  if (frecuencia === 'semanal') return `Semana ${index + 1} · ${d.getFullYear()}`;
-  return `${months[d.getMonth()]} ${d.getFullYear()}`;
-}
-
-export function nextPeriodStart(frecuencia, from, customDays) {
-  const d = new Date(from);
-  if (frecuencia === 'semanal') d.setDate(d.getDate() + 7);
-  else if (frecuencia === 'quincenal') d.setDate(d.getDate() + 15);
-  else if (frecuencia === 'mensual') d.setMonth(d.getMonth() + 1);
-  else if (frecuencia === 'trimestral') d.setMonth(d.getMonth() + 3);
-  else if (frecuencia === 'personalizada') d.setDate(d.getDate() + (Number(customDays) || 30));
-  else return null; // unica
-  return d;
-}
+export { periodoLabel, nextPeriodStart };
 
 export async function ensureExecutionFor(campaign) {
   await ensureContentActivationSchema();
@@ -135,6 +122,17 @@ export async function tickActivation({ now = new Date(), limit = 100, baseUrl = 
       const follow = campaign.followRules || {};
       if (inQuietHours(follow, now)) continue;
 
+      // Calendario como fuente única (v4.1169): pisos de ocurrencia y omisiones
+      // por (ciclo, paso). El calendario proyecta con estas mismas fechas.
+      const overrides = await loadScheduleOverrides(campaign.id);
+      const execCycle = Math.max(0, cycleIndexOf(
+        { startAt: campaign.startAt, frecuencia: campaign.frecuencia, customDays: campaign.customDays, timezone: campaign.timezone },
+        execution.startAt || campaign.startAt));
+      const cycleOcc = new Map(
+        occurrencesForCampaign(campaign, { overrides: [...overrides.values()] })
+          .filter((o) => o.cycleIndex === execCycle)
+          .map((o) => [o.stepKey, o]));
+
       const { rows: due } = await db.query(
         `SELECT * FROM "ContentActivationEnrollment"
          WHERE "executionId"=$1 AND status IN ('por_enviar','contactada','esperando_contenido')
@@ -163,6 +161,25 @@ export async function tickActivation({ now = new Date(), limit = 100, baseUrl = 
           if (!step) continue;
           const dayOk = (en.attempts || 0) === 0 || daysSince(en.createdAt, now) >= (step.dayOffset || 0);
           if (!dayOk && (en.attempts || 0) > 0) continue;
+          // Piso de calendario: el paso no dispara antes de su fecha proyectada
+          // (ancla del ciclo + dayOffset, u override de reprogramación).
+          const occ = cycleOcc.get(step.key);
+          if (occ && occ.estadoBase !== 'omitido' && new Date(occ.scheduledAt).getTime() > now.getTime()) continue;
+          if (occ && occ.estadoBase === 'omitido') {
+            // Ocurrencia omitida desde el calendario: avanza la secuencia sin
+            // enviar y deja traza auditable (el historial lo muestra).
+            await db.query(`UPDATE "ContentActivationEnrollment" SET attempts=attempts+1,status='esperando_contenido',"lastInteractionAt"=NOW(),"nextActionAt"=NOW()+($1::int||' days')::interval,"updatedAt"=NOW() WHERE id=$2`,
+              [String(step.waitDays ?? 3), en.id]).catch(async () => {
+              await db.query(`UPDATE "ContentActivationEnrollment" SET attempts=attempts+1,status='esperando_contenido',"lastInteractionAt"=NOW(),"updatedAt"=NOW() WHERE id=$1`, [en.id]);
+            });
+            await addEvent({
+              enrollmentId: en.id, executionId: execution.id, campaignId: campaign.id,
+              type: 'nota', channel: step.channel === 'email' ? 'email' : 'whatsapp',
+              metadata: { step: step.key, dayOffset: step.dayOffset, omitido: true, ciclo: execCycle },
+            }).catch(() => {});
+            summary.advanced++;
+            continue;
+          }
 
           // Token atribuible + URL personalizada del SITIO remitente.
           const { token } = await createLinkToken({ executionId: execution.id, enrollmentId: en.id, campaignId: campaign.id, contactId: en.contactId });
@@ -181,6 +198,10 @@ export async function tickActivation({ now = new Date(), limit = 100, baseUrl = 
           const channel = step.channel === 'email' ? 'email' : 'whatsapp';
           // Registro del intento (el envío físico lo hace la campaña vinculada
           // de WhatsApp/Email con su plantilla; acá queda trazabilidad total).
+          // El texto sale de la plantilla central vinculada al paso cuando la
+          // hay (snapshot en el evento), si no del inline/hardcodeado.
+          const rendered = await renderStepMessage(campaign, step, ctx).catch(() => null);
+          const previewText = rendered?.text || renderMessage(step.template || defaultCopy(step.key, ctx), ctx).slice(0, 280);
           await db.query(`UPDATE "ContentActivationEnrollment" SET attempts=attempts+1,status='esperando_contenido',"lastInteractionAt"=NOW(),"nextActionAt"=NOW()+($1::int||' days')::interval,"updatedAt"=NOW() WHERE id=$2`,
             [String(step.waitDays ?? 3), en.id]).catch(async () => {
             await db.query(`UPDATE "ContentActivationEnrollment" SET attempts=attempts+1,status='esperando_contenido',"lastInteractionAt"=NOW(),"updatedAt"=NOW() WHERE id=$1`, [en.id]);
@@ -188,7 +209,7 @@ export async function tickActivation({ now = new Date(), limit = 100, baseUrl = 
           await addEvent({
             enrollmentId: en.id, executionId: execution.id, campaignId: campaign.id,
             type: channel === 'email' ? 'email_enviado' : 'whatsapp_enviado', channel,
-            metadata: { step: step.key, dayOffset: step.dayOffset, preview: renderMessage(step.template || defaultCopy(step.key, ctx), ctx).slice(0, 280), formUrl: formUrl.slice(0, 200), tokenHash: true },
+            metadata: { step: step.key, dayOffset: step.dayOffset, ciclo: execCycle, preview: previewText, formUrl: formUrl.slice(0, 200), tokenHash: true, ...(rendered?.template ? { templateId: rendered.template.id, templateVersion: rendered.template.version } : {}) },
           });
           // Contador de perfil.
           if (en.siteId) {
@@ -207,6 +228,68 @@ export async function tickActivation({ now = new Date(), limit = 100, baseUrl = 
 
 function daysSince(a, b) {
   try { return (new Date(b) - new Date(a)) / 86400000; } catch { return 99; }
+}
+
+// ─── Mensaje del paso con plantilla central (v4.1169) ────────────────────
+// Si el paso referencia la biblioteca (`step.templateId`), el texto registrado
+// y previsualizado sale de esa plantilla (versión fijada o última), con las
+// mismas variables que preview/prueba/envío. Sin vínculo o si la plantilla
+// ya no existe: inline (`step.template`) o copia hardcodeada por clave.
+// Lo registrado en el evento es snapshot: ediciones futuras no lo alteran.
+export async function renderStepMessage(campaign, step, ctx = {}) {
+  if (step?.templateId) {
+    try {
+      const { getTemplate } = await import('./contentActivationTemplates.js');
+      const tpl = await getTemplate(step.templateId, step.templateVersion ?? null);
+      if (tpl && !tpl.versionMissing) {
+        const { resolveCampaignVars, buildCrmScopes, renderWithDefaults } = await import('./contentActivationVariables.js');
+        const vars = resolveCampaignVars({
+          recipient: {
+            recipient_name: ctx.nombre, nombre: ctx.nombre,
+            club_name: ctx.club, club: ctx.club,
+            district_name: ctx.distrito, distrito: ctx.distrito,
+          },
+          campaign: { name: campaign?.name || '' }, sender: {},
+          formUrl: ctx.formulario_url || '',
+        });
+        const scopes = buildCrmScopes({
+          contact: { name: ctx.nombre }, club: { name: ctx.club },
+          districtName: ctx.distrito, campaign: {},
+        });
+        if (tpl.channel === 'email') {
+          const { buildFinalEmail } = await import('./contentActivationMail.js');
+          let htmlBody = tpl.html || '';
+          if (!htmlBody && tpl.design && Array.isArray(tpl.design.blocks)) {
+            // Semilla sin HTML guardado: texto derivado de los bloques (el
+            // HTML real lo computa el cliente al guardar/adoptar).
+            htmlBody = tpl.design.blocks
+              .filter((b) => b && ['heading', 'text', 'button'].includes(b.type) && b.text)
+              .map((b) => `<p>${renderWithDefaults(String(b.text), scopes).text}</p>`).join('');
+          }
+          const final = buildFinalEmail({
+            subject: tpl.subject, preheader: tpl.preheader, htmlBody,
+            footer: '', ctaUrl: ctx.formulario_url || '', vars,
+          });
+          return { text: String(final.text || '').slice(0, 280), subject: final.subject, template: { id: tpl.id, version: tpl.version } };
+        }
+        const d = tpl.design || {};
+        const parts = ['headerText', 'body', 'footer'].map((k) => renderWithDefaults(String(d[k] || ''), scopes));
+        const text = parts.map((p) => p.text).filter(Boolean).join('\n\n').slice(0, 280);
+        return { text, subject: '', template: { id: tpl.id, version: tpl.version } };
+      }
+    } catch { /* cae al respaldo inline */ }
+  }
+  return { text: renderMessage(step.template || defaultCopy(step.key, ctx), ctx).slice(0, 280), subject: '', template: null };
+}
+
+// Overrides del calendario para una campaña: mapa "cycleIndex:stepKey".
+export async function loadScheduleOverrides(campaignId) {
+  try {
+    const { rows } = await db.query(
+      `SELECT "cycleIndex", "stepKey", action, "newDate" FROM "ContentActivationScheduleOverride" WHERE "campaignId"=$1`,
+      [campaignId]);
+    return new Map(rows.map((o) => [`${o.cycleIndex}:${o.stepKey}`, o]));
+  } catch { return new Map(); }
 }
 
 // URL del formulario en el dominio público del sitio remitente (con token

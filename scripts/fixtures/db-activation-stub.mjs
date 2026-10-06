@@ -18,6 +18,7 @@ export const datos = (globalThis.__CA_STUB__ ??= {
   consultas: [],
   templates: [],
   templateVersions: [],
+  overrides: [],
 });
 
 export const reset = () => {
@@ -29,6 +30,7 @@ export const reset = () => {
   d.consultas = [];
   d.templates = [];
   d.templateVersions = [];
+  d.overrides = [];
 };
 
 const norm = (sql) => String(sql).replace(/\s+/g, ' ').trim();
@@ -157,7 +159,44 @@ const query = async (sql, params = []) => {
     return { rows: [] };
   }
   if (/SELECT COUNT\(\*\)::int AS n FROM "ContentActivationTemplate"/.test(t)) {
-    return { rows: [{ n: datos.templates.length }] };
+    // Conteo total o por nombre (siembra idempotente de las 4 del flujo).
+    const nameM = t.match(/WHERE name='([^']+)'/);
+    const rows = nameM
+      ? datos.templates.filter((x) => x.name === nameM[1])
+      : datos.templates;
+    return { rows: [{ n: rows.length }] };
+  }
+  if (/FROM "ContentActivationTemplate" WHERE scope='global' AND channel='email' AND name=\$1/.test(t)) {
+    const x = datos.templates.find((r) => r.scope === 'global' && r.channel === 'email' && String(r.name) === String(params[0]));
+    return { rows: x ? [{ id: x.id }] : [] };
+  }
+  if (/FROM "ContentActivationTemplate" WHERE scope='global' AND channel='email' AND status='activa'/.test(t)) {
+    return { rows: datos.templates.filter((r) => r.scope === 'global' && r.channel === 'email' && r.status === 'activa').map((r) => ({ id: r.id, name: r.name, version: r.version })) };
+  }
+  // ── Overrides de calendario (v4.1169) ────────────────────────────────
+  if (/INSERT INTO "ContentActivationScheduleOverride"/.test(t)) {
+    // El SQL trae la acción como literal ('omitir' / 'reprogramar'); los $N
+    // son: omitir → (id, campaign, ciclo, paso, reason, createdBy);
+    // reprogramar → (id, campaign, ciclo, paso, newDate, reason, createdBy).
+    const actM = t.match(/'(omitir|reprogramar)'/);
+    const action = actM ? actM[1] : 'omitir';
+    const [id, campaignId, cycleIndex, stepKey, p5, p6, p7] = params;
+    datos.overrides ??= [];
+    const newDate = action === 'reprogramar' ? p5 : null;
+    const reason = String(action === 'reprogramar' ? p6 : p5) || '';
+    const createdBy = action === 'reprogramar' ? p7 : p6;
+    const i = datos.overrides.findIndex((o) => String(o.campaignId) === String(campaignId) && Number(o.cycleIndex) === Number(cycleIndex) && String(o.stepKey) === String(stepKey));
+    const row = { id, campaignId, cycleIndex: Number(cycleIndex), stepKey, action, newDate: newDate || null, reason: reason || '', createdBy, createdAt: ahora() };
+    if (i >= 0) datos.overrides[i] = row;
+    else datos.overrides.push(row);
+    return { rows: [] };
+  }
+  if (/^SELECT "cycleIndex", "stepKey", action, "newDate" FROM "ContentActivationScheduleOverride" WHERE "campaignId"=\$1/.test(t)) {
+    return { rows: (datos.overrides || []).filter((o) => String(o.campaignId) === String(params[0])).map((o) => ({ ...o })) };
+  }
+  if (/DELETE FROM "ContentActivationScheduleOverride"/.test(t)) {
+    datos.overrides = (datos.overrides || []).filter((o) => !(String(o.campaignId) === String(params[0]) && Number(o.cycleIndex) === Number(params[1]) && String(o.stepKey) === String(params[2])));
+    return { rows: [] };
   }
 
   // ── Campañas ──────────────────────────────────────────────────────────
@@ -265,7 +304,31 @@ const query = async (sql, params = []) => {
     return { rows: [] };
   }
 
-  // ── Eventos ───────────────────────────────────────────────────────────
+  // ── Lecturas para el calendario (v4.1169: overlay de estados reales) ──
+  // Ancladas con ^SELECT: el stub evalúa por subcadena y un SELECT suelto
+  // interceptaría otros statements (p. ej. el DELETE de overrides).
+  if (/^SELECT id, "periodoLabel", "startAt", "endAt", status, "createdAt" FROM "ContentActivationExecution" WHERE "campaignId"=\$1/.test(t)) {
+    return {
+      rows: datos.executions
+        .filter((e) => String(e.campaignId) === String(params[0]))
+        .sort((a, b) => String(a.startAt || a.createdAt).localeCompare(String(b.startAt || b.createdAt)))
+        .map((e) => ({ ...e })),
+    };
+  }
+  if (/^SELECT type, channel, metadata, "executionId", "createdAt" FROM "ContentActivationEvent" WHERE "campaignId"=\$1/.test(t)) {
+    return {
+      rows: datos.events
+        .filter((v) => String(v.campaignId) === String(params[0]))
+        .map((v) => ({ ...v })),
+    };
+  }
+  if (/^SELECT status, COUNT\(\*\)::int AS n FROM "ContentActivationEnrollment" WHERE "executionId"=\$1 GROUP BY/.test(t)) {
+    const counts = {};
+    for (const n of datos.enrollments.filter((x) => String(x.executionId) === String(params[0]))) {
+      counts[n.status] = (counts[n.status] || 0) + 1;
+    }
+    return { rows: Object.entries(counts).map(([status, n]) => ({ status, n })) };
+  }
   if (/INSERT INTO "ContentActivationEvent"/.test(t)) {
     const [id, enrollmentId, executionId, campaignId, type, channel, messageLogId, metadata] = params;
     datos.events.push({ id, enrollmentId, executionId, campaignId, type, channel, messageLogId, metadata: J(metadata), createdAt: ahora() });

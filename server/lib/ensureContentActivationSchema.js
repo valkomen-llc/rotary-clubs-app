@@ -127,6 +127,21 @@ export async function ensureContentActivationSchema() {
     "scoreDetail" JSONB DEFAULT '{}',
     "updatedAt" TIMESTAMPTZ DEFAULT NOW()
   )`);
+  // Overrides por ocurrencia del calendario (v4.1169): omitir o reprogramar
+  // una ejecución proyectada sin tocar las reglas del flujo. El tick las
+  // respeta; el calendario las refleja. Sin migraciones: IF NOT EXISTS.
+  await db.query(`CREATE TABLE IF NOT EXISTS "ContentActivationScheduleOverride" (
+    id TEXT PRIMARY KEY,
+    "campaignId" TEXT NOT NULL,
+    "cycleIndex" INT NOT NULL,
+    "stepKey" TEXT NOT NULL,
+    action TEXT NOT NULL,
+    "newDate" TIMESTAMPTZ,
+    reason TEXT DEFAULT '',
+    "createdBy" TEXT,
+    "createdAt" TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE("campaignId","cycleIndex","stepKey")
+  )`).catch(() => {});
   await ensureCampaignColumns().catch(() => {});
   await ensureSubmissionColumns().catch(() => {});
   _ready = true;

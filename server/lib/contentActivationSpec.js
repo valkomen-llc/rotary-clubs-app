@@ -141,6 +141,31 @@ export const CONDITION_KINDS = [
   'clic_sin_solicitud', 'ya_publico', 'inactivo_x_dias',
 ];
 
+// ─── Pasos del flujo con plantilla central (v4.1169) ─────────────────────
+// Cada paso puede referenciar la biblioteca central:
+//   templateId (id de ContentActivationTemplate del MISMO canal) +
+//   templateVersion (versión fijada al vincular; null = última activa).
+// Lo inline (`template`: texto corto) y el `defaultCopy` del motor siguen
+// como respaldo cuando el paso no tiene plantilla vinculada o esta ya no
+// existe. El tick registra snapshot de lo efectivamente usado, así que lo
+// enviado nunca muta aunque la plantilla evolucione.
+export function normalizeFlowSteps(raw) {
+  const arr = Array.isArray(raw) ? raw : [];
+  return arr.slice(0, 20).map((n) => ({
+    dayOffset: Math.max(0, parseInt(n?.dayOffset, 10) || 0),
+    key: String(n?.key || 'paso').slice(0, 80),
+    channel: n?.channel === 'email' ? 'email' : 'whatsapp',
+    template: String(n?.template || '').slice(0, 4000),
+    templateId: String(n?.templateId || '').slice(0, 80) || null,
+    templateVersion: Number.isFinite(Number(n?.templateVersion)) ? Number(n?.templateVersion) : null,
+    condition: CONDITION_KINDS.includes(n?.condition) ? n.condition : 'siempre',
+    waitDays: Math.max(0, parseInt(n?.waitDays, 10) || 0),
+    action: String(n?.action || 'enviar').slice(0, 40),
+    expect: String(n?.expect || '').slice(0, 40),
+    next: n?.next ? String(n.next).slice(0, 80) : null,
+  }));
+}
+
 export const MESSAGE_VARS = [
   'nombre', 'club', 'distrito', 'cargo', 'ultima_participacion',
   'tipo_contenido_frecuente', 'formulario_url',
@@ -346,7 +371,7 @@ export function shapeActivation(body = {}) {
     savedSegmentId: str(body.savedSegmentId || '', 80) || null,
     contentDef: normalizeContentDef(body.contentDef || {}),
     audienceDef: body.audienceDef && typeof body.audienceDef === 'object' ? body.audienceDef : { match: 'all', rules: [] },
-    flowDef: Array.isArray(body.flowDef) && body.flowDef.length ? body.flowDef.slice(0, 20) : DEFAULT_FLOW,
+    flowDef: Array.isArray(body.flowDef) && body.flowDef.length ? normalizeFlowSteps(body.flowDef) : DEFAULT_FLOW,
     followRules: body.followRules && typeof body.followRules === 'object'
       ? body.followRules
       : { stopOnResponse: true, maxAttempts: 5, quietHours: { start: '20:00', end: '08:00' }, maxPerWeek: 3, respectOptOut: true, altChannel: true },

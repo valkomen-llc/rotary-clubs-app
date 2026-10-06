@@ -153,8 +153,9 @@ const res = () => {
 const correr = async (h, req) => { const r = res(); await h(req, r); return r; };
 
 let r = await correr(TPLC.list, { ...SUPER, query: {} });
-check('primera visita siembra las 2 predeterminadas globales', r.code === 200 && (r.body?.templates || []).length === 2, `n=${r.body?.templates?.length}`);
+check('primera visita siembra institucionales + 4 del flujo', r.code === 200 && (r.body?.templates || []).length === 6, `n=${r.body?.templates?.length}`);
 check('una predeterminada por canal', (r.body?.templates || []).filter((t) => t.isDefault).length === 2);
+check('las 4 del flujo existen y activas', ['Rotary en Acción — Invitación', 'Rotary en Acción — Recordatorio', 'Rotary en Acción — Segundo recordatorio', 'Rotary en Acción — Último llamado'].every((n) => (r.body?.templates || []).some((t) => t.name === n && t.status === 'activa')));
 const tplEmail = (r.body?.templates || []).find((t) => t.channel === 'email');
 
 r = await correr(TPLC.create, {

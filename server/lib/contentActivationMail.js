@@ -6,7 +6,7 @@
 // que se envía, byte por byte de contenido.
 //
 // Sin dependencias nuevas: allowlist + escapado, como `notificationTemplate`.
-import { canonicalVar, findUnknownVars } from './contentActivationVariables.js';
+import { canonicalVar, findUnknownVars, renderWithDefaults } from './contentActivationVariables.js';
 
 export const EMAIL_HTML_MAX = 200 * 1024;
 export const WA_HEADER_MAX = 60;
@@ -116,12 +116,31 @@ export function emailTextFrom(html) {
  * documento. Devuelve también `missing` (variables sin valor) para avisar en
  * preview sin tumbar el envío.
  */
+// El pipeline histórico entrega vars PLANAS (resolveCampaignVars); el render
+// unificado lee ámbitos. Se derivan sin inventar: lo ausente queda vacío y
+// `|default` lo cubre donde el autor lo previó.
+const toScopes = (vars = {}) => ({
+  ...vars,
+  contact: {
+    first_name: vars.recipient_name ?? vars.nombre ?? '',
+    last_name: '', email: vars.email ?? '', phone: vars.phone ?? '',
+    company: '', city: '', country: '',
+  },
+  club: { name: vars.club_name ?? vars.club ?? '', city: '', country: '' },
+  district: { name: vars.district_name ?? vars.distrito ?? '' },
+  campaign: { name: vars.campaign_name ?? '', url: vars.form_url ?? vars.formulario_url ?? '' },
+});
+
 export function buildFinalEmail({ subject = '', preheader = '', htmlBody = '', footer = '', ctaUrl = '', vars = {} } = {}) {
-  const s = substituteVars(subject, vars);
-  const p = substituteVars(preheader, vars);
-  const f = substituteVars(footer, vars);
-  const c = substituteVars(ctaUrl, vars);
-  const b = substituteVars(htmlBody, vars);
+  // Unifica con el catálogo v4.1167: resuelve planas, `ámbito.clave` y
+  // `|default` (p. ej. {{contact.first_name|Amigo}}). Lo desconocido se
+  // conserva literal y se reporta; preview = prueba = envío.
+  const scopes = toScopes(vars);
+  const s = renderWithDefaults(subject, scopes);
+  const p = renderWithDefaults(preheader, scopes);
+  const f = renderWithDefaults(footer, scopes);
+  const c = renderWithDefaults(ctaUrl, scopes);
+  const b = renderWithDefaults(htmlBody, scopes);
   const limpio = sanitizeEmailHtml(b.text);
   const missing = [...new Set([...s.missing, ...p.missing, ...f.missing, ...c.missing, ...b.missing])];
   const html = buildEmailShell({ subject: s.text, preheader: p.text, bodyHtml: limpio, footer: f.text });

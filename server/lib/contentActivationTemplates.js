@@ -230,10 +230,97 @@ export async function setDefaultTemplate(id) {
   return getTemplate(id);
 }
 
+// ─── Plantillas del flujo Rotary en Acción (v4.1169) ───────────────────────
+// Los pasos del flujo (invitacion/recordatorio/segundo_recordatorio/
+// ultimo_llamado) referencian estas plantillas por `templateId` en
+// `flowDef`. Se siembran UNA vez (por scope+canal+nombre: nunca duplican)
+// y quedan administrables desde Email Marketing > Plantillas. NO son
+// predeterminadas ni sustituyen a la institucional: son las 4 piezas del
+// flujo, cada una con asunto y cuerpo propios.
+const RA_FLOW_TEMPLATES = [
+  {
+    key: 'invitacion', name: 'Rotary en Acción — Invitación',
+    subject: 'Comparte lo que está haciendo tu club en Rotary en Acción',
+    preheader: 'Cuéntanos los proyectos y actividades de tu club para visibilizarlos.',
+    heading: 'Lo que hace tu club merece ser compartido',
+    intro: 'Hola {{contact.first_name|Amigo}},',
+    body: `Queremos conocer y visibilizar las acciones que {{club.name}} está desarrollando y el impacto que está generando en su comunidad.\n\nComparte a través de Rotary en Acción los proyectos, actividades, jornadas, eventos, historias de servicio, respuestas humanitarias, campañas, alianzas, reconocimientos y actividades juveniles desarrolladas por tu club.`,
+  },
+  {
+    key: 'recordatorio', name: 'Rotary en Acción — Recordatorio',
+    subject: 'Recordatorio: tu club aún puede compartir su actividad',
+    preheader: 'Solo toma unos minutos visibilizar el impacto de tu club.',
+    heading: 'Tu club aún está a tiempo de participar',
+    intro: 'Hola {{contact.first_name|Amigo}},',
+    body: `Te recordamos que {{club.name}} puede compartir sus proyectos y actividades en Rotary en Acción.\n\nSi ya tienes material listo (fotos, fechas, resultados), envíalo hoy mismo y lo visibilizaremos en los canales del distrito.`,
+  },
+  {
+    key: 'segundo_recordatorio', name: 'Rotary en Acción — Segundo recordatorio',
+    subject: 'Segundo recordatorio: no dejes por fuera a tu club',
+    preheader: 'Quedan pocos días en este ciclo para compartir tu actividad.',
+    heading: 'No dejes por fuera las acciones de tu club',
+    intro: 'Hola {{contact.first_name|Amigo}},',
+    body: `Este es el segundo recordatorio del ciclo para {{club.name}}.\n\nCada historia de servicio cuenta: comparte aunque sea una sola actividad reciente y ayúdanos a mostrar el impacto rotario en la comunidad.`,
+  },
+  {
+    key: 'ultimo_llamado', name: 'Rotary en Acción — Último llamado',
+    subject: 'Último llamado del ciclo: comparte hoy tu actividad',
+    preheader: 'Cierra el ciclo compartiendo al menos una actividad de tu club.',
+    heading: 'Último llamado: el ciclo cierra pronto',
+    intro: 'Hola {{contact.first_name|Amigo}},',
+    body: `El ciclo actual está por cerrar y {{club.name}} aún no comparte su actividad.\n\nTómate unos minutos hoy: envía tu proyecto, jornada o evento y cerremos el ciclo con tu club participando.`,
+  },
+];
+
+function raFlowDesign(t) {
+  return {
+    version: 1,
+    settings: { bg: '#EEF1F5', contentBg: '#FFFFFF', font: 'Arial, Helvetica, sans-serif', textColor: '#333333', linkColor: '#0c3c7c', width: 600 },
+    blocks: [
+      { id: `ra-${t.key}-h`, type: 'heading', text: t.heading, level: 2, align: 'center', color: '#0c3c7c' },
+      { id: `ra-${t.key}-intro`, type: 'text', text: t.intro, align: 'left', color: '#333333', size: 15 },
+      ...String(t.body).split(/\n{2,}/).map((p, i) => ({ id: `ra-${t.key}-p${i}`, type: 'text', text: p.trim(), align: 'left', color: '#333333', size: 15 })),
+      { id: `ra-${t.key}-cta`, type: 'button', text: 'Compartir una actividad →', href: '{{form_url}}', bg: '#0c3c7c', color: '#ffffff', align: 'center', radius: 8 },
+      { id: `ra-${t.key}-div`, type: 'divider', color: '#e5e7eb', thickness: 1 },
+      { id: `ra-${t.key}-cierre`, type: 'text', text: 'Rotary en Acción · {{district.name}}', align: 'center', color: '#6b7280', size: 13 },
+    ],
+  };
+}
+
+/** Siembra las 4 del flujo si faltan (idempotente; nunca duplica). */
+export async function seedFlowTemplates() {
+  await ensureTemplateSchema();
+  let created = 0;
+  for (const t of RA_FLOW_TEMPLATES) {
+    const { rows } = await db.query(
+      `SELECT id FROM "ContentActivationTemplate" WHERE scope='global' AND channel='email' AND name=$1 LIMIT 1`, [t.name]);
+    if (rows[0]) continue;
+    const tpl = await createTemplate({
+      scope: 'global', name: t.name, channel: 'email',
+      design: raFlowDesign(t), html: '', subject: t.subject, preheader: t.preheader, createdBy: 'system',
+    });
+    if (tpl.status !== 'activa') await setTemplateStatus(tpl.id, 'activa').catch(() => {});
+    created++;
+  }
+  return created;
+}
+
+/** Mapa clave de paso → plantilla global (para vincular el flujo por defecto). */
+export async function flowTemplateMap() {
+  await seedFlowTemplates().catch(() => 0);
+  const { rows } = await db.query(
+    `SELECT id, name, version FROM "ContentActivationTemplate" WHERE scope='global' AND channel='email' AND status='activa'`);
+  const byKey = {};
+  for (const t of RA_FLOW_TEMPLATES) {
+    const row = rows.find((r) => r.name === t.name);
+    if (row) byKey[t.key] = { templateId: row.id, templateVersion: row.version };
+  }
+  return byKey;
+}
 // ─── Predeterminadas del sistema ─────────────────────────────────────────
-// Migra el contenido actual (defaultContentDef) al versionado: la primera vez
-// que se lista sin plantillas, nacen "Rotary en Acción · Institucional" en
-// ambos canales, editables desde el administrador como cualquier otra.
+// Primera visita sin plantillas: nacen "Rotary en Acción · Institucional" en
+// ambos canales, editables como cualquier otra. Las 4 del flujo se siembran
+// aparte (seedFlowTemplates) para no duplicar en instalaciones existentes.
 function seedEmailDesign() {
   const d = defaultContentDef();
   const paras = String(d.email.bodyText || '').split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
@@ -252,7 +339,12 @@ function seedEmailDesign() {
 
 export async function seedDefaults() {
   await ensureTemplateSchema();
-  const { rows } = await db.query(`SELECT COUNT(*)::int AS n FROM "ContentActivationTemplate"`);
+  const { rows: pre } = await db.query(`SELECT COUNT(*)::int AS n FROM "ContentActivationTemplate"`);
+  const fresh = (pre[0]?.n || 0) === 0;
+  // Las 4 del flujo existen también en instalaciones previas (idempotente).
+  await seedFlowTemplates().catch(() => 0);
+  if (!fresh) return false;
+  const { rows } = await db.query(`SELECT COUNT(*)::int AS n FROM "ContentActivationTemplate" WHERE name='Rotary en Acción · Institucional'`);
   if ((rows[0]?.n || 0) > 0) return false;
   const d = defaultContentDef();
   const email = await createTemplate({
@@ -276,5 +368,5 @@ export default {
   listTemplates, getTemplate, getTemplateVersions,
   createTemplate, updateTemplate, duplicateTemplate,
   archiveTemplate, setTemplateStatus, canTransitionTemplate, TEMPLATE_STATUS_IDS,
-  removeTemplate, setDefaultTemplate, seedDefaults,
+  removeTemplate, setDefaultTemplate, seedDefaults, seedFlowTemplates, flowTemplateMap,
 };

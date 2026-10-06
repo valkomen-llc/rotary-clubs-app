@@ -89,6 +89,15 @@ export interface VarScopes {
   [k: string]: Record<string, string> | string | undefined;
 }
 
+/** Ámbitos de prueba para la vista previa (dotted + planas + |default). */
+export const TEST_SCOPES: VarScopes = {
+  ...TEST_VARS,
+  contact: { first_name: 'Carolina', last_name: '', email: 'carolina@ejemplo.org' },
+  club: { name: 'Club Rotario Cali' },
+  district: { name: 'Distrito 4281' },
+  campaign: { name: 'Rotary en Acción — Participación recurrente', url: 'https://rotary4281.org/rotary-en-accion?ca_token=PRUEBA' },
+};
+
 /** Sustituye `{{planas}}`, `{{a.b}}` y `{{x|Por defecto}}`, escapando valores. */
 export const renderWithDefaults = (
   text: string,

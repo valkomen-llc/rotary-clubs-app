@@ -3,7 +3,7 @@
 // `/api/content-activation/templates`; el servidor decide permisos.
 import React, { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { substituteVars, TEST_VARS } from '../../../../lib/contentActivationVariables';
+import { renderWithDefaults, TEST_SCOPES } from '../../../../lib/contentActivationVariables';
 import { renderDesignToHtml } from '../../../../lib/emailBlocks';
 import { buildEmailShell } from './designUtils';
 import { useAuth } from '../../../../hooks/useAuth';
@@ -95,11 +95,12 @@ const TemplateLibrary: React.FC<{
     }
     return '';
   })();
+  // Unificada con el envío (v4.1169): dotted + |default con ámbitos de prueba.
   const previewHtml = sel && channel === 'email'
     ? buildEmailShell({
-      subject: substituteVars(sel.subject || '', TEST_VARS).text,
-      preheader: substituteVars(sel.preheader || '', TEST_VARS).text,
-      bodyHtml: substituteVars(tplHtml, TEST_VARS).text,
+      subject: renderWithDefaults(sel.subject || '', TEST_SCOPES).text,
+      preheader: renderWithDefaults(sel.preheader || '', TEST_SCOPES).text,
+      bodyHtml: renderWithDefaults(tplHtml, TEST_SCOPES).text,
       footer: '',
     })
     : '';
@@ -142,7 +143,7 @@ const TemplateLibrary: React.FC<{
                   <div className="border rounded-xl overflow-hidden"><iframe title="Vista previa de plantilla" srcDoc={previewHtml} className="w-full bg-white" style={{ height: 320 }} /></div>
                 ) : (
                   <div className="border rounded-xl p-3 bg-[#e7ffdb] text-xs whitespace-pre-wrap max-h-80 overflow-auto">
-                    {substituteVars(`${sel.design?.headerText ? `${sel.design.headerText}\n\n` : ''}${sel.design?.body || ''}${sel.design?.footer ? `\n\n${sel.design.footer}` : ''}`, TEST_VARS).text || '—'}
+                    {renderWithDefaults(`${sel.design?.headerText ? `${sel.design.headerText}\n\n` : ''}${sel.design?.body || ''}${sel.design?.footer ? `\n\n${sel.design.footer}` : ''}`, TEST_SCOPES).text || '—'}
                   </div>
                 )}
                 <div className="flex flex-wrap gap-1.5 text-xs">

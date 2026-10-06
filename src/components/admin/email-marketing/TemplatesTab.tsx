@@ -48,7 +48,7 @@ const asDesign = (v: unknown): EmailDesign | null => {
   return null;
 };
 
-const TemplatesTab: React.FC = () => {
+const TemplatesTab: React.FC<{ initialTemplateId?: string | null }> = ({ initialTemplateId = null }) => {
   const [list, setList] = useState<Tpl[]>([]);
   const [q, setQ] = useState('');
   const [soloActivas, setSoloActivas] = useState(true);
@@ -85,6 +85,13 @@ const TemplatesTab: React.FC = () => {
   }, []);
 
   useEffect(() => { load(soloActivas); }, [load, soloActivas]);
+
+  // Deep link (?plantilla=<id>): abre la plantilla aunque no esté activa.
+  useEffect(() => {
+    if (!initialTemplateId) return;
+    setSoloActivas(false);
+    open(initialTemplateId);
+  }, [initialTemplateId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const open = async (id: string, version?: number) => {
     setSelError(null);

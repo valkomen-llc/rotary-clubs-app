@@ -124,6 +124,251 @@ export const detail = async (req, res) => {
   } catch (e) { return fail(res, e); }
 };
 
+// ─── Calendario editorial (v4.1169) ────────────────────────────────────
+// Flujo = REGLAS (dayOffset por paso); Calendario = EJECUCIONES proyectadas
+// de esas reglas (ancla de ciclo + offset, hora pared en campaign.timezone,
+// corte explícito en endAt). Los estados se resuelven con datos reales
+// (ejecuciones + eventos + overrides); lo futuro sin datos es `programado`.
+// La misma matemática la usan el tick y las automatizaciones
+// (`contentActivationSchedule`: única fuente de verdad).
+const SEND_EVENTS = ['email_enviado', 'whatsapp_enviado', 'recordatorio_enviado'];
+const FAIL_EVENTS = ['email_fallido', 'whatsapp_fallido', 'error'];
+
+async function loadCalendarBase(campaignId) {
+  const { default: db } = await import('../lib/db.js');
+  const { rows: executions } = await db.query(
+    `SELECT id, "periodoLabel", "startAt", "endAt", status, "createdAt" FROM "ContentActivationExecution" WHERE "campaignId"=$1 ORDER BY "createdAt" ASC`,
+    [campaignId]).catch(() => ({ rows: [] }));
+  const { rows: events } = await db.query(
+    `SELECT type, channel, metadata, "executionId", "createdAt" FROM "ContentActivationEvent" WHERE "campaignId"=$1`,
+    [campaignId]).catch(() => ({ rows: [] }));
+  return { db, executions, events };
+}
+
+const execAnchor = (e) => new Date(e.startAt || e.createdAt || 0).getTime();
+
+function resolveOccurrenceState(o, { executions, eventsByExecStep, enrollPauseByExec, campaignStatus, now }) {
+  if (o.estadoBase === 'omitido') return 'omitido';
+  // Ejecución que cubre la ocurrencia: la última con ancla ≤ fecha.
+  let exec = null;
+  for (const e of executions) {
+    if (execAnchor(e) <= new Date(o.scheduledAt).getTime()) exec = e;
+  }
+  const evts = exec ? (eventsByExecStep.get(`${exec.id}:${o.stepKey}`) || []) : [];
+  const types = new Set(evts.map((v) => v.type));
+  if ([...types].some((t) => SEND_EVENTS.includes(t))) return 'enviado';
+  if ([...types].some((t) => FAIL_EVENTS.includes(t))) return 'fallido';
+  if (exec?.status === 'cerrada') return 'cancelado';
+  if (exec && (enrollPauseByExec.get(exec.id) || 0) > 0) return 'pausado';
+  if (campaignStatus === 'pausada' && new Date(o.scheduledAt).getTime() > now) return 'pausado';
+  if (['finalizada', 'archivada'].includes(campaignStatus) && new Date(o.scheduledAt).getTime() > now) return 'cancelado';
+  if (new Date(o.scheduledAt).getTime() > now) return 'programado';
+  return 'pendiente';
+}
+
+// GET /:id/calendar?from&to — parrilla editorial con estados.
+export const calendar = async (req, res) => {
+  try {
+    const c = await getCampaign(req.params.id);
+    if (!c) return res.status(404).json({ error: 'No encontrada' });
+    const grant = await getUserGrant(req).catch(() => ({ isGlobal: true }));
+    if (!campaignVisibleToGrant(c, grant)) return res.status(403).json({ error: 'Fuera de tus permisos.' });
+    const { occurrencesForCampaign } = await import('../lib/contentActivationSchedule.js');
+    const { loadScheduleOverrides } = await import('../lib/contentActivationEngine.js');
+    const overrides = await loadScheduleOverrides(c.id);
+    const now = Date.now();
+    let occ = occurrencesForCampaign(c, { overrides: [...overrides.values()] });
+    const from = req.query.from ? new Date(req.query.from).getTime() : null;
+    const to = req.query.to ? new Date(req.query.to).getTime() : null;
+    if (from) occ = occ.filter((o) => new Date(o.scheduledAt).getTime() >= from);
+    if (to) occ = occ.filter((o) => new Date(o.scheduledAt).getTime() <= to);
+    const { executions, events } = await loadCalendarBase(c.id);
+    const eventsByExecStep = new Map();
+    for (const v of events) {
+      const k = `${v.executionId}:${v.metadata?.step}`;
+      if (!eventsByExecStep.has(k)) eventsByExecStep.set(k, []);
+      eventsByExecStep.get(k).push(v);
+    }
+    const { default: db } = await import('../lib/db.js');
+    const enrollPauseByExec = new Map();
+    for (const e of executions) {
+      const { rows } = await db.query(
+        `SELECT status, COUNT(*)::int AS n FROM "ContentActivationEnrollment" WHERE "executionId"=$1 GROUP BY 1`,
+        [e.id]).catch(() => ({ rows: [] }));
+      enrollPauseByExec.set(e.id, rows.filter((r) => r.status === 'pausada').reduce((a, r) => a + Number(r.n), 0));
+    }
+    const withState = occ.map((o) => ({
+      ...o,
+      estado: resolveOccurrenceState(o, { executions, eventsByExecStep, enrollPauseByExec, campaignStatus: c.status, now }),
+    }));
+    // Próxima en cada serie (paso): la futura no omitida más cercana.
+    const nextByStep = {};
+    for (const o of withState) {
+      if (o.estado === 'omitido' || o.estado === 'cancelado') continue;
+      if (new Date(o.scheduledAt).getTime() <= now) continue;
+      if (!nextByStep[o.stepKey]) nextByStep[o.stepKey] = o.scheduledAt;
+    }
+    return res.json({
+      campaign: { id: c.id, name: c.name, status: c.status, startAt: c.startAt, endAt: c.endAt, timezone: c.timezone, frecuencia: c.frecuencia, canales: c.canales || [], audienceMode: c.audienceMode || 'dynamic' },
+      occurrences: withState.map((o) => ({ ...o, proximaEnSerie: nextByStep[o.stepKey] || null })),
+      total: withState.length,
+    });
+  } catch (e) { return fail(res, e); }
+};
+
+// POST /:id/schedule-override — omitir / reprogramar / limpiar una ocurrencia
+// FUTURA. Reglas: nunca el pasado, nunca después de endAt, y en campañas
+// activas o pausadas (la pausada es la ventana segura de reprogramación).
+export const scheduleOverride = async (req, res) => {
+  try {
+    const c = await getCampaign(req.params.id);
+    if (!c) return res.status(404).json({ error: 'No encontrada' });
+    try {
+      await assertCampaignWritable(c, req);
+    } catch (e) {
+      return res.status(e.status || 403).json({ error: e.message });
+    }
+    if (!['activa', 'programada', 'pausada', 'borrador'].includes(c.status)) {
+      return res.status(400).json({ error: `En estado ${c.status} no se reprograma.` });
+    }
+    // En borrador solo se planea (nada enviado aún): se permite omitir y
+    // reprogramar futuras; limpiar siempre.
+    const { occurrencesForCampaign } = await import('../lib/contentActivationSchedule.js');
+    const cycleIndex = Number(req.body.cycleIndex);
+    const stepKey = String(req.body.stepKey || '');
+    const action = String(req.body.action || '');
+    const occ = occurrencesForCampaign(c).find((o) => o.cycleIndex === cycleIndex && o.stepKey === stepKey);
+    if (!occ) return res.status(404).json({ error: 'Ocurrencia no encontrada en la proyección.' });
+    const now = Date.now();
+    if (new Date(occ.scheduledAt).getTime() <= now) {
+      return res.status(400).json({ error: 'Solo se modifican ejecuciones futuras.' });
+    }
+    await ensureContentActivationSchema();
+    const { default: db } = await import('../lib/db.js');
+    if (action === 'limpiar') {
+      await db.query(`DELETE FROM "ContentActivationScheduleOverride" WHERE "campaignId"=$1 AND "cycleIndex"=$2 AND "stepKey"=$3`,
+        [c.id, cycleIndex, stepKey]);
+      await addEvent({ executionId: 'none', campaignId: c.id, type: 'nota', metadata: { calendario: 'override_limpio', ciclo: cycleIndex, paso: stepKey } }).catch(() => {});
+      return ok(res, { cleared: true });
+    }
+    if (action === 'omitir') {
+      await db.query(
+        `INSERT INTO "ContentActivationScheduleOverride"(id,"campaignId","cycleIndex","stepKey",action,"newDate",reason,"createdBy")
+         VALUES($1,$2,$3,$4,'omitir',NULL,$5,$6)
+         ON CONFLICT("campaignId","cycleIndex","stepKey") DO UPDATE SET action='omitir',"newDate"=NULL,reason=$5,"createdAt"=NOW()`,
+        [nid('ov_'), c.id, cycleIndex, stepKey, String(req.body.reason || '').slice(0, 300), req.user?.id || null]);
+      await addEvent({ executionId: 'none', campaignId: c.id, type: 'nota', metadata: { calendario: 'ocurrencia_omitida', ciclo: cycleIndex, paso: stepKey } }).catch(() => {});
+      return ok(res, { omitted: true });
+    }
+    if (action === 'reprogramar') {
+      const nd = new Date(req.body.newDate);
+      if (!Number.isFinite(nd.getTime())) return res.status(400).json({ error: 'Indica una fecha válida.' });
+      if (nd.getTime() <= now) return res.status(400).json({ error: 'La nueva fecha debe ser futura.' });
+      if (c.endAt && nd.getTime() > new Date(c.endAt).getTime()) {
+        return res.status(400).json({ error: 'Ninguna ejecución puede quedar después del cierre de la campaña.' });
+      }
+      await db.query(
+        `INSERT INTO "ContentActivationScheduleOverride"(id,"campaignId","cycleIndex","stepKey",action,"newDate",reason,"createdBy")
+         VALUES($1,$2,$3,$4,'reprogramar',$5,$6,$7)
+         ON CONFLICT("campaignId","cycleIndex","stepKey") DO UPDATE SET action='reprogramar',"newDate"=$5,reason=$6,"createdAt"=NOW()`,
+        [nid('ov_'), c.id, cycleIndex, stepKey, nd.toISOString(), String(req.body.reason || '').slice(0, 300), req.user?.id || null]);
+      await addEvent({ executionId: 'none', campaignId: c.id, type: 'nota', metadata: { calendario: 'ocurrencia_reprogramada', ciclo: cycleIndex, paso: stepKey, nuevaFecha: nd.toISOString() } }).catch(() => {});
+      return ok(res, { rescheduled: true, newDate: nd.toISOString() });
+    }
+    return res.status(400).json({ error: 'Acción inválida: omitir, reprogramar o limpiar.' });
+  } catch (e) { return fail(res, e); }
+};
+
+// GET /:id/step-preview?cycleIndex&stepKey — el mensaje EXACTO del paso:
+// plantilla vinculada (versión fijada o última) + variables + campaña +
+// remitente + destinatario simulado. Email con desktop/mobile (mismo HTML),
+// WhatsApp con su representación de mensaje.
+export const stepPreview = async (req, res) => {
+  try {
+    const c = await getCampaign(req.params.id);
+    if (!c) return res.status(404).json({ error: 'No encontrada' });
+    const grant = await getUserGrant(req).catch(() => ({ isGlobal: true }));
+    if (!campaignVisibleToGrant(c, grant)) return res.status(403).json({ error: 'Fuera de tus permisos.' });
+    const { occurrencesForCampaign } = await import('../lib/contentActivationSchedule.js');
+    const { loadScheduleOverrides } = await import('../lib/contentActivationEngine.js');
+    const overrides = await loadScheduleOverrides(c.id);
+    const cycleIndex = Number(req.query.cycleIndex ?? 0);
+    const stepKey = String(req.query.stepKey || '');
+    const occ = occurrencesForCampaign(c, { overrides: [...overrides.values()] })
+      .find((o) => o.cycleIndex === cycleIndex && o.stepKey === stepKey);
+    if (!occ) return res.status(404).json({ error: 'Ocurrencia no encontrada en la proyección.' });
+    const { normalizeFlowSteps } = await import('../lib/contentActivationSpec.js');
+    const step = normalizeFlowSteps(c.flowDef).find((s) => s.key === stepKey);
+    if (!step) return res.status(404).json({ error: 'Paso no encontrado en el flujo.' });
+    const testName = String(req.query.testName || 'Carolina');
+    const contact = req.query.contactId ? { name: testName } : null;
+    // Remitente + URL como en resolveChannelContent (misma fuente).
+    const { resolveSender, resolveFormSlug, formPathFor } = await import('../lib/contentActivationContent.js');
+    const { loadSenderContext, publicSiteUrl } = await import('../lib/contentActivationSender.js');
+    const senderRef = await resolveSender(c).catch(() => null);
+    const senderCtx = await loadSenderContext(senderRef).catch(() => null) || {};
+    const formSlug = await resolveFormSlug(c.contributionCampaignId).catch(() => '');
+    const formUrl = publicSiteUrl(senderCtx.host || '', formPathFor(formSlug));
+    const { getTemplate } = await import('../lib/contentActivationTemplates.js');
+    const tpl = occ.templateId ? await getTemplate(occ.templateId, occ.templateVersion ?? null).catch(() => null) : null;
+    if (occ.channel === 'email') {
+      const { buildFinalEmail } = await import('../lib/contentActivationMail.js');
+      const { resolveCampaignVars } = await import('../lib/contentActivationVariables.js');
+      const { buildRecipientCtx } = await import('../lib/contentActivationContent.js');
+      const recipient = contact
+        ? buildRecipientCtx({ name: testName }, c, senderCtx, formUrl)
+        : buildRecipientCtx({ name: testName, recipient_name: testName }, c, senderCtx, formUrl);
+      const vars = resolveCampaignVars({ recipient, campaign: c, sender: senderCtx, formUrl });
+      let subject = '';
+      let html = '';
+      let renderedFrom = 'paso';
+      if (tpl && !tpl.versionMissing) {
+        subject = tpl.subject || '';
+        renderedFrom = tpl.html ? 'plantilla' : 'plantilla_texto';
+        html = tpl.html || (tpl.design && Array.isArray(tpl.design.blocks)
+          ? tpl.design.blocks.filter((b) => b && ['heading', 'text', 'button'].includes(b.type) && b.text).map((b) => `<p>${b.text}</p>`).join('')
+          : '');
+      } else if (step.template) {
+        subject = c.name || '';
+        html = `<p>${step.template}</p>`;
+      }
+      const final = buildFinalEmail({
+        subject, preheader: tpl?.preheader || '',
+        htmlBody: html, footer: [senderCtx.siteName, 'Comunicación gestionada a través de Club Platform for Rotary'].filter(Boolean).join(' · '),
+        ctaUrl: formUrl, vars,
+      });
+      return res.json({
+        occurrence: occ,
+        channel: 'email', subject: final.subject, html: final.html, text: final.text,
+        missing: final.missing, renderedFrom,
+        template: tpl ? { id: tpl.id, name: tpl.name, version: tpl.version, status: tpl.status } : null,
+        sender: { siteName: senderCtx.siteName || '', logoUrl: senderCtx.logoUrl || '' },
+        formUrl,
+      });
+    }
+    const { substituteVars, waTextFallback } = await import('../lib/contentActivationMail.js');
+    const { renderWithDefaults, buildCrmScopes } = await import('../lib/contentActivationVariables.js');
+    const { buildRecipientCtx } = await import('../lib/contentActivationContent.js');
+    const { resolveCampaignVars } = await import('../lib/contentActivationVariables.js');
+    const recipient = buildRecipientCtx({ name: testName, recipient_name: testName }, c, senderCtx, formUrl);
+    const vars = resolveCampaignVars({ recipient, campaign: c, sender: senderCtx, formUrl });
+    const scopes = buildCrmScopes({ contact: { name: testName }, club: {}, districtName: senderCtx.districtName || '', campaign: { name: c.name } });
+    const d = tpl && tpl.channel === 'whatsapp' ? (tpl.design || {}) : {};
+    const parts = ['headerText', 'body', 'footer'].map((k) => renderWithDefaults(
+      String(d[k] || (k === 'body' ? (step.template || '') : '')), { ...scopes, ...vars }));
+    return res.json({
+      occurrence: occ,
+      channel: 'whatsapp',
+      headerText: parts[0].text, body: parts[1].text, footer: parts[2].text,
+      text: waTextFallback({ headerText: parts[0].text, body: parts[1].text, footer: parts[2].text }),
+      missing: [...new Set(parts.flatMap((p) => p.missing))],
+      renderedFrom: tpl ? 'plantilla' : 'paso',
+      template: tpl ? { id: tpl.id, name: tpl.name, version: tpl.version, status: tpl.status } : null,
+      formUrl,
+    });
+  } catch (e) { return fail(res, e); }
+};
+
 export const update = async (req, res) => {
   try {
     const cur = await getCampaign(req.params.id);
@@ -146,6 +391,22 @@ export const update = async (req, res) => {
       const fields = cur.status === 'pausada' ? EDITABLE_PAUSADA_FIELDS : EDITABLE_PARTIAL_FIELDS;
       const body = {};
       for (const k of fields) if (req.body[k] !== undefined) body[k] = req.body[k];
+      // Vinculación de plantillas (v4.1169): fijar/actualizar templateId +
+      // templateVersion por paso NO altera reglas de tiempo ni lo enviado (el
+      // tick congela snapshot al enviar), así que se admite en estos estados.
+      // Cualquier otro cambio en flowDef se rechaza con 400.
+      if (req.body.flowDef !== undefined) {
+        const curFlow = Array.isArray(cur.flowDef) ? cur.flowDef : [];
+        const nxtFlow = Array.isArray(req.body.flowDef) ? req.body.flowDef : null;
+        if (!nxtFlow || nxtFlow.length !== curFlow.length || nxtFlow.some((s, i) => String(s?.key) !== String(curFlow[i]?.key))) {
+          return res.status(400).json({ error: 'En este estado el flujo solo admite vincular plantillas (mismos pasos y claves).' });
+        }
+        body.flowDef = curFlow.map((s, i) => ({
+          ...s,
+          templateId: nxtFlow[i].templateId ? String(nxtFlow[i].templateId).slice(0, 80) : null,
+          templateVersion: Number.isFinite(Number(nxtFlow[i].templateVersion)) ? Number(nxtFlow[i].templateVersion) : null,
+        }));
+      }
       const merged = shapeActivation({ ...cur, ...body });
       if (merged.startAt && merged.endAt && new Date(merged.endAt) < new Date(merged.startAt)) {
         return res.status(400).json({ error: 'La fecha final no puede ser anterior a la inicial.' });

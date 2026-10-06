@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../hooks/useAuth';
 import { toast } from 'sonner';
 import { STATUS_LABEL, FREQUENCIES, LEVEL_LABEL, SCOPE_TYPES, WIZARD_STEPS } from '../../../lib/contentActivationSpec';
 import EmailDesigner from './MessageDesigner/EmailDesigner';
 import WhatsAppDesigner from './MessageDesigner/WhatsAppDesigner';
 import TemplateLibrary from './MessageDesigner/TemplateLibrary';
+import CampaignCalendar from './CampaignCalendar';
+import TemplatesTab from '../email-marketing/TemplatesTab';
 import { importClassicToDesign, applyTemplateToContent, validateDesign } from './MessageDesigner/designUtils';
 import { renderDesignToHtml } from '../../../lib/emailBlocks';
 
@@ -85,7 +88,9 @@ export default function ContentActivation() {
   const [insights, setInsights] = useState<any>(null);
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiDraft, setAiDraft] = useState<any>(null);
-  const [detailTab, setDetailTab] = useState<'flujo'|'tablero'|'tracker'|'analitica'|'insights'>('flujo');
+  const [detailTab, setDetailTab] = useState<'flujo'|'calendario'|'plantillas'|'tablero'|'tracker'|'analitica'|'insights'>('flujo');
+  // Nombres de plantillas vinculadas a los pasos (para "Ver/Editar plantilla").
+  const [tplNames, setTplNames] = useState<Record<string, { name: string; version: number }>>({});
   const [contentTab, setContentTab] = useState<'email'|'whatsapp'>('email');
   const [emailPreview, setEmailPreview] = useState<any>(null);
   const [waPreview, setWaPreview] = useState<any>(null);
@@ -113,6 +118,7 @@ export default function ContentActivation() {
   const [acting, setActing] = useState(false);
 
   const H = { Authorization: `Bearer ${token}` };
+  const navigate = useNavigate();
 
   const load = async () => {
     setLoading(true);
@@ -250,16 +256,44 @@ export default function ContentActivation() {
     finally { setSaving(false); }
   };
 
-  const openDetail = async (c: Campaign, tab: 'flujo' | 'tablero' | 'tracker' | 'analitica' | 'insights' = 'flujo') => {
+  const openDetail = async (c: Campaign, tab: 'flujo' | 'calendario' | 'plantillas' | 'tablero' | 'tracker' | 'analitica' | 'insights' = 'flujo') => {
     setSelected(c); setDetailTab(tab);
     try {
       const r = await fetch(`${API}/content-activation/${c.id}`, { headers: H });
       const d = await r.json();
-      if (d.campaign) setSelected(d.campaign);
+      if (d.campaign) { setSelected(d.campaign); loadStepTemplates(d.campaign); }
       setExecutions(d.executions || []);
       const ex = (d.executions || [])[0];
       if (ex) { setActiveExec(ex.id); loadExecData(c.id, ex.id); }
     } catch { /* noop */ }
+  };
+
+  // Plantillas centrales para vincular pasos del flujo (solo activas, por canal).
+  const [flowTpls, setFlowTpls] = useState<any[]>([]);
+  useEffect(() => {
+    if (!showWizard) return;
+    (async () => {
+      try {
+        const rows = await Promise.all(['email', 'whatsapp'].map((ch) =>
+          fetch(`${API}/content-activation/templates?channel=${ch}`, { headers: H }).then((r) => r.json()).catch(() => ({}))));
+        setFlowTpls([...(rows[0].templates || []), ...(rows[1].templates || [])]);
+      } catch { /* sin red: se vincula después */ }
+    })();
+  }, [showWizard]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Nombres de las plantillas vinculadas a los pasos del flujo.
+  const loadStepTemplates = async (camp: any) => {
+    const ids = [...new Set(((camp?.flowDef || []).map((n: any) => n?.templateId).filter(Boolean)))];
+    if (!ids.length) { setTplNames({}); return; }
+    const out: Record<string, { name: string; version: number }> = {};
+    await Promise.all(ids.map(async (id: string) => {
+      try {
+        const r = await fetch(`${API}/content-activation/templates/${id}`, { headers: H });
+        const d = await r.json();
+        if (r.ok && d.template) out[id] = { name: d.template.name, version: d.template.version };
+      } catch { /* sin red: se muestra el id */ }
+    }));
+    setTplNames(out);
   };
 
   const refreshAfter = async (id?: string) => {
@@ -1088,10 +1122,19 @@ export default function ContentActivation() {
                   <div className="space-y-2 text-xs">
                     <div className="font-bold">Secuencia (modelo preparado para Día 0 → 7 → 14 → 21)</div>
                     {form.flowDef.map((n: any, i: number) => (
-                      <div key={i} className="border rounded-xl p-2 grid grid-cols-3 gap-2">
+                      <div key={i} className="border rounded-xl p-2 grid grid-cols-2 gap-2">
                         <label>Día<input type="number" className="border rounded px-2 py-1 w-full" value={n.dayOffset} onChange={(e) => { const f = [...form.flowDef]; f[i] = { ...f[i], dayOffset: Number(e.target.value) }; setForm({ ...form, flowDef: f }); }} /></label>
-                        <label>Canal<select className="border rounded px-2 py-1 w-full" value={n.channel} onChange={(e) => { const f = [...form.flowDef]; f[i] = { ...f[i], channel: e.target.value }; setForm({ ...form, flowDef: f }); }}><option value="whatsapp">WhatsApp</option><option value="email">Email</option></select></label>
+                        <label>Canal<select className="border rounded px-2 py-1 w-full" value={n.channel} onChange={(e) => { const f = [...form.flowDef]; f[i] = { ...f[i], channel: e.target.value, templateId: null, templateVersion: null }; setForm({ ...form, flowDef: f }); }}><option value="whatsapp">WhatsApp</option><option value="email">Email</option></select></label>
                         <label>Condición<select className="border rounded px-2 py-1 w-full" value={n.condition} onChange={(e) => { const f = [...form.flowDef]; f[i] = { ...f[i], condition: e.target.value }; setForm({ ...form, flowDef: f }); }}><option value="siempre">siempre</option><option value="no_solicitud">no_solicitud</option><option value="no_participo">no_participo</option></select></label>
+                        <label>Plantilla central ({n.key})<select className="border rounded px-2 py-1 w-full" value={n.templateId || ''} onChange={(e) => {
+                          const f = [...form.flowDef];
+                          const t = flowTpls.find((x: any) => x.id === e.target.value);
+                          f[i] = { ...f[i], templateId: t?.id || null, templateVersion: t?.version ?? null };
+                          setForm({ ...form, flowDef: f });
+                        }}>
+                          <option value="">— texto del paso —</option>
+                          {flowTpls.filter((x: any) => x.channel === n.channel).map((t: any) => <option key={t.id} value={t.id}>{t.name} (v{t.version})</option>)}
+                        </select></label>
                       </div>
                     ))}
                     <label className="flex items-center gap-2"><input type="checkbox" checked={form.followRules.stopOnResponse} onChange={(e) => setForm({ ...form, followRules: { ...form.followRules, stopOnResponse: e.target.checked } })} />Detener al recibir solicitud</label>
@@ -1343,7 +1386,7 @@ export default function ContentActivation() {
             </div>
           </div>
           <div className="flex gap-2 mt-4 text-xs">
-            {(['flujo', 'tablero', 'tracker', 'analitica', 'insights'] as const).map((t) => (
+            {(['flujo', 'calendario', 'plantillas', 'tablero', 'tracker', 'analitica', 'insights'] as const).map((t) => (
               <button key={t} onClick={() => setDetailTab(t)} className={`px-3 py-2 rounded-xl border ${detailTab === t ? 'bg-gray-900 text-white' : ''}`}>{t}</button>
             ))}
             <select className="border rounded-xl px-2 py-2 ml-auto" value={activeExec} onChange={(e) => { setActiveExec(e.target.value); if (selected) loadExecData(selected.id, e.target.value); }}>
@@ -1358,9 +1401,30 @@ export default function ContentActivation() {
                   <div className="font-bold">Día {n.dayOffset} · {n.key}</div>
                   <div>Canal: {n.channel} · Condición: {n.condition}</div>
                   <div>Espera: {n.waitDays}d · Espera evento: {n.expect}</div>
+                  <div className="mt-1">
+                    {n.templateId ? (
+                      <span>
+                        Plantilla: <b>{tplNames[n.templateId]?.name || n.templateId}</b>
+                        {tplNames[n.templateId] ? ` (v${n.templateVersion ?? tplNames[n.templateId].version})` : ''}
+                        {' · '}
+                        <button onClick={() => navigate(`/admin/email-marketing?plantilla=${n.templateId}`)} className="text-blue-700 font-bold">Ver / Editar plantilla</button>
+                      </span>
+                    ) : (
+                      <span className="text-gray-400">Sin plantilla vinculada (usa texto del paso).</span>
+                    )}
+                  </div>
                 </div>
               ))}
               {(!selected.flowDef || !selected.flowDef.length) && <div className="text-gray-500">Sin flujo definido.</div>}
+            </div>
+          )}
+          {detailTab === 'calendario' && selected && (
+            <CampaignCalendar campaignId={selected.id} headers={H} />
+          )}
+          {detailTab === 'plantillas' && (
+            <div className="mt-4">
+              <div className="text-[11px] text-gray-400 mb-2">Biblioteca central (la misma de Email Marketing): lo que se edita aquí versiona; la campaña conserva el snapshot que adoptó.</div>
+              <TemplatesTab />
             </div>
           )}
           {detailTab === 'tablero' && (
