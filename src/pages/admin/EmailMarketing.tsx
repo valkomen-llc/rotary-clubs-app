@@ -4,11 +4,12 @@ import AdminLayout from '../../components/admin/AdminLayout';
 import {
     Plus, Send, X, Trash2, Edit2, Mail, Users, Eye, EyeOff, Code,
     RefreshCw, CheckCircle2, Clock, AlertTriangle, Megaphone,
-    BarChart3, Tag, MousePointerClick, MailCheck, FileText, Save, Workflow, LayoutDashboard, Sparkles, Server, FlaskConical, Trophy, Activity
+    BarChart3, Tag, MousePointerClick, MailCheck, FileText, Save, Workflow, LayoutDashboard, Sparkles, Server, FlaskConical, Trophy, Activity, CalendarDays
 } from 'lucide-react';
 import { toast } from 'sonner';
 import Automations from '../../components/admin/email-marketing/Automations';
 import TemplatesTab from '../../components/admin/email-marketing/TemplatesTab';
+import GlobalCalendar from '../../components/admin/email-marketing/GlobalCalendar';
 import EmailDashboard from '../../components/admin/email-marketing/Dashboard';
 import EmailBuilder from '../../components/admin/email-marketing/EmailBuilder';
 import EmailAiAssistant from '../../components/admin/email-marketing/EmailAiAssistant';
@@ -159,7 +160,7 @@ const EmailMarketing: React.FC = () => {
     const [preview, setPreview] = useState(false);
     const [report, setReport] = useState<Report | null>(null);
     const [reportLoading, setReportLoading] = useState(false);
-    const [tab, setTab] = useState<'dashboard' | 'campaigns' | 'automations' | 'templates' | 'provider'>(
+    const [tab, setTab] = useState<'dashboard' | 'campaigns' | 'automations' | 'templates' | 'calendar' | 'provider'>(
       searchParams.get('plantilla') ? 'templates' : 'dashboard'
     );
     const [contentMode, setContentMode] = useState<'visual' | 'html'>('visual');
@@ -546,6 +547,13 @@ const EmailMarketing: React.FC = () => {
                 >
                     <FileText className="w-4 h-4" /> Plantillas
                 </button>
+                <button
+                    onClick={() => setTab('calendar')}
+                    className={`px-4 py-2 text-sm font-bold border-b-2 -mb-px transition-colors flex items-center gap-2 ${tab === 'calendar' ? 'border-rotary-blue text-rotary-blue' : 'border-transparent text-gray-400 hover:text-gray-600'}`}
+                    title="Calendario global de marketing: todas las campañas en curso"
+                >
+                    <CalendarDays className="w-4 h-4" /> Calendario
+                </button>
                 {isSuperAdmin && (
                     <button
                         onClick={() => setTab('provider')}
@@ -563,6 +571,8 @@ const EmailMarketing: React.FC = () => {
             {tab === 'automations' && <Automations />}
 
             {tab === 'templates' && <TemplatesTab initialTemplateId={searchParams.get('plantilla')} />}
+
+            {tab === 'calendar' && <GlobalCalendar />}
 
             {tab === 'campaigns' && <>
 

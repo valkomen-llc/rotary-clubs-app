@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1171.0',
+        title: 'Marketing inteligente FASE 2: calendario global y Resumen por campaña 📅📊',
+        description: 'Nuevo Calendario global en Email Marketing con todas las campañas en curso (Mes/Semana/Lista, filtros por canal, solo lectura; las acciones viven en cada campaña) y pestañas Resumen y Audiencia en el detalle: estado, objetivo, período, próximo envío, enviadas, destinatarios, conversiones, tasa, mejor comunicación y recomendación principal en un solo endpoint. Misma fuente de fechas y permisos por ámbito en todas las vistas.',
+        date: new Date().toISOString(),
+        tags: ['marketing', 'calendario-global', 'resumen', 'audiencia', 'fase-2', 'production-release'],
+        type: 'feature',
+        impact: 'high',
+    },
+    {
         version: '4.1170.0',
         title: 'Editor profesional e IA en plantillas: 10 bloques, clic en canvas y asistente ✍️✨',
         description: 'FASE 1 del Marketing Inteligente. El diseñador suma bloques de redes sociales, video (miniatura+enlace) y HTML libre, más peso tipográfico y espaciado vertical por bloque, con la misma base de bloques del sistema (sin duplicar modelos) y validación sincronizada. Clic directo sobre la vista previa (Desktop/Mobile) selecciona el bloque a editar. El Asistente IA propone asuntos, cuerpo, mejoras, variantes A/B y revisión antispam, y crea borradores con IA —siempre con revisión humana: nada se publica solo. El HTML guardado y enviado sigue limpio y versionado como antes.',

@@ -7,6 +7,8 @@ import EmailDesigner from './MessageDesigner/EmailDesigner';
 import WhatsAppDesigner from './MessageDesigner/WhatsAppDesigner';
 import TemplateLibrary from './MessageDesigner/TemplateLibrary';
 import CampaignCalendar from './CampaignCalendar';
+import CampaignSummary from './CampaignSummary';
+import CampaignAudience from './CampaignAudience';
 import TemplatesTab from '../email-marketing/TemplatesTab';
 import { importClassicToDesign, applyTemplateToContent, validateDesign } from './MessageDesigner/designUtils';
 import { renderDesignToHtml } from '../../../lib/emailBlocks';
@@ -88,7 +90,7 @@ export default function ContentActivation() {
   const [insights, setInsights] = useState<any>(null);
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiDraft, setAiDraft] = useState<any>(null);
-  const [detailTab, setDetailTab] = useState<'flujo'|'calendario'|'plantillas'|'tablero'|'tracker'|'analitica'|'insights'>('flujo');
+  const [detailTab, setDetailTab] = useState<'resumen'|'flujo'|'calendario'|'plantillas'|'audiencia'|'tablero'|'tracker'|'analitica'|'insights'>('resumen');
   // Nombres de plantillas vinculadas a los pasos (para "Ver/Editar plantilla").
   const [tplNames, setTplNames] = useState<Record<string, { name: string; version: number }>>({});
   const [contentTab, setContentTab] = useState<'email'|'whatsapp'>('email');
@@ -256,7 +258,7 @@ export default function ContentActivation() {
     finally { setSaving(false); }
   };
 
-  const openDetail = async (c: Campaign, tab: 'flujo' | 'calendario' | 'plantillas' | 'tablero' | 'tracker' | 'analitica' | 'insights' = 'flujo') => {
+  const openDetail = async (c: Campaign, tab: 'resumen' | 'flujo' | 'calendario' | 'plantillas' | 'audiencia' | 'tablero' | 'tracker' | 'analitica' | 'insights' = 'resumen') => {
     setSelected(c); setDetailTab(tab);
     try {
       const r = await fetch(`${API}/content-activation/${c.id}`, { headers: H });
@@ -1386,7 +1388,7 @@ export default function ContentActivation() {
             </div>
           </div>
           <div className="flex gap-2 mt-4 text-xs">
-            {(['flujo', 'calendario', 'plantillas', 'tablero', 'tracker', 'analitica', 'insights'] as const).map((t) => (
+            {(['resumen', 'flujo', 'calendario', 'plantillas', 'audiencia', 'tablero', 'tracker', 'analitica', 'insights'] as const).map((t) => (
               <button key={t} onClick={() => setDetailTab(t)} className={`px-3 py-2 rounded-xl border ${detailTab === t ? 'bg-gray-900 text-white' : ''}`}>{t}</button>
             ))}
             <select className="border rounded-xl px-2 py-2 ml-auto" value={activeExec} onChange={(e) => { setActiveExec(e.target.value); if (selected) loadExecData(selected.id, e.target.value); }}>
@@ -1394,6 +1396,9 @@ export default function ContentActivation() {
             </select>
           </div>
 
+          {detailTab === 'resumen' && selected && (
+            <CampaignSummary campaignId={selected.id} headers={H} />
+          )}
           {detailTab === 'flujo' && (
             <div className="mt-4 grid md:grid-cols-3 gap-2 text-xs">
               {(selected.flowDef || []).map((n: any, i: number) => (
@@ -1426,6 +1431,9 @@ export default function ContentActivation() {
               <div className="text-[11px] text-gray-400 mb-2">Biblioteca central (la misma de Email Marketing): lo que se edita aquí versiona; la campaña conserva el snapshot que adoptó.</div>
               <TemplatesTab />
             </div>
+          )}
+          {detailTab === 'audiencia' && selected && (
+            <CampaignAudience campaign={selected} headers={H} />
           )}
           {detailTab === 'tablero' && (
             <div className="mt-4">

@@ -307,6 +307,22 @@ const query = async (sql, params = []) => {
   // ── Lecturas para el calendario (v4.1169: overlay de estados reales) ──
   // Ancladas con ^SELECT: el stub evalúa por subcadena y un SELECT suelto
   // interceptaría otros statements (p. ej. el DELETE de overrides).
+  if (/^SELECT COUNT\(\*\)::int AS elegibles/.test(t)) {
+    const list = datos.enrollments.filter((x) => String(x.campaignId) === String(params[0]));
+    return { rows: [{
+      elegibles: list.length,
+      contactados: list.filter((x) => !['programada', 'por_enviar'].includes(x.status)).length,
+      destinatarios: new Set(list.map((x) => String(x.contactId))).size,
+    }] };
+  }
+  if (/^SELECT type, metadata->>'step' AS paso/.test(t)) {
+    const groups = {};
+    for (const v of datos.events.filter((x) => String(x.campaignId) === String(params[0]))) {
+      const k = `${v.type}||${v.metadata?.step || '?'}`;
+      groups[k] = (groups[k] || 0) + 1;
+    }
+    return { rows: Object.entries(groups).map(([k, n]) => { const [type, paso] = k.split('||'); return { type, paso, n }; }) };
+  }
   if (/^SELECT id, "periodoLabel", "startAt", "endAt", status, "createdAt" FROM "ContentActivationExecution" WHERE "campaignId"=\$1/.test(t)) {
     return {
       rows: datos.executions

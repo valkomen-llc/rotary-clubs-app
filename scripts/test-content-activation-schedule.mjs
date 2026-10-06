@@ -231,6 +231,64 @@ check('previa informa plantilla y ocurrencia', r.body?.template?.id === fmap.inv
   check('sin vínculo: inline como antes', msg2.text.includes('Ana') && msg2.template === null, msg2.text);
 }
 
+grupo('7 · Calendario global + Resumen (FASE 2)');
+{
+  // Segunda campaña (trimestral corta) para agregar en el global.
+  const r2 = await correr(CACT.create, {
+    ...SUPER,
+    body: {
+      name: 'Capacitación trimestral', contributionCampaignId: 'cc1',
+      startAt: '2026-11-01T14:00:00.000Z', endAt: '2027-02-01T14:00:00.000Z',
+      timezone: 'America/Bogota', frecuencia: 'trimestral',
+      canales: ['whatsapp'], scopeDef: { type: 'district', ids: [] },
+      audienceMode: 'fixed', audienceSnapshot: [], audienceDef: { match: 'all', rules: [] },
+      contentDef: { email: { subject: 'S', bodyText: 'Hola' }, whatsapp: { body: 'Hola {{nombre}}' } },
+    },
+  });
+  const camp2 = r2.body?.campaign?.id;
+  check('segunda campaña creada', r2.code === 201 && !!camp2, `code=${r2.code}`);
+  // Activar ambas: el global solo agrega en curso (activa/programada/pausada).
+  await correr(CACT.transition, { ...SUPER, params: { id: campId }, body: { status: 'programada' } });
+  await correr(CACT.transition, { ...SUPER, params: { id: camp2 }, body: { status: 'programada' } });
+  let g = await correr(CACT.calendarGlobal, { ...SUPER, query: {} });
+  check('global agrega campañas visibles', g.code === 200 && (g.body?.occurrences || []).some((o) => o.campaignId === campId) && g.body.occurrences.some((o) => o.campaignId === camp2), `code=${g.code} n=${g.body?.total}`);
+  check('eventos globales traen campaña+canal+plantilla+fecha', (g.body?.occurrences || []).every((o) => o.campaignName && o.channel && o.fecha && o.hora && o.estado), 'forma');
+  check('orden cronológico', (g.body?.occurrences || []).every((o, i, a) => i === 0 || a[i - 1].scheduledAt <= o.scheduledAt));
+  g = await correr(CACT.calendarGlobal, { ...SUPER, query: { from: '2027-01-01T00:00:00.000Z', to: '2027-03-01T00:00:00.000Z' } });
+  check('rango from/to filtra', g.code === 200 && (g.body?.occurrences || []).every((o) => o.scheduledAt >= '2027-01-01' && o.scheduledAt <= '2027-03-01'), `n=${g.body?.total}`);
+  // Permisos: distrito ajeno no ve campaña con ámbito de otro distrito.
+  const r3 = await correr(CACT.create, {
+    ...SUPER,
+    body: {
+      name: 'Distrito ajeno', contributionCampaignId: 'cc1',
+      startAt: '2026-11-01T14:00:00.000Z', timezone: 'America/Bogota', frecuencia: 'mensual',
+      canales: ['email'], scopeDef: { type: 'district', ids: ['d-otro'] },
+      audienceMode: 'fixed', audienceSnapshot: [], audienceDef: { match: 'all', rules: [] },
+      contentDef: { email: { subject: 'S', bodyText: 'Hola' }, whatsapp: { body: 'H' } },
+    },
+  });
+  const camp3 = r3.body?.campaign?.id;
+  await correr(CACT.transition, { ...SUPER, params: { id: camp3 }, body: { status: 'programada' } });
+  const SITIO = { user: { role: 'district_admin', id: 'u-d9', districtId: 'd9', clubId: 'club-9' }, headers: {} };
+  g = await correr(CACT.calendarGlobal, { ...SITIO, query: {} });
+  check('global respeta ámbito (d-otro oculto)', g.code === 200 && !(g.body?.occurrences || []).some((o) => o.campaignId === camp3), `n=${g.body?.total}`);
+
+  // Resumen: inscripciones + envíos por paso → números y mejor comunicación.
+  stub.datos.enrollments.push(
+    { id: 'en_r1', executionId: 'ex_t1', campaignId: campId, contactId: 'c1', siteId: 'club-1', siteType: 'club', channel: 'email', status: 'esperando_contenido' },
+    { id: 'en_r2', executionId: 'ex_t1', campaignId: campId, contactId: 'c2', siteId: 'club-2', siteType: 'club', channel: 'email', status: 'contenido_recibido' },
+  );
+  stub.datos.events.push({ id: 'ev_r2', enrollmentId: 'en_x', executionId: 'ex_t1', campaignId: campId, type: 'email_enviado', channel: 'email', messageLogId: null, metadata: { step: 'recordatorio' }, createdAt: '2026-10-12T15:00:00.000Z' });
+  stub.datos.events.push({ id: 'ev_r3', enrollmentId: 'en_y', executionId: 'ex_t1', campaignId: campId, type: 'email_enviado', channel: 'email', messageLogId: null, metadata: { step: 'invitacion' }, createdAt: '2026-10-06T15:00:00.000Z' });
+  const s = await correr(CACT.summary, { ...SUPER, params: { id: campId } });
+  check('summary 200 con forma', s.code === 200 && s.body?.campaign?.id === campId && 'proximoEnvio' in s.body && 'tasaConversion' in s.body, `code=${s.code}`);
+  check('destinatarios = 2 únicos', s.body?.destinatarios === 2, `n=${s.body?.destinatarios}`);
+  check('mejor comunicación = invitación (2 envíos)', s.body?.mejorComunicacion?.paso === 'invitacion' && s.body?.mejorComunicacion?.envios === 2, JSON.stringify(s.body?.mejorComunicacion));
+  check('próximo envío futuro con plantilla', !!s.body?.proximoEnvio && new Date(s.body.proximoEnvio.scheduledAt).getTime() > Date.now(), JSON.stringify(s.body?.proximoEnvio)?.slice(0, 120));
+  const s403 = await correr(CACT.summary, { ...SITIO, params: { id: camp3 } });
+  check('summary ajeno → 403', s403.code === 403, `code=${s403.code}`);
+}
+
 console.log('\n' + '─'.repeat(60));
 if (malos.length) {
   console.log(`❌ ${malos.length} fallo(s) de ${ok + malos.length}:`);

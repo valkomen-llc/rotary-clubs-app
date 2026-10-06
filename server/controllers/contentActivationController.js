@@ -124,47 +124,10 @@ export const detail = async (req, res) => {
   } catch (e) { return fail(res, e); }
 };
 
-// ─── Calendario editorial (v4.1169) ────────────────────────────────────
-// Flujo = REGLAS (dayOffset por paso); Calendario = EJECUCIONES proyectadas
-// de esas reglas (ancla de ciclo + offset, hora pared en campaign.timezone,
-// corte explícito en endAt). Los estados se resuelven con datos reales
-// (ejecuciones + eventos + overrides); lo futuro sin datos es `programado`.
-// La misma matemática la usan el tick y las automatizaciones
-// (`contentActivationSchedule`: única fuente de verdad).
-const SEND_EVENTS = ['email_enviado', 'whatsapp_enviado', 'recordatorio_enviado'];
-const FAIL_EVENTS = ['email_fallido', 'whatsapp_fallido', 'error'];
-
-async function loadCalendarBase(campaignId) {
-  const { default: db } = await import('../lib/db.js');
-  const { rows: executions } = await db.query(
-    `SELECT id, "periodoLabel", "startAt", "endAt", status, "createdAt" FROM "ContentActivationExecution" WHERE "campaignId"=$1 ORDER BY "createdAt" ASC`,
-    [campaignId]).catch(() => ({ rows: [] }));
-  const { rows: events } = await db.query(
-    `SELECT type, channel, metadata, "executionId", "createdAt" FROM "ContentActivationEvent" WHERE "campaignId"=$1`,
-    [campaignId]).catch(() => ({ rows: [] }));
-  return { db, executions, events };
-}
-
-const execAnchor = (e) => new Date(e.startAt || e.createdAt || 0).getTime();
-
-function resolveOccurrenceState(o, { executions, eventsByExecStep, enrollPauseByExec, campaignStatus, now }) {
-  if (o.estadoBase === 'omitido') return 'omitido';
-  // Ejecución que cubre la ocurrencia: la última con ancla ≤ fecha.
-  let exec = null;
-  for (const e of executions) {
-    if (execAnchor(e) <= new Date(o.scheduledAt).getTime()) exec = e;
-  }
-  const evts = exec ? (eventsByExecStep.get(`${exec.id}:${o.stepKey}`) || []) : [];
-  const types = new Set(evts.map((v) => v.type));
-  if ([...types].some((t) => SEND_EVENTS.includes(t))) return 'enviado';
-  if ([...types].some((t) => FAIL_EVENTS.includes(t))) return 'fallido';
-  if (exec?.status === 'cerrada') return 'cancelado';
-  if (exec && (enrollPauseByExec.get(exec.id) || 0) > 0) return 'pausado';
-  if (campaignStatus === 'pausada' && new Date(o.scheduledAt).getTime() > now) return 'pausado';
-  if (['finalizada', 'archivada'].includes(campaignStatus) && new Date(o.scheduledAt).getTime() > now) return 'cancelado';
-  if (new Date(o.scheduledAt).getTime() > now) return 'programado';
-  return 'pendiente';
-}
+// ─── Calendario editorial (v4.1169/71) ─────────────────────────────────
+// Flujo = REGLAS; Calendario = EJECUCIONES proyectadas con estados reales.
+// Lógica en `lib/contentActivationCalendar` (global la reutiliza); acá solo
+// permisos y parámetros.
 
 // GET /:id/calendar?from&to — parrilla editorial con estados.
 export const calendar = async (req, res) => {
@@ -173,45 +136,85 @@ export const calendar = async (req, res) => {
     if (!c) return res.status(404).json({ error: 'No encontrada' });
     const grant = await getUserGrant(req).catch(() => ({ isGlobal: true }));
     if (!campaignVisibleToGrant(c, grant)) return res.status(403).json({ error: 'Fuera de tus permisos.' });
-    const { occurrencesForCampaign } = await import('../lib/contentActivationSchedule.js');
-    const { loadScheduleOverrides } = await import('../lib/contentActivationEngine.js');
-    const overrides = await loadScheduleOverrides(c.id);
-    const now = Date.now();
-    let occ = occurrencesForCampaign(c, { overrides: [...overrides.values()] });
+    const { getCampaignCalendar } = await import('../lib/contentActivationCalendar.js');
     const from = req.query.from ? new Date(req.query.from).getTime() : null;
     const to = req.query.to ? new Date(req.query.to).getTime() : null;
-    if (from) occ = occ.filter((o) => new Date(o.scheduledAt).getTime() >= from);
-    if (to) occ = occ.filter((o) => new Date(o.scheduledAt).getTime() <= to);
-    const { executions, events } = await loadCalendarBase(c.id);
-    const eventsByExecStep = new Map();
-    for (const v of events) {
-      const k = `${v.executionId}:${v.metadata?.step}`;
-      if (!eventsByExecStep.has(k)) eventsByExecStep.set(k, []);
-      eventsByExecStep.get(k).push(v);
-    }
+    return res.json(await getCampaignCalendar(c, { from: from || null, to: to || null }));
+  } catch (e) { return fail(res, e); }
+};
+
+// GET /calendar-global?from&to&limit — todas las campañas visibles y en curso
+// (activa/programada/pausada). Cada evento indica campaña, comunicación,
+// canal, plantilla, fecha, hora y estado.
+export const calendarGlobal = async (req, res) => {
+  try {
+    const grant = await getUserGrant(req).catch(() => ({ isGlobal: true }));
+    const all = await listCampaigns({});
+    const vivas = all.filter((c) => campaignVisibleToGrant(c, grant) && ['activa', 'programada', 'pausada'].includes(c.status));
+    const from = req.query.from ? new Date(req.query.from).getTime() : null;
+    const to = req.query.to ? new Date(req.query.to).getTime() : null;
+    const limit = Math.min(2000, Math.max(1, Number(req.query.limit) || 500));
+    const { getGlobalCalendar } = await import('../lib/contentActivationCalendar.js');
+    return res.json(await getGlobalCalendar(vivas.slice(0, 50), { from: from || null, to: to || null, limit }));
+  } catch (e) { return fail(res, e); }
+};
+
+// GET /:id/summary — Resumen unificado de la campaña (una sola fuente para la
+// pestaña Resumen y futuros tableros): estado, objetivo, período, próximo
+// envío, enviadas, alcanzados, conversiones, tasa, mejor comunicación y
+// recomendación principal.
+export const summary = async (req, res) => {
+  try {
+    const c = await getCampaign(req.params.id);
+    if (!c) return res.status(404).json({ error: 'No encontrada' });
+    const grant = await getUserGrant(req).catch(() => ({ isGlobal: true }));
+    if (!campaignVisibleToGrant(c, grant)) return res.status(403).json({ error: 'Fuera de tus permisos.' });
     const { default: db } = await import('../lib/db.js');
-    const enrollPauseByExec = new Map();
-    for (const e of executions) {
-      const { rows } = await db.query(
-        `SELECT status, COUNT(*)::int AS n FROM "ContentActivationEnrollment" WHERE "executionId"=$1 GROUP BY 1`,
-        [e.id]).catch(() => ({ rows: [] }));
-      enrollPauseByExec.set(e.id, rows.filter((r) => r.status === 'pausada').reduce((a, r) => a + Number(r.n), 0));
+    const { getCampaignCalendar } = await import('../lib/contentActivationCalendar.js');
+    const { buildInsights } = await import('../lib/contentActivationEngine.js');
+    const now = Date.now();
+    const cal = await getCampaignCalendar(c, { now }).catch(() => ({ occurrences: [] }));
+    const futuras = cal.occurrences.filter((o) => new Date(o.scheduledAt).getTime() > now && !['omitido', 'cancelado'].includes(o.estado));
+    const enviadas = cal.occurrences.filter((o) => o.estado === 'enviado').length;
+    const { rows: en } = await db.query(
+      `SELECT COUNT(*)::int AS elegibles,
+        COUNT(CASE WHEN n.status NOT IN ('programada','por_enviar') THEN 1 END)::int AS contactados,
+        COUNT(DISTINCT n."contactId")::int AS destinatarios
+       FROM "ContentActivationEnrollment" n WHERE n."campaignId"=$1`,
+      [c.id]).catch(() => ({ rows: [{}] }));
+    const { rows: ev } = await db.query(
+      `SELECT type, metadata->>'step' AS paso, COUNT(*)::int AS n FROM "ContentActivationEvent" WHERE "campaignId"=$1 GROUP BY 1, 2`,
+      [c.id]).catch(() => ({ rows: [] }));
+    const { rows: subs } = await db.query(
+      `SELECT COUNT(DISTINCT "activationEnrollmentId")::int AS solicitudesUnicas, COUNT(*)::int AS total
+       FROM "ContributionSubmission" s WHERE s."activationCampaignId"=$1`,
+      [c.id]).catch(() => ({ rows: [{}] }));
+    const porPaso = {};
+    for (const r of ev) {
+      if (!['email_enviado', 'whatsapp_enviado', 'recordatorio_enviado'].includes(r.type)) continue;
+      const k = r.paso || '?';
+      porPaso[k] = (porPaso[k] || 0) + Number(r.n);
     }
-    const withState = occ.map((o) => ({
-      ...o,
-      estado: resolveOccurrenceState(o, { executions, eventsByExecStep, enrollPauseByExec, campaignStatus: c.status, now }),
-    }));
-    // Próxima en cada serie (paso): la futura no omitida más cercana.
-    const nextByStep = {};
-    for (const o of withState) {
-      if (o.estado === 'omitido' || o.estado === 'cancelado') continue;
-      if (new Date(o.scheduledAt).getTime() <= now) continue;
-      if (!nextByStep[o.stepKey]) nextByStep[o.stepKey] = o.scheduledAt;
-    }
+    const mejor = Object.entries(porPaso).sort((a, b) => b[1] - a[1])[0];
+    const conversiones = Number(subs[0]?.solicitudesUnicas) || 0;
+    const dest = Number(en[0]?.destinatarios) || 0;
+    let recomendacion = null;
+    try {
+      const { rows: exs } = await db.query(`SELECT id FROM "ContentActivationExecution" WHERE "campaignId"=$1 ORDER BY "createdAt" DESC LIMIT 1`, [c.id]).catch(() => ({ rows: [] }));
+      if (exs[0]) {
+        const ins = await buildInsights(c.id, exs[0].id).catch(() => null);
+        recomendacion = ins?.suggestions?.[0]?.detail || ins?.suggestions?.[0] || ins?.insights?.[0]?.text || null;
+      }
+    } catch { /* sin insights aún */ }
     return res.json({
-      campaign: { id: c.id, name: c.name, status: c.status, startAt: c.startAt, endAt: c.endAt, timezone: c.timezone, frecuencia: c.frecuencia, canales: c.canales || [], audienceMode: c.audienceMode || 'dynamic' },
-      occurrences: withState.map((o) => ({ ...o, proximaEnSerie: nextByStep[o.stepKey] || null })),
-      total: withState.length,
+      campaign: { id: c.id, name: c.name, status: c.status, objetivo: c.objetivo || '', startAt: c.startAt, endAt: c.endAt, timezone: c.timezone, frecuencia: c.frecuencia },
+      proximoEnvio: futuras[0] || null,
+      comunicaciones: { proyectadas: cal.occurrences.length, enviadas },
+      destinatarios: dest,
+      conversiones,
+      tasaConversion: dest ? +(100 * conversiones / dest).toFixed(1) : 0,
+      mejorComunicacion: mejor ? { paso: mejor[0], envios: mejor[1] } : null,
+      recomendacion,
     });
   } catch (e) { return fail(res, e); }
 };
