@@ -4,7 +4,7 @@ import { getUserGrant } from '../lib/contentActivationScope.js';
 import {
   listTemplates, getTemplate, getTemplateVersions,
   createTemplate, updateTemplate, duplicateTemplate,
-  archiveTemplate, removeTemplate, setDefaultTemplate,
+  archiveTemplate, setTemplateStatus, removeTemplate, setDefaultTemplate,
   templateVisibleTo, templateWritableBy,
 } from '../lib/contentActivationTemplates.js';
 import { assertEmailDesign, assertWhatsAppFields, DESIGN_BLOCKS_MAX } from '../lib/contentActivationMail.js';
@@ -137,6 +137,18 @@ export const archive = async (req, res) => {
   } catch (e) { return fail(res, e, e.status || 500); }
 };
 
+// POST /templates/:id/status — transiciones del ciclo de vida.
+export const transition = async (req, res) => {
+  try {
+    const grant = await grantOf(req);
+    const cur = await getTemplate(req.params.id);
+    if (!cur) return res.status(404).json({ error: 'Plantilla no encontrada' });
+    if (!templateWritableBy(cur, grant)) return res.status(403).json({ error: 'No tienes permiso para modificar esta plantilla.' });
+    const tpl = await setTemplateStatus(req.params.id, String(req.body.status || ''));
+    return ok(res, { template: tpl });
+  } catch (e) { return fail(res, e, e.status || 500); }
+};
+
 export const remove = async (req, res) => {
   try {
     const grant = await grantOf(req);
@@ -160,4 +172,86 @@ export const setDefault = async (req, res) => {
   } catch (e) { return fail(res, e, e.status || 500); }
 };
 
-export default { list, detail, versions, create, update, duplicate, archive, remove, setDefault };
+// GET /templates/:id/usage — campañas que usan esta plantilla + último uso.
+// La asociación vive como snapshot en cada campaña (nunca como referencia
+// viva), así que editar la plantilla no altera este listado retroactivamente.
+export const usage = async (req, res) => {
+  try {
+    const grant = await grantOf(req);
+    const cur = await getTemplate(req.params.id);
+    if (!cur) return res.status(404).json({ error: 'Plantilla no encontrada' });
+    if (!templateVisibleTo(cur, grant)) return res.status(403).json({ error: 'Fuera de tus permisos.' });
+    const id = String(req.params.id);
+    const { default: db } = await import('../lib/db.js');
+    const { rows: activaciones } = await db.query(
+      `SELECT id, name, status, "updatedAt",
+              "contentDef"->'email'->>'templateVersion' AS "emailVersion",
+              "contentDef"->'whatsapp'->>'templateVersion' AS "waVersion"
+         FROM "ContentActivationCampaign"
+        WHERE "contentDef"->'email'->>'templateId' = $1 OR "contentDef"->'whatsapp'->>'templateId' = $1
+        ORDER BY "updatedAt" DESC LIMIT 100`,
+      [id]
+    ).catch(() => ({ rows: [] }));
+    const { default: prisma } = await import('../lib/prisma.js');
+    const emails = await prisma.emailCampaign.findMany({
+      where: { design: { path: ['_template', 'id'], equals: id } },
+      select: { id: true, name: true, status: true, sentAt: true, updatedAt: true, sentCount: true, openCount: true, clickCount: true },
+      orderBy: { updatedAt: 'desc' },
+      take: 100,
+    }).catch(() => []);
+    const fechas = [
+      ...activaciones.map((c) => c.updatedAt),
+      ...emails.map((c) => c.sentAt || c.updatedAt),
+    ].filter(Boolean).map((d) => new Date(d).getTime());
+    return res.json({
+      activationCampaigns: activaciones,
+      emailCampaigns: emails,
+      total: activaciones.length + emails.length,
+      lastUsedAt: fechas.length ? new Date(Math.max(...fechas)).toISOString() : null,
+    });
+  } catch (e) { return fail(res, e); }
+};
+
+// GET /templates/:id/metrics — agregados de las campañas asociadas.
+// Las métricas pertenecen a cada ejecución y sobreviven a ediciones futuras.
+export const metrics = async (req, res) => {
+  try {
+    const grant = await grantOf(req);
+    const cur = await getTemplate(req.params.id);
+    if (!cur) return res.status(404).json({ error: 'Plantilla no encontrada' });
+    if (!templateVisibleTo(cur, grant)) return res.status(403).json({ error: 'Fuera de tus permisos.' });
+    const id = String(req.params.id);
+    const { default: db } = await import('../lib/db.js');
+    const { default: prisma } = await import('../lib/prisma.js');
+    const emails = await prisma.emailCampaign.findMany({
+      where: { design: { path: ['_template', 'id'], equals: id } },
+      select: { id: true, name: true, status: true, sentCount: true, openCount: true, clickCount: true },
+    }).catch(() => []);
+    const sum = (k) => emails.reduce((a, c) => a + (Number(c[k]) || 0), 0);
+    const sent = sum('sentCount');
+    const { rows: act } = await db.query(
+      `SELECT COUNT(DISTINCT e.id)::int AS ejecuciones,
+              COUNT(n.id)::int AS inscripciones
+         FROM "ContentActivationExecution" e
+         LEFT JOIN "ContentActivationEnrollment" n ON n."executionId" = e.id
+         JOIN "ContentActivationCampaign" c ON c.id = e."campaignId"
+        WHERE c."contentDef"->'email'->>'templateId' = $1 OR c."contentDef"->'whatsapp'->>'templateId' = $1`,
+      [id]
+    ).catch(() => ({ rows: [{}] }));
+    return res.json({
+      email: {
+        campanas: emails.length, enviados: sent,
+        aperturas: sum('openCount'), clics: sum('clickCount'),
+        tasaApertura: sent ? +(100 * sum('openCount') / sent).toFixed(1) : 0,
+        tasaClic: sent ? +(100 * sum('clickCount') / sent).toFixed(1) : 0,
+        porCampana: emails,
+      },
+      activacion: {
+        ejecuciones: Number(act[0]?.ejecuciones) || 0,
+        inscripciones: Number(act[0]?.inscripciones) || 0,
+      },
+    });
+  } catch (e) { return fail(res, e); }
+};
+
+export default { list, detail, versions, create, update, duplicate, archive, transition, remove, setDefault, usage, metrics };

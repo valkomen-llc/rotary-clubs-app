@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
     Plus, X, Trash2, Edit2, Play, Pause, Workflow, Clock, Mail, Users, Tag,
-    ChevronUp, ChevronDown, GitBranch, Zap, Timer, Bell, Webhook, Flag,
+    ChevronUp, ChevronDown, GitBranch, Zap, Timer, Bell, Webhook, Flag, Eye,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -119,6 +119,10 @@ const Automations: React.FC = () => {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!name.trim() || !triggerTag) { toast.error('Indica un nombre y una etiqueta disparadora'); return; }
+        if (!/^[A-Za-z0-9:_-]{1,80}$/.test(triggerTag.trim())) {
+            toast.error('La etiqueta disparadora solo admite letras, números, :, _ y - (sin espacios). Ej.: bienvenida, ca:feria-2027');
+            return;
+        }
         for (const s of steps) {
             if (s.actionType === 'email' && (!s.subject.trim() || !s.content.trim())) { toast.error('Cada nodo "Enviar correo" necesita asunto y contenido'); return; }
             if ((s.actionType === 'apply_tag' || s.actionType === 'remove_tag') && !(s.actionValue || '').trim()) { toast.error('Indica la etiqueta en los nodos de etiqueta'); return; }
@@ -153,6 +157,41 @@ const Automations: React.FC = () => {
             if (action === 'activate') toast.success(`Automatización activada${d.enrolled ? ` · ${d.enrolled} contacto(s) inscrito(s)` : ''}`);
             else toast.success('Automatización pausada');
             fetchAutomations();
+        } catch (err: any) {
+            toast.error(err.message);
+        }
+    };
+
+    // Vista previa del primer paso email (sin enviar) + prueba a una dirección.
+    const previewAutomation = async (a: Automation) => {
+        try {
+            const r = await fetch(`${API}/email-automations/${a.id}/preview?step=0`, { headers: authHeaders() });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error || 'No se pudo previsualizar');
+            if (d.note) { toast.success(d.note); return; }
+            const w = window.open('', '_blank', 'width=700,height=800');
+            if (w) {
+                w.document.write(d.html || '');
+                w.document.close();
+            } else {
+                toast.success(`Asunto: ${d.subject}${d.missing?.length ? ` · faltantes: ${d.missing.join(', ')}` : ''}`);
+            }
+        } catch (err: any) {
+            toast.error(err.message);
+        }
+    };
+
+    const testAutomation = async (a: Automation) => {
+        const to = window.prompt('Enviar el primer correo de esta automatización a (prueba, sin inscribir):', '');
+        if (!to) return;
+        try {
+            const r = await fetch(`${API}/email-automations/${a.id}/test`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify({ to, step: 0 }),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error || 'No se pudo enviar la prueba');
+            toast.success(`Prueba enviada a ${to}`);
         } catch (err: any) {
             toast.error(err.message);
         }
@@ -239,6 +278,12 @@ const Automations: React.FC = () => {
                                 </td>
                                 <td className="px-6 py-4 text-right">
                                     <div className="flex justify-end gap-2">
+                                        <button onClick={() => previewAutomation(a)} className="p-2 text-gray-400 hover:text-rotary-blue transition-colors" title="Vista previa del primer correo (sin enviar)">
+                                            <Eye className="w-4 h-4" />
+                                        </button>
+                                        <button onClick={() => testAutomation(a)} className="p-2 text-gray-400 hover:text-rotary-blue transition-colors" title="Enviar prueba del primer correo">
+                                            <Mail className="w-4 h-4" />
+                                        </button>
                                         <button onClick={() => toggleStatus(a)} className={`p-2 transition-colors ${a.status === 'active' ? 'text-gray-400 hover:text-amber-600' : 'text-gray-400 hover:text-emerald-600'}`} title={a.status === 'active' ? 'Pausar' : 'Activar'}>
                                             {a.status === 'active' ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                                         </button>
@@ -271,8 +316,9 @@ const Automations: React.FC = () => {
                                 </div>
                                 <div>
                                     <label className="block text-sm font-bold text-gray-700 mb-1">Etiqueta disparadora</label>
-                                    <input list="em-tags" className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none bg-white" value={triggerTag} onChange={(e) => setTriggerTag(e.target.value)} placeholder="Ej: nuevo-socio" />
+                                    <input list="em-tags" className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none bg-white" value={triggerTag} onChange={(e) => setTriggerTag(e.target.value)} placeholder="Ej: bienvenida, ca:feria-2027" />
                                     <datalist id="em-tags">{tags.map((t) => <option key={t} value={t} />)}</datalist>
+                                    <p className="text-[11px] text-gray-400 mt-1">Solo letras, números, <code>:</code>, <code>_</code> y <code>-</code>. El prefijo <code>ca:</code> reserva disparadores de Campañas de Contenido.</p>
                                 </div>
                             </div>
 

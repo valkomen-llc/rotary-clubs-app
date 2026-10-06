@@ -34,9 +34,22 @@ export const VARIABLE_ALIASES: Record<string, string> = {
   formulario_url: 'form_url',
 };
 
+export const VARIABLE_SCOPES: Record<string, string[]> = {
+  contact: ['first_name', 'last_name', 'email', 'phone', 'company', 'city', 'country'],
+  club: ['name', 'city', 'country'],
+  district: ['name'],
+  campaign: ['name', 'url'],
+};
+
 export const canonicalVar = (name: string): string | null => {
   const k = String(name || '').trim();
   if (VARIABLE_IDS.includes(k)) return k;
+  if (k.includes('.')) {
+    const [scope, ...rest] = k.split('.');
+    const key = rest.join('.');
+    const fields = VARIABLE_SCOPES[scope];
+    if (fields && (fields.includes(key) || fields.includes('*'))) return k;
+  }
   return VARIABLE_ALIASES[k] || null;
 };
 
@@ -65,4 +78,81 @@ export const TEST_VARS: Record<string, string> = {
   form_url: 'https://rotary4281.org/rotary-en-accion?ca_token=PRUEBA',
   site_name: 'Distrito 4281 de Rotary International',
   fecha: '5 de octubre de 2026',
+};
+
+/** Ámbitos con notación de punto para el selector de variables. */
+export interface VarScopes {
+  contact?: Record<string, string>;
+  club?: Record<string, string>;
+  district?: Record<string, string>;
+  campaign?: Record<string, string>;
+  [k: string]: Record<string, string> | string | undefined;
+}
+
+/** Sustituye `{{planas}}`, `{{a.b}}` y `{{x|Por defecto}}`, escapando valores. */
+export const renderWithDefaults = (
+  text: string,
+  scopes: VarScopes = {},
+  opts: { escape?: boolean } = {}
+): { text: string; missing: string[] } => {
+  const escape = opts.escape !== false;
+  const missing: string[] = [];
+  const out = String(text ?? '').replace(
+    /\{\{\s*([a-zA-Z0-9_áéíóúñü.]+)(?:\s*\|\s*([^}]*))?\s*\}\}/g,
+    (_m: string, name: string, def?: string) => {
+      const k = String(name || '').trim();
+      const porDefecto = def !== undefined ? String(def).trim() : undefined;
+      let found = false;
+      let value = '';
+      if (k.includes('.')) {
+        const canon = canonicalVar(k);
+        if (!canon) {
+          if (porDefecto !== undefined && porDefecto !== '') return escape ? esc(porDefecto) : porDefecto;
+          missing.push(k);
+          return _m;
+        }
+        const [scope, ...rest] = k.split('.');
+        const key = rest.join('.');
+        const table = scopes[scope];
+        const v = table && typeof table === 'object' ? (table as Record<string, string>)[key] : undefined;
+        const s = v === undefined || v === null ? '' : String(v);
+        if (!s && porDefecto !== undefined && porDefecto !== '') return escape ? esc(porDefecto) : porDefecto;
+        if (!s) { missing.push(k); return ''; }
+        return escape ? esc(s) : s;
+      } else {
+        const canon = canonicalVar(k);
+        if (canon) {
+          const flat: Record<string, string | undefined> = {
+            recipient_name: scopes?.contact?.first_name,
+            nombre: scopes?.contact?.first_name,
+            nombre_contacto: scopes?.contact?.first_name,
+            club_name: scopes?.club?.name,
+            nombre_club: scopes?.club?.name,
+            club: scopes?.club?.name,
+            district_name: scopes?.district?.name,
+            distrito: scopes?.district?.name,
+            campaign_name: scopes?.campaign?.name,
+            nombre_campaña: scopes?.campaign?.name,
+            nombre_campana: scopes?.campaign?.name,
+            form_url: scopes?.campaign?.url,
+            url_rotary_en_accion: scopes?.campaign?.url,
+            formulario_url: scopes?.campaign?.url,
+            site_name: typeof scopes?.site_name === 'string' ? scopes.site_name : undefined,
+            fecha: typeof scopes?.fecha === 'string' ? scopes.fecha : undefined,
+          };
+          if (canon in flat) {
+            const v = flat[canon];
+            found = v !== undefined && v !== null && String(v) !== '';
+            value = v ?? '';
+          }
+        }
+      }
+      if (!found && porDefecto !== undefined && porDefecto !== '') return escape ? esc(porDefecto) : porDefecto;
+      if (!found) { missing.push(k); return _m; }
+      if (!value && porDefecto !== undefined && porDefecto !== '') return escape ? esc(porDefecto) : porDefecto;
+      if (!value) { missing.push(k); return ''; }
+      return escape ? esc(value) : value;
+    }
+  );
+  return { text: out, missing: [...new Set(missing)] };
 };

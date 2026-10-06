@@ -81,9 +81,10 @@ const query = async (sql, params = []) => {
   }
   if (/INSERT INTO "ContentActivationTemplate"\(/.test(t)) {
     const [id, scope, name, channel, design, html, subject, preheader, createdBy] = params;
+    const status = /'borrador'/.test(t) ? 'borrador' : 'activa';
     datos.templates.push({
       id, scope, name, channel, design: J(design), html, subject, preheader,
-      isDefault: false, status: 'activa', version: 1, createdBy,
+      isDefault: false, status, version: 1, createdBy,
       createdAt: ahora(), updatedAt: ahora(),
     });
     return { rows: [] };

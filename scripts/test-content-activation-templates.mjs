@@ -46,6 +46,10 @@ check('alias español resuelven', V.canonicalVar('nombre_club') === 'club_name'
   && V.canonicalVar('url_rotary_en_accion') === 'form_url'
   && V.canonicalVar('formulario_url') === 'form_url');
 check('desconocida no resuelve', V.canonicalVar('monto') === null);
+check('dotted válido resuelve por ámbito', V.canonicalVar('contact.first_name') === 'contact.first_name'
+  && V.canonicalVar('club.name') === 'club.name'
+  && V.canonicalVar('campaign.url') === 'campaign.url');
+check('dotted inválido no resuelve', V.canonicalVar('contact.monto') === null && V.canonicalVar('nave.club') === null);
 check('findUnknownVars detecta', JSON.stringify(V.findUnknownVars('Hola {{nombre_club}}, tu {{monto}}')) === JSON.stringify(['monto']));
 check('sin variables no hay desconocidas', V.findUnknownVars('Hola {{club_name}}').length === 0);
 {
@@ -56,6 +60,42 @@ check('sin variables no hay desconocidas', V.findUnknownVars('Hola {{club_name}}
   check('resuelve con aliases y contexto', v.club_name === 'Cali' && v.campaign_name === 'Camp' && v.form_url === 'https://f' && v.site_name === 'Distrito');
   check('fecha documentada presente', typeof v.fecha === 'string' && v.fecha.length > 4);
   check('ausente queda vacío, no "undefined"', V.resolveCampaignVars({}).club_name === '' && V.resolveCampaignVars({}).recipient_name === '');
+}
+{
+  // Ámbitos CRM + `|default` (v4.1167).
+  const scopes = V.buildCrmScopes({
+    contact: { name: 'Ana Restrepo', email: 'ana@club.org', phone: '+57300111', company: 'ACME', city: 'Cali', country: 'Colombia' },
+    club: { name: 'Club Rotario Cali', city: 'Cali', country: 'Colombia' },
+    districtName: 'Distrito 4281',
+    campaign: { name: 'Feria 2027', url: 'https://rotary4281.org/feria' },
+  });
+  check('buildCrmScopes separa nombre/apellido', scopes.contact.first_name === 'Ana' && scopes.contact.last_name === 'Restrepo');
+  const r1 = V.renderWithDefaults('Hola {{contact.first_name}}, de {{club.name}} ({{district.name}})', scopes);
+  check('dotted resuelve por ámbito', r1.text === 'Hola Ana, de Club Rotario Cali (Distrito 4281)' && r1.missing.length === 0, r1.text);
+  const r2 = V.renderWithDefaults('Hola {{contact.first_name|Amigo}} <{{contact.email}}>', { contact: {} });
+  check('|default cubre ausente y el presente manda', r2.text === 'Hola Amigo <>' && r2.missing.length === 1 && r2.missing[0] === 'contact.email', JSON.stringify(r2));
+  const r3 = V.renderWithDefaults('Tu {{monto}} listo', scopes);
+  check('desconocida se conserva y se reporta', r3.text === 'Tu {{monto}} listo' && JSON.stringify(r3.missing) === JSON.stringify(['monto']));
+  const r4 = V.renderWithDefaults('<b>{{club.name}}</b>', { club: { name: 'A&B <Cali>' } });
+  check('escapa valores para HTML', r4.text === '<b>A&amp;B &lt;Cali&gt;</b>', r4.text);
+  const r5 = V.renderWithDefaults('Campaña {{campaign.name}}: {{campaign.url}}', scopes);
+  check('campaña con nombre y url', r5.text === 'Campaña Feria 2027: https://rotary4281.org/feria', r5.text);
+}
+{
+  // Paridad navegador/servidor del espejo TS (v4.1167).
+  execSync(
+    './node_modules/.bin/esbuild src/lib/contentActivationVariables.ts --bundle --platform=node --format=esm --outfile=/tmp/spec-vars-front.mjs --log-level=error',
+    { stdio: 'inherit' }
+  );
+  const front = await import(pathToFileURL('/tmp/spec-vars-front.mjs').href);
+  check('espejo: mismo catálogo', JSON.stringify(front.VARIABLE_IDS) === JSON.stringify(V.VARIABLE_IDS));
+  check('espejo: mismos alias', JSON.stringify(Object.keys(front.VARIABLE_ALIASES).sort()) === JSON.stringify(Object.keys(V.VARIABLE_ALIASES).sort()));
+  const scopes = { contact: { first_name: 'Ana', email: 'a@x.org' }, club: { name: 'Cali' }, district: { name: 'D4281' }, campaign: { name: 'F', url: 'https://f' } };
+  for (const txt of ['Hola {{contact.first_name}} ({{club.name}})', 'Hola {{nombre_club|Amigo}}', 'Tu {{monto}}', '<b>{{club.name}}</b>']) {
+    const a = V.renderWithDefaults(txt, scopes);
+    const b = front.renderWithDefaults(txt, scopes);
+    check(`espejo: paridad en ${txt.slice(0, 28)}…`, a.text === b.text && JSON.stringify(a.missing) === JSON.stringify(b.missing), `${a.text} vs ${b.text}`);
+  }
 }
 
 grupo('2 · Sustitución escapada y saneado');
@@ -126,6 +166,15 @@ r = await correr(TPLC.create, {
 });
 check('crear plantilla → v1', r.code === 201 && r.body?.template?.version === 1, `code=${r.code} ${r.body?.error || ''}`);
 const tplId = r.body?.template?.id;
+check('nueva plantilla nace en borrador', r.body?.template?.status === 'borrador', r.body?.template?.status);
+r = await correr(TPLC.transition, { ...SUPER, params: { id: tplId }, body: { status: 'activa' } });
+check('borrador → activa', r.code === 200 && r.body?.template?.status === 'activa', `code=${r.code}`);
+r = await correr(TPLC.transition, { ...SUPER, params: { id: tplId }, body: { status: 'borrador' } });
+check('activa → borrador bloqueado', r.code === 400, `code=${r.code}`);
+r = await correr(TPLC.transition, { ...SUPER, params: { id: tplId }, body: { status: 'inactiva' } });
+check('activa → inactiva', r.code === 200, `code=${r.code}`);
+r = await correr(TPLC.transition, { ...SUPER, params: { id: tplId }, body: { status: 'activa' } });
+check('inactiva → activa', r.code === 200, `code=${r.code}`);
 
 r = await correr(TPLC.update, { ...SUPER, params: { id: tplId }, body: { subject: 'Hola {{club_name}} v2', note: 'ajuste' } });
 check('editar crea v2 (no reescribe)', r.code === 200 && r.body?.template?.version === 2 && r.body?.template?.subject.includes('v2'), `code=${r.code}`);
@@ -218,6 +267,55 @@ r = await correr(TPLC.update, { ...SITIO, params: { id: tplId }, body: { subject
 check('sitio no edita plantilla global → 403', r.code === 403, `code=${r.code}`);
 r = await correr(TPLC.list, { ...SITIO, query: {} });
 check('sitio VE las globales (para usarlas)', (r.body?.templates || []).some((t) => t.id === tplId), `n=${r.body?.templates?.length}`);
+
+grupo('8 · Ciclo de vida v4.1167: estados, default activa, duplicado y validaciones');
+{
+  // Transiciones permitidas y bloqueadas (matriz del flujo).
+  check('flujo borrador→activa sí', TPL.canTransitionTemplate('borrador', 'activa'));
+  check('flujo borrador→inactiva no', !TPL.canTransitionTemplate('borrador', 'inactiva'));
+  check('flujo activa→inactiva sí', TPL.canTransitionTemplate('activa', 'inactiva'));
+  check('flujo activa→borrador no', !TPL.canTransitionTemplate('activa', 'borrador'));
+  check('flujo archivada→activa sí', TPL.canTransitionTemplate('archivada', 'activa'));
+  check('flujo archivada→inactiva no', !TPL.canTransitionTemplate('archivada', 'inactiva'));
+  // Predeterminada exige activa: borrador → 400.
+  const nb = await correr(TPLC.create, { ...SUPER, body: { name: 'Solo borrador', channel: 'email', html: '<p>Hola</p>', subject: 'Hola' } });
+  const nbId = nb.body?.template?.id;
+  check('nueva nace en borrador', nb.body?.template?.status === 'borrador');
+  const defBorrador = await correr(TPLC.setDefault, { ...SUPER, params: { id: nbId }, body: {} });
+  check('default en borrador → 400', defBorrador.code === 400, `code=${defBorrador.code}`);
+  await correr(TPLC.transition, { ...SUPER, params: { id: nbId }, body: { status: 'activa' } });
+  const defActiva = await correr(TPLC.setDefault, { ...SUPER, params: { id: nbId }, body: {} });
+  check('default en activa → 200', defActiva.code === 200 && defActiva.body?.template?.isDefault === true, `code=${defActiva.code}`);
+  // Duplicar conserva canal y nace en borrador v1.
+  const dup = await correr(TPLC.duplicate, { ...SUPER, params: { id: nbId }, body: {} });
+  check('duplicado nace en borrador v1', dup.code === 201 && dup.body?.template?.status === 'borrador' && dup.body?.template?.version === 1, `code=${dup.code}`);
+  // Uso y métricas responden con forma estable (aunque sea vacío).
+  const uso = await correr(TPLC.usage, { ...SUPER, params: { id: nbId } });
+  check('usage con total + lastUsedAt', uso.code === 200 && typeof uso.body?.total === 'number' && 'lastUsedAt' in uso.body, `code=${uso.code}`);
+  const met = await correr(TPLC.metrics, { ...SUPER, params: { id: nbId } });
+  check('metrics con email + activacion', met.code === 200 && met.body?.email && met.body?.activacion, `code=${met.code}`);
+}
+{
+  // EmailCampaign: validación de variables y nombre de duplicado (sin BD).
+  const EMC = await import('../server/controllers/emailMarketingController.js');
+  check('unknownVars detecta en variantes', JSON.stringify(EMC.unknownVarsInCampaign({ subject: 'Hola {{club_name}}', content: 'x', variantSubject: 'B {{monto}}' })) === JSON.stringify(['monto']));
+  check('unknownVars limpio en pieza sana', EMC.unknownVarsInCampaign({ subject: 'Hola {{club_name}}', content: 'Bienvenido {{contact.first_name|Amigo}}' }).length === 0);
+  check('duplicar nombra (copia)', EMC.duplicateCampaignName('Feria') === 'Feria (copia)');
+  check('duplicar incrementa', EMC.duplicateCampaignName('Feria (copia)') === 'Feria (copia 2)');
+  check('duplicar incrementa 2→3', EMC.duplicateCampaignName('Feria (copia 2)') === 'Feria (copia 3)');
+  // Automatizaciones: trigger namespaced + validación de variables.
+  const EMA = await import('../server/controllers/emailAutomationController.js');
+  check('trigger simple ok', EMA.assertTriggerTag('bienvenida') === 'bienvenida');
+  check('trigger namespaced ca: ok', EMA.assertTriggerTag('ca:feria-2027') === 'ca:feria-2027');
+  let mal = null;
+  try { EMA.assertTriggerTag('con espacios'); } catch (e) { mal = e; }
+  check('trigger con espacios → 400', mal?.status === 400);
+  mal = null;
+  try { EMA.assertTriggerTag(''); } catch (e) { mal = e; }
+  check('trigger vacío → 400', mal?.status === 400);
+  check('unknownVars en pasos email', JSON.stringify(EMA.unknownVarsInSteps([{ actionType: 'email', subject: 'Hola', content: 'Tu {{monto}}' }])) === JSON.stringify(['monto']));
+  check('pasos no-email no aportan vars', EMA.unknownVarsInSteps([{ actionType: 'wait' }, { actionType: 'notify', subject: 'x {{monto}}', content: '' }]).length === 0);
+}
 
 console.log('\n' + '─'.repeat(60));
 if (malos.length) {

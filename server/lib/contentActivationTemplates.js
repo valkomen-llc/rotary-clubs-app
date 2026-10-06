@@ -123,7 +123,7 @@ export async function createTemplate({ scope = 'global', name, channel = 'email'
   const safeScope = String(scope || 'global');
   await db.query(
     `INSERT INTO "ContentActivationTemplate"(id,scope,name,channel,design,html,subject,preheader,"isDefault",status,version,"createdBy")
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8,FALSE,'activa',1,$9)`,
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,FALSE,'borrador',1,$9)`,
     [id, safeScope, String(name).slice(0, 160), channel, JSON.stringify(design || {}), channel === 'email' ? cleanHtml(html) : String(html || '').slice(0, 8000),
       String(subject || '').slice(0, 200), String(preheader || '').slice(0, 300), createdBy]);
   const tpl = await getTemplate(id);
@@ -134,7 +134,7 @@ export async function createTemplate({ scope = 'global', name, channel = 'email'
 export async function updateTemplate(id, { design, html, subject, preheader, name, note = '', createdBy = null }) {
   const cur = await getTemplate(id);
   if (!cur) { const e = new Error('Plantilla no encontrada.'); e.status = 404; throw e; }
-  if (cur.status !== 'activa') { const e = new Error('Solo se editan plantillas activas.'); e.status = 400; throw e; }
+  if (!['borrador', 'activa'].includes(cur.status)) { const e = new Error('Solo se editan plantillas en borrador o activas.'); e.status = 400; throw e; }
   const next = Number(cur.version) + 1;
   const htmlFinal = cur.channel === 'email' ? cleanHtml(html ?? cur.html) : String(html ?? cur.html ?? '').slice(0, 8000);
   await db.query(
@@ -162,6 +162,38 @@ export async function duplicateTemplate(id, { createdBy = null, scope = null } =
 export async function archiveTemplate(id, archived = true) {
   await ensureTemplateSchema();
   await db.query(`UPDATE "ContentActivationTemplate" SET status=$2,"updatedAt"=NOW() WHERE id=$1`, [id, archived ? 'archivada' : 'activa']);
+  return getTemplate(id);
+}
+
+// ─── Ciclo de vida (v4.1167) ────────────────────────────────────────────
+// borrador → activa ⇄ inactiva, archivada desde cualquiera (menos borrador,
+// que se elimina directo). Archivada solo vuelve a activa.
+// La predeterminada exige estar activa.
+export const TEMPLATE_STATUS_FLOW = {
+  borrador: ['activa', 'archivada'],
+  activa: ['inactiva', 'archivada'],
+  inactiva: ['activa', 'archivada'],
+  archivada: ['activa'],
+};
+export const TEMPLATE_STATUS_IDS = Object.keys(TEMPLATE_STATUS_FLOW);
+
+export const canTransitionTemplate = (from, to) =>
+  Array.isArray(TEMPLATE_STATUS_FLOW[from]) && TEMPLATE_STATUS_FLOW[from].includes(to);
+
+export async function setTemplateStatus(id, to) {
+  const cur = await getTemplate(id);
+  if (!cur) {
+    const e = new Error('Plantilla no encontrada.');
+    e.status = 404;
+    throw e;
+  }
+  if (cur.status === to) return cur;
+  if (!canTransitionTemplate(cur.status, to)) {
+    const e = new Error(`Transición ${cur.status} → ${to} no permitida.`);
+    e.status = 400;
+    throw e;
+  }
+  await db.query(`UPDATE "ContentActivationTemplate" SET status=$2,"updatedAt"=NOW() WHERE id=$1`, [id, to]);
   return getTemplate(id);
 }
 
@@ -213,12 +245,14 @@ export async function seedDefaults() {
     scope: 'global', name: 'Rotary en Acción · Institucional', channel: 'email',
     design: seedEmailDesign(), html: '', subject: d.email.subject, preheader: d.email.preheader, createdBy: 'system',
   });
+  if (email.status !== 'activa') await setTemplateStatus(email.id, 'activa');
   await db.query(`UPDATE "ContentActivationTemplate" SET "isDefault"=TRUE WHERE id=$1`, [email.id]);
   const wa = await createTemplate({
     scope: 'global', name: 'Rotary en Acción · Institucional', channel: 'whatsapp',
     design: { headerType: 'none', headerText: '', body: d.whatsapp.body, footer: '', buttons: [] },
     html: '', subject: '', preheader: '', createdBy: 'system',
   });
+  if ((await getTemplate(wa.id))?.status !== 'activa') await setTemplateStatus(wa.id, 'activa');
   await db.query(`UPDATE "ContentActivationTemplate" SET "isDefault"=TRUE WHERE id=$1`, [wa.id]);
   return true;
 }
@@ -227,5 +261,6 @@ export default {
   ensureTemplateSchema, templateVisibleTo, templateWritableBy,
   listTemplates, getTemplate, getTemplateVersions,
   createTemplate, updateTemplate, duplicateTemplate,
-  archiveTemplate, removeTemplate, setDefaultTemplate, seedDefaults,
+  archiveTemplate, setTemplateStatus, canTransitionTemplate, TEMPLATE_STATUS_IDS,
+  removeTemplate, setDefaultTemplate, seedDefaults,
 };

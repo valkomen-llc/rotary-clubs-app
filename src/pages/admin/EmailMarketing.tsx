@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import Automations from '../../components/admin/email-marketing/Automations';
+import TemplatesTab from '../../components/admin/email-marketing/TemplatesTab';
 import EmailDashboard from '../../components/admin/email-marketing/Dashboard';
 import EmailBuilder from '../../components/admin/email-marketing/EmailBuilder';
 import EmailAiAssistant from '../../components/admin/email-marketing/EmailAiAssistant';
@@ -154,12 +155,15 @@ const EmailMarketing: React.FC = () => {
     const [preview, setPreview] = useState(false);
     const [report, setReport] = useState<Report | null>(null);
     const [reportLoading, setReportLoading] = useState(false);
-    const [tab, setTab] = useState<'dashboard' | 'campaigns' | 'automations' | 'provider'>('dashboard');
+    const [tab, setTab] = useState<'dashboard' | 'campaigns' | 'automations' | 'templates' | 'provider'>('dashboard');
     const [contentMode, setContentMode] = useState<'visual' | 'html'>('visual');
     const [builderDesign, setBuilderDesign] = useState<EmailDesign | null>(null);
     const [sendingTest, setSendingTest] = useState(false);
     const [aiOpen, setAiOpen] = useState(false);
     const [analyticsId, setAnalyticsId] = useState<string | null>(null);
+    // Referencia a la plantilla central adoptada (snapshot): se guarda en
+    // `design._template` para que Uso/Métricas la rastreen sin acoplar vivo.
+    const [templateRef, setTemplateRef] = useState<{ id: string; version: number } | null>(null);
 
     const fetchCampaigns = useCallback(async () => {
         try {
@@ -194,6 +198,22 @@ const EmailMarketing: React.FC = () => {
     }, []);
 
     const fetchTemplates = useCallback(async () => {
+        // Biblioteca central versionada (v4.1166/67): la misma que Campañas de
+        // Contenido. `/communications` queda solo como respaldo de lectura.
+        try {
+            const res = await fetch(`${API}/content-activation/templates?channel=email`, { headers: authHeaders() });
+            if (res.ok) {
+                const d = await res.json();
+                const rows: any[] = d.templates || [];
+                setTemplates(rows.map((t) => ({
+                    id: t.id,
+                    name: `${t.name} (v${t.version ?? 1})`,
+                    subject: t.subject,
+                    content: t.html || '',
+                })));
+                return;
+            }
+        } catch { /* cae al respaldo */ }
         try {
             const res = await fetch(`${API}/communications/templates`, { headers: authHeaders() });
             if (res.ok) {
@@ -211,10 +231,26 @@ const EmailMarketing: React.FC = () => {
         fetchTemplates();
     }, [fetchCampaigns, fetchStats, fetchLists, fetchTags, fetchTemplates]);
 
-    const loadTemplate = (id: string) => {
+    const loadTemplate = async (id: string) => {
+        // Lee el snapshot versionado central (no la lista resumida): lo que se
+        // carga es lo que se envía, con su versión fijada en `design._template`.
+        try {
+            const res = await fetch(`${API}/content-activation/templates/${id}`, { headers: authHeaders() });
+            if (res.ok) {
+                const d = await res.json();
+                const t = d.template;
+                if (t) {
+                    setForm(f => ({ ...f, subject: t.subject || f.subject, content: t.html || f.content, preheader: t.preheader ?? f.preheader }));
+                    setTemplateRef({ id: t.id, version: t.version });
+                    toast.success(`Plantilla "${t.name}" v${t.version} cargada`);
+                    return;
+                }
+            }
+        } catch { /* cae al respaldo en memoria */ }
         const t = templates.find(x => x.id === id);
         if (!t) return;
         setForm(f => ({ ...f, subject: t.subject || f.subject, content: t.content }));
+        setTemplateRef(null);
         toast.success(`Plantilla "${t.name}" cargada`);
     };
 
@@ -222,13 +258,20 @@ const EmailMarketing: React.FC = () => {
         const name = window.prompt('Nombre de la plantilla:', form.name || 'Plantilla de campaña');
         if (!name) return;
         try {
-            const res = await fetch(`${API}/communications/templates`, {
+            // Guarda en la biblioteca central (nace en borrador; se activa en la
+            // pestaña Plantillas). `design: {}` evita validar bloques del otro editor.
+            const res = await fetch(`${API}/content-activation/templates`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                body: JSON.stringify({ name, type: 'email', subject: form.subject, content: form.content }),
+                body: JSON.stringify({ name, channel: 'email', design: {}, html: form.content, subject: form.subject, preheader: form.preheader }),
             });
-            if (!res.ok) throw new Error('No se pudo guardar la plantilla');
-            toast.success('Plantilla guardada');
+            if (!res.ok) {
+                const d = await res.json().catch(() => ({}));
+                throw new Error(d.error || 'No se pudo guardar la plantilla');
+            }
+            const d = await res.json();
+            if (d.template) setTemplateRef({ id: d.template.id, version: d.template.version });
+            toast.success('Plantilla guardada en la biblioteca central (borrador)');
             fetchTemplates();
             fetchStats();
         } catch (err: any) {
@@ -267,6 +310,7 @@ const EmailMarketing: React.FC = () => {
 
     const openModal = (c?: Campaign) => {
         setPreview(false);
+        setTemplateRef(null);
         if (c) {
             setEditing(c);
             setForm({
@@ -290,7 +334,11 @@ const EmailMarketing: React.FC = () => {
                 abMetric: (c.abMetric === 'clicks' ? 'clicks' : 'opens'),
             });
             const parsed = parseDesign(c.design);
-            if (parsed) { setBuilderDesign(parsed); setContentMode('visual'); }
+            if (parsed) {
+                setBuilderDesign(parsed); setContentMode('visual');
+                const ref = (parsed as any)?._template;
+                if (ref?.id) setTemplateRef({ id: ref.id, version: ref.version || 1 });
+            }
             else { setBuilderDesign(null); setContentMode('html'); } // campaña heredada: HTML crudo
         } else {
             setEditing(null);
@@ -366,7 +414,12 @@ const EmailMarketing: React.FC = () => {
         if (form.abEnabled && !form.variantSubject.trim()) { toast.error('Escribe el asunto de la variante B para la prueba A/B'); return; }
         setIsSubmitting(true);
         try {
-            const designStr = contentMode === 'visual' && builderDesign ? JSON.stringify(builderDesign) : null;
+            // Rastrea la plantilla central adoptada sin acoplar vivo: el envío
+            // usa el snapshot (subject/content), y `design._template` solo sirve
+            // para Uso/Métricas por plantilla.
+            const designStr = contentMode === 'visual' && builderDesign
+                ? JSON.stringify(templateRef ? { ...builderDesign, _template: templateRef } : builderDesign)
+                : (templateRef ? JSON.stringify({ _template: templateRef }) : null);
             const url = editing ? `${API}/email-marketing/${editing.id}` : `${API}/email-marketing`;
             const res = await fetch(url, {
                 method: editing ? 'PUT' : 'POST',
@@ -480,6 +533,13 @@ const EmailMarketing: React.FC = () => {
                 >
                     <Workflow className="w-4 h-4" /> Automatizaciones
                 </button>
+                <button
+                    onClick={() => setTab('templates')}
+                    className={`px-4 py-2 text-sm font-bold border-b-2 -mb-px transition-colors flex items-center gap-2 ${tab === 'templates' ? 'border-rotary-blue text-rotary-blue' : 'border-transparent text-gray-400 hover:text-gray-600'}`}
+                    title="Biblioteca central de plantillas (la misma que Campañas de Contenido)"
+                >
+                    <FileText className="w-4 h-4" /> Plantillas
+                </button>
                 {isSuperAdmin && (
                     <button
                         onClick={() => setTab('provider')}
@@ -495,6 +555,8 @@ const EmailMarketing: React.FC = () => {
             {tab === 'provider' && isSuperAdmin && <ProviderSettings />}
 
             {tab === 'automations' && <Automations />}
+
+            {tab === 'templates' && <TemplatesTab />}
 
             {tab === 'campaigns' && <>
 
@@ -864,10 +926,15 @@ const EmailMarketing: React.FC = () => {
                                     type="button"
                                     onClick={saveAsTemplate}
                                     className="flex items-center gap-1.5 px-3 py-2 text-sm font-bold text-rotary-blue bg-white border border-blue-200 rounded-lg hover:bg-sky-50 transition-all"
-                                    title="Guardar el contenido actual como plantilla reutilizable"
+                                    title="Guardar el contenido actual como plantilla reutilizable en la biblioteca central"
                                 >
                                     <Save className="w-4 h-4" /> Guardar como plantilla
                                 </button>
+                                {templateRef && (
+                                    <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-1">
+                                        Plantilla central v{templateRef.version} · se envía esta copia
+                                    </span>
+                                )}
                             </div>
 
                             <div>

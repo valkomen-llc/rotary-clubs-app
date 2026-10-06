@@ -3,6 +3,7 @@ import prisma from '../lib/prisma.js';
 import db from '../lib/db.js';
 import EmailService from '../services/EmailService.js';
 import { resolveClubId } from './crmController.js';
+import { buildCrmScopes, renderWithDefaults, findUnknownVars } from '../lib/contentActivationVariables.js';
 
 // v4.438 — Sistema de Email Marketing (campañas tipo Mailchimp).
 // Reutiliza la audiencia del CRM (CrmContact/CrmList) y EmailService (Resend/SMTP)
@@ -13,6 +14,57 @@ console.log('[emailMarketingController] v4.576 — resolveClubId compartido con 
 // que el Directorio CRM: admins sin clubId en el token caen al Platform Club (Origen).
 
 const isValidEmail = (e) => typeof e === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim());
+
+// ─── Variables por destinatario (v4.1167) ──────────────────────────────
+// Catálogo centralizado (`contentActivationVariables`): `{{contact.first_name}}`,
+// `{{club.name}}`, `{{campaign.name}}`, `|default`, etc. Sin variables no hay
+// sustitución y el contenido sale idéntico que antes (compatibilidad total).
+
+// Ámbitos para un contacto + campaña + sitio. El club se lee una vez por
+// envío, no por contacto.
+const scopesForSend = async (clubId, campaign) => {
+  const club = await prisma.club.findUnique({
+    where: { id: clubId }, select: { name: true, city: true, country: true, district: true },
+  }).catch(() => null);
+  return { club: club || {}, campaign: { name: campaign?.name || '', url: '' } };
+};
+
+const scopesForContact = (contact, ctx, campaign) => buildCrmScopes({
+  contact,
+  club: ctx.club || {},
+  districtName: contact?.district || ctx.club?.district || '',
+  campaign: { ...(ctx.campaign || {}), name: campaign?.name || ctx.campaign?.name || '' },
+});
+
+/** Sustituye asunto/contenido/preheader para UN destinatario (escapando). */
+const personalizeEmail = (parts, scopes) => {
+  const out = {};
+  let missing = [];
+  for (const k of ['subject', 'content', 'preheader']) {
+    if (parts[k] === undefined || parts[k] === null) continue;
+    const r = renderWithDefaults(String(parts[k]), scopes);
+    out[k] = r.text;
+    missing = [...missing, ...r.missing];
+  }
+  return { ...out, missing: [...new Set(missing)] };
+};
+
+/** Variables desconocidas en toda la pieza (incluidas variantes A/B). */
+export const unknownVarsInCampaign = (campaign) => {
+  const textos = [
+    campaign.subject, campaign.content, campaign.preheader,
+    campaign.variantSubject, campaign.variantPreheader, campaign.variantContent,
+  ].filter(Boolean).join('\n');
+  return findUnknownVars(textos);
+};
+
+/** Nombre de la copia (duplicar): "X" → "X (copia)" → "X (copia 2)"… */
+export const duplicateCampaignName = (base) => {
+  const b = String(base || 'Campaña');
+  return /\((copia)(?:\s(\d+))?\)$/.test(b)
+    ? b.replace(/\((copia)(?:\s(\d+))?\)$/, (_, c, n) => `(${c} ${n ? Number(n) + 1 : 2})`)
+    : `${b} (copia)`;
+};
 
 // Resuelve los destinatarios reales (contactos con email válido, activos y sin baja).
 const resolveRecipients = async (clubId, audience, listId, tag, listIds) => {
@@ -67,13 +119,17 @@ const resolveRecipients = async (clubId, audience, listId, tag, listIds) => {
     });
 };
 
-// GET /  — lista de campañas del sitio
+// GET /  — lista de campañas del sitio (las archivadas solo con ?includeArchived=1)
 export const listCampaigns = async (req, res) => {
     try {
         const clubId = await resolveClubId(req);
         if (!clubId) return res.json([]);
+        const where = { clubId };
+        if (req.query.includeArchived !== '1') {
+            where.status = { not: 'archivada' };
+        }
         const campaigns = await prisma.emailCampaign.findMany({
-            where: { clubId },
+            where,
             orderBy: { createdAt: 'desc' },
         });
         res.json(campaigns);
@@ -257,15 +313,20 @@ const buildEmailHtml = (contentHtml, preheaderText, rid, contact, baseUrl) => {
 // Envía un asunto/contenido concreto a una lista de contactos, registrando un
 // EmailCampaignRecipient por cada uno (con la variante indicada). Reutilizado por el
 // envío normal, la fase de prueba A/B y el envío del ganador.
-const sendToContacts = async ({ clubId, campaignId, contacts, subject, content, preheader, variant, baseUrl, userId }) => {
+// Personaliza `{{variables}}` por destinatario con el catálogo centralizado.
+const sendToContacts = async ({ clubId, campaignId, contacts, subject, content, preheader, variant, baseUrl, userId, campaign, scopesCtx }) => {
     let sent = 0;
     let failed = 0;
     const rows = [];
     for (const contact of contacts) {
         const rid = randomUUID();
-        const html = buildEmailHtml(content, preheader, rid, contact, baseUrl);
+        const personal = personalizeEmail(
+            { subject, content, preheader },
+            scopesForContact(contact, scopesCtx || {}, campaign || {})
+        );
+        const html = buildEmailHtml(personal.content ?? content, personal.preheader ?? preheader, rid, contact, baseUrl);
         const result = await EmailService.sendEmail({
-            clubId, to: contact.email.trim(), subject, html, userId: userId || null,
+            clubId, to: contact.email.trim(), subject: personal.subject ?? subject, html, userId: userId || null,
         });
         const ok = !!result?.success;
         if (ok) sent += 1; else failed += 1;
@@ -289,6 +350,13 @@ const dispatchCampaign = async ({ campaign, baseUrl, userId }) => {
         throw err;
     }
 
+    const desconocidas = unknownVarsInCampaign(campaign);
+    if (desconocidas.length) {
+        const err = new Error(`Variables desconocidas: ${desconocidas.map((v) => `{{${v}}}`).join(', ')}. Corrige la plantilla antes de enviar.`);
+        err.code = 'UNKNOWN_VARS';
+        throw err;
+    }
+    const scopesCtx = await scopesForSend(clubId, campaign);
     const batch = recipients.slice(0, MAX_RECIPIENTS_PER_SEND);
     await prisma.emailCampaign.update({
         where: { id: campaign.id },
@@ -300,7 +368,7 @@ const dispatchCampaign = async ({ campaign, baseUrl, userId }) => {
     const { sent, failed } = await sendToContacts({
         clubId, campaignId: campaign.id, contacts: batch,
         subject: campaign.subject, content: campaign.content, preheader: campaign.preheader,
-        variant: null, baseUrl, userId,
+        variant: null, baseUrl, userId, campaign, scopesCtx,
     });
 
     const finalStatus = sent > 0 ? 'sent' : 'failed';
@@ -344,17 +412,24 @@ const dispatchAbTest = async ({ campaign, baseUrl, userId }) => {
         },
     });
 
+    const desconocidasAB = unknownVarsInCampaign(campaign);
+    if (desconocidasAB.length) {
+        const err = new Error(`Variables desconocidas: ${desconocidasAB.map((v) => `{{${v}}}`).join(', ')}. Corrige la plantilla antes de enviar.`);
+        err.code = 'UNKNOWN_VARS';
+        throw err;
+    }
+    const scopesCtxAB = await scopesForSend(clubId, campaign);
     const rA = await sendToContacts({
         clubId, campaignId: campaign.id, contacts: groupA,
         subject: campaign.subject, content: campaign.content, preheader: campaign.preheader,
-        variant: 'A', baseUrl, userId,
+        variant: 'A', baseUrl, userId, campaign, scopesCtx: scopesCtxAB,
     });
     const rB = await sendToContacts({
         clubId, campaignId: campaign.id, contacts: groupB,
         subject: campaign.variantSubject || campaign.subject,
         content: campaign.variantContent || campaign.content,
         preheader: campaign.variantPreheader || campaign.preheader,
-        variant: 'B', baseUrl, userId,
+        variant: 'B', baseUrl, userId, campaign, scopesCtx: scopesCtxAB,
     });
 
     const sent = rA.sent + rB.sent;
@@ -410,9 +485,11 @@ export const processAbTests = async ({ baseUrl, now = new Date() } = {}) => {
 
             let res = { sent: 0, failed: 0 };
             if (remainder.length) {
+                const scopesCtxW = await scopesForSend(campaign.clubId, campaign);
                 res = await sendToContacts({
                     clubId: campaign.clubId, campaignId: campaign.id, contacts: remainder,
                     subject, content, preheader, variant: 'W', baseUrl, userId: campaign.createdById,
+                    campaign, scopesCtx: scopesCtxW,
                 });
             }
 
@@ -457,7 +534,7 @@ export const sendCampaign = async (req, res) => {
         const result = await dispatchCampaign({ campaign, baseUrl, userId: req.user?.id });
         res.json(result);
     } catch (error) {
-        if (error.code === 'NO_RECIPIENTS' || error.code === 'AB_TOO_SMALL') {
+        if (error.code === 'NO_RECIPIENTS' || error.code === 'AB_TOO_SMALL' || error.code === 'UNKNOWN_VARS') {
             return res.status(400).json({ error: error.message });
         }
         console.error('[emailMarketing] sendCampaign:', error);
@@ -470,6 +547,7 @@ export const sendCampaign = async (req, res) => {
 
 // POST /test-send — envía un correo de prueba a una dirección arbitraria.
 // No crea EmailCampaignRecipient ni afecta métricas; sirve para revisar el diseño.
+// Resuelve variables con ámbitos vacíos y devuelve las faltantes como aviso.
 export const sendTest = async (req, res) => {
     try {
         const clubId = await resolveClubId(req);
@@ -477,23 +555,27 @@ export const sendTest = async (req, res) => {
         const { to, subject, content } = req.body;
         if (!isValidEmail(to)) return res.status(400).json({ error: 'La dirección de prueba no es válida' });
         if (!subject || !content) return res.status(400).json({ error: 'Asunto y contenido son obligatorios' });
+        const personal = personalizeEmail(
+            { subject, content, preheader: '' },
+            buildCrmScopes({ contact: { name: 'Contacto de prueba', email: to }, club: {}, campaign: {} })
+        );
         const html = `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f3f4f6">
             <div style="max-width:600px;margin:0 auto;padding:24px;background:#ffffff">
                 <div style="background:#fef3c7;color:#92400e;font-family:Arial,sans-serif;font-size:12px;padding:8px 12px;border-radius:8px;margin-bottom:16px">✉️ Correo de PRUEBA — así se verá tu campaña (sin el pie de baja real).</div>
-                ${content}
+                ${personal.content ?? content}
             </div>
         </body></html>`;
         const result = await EmailService.sendEmail({
             clubId,
             to: String(to).trim(),
-            subject: `[PRUEBA] ${subject}`,
+            subject: `[PRUEBA] ${personal.subject ?? subject}`,
             html,
             userId: req.user?.id || null,
         });
         if (!result?.success) {
             return res.status(502).json({ error: result?.error || 'El proveedor no pudo enviar la prueba' });
         }
-        res.json({ success: true });
+        res.json({ success: true, missing: personal.missing });
     } catch (error) {
         console.error('[emailMarketing] sendTest:', error);
         res.status(500).json({ error: 'Error al enviar la prueba' });
@@ -510,6 +592,10 @@ export const scheduleCampaign = async (req, res) => {
         }
         if (!['draft', 'scheduled', 'failed'].includes(campaign.status)) {
             return res.status(400).json({ error: 'Solo se pueden programar campañas en borrador' });
+        }
+        const desconocidas = unknownVarsInCampaign(campaign);
+        if (desconocidas.length) {
+            return res.status(400).json({ error: `Variables desconocidas: ${desconocidas.map((v) => `{{${v}}}`).join(', ')}. Corrige la plantilla antes de programar.` });
         }
         const when = new Date(req.body.scheduledAt);
         if (isNaN(when.getTime()) || when.getTime() <= Date.now()) {
@@ -545,6 +631,122 @@ export const unscheduleCampaign = async (req, res) => {
     } catch (error) {
         console.error('[emailMarketing] unscheduleCampaign:', error);
         res.status(500).json({ error: 'Error al cancelar la programación' });
+    }
+};
+
+// POST /:id/duplicate — duplica como borrador (sin métricas ni programación).
+// El historial de la original queda intacto; la copia empieza de cero.
+export const duplicateCampaign = async (req, res) => {
+    try {
+        const clubId = await resolveClubId(req);
+        const cur = await prisma.emailCampaign.findUnique({ where: { id: req.params.id } });
+        if (!cur || cur.clubId !== clubId) {
+            return res.status(404).json({ error: 'Campaña no encontrada' });
+        }
+        const base = String(cur.name || 'Campaña');
+        const name = duplicateCampaignName(base);
+        const copy = await prisma.emailCampaign.create({
+            data: {
+                clubId,
+                name: name.slice(0, 160),
+                subject: cur.subject,
+                fromName: cur.fromName,
+                preheader: cur.preheader,
+                content: cur.content,
+                design: cur.design ?? undefined,
+                audience: cur.audience,
+                listId: cur.listId,
+                listIds: cur.listIds || [],
+                segmentTag: cur.segmentTag,
+                status: 'draft',
+                createdById: req.user?.id || null,
+            },
+        });
+        res.status(201).json(copy);
+    } catch (error) {
+        console.error('[emailMarketing] duplicateCampaign:', error);
+        res.status(500).json({ error: 'Error al duplicar la campaña' });
+    }
+};
+
+// POST /:id/archive | POST /:id/restore — archivado lógico (conserva métricas).
+const ARCHIVABLE = ['draft', 'scheduled', 'failed', 'sent'];
+export const archiveCampaign = async (req, res) => {
+    try {
+        const clubId = await resolveClubId(req);
+        const cur = await prisma.emailCampaign.findUnique({ where: { id: req.params.id } });
+        if (!cur || cur.clubId !== clubId) {
+            return res.status(404).json({ error: 'Campaña no encontrada' });
+        }
+        if (!ARCHIVABLE.includes(cur.status)) {
+            return res.status(400).json({ error: `No se puede archivar en estado ${cur.status}` });
+        }
+        const updated = await prisma.emailCampaign.update({
+            where: { id: cur.id }, data: { status: 'archivada', scheduledAt: null },
+        });
+        res.json(updated);
+    } catch (error) {
+        console.error('[emailMarketing] archiveCampaign:', error);
+        res.status(500).json({ error: 'Error al archivar la campaña' });
+    }
+};
+
+export const restoreCampaign = async (req, res) => {
+    try {
+        const clubId = await resolveClubId(req);
+        const cur = await prisma.emailCampaign.findUnique({ where: { id: req.params.id } });
+        if (!cur || cur.clubId !== clubId) {
+            return res.status(404).json({ error: 'Campaña no encontrada' });
+        }
+        if (cur.status !== 'archivada') {
+            return res.status(400).json({ error: 'Solo se restauran campañas archivadas' });
+        }
+        const updated = await prisma.emailCampaign.update({
+            where: { id: cur.id }, data: { status: 'draft' },
+        });
+        res.json(updated);
+    } catch (error) {
+        console.error('[emailMarketing] restoreCampaign:', error);
+        res.status(500).json({ error: 'Error al restaurar la campaña' });
+    }
+};
+
+// GET /:id/preview — renderiza con un destinatario real o de prueba, sin enviar.
+// Misma resolución de variables que el envío: lo que se ve es lo que llega.
+export const previewCampaign = async (req, res) => {
+    try {
+        const clubId = await resolveClubId(req);
+        const campaign = await prisma.emailCampaign.findUnique({ where: { id: req.params.id } });
+        if (!campaign || campaign.clubId !== clubId) {
+            return res.status(404).json({ error: 'Campaña no encontrada' });
+        }
+        const scopesCtx = await scopesForSend(clubId, campaign);
+        let contact = null;
+        if (req.query.contactId) {
+            contact = await prisma.crmContact.findFirst({
+                where: { id: String(req.query.contactId), clubId },
+            });
+            if (!contact) return res.status(404).json({ error: 'Contacto no encontrado en este sitio' });
+        }
+        const demo = contact || {
+            name: String(req.query.testName || 'Carolina'),
+            firstName: String(req.query.testName || 'Carolina'),
+            email: 'prueba@ejemplo.org',
+        };
+        const personal = personalizeEmail(
+            { subject: campaign.subject, content: campaign.content, preheader: campaign.preheader },
+            scopesForContact(demo, scopesCtx, campaign)
+        );
+        const rid = `preview-${Date.now().toString(36)}`;
+        const html = buildEmailHtml(personal.content ?? campaign.content, personal.preheader ?? campaign.preheader, rid, { id: demo.id || 'preview' }, `${req.protocol}://${req.get('host')}`);
+        res.json({
+            subject: personal.subject ?? campaign.subject,
+            html, missing: personal.missing,
+            contact: contact ? { id: contact.id, name: contact.name, email: contact.email } : null,
+        });
+    } catch (error) {
+        console.error('[emailMarketing] previewCampaign:', error);
+        res.status(500).json({ error: 'Error al generar la vista previa' });
     }
 };
 

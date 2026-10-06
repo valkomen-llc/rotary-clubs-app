@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1167.0',
+        title: 'Plantillas y Automatizaciones centrales: una biblioteca para todo 📚⚙️',
+        description: 'Email Marketing suma la pestaña Plantillas: la misma biblioteca versionada de Campañas de Contenido (estados borrador/activa/inactiva/archivada, versiones inmutables, uso por campaña con último uso y métricas agregadas), sin tiendas paralelas. El modal de campaña carga y guarda en esa biblioteca central y fija la versión adoptada en design._template para rastrear uso sin acoplar vivo. Variables unificadas con ámbitos ({{contact.first_name}}, {{club.name}}, {{campaign.name}}, |default) y sustitución por destinatario en campañas, pruebas y automatizaciones; el envío y la programación bloquean variables desconocidas. Automatizaciones con etiquetas namespaced (ca:…), vista previa y prueba por paso sin inscribir, métricas por estado y Super Admin con acceso. La IA solo sugiere (nunca envía sola).',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'automatizaciones', 'email-marketing', 'variables', 'lifecycle', 'production-release'],
+        type: 'feature',
+        impact: 'high',
+    },
+    {
         version: '4.1166.0',
         title: 'Diseñador de mensajes y biblioteca de plantillas en Campañas de Contenido 🎨✉️',
         description: 'El paso de contenido del constructor ahora incluye Diseño del mensaje por canal: editor visual de email por bloques (títulos, textos, imágenes con Biblioteca, botones, columnas, separadores, colores, tipografías, fondos, drag & drop, duplicar/eliminar, vista desktop/móvil) y editor propio de WhatsApp (encabezado, texto con variables, multimedia, pie, botones, vista de teléfono, contadores y límites del proveedor). Variables centralizadas y validadas ({{club_name}}, {{recipient_name}}, {{district_name}}, {{campaign_name}}, {{form_url}}, {{site_name}}, {{fecha}} más alias en español), vista previa con datos de prueba y envío de prueba por canal. Biblioteca versionada (crear, editar con versiones, duplicar, archivar, eliminar, predeterminada): la campaña congela una copia al usarla y nunca muta en silencio. Las plantillas institucionales actuales migraron como predeterminadas editables. El HTML se sanea en servidor y preview/prueba/envío usan el mismo artefacto.',

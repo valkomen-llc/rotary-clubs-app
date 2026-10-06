@@ -8,19 +8,25 @@ import {
     deleteAutomation,
     activateAutomation,
     deactivateAutomation,
+    previewStep,
+    testStep,
+    getMetrics,
 } from '../controllers/emailAutomationController.js';
 
 const router = express.Router();
 
 router.use(authMiddleware);
-router.use(roleMiddleware(['administrator', 'club_admin', 'district_admin']));
+router.use(roleMiddleware(['administrator', 'superadmin', 'club_admin', 'district_admin']));
 
 router.get('/', listAutomations);
+router.get('/:id/preview', previewStep);
+router.get('/:id/metrics', getMetrics);
 router.get('/:id', getAutomation);
 router.post('/', createAutomation);
 router.put('/:id', updateAutomation);
 router.delete('/:id', deleteAutomation);
 router.post('/:id/activate', activateAutomation);
 router.post('/:id/deactivate', deactivateAutomation);
+router.post('/:id/test', testStep);
 
 export default router;

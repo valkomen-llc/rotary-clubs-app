@@ -22,6 +22,8 @@ const TemplateLibrary: React.FC<{
   const [list, setList] = useState<any[]>([]);
   const [sel, setSel] = useState<any>(null);
   const [versions, setVersions] = useState<any[]>([]);
+  const [usage, setUsage] = useState<any>(null);
+  const [metrics, setMetrics] = useState<any>(null);
   const [q, setQ] = useState('');
   const [savingAs, setSavingAs] = useState(false);
   const [newName, setNewName] = useState('');
@@ -44,8 +46,16 @@ const TemplateLibrary: React.FC<{
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Error');
       setSel(d.template);
+      setUsage(null);
+      setMetrics(null);
       const rv = await fetch(`${API}/content-activation/templates/${id}/versions`, { headers: H }).then((x) => x.json()).catch(() => ({}));
       setVersions(rv.versions || []);
+      fetch(`${API}/content-activation/templates/${id}/usage`, { headers: H }).then((x) => x.json()).then((u) => {
+        if (typeof u.total === 'number') setUsage(u);
+      }).catch(() => {});
+      fetch(`${API}/content-activation/templates/${id}/metrics`, { headers: H }).then((x) => x.json()).then((m) => {
+        if (m && m.email) setMetrics(m);
+      }).catch(() => {});
     } catch (e: any) { toast.error(e.message); }
   };
 
@@ -114,6 +124,11 @@ const TemplateLibrary: React.FC<{
             ) : (
               <div className="space-y-2">
                 <div className="font-bold text-sm">{sel.name} <span className="text-gray-400 font-normal">· v{sel.version}{sel.pinned ? ' (versión fijada)' : ''}</span></div>
+                {sel.status && sel.status !== 'activa' && (
+                  <div className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">
+                    Estado: {sel.status} · las campañas que la usaron conservan su copia.
+                  </div>
+                )}
                 {channel === 'email' ? (
                   <div className="border rounded-xl overflow-hidden"><iframe title="Vista previa de plantilla" srcDoc={previewHtml} className="w-full bg-white" style={{ height: 320 }} /></div>
                 ) : (
@@ -124,10 +139,24 @@ const TemplateLibrary: React.FC<{
                 <div className="flex flex-wrap gap-1.5 text-xs">
                   <button onClick={() => onUse({ design: sel.design, html: sel.html, subject: sel.subject, preheader: sel.preheader, templateId: sel.id, templateVersion: sel.version })} className="px-3 py-1.5 rounded-xl bg-emerald-600 text-white font-bold">Usar en la campaña</button>
                   <button onClick={() => acc(sel.id, 'duplicate', {}, 'Plantilla duplicada como borrador.')} className="px-3 py-1.5 rounded-xl border font-bold">Duplicar</button>
+                  {sel.status === 'borrador' && <button onClick={() => acc(sel.id, 'status', { status: 'activa' }, 'Plantilla activada.')} className="px-3 py-1.5 rounded-xl border font-bold text-emerald-700">Activar</button>}
+                  {sel.status === 'activa' && <button onClick={() => acc(sel.id, 'status', { status: 'inactiva' }, 'Desactivada (no se ofrece para campañas nuevas).')} className="px-3 py-1.5 rounded-xl border font-bold">Desactivar</button>}
+                  {sel.status === 'inactiva' && <button onClick={() => acc(sel.id, 'status', { status: 'activa' }, 'Reactivada.')} className="px-3 py-1.5 rounded-xl border font-bold text-emerald-700">Reactivar</button>}
                   <button onClick={() => acc(sel.id, 'archive', { archived: sel.status !== 'archivada' }, sel.status !== 'archivada' ? 'Archivada.' : 'Restaurada.')} className="px-3 py-1.5 rounded-xl border font-bold">{sel.status !== 'archivada' ? 'Archivar' : 'Restaurar'}</button>
                   <button onClick={() => acc(sel.id, 'set-default', {}, 'Marcada como predeterminada.')} className="px-3 py-1.5 rounded-xl border font-bold">Predeterminada</button>
                   <button onClick={() => del(sel.id)} className="px-3 py-1.5 rounded-xl border font-bold text-red-600">Eliminar…</button>
                 </div>
+                {usage && (
+                  <div className="text-xs bg-gray-50 border rounded-xl p-2">
+                    {usage.total} campaña(s) la usan
+                    {usage.lastUsedAt && <> · último uso {new Date(usage.lastUsedAt).toLocaleString('es-CO')}</>}
+                  </div>
+                )}
+                {metrics?.email && (
+                  <div className="text-xs bg-gray-50 border rounded-xl p-2">
+                    {metrics.email.enviados} enviados · {metrics.email.aperturas} aperturas · {metrics.email.clics} clics
+                  </div>
+                )}
                 {versions.length > 0 && (
                   <div className="text-xs">
                     <div className="font-bold text-gray-500 mb-1">Versiones (cada edición guarda una; las campañas usan la que adoptaron)</div>

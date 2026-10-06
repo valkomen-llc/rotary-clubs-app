@@ -1,6 +1,7 @@
 import prisma from '../lib/prisma.js';
 import EmailService from '../services/EmailService.js';
 import { resolveClubId } from './crmController.js';
+import { buildCrmScopes, renderWithDefaults, findUnknownVars } from '../lib/contentActivationVariables.js';
 
 // Email Marketing F5 — Automatizaciones (secuencias por etiqueta, tipo FluentCRM).
 console.log('[emailAutomationController] v4.573 — flujos con nodos + bifurcación (condición/fin de condición) + notificar equipo + webhook');
@@ -16,18 +17,21 @@ const MAX_STEPS_PER_RUN = 300;
 const addDays = (date, days) => new Date(date.getTime() + (days || 0) * 24 * 60 * 60 * 1000);
 
 const buildStepHtml = (step, contact, baseUrl) => {
+    const scopes = buildCrmScopes({ contact, club: {}, campaign: {} });
+    const subj = renderWithDefaults(String(step.subject || ''), scopes).text;
+    const body = renderWithDefaults(String(step.content || ''), scopes).text;
     const unsubscribeUrl = `${baseUrl}/api/public/unsubscribe?cid=${contact.id}`;
     const footer = `
         <div style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:12px;color:#9ca3af;text-align:center;font-family:Arial,sans-serif">
             <p>Recibes este correo porque estás en la base de contactos de este sitio.</p>
             <p><a href="${unsubscribeUrl}" style="color:#9ca3af;text-decoration:underline">Cancelar suscripción</a></p>
         </div>`;
-    return `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f3f4f6">
+    return { html: `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f3f4f6">
         <div style="max-width:600px;margin:0 auto;padding:24px;background:#ffffff">
-            ${step.content}
+            ${body}
             ${footer}
         </div>
-    </body></html>`;
+    </body></html>`, subject: subj };
 };
 
 // GET / — lista de automatizaciones con conteos
@@ -98,20 +102,49 @@ const evalCondition = (spec, contact) => {
     return true; // condición desconocida → no bloquea
 };
 
+// Etiqueta disparadora: espacio de nombres con `:` reservado para el sistema
+// (`ca:…` = Campañas de Contenido, `crm:…` futuro). Sin espacios ni `{{}}`:
+// así el cron la inscribe sin ambigüedad y sin Prisma nuevo (solo el campo
+// `triggerTag` ya existente).
+const TRIGGER_RE = /^[A-Za-z0-9:_-]{1,80}$/;
+export const assertTriggerTag = (tag) => {
+    const t = String(tag || '').trim();
+    if (!t) { const e = new Error('Nombre y etiqueta disparadora son obligatorios'); e.status = 400; throw e; }
+    if (!TRIGGER_RE.test(t)) {
+        const e = new Error('La etiqueta disparadora solo admite letras, números, :, _ y - (sin espacios). Ej.: bienvenida, ca:feria-2027');
+        e.status = 400;
+        throw e;
+    }
+    return t;
+};
+
+/** Variables desconocidas en todos los pasos email (asunto+contenido). */
+export const unknownVarsInSteps = (steps) => {
+    const textos = (Array.isArray(steps) ? steps : [])
+        .filter((s) => (s?.actionType || 'email') === 'email')
+        .map((s) => `${s.subject || ''}\n${s.content || ''}`).join('\n');
+    return findUnknownVars(textos);
+};
+
 // POST /
 export const createAutomation = async (req, res) => {
     try {
         const clubId = await resolveClubId(req);
         if (!clubId) return res.status(400).json({ error: 'No hay un sitio asociado' });
         const { name, triggerTag, steps } = req.body;
-        if (!name || !triggerTag) return res.status(400).json({ error: 'Nombre y etiqueta disparadora son obligatorios' });
+        if (!name) return res.status(400).json({ error: 'Nombre y etiqueta disparadora son obligatorios' });
+        const tag = assertTriggerTag(triggerTag);
+        const desconocidas = unknownVarsInSteps(steps);
+        if (desconocidas.length) {
+            return res.status(400).json({ error: `Variables desconocidas: ${desconocidas.map((v) => `{{${v}}}`).join(', ')}. Corrige los pasos antes de guardar.` });
+        }
         const cleanSteps = normalizeSteps(steps);
         if (cleanSteps.length === 0) return res.status(400).json({ error: 'Agrega al menos un paso con asunto y contenido' });
         const automation = await prisma.emailAutomation.create({
             data: {
                 clubId,
                 name,
-                triggerTag,
+                triggerTag: tag,
                 status: 'inactive',
                 createdById: req.user?.id || null,
                 steps: { create: cleanSteps },
@@ -120,6 +153,7 @@ export const createAutomation = async (req, res) => {
         });
         res.status(201).json(automation);
     } catch (error) {
+        if (error?.status === 400) return res.status(400).json({ error: error.message });
         console.error('[emailAutomation] create:', error);
         res.status(500).json({ error: 'Error al crear la automatización' });
     }
@@ -138,6 +172,14 @@ export const updateAutomation = async (req, res) => {
         if (cleanSteps && cleanSteps.length === 0) {
             return res.status(400).json({ error: 'Agrega al menos un paso con asunto y contenido' });
         }
+        if (steps !== undefined) {
+            const desconocidas = unknownVarsInSteps(steps);
+            if (desconocidas.length) {
+                return res.status(400).json({ error: `Variables desconocidas: ${desconocidas.map((v) => `{{${v}}}`).join(', ')}. Corrige los pasos antes de guardar.` });
+            }
+        }
+        let cleanTag;
+        if (triggerTag !== undefined) cleanTag = assertTriggerTag(triggerTag);
         const automation = await prisma.$transaction(async (tx) => {
             if (cleanSteps) {
                 await tx.emailAutomationStep.deleteMany({ where: { automationId: existing.id } });
@@ -146,7 +188,7 @@ export const updateAutomation = async (req, res) => {
                 where: { id: existing.id },
                 data: {
                     ...(name !== undefined && { name }),
-                    ...(triggerTag !== undefined && { triggerTag }),
+                    ...(cleanTag !== undefined && { triggerTag: cleanTag }),
                     ...(cleanSteps && { steps: { create: cleanSteps } }),
                 },
                 include: { steps: { orderBy: { order: 'asc' } } },
@@ -154,6 +196,7 @@ export const updateAutomation = async (req, res) => {
         });
         res.json(automation);
     } catch (error) {
+        if (error?.status === 400) return res.status(400).json({ error: error.message });
         console.error('[emailAutomation] update:', error);
         res.status(500).json({ error: 'Error al actualizar la automatización' });
     }
@@ -261,11 +304,12 @@ export const processEmailAutomations = async ({ baseUrl, now = new Date() } = {}
         let jumpTo = null;
         try {
             if (type === 'email') {
+                const personal = buildStepHtml(step, contact, baseUrl);
                 await EmailService.sendEmail({
                     clubId: automation.clubId,
                     to: contact.email.trim(),
-                    subject: step.subject,
-                    html: buildStepHtml(step, contact, baseUrl),
+                    subject: personal.subject,
+                    html: personal.html,
                     userId: automation.createdById || null,
                 });
                 sent += 1;
@@ -375,5 +419,120 @@ export const deactivateAutomation = async (req, res) => {
     } catch (error) {
         console.error('[emailAutomation] deactivate:', error);
         res.status(500).json({ error: 'Error al desactivar la automatización' });
+    }
+};
+
+// GET /:id/preview — renderiza un paso con un contacto real o de prueba, sin enviar.
+// Misma resolución que el cron: lo que se ve es lo que llega.
+export const previewStep = async (req, res) => {
+    try {
+        const clubId = await resolveClubId(req);
+        const automation = await prisma.emailAutomation.findUnique({
+            where: { id: req.params.id },
+            include: { steps: { orderBy: { order: 'asc' } } },
+        });
+        if (!automation || automation.clubId !== clubId) {
+            return res.status(404).json({ error: 'Automatización no encontrada' });
+        }
+        const idx = Math.max(0, parseInt(req.query.step, 10) || 0);
+        const step = (automation.steps || [])[idx];
+        if (!step) return res.status(404).json({ error: 'Paso no encontrado' });
+        if ((step.actionType || 'email') !== 'email') {
+            return res.json({ actionType: step.actionType, actionValue: step.actionValue, note: 'Este paso no envía correo.' });
+        }
+        let contact = null;
+        if (req.query.contactId) {
+            contact = await prisma.crmContact.findFirst({ where: { id: String(req.query.contactId), clubId } });
+            if (!contact) return res.status(404).json({ error: 'Contacto no encontrado en este sitio' });
+        }
+        const demo = contact || { id: 'preview', name: String(req.query.testName || 'Carolina'), email: 'prueba@ejemplo.org' };
+        const personal = buildStepHtml(step, demo, `${req.protocol}://${req.get('host')}`);
+        const scopes = buildCrmScopes({ contact: demo, club: {}, campaign: {} });
+        const missing = [...new Set([
+            ...renderWithDefaults(String(step.subject || ''), scopes).missing,
+            ...renderWithDefaults(String(step.content || ''), scopes).missing,
+        ])];
+        res.json({
+            subject: personal.subject, html: personal.html, missing,
+            contact: contact ? { id: contact.id, name: contact.name, email: contact.email } : null,
+            step: idx, actionType: step.actionType,
+        });
+    } catch (error) {
+        console.error('[emailAutomation] preview:', error);
+        res.status(500).json({ error: 'Error al generar la vista previa' });
+    }
+};
+
+// POST /:id/test — envía UN paso a una dirección de prueba. No inscribe ni
+// afecta métricas; la IA y los borradores usan esto para revisar sin enviar masivo.
+export const testStep = async (req, res) => {
+    try {
+        const clubId = await resolveClubId(req);
+        if (!clubId) return res.status(400).json({ error: 'No hay un sitio asociado a esta prueba' });
+        const automation = await prisma.emailAutomation.findUnique({
+            where: { id: req.params.id },
+            include: { steps: { orderBy: { order: 'asc' } } },
+        });
+        if (!automation || automation.clubId !== clubId) {
+            return res.status(404).json({ error: 'Automatización no encontrada' });
+        }
+        const { to, step: stepIdx } = req.body;
+        if (!isValidEmail(to)) return res.status(400).json({ error: 'La dirección de prueba no es válida' });
+        const idx = Math.max(0, parseInt(stepIdx, 10) || 0);
+        const step = (automation.steps || [])[idx];
+        if (!step || (step.actionType || 'email') !== 'email') {
+            return res.status(400).json({ error: 'El paso elegido no es un correo' });
+        }
+        const demo = { id: 'test', name: 'Contacto de prueba', email: String(to).trim() };
+        const personal = buildStepHtml(step, demo, `${req.protocol}://${req.get('host')}`);
+        const result = await EmailService.sendEmail({
+            clubId, to: String(to).trim(),
+            subject: `[PRUEBA] ${personal.subject}`,
+            html: personal.html,
+            userId: req.user?.id || null,
+        });
+        if (!result?.success) {
+            return res.status(502).json({ error: result?.error || 'El proveedor no pudo enviar la prueba' });
+        }
+        res.json({ success: true });
+    } catch (error) {
+        console.error('[emailAutomation] test:', error);
+        res.status(500).json({ error: 'Error al enviar la prueba' });
+    }
+};
+
+// GET /:id/metrics — inscripciones por estado + pasos email del flujo.
+// Las métricas viven en las inscripciones; los pasos son solo definición.
+export const getMetrics = async (req, res) => {
+    try {
+        const clubId = await resolveClubId(req);
+        const automation = await prisma.emailAutomation.findUnique({
+            where: { id: req.params.id },
+            include: { steps: { orderBy: { order: 'asc' } } },
+        });
+        if (!automation || automation.clubId !== clubId) {
+            return res.status(404).json({ error: 'Automatización no encontrada' });
+        }
+        const enrollments = await prisma.emailAutomationEnrollment.findMany({
+            where: { automationId: automation.id },
+            select: { status: true, currentStep: true },
+        });
+        const porEstado = {};
+        const porPaso = {};
+        for (const e of enrollments) {
+            porEstado[e.status] = (porEstado[e.status] || 0) + 1;
+            porPaso[e.currentStep] = (porPaso[e.currentStep] || 0) + 1;
+        }
+        const pasos = (automation.steps || []).map((s, i) => ({
+            order: i, actionType: s.actionType, subject: s.subject,
+            enPaso: porPaso[i] || 0,
+        }));
+        res.json({
+            total: enrollments.length, porEstado, pasos,
+            emailsEnFlujo: (automation.steps || []).filter((s) => (s.actionType || 'email') === 'email').length,
+        });
+    } catch (error) {
+        console.error('[emailAutomation] metrics:', error);
+        res.status(500).json({ error: 'Error al cargar las métricas' });
     }
 };
