@@ -28,6 +28,11 @@ const {
     deleteItemSafely,
     moveItem,
     MAX_NAV_LEVELS,
+    validateNavUrl,
+    isExternalUrl,
+    isDocumentUrl,
+    ensureExternalProtocol,
+    resolveNavTarget,
 } = await import(BUILT);
 
 let pass = 0, fail = 0;
@@ -288,6 +293,134 @@ test('estructura requerida para Jaque Mate a la Polio funciona a la perfección'
     assert.equal(subItem.external, true);
     assert.ok(subItem.href.includes('Terminos-y-condiciones-del-Ganador-Absoluto-III-Open-IRT-Jaque-Mate.pdf'));
     assert.equal(subItem.level, 2);
+
+    // Resolver destino del submenú PDF
+    const target = resolveNavTarget(subItem);
+    assert.equal(target.isExternal, true);
+    assert.equal(target.target, '_blank');
+    assert.equal(target.rel, 'noopener noreferrer');
+    assert.equal(target.href, subItem.href, 'La URL de S3 debe conservarse con precisión matemática');
+});
+
+console.log('\n── 9. Validación y Clasificación Inteligente de URLs ──────────');
+
+test('reconoce enlaces a documentos PDF y archivos S3', () => {
+    assert.equal(isDocumentUrl('https://s3.amazonaws.com/bucket/doc.pdf'), true);
+    assert.equal(isDocumentUrl('https://example.com/bases.docx'), true);
+    assert.equal(isDocumentUrl('https://example.com/balances.xlsx?v=2'), true);
+    assert.equal(isDocumentUrl('https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/abc/documents/test.pdf'), true);
+    assert.equal(isDocumentUrl('/proyectos'), false);
+    assert.equal(isDocumentUrl('https://rotary.org'), false);
+});
+
+test('reconoce enlaces externos por protocolo o patrón de dominio', () => {
+    assert.equal(isExternalUrl('https://rotary.org'), true);
+    assert.equal(isExternalUrl('http://rotary.org'), true);
+    assert.equal(isExternalUrl('mailto:info@rotary.org'), true);
+    assert.equal(isExternalUrl('tel:+573001234567'), true);
+    assert.equal(isExternalUrl('rotary-platform-assets.s3.amazonaws.com/file.pdf'), true);
+    assert.equal(isExternalUrl('www.google.com'), true);
+    assert.equal(isExternalUrl('/contacto'), false);
+    assert.equal(isExternalUrl('quienes-somos'), false);
+});
+
+test('validateNavUrl advierte URLs vacías y protocolos faltantes', () => {
+    const emptyCheck = validateNavUrl('');
+    assert.equal(emptyCheck.isValid, false);
+
+    const missingCheck = validateNavUrl('rotary-platform-assets.s3.amazonaws.com/doc.pdf', true);
+    assert.equal(missingCheck.missingProtocol, true);
+    assert.equal(missingCheck.suggestedUrl, 'https://rotary-platform-assets.s3.amazonaws.com/doc.pdf');
+
+    const validCheck = validateNavUrl('https://rotary.org', true);
+    assert.equal(validCheck.isValid, true);
+    assert.equal(validCheck.missingProtocol, false);
+});
+
+test('rechaza y neutraliza protocolos peligrosos (XSS)', () => {
+    const xss = validateNavUrl('javascript:alert(1)');
+    assert.equal(xss.isDangerous, true);
+    assert.equal(xss.isValid, false);
+
+    const resolved = resolveNavTarget({ href: 'javascript:alert(document.cookie)' });
+    assert.equal(resolved.href, '#');
+    assert.equal(resolved.isExternal, false);
+});
+
+console.log('\n── 10. Resolución Centralizada (resolveNavTarget) y Protección Antidominio ──');
+
+test('1. Menú principal con enlace interno se resuelve sin prefijos indebidos', () => {
+    const res = resolveNavTarget({ href: '/proyectos', external: false });
+    assert.equal(res.isExternal, false);
+    assert.equal(res.href, '/proyectos');
+    assert.equal(res.target, undefined);
+});
+
+test('2. Menú principal con enlace externo abre en nueva pestaña y preserva URL', () => {
+    const res = resolveNavTarget({ href: 'https://rotary.org', external: true });
+    assert.equal(res.isExternal, true);
+    assert.equal(res.href, 'https://rotary.org');
+    assert.equal(res.target, '_blank');
+    assert.equal(res.rel, 'noopener noreferrer');
+});
+
+test('3. Submenú con enlace interno navega internamente', () => {
+    const res = resolveNavTarget({ href: '/quienes-somos', external: false });
+    assert.equal(res.isExternal, false);
+    assert.equal(res.href, '/quienes-somos');
+});
+
+test('4. Submenú con enlace externo conserva su dominio y no hereda padre', () => {
+    const res = resolveNavTarget({ href: 'https://endpolio.org', external: true });
+    assert.equal(res.isExternal, true);
+    assert.equal(res.href, 'https://endpolio.org');
+    assert.equal(res.target, '_blank');
+});
+
+test('5. Submenú que abre un PDF en Amazon S3 conserva URL completa', () => {
+    const s3Url = 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/3032b804/documents/terminos.pdf';
+    const res = resolveNavTarget({ href: s3Url, external: true });
+    assert.equal(res.isExternal, true);
+    assert.equal(res.href, s3Url);
+    assert.equal(res.target, '_blank');
+});
+
+test('6. URL externa extensa con query parameters conserva parámetros y hashtags', () => {
+    const longUrl = 'https://rotary.org/es?utm_source=plataforma&utm_medium=menu&ref=club#inscripcion';
+    const res = resolveNavTarget({ href: longUrl, external: true });
+    assert.equal(res.isExternal, true);
+    assert.equal(res.href, longUrl);
+    assert.ok(res.href.includes('utm_source=plataforma'));
+    assert.ok(res.href.includes('#inscripcion'));
+});
+
+test('7. Documento con URL firmada temporalmente de AWS S3 preserva firma intacta', () => {
+    const signedUrl = 'https://mybucket.s3.amazonaws.com/doc.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAIOSFODNN7EXAMPLE%2F20261008%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261008T120000Z&X-Amz-Expires=3600&X-Amz-Signature=a1b2c3d4e5f6g7h8';
+    const res = resolveNavTarget({ href: signedUrl, external: true });
+    assert.equal(res.href, signedUrl, 'Las firmas de AWS no deben sufrir transformaciones');
+    assert.equal(res.isExternal, true);
+});
+
+test('8. Enlace externo sin https:// se corrige automáticamente con https:// para evitar resolución relativa', () => {
+    const missingProtoUrl = 'rotary-platform-assets.s3.us-east-1.amazonaws.com/doc.pdf';
+    const res = resolveNavTarget({ href: missingProtoUrl, external: true });
+    assert.equal(res.isExternal, true);
+    assert.equal(res.href, `https://${missingProtoUrl}`);
+    assert.equal(res.target, '_blank');
+});
+
+test('9. Configuración openInNewTab: false permite abrir enlaces externos en la misma pestaña', () => {
+    const res = resolveNavTarget({ href: 'https://externo.com', external: true, openInNewTab: false });
+    assert.equal(res.isExternal, true);
+    assert.equal(res.href, 'https://externo.com');
+    assert.equal(res.target, undefined, 'No debe tener target="_blank" cuando openInNewTab es false');
+});
+
+test('10. Auto-detección: si la URL comienza con https:// es tratada como externa incluso si external es omitido', () => {
+    const res = resolveNavTarget({ href: 'https://sitioexterno.org/informe.pdf' });
+    assert.equal(res.isExternal, true);
+    assert.equal(res.target, '_blank');
+    assert.equal(res.href, 'https://sitioexterno.org/informe.pdf');
 });
 
 console.log(`\n========================================`);

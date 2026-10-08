@@ -319,11 +319,12 @@ router.get('/by-domain', async (req, res) => {
                         let docItem = order.find(i => (i.label || '').toLowerCase().includes('ganador absoluto') || i.id === 'terminos-ganador-absoluto');
                         let needsPersist = false;
                         if (docItem) {
-                            if (docItem.parentId !== terminosItem.id || !docItem.id) needsPersist = true;
+                            if (docItem.parentId !== terminosItem.id || !docItem.id || docItem.openInNewTab !== true) needsPersist = true;
                             docItem.parentId = terminosItem.id;
                             if (!docItem.id) docItem.id = 'terminos-ganador-absoluto';
                             docItem.href = pdfUrl;
                             docItem.external = true;
+                            docItem.openInNewTab = true;
                             docItem.enabled = true;
                         } else {
                             needsPersist = true;
@@ -333,6 +334,7 @@ router.get('/by-domain', async (req, res) => {
                                 label: 'Términos y Condiciones al Ganador Absoluto',
                                 href: pdfUrl,
                                 external: true,
+                                openInNewTab: true,
                                 enabled: true,
                                 parentId: terminosItem.id
                             });

@@ -133,6 +133,7 @@ export const getClubById = async (req, res) => {
                     if (!docItem.id) docItem.id = 'terminos-ganador-absoluto';
                     docItem.href = pdfUrl;
                     docItem.external = true;
+                    docItem.openInNewTab = true;
                     docItem.enabled = true;
                 } else {
                     order.push({
@@ -141,6 +142,7 @@ export const getClubById = async (req, res) => {
                         label: 'Términos y Condiciones al Ganador Absoluto',
                         href: pdfUrl,
                         external: true,
+                        openInNewTab: true,
                         enabled: true,
                         parentId: terminosItem.id
                     });

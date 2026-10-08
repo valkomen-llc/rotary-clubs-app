@@ -763,7 +763,12 @@ const ClubSettings: React.FC = () => {
             }, {} as Record<string, boolean>);
             const derivedNavExtra = formData.eventNavOrder
                 .filter(it => it.kind === 'custom')
-                .map(it => ({ label: it.label || '', href: it.href || '/', external: !!it.external }));
+                .map(it => ({
+                    label: it.label || '',
+                    href: it.href || '/',
+                    external: !!it.external,
+                    openInNewTab: it.openInNewTab !== false
+                }));
             const payload = {
                 ...formData,
                 moduleEcommerce: formData.storeActive,

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Search, ShoppingCart, ChevronDown, ChevronRight, Menu, X, LogIn, Globe, ExternalLink } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import { buildNavTree, type NavOrderItem, type NavTreeItem } from '../lib/navigation';
+import { buildNavTree, resolveNavTarget, type NavOrderItem, type NavTreeItem } from '../lib/navigation';
 import { useAuth } from '../hooks/useAuth';
 import { useClub } from '../contexts/ClubContext';
 import { useCart } from '../contexts/CartContext';
@@ -534,16 +534,46 @@ const Navbar = () => {
     }
   };
 
-  const renderCustomDesktop = (item: { label?: string; href?: string; external?: boolean }, idx: number) => (
-    item.external
-      ? <a key={`c-${idx}`} href={item.href} target="_blank" rel="noopener noreferrer" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors">{item.label}</a>
-      : <Link key={`c-${idx}`} to={item.href || '/'} className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors">{item.label}</Link>
-  );
-  const renderCustomMobile = (item: { label?: string; href?: string; external?: boolean }, idx: number) => (
-    item.external
-      ? <a key={`cm-${idx}`} href={item.href} target="_blank" rel="noopener noreferrer" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>{item.label}</a>
-      : <Link key={`cm-${idx}`} to={item.href || '/'} className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>{item.label}</Link>
-  );
+  const renderCustomDesktop = (item: { label?: string; href?: string; external?: boolean; openInNewTab?: boolean }, idx: number) => {
+    const target = resolveNavTarget(item);
+    return target.isExternal ? (
+      <a
+        key={`c-${idx}`}
+        href={target.href}
+        target={target.target}
+        rel={target.rel}
+        className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors flex items-center gap-1"
+      >
+        <span>{item.label}</span>
+        {target.target === '_blank' && <ExternalLink className="w-3 h-3 text-gray-400 opacity-70" />}
+      </a>
+    ) : (
+      <Link key={`c-${idx}`} to={target.href} className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors">
+        {item.label}
+      </Link>
+    );
+  };
+
+  const renderCustomMobile = (item: { label?: string; href?: string; external?: boolean; openInNewTab?: boolean }, idx: number) => {
+    const target = resolveNavTarget(item);
+    return target.isExternal ? (
+      <a
+        key={`cm-${idx}`}
+        href={target.href}
+        target={target.target}
+        rel={target.rel}
+        className="text-gray-600 flex items-center justify-between"
+        onClick={() => setMobileMenuOpen(false)}
+      >
+        <span>{item.label}</span>
+        {target.target === '_blank' && <ExternalLink className="w-3.5 h-3.5 text-gray-400" />}
+      </a>
+    ) : (
+      <Link key={`cm-${idx}`} to={target.href} className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>
+        {item.label}
+      </Link>
+    );
+  };
 
   // Subcomponente de desplegable multinivel para escritorio
   const DesktopNavDropdown: React.FC<{ item: NavTreeItem; idx: number }> = ({ item, idx }) => {
@@ -616,12 +646,13 @@ const Navbar = () => {
               const isFlyoutOpen = activeFlyout === child.id;
 
               if (!hasSub) {
-                return child.external ? (
+                const target = resolveNavTarget(child);
+                return target.isExternal ? (
                   <a
                     key={child.id || cIdx}
-                    href={child.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    href={target.href}
+                    target={target.target}
+                    rel={target.rel}
                     role="menuitem"
                     className="flex items-center justify-between px-4 py-2 text-xs text-gray-700 hover:bg-sky-50 hover:text-rotary-blue transition-colors font-medium"
                     onClick={() => setOpen(false)}
@@ -632,7 +663,7 @@ const Navbar = () => {
                 ) : (
                   <Link
                     key={child.id || cIdx}
-                    to={child.href || '/'}
+                    to={target.href}
                     role="menuitem"
                     className="flex items-center justify-between px-4 py-2 text-xs text-gray-700 hover:bg-sky-50 hover:text-rotary-blue transition-colors font-medium"
                     onClick={() => setOpen(false)}
@@ -663,13 +694,14 @@ const Navbar = () => {
                       role="menu"
                       className="absolute left-full top-0 ml-1 min-w-[220px] max-w-[320px] bg-white rounded-2xl shadow-xl border border-gray-100 py-2.5 z-50 animate-in fade-in slide-in-from-left-1 duration-150"
                     >
-                      {child.children.map((grandChild, gcIdx) => (
-                        grandChild.external ? (
+                      {child.children.map((grandChild, gcIdx) => {
+                        const target = resolveNavTarget(grandChild);
+                        return target.isExternal ? (
                           <a
                             key={grandChild.id || gcIdx}
-                            href={grandChild.href}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                            href={target.href}
+                            target={target.target}
+                            rel={target.rel}
                             role="menuitem"
                             className="flex items-center justify-between px-4 py-2 text-xs text-gray-700 hover:bg-sky-50 hover:text-rotary-blue transition-colors font-medium"
                             onClick={() => { setOpen(false); setActiveFlyout(null); }}
@@ -680,15 +712,15 @@ const Navbar = () => {
                         ) : (
                           <Link
                             key={grandChild.id || gcIdx}
-                            to={grandChild.href || '/'}
+                            to={target.href}
                             role="menuitem"
                             className="flex items-center justify-between px-4 py-2 text-xs text-gray-700 hover:bg-sky-50 hover:text-rotary-blue transition-colors font-medium"
                             onClick={() => { setOpen(false); setActiveFlyout(null); }}
                           >
                             <span>{grandChild.label}</span>
                           </Link>
-                        )
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -708,27 +740,29 @@ const Navbar = () => {
     return (
       <div key={`macc-${item.id || idx}`} className="space-y-1">
         <div className="flex items-center justify-between">
-          {item.href && item.href !== '#' && item.href !== '/' ? (
-            item.external ? (
+          {item.href && item.href !== '#' && item.href !== '/' ? (() => {
+            const target = resolveNavTarget(item);
+            return target.isExternal ? (
               <a
-                href={item.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-gray-700 hover:text-rotary-blue font-medium py-1.5 flex-1"
+                href={target.href}
+                target={target.target}
+                rel={target.rel}
+                className="text-gray-700 hover:text-rotary-blue font-medium py-1.5 flex-1 flex items-center justify-between pr-2"
                 onClick={onNavigate}
               >
-                {item.label}
+                <span>{item.label}</span>
+                <ExternalLink className="w-3.5 h-3.5 text-gray-400" />
               </a>
             ) : (
               <Link
-                to={item.href}
+                to={target.href}
                 className="text-gray-700 hover:text-rotary-blue font-medium py-1.5 flex-1"
                 onClick={onNavigate}
               >
                 {item.label}
               </Link>
-            )
-          ) : (
+            );
+          })() : (
             <button
               type="button"
               onClick={() => setOpen(!open)}
@@ -756,12 +790,13 @@ const Navbar = () => {
               const isChildOpen = !!expandedChildIds[child.id];
 
               if (!hasSub) {
-                return child.external ? (
+                const target = resolveNavTarget(child);
+                return target.isExternal ? (
                   <a
                     key={child.id || cIdx}
-                    href={child.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    href={target.href}
+                    target={target.target}
+                    rel={target.rel}
                     className="flex items-center justify-between text-gray-600 text-sm py-1 hover:text-rotary-blue"
                     onClick={onNavigate}
                   >
@@ -771,7 +806,7 @@ const Navbar = () => {
                 ) : (
                   <Link
                     key={child.id || cIdx}
-                    to={child.href || '/'}
+                    to={target.href}
                     className="block text-gray-600 text-sm py-1 hover:text-rotary-blue"
                     onClick={onNavigate}
                   >
@@ -794,13 +829,14 @@ const Navbar = () => {
                   </div>
                   {isChildOpen && (
                     <div className="pl-3 border-l-2 border-indigo-200 space-y-1 py-1">
-                      {child.children.map((grandChild, gcIdx) => (
-                        grandChild.external ? (
+                      {child.children.map((grandChild, gcIdx) => {
+                        const target = resolveNavTarget(grandChild);
+                        return target.isExternal ? (
                           <a
                             key={grandChild.id || gcIdx}
-                            href={grandChild.href}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                            href={target.href}
+                            target={target.target}
+                            rel={target.rel}
                             className="flex items-center justify-between text-gray-600 text-xs py-1 hover:text-rotary-blue"
                             onClick={onNavigate}
                           >
@@ -810,14 +846,14 @@ const Navbar = () => {
                         ) : (
                           <Link
                             key={grandChild.id || gcIdx}
-                            to={grandChild.href || '/'}
+                            to={target.href}
                             className="block text-gray-600 text-xs py-1 hover:text-rotary-blue"
                             onClick={onNavigate}
                           >
                             {grandChild.label}
                           </Link>
-                        )
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -993,13 +1029,17 @@ const Navbar = () => {
             {showNav('contacto') && <Link to="/contacto" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Contacto</T></Link>}
 
             {/* Ítems adicionales del menú (Evento/Convención) */}
-            {extraNav.map((it, i) => (
-              it.external ? (
-                <a key={`x-${i}`} href={it.href} target="_blank" rel="noopener noreferrer" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors">{it.label}</a>
+            {extraNav.map((it, i) => {
+              const target = resolveNavTarget(it);
+              return target.isExternal ? (
+                <a key={`x-${i}`} href={target.href} target={target.target} rel={target.rel} className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors flex items-center gap-1">
+                  <span>{it.label}</span>
+                  {target.target === '_blank' && <ExternalLink className="w-3 h-3 text-gray-400 opacity-70" />}
+                </a>
               ) : (
-                <Link key={`x-${i}`} to={it.href} className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors">{it.label}</Link>
-              )
-            ))}
+                <Link key={`x-${i}`} to={target.href} className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors">{it.label}</Link>
+              );
+            })}
             </>)}
           </div>
 
@@ -1196,13 +1236,17 @@ const Navbar = () => {
               {showNav('contacto') && <Link to="/contacto" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Contacto</Link>}
 
               {/* Ítems adicionales del menú (Evento/Convención) */}
-              {extraNav.map((it, i) => (
-                it.external ? (
-                  <a key={`xm-${i}`} href={it.href} target="_blank" rel="noopener noreferrer" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>{it.label}</a>
+              {extraNav.map((it, i) => {
+                const target = resolveNavTarget(it);
+                return target.isExternal ? (
+                  <a key={`xm-${i}`} href={target.href} target={target.target} rel={target.rel} className="text-gray-600 flex items-center justify-between" onClick={() => setMobileMenuOpen(false)}>
+                    <span>{it.label}</span>
+                    {target.target === '_blank' && <ExternalLink className="w-3.5 h-3.5 text-gray-400" />}
+                  </a>
                 ) : (
-                  <Link key={`xm-${i}`} to={it.href} className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>{it.label}</Link>
-                )
-              ))}
+                  <Link key={`xm-${i}`} to={target.href} className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>{it.label}</Link>
+                );
+              })}
               </>)}
 
               {/* CTAs del header en móvil (configurables por sitio) */}

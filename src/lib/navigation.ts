@@ -19,8 +19,10 @@ export interface NavOrderItem {
     label: string;
     /** URL, ruta o enlace a documento */
     href?: string;
-    /** Si abre en una pestaña nueva (target="_blank") */
+    /** Si es un enlace externo fuera del sitio */
     external?: boolean;
+    /** Si abre en una pestaña nueva (target="_blank"). Por defecto true para enlaces externos */
+    openInNewTab?: boolean;
     /** Estado activo / inactivo en el menú */
     enabled?: boolean;
     /** Identificador del elemento padre (null o undefined = menú principal de nivel 1) */
@@ -35,6 +37,171 @@ export interface NavTreeItem extends NavOrderItem {
 }
 
 export const MAX_NAV_LEVELS = 3;
+
+export type NavDestinationType = 'internal' | 'external' | 'document';
+
+/**
+ * Detecta si una URL apunta a un documento descargable (PDF, Word, Excel, S3 docs).
+ */
+export function isDocumentUrl(url?: string): boolean {
+    const raw = String(url || '').trim().toLowerCase();
+    if (!raw) return false;
+    if (/\.(pdf|docx?|xlsx?|pptx?|zip|rar|csv)(\?|$|#)/i.test(raw)) return true;
+    if (raw.includes('.s3.') || raw.includes('.amazonaws.com/')) {
+        if (raw.includes('/documents/') || raw.includes('/docs/')) return true;
+    }
+    return false;
+}
+
+/**
+ * Detecta de forma inteligente si una URL es o aparenta ser externa (protocolos http/https, mailto, dominios o servicios S3).
+ */
+export function isExternalUrl(url?: string): boolean {
+    const raw = String(url || '').trim();
+    if (!raw) return false;
+    // Protocolo http(s) o //
+    if (/^(https?:)?\/\//i.test(raw)) return true;
+    // Protocolos externos como mailto:, tel:, whatsapp:
+    if (/^[a-z][a-z0-9+.-]*:/i.test(raw)) return true;
+    // S3 o dominios conocidos sin protocolo explícito
+    if (raw.includes('.amazonaws.com') || raw.includes('.s3.')) return true;
+    // Patrón de dominio sin protocolo (ej: drive.google.com, www.rotary.org, ejemplo.org/documento)
+    if (/^([a-z0-9-]+\.)+[a-z]{2,}(\/.*)?$/i.test(raw)) return true;
+    return false;
+}
+
+/**
+ * Determina el tipo de destino de una URL para facilitar la interfaz de usuario.
+ */
+export function getNavDestinationType(url?: string, isExplicitExternal?: boolean): NavDestinationType {
+    const raw = String(url || '').trim();
+    if (!raw) return 'internal';
+    if (isDocumentUrl(raw)) return 'document';
+    if (isExplicitExternal || isExternalUrl(raw)) return 'external';
+    return 'internal';
+}
+
+/**
+ * Valida una URL para detectar errores, advertencias de protocolo o riesgos de seguridad.
+ */
+export function validateNavUrl(url?: string, isExternalMarked?: boolean): {
+    isValid: boolean;
+    isDangerous: boolean;
+    isExternal: boolean;
+    missingProtocol: boolean;
+    warning?: string;
+    suggestedUrl?: string;
+} {
+    const raw = String(url || '').trim();
+    if (!raw) {
+        return {
+            isValid: false,
+            isDangerous: false,
+            isExternal: !!isExternalMarked,
+            missingProtocol: false,
+            warning: 'La dirección URL está vacía.',
+        };
+    }
+
+    // Protocolos peligrosos
+    if (/^(javascript|data|vbscript):/i.test(raw)) {
+        return {
+            isValid: false,
+            isDangerous: true,
+            isExternal: false,
+            missingProtocol: false,
+            warning: 'Protocolo no permitido por seguridad.',
+        };
+    }
+
+    const looksExternal = isExternalUrl(raw) || !!isExternalMarked;
+
+    // Si parece externa o se marcó como tal pero no tiene http://, https:// ni protocolo
+    if (looksExternal && !/^(https?:\/\/|[a-z0-9+.-]+:|\/\/)/i.test(raw)) {
+        return {
+            isValid: true,
+            isDangerous: false,
+            isExternal: true,
+            missingProtocol: true,
+            warning: 'Enlace externo sin protocolo. Se recomienda añadir https://.',
+            suggestedUrl: `https://${raw}`,
+        };
+    }
+
+    return {
+        isValid: true,
+        isDangerous: false,
+        isExternal: looksExternal,
+        missingProtocol: false,
+    };
+}
+
+/**
+ * Asegura que una dirección externa cuente con su protocolo sin alterar parámetros, firmas ni queries.
+ */
+export function ensureExternalProtocol(url: string): string {
+    const trimmed = String(url || '').trim();
+    if (!trimmed) return trimmed;
+    if (/^(https?:)?\/\//i.test(trimmed)) {
+        if (trimmed.startsWith('//')) return `https:${trimmed}`;
+        return trimmed;
+    }
+    if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+        return trimmed;
+    }
+    return `https://${trimmed}`;
+}
+
+export interface ResolvedNavTarget {
+    href: string;
+    isExternal: boolean;
+    target?: '_blank';
+    rel?: 'noopener noreferrer';
+}
+
+/**
+ * Resuelve de forma unificada y segura cómo debe navegar un elemento del menú.
+ * Evita que el navegador o React Router antepongan el dominio local a direcciones externas.
+ */
+export function resolveNavTarget(item: {
+    href?: string;
+    external?: boolean;
+    openInNewTab?: boolean;
+}): ResolvedNavTarget {
+    const raw = String(item.href || '').trim();
+    if (!raw) {
+        return { href: '/', isExternal: false };
+    }
+
+    // Descartar protocolos peligrosos
+    if (/^(javascript|data|vbscript):/i.test(raw)) {
+        return { href: '#', isExternal: false };
+    }
+
+    const isExplicitExternal = !!item.external;
+    const isAutoExternal = isExternalUrl(raw);
+    const isExternal = isExplicitExternal || isAutoExternal;
+
+    if (isExternal) {
+        const finalUrl = ensureExternalProtocol(raw);
+        // Si openInNewTab está definido se respeta; por defecto un enlace externo abre en _blank
+        const shouldOpenNewTab = item.openInNewTab !== undefined ? !!item.openInNewTab : true;
+        return {
+            href: finalUrl,
+            isExternal: true,
+            ...(shouldOpenNewTab ? { target: '_blank', rel: 'noopener noreferrer' } : {}),
+        };
+    }
+
+    // Enlace interno
+    const internalHref = (raw.startsWith('/') || raw.startsWith('#') || raw.startsWith('?')) ? raw : `/${raw}`;
+    const shouldOpenNewTab = !!item.openInNewTab;
+    return {
+        href: internalHref,
+        isExternal: false,
+        ...(shouldOpenNewTab ? { target: '_blank', rel: 'noopener noreferrer' } : {}),
+    };
+}
 
 /** Secciones y páginas del sistema que pueden añadirse al menú */
 export const SYSTEM_NAV_SECTIONS: { label: string; href: string }[] = [
@@ -111,9 +278,12 @@ export function normalizeNavItems(rawItems: any[]): NavOrderItem[] {
 
         const kind: NavItemKind = raw.kind === 'fixed' || (raw.key && !raw.href) ? 'fixed' : 'custom';
         const label = String(raw.label || raw.key || 'Enlace').trim();
-        const href = kind === 'fixed' ? undefined : String(raw.href || '/').trim();
+        const href = kind === 'fixed' ? undefined : String(raw.href !== undefined ? raw.href : '/').trim();
         const enabled = raw.enabled !== false;
-        const external = !!raw.external;
+        const external = raw.external !== undefined ? !!raw.external : (href ? isExternalUrl(href) : false);
+        const openInNewTab = raw.openInNewTab !== undefined
+            ? !!raw.openInNewTab
+            : (external ? true : undefined);
         const parentId = (raw.parentId && typeof raw.parentId === 'string' && raw.parentId !== id)
             ? raw.parentId
             : null;
@@ -124,6 +294,7 @@ export function normalizeNavItems(rawItems: any[]): NavOrderItem[] {
             label,
             enabled,
             external,
+            openInNewTab,
             parentId,
         };
 

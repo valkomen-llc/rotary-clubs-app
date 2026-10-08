@@ -11,7 +11,8 @@ import {
     GripVertical, ChevronUp, ChevronDown, Plus, Trash2,
     ExternalLink, Indent, Outdent, CornerDownRight,
     Eye, Monitor, Smartphone, AlertCircle, CheckCircle2,
-    Palette, X, Link as LinkIcon, FolderTree, ChevronRight
+    Palette, X, Link as LinkIcon, FolderTree, ChevronRight,
+    Copy, Check, FileText, Globe
 } from 'lucide-react';
 import {
     NavOrderItem,
@@ -28,6 +29,11 @@ import {
     buildNavTree,
     generateNavId,
     normalizeNavItems,
+    validateNavUrl,
+    isExternalUrl,
+    isDocumentUrl,
+    ensureExternalProtocol,
+    resolveNavTarget,
 } from '../../lib/navigation';
 
 interface NavHierarchyEditorProps {
@@ -48,6 +54,9 @@ export const NavHierarchyEditor: React.FC<NavHierarchyEditorProps> = ({
     const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
     const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
     const [dropMode, setDropMode] = useState<'above' | 'below' | 'inside' | null>(null);
+
+    // Estado de copiado
+    const [copiedId, setCopiedId] = useState<string | null>(null);
 
     // Estado de Vista Previa
     const [previewOpen, setPreviewOpen] = useState(false);
@@ -178,13 +187,48 @@ export const NavHierarchyEditor: React.FC<NavHierarchyEditorProps> = ({
         onChange(deleteItemSafely(itemId, normalizedItems));
     };
 
+    const handleCopyUrl = async (id: string, url?: string) => {
+        if (!url) return;
+        try {
+            await navigator.clipboard.writeText(url);
+            setCopiedId(id);
+            setTimeout(() => setCopiedId(null), 2000);
+        } catch (e) {
+            console.error('Clipboard copy error:', e);
+        }
+    };
+
+    const handleTestUrl = (url?: string, external?: boolean) => {
+        if (!url) return;
+        const target = resolveNavTarget({ href: url, external });
+        window.open(target.href, '_blank', 'noopener,noreferrer');
+    };
+
+    const handleFixProtocol = (idx: number) => {
+        const item = normalizedItems[idx];
+        if (!item.href) return;
+        const fixedHref = ensureExternalProtocol(item.href);
+        const updated = normalizedItems.map((it, i) =>
+            i === idx ? {
+                ...it,
+                href: fixedHref,
+                external: true,
+                openInNewTab: it.openInNewTab !== false
+            } : it
+        );
+        onChange(updated);
+    };
+
     const handleAddRootCustom = (item?: { label: string; href: string }) => {
+        const defaultHref = item?.href || '/';
+        const isExt = isExternalUrl(defaultHref);
         const newItem: NavOrderItem = {
             id: generateNavId('custom'),
             kind: 'custom',
             label: item?.label || 'Nuevo Enlace',
-            href: item?.href || '/',
-            external: false,
+            href: defaultHref,
+            external: isExt,
+            openInNewTab: isExt,
             enabled: true,
             parentId: null,
         };
@@ -196,8 +240,9 @@ export const NavHierarchyEditor: React.FC<NavHierarchyEditorProps> = ({
             id: generateNavId('sub'),
             kind: 'custom',
             label: 'Nuevo Submenú',
-            href: '/',
+            href: '',
             external: false,
+            openInNewTab: false,
             enabled: true,
             parentId,
         };
@@ -225,15 +270,18 @@ export const NavHierarchyEditor: React.FC<NavHierarchyEditorProps> = ({
     // Árbol para vista previa
     const navTree = buildNavTree(normalizedItems.filter(i => i.enabled !== false));
 
-    // Validaciones de enlaces incompletos
+    // Validaciones de enlaces incompletos y protocolos
     const validationWarnings: string[] = [];
     normalizedItems.forEach(it => {
-        if (it.enabled !== false) {
-            if (it.kind === 'custom' && (!it.href || it.href.trim() === '')) {
-                validationWarnings.push(`"${it.label}" no tiene una URL o ruta configurada.`);
-            }
+        if (it.enabled !== false && it.kind === 'custom') {
             if (!it.label || it.label.trim() === '') {
                 validationWarnings.push(`Existe un elemento con el texto del menú vacío.`);
+            }
+            const check = validateNavUrl(it.href, it.external);
+            if (!check.isValid && check.warning) {
+                validationWarnings.push(`"${it.label || 'Elemento'}": ${check.warning}`);
+            } else if (check.missingProtocol && check.warning) {
+                validationWarnings.push(`"${it.label || 'Elemento'}": ${check.warning}`);
             }
         }
     });
@@ -399,68 +447,228 @@ export const NavHierarchyEditor: React.FC<NavHierarchyEditorProps> = ({
                                 </div>
 
                                 {/* Contenido del elemento */}
+                                {/* Contenido del elemento */}
                                 {item.kind === 'fixed' ? (
-                                    <div className="flex-1 flex items-center gap-3 px-2 flex-wrap">
-                                        <span className="text-[13px] font-bold text-gray-800">{item.label}</span>
-                                        <span className="text-[9px] font-black uppercase tracking-wider text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                                            Sección fija
-                                        </span>
-                                    </div>
-                                ) : (
-                                    <div className="flex-1 flex flex-col md:flex-row gap-2">
-                                        {/* Texto del menú */}
-                                        <input
-                                            type="text"
-                                            value={item.label || ''}
-                                            onChange={e => handleUpdateField(idx, 'label', e.target.value)}
-                                            placeholder="Texto del menú"
-                                            className="flex-1 px-3 py-2 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-rotary-blue text-xs font-bold text-gray-800 bg-white"
-                                        />
-                                        {/* URL o destino */}
-                                        <div className="flex-[2] relative flex items-center">
-                                            <LinkIcon className="w-3.5 h-3.5 absolute left-3 text-gray-400 pointer-events-none" />
-                                            <input
-                                                type="text"
-                                                value={item.href || ''}
-                                                onChange={e => handleUpdateField(idx, 'href', e.target.value)}
-                                                placeholder="/ruta, https://… o enlace a PDF"
-                                                className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-rotary-blue text-xs text-blue-600 bg-white"
-                                            />
-                                        </div>
-                                        {/* Abrir en pestaña nueva */}
-                                        <label className="flex items-center gap-1.5 px-3 py-2 bg-gray-50/80 border border-gray-200 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors select-none">
-                                            <input
-                                                type="checkbox"
-                                                checked={!!item.external}
-                                                onChange={e => handleUpdateField(idx, 'external', e.target.checked)}
-                                                className="w-3.5 h-3.5 text-rotary-blue rounded border-gray-300"
-                                            />
-                                            <span className="text-[10px] font-semibold text-gray-600 whitespace-nowrap flex items-center gap-1">
-                                                Externo <ExternalLink className="w-2.5 h-2.5 text-gray-400" />
+                                    <div className="flex-1 flex items-center justify-between gap-3 px-2 flex-wrap min-w-0">
+                                        <div className="flex items-center gap-2.5">
+                                            <span className="text-[13px] font-bold text-gray-800">{item.label}</span>
+                                            <span className="text-[9px] font-black uppercase tracking-wider text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                                                Sección fija
                                             </span>
-                                        </label>
+                                        </div>
                                     </div>
-                                )}
+                                ) : (() => {
+                                    const urlCheck = validateNavUrl(item.href, item.external);
+                                    const isDoc = isDocumentUrl(item.href);
+                                    const isExt = item.external || isExternalUrl(item.href);
 
-                                {/* Selector accesible de elemento padre */}
-                                <div className="hidden lg:flex items-center">
+                                    return (
+                                        <div className="flex-1 flex flex-col gap-1.5 min-w-0">
+                                            {/* Fila principal de campos de edición */}
+                                            <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-2 min-w-0">
+                                                {/* Texto del menú (~26% del ancho editable en desktop) */}
+                                                <div className="w-full lg:w-[26%] lg:min-w-[130px] flex-shrink-0">
+                                                    <input
+                                                        type="text"
+                                                        value={item.label || ''}
+                                                        onChange={e => handleUpdateField(idx, 'label', e.target.value)}
+                                                        placeholder="Texto del menú"
+                                                        className="w-full px-3 py-2 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-rotary-blue text-xs font-bold text-gray-800 bg-white shadow-sm"
+                                                    />
+                                                </div>
+
+                                                {/* URL o destino (45% - 55% del ancho editable en desktop) */}
+                                                <div className="flex-1 min-w-0 relative flex items-center group">
+                                                    {/* Icono inteligente de tipo de URL */}
+                                                    <div
+                                                        className="absolute left-2.5 z-10 flex items-center pointer-events-none"
+                                                        title={isDoc ? 'Documento PDF o archivo descargable' : isExt ? 'Enlace externo' : 'Ruta interna'}
+                                                    >
+                                                        {isDoc ? (
+                                                            <FileText className="w-3.5 h-3.5 text-rose-500" />
+                                                        ) : isExt ? (
+                                                            <Globe className="w-3.5 h-3.5 text-sky-600" />
+                                                        ) : (
+                                                            <LinkIcon className="w-3.5 h-3.5 text-gray-400" />
+                                                        )}
+                                                    </div>
+
+                                                    {/* Campo de texto URL amplio y adaptable */}
+                                                    <input
+                                                        type="text"
+                                                        value={item.href || ''}
+                                                        onChange={e => {
+                                                            const val = e.target.value;
+                                                            const autoExt = isExternalUrl(val);
+                                                            const updated = normalizedItems.map((it, i) =>
+                                                                i === idx ? {
+                                                                    ...it,
+                                                                    href: val,
+                                                                    ...(autoExt && !it.external ? { external: true, openInNewTab: true } : {})
+                                                                } : it
+                                                            );
+                                                            onChange(updated);
+                                                        }}
+                                                        placeholder="/ruta o https://... (PDF, AWS S3)"
+                                                        title={item.href ? `URL completa (${item.href.length} car.):\n${item.href}` : ''}
+                                                        className={`w-full pl-8 pr-24 py-2 border rounded-xl outline-none text-xs font-mono transition-all bg-white shadow-sm ${
+                                                            urlCheck.isDangerous
+                                                                ? 'border-red-300 text-red-700 bg-red-50/30 focus:ring-2 focus:ring-red-400'
+                                                                : urlCheck.missingProtocol
+                                                                ? 'border-amber-300 text-amber-900 bg-amber-50/20 focus:ring-2 focus:ring-amber-400'
+                                                                : 'border-gray-200 text-blue-600 focus:ring-2 focus:ring-rotary-blue'
+                                                        }`}
+                                                    />
+
+                                                    {/* Botones de acción integrados en el campo URL */}
+                                                    <div className="absolute right-1.5 flex items-center gap-0.5 bg-white/90 backdrop-blur-sm px-1 py-0.5 rounded-lg border border-gray-100 shadow-sm">
+                                                        {/* Corrección rápida de protocolo */}
+                                                        {urlCheck.missingProtocol && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleFixProtocol(idx)}
+                                                                className="text-[10px] font-bold text-amber-700 bg-amber-100 hover:bg-amber-200 px-1.5 py-0.5 rounded transition-colors mr-0.5"
+                                                                title="Añadir https:// automáticamente"
+                                                            >
+                                                                +https://
+                                                            </button>
+                                                        )}
+
+                                                        {/* Botón Copiar enlace */}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleCopyUrl(item.id, item.href)}
+                                                            disabled={!item.href}
+                                                            className="p-1 text-gray-400 hover:text-gray-700 disabled:opacity-30 rounded transition-colors"
+                                                            title={copiedId === item.id ? '¡Enlace copiado!' : 'Copiar enlace al portapapeles'}
+                                                        >
+                                                            {copiedId === item.id ? (
+                                                                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                                            ) : (
+                                                                <Copy className="w-3.5 h-3.5" />
+                                                            )}
+                                                        </button>
+
+                                                        {/* Botón Probar enlace en nueva pestaña */}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleTestUrl(item.href, item.external)}
+                                                            disabled={!item.href || urlCheck.isDangerous}
+                                                            className="p-1 text-gray-400 hover:text-blue-600 disabled:opacity-30 rounded transition-colors"
+                                                            title="Probar enlace en una pestaña nueva"
+                                                        >
+                                                            <ExternalLink className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {/* Opciones de destino y pestaña */}
+                                                <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                    {/* Checkbox Externo */}
+                                                    <label
+                                                        className={`flex items-center gap-1 px-2.5 py-2 border rounded-xl cursor-pointer text-[11px] font-semibold select-none whitespace-nowrap transition-colors shadow-sm ${
+                                                            item.external
+                                                                ? 'bg-sky-50 text-sky-800 border-sky-200'
+                                                                : 'bg-gray-50/80 text-gray-600 border-gray-200 hover:bg-gray-100'
+                                                        }`}
+                                                        title="Marca el enlace como externo para conservar la dirección original sin anteponer el dominio del sitio"
+                                                    >
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={!!item.external}
+                                                            onChange={e => {
+                                                                const checked = e.target.checked;
+                                                                const updated = normalizedItems.map((it, i) =>
+                                                                    i === idx ? {
+                                                                        ...it,
+                                                                        external: checked,
+                                                                        openInNewTab: checked ? (it.openInNewTab !== false) : false
+                                                                    } : it
+                                                                );
+                                                                onChange(updated);
+                                                            }}
+                                                            className="w-3.5 h-3.5 text-rotary-blue rounded border-gray-300 focus:ring-rotary-blue"
+                                                        />
+                                                        <span>Externo</span>
+                                                    </label>
+
+                                                    {/* Checkbox Nueva Pestaña */}
+                                                    <label
+                                                        className={`flex items-center gap-1 px-2 py-2 border rounded-xl cursor-pointer text-[11px] font-semibold select-none whitespace-nowrap transition-colors shadow-sm ${
+                                                            item.openInNewTab !== false && (item.openInNewTab || item.external)
+                                                                ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                                                                : 'bg-gray-50/80 text-gray-600 border-gray-200 hover:bg-gray-100'
+                                                        }`}
+                                                        title="Abrir enlace en una pestaña nueva (target='_blank')"
+                                                    >
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={item.openInNewTab !== false && (item.openInNewTab || item.external)}
+                                                            onChange={e => handleUpdateField(idx, 'openInNewTab', e.target.checked)}
+                                                            className="w-3.5 h-3.5 text-indigo-600 rounded border-gray-300 focus:ring-indigo-600"
+                                                        />
+                                                        <span className="hidden xl:inline">Nueva pestaña</span>
+                                                        <ExternalLink className="w-3 h-3 text-gray-400 xl:hidden" />
+                                                    </label>
+                                                </div>
+                                            </div>
+
+                                            {/* Advertencia contextual si hay problema con la URL */}
+                                            {item.enabled !== false && urlCheck.warning && (
+                                                <div className="flex items-center gap-1.5 text-[11px] text-amber-700 bg-amber-50/80 border border-amber-200/60 rounded-lg px-2.5 py-1">
+                                                    <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                                                    <span>{urlCheck.warning}</span>
+                                                    {urlCheck.missingProtocol && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleFixProtocol(idx)}
+                                                            className="underline font-bold text-amber-900 hover:text-amber-950 ml-1 cursor-pointer"
+                                                        >
+                                                            Corregir añadiendo https://
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* Selector de padre móvil/tablet */}
+                                            <div className="lg:hidden flex items-center gap-2 pt-1 text-[11px] text-gray-500">
+                                                <span>Elemento padre:</span>
+                                                <select
+                                                    value={item.parentId || ''}
+                                                    onChange={e => handleParentChange(item.id, e.target.value || null)}
+                                                    className="flex-1 text-[11px] font-medium text-gray-700 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 outline-none"
+                                                >
+                                                    <option value="">— Menú principal (Nivel 1) —</option>
+                                                    {parentCandidates.map(c => (
+                                                        <option key={c.id} value={c.id}>
+                                                            ↳ {c.label} ({c.level === 1 ? 'N1' : 'N2'})
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+
+                                {/* Selector accesible de elemento padre en pantallas grandes */}
+                                <div className="hidden lg:flex items-center flex-shrink-0">
                                     <select
                                         value={item.parentId || ''}
                                         onChange={e => handleParentChange(item.id, e.target.value || null)}
-                                        className="text-[11px] font-medium text-gray-700 bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-rotary-blue"
+                                        className="max-w-[160px] xl:max-w-[185px] truncate text-[11px] font-medium text-gray-700 bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-2 outline-none focus:ring-2 focus:ring-rotary-blue shadow-sm"
                                         title="Seleccionar elemento padre"
                                     >
-                                        <option value="">— Menú principal (Nivel 1) —</option>
+                                        <option value="">— Principal (Nivel 1) —</option>
                                         {parentCandidates.map(c => (
                                             <option key={c.id} value={c.id}>
-                                                ↳ Padre: {c.label} ({c.level === 1 ? 'Nivel 1' : 'Nivel 2'})
+                                                ↳ {c.label} ({c.level === 1 ? 'N1' : 'N2'})
                                             </option>
                                         ))}
                                     </select>
                                 </div>
 
                                 {/* Botones accesibles de sangría (Indent / Outdent) */}
-                                <div className="flex items-center gap-1">
+                                <div className="flex items-center gap-0.5 flex-shrink-0">
                                     <button
                                         type="button"
                                         onClick={() => handleOutdent(idx)}
@@ -468,7 +676,7 @@ export const NavHierarchyEditor: React.FC<NavHierarchyEditorProps> = ({
                                         className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-20 disabled:hover:bg-transparent disabled:hover:text-gray-400"
                                         title="Quitar sangría / Subir nivel (←)"
                                     >
-                                        <Outdent className="w-4 h-4" />
+                                        <Outdent className="w-3.5 h-3.5" />
                                     </button>
                                     <button
                                         type="button"
@@ -477,7 +685,7 @@ export const NavHierarchyEditor: React.FC<NavHierarchyEditorProps> = ({
                                         className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-20 disabled:hover:bg-transparent disabled:hover:text-gray-400"
                                         title="Sangría / Convertir en submenú del elemento anterior (→)"
                                     >
-                                        <Indent className="w-4 h-4" />
+                                        <Indent className="w-3.5 h-3.5" />
                                     </button>
                                 </div>
 
@@ -486,7 +694,7 @@ export const NavHierarchyEditor: React.FC<NavHierarchyEditorProps> = ({
                                     <button
                                         type="button"
                                         onClick={() => handleAddSubmenu(item.id)}
-                                        className="hidden sm:flex items-center gap-1 text-[11px] font-bold text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg transition-colors whitespace-nowrap"
+                                        className="hidden sm:flex items-center gap-1 text-[11px] font-bold text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100 px-2.5 py-2 rounded-lg transition-colors whitespace-nowrap flex-shrink-0"
                                         title="Crear un nuevo submenú dentro de este elemento"
                                     >
                                         <Plus className="w-3.5 h-3.5" /> Submenú
@@ -494,7 +702,7 @@ export const NavHierarchyEditor: React.FC<NavHierarchyEditorProps> = ({
                                 )}
 
                                 {/* Eliminar elemento */}
-                                <div className="flex items-center">
+                                <div className="flex items-center flex-shrink-0">
                                     {item.kind === 'custom' ? (
                                         <button
                                             type="button"

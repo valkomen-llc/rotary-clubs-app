@@ -42,6 +42,21 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1174.0',
+        title: 'Optimización de Enlaces Externos, S3 PDFs y Rediseño de Campos en Gestor de Menús 🔗⚡',
+        description: 'Ampliación sustancial del campo de edición de URLs en el gestor de menús jerárquicos (ocupando entre el 45% y 55% en escritorio y distribución adaptable de dos filas en pantallas reducidas). Corrección definitiva de la resolución de navegación para enlaces externos y documentos en Amazon S3, evitando que el sistema anteponga el dominio principal o use rutas relativas incorrectas. Detección automática de protocolos con botón de autocorrección (+https://), copiado de enlaces al portapapeles con confirmación visual, verificación de enlaces en nueva pestaña (target="_blank"), configuración explícita de apertura en misma o nueva pestaña (openInNewTab), y sanitización preventiva contra protocolos no permitidos.',
+        date: new Date().toISOString(),
+        tags: ['navigation', 'menus', 'external-links', 's3-documents', 'url-validation', 'ux-improvements', 'production-release'],
+        type: 'feature',
+        changes: [
+            { type: 'improved', text: 'Rediseño visual del gestor de menús: el campo de URL ahora utiliza generosamente el espacio horizontal disponible (45-55% en escritorio) con icono contextual de tipo de enlace (Documento/Externo/Interno).' },
+            { type: 'added', text: 'Botones integrados en el campo URL: copiado rápido al portapapeles con feedback visual y botón de prueba para abrir en nueva pestaña antes de guardar.' },
+            { type: 'fixed', text: 'Corrección de la causa raíz de URLs externas en submenús: resolveNavTarget garantiza navegación absoluta nativa (<a>) e inmunidad contra anteposición del dominio del sitio en React Router.' },
+            { type: 'added', text: 'Validación inteligente de URLs: detección automática de protocolos faltantes con botón rápido "+https://" y sanitización contra protocolos peligrosos (javascript:, data:).' },
+            { type: 'improved', text: 'Soporte configurable para openInNewTab (misma pestaña o nueva pestaña), preservando al 100% parámetros, queries y firmas temporales de Amazon S3.' }
+        ]
+    },
+    {
         version: '4.1173.0',
         title: 'Menús Jerárquicos y Submenús Dinámicos en Toda la Plataforma 🌳🧭',
         description: 'Nuevo gestor visual de navegación con Drag & Drop, selección accesible de elemento padre, sangrías automáticas (indent/outdent) con soporte para hasta 3 niveles de jerarquía, validación estricta contra referencias circulares y vista previa interactiva en vivo (escritorio y móvil). Integración completa en el Navbar público con menús desplegables fluidos y flyouts en escritorio, y acordeones táctiles sin dependencias de hover en móviles. Configuración y preservación de Términos y Condiciones al Ganador Absoluto en Jaque Mate a la Polio como submenú directo de Términos.',
