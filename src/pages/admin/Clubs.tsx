@@ -14,6 +14,7 @@ import { ENTITY_TYPES, organizationTypeFor } from '../../lib/entityTypes';
 import { bannerLockNotice } from '../../lib/siteExpiration';
 import SiteStatusPicker from '../../components/admin/SiteStatusPicker';
 import ContentStudioToolsConfigModal from '../../components/admin/content-studio/ContentStudioToolsConfigModal';
+import { SiteModulesManagerModal } from '../../components/admin/SiteModulesManagerModal';
 
 interface Club {
     id: string;
@@ -71,6 +72,8 @@ const ClubsManagement: React.FC = () => {
     const [activationLoading, setActivationLoading] = useState(false);
     const [activationRunning, setActivationRunning] = useState(false);
     const [toolsClubId, setToolsClubId] = useState<string | null>(null);
+    const [siteModulesModalClubId, setSiteModulesModalClubId] = useState<string | null>(null);
+    const [isSiteModulesModalOpen, setIsSiteModulesModalOpen] = useState(false);
 
     const [formData, setFormData] = useState({
         name: '',
@@ -472,6 +475,16 @@ const ClubsManagement: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-3">
                     <button
+                        onClick={() => {
+                            setSiteModulesModalClubId('global');
+                            setIsSiteModulesModalOpen(true);
+                        }}
+                        className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-800 transition-all shadow-md font-bold text-xs"
+                        title="Administrar módulos de la barra lateral de los sitios"
+                    >
+                        <Sliders className="w-4 h-4 text-blue-400" /> Módulos por Sitio
+                    </button>
+                    <button
                         onClick={handleExportCSV}
                         className="flex items-center gap-2 bg-emerald-50 text-emerald-600 px-4 py-2 rounded-lg hover:bg-emerald-100 transition-all font-bold text-xs"
                         title="Exportar base de datos a Excel/CSV"
@@ -684,11 +697,21 @@ const ClubsManagement: React.FC = () => {
                                             <Rocket className="w-4 h-4" />
                                         </button>
                                         <button
+                                            onClick={() => {
+                                                setSiteModulesModalClubId(club.id);
+                                                setIsSiteModulesModalOpen(true);
+                                            }}
+                                            className="p-2 text-gray-400 hover:text-blue-600 transition-colors"
+                                            title="Gestión de Módulos y Barra Lateral"
+                                        >
+                                            <Sliders className="w-4 h-4" />
+                                        </button>
+                                        <button
                                             onClick={() => setToolsClubId(club.id)}
                                             className="p-2 text-gray-400 hover:text-indigo-600 transition-colors"
                                             title="Herramientas Estudio de Contenido"
                                         >
-                                            <Sliders className="w-4 h-4" />
+                                            <Layout className="w-4 h-4" />
                                         </button>
                                         <button
                                             onClick={() => handleOpenModal(club)}
@@ -1230,6 +1253,19 @@ const ClubsManagement: React.FC = () => {
                     initialClubId={toolsClubId}
                 />
             )}
+
+            {/* Modal de Gestión Centralizada de Módulos y Menús por Sitio */}
+            <SiteModulesManagerModal
+                isOpen={isSiteModulesModalOpen}
+                initialClubId={siteModulesModalClubId}
+                onClose={() => {
+                    setIsSiteModulesModalOpen(false);
+                    setSiteModulesModalClubId(null);
+                }}
+                onSaved={() => {
+                    fetchClubs();
+                }}
+            />
         </AdminLayout>
     );
 };

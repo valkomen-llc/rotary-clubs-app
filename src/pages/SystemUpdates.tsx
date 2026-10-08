@@ -42,6 +42,21 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1176.0',
+        title: 'Gestión Centralizada de Módulos, Permisos por Sitio y Visibilidad Dinámica de Menús 🎛️🛡️',
+        description: 'Arquitectura SaaS multi-tenant para el control centralizado de módulos y menús en la barra lateral izquierda de cada club rotario. Desactivación predeterminada del grupo Finanzas (Mi Inversión y Bóveda de Fondos) con excepción para Rotary E-Club Origen, y de Resumen / Asistente, Dominio y Publicación y Usuarios y Permisos en Configuración e Identidad. Ocultamiento automático de categorías vacías en el sidebar. Lanzamiento de la herramienta de Gestión de Módulos por Sitio para Superadministradores (/admin/gestion-modulos) con selectores individuales y grupales, indicadores de herencia y restablecimiento. Protección integral multinivel: guardián de rutas en frontend (SiteModuleRouteGuard) y validación de endpoints en backend (requireSiteModule) con respuesta 403 Forbidden para accesos no autorizados.',
+        date: new Date().toISOString(),
+        tags: ['feature', 'saas', 'site-modules', 'permissions', 'sidebar', 'admin', 'security', 'production-release'],
+        type: 'feature',
+        changes: [
+            { type: 'added', text: 'Herramienta «Gestión de Módulos por Sitio» en /admin/gestion-modulos y botón de acceso rápido en /admin/clubes.' },
+            { type: 'improved', text: 'Ajuste de visibilidad del sidebar: Finanzas y opciones avanzadas de Configuración se ocultan por defecto para clubes regulares, mientras Rotary E-Club Origen conserva Finanzas activa.' },
+            { type: 'added', text: 'Protección de rutas frontend con SiteModuleRouteGuard bloqueando acceso por URL a módulos inactivos del sitio.' },
+            { type: 'added', text: 'Middleware requireSiteModule en el servidor de pagos y bóveda de fondos para garantizar seguridad en la API.' },
+            { type: 'improved', text: 'Resolución reactiva inmediata de módulos con herencia global y soporte para planes de suscripción (tiers).' }
+        ]
+    },
+    {
         version: '4.1175.0',
         title: 'Reparación Crítica del Servidor y Aislamiento de Errores por Módulo (AdminModuleBoundary) 🛡️⚡',
         description: 'Corrección de sintaxis en el enrutador del servidor de clubes (cierre de bloque else en autosync de rutas de navegación), restableciendo de inmediato la disponibilidad del backend y evitando respuestas 500 en /api/clubs/by-domain. Implementación de una arquitectura de tolerancia a fallos y aislamiento por módulo mediante AdminModuleBoundary en rutas del panel administrativo, garantizando que el menú lateral y la cabecera permanezcan siempre interactivos ante cualquier excepción interna. Incorporación de límites de error locales (ErrorBoundary) en el Gestor de Menús Jerárquicos dentro de Configuración e Identidad, interfaz con spinner en estados de carga y tipado defensivo contra valores nulos en la normalización de elementos de navegación.',

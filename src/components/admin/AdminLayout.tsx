@@ -68,9 +68,11 @@ import {
     // que los dos de arriba: un icono que se nombra y no se importa revienta
     // al PINTAR y deja el panel en blanco.
     Inbox,
-    Film
+    Film,
+    Sliders
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { useSiteModulesConfig } from '../../hooks/useSiteModulesConfig';
 import { useProjectFairLink } from '../../lib/useProjectFairLink';
 import { isOnPlatformDomain, isPlatformSuperAdmin } from '../../lib/platformAdmin';
 import { useClub } from '../../contexts/ClubContext';
@@ -255,6 +257,9 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
             };
         }
     });
+
+    // Módulos centralizados por sitio (SaaS multi-tenant con herencia y excepciones)
+    const { modules: siteModules } = useSiteModulesConfig();
 
     // ── Domain-based super admin detection ──
     // If user is on a club-specific domain, always treat as club context
@@ -531,17 +536,20 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
         
         // Overview for non-super-admins moves to Configuration
         if (!isUIAdmin && user?.role !== 'editor') {
-            items.push({ 
-                icon: LayoutDashboard, 
-                label: 'Overview / Wizard', 
-                path: '/admin/dashboard?view=wizard', 
-                category: 'Configuración e Identidad', 
-                keywords: ['inicio', 'panel', 'dashboard', 'resumen', 'onboarding', 'wizard'] 
-            });
+            if (siteModules.config_wizard) {
+                items.push({ 
+                    icon: LayoutDashboard, 
+                    label: 'Overview / Wizard', 
+                    path: '/admin/dashboard?view=wizard', 
+                    category: 'Configuración e Identidad', 
+                    keywords: ['inicio', 'panel', 'dashboard', 'resumen', 'onboarding', 'wizard'] 
+                });
+            }
         }
 
         if (isSuperAdmin) {
             items.push(
+                { icon: Sliders, label: 'Gestión de Módulos', path: '/admin/gestion-modulos', category: 'Management', keywords: ['modulos', 'sitios', 'sidebar', 'permisos', 'visibilidad', 'clubes', 'menu'], badge: 'nuevo' },
                 { icon: Terminal, label: 'Mission Control VIP', path: '/admin/mission-control-vip', category: 'General', keywords: ['agentes', 'mission control', 'gateway', 'vip'] },
                 { icon: Layout, label: 'Sistema Footer', path: '/admin/sistema-footer', category: 'General', keywords: ['footer', 'skin', 'logo', 'pie de pagina'] },
                 { icon: QrCode, label: 'WhatsApp QR Gateway', path: '/admin/whatsapp-qr', category: 'Comunicaciones y CRM', keywords: ['whatsapp', 'qr', 'web', 'grupos'] },
@@ -643,32 +651,50 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
             // Reordering based on isProduction
             const categoryLabel = isProduction ? 'Gestión de Sitio' : orgTypeLabel;
 
-            items.push(
-                { icon: ShieldCheck, label: 'Solicitudes Técnicas', path: '/admin/technical-requests', category: 'Configuración e Identidad', keywords: ['dominio', 'transferencia', 'soporte', 'tecnico', 'ayuda'] },
-                { icon: CalendarClock, label: 'Reservar Capacitación', path: '/admin/agenda-soporte', category: 'General', keywords: ['capacitacion', 'soporte', 'agenda', 'reservar', 'cita', 'entrenamiento', 'ayuda', 'acompañamiento'] },
-                { icon: Settings, label: 'Configuración / Identidad', path: '/admin/configuracion', category: 'Configuración e Identidad', keywords: ['logo', 'nombre', 'perfil', 'identidad', 'contacto', 'redes', 'facturacion', 'stripe', 'pago', 'configurar'], badge: 'config' },
-                { icon: Globe, label: 'Dominio y Publicación', path: '/admin/configuracion?tab=avanzado', category: 'Configuración e Identidad', keywords: ['dominio', 'publicar', 'dns', 'ssl'] }
-            );
+            if (siteModules.config_technical !== false) {
+                items.push(
+                    { icon: ShieldCheck, label: 'Solicitudes Técnicas', path: '/admin/technical-requests', category: 'Configuración e Identidad', keywords: ['dominio', 'transferencia', 'soporte', 'tecnico', 'ayuda'] }
+                );
+            }
+            if (siteModules.training_reserve !== false) {
+                items.push(
+                    { icon: CalendarClock, label: 'Reservar Capacitación', path: '/admin/agenda-soporte', category: 'General', keywords: ['capacitacion', 'soporte', 'agenda', 'reservar', 'cita', 'entrenamiento', 'ayuda', 'acompañamiento'] }
+                );
+            }
+            if (siteModules.config_identity !== false) {
+                items.push(
+                    { icon: Settings, label: 'Configuración / Identidad', path: '/admin/configuracion', category: 'Configuración e Identidad', keywords: ['logo', 'nombre', 'perfil', 'identidad', 'contacto', 'redes', 'facturacion', 'stripe', 'pago', 'configurar'], badge: 'config' }
+                );
+            }
+            if (siteModules.config_domain) {
+                items.push(
+                    { icon: Globe, label: 'Dominio y Publicación', path: '/admin/configuracion?tab=avanzado', category: 'Configuración e Identidad', keywords: ['dominio', 'publicar', 'dns', 'ssl'] }
+                );
+            }
 
-            if (user?.role !== 'editor') {
+            if (user?.role !== 'editor' && siteModules.members !== false) {
                 items.push(
                     { icon: Users, label: `Socios y Junta Directiva`, path: '/admin/miembros', category: 'Contenido', keywords: ['socio', 'miembro', 'directorio'] }
                 );
             }
 
-            // Usuarios y permisos (v4.937). Va en Configuración e Identidad y no
-            // en una categoría propia: es donde ya se administra el sitio, y las
-            // pantallas que se olvidan son siempre las del segundo lugar. El
-            // filtro por permiso lo hace `canPath` sobre el módulo `users`, no
-            // una condición escrita acá.
-            items.push(
-                { icon: UserCog, label: 'Usuarios y permisos', path: '/admin/usuarios-permisos', category: 'Configuración e Identidad', keywords: ['usuario', 'rol', 'permiso', 'acceso', 'rbac', 'equipo'] }
-            );
+            // Usuarios y permisos (v4.937) — Condicionado a la configuración del módulo (por defecto deshabilitado para clubes)
+            if (siteModules.config_users) {
+                items.push(
+                    { icon: UserCog, label: 'Usuarios y permisos', path: '/admin/usuarios-permisos', category: 'Configuración e Identidad', keywords: ['usuario', 'rol', 'permiso', 'acceso', 'rbac', 'equipo'] }
+                );
+            }
 
-            items.push(
-                { icon: UserPlus, label: 'Contactos & Leads', path: '/admin/leads', category: 'General', keywords: ['contacto', 'lead', 'formulario'] },
-                { icon: Mail, label: 'Bandeja de Entrada', path: '/admin/email', category: 'General', keywords: ['email', 'correo', 'buzon', 'entrada', 'mensajes'] }
-            );
+            if (siteModules.contacts_leads !== false) {
+                items.push(
+                    { icon: UserPlus, label: 'Contactos & Leads', path: '/admin/leads', category: 'General', keywords: ['contacto', 'lead', 'formulario'] }
+                );
+            }
+            if (siteModules.inbox_email !== false) {
+                items.push(
+                    { icon: Mail, label: 'Bandeja de Entrada', path: '/admin/email', category: 'General', keywords: ['email', 'correo', 'buzon', 'entrada', 'mensajes'] }
+                );
+            }
         }
 
         // v4.599 — Módulos de la Feria de Proyectos. Antes vivían sólo dentro del
@@ -697,36 +723,42 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
         }
 
         // Content — conditionally show based on module settings
-        if (isSuperAdmin || mod.projects) {
+        if (isSuperAdmin || (mod.projects && siteModules.projects !== false)) {
             items.push({ icon: FolderKanban, label: 'Proyectos', path: '/admin/proyectos', category: 'General', keywords: ['proyecto', 'obra', 'servicio'] });
         }
-        items.push(
-            { icon: Newspaper, label: 'Noticias', path: '/admin/noticias', category: 'General', keywords: ['noticia', 'articulo', 'blog', 'publicacion', 'difusion', 'replicar', 'distribuir', 'broadcast'] },
-        );
-        if (isSuperAdmin || mod.events) {
+        if (siteModules.news !== false) {
+            items.push(
+                { icon: Newspaper, label: 'Noticias', path: '/admin/noticias', category: 'General', keywords: ['noticia', 'articulo', 'blog', 'publicacion', 'difusion', 'replicar', 'distribuir', 'broadcast'] },
+            );
+        }
+        if (isSuperAdmin || (mod.events && siteModules.events !== false)) {
             items.push({ icon: Calendar, label: 'Eventos', path: '/admin/eventos', category: 'General', keywords: ['evento', 'calendario', 'reunion', 'fecha'] });
         }
-        items.push(
-            { icon: ImageIcon, label: 'Multimedia', path: '/admin/media', category: 'Contenido', keywords: ['foto', 'video', 'imagen', 'galeria', 'archivo'] },
-            { icon: Palette, label: 'Imágenes del Sitio', path: '/admin/imagenes-sitio', category: 'Contenido', keywords: ['hero', 'banner', 'portada', 'diseno'] },
-            { icon: HeartHandshake, label: 'Bloques de Pago', path: '/admin/bloques-pago', category: 'Contenido', keywords: ['aportes', 'donaciones', 'membresia', 'cuota', 'pago', 'stripe', 'bloques'] },
-            { icon: Upload, label: 'Centro de Descargas', path: '/admin/descargas', category: 'Contenido', keywords: ['descargas', 'archivos', 'manuales', 'plantillas'] }
-        );
+        if (siteModules.media !== false) {
+            items.push({ icon: ImageIcon, label: 'Multimedia', path: '/admin/media', category: 'Contenido', keywords: ['foto', 'video', 'imagen', 'galeria', 'archivo'] });
+        }
+        if (siteModules.site_images !== false) {
+            items.push({ icon: Palette, label: 'Imágenes del Sitio', path: '/admin/imagenes-sitio', category: 'Contenido', keywords: ['hero', 'banner', 'portada', 'diseno'] });
+        }
+        if (siteModules.payment_blocks !== false) {
+            items.push({ icon: HeartHandshake, label: 'Bloques de Pago', path: '/admin/bloques-pago', category: 'Contenido', keywords: ['aportes', 'donaciones', 'membresia', 'cuota', 'pago', 'stripe', 'bloques'] });
+        }
+        if (siteModules.downloads !== false) {
+            items.push({ icon: Upload, label: 'Centro de Descargas', path: '/admin/descargas', category: 'Contenido', keywords: ['descargas', 'archivos', 'manuales', 'plantillas'] });
+        }
 
-        // ⚠️ UNA SOLA ENTRADA PARA UNA SOLA FUNCIONALIDAD (v4.986). Era
-        // «Maneras de Contribuir» y apuntaba a otra pantalla: dos nombres y dos
-        // direcciones para lo mismo. Ahora es la MISMA dirección del módulo
-        // central y lo que cambia es la VISTA, según el rol.
-        //
-        // Va con `!isSuperAdmin` porque el operador ya la tiene en «Management»
-        // —esa rama no depende del dominio— y sin la guardia se le pintaría dos
-        // veces la misma dirección: exactamente el «dos módulos para lo mismo»
-        // que este cambio vino a deshacer, por la otra puerta.
+        // ⚠️ UNA SOLA ENTRADA PARA UNA SOLA FUNCIONALIDAD (v4.986).
         if (!isSuperAdmin) {
-            items.push(
-                { icon: Megaphone, label: 'Campañas de Contribución', path: '/admin/campanas-contribucion', category: 'Contenido', keywords: ['campana', 'campaña', 'campanas', 'contribucion', 'contribuir', 'maneras de contribuir', 'aportes', 'donar', 'acopio', 'emergencia', 'qr', 'centros'] },
-                { icon: Megaphone, label: 'Campañas', path: '/admin/activacion-contenido', category: 'Contenido', keywords: ['campana', 'campaña', 'contenido', 'activacion', 'rotary en accion', 'audiencia', 'email', 'whatsapp'] },
-            );
+            if (siteModules.contribution_campaigns !== false) {
+                items.push(
+                    { icon: Megaphone, label: 'Campañas de Contribución', path: '/admin/campanas-contribucion', category: 'Contenido', keywords: ['campana', 'campaña', 'campanas', 'contribucion', 'contribuir', 'maneras de contribuir', 'aportes', 'donar', 'acopio', 'emergencia', 'qr', 'centros'] }
+                );
+            }
+            if (siteModules.activation_campaigns !== false) {
+                items.push(
+                    { icon: Megaphone, label: 'Campañas', path: '/admin/activacion-contenido', category: 'Contenido', keywords: ['campana', 'campaña', 'contenido', 'activacion', 'rotary en accion', 'audiencia', 'email', 'whatsapp'] }
+                );
+            }
             if (isSubmissionsAllowed) {
                 items.push(
                     { icon: HeartHandshake, label: 'Rotary en Acción', path: '/admin/rotary-en-accion', category: 'Contenido', keywords: ['rotary en accion', 'historias', 'captacion', 'banco', 'testimonios', 'solicitudes'], badge: 'nuevo' },
@@ -735,7 +767,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
             }
         }
 
-        if (user?.role !== 'editor') {
+        if (user?.role !== 'editor' && siteModules.faqs !== false) {
             items.push(
                 { icon: HelpCircle, label: 'Preguntas Frecuentes', path: '/admin/faqs', category: 'Contenido', keywords: ['faq', 'pregunta', 'ayuda'] }
             );
@@ -745,14 +777,12 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
             items.push({ icon: BookOpen, label: 'Base IA', path: '/admin/conocimiento', category: 'Contenido' });
         }
 
-        // Module-dependent sections (Programas)
+        // Module-dependent sections (Programas y Finanzas)
         if (user?.role !== 'editor') {
-            const isOrigenAdmin = user?.role === 'club_admin' && (club?.id === '857498f8-4836-4c5b-95b2-80d8c073edfc' || club?.subdomain === 'rotaryecluborigen');
-            // ⚠️ …o quien tenga el permiso. La condición de siempre se conserva
-            // entera —nadie pierde la entrada— y se le suma la vía del RBAC, que
-            // es lo que la hace parte del menú base de un usuario institucional
-            // sin escribir una segunda lista de navegación (v4.941).
-            if (user?.role === 'crowdfunder' || isSuperAdmin || isOrigenAdmin || acceso.has('investment.view')) {
+            const isOrigenAdmin = user?.role === 'club_admin' && (club?.id === '857498f8-4836-4c5b-95b2-80d8c073edfc' || club?.subdomain === 'rotaryecluborigen' || club?.subdomain === 'rotary-e-club-origen');
+            // Finanzas: Mi Inversión condicionado a siteModules.finance_investment (habilitado para Rotary E-Club Origen o excepción)
+            const canAccessInvestment = user?.role === 'crowdfunder' || isSuperAdmin || isOrigenAdmin || acceso.has('investment.view');
+            if (canAccessInvestment && siteModules.finance_investment) {
                 items.push({ 
                     icon: Wallet, 
                     label: 'Mi Inversión', 
@@ -763,43 +793,46 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                 });
             }
 
-            if (isSuperAdmin || mod.rotaract) {
+            if (isSuperAdmin || mod.rotaract || siteModules.rotaract) {
                 items.push({ icon: Users, label: 'Club Rotaract', path: '/admin/rotaract', category: 'Programas' });
             }
-            if (isSuperAdmin || mod.interact) {
+            if (isSuperAdmin || mod.interact || siteModules.interact) {
                 items.push({ icon: Users, label: 'Club Interact', path: '/admin/interact', category: 'Programas' });
             }
-            if (isSuperAdmin || mod.youth_exchange) {
+            if (isSuperAdmin || mod.youth_exchange || siteModules.youth_exchange) {
                 items.push({ icon: Globe, label: 'Intercambios Jóvenes', path: '/admin/intercambios-jovenes', category: 'Programas' });
             }
-            if (isSuperAdmin || mod.ngse) {
+            if (isSuperAdmin || mod.ngse || siteModules.ngse) {
                 items.push({ icon: Briefcase, label: 'Intercambios NGSE', path: '/admin/ngse', category: 'Programas' });
             }
-            if (isSuperAdmin || mod.rotex) {
+            if (isSuperAdmin || mod.rotex || siteModules.rotex) {
                 items.push({ icon: Award, label: 'ROTEX', path: '/admin/rotex', category: 'Programas' });
             }
         }
 
         // E-commerce — conditionally show
-        if (isSuperAdmin || mod.ecommerce || club?.storeActive) {
-            items.push(
-                { icon: Store, label: 'Tienda', path: '/admin/tienda', category: 'E-commerce' },
-                { icon: Receipt, label: 'Órdenes y Pagos', path: '/admin/ordenes', category: 'E-commerce' }
-            );
+        if (isSuperAdmin || mod.ecommerce || club?.storeActive || siteModules.ecommerce_store || siteModules.ecommerce_orders) {
+            if (isSuperAdmin || mod.ecommerce || club?.storeActive || siteModules.ecommerce_store) {
+                items.push({ icon: Store, label: 'Tienda', path: '/admin/tienda', category: 'E-commerce' });
+            }
+            if (isSuperAdmin || mod.ecommerce || club?.storeActive || siteModules.ecommerce_orders) {
+                items.push({ icon: Receipt, label: 'Órdenes y Pagos', path: '/admin/ordenes', category: 'E-commerce' });
+            }
         }
 
-        // v4.411 — La Bóveda vive en Finanzas (no E-commerce). Disponible para
-        // todo club admin: las donaciones llegan a clubes sin tienda activa.
-        items.push({
-            icon: Wallet,
-            label: 'Bóveda de Fondos',
-            path: '/admin/boveda',
-            category: 'Finanzas',
-            keywords: ['donacion', 'aporte', 'retiro', 'balance', 'wallet', 'fondos', 'stripe']
-        });
+        // Finanzas: Bóveda de Fondos condicionado a siteModules.finance_vault (habilitado para Rotary E-Club Origen o excepción)
+        if (siteModules.finance_vault) {
+            items.push({
+                icon: Wallet,
+                label: 'Bóveda de Fondos',
+                path: '/admin/boveda',
+                category: 'Finanzas',
+                keywords: ['donacion', 'aporte', 'retiro', 'balance', 'wallet', 'fondos', 'stripe']
+            });
+        }
 
         // DIAN — conditionally show
-        if (isSuperAdmin || mod.dian) {
+        if (isSuperAdmin || mod.dian || siteModules.compliance_dian) {
             items.push({ icon: FileText, label: 'Estados Financieros', path: '/admin/estados-financieros', category: 'Compliance' });
         }
 

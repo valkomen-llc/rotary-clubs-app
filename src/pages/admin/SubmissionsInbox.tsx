@@ -29,7 +29,7 @@ import AdminLayout from '../../components/admin/AdminLayout';
 import SubmissionDetail from '../../components/admin/contribution/SubmissionDetail';
 import {
     Inbox, Search, RefreshCw, ArrowLeft, AlertTriangle, Filter, X,
-    Image as ImageIcon, Film, Library, Users, Globe, ChevronLeft, ChevronRight,
+    Image as ImageIcon, Film, Library, Users, Globe, ChevronLeft, ChevronRight, Zap,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { stateChip, stateLabel, activityDateLabel } from '../../lib/contentSubmissionSpec';
@@ -551,6 +551,7 @@ const SubmissionsInbox: React.FC = () => {
                                         <th className="text-left px-4 py-3">Artículo</th>
                                         <th className="text-left px-4 py-3">Responsable</th>
                                         <th className="text-left px-4 py-3">Llegó</th>
+                                        <th className="text-right px-4 py-3">Control VIP</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -617,6 +618,18 @@ const SubmissionsInbox: React.FC = () => {
                                                     </span>
                                                 )}
                                             </td>
+                                            <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                                                <a
+                                                    href={`/admin/mission-control-vip?submissionId=${encodeURIComponent(s.id)}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    title="Abrir en Centro de Control VIP"
+                                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-slate-100 hover:bg-[#013388] text-slate-700 hover:text-white transition-colors"
+                                                >
+                                                    <Zap className="w-3 h-3 text-amber-500" />
+                                                    <span>VIP</span>
+                                                </a>
+                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -644,12 +657,25 @@ const SubmissionsInbox: React.FC = () => {
                                             ); })()}
                                         </span>
                                     </div>
-                                    <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-400">
-                                        <span className="inline-flex items-center gap-1"><Users className="w-3 h-3" />{s.club || 'Sin club'}</span>
-                                        {(s as any).contentType && <span>{tipoIcon((s as any).contentType)} {tipoLabel((s as any).contentType)}</span>}
-                                        {s.imageCount > 0 && <span className="inline-flex items-center gap-1"><ImageIcon className="w-3 h-3" />{s.imageCount}</span>}
-                                        {s.videoCount > 0 && <span className="inline-flex items-center gap-1"><Film className="w-3 h-3" />{s.videoCount}</span>}
-                                        <span>{fmtFecha(s.createdAt)}</span>
+                                    <div className="mt-2.5 flex items-center justify-between border-t border-gray-50 pt-2 text-[11px] text-gray-400">
+                                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                                            <span className="inline-flex items-center gap-1"><Users className="w-3 h-3" />{s.club || 'Sin club'}</span>
+                                            {(s as any).contentType && <span>{tipoIcon((s as any).contentType)} {tipoLabel((s as any).contentType)}</span>}
+                                            {s.imageCount > 0 && <span className="inline-flex items-center gap-1"><ImageIcon className="w-3 h-3" />{s.imageCount}</span>}
+                                            {s.videoCount > 0 && <span className="inline-flex items-center gap-1"><Film className="w-3 h-3" />{s.videoCount}</span>}
+                                            <span>{fmtFecha(s.createdAt)}</span>
+                                        </div>
+                                        <a
+                                            href={`/admin/mission-control-vip?submissionId=${encodeURIComponent(s.id)}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            onClick={(e) => e.stopPropagation()}
+                                            title="Abrir en Centro de Control VIP"
+                                            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-black bg-slate-100 hover:bg-[#013388] text-slate-700 hover:text-white transition-colors shrink-0"
+                                        >
+                                            <Zap className="w-3 h-3 text-amber-500" />
+                                            <span>VIP</span>
+                                        </a>
                                     </div>
                                 </button>
                             ))}

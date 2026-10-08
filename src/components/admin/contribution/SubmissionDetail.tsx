@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
     Loader2, ExternalLink, Check, UserCog,
     Image as ImageIcon, Film, Library, Megaphone, X, Share2,
-    Users, Phone, Mail, MapPin,
+    Users, Phone, Mail, MapPin, Zap,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { stateLabel, stateChip, USAGE_CHANNELS, usageIsMeasured, activityDateLabel } from '../../../lib/contentSubmissionSpec';
@@ -268,9 +268,21 @@ const SubmissionDetail: React.FC<Props> = ({ campaignId, submissionId, onClose, 
                                             {ficha.submission.club && <span data-no-translate>{ficha.submission.club}</span>}
                                         </div>
                                     </div>
-                                    <button onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100">
-                                        <X className="w-5 h-5 text-gray-400" />
-                                    </button>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        <a
+                                            href={`/admin/mission-control-vip?submissionId=${encodeURIComponent(ficha.submission.id)}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            title="Abrir en Centro de Control VIP"
+                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black bg-[#013388] text-white hover:bg-blue-900 transition-colors shadow-xs"
+                                        >
+                                            <Zap className="w-3.5 h-3.5 text-amber-300" />
+                                            <span>Centro de Control VIP</span>
+                                        </a>
+                                        <button onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100">
+                                            <X className="w-5 h-5 text-gray-400" />
+                                        </button>
+                                    </div>
                                 </div>
 
                                 {ficha.submission.statusDetail && (

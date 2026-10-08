@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import prisma from './prisma.js';
 
 dotenv.config({ path: './server/.env' });
+dotenv.config();
 
 // Singleton pattern for PG Pool to prevent connection leaks in serverless
 let pool;

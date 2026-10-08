@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { toast } from "sonner";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import {
   Zap,
@@ -94,6 +94,11 @@ interface OperationalTask {
   senderPhone?: string;
   club?: string;
   district?: string;
+  activationCampaignId?: string | null;
+  contentType?: string | null;
+  program?: string | null;
+  areaFocus?: string | null;
+  priority?: string | null;
   date: string;
   activityDate?: string;
   column: 'entradas' | 'en_proceso' | 'por_aprobar' | 'reels' | 'redes' | 'programado' | 'publicado';
@@ -182,11 +187,16 @@ interface OperationalCampaign {
   slug: string;
   status: string;
   progress: number;
+  publicationProgress?: number;
+  productionProgress?: number;
   total: number;
   published: number;
   inProgress: number;
   readyApproval: number;
   assignedAgents: string[];
+  isPermanent?: boolean;
+  kind?: string;
+  activationId?: string;
 }
 
 const AGENTS_LIST = [
@@ -202,6 +212,8 @@ const AGENTS_LIST = [
 
 export const MissionControlVIP: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const urlSubmissionId = searchParams.get("submissionId") || searchParams.get("task");
   const { token: authToken } = useAuth();
 
   const [tasks, setTasks] = useState<OperationalTask[]>([]);
@@ -304,6 +316,16 @@ export const MissionControlVIP: React.FC = () => {
 
     return () => clearInterval(interval);
   }, [fetchBoard, fetchCampaigns]);
+
+  // Sincronización automática de tarea solicitada por URL (trazabilidad inter-módulo)
+  useEffect(() => {
+    if (urlSubmissionId && tasks.length > 0) {
+      const match = tasks.find((t) => t.id === urlSubmissionId);
+      if (match) {
+        setSelectedTask(match);
+      }
+    }
+  }, [urlSubmissionId, tasks]);
 
   // Sincronizar selección de destinos al abrir tarjeta
   useEffect(() => {
@@ -484,7 +506,14 @@ export const MissionControlVIP: React.FC = () => {
   // Filtrado de tareas
   const filteredTasks = useMemo(() => {
     return tasks.filter((t) => {
-      if (selectedCampaignId !== "all" && t.campaignId !== selectedCampaignId) return false;
+      if (selectedCampaignId !== "all") {
+        if (selectedCampaignId.startsWith("activation:")) {
+          const actId = selectedCampaignId.replace("activation:", "");
+          if (t.activationCampaignId !== actId) return false;
+        } else if (t.campaignId !== selectedCampaignId) {
+          return false;
+        }
+      }
       if (selectedAgentId !== "all" && t.assignedAgent?.id !== selectedAgentId) return false;
       if (onlyErrors && !t.isError) return false;
 
@@ -795,28 +824,58 @@ export const MissionControlVIP: React.FC = () => {
                 }`}
               >
                 <div className="flex items-start justify-between gap-2 mb-1.5">
-                  <h4 className="text-xs font-bold text-gray-900 leading-snug line-clamp-2">
-                    {camp.title}
-                  </h4>
+                  <div className="min-w-0 flex-1">
+                    <h4 className="text-xs font-bold text-gray-900 leading-snug line-clamp-2">
+                      {camp.title}
+                    </h4>
+                    {camp.isPermanent && (
+                      <span className="inline-block mt-1 bg-[#013388] text-amber-300 text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider">
+                        INSTITUCIONAL · PERMANENTE
+                      </span>
+                    )}
+                    {camp.kind === 'subcampaign' && (
+                      <span className="inline-block mt-1 bg-violet-100 text-violet-800 text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider">
+                        SUBCAMPAÑA ACTIVA
+                      </span>
+                    )}
+                  </div>
                   <span className="bg-emerald-50 text-emerald-700 text-[9px] font-black px-1.5 py-0.5 rounded uppercase shrink-0">
                     Activa
                   </span>
                 </div>
 
-                <div className="space-y-1.5 mt-2">
-                  <div className="flex items-center justify-between text-[10px] text-gray-500 font-semibold">
-                    <span>Progreso publicación</span>
-                    <span className="font-bold text-gray-700">{camp.progress}%</span>
+                <div className="space-y-2 mt-2 pt-1 border-t border-gray-100">
+                  {/* Progreso de Publicación Efectiva */}
+                  <div>
+                    <div className="flex items-center justify-between text-[10px] text-gray-500 font-semibold mb-1">
+                      <span>Progreso publicación</span>
+                      <span className="font-bold text-gray-700">{camp.publicationProgress ?? camp.progress}%</span>
+                    </div>
+                    <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-emerald-500 transition-all duration-700"
+                        style={{ width: `${camp.publicationProgress ?? camp.progress}%` }}
+                      />
+                    </div>
                   </div>
 
-                  <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-emerald-500 transition-all duration-700"
-                      style={{ width: `${camp.progress}%` }}
-                    />
-                  </div>
+                  {/* Progreso de Producción y Redacción */}
+                  {camp.productionProgress !== undefined && (
+                    <div>
+                      <div className="flex items-center justify-between text-[10px] text-gray-400 font-medium mb-1">
+                        <span>Progreso producción</span>
+                        <span className="font-semibold text-gray-600">{camp.productionProgress}%</span>
+                      </div>
+                      <div className="h-1 w-full bg-gray-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-blue-500 transition-all duration-700"
+                          style={{ width: `${camp.productionProgress}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
 
-                  <div className="flex items-center justify-between text-[10px] text-gray-500 pt-1">
+                  <div className="flex items-center justify-between text-[10px] text-gray-500 pt-0.5">
                     <span>{camp.total} recibidas</span>
                     <span>{camp.published} publicadas</span>
                   </div>
@@ -1114,12 +1173,24 @@ export const MissionControlVIP: React.FC = () => {
                 </div>
               </div>
 
-              <button
-                onClick={() => setSelectedTask(null)}
-                className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <a
+                  href={`/admin/campanas-contribucion/solicitudes?q=${encodeURIComponent(selectedTask.id)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Ver solicitud original en Solicitudes de Contenido"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-white border border-gray-300 text-gray-700 hover:bg-blue-50 hover:text-[#013388] hover:border-[#013388]/30 transition-colors shadow-xs"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 text-gray-500" />
+                  <span>Solicitud Original</span>
+                </a>
+                <button
+                  onClick={() => setSelectedTask(null)}
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* TABS EDITORIALES / REELS / REDES */}

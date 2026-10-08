@@ -64,9 +64,9 @@ export async function ensureRotaryEnAccionSchema() {
     "updatedAt" TIMESTAMPTZ DEFAULT NOW()
   )`);
   // Campaña universal permanente: Rotary en Acción recibe 365 días al año.
-  await db.query(`INSERT INTO "ContributionCampaign"(id, slug, name, "campaignType", status, content, targeting)
-    VALUES('rotary-en-accion-universal','rotary-en-accion','Rotary en Acción','rotary_en_accion','active','{}','{"mode":"all"}')
-    ON CONFLICT(id) DO NOTHING`).catch(() => {});
+  await db.query(`INSERT INTO "ContributionCampaign"(id, slug, name, "campaignType", status, content, targeting, "recipientClubId")
+    VALUES('rotary-en-accion-universal','rotary-en-accion','Rotary en Acción','rotary_en_accion','active','{}','{"mode":"all"}','8aa470c5-0a5a-4a8d-b872-38645b8b9f3a')
+    ON CONFLICT(id) DO UPDATE SET status = 'active', name = 'Rotary en Acción', "recipientClubId" = COALESCE("ContributionCampaign"."recipientClubId", '8aa470c5-0a5a-4a8d-b872-38645b8b9f3a')`).catch(() => {});
   await addCols('ContributionSubmission', SUBMISSION_COLS);
   await addCols('ContentActivationLinkToken', TOKEN_COLS).catch(() => {});
   await seedTaxonomies().catch(() => {});

@@ -366,8 +366,52 @@ const loadContext = async (row, { sessionClubId = null } = {}) => {
     // separan en silencio — y lo que se separa es en qué organización aparece
     // una publicación.
     const targetClubId = row.clubId ? null : await singleTargetClubId(campaign);
-    const sitio = resolveArticleSite({ row, submission, campaign, targetClubId, sessionClubId });
-    const clubId = sitio.clubId;
+    let sitio = resolveArticleSite({ row, submission, campaign, targetClubId, sessionClubId });
+    let clubId = sitio.clubId;
+
+    // Fallback inteligente para solicitudes transversales o institucionales (Rotary en Acción)
+    if (!clubId && submission) {
+        if (submission.originHost) {
+            try {
+                const { resolveSiteId } = await import('./linkRedirectStore.js');
+                const byHost = await resolveSiteId(submission.originHost);
+                if (byHost) {
+                    clubId = byHost;
+                    sitio = { clubId, source: 'origen', label: 'el dominio por el que llegó la solicitud' };
+                }
+            } catch {}
+        }
+        if (!clubId && submission.club) {
+            try {
+                const { siteMatchKey } = await import('./submissionArticleSpec.js');
+                const sKey = siteMatchKey(submission.club);
+                const { rows: matched } = await db.query(
+                    `SELECT id, name FROM "Club" WHERE status != 'inactive' AND type != 'district'`
+                );
+                const found = matched.find(c => siteMatchKey(c.name) === sKey);
+                if (found) {
+                    clubId = found.id;
+                    sitio = { clubId, source: 'club', label: `el club participante ${found.name}` };
+                }
+            } catch {}
+        }
+        if (!clubId && submission.district) {
+            try {
+                const { rows: distClub } = await db.query(
+                    `SELECT id, name FROM "Club" WHERE type = 'district' AND (district = $1 OR "districtId" = $1) LIMIT 1`,
+                    [String(submission.district)]
+                );
+                if (distClub[0]) {
+                    clubId = distClub[0].id;
+                    sitio = { clubId, source: 'distrito', label: `el sitio oficial de ${distClub[0].name}` };
+                }
+            } catch {}
+        }
+        if (!clubId && (campaign?.slug === 'rotary-en-accion' || campaign?.id === 'rotary-en-accion-universal')) {
+            clubId = campaign?.recipientClubId || '8aa470c5-0a5a-4a8d-b872-38645b8b9f3a';
+            sitio = { clubId, source: 'institucional', label: 'el sitio institucional de Rotary en Acción' };
+        }
+    }
     let site = null;
     if (clubId) {
         const { rows: c } = await db.query(`SELECT id, name, domain, subdomain, type, "districtId", district FROM "Club" WHERE id = $1`, [clubId]);
@@ -1024,10 +1068,11 @@ export async function runArticleUntilDone(submissionId, { budgetMs = 200000 } = 
 export async function sweepArticles({ budgetMs = 240000, windowHours = 6 } = {}) {
     await ensureAll();
     const inicio = Date.now();
+    const ACTIVE_PROCESSING = ['analizando', 'generando'];
     const { rows: viejos } = await db.query(
         `UPDATE "SubmissionArticle" SET status = 'error', "statusDetail" = 'Se quedó a medias más de ' || $1 || ' horas. Reintentar desde la ficha.', "claimedAt" = NULL, "updatedAt" = NOW()
           WHERE status = ANY($2) AND "updatedAt" < NOW() - ($1 || ' hours')::interval RETURNING id`,
-        [String(windowHours), WORKING]
+        [String(windowHours), ACTIVE_PROCESSING]
     );
     const { rows } = await db.query(
         `SELECT "submissionId" FROM "SubmissionArticle" WHERE status = ANY($1) AND ("claimedAt" IS NULL OR "claimedAt" < NOW() - ($2 || ' minutes')::interval) ORDER BY "updatedAt" ASC LIMIT 20`,

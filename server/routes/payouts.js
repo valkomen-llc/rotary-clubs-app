@@ -5,6 +5,7 @@ import { authMiddleware, roleMiddleware, requireSiteAdmin, SITE_ADMIN_ROLES } fr
 // alta del retiro se queda donde estaba. El menú base de un usuario
 // institucional trae la lectura y no la orden.
 import { requireRoleOrPermission } from '../middleware/institutionalGuard.js';
+import { requireSiteModule } from '../lib/siteModulesFeatures.js';
 import {
     getClubBalance,
     requestPayout,
@@ -39,9 +40,9 @@ router.use(authMiddleware);
 // SITE_ADMIN_ROLES— podía leer el saldo, ver el historial de retiros y
 // SOLICITAR uno. El aislamiento entre clubes sí estaba bien: el `clubId` sale
 // del token y sólo el operador de plataforma puede pasar `?clubId=`.
-router.get('/balance', requireRoleOrPermission(SITE_ADMIN_ROLES, 'finance.view'), getClubBalance);
-router.post('/request', requireSiteAdmin, requestPayout);
-router.get('/history', requireRoleOrPermission(SITE_ADMIN_ROLES, 'finance.view'), getClubPayoutHistory);
+router.get('/balance', requireSiteModule('finance_vault'), requireRoleOrPermission(SITE_ADMIN_ROLES, 'finance.view'), getClubBalance);
+router.post('/request', requireSiteModule('finance_vault'), requireSiteAdmin, requestPayout);
+router.get('/history', requireSiteModule('finance_vault'), requireRoleOrPermission(SITE_ADMIN_ROLES, 'finance.view'), getClubPayoutHistory);
 
 // Super Admin only routes (managing payouts across the platform)
 const superAdminRoles = ['administrator'];

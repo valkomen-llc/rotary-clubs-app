@@ -175,6 +175,8 @@ const SeoIntelligence = lazyWithRetry(() => import('./pages/admin/SeoIntelligenc
 const AnalyticsPage = lazyWithRetry(() => import('./pages/admin/Analytics'), 'Analytics');
 const LeadsManagement = lazyWithRetry(() => import('./pages/admin/Leads'), 'Leads');
 const EmailManagement = lazyWithRetry(() => import('./pages/admin/EmailManagement'), 'EmailManagement');
+import { SiteModuleRouteGuard } from './components/admin/SiteModuleRouteGuard';
+const SiteModulesManagement = lazyWithRetry(() => import('./pages/admin/SiteModulesManagement'), 'SiteModulesManagement');
 // Mi perfil (v4.932): lo abre CUALQUIER sesión de plataforma, no sólo la
 // institucional — un administrador también quiere cambiar su contraseña.
 const Perfil = lazyWithRetry(() => import('./pages/admin/Perfil'), 'Perfil');
@@ -905,6 +907,14 @@ function App() {
                   }
                 />
                 <Route
+                  path="/admin/gestion-modulos"
+                  element={
+                    <PlatformOnlyRoute>
+                      <SiteModulesManagement />
+                    </PlatformOnlyRoute>
+                  }
+                />
+                <Route
                   path="/admin/asociaciones"
                   element={
                     <PrivateRoute>
@@ -1024,7 +1034,9 @@ function App() {
                   path="/admin/tienda"
                   element={
                     <PrivateRoute>
-                      <StoreManagement />
+                      <SiteModuleRouteGuard moduleKey="ecommerce_store">
+                        <StoreManagement />
+                      </SiteModuleRouteGuard>
                     </PrivateRoute>
                   }
                 />
@@ -1032,7 +1044,9 @@ function App() {
                   path="/admin/ordenes"
                   element={
                     <PrivateRoute>
-                      <OrdersManagement />
+                      <SiteModuleRouteGuard moduleKey="ecommerce_orders">
+                        <OrdersManagement />
+                      </SiteModuleRouteGuard>
                     </PrivateRoute>
                   }
                 />
@@ -1100,7 +1114,9 @@ function App() {
                   path="/admin/boveda"
                   element={
                     <PrivateRoute>
-                      <WalletManagement />
+                      <SiteModuleRouteGuard moduleKey="finance_vault">
+                        <WalletManagement />
+                      </SiteModuleRouteGuard>
                     </PrivateRoute>
                   }
                 />
@@ -1402,7 +1418,9 @@ function App() {
                   path="/admin/inversion"
                   element={
                     <PrivateRoute>
-                      <CrowdfundWallet />
+                      <SiteModuleRouteGuard moduleKey="finance_investment">
+                        <CrowdfundWallet />
+                      </SiteModuleRouteGuard>
                     </PrivateRoute>
                   }
                 />

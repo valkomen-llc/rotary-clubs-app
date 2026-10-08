@@ -14,7 +14,7 @@ import {
     sweepArticles, sweepArticleLibrary, postOf, enqueueArticle, runArticleUntilDone,
 } from '../lib/submissionArticleEngine.js';
 import {
-    reelsFor, enqueueReel, sweepReels, reelOf, updateReelSelection,
+    reelsFor, enqueueReel, sweepReels, reelOf, updateReelSelection, retryReelStage,
 } from '../lib/submissionReelEngine.js';
 import { auditSubmissionPhotosForReel, MIN_OPTIMAL_REEL_PHOTOS } from '../lib/reelImageClassifier.js';
 import {
@@ -22,7 +22,7 @@ import {
 } from '../lib/socialPublishingService.js';
 import { resolveSuggestedDestinations } from '../lib/destinationEngine.js';
 import { getSubmission, clubsOf, logEvent } from '../lib/contentSubmissionStore.js';
-import { isWorkingState } from '../lib/submissionArticleSpec.js';
+import { isWorkingState, stageToRetry } from '../lib/submissionArticleSpec.js';
 
 const isOperator = (req) => req.user?.role === 'administrator' || req.user?.role === 'superadmin';
 
@@ -109,7 +109,7 @@ function resolveTaskColumn(submission, article, post, reel, socialDists = [], re
     const scheduledAt = post?.scheduledAt ? new Date(post.scheduledAt) : null;
     const reelStatus = reel?.status || null;
 
-    if (artStatus === 'error' || reelStatus === 'fallida') {
+    if (artStatus === 'error') {
         return 'error';
     }
 
@@ -147,9 +147,9 @@ function resolveTaskColumn(submission, article, post, reel, socialDists = [], re
         const hasX = socialDists.some(d => d.network === 'x' && d.status === 'published');
         const isFullyShared = hasFb && hasX;
 
-        // Regla inteligente: Sólo los aportes que superan 5 fotografías reales verificadas
-        // (excluyendo banners e invitaciones) aparecen como pendientes en Generación de Reels.
-        if (!isReelDone) {
+        // Regla inteligente: Sólo los aportes que superan fotografías reales verificadas
+        // y no hayan fallado por fotos insuficientes aparecen como pendientes en Generación de Reels.
+        if (!isReelDone && reelStatus !== 'fallida' && reelStatus !== 'error') {
             if (reelAudit?.isOptimal && !isFullyShared) {
                 return 'reels';
             }
@@ -210,6 +210,8 @@ export const getOperationalBoard = async (req, res) => {
             `SELECT s.id, s."campaignId", s.status, s."senderName", s."senderEmail", s."senderPhone",
                     s.district, s.club, s.title, s.description, s.story, s."activityDate",
                     s."originClubId", s."originHost", s."createdAt", s."updatedAt",
+                    s."contentType", s.program, s."areaFocus", s.priority,
+                    s."activationCampaignId",
                     c.name AS "campaignName", c.slug AS "campaignSlug", c.targeting AS "campaignTargeting",
                     c."ownerClubId" AS "campaignOwnerClubId", c."recipientClubId" AS "campaignRecipientClubId"
              FROM "ContributionSubmission" s
@@ -363,6 +365,11 @@ export const getOperationalBoard = async (req, res) => {
                 subtitle: `${sub.club || 'Club'} · ${sub.campaignName || 'Campaña'}`,
                 campaignId: sub.campaignId,
                 campaignName: sub.campaignName,
+                activationCampaignId: sub.activationCampaignId || null,
+                contentType: sub.contentType || null,
+                program: sub.program || null,
+                areaFocus: sub.areaFocus || null,
+                priority: sub.priority || null,
                 senderName: sub.senderName,
                 senderEmail: sub.senderEmail,
                 senderPhone: sub.senderPhone,
@@ -468,7 +475,11 @@ export const getOperationalBoard = async (req, res) => {
             else if (col === 'reels') counts.reels++;
             else if (col === 'redes') counts.redes++;
             else if (col === 'programado') counts.programado++;
-            else if (col === 'publicado') counts.publicado++;
+
+            // Métrica real de publicación: cuenta todo aporte cuyo artículo web ya fue publicado o completó publicación
+            if (col === 'publicado' || art?.status === 'publicado' || post?.published === true) {
+                counts.publicado++;
+            }
         }
 
         res.json({
@@ -515,39 +526,72 @@ export const getOperationalCampaigns = async (req, res) => {
         const decorated = campaigns.map(c => {
             const total = c.totalSubmissions || 0;
             const published = c.publishedCount || 0;
-            const progress = total > 0 ? Math.min(100, Math.round((published / total) * 100)) : 0;
+            const inProgress = c.inProgress || 0;
+            const readyApproval = c.readyApproval || 0;
+            const publicationProgress = total > 0 ? Math.min(100, Math.round((published / total) * 100)) : 0;
+            const productionProgress = total > 0 ? Math.min(100, Math.round(((published + readyApproval + inProgress) / total) * 100)) : 0;
+            const isPermanent = c.id === 'rotary-en-accion-universal' || c.slug === 'rotary-en-accion-universal';
 
             return {
                 id: c.id,
                 title: c.name,
                 slug: c.slug,
-                status: c.status || 'active',
-                progress,
+                status: c.status || 'activa',
+                isPermanent,
+                kind: isPermanent ? 'institutional' : 'special',
+                progress: publicationProgress,
+                publicationProgress,
+                productionProgress,
                 total,
                 published,
-                inProgress: c.inProgress,
-                readyApproval: c.readyApproval,
-                assignedAgents: ['rafael', 'mateo', 'valentina', 'andres'],
+                inProgress,
+                readyApproval,
+                assignedAgents: ['rafael', 'mateo', 'valentina', 'camila', 'lucas'],
             };
         });
 
-        // Campañas de Activación de Contenido (v4.1117): aparecen como
-        // "Campañas Activas" por relación, sin duplicar solicitudes.
+        // Garantizar que la Campaña Institucional Permanente aparezca al frente
+        decorated.sort((a, b) => {
+            if (a.isPermanent && !b.isPermanent) return -1;
+            if (!a.isPermanent && b.isPermanent) return 1;
+            return 0;
+        });
+
+        // Campañas de Activación de Contenido (v4.1117): subcampañas activas y programadas
+        // Filtramos borradores y archivadas para evitar duplicación en la barra lateral
         try {
             const { rows: act } = await db.query(
                 `SELECT c.id, c.name, c.status,
                   (SELECT COUNT(*)::int FROM "ContentActivationEnrollment" n WHERE n."campaignId"=c.id) AS total,
                   (SELECT COUNT(*)::int FROM "ContentActivationEnrollment" n WHERE n."campaignId"=c.id AND n.status='publicada') AS published,
                   (SELECT COUNT(*)::int FROM "ContentActivationEnrollment" n WHERE n."campaignId"=c.id AND n.status IN ('por_aprobar','contenido_recibido')) AS ready
-                 FROM "ContentActivationCampaign" c ORDER BY c."updatedAt" DESC LIMIT 20`).catch(() => ({ rows: [] }));
+                 FROM "ContentActivationCampaign" c
+                 WHERE c.status NOT IN ('borrador', 'archivada')
+                 ORDER BY c."updatedAt" DESC LIMIT 20`).catch(() => ({ rows: [] }));
+
             for (const a of act || []) {
-                decorated.unshift({
-                    id: `activation:${a.id}`, title: `⚡ ${a.name}`, slug: null,
-                    status: a.status || 'activa', progress: a.total ? Math.min(100, Math.round((a.published / a.total) * 100)) : 0,
-                    total: a.total || 0, published: a.published || 0, inProgress: 0,
-                    readyApproval: a.ready || 0, assignedAgents: ['rafael', 'mateo'],
-                    activationId: a.id, kind: 'activation',
-                });
+                // Evitar duplicar si ya existe una campaña de contribución con nombre idéntico
+                const exists = decorated.some(d => d.title.trim().toLowerCase() === a.name.trim().toLowerCase());
+                if (!exists) {
+                    const pubProg = a.total ? Math.min(100, Math.round((a.published / a.total) * 100)) : 0;
+                    decorated.push({
+                        id: `activation:${a.id}`,
+                        title: `⚡ ${a.name}`,
+                        slug: null,
+                        status: a.status || 'activa',
+                        isPermanent: false,
+                        kind: 'subcampaign',
+                        progress: pubProg,
+                        publicationProgress: pubProg,
+                        productionProgress: a.total ? Math.min(100, Math.round(((a.published + (a.ready || 0)) / a.total) * 100)) : 0,
+                        total: a.total || 0,
+                        published: a.published || 0,
+                        inProgress: 0,
+                        readyApproval: a.ready || 0,
+                        assignedAgents: ['rafael', 'mateo', 'andres'],
+                        activationId: a.id,
+                    });
+                }
             }
         } catch { /* módulo aún sin tablas: no rompe el tablero */ }
 
@@ -873,16 +917,50 @@ export const shareTaskSocial = async (req, res) => {
 
 /**
  * POST /api/mission-control/tasks/:submissionId/retry
- * Reintenta una etapa fallida.
+ * Reintenta una etapa fallida de manera segura, despachando al motor adecuado
+ * (artículo o reel audiovisual) y reanudando el avance automático de IA.
  */
 export const retryTask = async (req, res) => {
     try {
         const { submissionId } = req.params;
-        const row = await articleOf(submissionId);
-        if (!row) return res.status(404).json({ error: 'Artículo no encontrado' });
+        const art = await articleOf(submissionId);
+        const reel = await reelOf(submissionId);
 
-        const result = await retryArticleStage({ row });
-        res.json({ ok: true, article: result });
+        let retriedArt = null;
+        let retriedReel = null;
+
+        // 1. Reintentar artículo si está en error o falló alguna de sus etapas
+        if (art && (art.status === 'error' || art.lastError || Object.values(art.stages || {}).some(s => s?.status === 'error'))) {
+            retriedArt = await retryArticleStage({ row: art });
+            runArticleUntilDone(submissionId, { sessionClubId: req.user?.clubId || null, budgetMs: 35000 }).catch(e => {
+                console.warn('[missionControl] auto-advance article after retry warn:', e?.message);
+            });
+        }
+
+        // 2. Reintentar reel si está en error o su etapa falló
+        if (reel && (reel.status === 'fallida' || reel.lastError || Object.values(reel.stages || {}).some(s => s?.status === 'error'))) {
+            retriedReel = await retryReelStage({ row: reel });
+            sweepReels({ budgetMs: 20000, limit: 1 }).catch(e => {
+                console.warn('[missionControl] auto-advance reel after retry warn:', e?.message);
+            });
+        }
+
+        // 3. Si no tenía flag de error explícito pero se solicitó retry:
+        if (!retriedArt && !retriedReel) {
+            if (art) {
+                retriedArt = await retryArticleStage({ row: art });
+                runArticleUntilDone(submissionId, { sessionClubId: req.user?.clubId || null, budgetMs: 35000 }).catch(() => {});
+            } else if (reel) {
+                retriedReel = await retryReelStage({ row: reel });
+            }
+        }
+
+        res.json({
+            ok: true,
+            article: retriedArt || art,
+            reel: retriedReel || reel,
+            message: 'Etapa restablecida con éxito. El escuadrón de IA continuará el proceso.',
+        });
     } catch (e) {
         console.error('[mission-control] retryTask error:', e);
         res.status(500).json({ error: e?.message || 'Error al reintentar la etapa' });
