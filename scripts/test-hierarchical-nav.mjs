@@ -31,6 +31,7 @@ const {
     validateNavUrl,
     isExternalUrl,
     isDocumentUrl,
+    cleanNavUrl,
     ensureExternalProtocol,
     resolveNavTarget,
 } = await import(BUILT);
@@ -423,6 +424,38 @@ test('10. Auto-detección: si la URL comienza con https:// es tratada como exter
     assert.equal(res.href, 'https://sitioexterno.org/informe.pdf');
 });
 
+test('11. Caso real Jaque Mate: URL con barra antepuesta accidentalmente (/https://...) se limpia y no se concatena al dominio', () => {
+    const rawPasted = '/https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/3032b804/documents/1791465934711-Terminos-y-condiciones.pdf';
+    assert.equal(isExternalUrl(rawPasted), true, 'Debe reconocer como externa incluso con barra inicial');
+    assert.equal(isDocumentUrl(rawPasted), true, 'Debe reconocer como documento incluso con barra inicial');
+
+    const res = resolveNavTarget({ href: rawPasted, external: true });
+    assert.equal(res.isExternal, true);
+    assert.equal(res.href, 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/3032b804/documents/1791465934711-Terminos-y-condiciones.pdf');
+    assert.equal(res.target, '_blank');
+    assert.equal(res.rel, 'noopener noreferrer');
+});
+
+test('12. cleanNavUrl limpia barras accidentales sin alterar query strings complejas', () => {
+    const dirty = '///https://s3.amazonaws.com/bucket/doc.pdf?X-Amz-Signature=xyz123&test=1';
+    assert.equal(cleanNavUrl(dirty), 'https://s3.amazonaws.com/bucket/doc.pdf?X-Amz-Signature=xyz123&test=1');
+
+    const internalPath = '/mis-proyectos/campana-2026';
+    assert.equal(cleanNavUrl(internalPath), '/mis-proyectos/campana-2026', 'Rutas internas no deben ser alteradas');
+});
+
+test('13. normalizeNavItems normaliza y sanea URLs externas con barras iniciales', () => {
+    const rawItems = [
+        { id: '1', label: 'Términos', href: '/', parentId: null },
+        { id: '2', label: 'PDF S3', href: '/https://s3.amazonaws.com/doc.pdf', parentId: '1' }
+    ];
+    const normalized = normalizeNavItems(rawItems);
+    assert.equal(normalized[1].href, 'https://s3.amazonaws.com/doc.pdf');
+    assert.equal(normalized[1].external, true);
+    assert.equal(normalized[1].openInNewTab, true);
+});
+
 console.log(`\n========================================`);
 console.log(`Pruebas completadas: ${pass} exitosas, ${fail} fallidas.`);
 if (fail > 0) process.exit(1);
+

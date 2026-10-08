@@ -32,6 +32,7 @@ import {
     validateNavUrl,
     isExternalUrl,
     isDocumentUrl,
+    cleanNavUrl,
     ensureExternalProtocol,
     resolveNavTarget,
 } from '../../lib/navigation';
@@ -498,7 +499,11 @@ export const NavHierarchyEditor: React.FC<NavHierarchyEditorProps> = ({
                                                         type="text"
                                                         value={item.href || ''}
                                                         onChange={e => {
-                                                            const val = e.target.value;
+                                                            let val = e.target.value;
+                                                            // Si accidentalmente se pega con una barra antes de https:// o //, limpiar automáticamente
+                                                            if (/^\/+(https?:\/\/|\/\/)/i.test(val)) {
+                                                                val = val.replace(/^\/+/, '');
+                                                            }
                                                             const autoExt = isExternalUrl(val);
                                                             const updated = normalizedItems.map((it, i) =>
                                                                 i === idx ? {
@@ -508,6 +513,23 @@ export const NavHierarchyEditor: React.FC<NavHierarchyEditorProps> = ({
                                                                 } : it
                                                             );
                                                             onChange(updated);
+                                                        }}
+                                                        onPaste={e => {
+                                                            const pasted = e.clipboardData.getData('text');
+                                                            const trimmed = pasted.trim();
+                                                            // Si el campo está vacío o tiene '/', y se pega una URL externa, reemplazar completamente
+                                                            if (/^(https?:\/\/|\/\/|[a-z0-9-]+\.[a-z0-9-]+\.[a-z]{2,})/i.test(trimmed) && (!item.href || item.href === '/')) {
+                                                                e.preventDefault();
+                                                                const autoExt = isExternalUrl(trimmed);
+                                                                const updated = normalizedItems.map((it, i) =>
+                                                                    i === idx ? {
+                                                                        ...it,
+                                                                        href: trimmed,
+                                                                        ...(autoExt && !it.external ? { external: true, openInNewTab: true } : {})
+                                                                    } : it
+                                                                );
+                                                                onChange(updated);
+                                                            }
                                                         }}
                                                         placeholder="/ruta o https://... (PDF, AWS S3)"
                                                         title={item.href ? `URL completa (${item.href.length} car.):\n${item.href}` : ''}

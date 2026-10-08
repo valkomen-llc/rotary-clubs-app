@@ -41,10 +41,26 @@ export const MAX_NAV_LEVELS = 3;
 export type NavDestinationType = 'internal' | 'external' | 'document';
 
 /**
+ * Limpia y normaliza URLs eliminando barras accidentales que se anteponen a enlaces externos
+ * (ej: cuando un usuario pega https:// sobre un campo que contenía '/' por defecto).
+ */
+export function cleanNavUrl(url?: string): string {
+    let trimmed = String(url || '').trim();
+    if (!trimmed) return '';
+    // Corregir URLs donde se antepuso accidentalmente '/' o '///' a una URL externa o protocolo
+    if (/^\/+(https?:\/\/|\/\/|[a-z0-9+.-]+:)/i.test(trimmed)) {
+        trimmed = trimmed.replace(/^\/+/, '');
+    } else if (/^\/+([a-z0-9-]+\.[a-z0-9-]+\.[a-z]{2,})/i.test(trimmed)) {
+        trimmed = trimmed.replace(/^\/+/, '');
+    }
+    return trimmed;
+}
+
+/**
  * Detecta si una URL apunta a un documento descargable (PDF, Word, Excel, S3 docs).
  */
 export function isDocumentUrl(url?: string): boolean {
-    const raw = String(url || '').trim().toLowerCase();
+    const raw = cleanNavUrl(url).toLowerCase();
     if (!raw) return false;
     if (/\.(pdf|docx?|xlsx?|pptx?|zip|rar|csv)(\?|$|#)/i.test(raw)) return true;
     if (raw.includes('.s3.') || raw.includes('.amazonaws.com/')) {
@@ -57,7 +73,7 @@ export function isDocumentUrl(url?: string): boolean {
  * Detecta de forma inteligente si una URL es o aparenta ser externa (protocolos http/https, mailto, dominios o servicios S3).
  */
 export function isExternalUrl(url?: string): boolean {
-    const raw = String(url || '').trim();
+    const raw = cleanNavUrl(url);
     if (!raw) return false;
     // Protocolo http(s) o //
     if (/^(https?:)?\/\//i.test(raw)) return true;
@@ -74,7 +90,7 @@ export function isExternalUrl(url?: string): boolean {
  * Determina el tipo de destino de una URL para facilitar la interfaz de usuario.
  */
 export function getNavDestinationType(url?: string, isExplicitExternal?: boolean): NavDestinationType {
-    const raw = String(url || '').trim();
+    const raw = cleanNavUrl(url);
     if (!raw) return 'internal';
     if (isDocumentUrl(raw)) return 'document';
     if (isExplicitExternal || isExternalUrl(raw)) return 'external';
@@ -92,7 +108,7 @@ export function validateNavUrl(url?: string, isExternalMarked?: boolean): {
     warning?: string;
     suggestedUrl?: string;
 } {
-    const raw = String(url || '').trim();
+    const raw = cleanNavUrl(url);
     if (!raw) {
         return {
             isValid: false,
@@ -140,7 +156,7 @@ export function validateNavUrl(url?: string, isExternalMarked?: boolean): {
  * Asegura que una dirección externa cuente con su protocolo sin alterar parámetros, firmas ni queries.
  */
 export function ensureExternalProtocol(url: string): string {
-    const trimmed = String(url || '').trim();
+    const trimmed = cleanNavUrl(url);
     if (!trimmed) return trimmed;
     if (/^(https?:)?\/\//i.test(trimmed)) {
         if (trimmed.startsWith('//')) return `https:${trimmed}`;
@@ -168,7 +184,7 @@ export function resolveNavTarget(item: {
     external?: boolean;
     openInNewTab?: boolean;
 }): ResolvedNavTarget {
-    const raw = String(item.href || '').trim();
+    const raw = cleanNavUrl(item.href);
     if (!raw) {
         return { href: '/', isExternal: false };
     }
@@ -278,7 +294,8 @@ export function normalizeNavItems(rawItems: any[]): NavOrderItem[] {
 
         const kind: NavItemKind = raw.kind === 'fixed' || (raw.key && !raw.href) ? 'fixed' : 'custom';
         const label = String(raw.label || raw.key || 'Enlace').trim();
-        const href = kind === 'fixed' ? undefined : String(raw.href !== undefined ? raw.href : '/').trim();
+        const rawHref = kind === 'fixed' ? undefined : String(raw.href !== undefined ? raw.href : '/').trim();
+        const href = rawHref !== undefined ? cleanNavUrl(rawHref) : undefined;
         const enabled = raw.enabled !== false;
         const external = raw.external !== undefined ? !!raw.external : (href ? isExternalUrl(href) : false);
         const openInNewTab = raw.openInNewTab !== undefined

@@ -147,6 +147,11 @@ export const getClubById = async (req, res) => {
                         parentId: terminosItem.id
                     });
                 }
+                order.forEach(i => {
+                    if (i.href && /^\/+(https?:\/\/|\/\/)/i.test(i.href)) {
+                        i.href = i.href.replace(/^\/+/, '');
+                    }
+                });
                 settingsMap['event_nav_order'] = JSON.stringify(order);
                 entity.eventNavOrder = order;
             } catch (e) {

@@ -338,7 +338,13 @@ router.get('/by-domain', async (req, res) => {
                                 enabled: true,
                                 parentId: terminosItem.id
                             });
-                        }
+                        // Limpiar URLs con barra antepuesta a http(s) en cualquier elemento guardado
+                        order.forEach(i => {
+                            if (i.href && /^\/+(https?:\/\/|\/\/)/i.test(i.href)) {
+                                i.href = i.href.replace(/^\/+/, '');
+                                needsPersist = true;
+                            }
+                        });
                         if (needsPersist || !settings['event_nav_order']?.includes('terminos-ganador-absoluto')) {
                             db.query(
                                 `INSERT INTO "Setting" (id, key, value, "clubId", "updatedAt") 
