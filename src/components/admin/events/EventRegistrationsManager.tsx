@@ -555,11 +555,11 @@ const EventRegistrationsManager = ({ eventId, eventTitle, categories, statuses }
     }, [eventId, filters]);
 
     const loadDashboard = useCallback(() => {
-        fetch(`${API}/event-registrations/admin/dashboard?eventRef=${encodeURIComponent(eventId)}`, { headers: authHeaders() })
+        fetch(`${API}/event-registrations/admin/dashboard?${query}`, { headers: authHeaders() })
             .then(r => r.json())
             .then(d => { if (!d?.error) setDashboard(d); })
             .catch(() => { /* la tabla sigue sirviendo sin el tablero */ });
-    }, [eventId]);
+    }, [query]);
 
     const loadRows = useCallback(() => {
         setLoading(true);
@@ -607,28 +607,23 @@ const EventRegistrationsManager = ({ eventId, eventTitle, categories, statuses }
     /** Informe ejecutivo en PDF (motor compartido con Postulación). */
     const downloadPdf = async () => {
         setExporting('pdf');
+        setError('');
         try {
-            // 1) Tablero fresco del MISMO período (KPIs + branding con logo).
-            const periodParams = new URLSearchParams({ eventRef: eventId });
-            if (filters.from) periodParams.set('from', filters.from);
-            if (filters.to) periodParams.set('to', filters.to);
-            periodParams.set('logoData', '1');
+            // 1) Tablero fresco con los MISMOS filtros aplicados (KPIs + branding con logo).
+            const dashParams = new URLSearchParams(query);
+            dashParams.set('logoData', '1');
             const dashRes = await fetch(
-                `${API}/event-registrations/admin/dashboard?${periodParams}`, { headers: authHeaders() });
+                `${API}/event-registrations/admin/dashboard?${dashParams}`, { headers: authHeaders() });
             const dash = await dashRes.json().catch(() => null);
-            if (!dashRes.ok || dash?.error || !dash) throw new Error(dash?.error || 'No se pudo cargar el tablero del período.');
-            // 2) El rango confirmado manda: si el servidor aplicó otro, avisar.
-            const echoFrom = dash?.period?.from || null;
-            const echoTo = dash?.period?.to || null;
-            if ((echoFrom || null) !== (filters.from || null) || (echoTo || null) !== (filters.to || null)) {
-                throw new Error('El período confirmado por el servidor no coincide con el seleccionado.');
+            if (!dashRes.ok || dash?.error || !dash) {
+                throw new Error(dash?.error || 'No se pudo cargar el tablero para el informe.');
             }
-            // 3) Listado COMPLETO del mismo período para la tabla detallada.
+
+            // 2) Listado COMPLETO con los MISMOS filtros para la tabla detallada.
             const all: any[] = [];
             let poffset = 0;
             for (;;) {
-                const lp = new URLSearchParams(periodParams);
-                lp.delete('logoData');
+                const lp = new URLSearchParams(query);
                 lp.set('limit', '200');
                 lp.set('offset', String(poffset));
                 const res = await fetch(`${API}/event-registrations/admin/list?${lp}`, { headers: authHeaders() });
@@ -637,8 +632,12 @@ const EventRegistrationsManager = ({ eventId, eventTitle, categories, statuses }
                 all.push(...(d.registrations || []));
                 const total = d?.total || 0;
                 poffset += (d.registrations || []).length;
-                if (all.length >= total || !(d.registrations || []).length || poffset >= 2000) break;
+                if (all.length >= total || !(d.registrations || []).length || poffset >= 5000) break;
             }
+
+            const today = new Date().toISOString().slice(0, 10);
+            const fileName = `feria-proyectos-eventos-${today}.pdf`;
+
             const { generateEventReportPdf } = await import('../../../lib/eventReportPdf');
             await generateEventReportPdf({
                 event: {
@@ -647,15 +646,16 @@ const EventRegistrationsManager = ({ eventId, eventTitle, categories, statuses }
                     startDate: dash?.event?.startDate || null,
                     endDate: dash?.event?.endDate || null,
                 },
-                period: { from: echoFrom, to: echoTo },
+                period: dash?.period || null,
                 dashboard: dash,
                 registrations: all,
                 branding: dash?.branding || null,
                 generatedAt: new Date().toISOString(),
-            });
+            }, { fileName });
 
-        } catch {
-            setError('No pudimos generar el informe en PDF.');
+        } catch (err: any) {
+            console.error('[EventRegistrationsManager] downloadPdf error:', err);
+            setError(`No pudimos generar el informe en PDF: ${err?.message || 'Error inesperado'}`);
         } finally {
             setExporting('');
         }
@@ -767,7 +767,8 @@ const EventRegistrationsManager = ({ eventId, eventTitle, categories, statuses }
                 </button>
                 <button type="button" onClick={downloadPdf} disabled={Boolean(exporting)}
                     className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50">
-                    {exporting === 'pdf' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />} PDF
+                    {exporting === 'pdf' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                    {exporting === 'pdf' ? 'Generando informe…' : 'PDF'}
                 </button>
             </div>
 

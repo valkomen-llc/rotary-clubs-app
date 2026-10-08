@@ -569,6 +569,7 @@ const PostulacionesPagos: React.FC = () => {
                 if (all.length >= total || !(d.submissions || []).length || page >= 10) break;
                 page += 1;
             }
+            const today = new Date().toISOString().slice(0, 10);
             const { generateProjectFairReportPdf } = await import('../../lib/projectFairReportPdf');
             await generateProjectFairReportPdf({
                 intelligence: intel,
@@ -576,7 +577,7 @@ const PostulacionesPagos: React.FC = () => {
                 submissions: all,
                 catalog: { workflowStates: catalog?.workflowStates, paymentStates: catalog?.paymentStates },
                 generatedAt: intel?.generatedAt || new Date().toISOString(),
-            });
+            }, { fileName: `feria-proyectos-postulaciones-${today}.pdf` });
             toast.success(`Informe generado con ${all.length} postulación(es).`);
         } catch (e: any) {
             toast.error(e?.message || 'No se pudo generar el PDF');
@@ -607,7 +608,8 @@ const PostulacionesPagos: React.FC = () => {
             const res = await fetch(withEvento(`${API}/project-fair/admin/postulaciones/${row.id}/forms/${formKey}`), { headers: authHeaders() });
             const data = await res.json();
             if (!res.ok) throw new Error(data?.error || 'No se pudo cargar el formulario');
-            const { default: JsPDF } = await import('jspdf');
+            const { loadJsPdf } = await import('../../lib/executiveReportPdf');
+            const JsPDF = await loadJsPdf();
             const doc = new JsPDF({ unit: 'pt', format: 'a4' });
             // `computed` trae las respuestas con los campos derivados ya
             // resueltos por el servidor, y `approval` la sección del Distrito:
@@ -733,7 +735,7 @@ const PostulacionesPagos: React.FC = () => {
                         <div className="flex flex-wrap gap-2">
                             <button onClick={exportCsv} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Download size={14} /> CSV</button>
                             <button onClick={exportExcel} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"><FileSpreadsheet size={14} /> Excel</button>
-                            <button onClick={exportPdf} disabled={pdfBusy} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold text-white disabled:opacity-60" style={{ background: BLUE }}>{pdfBusy ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />} {pdfBusy ? 'Generando…' : 'PDF'}</button>
+                            <button onClick={exportPdf} disabled={pdfBusy} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold text-white disabled:opacity-60" style={{ background: BLUE }}>{pdfBusy ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />} {pdfBusy ? 'Generando informe…' : 'PDF'}</button>
                         </div>
                     )}
                 </header>
@@ -1731,7 +1733,8 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
         try {
             const res = await fetch(withEvento(`${API}/project-fair/admin/postulaciones/${id}/snapshot`), { headers: authHeaders() });
             const snap = await res.json();
-            const { default: JsPDF } = await import('jspdf');
+            const { loadJsPdf } = await import('../../lib/executiveReportPdf');
+            const JsPDF = await loadJsPdf();
             const doc = new JsPDF({ unit: 'pt', format: 'a4' });
             const s = snap.submission;
 

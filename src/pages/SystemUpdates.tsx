@@ -42,6 +42,20 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1172.0',
+        title: 'Estabilidad de Acceso al Administrador y Módulo de Analytics 🚀📊',
+        description: 'Reparación integral del flujo de carga y renderizado en /admin/analytics: code-splitting de SocialAnalytics reduciendo el bundle crítico a 38 kB, mitigación de condiciones de carrera con deduplicación de promesas en vuelo (promise coalescing) para consultas concurrentes a GA4, blindaje defensivo frente a valores nulos o indefinidos en métricas y mapas geográficos, y aislamiento de fallos con ErrorBoundary en AdminLayout para mantener la navegación siempre operativa.',
+        date: new Date().toISOString(),
+        tags: ['analytics', 'performance', 'error-boundary', 'multi-tenant', 'production-release'],
+        type: 'fix',
+        changes: [
+            { type: 'fixed', text: 'Resuelto el bloqueo de carga y pantalla blanca al acceder a /admin/analytics en sitios multitenant y dominios personalizados.' },
+            { type: 'improved', text: 'Carga diferida (lazy loading) de SocialAnalytics con Suspense, aligerando el empaquetado inicial de la ruta en más del 90%.' },
+            { type: 'fixed', text: 'Alineación de claves de caché y deduplicación de consultas GA4 en vuelo entre AdminLayout y Analytics.' },
+            { type: 'improved', text: 'Encapsulación de errores en AdminLayout para proteger la barra lateral y navegación principal ante excepciones no controladas.' }
+        ]
+    },
+    {
         version: '4.1171.0',
         title: 'Marketing inteligente FASE 2: calendario global y Resumen por campaña 📅📊',
         description: 'Nuevo Calendario global en Email Marketing con todas las campañas en curso (Mes/Semana/Lista, filtros por canal, solo lectura; las acciones viven en cada campaña) y pestañas Resumen y Audiencia en el detalle: estado, objetivo, período, próximo envío, enviadas, destinatarios, conversiones, tasa, mejor comunicación y recomendación principal en un solo endpoint. Misma fuente de fechas y permisos por ámbito en todas las vistas.',

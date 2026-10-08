@@ -109,7 +109,7 @@ export function buildExecutiveReading(d: IntelligenceData): ExecutiveReading {
 
     const bullets: ExecutiveReading['bullets'] = [];
     // Principal avance: la etapa del embudo con mayor avance real.
-    const funnel = d.funnel || [];
+    const funnel = Array.isArray(d.funnel) ? d.funnel : [];
     const paidStep = funnel.find(f => f.key === 'paid');
     if (k.total > 0 && (k.paid || 0) > 0) {
         bullets.push({
@@ -177,7 +177,7 @@ export interface StateRow { estado: string; cantidad: number; pct: number; obser
 
 export function buildWorkflowMatrix(d: IntelligenceData): StateRow[] {
     const total = d.kpis.total || 0;
-    const byW = new Map((d.byWorkflow || []).map(r => [r.key, r.count]));
+    const byW = new Map((Array.isArray(d.byWorkflow) ? d.byWorkflow : []).map(r => [r.key, r.count]));
     const needsActionKeys = new Set(['pending_payment', 'needs_changes', 'payment_failed']);
     return Object.entries(WORKFLOW_LABELS)
         .map(([key, estado]) => ({ key, estado, cantidad: byW.get(key) || 0 }))

@@ -250,6 +250,21 @@ export const categoryUsage = async (eventId, categoryKey) => {
     return { seats: rows[0]?.seats || 0, registrations: rows[0]?.registrations || 0 };
 };
 
+/** Mapa de uso de todas las categorías del evento en UNA SOLA consulta (evita N+1). */
+export const categoriesUsageMap = async (eventId) => {
+    const { rows } = await db.query(
+        `SELECT "categoryKey",
+                COALESCE(SUM(1 + GREATEST("companionsCount", 0)), 0)::int AS seats,
+                COUNT(*)::int AS registrations
+         FROM "EventRegistration"
+         WHERE "eventId" = $1 AND status = ANY($2)
+         GROUP BY "categoryKey"`,
+        [eventId, COMMITTED_STATUSES]);
+    const map = new Map();
+    rows.forEach(r => map.set(r.categoryKey, { seats: r.seats || 0, registrations: r.registrations || 0 }));
+    return map;
+};
+
 // ── Inscripciones ────────────────────────────────────────────────────
 
 export const mapRegistration = (row) => row && ({
@@ -565,6 +580,7 @@ export default {
     clean, isEmail, parseJson,
     loadEvent, ensureEdition, updateEdition,
     listCategories, findCategory, upsertCategory, seedCategories, deleteCategory, categoryUsage,
+    categoriesUsageMap,
     mapRegistration, toPublicRegistration, findRegistration,
     listCompanions, replaceCompanions,
     recordHistory, listHistory, listPayments, listMessages, recordMessage, recordPayment,

@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { lazyWithRetry } from '../../lib/lazyWithRetry';
 import AdminLayout from '../../components/admin/AdminLayout';
-import SocialAnalytics from '../../components/admin/analytics/SocialAnalytics';
+const SocialAnalytics = lazyWithRetry(() => import('../../components/admin/analytics/SocialAnalytics'), 'SocialAnalytics');
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
 import { isPlatformSuperAdmin, isOnPlatformDomain } from '../../lib/platformAdmin';
@@ -19,15 +20,19 @@ import {
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
-const fmtN = (n: number) =>
-    n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M`
-        : n >= 1_000 ? `${(n / 1_000).toFixed(1)}k`
-            : String(n ?? 0);
+const fmtN = (n: number | string | null | undefined) => {
+    const num = Number(n);
+    if (!Number.isFinite(num)) return '0';
+    return num >= 1_000_000 ? `${(num / 1_000_000).toFixed(1)}M`
+        : num >= 1_000 ? `${(num / 1_000).toFixed(1)}k`
+            : String(num);
+};
 
-const fmtDur = (secs: number) => {
-    if (!secs) return '0s';
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
+const fmtDur = (secs: number | null | undefined) => {
+    const val = Number(secs) || 0;
+    if (!val) return '0s';
+    const m = Math.floor(val / 60);
+    const s = Math.round(val % 60);
     return m ? `${m}m ${s}s` : `${s}s`;
 };
 
@@ -105,12 +110,17 @@ const Skeleton = ({ h = 'h-8', w = 'w-24' }: { h?: string; w?: string }) => (
 
 // ── Interactive World SVG Map Component ──────────────────────────────────────
 const SVGWorldMap: React.FC<{ topCountries: { country: string; sessions: number }[] }> = ({ topCountries }) => {
-    const maxSessions = topCountries[0]?.sessions || 1;
+    const list = Array.isArray(topCountries) ? topCountries : [];
+    const maxSessions = Math.max(1, list[0]?.sessions || 1);
     const countryMap = useMemo(() => {
         const map = new Map<string, number>();
-        topCountries.forEach(c => map.set(c.country.toLowerCase(), c.sessions));
+        list.forEach(c => {
+            if (c && typeof c.country === 'string') {
+                map.set(c.country.toLowerCase().trim(), Number(c.sessions) || 0);
+            }
+        });
         return map;
-    }, [topCountries]);
+    }, [list]);
 
     // Simplified regional centroids for choropleth pins
     const REGIONS = [
@@ -377,16 +387,21 @@ const AnalyticsPage: React.FC = () => {
     // 4. Fetch Realtime & Ecosystem Status
     const fetchRealtimeAndEcosystem = useCallback(async () => {
         try {
-            const [rtRes, ecoRes] = await Promise.all([
-                fetch(`${API}/analytics/realtime`, { headers: authHeaders() }).then(r => r.json()).catch(() => null),
-                fetch(`${API}/analytics/ecosystem-status`, { headers: authHeaders() }).then(r => r.json()).catch(() => null)
-            ]);
-            if (rtRes) setRealtime(rtRes);
-            if (ecoRes) setEcosystem(ecoRes);
+            const promises: Promise<any>[] = [
+                fetch(`${API}/analytics/realtime`, { headers: authHeaders() }).then(r => r.ok ? r.json() : null).catch(() => null)
+            ];
+            if (!isTenantMode) {
+                promises.push(
+                    fetch(`${API}/analytics/ecosystem-status`, { headers: authHeaders() }).then(r => r.ok ? r.json() : null).catch(() => null)
+                );
+            }
+            const [rtRes, ecoRes] = await Promise.all(promises);
+            if (rtRes && rtRes.status !== 'error') setRealtime(rtRes);
+            if (ecoRes && ecoRes.status === 'ok') setEcosystem(ecoRes);
         } catch {
             // non-blocking
         }
-    }, [authHeaders]);
+    }, [authHeaders, isTenantMode]);
 
     // Initial mount once tenant context is resolved
     useEffect(() => {
@@ -441,53 +456,64 @@ const AnalyticsPage: React.FC = () => {
 
     // Filter sites in dropdown
     const filteredSites = useMemo(() => {
-        if (!searchSite.trim()) return sites;
-        const q = searchSite.toLowerCase();
-        return sites.filter(s =>
-            s.name.toLowerCase().includes(q) ||
-            s.domain.toLowerCase().includes(q) ||
-            s.subdomain.toLowerCase().includes(q) ||
-            (s.districtName && s.districtName.toLowerCase().includes(q))
-        );
+        if (!searchSite?.trim()) return sites || [];
+        const q = searchSite.toLowerCase().trim();
+        return (sites || []).filter(s => {
+            if (!s) return false;
+            const name = (s.name || '').toLowerCase();
+            const domain = (s.domain || '').toLowerCase();
+            const subdomain = (s.subdomain || '').toLowerCase();
+            const districtName = (s.districtName || '').toLowerCase();
+            return name.includes(q) || domain.includes(q) || subdomain.includes(q) || districtName.includes(q);
+        });
     }, [sites, searchSite]);
 
     // Filter performance table sites
     const filteredPerfSites = useMemo(() => {
-        let list = perfSites;
+        let list = Array.isArray(perfSites) ? perfSites : [];
         if (perfTypeFilter !== 'all') {
-            list = list.filter(s => s.group === perfTypeFilter || s.category === perfTypeFilter);
+            list = list.filter(s => s?.group === perfTypeFilter || s?.category === perfTypeFilter);
         }
         if (perfStatusFilter === 'traffic') {
-            list = list.filter(s => s.hasTraffic);
+            list = list.filter(s => s?.hasTraffic);
         } else if (perfStatusFilter === 'no_traffic') {
-            list = list.filter(s => !s.hasTraffic);
+            list = list.filter(s => !s?.hasTraffic);
         }
-        if (perfSearch.trim()) {
-            const q = perfSearch.toLowerCase();
-            list = list.filter(s =>
-                s.name.toLowerCase().includes(q) ||
-                s.domain.toLowerCase().includes(q) ||
-                s.subdomain.toLowerCase().includes(q) ||
-                (s.districtName && s.districtName.toLowerCase().includes(q))
-            );
+        if (perfSearch?.trim()) {
+            const q = perfSearch.toLowerCase().trim();
+            list = list.filter(s => {
+                if (!s) return false;
+                const name = (s.name || '').toLowerCase();
+                const domain = (s.domain || '').toLowerCase();
+                const subdomain = (s.subdomain || '').toLowerCase();
+                const districtName = (s.districtName || '').toLowerCase();
+                return name.includes(q) || domain.includes(q) || subdomain.includes(q) || districtName.includes(q);
+            });
         }
         return list;
     }, [perfSites, perfTypeFilter, perfStatusFilter, perfSearch]);
 
     // Extracted Metrics
-    const totals = data?.totals ?? { sessions: 0, users: 0, pageViews: 0, pagesPerSession: 0, avgDurationSec: 0, bounceRate: 0 };
-    const chartData = (data?.chartData?.length ?? 0) > 0 ? data!.chartData : [];
-    const topPages = data?.topPages ?? [];
-    const topCountries = data?.topCountries ?? [];
-    const topCities = data?.topCities ?? [];
-    const sources = data?.sources ?? [];
-    const devices = data?.devices ?? [];
-    const browsers = data?.browsers ?? [];
+    const totals = {
+        sessions: Number(data?.totals?.sessions) || 0,
+        users: Number(data?.totals?.users) || 0,
+        pageViews: Number(data?.totals?.pageViews) || 0,
+        pagesPerSession: Number(data?.totals?.pagesPerSession) || 0,
+        avgDurationSec: Number(data?.totals?.avgDurationSec) || 0,
+        bounceRate: Number(data?.totals?.bounceRate) || 0,
+    };
+    const chartData = Array.isArray(data?.chartData) ? data.chartData : [];
+    const topPages = Array.isArray(data?.topPages) ? data.topPages : [];
+    const topCountries = Array.isArray(data?.topCountries) ? data.topCountries : [];
+    const topCities = Array.isArray(data?.topCities) ? data.topCities : [];
+    const sources = Array.isArray(data?.sources) ? data.sources : [];
+    const devices = Array.isArray(data?.devices) ? data.devices : [];
+    const browsers = Array.isArray(data?.browsers) ? data.browsers : [];
 
-    const maxPageViews = topPages[0]?.views || 1;
-    const maxCountrySessions = topCountries[0]?.sessions || 1;
-    const maxCitySessions = topCities[0]?.sessions || 1;
-    const maxSourceSessions = sources[0]?.sessions || 1;
+    const maxPageViews = Math.max(1, topPages[0]?.views || 1);
+    const maxCountrySessions = Math.max(1, topCountries[0]?.sessions || 1);
+    const maxCitySessions = Math.max(1, topCities[0]?.sessions || 1);
+    const maxSourceSessions = Math.max(1, sources[0]?.sessions || 1);
 
     const metricLabel = metric === 'value' ? 'Sesiones' : metric === 'users' ? 'Usuarios' : 'Páginas vistas';
     const activeSite = isTenantMode ? (selectedSite || currentClubSite || sites[0] || null) : selectedSite;
@@ -542,7 +568,16 @@ const AnalyticsPage: React.FC = () => {
                 ))}
             </div>
 
-            {vista === 'social' && <SocialAnalytics />}
+            {vista === 'social' && (
+                <React.Suspense fallback={
+                    <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center">
+                        <RefreshCw className="w-6 h-6 text-rotary-blue animate-spin mx-auto mb-3" />
+                        <p className="text-sm font-bold text-gray-700">Cargando métricas de redes sociales...</p>
+                    </div>
+                }>
+                    <SocialAnalytics />
+                </React.Suspense>
+            )}
 
             {vista === 'web' && (<>
             {/* ─── Header: Selector de Sitio + Rango de Período ──────────────── */}
@@ -1012,19 +1047,19 @@ const AnalyticsPage: React.FC = () => {
                                             <td className="py-3.5 px-3">
                                                 <div className="flex items-center gap-2.5">
                                                     <div className="w-7 h-7 rounded-lg bg-sky-50 text-rotary-blue flex items-center justify-center font-bold text-xs flex-shrink-0">
-                                                        {site.name.charAt(0)}
+                                                        {(site.name || 'S').charAt(0)}
                                                     </div>
                                                     <span className="font-bold text-gray-900 truncate max-w-[200px]">{site.name}</span>
                                                 </div>
                                             </td>
                                             <td className="py-3.5 px-3">
                                                 <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-gray-100 text-gray-600">
-                                                    {site.type}
+                                                    {site.type || 'Sitio'}
                                                 </span>
                                             </td>
                                             <td className="py-3.5 px-3">
                                                 <span className="text-gray-500 font-mono text-[11px] truncate block max-w-[160px]">
-                                                    {site.domain || `${site.subdomain}.clubplatform.org`}
+                                                    {site.domain || (site.subdomain ? `${site.subdomain}.clubplatform.org` : '')}
                                                 </span>
                                             </td>
                                             <td className="py-3.5 px-3 text-right font-bold text-gray-900">
@@ -1045,14 +1080,14 @@ const AnalyticsPage: React.FC = () => {
                                             <td className="py-3.5 px-3 text-center">
                                                 <span
                                                     className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
-                                                        site.changePct > 0
+                                                        (Number(site.changePct) || 0) > 0
                                                             ? 'bg-emerald-50 text-emerald-700'
-                                                            : site.changePct < 0
+                                                            : (Number(site.changePct) || 0) < 0
                                                                 ? 'bg-rose-50 text-rose-700'
                                                                 : 'bg-gray-100 text-gray-500'
                                                     }`}
                                                 >
-                                                    {site.changePct > 0 ? `+${site.changePct}%` : `${site.changePct}%`}
+                                                    {(Number(site.changePct) || 0) > 0 ? `+${site.changePct}%` : `${site.changePct || 0}%`}
                                                 </span>
                                             </td>
                                             <td className="py-3.5 px-3 text-right">

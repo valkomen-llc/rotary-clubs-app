@@ -1038,7 +1038,8 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
     const downloadPdf = async () => {
         setExporting('pdf');
         try {
-            const { default: JsPDF } = await import('jspdf');
+            const { loadJsPdf } = await import('../../../lib/executiveReportPdf');
+            const JsPDF = await loadJsPdf();
             const doc = new JsPDF({ unit: 'pt', format: 'a4' });
             const width = doc.internal.pageSize.getWidth();
             let y = 56;
@@ -1372,7 +1373,8 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                 </button>
                 <button type="button" onClick={downloadPdf} disabled={Boolean(exporting)}
                     className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">
-                    <FileText className="h-4 w-4" /> PDF
+                    {exporting === 'pdf' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                    {exporting === 'pdf' ? 'Generando informe…' : 'PDF'}
                 </button>
             </div>
 

@@ -91,7 +91,7 @@ export interface ReportInput {
 
 export async function generateProjectFairReportPdf(
     input: ReportInput,
-    options?: { returnBytes?: boolean },
+    options?: { returnBytes?: boolean; fileName?: string },
 ): Promise<{ bytes: ArrayBuffer; pages: number } | void> {
     const JsPDF = await loadJsPdf();
 
@@ -262,6 +262,7 @@ export async function generateProjectFairReportPdf(
         const bytes = doc.output('arraybuffer') as ArrayBuffer;
         return { bytes, pages };
     }
-    const safeName = 'informe-ejecutivo-postulacion-proyectos.pdf';
+    const today = new Date().toISOString().slice(0, 10);
+    const safeName = options?.fileName || `feria-proyectos-postulaciones-${today}.pdf`;
     doc.save(safeName);
 }

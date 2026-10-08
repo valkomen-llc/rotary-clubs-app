@@ -20,6 +20,7 @@
 import db from './db.js';
 
 let _ready = false;
+let _schemaPromise = null;
 
 /** Añade una columna sólo si falta. Postgres 9.6+ soporta IF NOT EXISTS aquí. */
 const addColumn = (table, column, definition) =>
@@ -124,11 +125,14 @@ const alreadyApplied = async () => {
 
 export const ensureEventRegistrationSchema = async () => {
     if (_ready) return;
+    if (_schemaPromise) return _schemaPromise;
 
-    if (await alreadyApplied()) {
-        _ready = true;
-        return;
-    }
+    _schemaPromise = (async () => {
+        try {
+            if (await alreadyApplied()) {
+                _ready = true;
+                return;
+            }
 
     // ── Edición del evento ───────────────────────────────────────────
     // Una fila por `CalendarEvent` que se comporte como edición de la feria.
@@ -280,6 +284,10 @@ export const ensureEventRegistrationSchema = async () => {
 
     await index('EventRegistration_event_idx', 'ON "EventRegistration" ("eventId")');
     await index('EventRegistration_status_idx', 'ON "EventRegistration" (status)');
+    await index('EventRegistration_event_status_idx', 'ON "EventRegistration" ("eventId", status)');
+    await index('EventRegistration_event_created_idx', 'ON "EventRegistration" ("eventId", "createdAt")');
+    await index('EventRegistration_event_country_idx', 'ON "EventRegistration" ("eventId", country)');
+    await index('EventRegistration_event_club_idx', 'ON "EventRegistration" ("eventId", "clubName")');
     await index('EventRegistration_session_idx', 'ON "EventRegistration" ("stripeSessionId")');
     await index('EventRegistration_email_idx', 'ON "EventRegistration" (email)');
     await index('EventRegistration_category_idx', 'ON "EventRegistration" ("eventId", "categoryKey")');
@@ -563,6 +571,11 @@ export const ensureEventRegistrationSchema = async () => {
     await index('EventAttendeeLogin_email_idx', 'ON "EventAttendeeLogin" (lower(email), "createdAt")');
 
     _ready = true;
+        } finally {
+            _schemaPromise = null;
+        }
+    })();
+    return _schemaPromise;
 };
 
 export default ensureEventRegistrationSchema;

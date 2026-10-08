@@ -3,16 +3,25 @@
  *
  * Reutiliza el sistema base de `executiveReportPdf.ts` (el mismo de
  * Postulación de Proyectos: identidad, cabecera con logo, KPIs, paginación,
- * badges, footer). Aquí sólo van el dataset, los KPIs, la lectura y la tabla
- * propios de inscripciones a eventos. No se duplica ninguna plantilla.
+ * badges, footer).
  *
  * Fuente de datos: GET /event-registrations/admin/dashboard (KPIs del
- * tablero, con el MISMO rango from/to del informe) + GET
- * /event-registrations/admin/list (tabla, mismo rango). Sin cifras
- * hardcodeadas; el recaudo nunca mezcla monedas.
+ * tablero con los mismos filtros aplicados) + GET
+ * /event-registrations/admin/list (tabla detallada con los mismos filtros).
+ *
+ * Diseñado para la Feria de Proyectos:
+ *   · Resumen ejecutivo completo (inscripciones, nacionales, internacionales,
+ *     acompañantes, personas totales, pagos confirmados, pendientes, acreditados,
+ *     países, clubes y distritos).
+ *   · Recaudo separado por moneda (COP y USD nunca se mezclan).
+ *   · Desglose de categorías con inscripciones, personas, pagados y recaudo.
+ *   · Distribución por país y por club.
+ *   · Evolución cronológica de registros y pagos.
+ *   · Listado detallado de asistentes con código, titular, correo, categoría,
+ *     club/país, acompañantes, valor en COP/USD, estado y fecha.
  */
 import {
-    BLUE, INK, MUTED, LINE,
+    BLUE, GOLD, INK, MUTED, LINE, BAND_BG,
     PAGE_W, CONTENT_W, FOOT_Y, M,
     Doc, ExecutiveReport, ExecutiveLogo, BrandingLike, kpiGrid,
     renderExecutiveHeader, finishExecutiveReport,
@@ -21,11 +30,27 @@ import {
 import { money, statusMeta } from './eventRegistrationSpec';
 
 export interface EventReportRegistration {
-    firstName?: string; lastName?: string; email?: string;
-    clubName?: string; district?: string; country?: string;
-    categoryLabel?: string; categoryKey?: string;
-    status?: string; checkedInAt?: string | null;
+    id?: string;
+    publicRef?: string;
+    registrationCode?: string | null;
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    phone?: string;
+    clubName?: string;
+    district?: string;
+    country?: string;
+    city?: string;
+    categoryLabel?: string;
+    categoryKey?: string;
+    status?: string;
+    checkedInAt?: string | null;
     createdAt?: string;
+    baseCurrency?: string;
+    baseAmount?: number;
+    chargeCurrency?: string;
+    chargeAmount?: number;
+    companionsCount?: number;
 }
 
 export interface EventReportDashboard {
@@ -34,28 +59,63 @@ export interface EventReportDashboard {
         settled?: number; pending?: number; failed?: number;
         refunded?: number; waitlist?: number; accredited?: number;
         countries?: number; districts?: number; clubs?: number;
+        national?: number; international?: number;
+        companionsAccredited?: number; companionRecords?: number;
     } | null;
+    byCategory?: {
+        categoryKey?: string;
+        categoryLabel?: string;
+        total?: number;
+        people?: number;
+        settled?: number;
+        revenue?: number;
+        currency?: string;
+    }[] | null;
     byCurrency?: { currency?: string; base?: number; charged?: number; chargeCurrency?: string; total?: number }[] | null;
+    byCountry?: { country: string; total: number }[] | null;
+    byDistrict?: { district: string; total: number }[] | null;
+    byClub?: { clubName: string; total: number }[] | null;
+    timeline?: { day: string; total: number; settled: number }[] | null;
+    capacity?: { key: string; name: string; capacity?: number; seats?: number; registrations?: number }[] | null;
     period?: { from?: string | null; to?: string | null } | null;
 }
 
 export interface EventReportEvent {
-    title?: string; location?: string | null;
-    startDate?: string | null; endDate?: string | null;
+    title?: string;
+    location?: string | null;
+    startDate?: string | null;
+    endDate?: string | null;
 }
 
 export interface EventReportInput {
     event: EventReportEvent;
-    /** Rango analizado (eco del servidor: `dashboard.period`). */
-    period: { from?: string | null; to?: string | null } | null;
+    period?: { from?: string | null; to?: string | null } | null;
     dashboard: EventReportDashboard;
     registrations: EventReportRegistration[];
     branding?: BrandingLike | null;
     generatedAt?: string;
 }
 
+export interface EventReportOptions {
+    returnBytes?: boolean;
+    fileName?: string;
+}
+
+function cleanPdfText(val: any): string {
+    if (val === null || val === undefined) return '';
+    return String(val)
+        .normalize('NFC')
+        .replace(/[\u2018\u2019]/g, "'")
+        .replace(/[\u201C\u201D]/g, '"')
+        .replace(/[\u2013\u2014]/g, '-')
+        .replace(/\u00A0/g, ' ')
+        .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
+        .trim();
+}
+
 function fullName(r: EventReportRegistration): string {
-    return `${r.firstName || ''} ${r.lastName || ''}`.trim() || '—';
+    const fn = `${r.firstName || ''} ${r.lastName || ''}`.trim();
+    return cleanPdfText(fn || '—');
 }
 
 /** Tono del badge de pago según el estado real de la inscripción. */
@@ -63,9 +123,9 @@ function payTone(status?: string): string {
     switch (String(status || '')) {
         case 'paid': case 'confirmed': case 'accredited': case 'attended':
             return 'green';
-        case 'pending_payment':
+        case 'pending_payment': case 'pending':
             return 'amber';
-        case 'payment_failed':
+        case 'payment_failed': case 'failed': case 'expired':
             return 'red';
         case 'waitlist':
             return 'blue';
@@ -85,10 +145,18 @@ export function buildEventReading(d: EventReportDashboard, eventTitle: string): 
         `Del total, ${n(t.settled)} ${t.settled === 1 ? 'cuenta' : 'cuentan'} con pago confirmado y ${n(t.pending)} ` +
         `${t.pending === 1 ? 'permanece' : 'permanecen'} pendiente.`,
     ];
-    if ((t.companions || 0) > 0 || (t.accredited || 0) > 0) {
-        parts.push(`Se registran ${n(t.companions)} ${t.companions === 1 ? 'acompañante' : 'acompañantes'} y ` +
-            `${n(t.accredited)} ${t.accredited === 1 ? 'persona acreditada' : 'personas acreditadas'}.`);
+
+    if ((t.national !== undefined && t.national > 0) || (t.international !== undefined && t.international > 0)) {
+        parts.push(`Distribución geográfica: ${n(t.national)} ${t.national === 1 ? 'asistente nacional' : 'asistentes nacionales'} ` +
+            `y ${n(t.international)} ${t.international === 1 ? 'internacional' : 'internacionales'}.`);
     }
+
+    const totalPersonas = t.people || (Number(t.registrations || 0) + Number(t.companions || 0));
+    if ((t.companions || 0) > 0 || (t.accredited || 0) > 0) {
+        parts.push(`Se registran ${n(t.companions)} ${t.companions === 1 ? 'acompañante' : 'acompañantes'} ` +
+            `(total de ${n(totalPersonas)} personas en sala) y ${n(t.accredited)} personas acreditadas.`);
+    }
+
     const coins = (d.byCurrency || []).filter(c => Number(c.base) > 0 || (c.total || 0) > 0);
     if (coins.length) {
         parts.push('El recaudo por moneda asciende a ' +
@@ -102,14 +170,14 @@ export function buildEventReading(d: EventReportDashboard, eventTitle: string): 
 
 export async function generateEventReportPdf(
     input: EventReportInput,
-    options?: { returnBytes?: boolean },
+    options?: EventReportOptions,
 ): Promise<{ bytes: ArrayBuffer; pages: number } | void> {
     const JsPDF = await loadJsPdf();
 
     const doc: Doc = new JsPDF({ unit: 'pt', format: 'a4', compress: true });
     const t = input.dashboard?.totals || {};
-    const eventTitle = String(input.event?.title || 'Evento').slice(0, 90);
-    const place = String(input.event?.location || '').trim();
+    const eventTitle = cleanPdfText(input.event?.title || 'Evento').slice(0, 90);
+    const place = cleanPdfText(input.event?.location || '');
     const subtitle = place ? `${eventTitle} – ${place}`.slice(0, 110) : eventTitle;
     const footerText = `${eventTitle} · Informe ejecutivo`;
     const r = new ExecutiveReport(doc, footerText);
@@ -137,17 +205,22 @@ export async function generateEventReportPdf(
 
     // ══ 1. Resumen ejecutivo ══════════════════════════════════════════
     r.sectionTitle('1', 'Resumen ejecutivo');
+    const totalPersonas = t.people || (Number(t.registrations || 0) + Number(t.companions || 0));
     const cards: { label: string; value: string; sub?: string }[] = [
         { label: 'Inscripciones', value: fmtNum(t.registrations) },
+        { label: 'Nacionales', value: fmtNum(t.national) },
+        { label: 'Internacionales', value: fmtNum(t.international) },
         { label: 'Pagos confirmados', value: fmtNum(t.settled) },
         { label: 'Pendientes de pago', value: fmtNum(t.pending) },
         { label: 'Acompañantes', value: fmtNum(t.companions) },
+        { label: 'Total asistentes', value: fmtNum(totalPersonas) },
         { label: 'Acreditados', value: fmtNum(t.accredited) },
         { label: 'Países representados', value: fmtNum(t.countries) },
-        { label: 'Distritos participantes', value: fmtNum(t.districts) },
         { label: 'Clubes participantes', value: fmtNum(t.clubs) },
+        { label: 'Distritos participantes', value: fmtNum(t.districts) },
         { label: 'Reembolsos', value: fmtNum(t.refunded) },
     ];
+
     // Recaudo separado por moneda: nunca se suman COP con USD.
     (input.dashboard?.byCurrency || []).forEach(c => {
         const cur = String(c.currency || 'USD').toUpperCase();
@@ -166,46 +239,214 @@ export async function generateEventReportPdf(
     r.y += 13;
     r.paragraph(buildEventReading(input.dashboard, eventTitle), 9, 13.5);
 
-    // ══ 2. Inscripciones del período (página nueva) ═══════════════════
+    // ══ 2. Desglose por categoría y distribución (página nueva) ═══════
+    const categories = input.dashboard?.byCategory || [];
+    const countries = input.dashboard?.byCountry || [];
+    const clubs = input.dashboard?.byClub || [];
+    const hasDistData = categories.length > 0 || countries.length > 0 || clubs.length > 0;
+
+    if (hasDistData) {
+        r.newPage();
+        r.sectionTitle('2', 'Categorías y distribución geográfica');
+
+        // Tabla de Categorías
+        if (categories.length > 0) {
+            doc.setFont('helvetica', 'bold').setFontSize(9).setTextColor(...INK);
+            doc.text('INSCRIPCIONES POR CATEGORÍA', M, r.y);
+            r.y += 10;
+
+            const W_CAT_NAME = 175;
+            const W_CAT_REGS = 65;
+            const W_CAT_PEOPLE = 65;
+            const W_CAT_SETTLED = 72;
+            const W_CAT_REV = CONTENT_W - W_CAT_NAME - W_CAT_REGS - W_CAT_PEOPLE - W_CAT_SETTLED;
+
+            // Cabecera tabla categorías
+            doc.setFillColor(...BLUE);
+            (doc as any).roundedRect(M, r.y, CONTENT_W, 16, 2, 2, 'F');
+            doc.setFont('helvetica', 'bold').setFontSize(7).setTextColor(255, 255, 255);
+            let cx = M + 6;
+            doc.text('CATEGORÍA', cx, r.y + 11); cx += W_CAT_NAME;
+            doc.text('INSCRIPCIONES', cx + (W_CAT_REGS - doc.getTextWidth('INSCRIPCIONES')) / 2, r.y + 11); cx += W_CAT_REGS;
+            doc.text('PERSONAS', cx + (W_CAT_PEOPLE - doc.getTextWidth('PERSONAS')) / 2, r.y + 11); cx += W_CAT_PEOPLE;
+            doc.text('PAGADAS', cx + (W_CAT_SETTLED - doc.getTextWidth('PAGADAS')) / 2, r.y + 11); cx += W_CAT_SETTLED;
+            doc.text('RECAUDO CONFIRMADO', cx + W_CAT_REV - doc.getTextWidth('RECAUDO CONFIRMADO') - 6, r.y + 11);
+            r.y += 16 + 2;
+
+            categories.forEach(cat => {
+                const label = cleanPdfText(cat.categoryLabel || cat.categoryKey || 'Categoría');
+                const catLines: string[] = doc.splitTextToSize(label, W_CAT_NAME - 10);
+                const ch = Math.max(catLines.length * 10, 14) + 6;
+                r.ensure(ch);
+
+                let rx = M + 6;
+                doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(...INK);
+                catLines.forEach((ln, li) => doc.text(ln, rx, r.y + 10 + li * 10));
+                rx += W_CAT_NAME;
+
+                doc.setFont('helvetica', 'bold').setFontSize(8).setTextColor(...INK);
+                const regsStr = fmtNum(cat.total);
+                doc.text(regsStr, rx + (W_CAT_REGS - doc.getTextWidth(regsStr)) / 2, r.y + 10);
+                rx += W_CAT_REGS;
+
+                const peoStr = fmtNum(cat.people);
+                doc.setFont('helvetica', 'normal').setTextColor(...MUTED);
+                doc.text(peoStr, rx + (W_CAT_PEOPLE - doc.getTextWidth(peoStr)) / 2, r.y + 10);
+                rx += W_CAT_PEOPLE;
+
+                const setStr = fmtNum(cat.settled);
+                doc.setFont('helvetica', 'bold').setTextColor(6, 95, 70);
+                doc.text(setStr, rx + (W_CAT_SETTLED - doc.getTextWidth(setStr)) / 2, r.y + 10);
+                rx += W_CAT_SETTLED;
+
+                const revStr = cat.revenue ? money(cat.revenue, cat.currency || 'USD') : '—';
+                doc.setFont('helvetica', 'bold').setTextColor(...INK);
+                doc.text(revStr, rx + W_CAT_REV - doc.getTextWidth(revStr) - 6, r.y + 10);
+
+                doc.setDrawColor(...LINE);
+                doc.line(M, r.y + ch - 1, M + CONTENT_W, r.y + ch - 1);
+                r.y += ch;
+            });
+            r.y += 14;
+        }
+
+        // Distribución País y Club en 2 columnas paralelas
+        if (countries.length > 0 || clubs.length > 0) {
+            r.ensure(110);
+            const COL_W = (CONTENT_W - 14) / 2;
+            const topY = r.y;
+
+            // Columna 1: Países
+            doc.setFont('helvetica', 'bold').setFontSize(9).setTextColor(...INK);
+            doc.text('DISTRIBUCIÓN POR PAÍS', M, topY);
+            let y1 = topY + 8;
+            doc.setFillColor(...BAND_BG);
+            (doc as any).roundedRect(M, y1, COL_W, 14, 2, 2, 'F');
+            doc.setFont('helvetica', 'bold').setFontSize(7).setTextColor(...MUTED);
+            doc.text('PAÍS', M + 6, y1 + 10);
+            doc.text('TOTAL', M + COL_W - doc.getTextWidth('TOTAL') - 6, y1 + 10);
+            y1 += 16;
+
+            const topCountries = countries.slice(0, 8);
+            topCountries.forEach(c => {
+                doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(...INK);
+                doc.text(cleanPdfText(c.country).slice(0, 24), M + 6, y1 + 8);
+                doc.setFont('helvetica', 'bold').setFontSize(7.5).setTextColor(...INK);
+                const str = fmtNum(c.total);
+                doc.text(str, M + COL_W - doc.getTextWidth(str) - 6, y1 + 8);
+                doc.setDrawColor(...LINE);
+                doc.line(M, y1 + 12, M + COL_W, y1 + 12);
+                y1 += 13;
+            });
+
+            // Columna 2: Clubes
+            const col2X = M + COL_W + 14;
+            doc.setFont('helvetica', 'bold').setFontSize(9).setTextColor(...INK);
+            doc.text('DISTRIBUCIÓN POR CLUB', col2X, topY);
+            let y2 = topY + 8;
+            doc.setFillColor(...BAND_BG);
+            (doc as any).roundedRect(col2X, y2, COL_W, 14, 2, 2, 'F');
+            doc.setFont('helvetica', 'bold').setFontSize(7).setTextColor(...MUTED);
+            doc.text('CLUB', col2X + 6, y2 + 10);
+            doc.text('TOTAL', col2X + COL_W - doc.getTextWidth('TOTAL') - 6, y2 + 10);
+            y2 += 16;
+
+            const topClubs = clubs.slice(0, 8);
+            topClubs.forEach(cl => {
+                doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(...INK);
+                doc.text(cleanPdfText(cl.clubName).slice(0, 28), col2X + 6, y2 + 8);
+                doc.setFont('helvetica', 'bold').setFontSize(7.5).setTextColor(...INK);
+                const str = fmtNum(cl.total);
+                doc.text(str, col2X + COL_W - doc.getTextWidth(str) - 6, y2 + 8);
+                doc.setDrawColor(...LINE);
+                doc.line(col2X, y2 + 12, col2X + COL_W, y2 + 12);
+                y2 += 13;
+            });
+
+            r.y = Math.max(y1, y2) + 12;
+        }
+
+        // Evolución cronológica de registros
+        const timeline = input.dashboard?.timeline || [];
+        if (timeline.length > 0) {
+            r.ensure(75);
+            doc.setFont('helvetica', 'bold').setFontSize(9).setTextColor(...INK);
+            doc.text('EVOLUCIÓN DE REGISTROS (ÚLTIMA ACTIVIDAD)', M, r.y);
+            r.y += 8;
+
+            const recentTimeline = timeline.slice(-10);
+            const tcols = recentTimeline.length;
+            const tCellW = Math.min(CONTENT_W / Math.max(tcols, 1), 60);
+
+            doc.setFillColor(...BAND_BG);
+            (doc as any).roundedRect(M, r.y, tCellW * tcols, 36, 3, 3, 'F');
+            recentTimeline.forEach((tItem, idx) => {
+                const tx = M + idx * tCellW;
+                doc.setFont('helvetica', 'bold').setFontSize(6.5).setTextColor(...MUTED);
+                const dayLabel = tItem.day.slice(5); // MM-DD
+                doc.text(dayLabel, tx + (tCellW - doc.getTextWidth(dayLabel)) / 2, r.y + 11);
+
+                doc.setFont('helvetica', 'bold').setFontSize(8.5).setTextColor(...INK);
+                const regLabel = `${tItem.total}`;
+                doc.text(regLabel, tx + (tCellW - doc.getTextWidth(regLabel)) / 2, r.y + 22);
+
+                doc.setFont('helvetica', 'normal').setFontSize(6).setTextColor(6, 95, 70);
+                const setLabel = `${tItem.settled} pag.`;
+                doc.text(setLabel, tx + (tCellW - doc.getTextWidth(setLabel)) / 2, r.y + 31);
+            });
+            r.y += 36 + 14;
+        }
+    }
+
+    // ══ 3. Listado detallado de asistentes (página nueva) ══════════════
     r.newPage();
     const rows = [...(input.registrations || [])].sort((a, b) =>
         String(a.lastName || '').localeCompare(String(b.lastName || ''), 'es') ||
         String(a.firstName || '').localeCompare(String(b.firstName || ''), 'es'));
 
-    r.sectionTitle('2', 'Inscripciones del período');
+    const sectionNum = hasDistData ? '3' : '2';
+    r.sectionTitle(sectionNum, 'Listado detallado de asistentes');
     doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(...MUTED);
     r.ensure(16);
     const clubCount = new Set(rows.map(x => String(x.clubName || '').toLowerCase()).filter(Boolean)).size;
     doc.text(
-        `${fmtNum(rows.length)} ${rows.length === 1 ? 'inscripción' : 'inscripciones'} · ` +
-        `${fmtNum(clubCount)} ${clubCount === 1 ? 'club' : 'clubes'} · ordenado por apellido`,
+        `${fmtNum(rows.length)} ${rows.length === 1 ? 'asistente' : 'asistentes'} · ` +
+        `${fmtNum(clubCount)} ${clubCount === 1 ? 'club' : 'clubes'} · ordenado alfabéticamente`,
         M, r.y);
     r.y += 14;
 
     if (!rows.length) {
-        r.note('Aún no hay inscripciones registradas en este período.');
+        r.note('No se encontraron registros de asistentes para los filtros seleccionados.');
     } else {
-        // Geometría de la tabla (ancho total = CONTENT_W, sin invasiones).
-        const W_PART = 140, W_CLUB = 88, W_DIST = 46, W_PAIS = 58, W_CAT = 52, W_PAGO = 62;
-        const W_ACRED = CONTENT_W - W_PART - W_CLUB - W_DIST - W_PAIS - W_CAT - W_PAGO;
-        const LH = 11;
-        const ROW_PAD = 11;
+        // Geometría calibrada (ancho exacto = CONTENT_W = 507 pt):
+        const W_COD = 52;
+        const W_TIT = 115;
+        const W_CAT = 68;
+        const W_CLUB = 96;
+        const W_ACOMP = 24;
+        const W_VALOR = 54;
+        const W_EST = 54;
+        const W_FECHA = 44;
+        const LH = 10;
+        const ROW_PAD = 10;
 
         const drawHead = () => {
             const d = doc;
             d.setFillColor(...BLUE);
             (d as any).roundedRect(M, r.y, CONTENT_W, 18, 3, 3, 'F');
             d.setFont('helvetica', 'bold').setFontSize(7).setTextColor(255, 255, 255);
-            let x = M + 7;
-            d.text('PARTICIPANTE', x, r.y + 12); x += W_PART;
-            d.text('CLUB', x, r.y + 12); x += W_CLUB;
-            d.text('DISTRITO', x, r.y + 12); x += W_DIST;
-            d.text('PAÍS', x, r.y + 12); x += W_PAIS;
+            let x = M + 5;
+            d.text('CÓDIGO', x, r.y + 12); x += W_COD;
+            d.text('TITULAR / CORREO', x, r.y + 12); x += W_TIT;
             d.text('CATEGORÍA', x, r.y + 12); x += W_CAT;
-            d.text('PAGO', x + (W_PAGO - d.getTextWidth('PAGO')) / 2, r.y + 12); x += W_PAGO;
-            d.text('ACRED.', x + (W_ACRED - d.getTextWidth('ACRED.')) / 2, r.y + 12);
+            d.text('PAÍS / CLUB', x, r.y + 12); x += W_CLUB;
+            d.text('ACOMP.', x + (W_ACOMP - d.getTextWidth('ACOMP.')) / 2, r.y + 12); x += W_ACOMP;
+            d.text('VALOR', x + W_VALOR - d.getTextWidth('VALOR') - 4, r.y + 12); x += W_VALOR;
+            d.text('ESTADO', x + (W_EST - d.getTextWidth('ESTADO')) / 2, r.y + 12); x += W_EST;
+            d.text('FECHA', x + (W_FECHA - d.getTextWidth('FECHA')) / 2, r.y + 12);
             r.y += 18 + 3;
         };
+
         let needHead = true;
         let headPage = 0;
         const syncHead = () => { if (doc.getNumberOfPages() !== headPage) needHead = true; };
@@ -217,35 +458,79 @@ export async function generateEventReportPdf(
 
         rows.forEach((s) => {
             const d = doc;
-            const nameLines: string[] = d.splitTextToSize(fullName(s), W_PART - 12);
-            const clubLines: string[] = d.splitTextToSize(String(s.clubName || '—'), W_CLUB - 12);
-            const catLines: string[] = d.splitTextToSize(String(s.categoryLabel || s.categoryKey || '—'), W_CAT - 12);
-            const maxLines = Math.max(nameLines.length, clubLines.length, catLines.length, 1);
-            const h = Math.max(Math.min(maxLines, 3) * LH, 16) + ROW_PAD;
-            // La fila viaja completa o no viaja: si no cabe, página nueva con
-            // encabezado repetido.
+            const code = cleanPdfText(s.registrationCode || s.publicRef || '—');
+            const titName = fullName(s);
+            const titEmail = cleanPdfText(s.email || '');
+            const acompCount = Number(s.companionsCount || 0);
+
+            const nameLines: string[] = d.splitTextToSize(titName, W_TIT - 8);
+            const emailLines: string[] = titEmail ? d.splitTextToSize(titEmail, W_TIT - 8) : [];
+            const titTotalLines = Math.min(nameLines.length + emailLines.length, 3);
+
+            const clubCountry = [cleanPdfText(s.country), cleanPdfText(s.clubName)].filter(Boolean).join(' · ') || '—';
+            const clubLines: string[] = d.splitTextToSize(clubCountry, W_CLUB - 8);
+
+            const catLabel = cleanPdfText(s.categoryLabel || s.categoryKey || '—');
+            const catLines: string[] = d.splitTextToSize(catLabel, W_CAT - 8);
+
+            const maxLines = Math.max(titTotalLines, clubLines.length, catLines.length, 1);
+            const h = Math.max(maxLines * LH, 16) + ROW_PAD;
+
+            // Salto limpio de página con cabecera repetida si no cabe la fila completa
             if (r.y + h > FOOT_Y - 14) {
                 r.newPage();
                 needHead = true;
                 ensureHead();
             }
-            let x = M + 7;
-            d.setFont('helvetica', 'normal').setFontSize(8.5).setTextColor(...INK);
-            nameLines.slice(0, 3).forEach((ln: string, li: number) => d.text(ln, x, r.y + 7 + li * LH));
-            x += W_PART;
-            d.setFontSize(8);
-            clubLines.slice(0, 3).forEach((ln: string, li: number) => d.text(ln, x, r.y + 7 + li * LH));
-            x += W_CLUB;
-            d.text(String(s.district || '—').slice(0, 10), x, r.y + 7);
-            x += W_DIST;
-            d.text(String(s.country || '—').slice(0, 14), x, r.y + 7);
-            x += W_PAIS;
-            catLines.slice(0, 3).forEach((ln: string, li: number) => d.text(ln, x, r.y + 7 + li * LH));
+
+            let x = M + 5;
+            // 1. Código
+            d.setFont('helvetica', 'bold').setFontSize(6.5).setTextColor(...MUTED);
+            d.text(code.slice(0, 14), x, r.y + 8);
+            x += W_COD;
+
+            // 2. Titular y correo
+            d.setFont('helvetica', 'bold').setFontSize(8).setTextColor(...INK);
+            nameLines.slice(0, 2).forEach((ln: string, li: number) => d.text(ln, x, r.y + 8 + li * LH));
+            if (emailLines.length > 0 && nameLines.length < 3) {
+                d.setFont('helvetica', 'normal').setFontSize(7).setTextColor(...MUTED);
+                d.text(emailLines[0].slice(0, 30), x, r.y + 8 + nameLines.length * LH);
+            }
+            x += W_TIT;
+
+            // 3. Categoría
+            d.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(...INK);
+            catLines.slice(0, 3).forEach((ln: string, li: number) => d.text(ln, x, r.y + 8 + li * LH));
             x += W_CAT;
+
+            // 4. País / Club
+            d.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(...INK);
+            clubLines.slice(0, 3).forEach((ln: string, li: number) => d.text(ln, x, r.y + 8 + li * LH));
+            x += W_CLUB;
+
+            // 5. Acompañantes
+            d.setFont('helvetica', 'bold').setFontSize(8).setTextColor(...MUTED);
+            const acompStr = acompCount > 0 ? String(acompCount) : '—';
+            d.text(acompStr, x + (W_ACOMP - d.getTextWidth(acompStr)) / 2, r.y + 8);
+            x += W_ACOMP;
+
+            // 6. Valor
+            d.setFont('helvetica', 'bold').setFontSize(7.5).setTextColor(...INK);
+            const valStr = s.baseAmount ? money(s.baseAmount, s.baseCurrency || 'USD') : '—';
+            d.text(valStr, x + W_VALOR - d.getTextWidth(valStr) - 4, r.y + 8);
+            x += W_VALOR;
+
+            // 7. Estado
             const cy = r.y + h / 2 + 1;
             const meta = statusMeta(String(s.status || ''));
-            r.badge(x, cy, W_PAGO, String(meta.label).slice(0, 18), payTone(s.status));
-            r.badge(x + W_PAGO, cy, W_ACRED, s.checkedInAt ? 'Sí' : 'No', s.checkedInAt ? 'green' : 'slate');
+            r.badge(x, cy, W_EST, cleanPdfText(meta.label).slice(0, 16), payTone(s.status));
+            x += W_EST;
+
+            // 8. Fecha
+            d.setFont('helvetica', 'normal').setFontSize(7).setTextColor(...MUTED);
+            const fechaStr = fmtDateShort(s.createdAt);
+            d.text(fechaStr, x + (W_FECHA - d.getTextWidth(fechaStr)) / 2, r.y + 8);
+
             d.setDrawColor(...LINE);
             d.line(M, r.y + h - 1, M + CONTENT_W, r.y + h - 1);
             r.y += h;
@@ -259,7 +544,10 @@ export async function generateEventReportPdf(
         const bytes = doc.output('arraybuffer') as ArrayBuffer;
         return { bytes, pages };
     }
-    doc.save('informe-ejecutivo-gestion-evento.pdf');
+
+    const today = new Date().toISOString().slice(0, 10);
+    const safeName = options?.fileName || `feria-proyectos-eventos-${today}.pdf`;
+    doc.save(safeName);
 }
 
 export type { ExecutiveLogo, BrandingLike };

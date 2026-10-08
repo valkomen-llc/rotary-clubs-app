@@ -29,6 +29,7 @@ import {
 import {
     clean, isEmail, parseJson, loadEvent, ensureEdition, updateEdition,
     listCategories, upsertCategory, seedCategories, deleteCategory, categoryUsage,
+    categoriesUsageMap,
     mapRegistration, findRegistration, listCompanions, listHistory, listPayments,
     listMessages, recordHistory, recordMessage, assignRegistrationCode,
 } from '../lib/eventRegistrationStore.js';
@@ -84,11 +85,12 @@ export const getEdition = async (req, res) => {
         if (!event) return;
         const edition = await ensureEdition(event);
         const categories = await listCategories(event.id);
+        const usageMap = await categoriesUsageMap(event.id);
 
-        const withUsage = await Promise.all(categories.map(async (c) => ({
+        const withUsage = categories.map((c) => ({
             ...c,
-            usage: await categoryUsage(event.id, c.key),
-        })));
+            usage: usageMap.get(c.key) || { seats: 0, registrations: 0 },
+        }));
 
         res.json({
             event: { id: event.id, slug: event.slug, title: event.title, startDate: event.startDate, location: event.location },
@@ -409,28 +411,16 @@ export const getDashboard = async (req, res) => {
         const edition = await ensureEdition(event);
         const categories = await listCategories(event.id);
 
-        // Rango del informe (v4.1130): `from`/`to` acotan TODOS los agregados
-        // con la MISMA semántica del listado (`createdAt`, día `to`
-        // inclusivo). Sin fechas, el tablero cubre el evento completo. Los
-        // valores se interpolan como literales sólo tras validar el formato
-        // `YYYY-MM-DD`, así los índices `$` existentes no se tocan.
-        const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-        const dateRangeSql = (alias = '') => {
-            const col = alias ? `${alias}."createdAt"` : '"createdAt"';
-            const parts = [];
-            const from = String(req.query.from || '').slice(0, 10);
-            const to = String(req.query.to || '').slice(0, 10);
-            if (DATE_RE.test(from)) parts.push(`${col} >= '${from}'::date`);
-            if (DATE_RE.test(to)) parts.push(`${col} < ('${to}'::date + interval '1 day')`);
-            return parts.length ? ` AND ${parts.join(' AND ')}` : '';
-        };
-        const periodFrom = DATE_RE.test(String(req.query.from || '').slice(0, 10))
-            ? String(req.query.from).slice(0, 10) : null;
-        const periodTo = DATE_RE.test(String(req.query.to || '').slice(0, 10))
-            ? String(req.query.to).slice(0, 10) : null;
+        // Filtros normalizados unificados (los mismos que el listado y las exportaciones).
+        const { where, values } = buildFilters(event.id, req.query);
+        const periodFrom = clean(req.query.from, 10) || null;
+        const periodTo = clean(req.query.to, 10) || null;
 
-        const params = [event.id, STATUS.DRAFT];
-        const base = `"eventId" = $1 AND status <> $2${dateRangeSql()}`;
+        const p1 = values.length + 1;
+        const p2 = values.length + 2;
+        const p3 = values.length + 3;
+        const p4 = values.length + 4;
+        const p5 = values.length + 5;
 
         const [totals, byStatus, byCategory, byCurrency, byCountry, byDistrict, byClub, timeline, companionTotals] =
             await Promise.all([
@@ -438,31 +428,33 @@ export const getDashboard = async (req, res) => {
                     `SELECT COUNT(*)::int AS registrations,
                             COALESCE(SUM("companionsCount"), 0)::int AS companions,
                             COALESCE(SUM(1 + GREATEST("companionsCount", 0)), 0)::int AS people,
-                            COUNT(*) FILTER (WHERE status = ANY($3))::int AS settled,
-                            COUNT(*) FILTER (WHERE status = $4)::int AS pending,
-                            COUNT(*) FILTER (WHERE status = ANY($5))::int AS failed,
-                            COUNT(*) FILTER (WHERE status = $6)::int AS refunded,
-                            COUNT(*) FILTER (WHERE status = $7)::int AS waitlist,
+                            COUNT(*) FILTER (WHERE status = ANY($${p1}))::int AS settled,
+                            COUNT(*) FILTER (WHERE status = $${p2})::int AS pending,
+                            COUNT(*) FILTER (WHERE status = ANY($${p3}))::int AS failed,
+                            COUNT(*) FILTER (WHERE status = $${p4})::int AS refunded,
+                            COUNT(*) FILTER (WHERE status = $${p5})::int AS waitlist,
                             COUNT(*) FILTER (WHERE "checkedInAt" IS NOT NULL)::int AS accredited,
                             COUNT(DISTINCT country) FILTER (WHERE country <> '')::int AS countries,
                             COUNT(DISTINCT district) FILTER (WHERE district <> '')::int AS districts,
-                            COUNT(DISTINCT lower("clubName")) FILTER (WHERE "clubName" <> '')::int AS clubs
-                     FROM "EventRegistration" WHERE ${base}`,
-                    [...params, SETTLED_STATUSES, STATUS.PENDING, [STATUS.FAILED, STATUS.EXPIRED],
+                            COUNT(DISTINCT lower("clubName")) FILTER (WHERE "clubName" <> '')::int AS clubs,
+                            COUNT(*) FILTER (WHERE lower(country) = 'colombia')::int AS national,
+                            COUNT(*) FILTER (WHERE lower(country) <> 'colombia' AND country <> '')::int AS international
+                     FROM "EventRegistration" WHERE ${where}`,
+                    [...values, SETTLED_STATUSES, STATUS.PENDING, [STATUS.FAILED, STATUS.EXPIRED],
                         STATUS.REFUNDED, STATUS.WAITLIST]),
 
                 db.query(`SELECT status, COUNT(*)::int AS total FROM "EventRegistration"
-                          WHERE "eventId" = $1${dateRangeSql()} GROUP BY status`, [event.id]),
+                          WHERE ${where} GROUP BY status`, values),
 
                 db.query(
                     `SELECT "categoryKey", "categoryLabel", COUNT(*)::int AS total,
                             COALESCE(SUM(1 + GREATEST("companionsCount", 0)), 0)::int AS people,
-                            COUNT(*) FILTER (WHERE status = ANY($3))::int AS settled,
-                            COALESCE(SUM("baseAmount") FILTER (WHERE status = ANY($3)), 0) AS revenue,
+                            COUNT(*) FILTER (WHERE status = ANY($${p1}))::int AS settled,
+                            COALESCE(SUM("baseAmount") FILTER (WHERE status = ANY($${p1})), 0) AS revenue,
                             MAX("baseCurrency") AS currency
-                     FROM "EventRegistration" WHERE ${base}
+                     FROM "EventRegistration" WHERE ${where}
                      GROUP BY "categoryKey", "categoryLabel" ORDER BY total DESC`,
-                    [...params, SETTLED_STATUSES]),
+                    [...values, SETTLED_STATUSES]),
 
                 // Recaudo por moneda: el publicado y el efectivamente cobrado.
                 db.query(
@@ -472,39 +464,42 @@ export const getDashboard = async (req, res) => {
                             COALESCE(SUM("chargeAmount"), 0) AS charged,
                             COUNT(*)::int AS total
                      FROM "EventRegistration"
-                     WHERE "eventId" = $1 AND status = ANY($2)${dateRangeSql()}
+                     WHERE ${where} AND status = ANY($${p1})
                      GROUP BY "baseCurrency"`,
-                    [event.id, SETTLED_STATUSES]),
+                    [...values, SETTLED_STATUSES]),
 
                 db.query(`SELECT country, COUNT(*)::int AS total FROM "EventRegistration"
-                          WHERE ${base} AND country <> '' GROUP BY country ORDER BY total DESC LIMIT 25`, params),
+                          WHERE ${where} AND country <> '' GROUP BY country ORDER BY total DESC LIMIT 25`, values),
 
                 db.query(`SELECT district, COUNT(*)::int AS total FROM "EventRegistration"
-                          WHERE ${base} AND district <> '' GROUP BY district ORDER BY total DESC LIMIT 25`, params),
+                          WHERE ${where} AND district <> '' GROUP BY district ORDER BY total DESC LIMIT 25`, values),
 
                 db.query(`SELECT "clubName", COUNT(*)::int AS total FROM "EventRegistration"
-                          WHERE ${base} AND "clubName" <> '' GROUP BY "clubName" ORDER BY total DESC LIMIT 25`, params),
+                          WHERE ${where} AND "clubName" <> '' GROUP BY "clubName" ORDER BY total DESC LIMIT 25`, values),
 
                 db.query(
                     `SELECT to_char(date_trunc('day', "createdAt"), 'YYYY-MM-DD') AS day,
                             COUNT(*)::int AS total,
-                            COUNT(*) FILTER (WHERE status = ANY($3))::int AS settled
-                     FROM "EventRegistration" WHERE ${base}
+                            COUNT(*) FILTER (WHERE status = ANY($${p1}))::int AS settled
+                     FROM "EventRegistration" WHERE ${where}
                      GROUP BY 1 ORDER BY 1 ASC LIMIT 400`,
-                    [...params, SETTLED_STATUSES]),
+                    [...values, SETTLED_STATUSES]),
 
                 db.query(
                     `SELECT COUNT(*)::int AS total,
-                            COUNT(*) FILTER (WHERE c."checkedInAt" IS NOT NULL)::int AS accredited
-                     FROM "EventRegistrationCompanion" c
-                     JOIN "EventRegistration" r ON r.id = c."registrationId"
-                     WHERE c."eventId" = $1 AND r.status <> $2${dateRangeSql('r')}`, params),
+                            COUNT(*) FILTER (WHERE "checkedInAt" IS NOT NULL)::int AS accredited
+                     FROM "EventRegistrationCompanion"
+                     WHERE "registrationId" IN (SELECT id FROM "EventRegistration" WHERE ${where})`, values),
             ]);
 
-        const capacity = await Promise.all(categories.map(async (c) => ({
-            key: c.key, name: c.name, capacity: c.capacity,
-            ...(await categoryUsage(event.id, c.key)),
-        })));
+        const usageMap = await categoriesUsageMap(event.id);
+        const capacity = categories.map(c => {
+            const u = usageMap.get(c.key) || { seats: 0, registrations: 0 };
+            return {
+                key: c.key, name: c.name, capacity: c.capacity,
+                seats: u.seats, registrations: u.registrations,
+            };
+        });
 
         // Identidad visual del sitio del evento (v4.1130): el mismo `Club.logo`
         // de la navbar (nacional) con `Setting.logo_intl` como respaldo. Con

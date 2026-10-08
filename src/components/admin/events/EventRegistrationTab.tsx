@@ -150,7 +150,7 @@ const EventRegistrationTab = ({ eventId, eventSlug, eventTitle, view = 'registro
         }
     };
 
-    if (loading) {
+    if (loading && view === 'registro') {
         return <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-blue-600" /></div>;
     }
 
@@ -166,7 +166,7 @@ const EventRegistrationTab = ({ eventId, eventSlug, eventTitle, view = 'registro
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3">
                 <div className="min-w-0">
                     <p className="text-sm font-bold text-blue-900">
-                        {edition?.editionNumber ? `Edición ${edition.editionNumber}` : 'Edición'}
+                        {edition?.editionNumber ? `Edición ${edition.editionNumber}` : (eventTitle || 'Edición')}
                         {edition?.city ? ` · ${edition.city}` : ''}
                     </p>
                     <p className="truncate text-xs text-blue-700/70">

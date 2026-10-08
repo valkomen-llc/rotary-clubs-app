@@ -92,6 +92,7 @@ import { useSiteAccess } from '../../hooks/useSiteAccess';
 // El rótulo del menú para un usuario institucional. Es criterio, no una cadena
 // suelta en el JSX: la pantalla y su prueba leen la misma tabla.
 import { menuLabelFor } from '../../lib/rbacSpec';
+import ErrorBoundary from '../ErrorBoundary';
 // Qué entrada se resalta. Vive aparte porque es un criterio PURO y hay
 // entradas que enlazan una vista dentro de una pantalla (v4.1054).
 import { activeMenuPath } from '../../lib/adminMenu';
@@ -1695,7 +1696,9 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
 
                     <div className={`flex-1 overflow-y-auto scrollbar-hide ${wide ? 'px-4 sm:px-6 py-6' : 'px-10 py-10'}`}>
                         <div className={wide ? '' : 'max-w-7xl mx-auto'}>
-                            {children}
+                            <ErrorBoundary fallbackLabel="Ocurrió un error al cargar este módulo">
+                                {children}
+                            </ErrorBoundary>
                         </div>
                     </div>
 

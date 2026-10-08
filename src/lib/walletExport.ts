@@ -111,7 +111,8 @@ export const descargarExcel = async (informe: Informe) => {
  *                 nunca encima: lo que manda es el dato.
  */
 export const descargarPDF = async (informe: Informe, analisis?: string) => {
-    const { default: JsPDF } = await import('jspdf');
+    const { loadJsPdf } = await import('./executiveReportPdf');
+    const JsPDF = await loadJsPdf();
     const doc = new JsPDF({ unit: 'pt', format: 'a4', orientation: 'landscape' });
     const ancho = doc.internal.pageSize.getWidth();
     const alto = doc.internal.pageSize.getHeight();

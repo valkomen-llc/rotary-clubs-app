@@ -27,6 +27,10 @@ function setCached(key, data, ttlSec = 300) {
     analyticsCache.set(key, { data, expires: Date.now() + ttlSec * 1000 });
 }
 
+// In-flight promise map for request deduplication/coalescing
+const inflightPromises = new Map();
+
+
 // ── Helper: Flexible Authentication ──────────────────────────────────────────
 function authenticateUser(req) {
     let token = req.headers.authorization?.split(' ')[1] || req.query.token;
@@ -56,6 +60,9 @@ async function resolveAnalyticsScope(req) {
     const isOriginPlatform = !origin || PLATFORM_HOSTS.includes(origin);
 
     const user = authenticateUser(req);
+    if (!user) {
+        return { isGlobal: false, lockedSiteId: null, lockedDistrictId: null, user: null, unauthenticated: true };
+    }
 
     // Support developer/testing query override on localhost if explicitly requested
     const testDomain = (isHostPlatform && req.query.hostname && req.query.hostname !== 'localhost' && !PLATFORM_HOSTS.includes(req.query.hostname))
@@ -113,7 +120,7 @@ async function resolveAnalyticsScope(req) {
 
         if (club) {
             let linkedDistrict = null;
-            if (club.type === 'district' || club.district) {
+            if (club.type === 'district' || club.category === 'district') {
                 const num = parseInt(club.district, 10);
                 linkedDistrict = await prisma.district.findFirst({
                     where: {
@@ -128,7 +135,7 @@ async function resolveAnalyticsScope(req) {
             return {
                 isGlobal: false,
                 lockedSiteId: club.id,
-                lockedDistrictId: linkedDistrict?.id || club.districtId || null,
+                lockedDistrictId: (club.type === 'district' || club.category === 'district') ? (linkedDistrict?.id || club.districtId || null) : null,
                 club,
                 district: linkedDistrict,
                 user,
@@ -181,7 +188,7 @@ async function resolveAnalyticsScope(req) {
             where: { id: user.clubId }
         });
         let linkedDistrict = null;
-        if (club && (club.type === 'district' || club.district)) {
+        if (club && (club.type === 'district' || club.category === 'district')) {
             const num = parseInt(club.district, 10);
             linkedDistrict = await prisma.district.findFirst({
                 where: {
@@ -195,7 +202,7 @@ async function resolveAnalyticsScope(req) {
         return {
             isGlobal: false,
             lockedSiteId: user.clubId,
-            lockedDistrictId: linkedDistrict?.id || club?.districtId || null,
+            lockedDistrictId: (club?.type === 'district' || club?.category === 'district') ? (linkedDistrict?.id || club?.districtId || null) : null,
             club,
             district: linkedDistrict,
             user
@@ -384,10 +391,10 @@ async function fetchAuthorizedSites(user, lockedSiteId = null, lockedDistrictId 
     } else if (lockedSiteId) {
         const clubRecord = await prisma.club.findUnique({
             where: { id: lockedSiteId },
-            select: { id: true, districtId: true, district: true, type: true }
+            select: { id: true, districtId: true, district: true, type: true, category: true }
         });
 
-        if (clubRecord && (clubRecord.type === 'district' || clubRecord.district)) {
+        if (clubRecord && (clubRecord.type === 'district' || clubRecord.category === 'district')) {
             const num = parseInt(clubRecord.district, 10);
             const d = await prisma.district.findFirst({
                 where: {
@@ -544,8 +551,8 @@ async function fetchAuthorizedSites(user, lockedSiteId = null, lockedDistrictId 
         }
         if (c.subdomain) hostnames.add(`${c.subdomain}.clubplatform.org`);
 
-        // If club is district site or has district affiliation, include district domain
-        if (c.type === 'district' || c.district) {
+        // If club is district site, include district domain
+        if (c.type === 'district' || c.category === 'district') {
             const d = districts.find(dist => dist.id === c.districtId || String(dist.number) === String(c.district));
             if (d?.domain) {
                 const cleanD = canonicalDomain(d.domain);
@@ -644,32 +651,51 @@ router.get('/traffic', async (req, res) => {
         );
 
         if (!targetSiteId || targetSiteId === 'all' || !isAuthorizedSite(targetSiteId)) {
-            // Default to tenant's locked district or site, or the first authorized site
-            targetSiteId = tenant.lockedDistrictId || tenant.lockedSiteId || sites[0]?.id;
+            // Prioritize lockedSiteId so club sites always query themselves, not the district
+            targetSiteId = tenant.lockedSiteId || tenant.lockedDistrictId || sites[0]?.id;
         }
     } else {
-        targetSiteId = req.query.siteId || 'all';
+        if (!targetSiteId && hostname && hostname !== 'all' && hostname !== 'localhost') {
+            const cleanReqHost = canonicalDomain(hostname);
+            const matchedSite = sites.find(s => s.hostnames.some(h => canonicalDomain(h) === cleanReqHost));
+            if (matchedSite) {
+                targetSiteId = matchedSite.id;
+            }
+        }
+        targetSiteId = targetSiteId || 'all';
     }
 
-    const cacheKey = `traffic:${targetSiteId || 'all'}:${hostname || ''}:${days}:${startDate || ''}:${endDate || ''}`;
-    const cached = getCached(cacheKey);
+    const canonicalCacheKey = `traffic:${targetSiteId || 'all'}:${days}:${startDate || ''}:${endDate || ''}`;
+    const aliasCacheKey = hostname ? `traffic:${targetSiteId || 'all'}:${hostname}:${days}:${startDate || ''}:${endDate || ''}` : null;
+    
+    const cached = getCached(canonicalCacheKey) || (aliasCacheKey ? getCached(aliasCacheKey) : null);
     if (cached) return res.json(cached);
 
-    try {
-        const propertyId = await getPropertyId();
-        if (!propertyId) {
-            return res.json({
-                mock: true,
-                configured: false,
-                emptyReason: 'not_configured',
-                chartData: [],
-                totals: { sessions: 0, users: 0, pageViews: 0, pagesPerSession: 0, avgDurationSec: 0, bounceRate: 0 },
-                topPages: [], topCountries: [], topCities: [],
-                sources: [], devices: [], browsers: [],
-                siteInfo: null,
-                isGlobal: tenant.isGlobal
-            });
+    if (inflightPromises.has(canonicalCacheKey)) {
+        try {
+            const coalesced = await inflightPromises.get(canonicalCacheKey);
+            return res.json(coalesced);
+        } catch {
+            // fallback to executing
         }
+    }
+
+    const runTrafficQuery = async () => {
+        try {
+            const propertyId = await getPropertyId();
+            if (!propertyId) {
+                return {
+                    mock: true,
+                    configured: false,
+                    emptyReason: 'not_configured',
+                    chartData: [],
+                    totals: { sessions: 0, users: 0, pageViews: 0, pagesPerSession: 0, avgDurationSec: 0, bounceRate: 0 },
+                    topPages: [], topCountries: [], topCities: [],
+                    sources: [], devices: [], browsers: [],
+                    siteInfo: null,
+                    isGlobal: tenant.isGlobal
+                };
+            }
 
         const token = await getAccessToken();
 
@@ -957,23 +983,36 @@ router.get('/traffic', async (req, res) => {
         };
 
         // Cache 3 mins for non-zero responses, 1 min for zero responses
-        setCached(cacheKey, responsePayload, totalSessions > 0 ? 180 : 60);
+        setCached(canonicalCacheKey, responsePayload, totalSessions > 0 ? 180 : 60);
+        if (aliasCacheKey) {
+            setCached(aliasCacheKey, responsePayload, totalSessions > 0 ? 180 : 60);
+        }
 
-        res.json(responsePayload);
-    } catch (err) {
-        console.error('[Analytics/traffic]', err.message);
-        res.json({
-            mock: true,
-            error: err.message,
-            configured: true,
-            emptyReason: 'connection_error',
-            status: 'error',
-            chartData: [],
-            totals: { sessions: 0, users: 0, pageViews: 0, pagesPerSession: 0, avgDurationSec: 0, bounceRate: 0 },
-            topPages: [], topCountries: [], topCities: [],
-            sources: [], devices: [], browsers: [],
-            siteInfo: null
-        });
+            return responsePayload;
+        } catch (err) {
+            console.error('[Analytics/traffic]', err.message);
+            return {
+                mock: true,
+                error: err.message,
+                configured: true,
+                emptyReason: 'connection_error',
+                status: 'error',
+                chartData: [],
+                totals: { sessions: 0, users: 0, pageViews: 0, pagesPerSession: 0, avgDurationSec: 0, bounceRate: 0 },
+                topPages: [], topCountries: [], topCities: [],
+                sources: [], devices: [], browsers: [],
+                siteInfo: null
+            };
+        }
+    };
+
+    const inflightPromise = runTrafficQuery();
+    inflightPromises.set(canonicalCacheKey, inflightPromise);
+    try {
+        const payload = await inflightPromise;
+        res.json(payload);
+    } finally {
+        inflightPromises.delete(canonicalCacheKey);
     }
 });
 
