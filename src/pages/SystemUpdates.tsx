@@ -42,6 +42,21 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1175.0',
+        title: 'Reparación Crítica del Servidor y Aislamiento de Errores por Módulo (AdminModuleBoundary) 🛡️⚡',
+        description: 'Corrección de sintaxis en el enrutador del servidor de clubes (cierre de bloque else en autosync de rutas de navegación), restableciendo de inmediato la disponibilidad del backend y evitando respuestas 500 en /api/clubs/by-domain. Implementación de una arquitectura de tolerancia a fallos y aislamiento por módulo mediante AdminModuleBoundary en rutas del panel administrativo, garantizando que el menú lateral y la cabecera permanezcan siempre interactivos ante cualquier excepción interna. Incorporación de límites de error locales (ErrorBoundary) en el Gestor de Menús Jerárquicos dentro de Configuración e Identidad, interfaz con spinner en estados de carga y tipado defensivo contra valores nulos en la normalización de elementos de navegación.',
+        date: new Date().toISOString(),
+        tags: ['hotfix', 'admin', 'reliability', 'error-boundary', 'module-isolation', 'server-fix', 'resilience', 'production-release'],
+        type: 'hotfix',
+        changes: [
+            { type: 'fixed', text: 'Corrección de sintaxis en server/routes/clubs.js que impedía arrancar las funciones sin servidor en producción, restableciendo la carga de /admin/configuracion.' },
+            { type: 'added', text: 'Arquitectura de Aislamiento por Módulo (AdminModuleBoundary): el panel administrativo ya nunca queda en blanco; si un componente de página falla, el menú lateral y la barra superior se conservan intactos.' },
+            { type: 'added', text: 'ErrorBoundary dedicado en el Gestor de Menús Jerárquicos de Configuración / Identidad para proteger las demás pestañas y configuraciones del club ante datos atípicos.' },
+            { type: 'improved', text: 'Normalización defensiva en normalizeNavItems con filtrado estricto contra objetos nulos o indefinidos.' },
+            { type: 'improved', text: 'Estados de carga estructurados con feedback visual y opciones de reintento.' }
+        ]
+    },
+    {
         version: '4.1174.0',
         title: 'Optimización de Enlaces Externos, S3 PDFs y Rediseño de Campos en Gestor de Menús 🔗⚡',
         description: 'Ampliación sustancial del campo de edición de URLs en el gestor de menús jerárquicos (ocupando entre el 45% y 55% en escritorio y distribución adaptable de dos filas en pantallas reducidas). Corrección definitiva de la resolución de navegación para enlaces externos y documentos en Amazon S3, evitando que el sistema anteponga el dominio principal o use rutas relativas incorrectas. Detección automática de protocolos con botón de autocorrección (+https://), copiado de enlaces al portapapeles con confirmación visual, verificación de enlaces en nueva pestaña (target="_blank"), configuración explícita de apertura en misma o nueva pestaña (openInNewTab), y sanitización preventiva contra protocolos no permitidos.',

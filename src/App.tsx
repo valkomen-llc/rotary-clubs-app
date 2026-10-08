@@ -75,6 +75,7 @@ import { LanguageProvider } from './contexts/LanguageContext';
 import { Toaster } from './components/ui/sonner';
 import { PROJECT_FAIR_FORM_PATH } from './lib/ctaLinks';
 import { isPlatformSuperAdmin } from './lib/platformAdmin';
+import AdminModuleBoundary from './components/admin/AdminModuleBoundary';
 
 // ═══════════════════════════════════════════════════════════════
 // LAZY-LOADED ADMIN ROUTES — Web Performance Optimization Agent
@@ -804,7 +805,9 @@ function App() {
                   path="/admin/configuracion-sitio"
                   element={
                     <PrivateRoute>
-                      <ClubSettings />
+                      <AdminModuleBoundary moduleName="Configuración / Identidad">
+                        <ClubSettings />
+                      </AdminModuleBoundary>
                     </PrivateRoute>
                   }
                 />
@@ -967,7 +970,9 @@ function App() {
                   path="/admin/configuracion"
                   element={
                     <PrivateRoute>
-                      <ClubSettings />
+                      <AdminModuleBoundary moduleName="Configuración / Identidad">
+                        <ClubSettings />
+                      </AdminModuleBoundary>
                     </PrivateRoute>
                   }
                 />
@@ -1103,7 +1108,9 @@ function App() {
                   path="/admin/mi-club"
                   element={
                     <PrivateRoute>
-                      <ClubSettings />
+                      <AdminModuleBoundary moduleName="Configuración / Identidad">
+                        <ClubSettings />
+                      </AdminModuleBoundary>
                     </PrivateRoute>
                   }
                 />

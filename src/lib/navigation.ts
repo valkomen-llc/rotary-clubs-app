@@ -270,7 +270,9 @@ export function normalizeNavItems(rawItems: any[]): NavOrderItem[] {
 
     const usedIds = new Set<string>();
 
-    return rawItems.map((raw, idx) => {
+    return rawItems
+        .filter((raw): raw is Record<string, any> => Boolean(raw && typeof raw === 'object'))
+        .map((raw, idx) => {
         let id: string = raw.id ? String(raw.id) : '';
         if (!id) {
             if (raw.kind === 'fixed' && raw.key) {

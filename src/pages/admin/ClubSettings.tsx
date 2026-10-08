@@ -41,6 +41,7 @@ import SystemCommunicationsConfig from '../../components/admin/SystemCommunicati
 // «estado». Importado de forma estática se descargaba siempre (v4.880).
 import RichTextEditor from '../../components/admin/RichTextEditor';
 import NavHierarchyEditor from '../../components/admin/NavHierarchyEditor';
+import ErrorBoundary from '../../components/ErrorBoundary';
 import { normalizeNavItems, type NavOrderItem } from '../../lib/navigation';
 
 // Secciones/páginas del sistema que se pueden añadir al menú principal.
@@ -889,7 +890,17 @@ const ClubSettings: React.FC = () => {
         { id: 'facturacion', label: 'Facturación', icon: CreditCard },
     ] as const;
 
-    if (!club) return <AdminLayout><div className="p-12 text-center text-gray-500 italic">Cargando...</div></AdminLayout>;
+    if (!club) {
+        return (
+            <AdminLayout>
+                <div className="flex flex-col items-center justify-center p-20 text-center">
+                    <RefreshCw className="w-8 h-8 text-rotary-blue animate-spin mb-3" />
+                    <p className="text-sm font-bold text-gray-700">Cargando configuración de la organización…</p>
+                    <p className="text-xs text-gray-400 mt-1">Obteniendo parámetros del sitio.</p>
+                </div>
+            </AdminLayout>
+        );
+    }
 
     return (
         <AdminLayout>
@@ -1697,11 +1708,13 @@ const ClubSettings: React.FC = () => {
 
                         {/* Menú principal jerárquico configurable — Clubes y Eventos/Convenciones */}
                         {canConfigureNav && (
-                            <NavHierarchyEditor
-                                items={formData.eventNavOrder}
-                                onChange={items => setFormData(prev => ({ ...prev, eventNavOrder: items }))}
-                                club={club}
-                            />
+                            <ErrorBoundary fallbackLabel="Ocurrió un problema en el Gestor de Menús Jerárquicos. El resto de las opciones de configuración continúa disponible.">
+                                <NavHierarchyEditor
+                                    items={formData.eventNavOrder}
+                                    onChange={items => setFormData(prev => ({ ...prev, eventNavOrder: items }))}
+                                    club={club}
+                                />
+                            </ErrorBoundary>
                         )}
 
                         {/* Secciones de la portada (activar/desactivar) — solo Eventos/Convenciones */}

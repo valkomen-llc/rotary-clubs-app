@@ -338,6 +338,7 @@ router.get('/by-domain', async (req, res) => {
                                 enabled: true,
                                 parentId: terminosItem.id
                             });
+                        }
                         // Limpiar URLs con barra antepuesta a http(s) en cualquier elemento guardado
                         order.forEach(i => {
                             if (i.href && /^\/+(https?:\/\/|\/\/)/i.test(i.href)) {
