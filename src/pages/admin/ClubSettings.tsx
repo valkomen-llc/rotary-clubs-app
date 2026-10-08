@@ -40,6 +40,8 @@ import SystemCommunicationsConfig from '../../components/admin/SystemCommunicati
 // que lo usa vive en la pestaña «identidad», mientras que la de entrada es
 // «estado». Importado de forma estática se descargaba siempre (v4.880).
 import RichTextEditor from '../../components/admin/RichTextEditor';
+import NavHierarchyEditor from '../../components/admin/NavHierarchyEditor';
+import { normalizeNavItems, type NavOrderItem } from '../../lib/navigation';
 
 // Secciones/páginas del sistema que se pueden añadir al menú principal.
 const SYSTEM_NAV_SECTIONS: { label: string; href: string }[] = [
@@ -65,7 +67,6 @@ const SYSTEM_NAV_SECTIONS: { label: string; href: string }[] = [
 ];
 
 type NavExtraItem = { label: string; href: string; external?: boolean };
-type NavOrderItem = { kind: 'fixed' | 'custom'; key?: string; label?: string; href?: string; external?: boolean; enabled?: boolean };
 type FooterMenuItem = { label: string; href: string; external?: boolean };
 
 // Ítems fijos del menú principal (con su etiqueta visible).
@@ -79,10 +80,10 @@ const FIXED_NAV_ITEMS: { key: string; label: string }[] = [
 ];
 
 // Construye el orden por defecto del menú a partir del estado heredado (toggles + adicionales).
-const buildDefaultNavOrder = (navMenu: Record<string, boolean>, extra: NavExtraItem[]): NavOrderItem[] => [
-    ...FIXED_NAV_ITEMS.map(f => ({ kind: 'fixed' as const, key: f.key, label: f.label, enabled: navMenu?.[f.key] !== false })),
-    ...(Array.isArray(extra) ? extra : []).map(it => ({ kind: 'custom' as const, label: it.label, href: it.href, external: !!it.external, enabled: true })),
-];
+const buildDefaultNavOrder = (navMenu: Record<string, boolean>, extra: NavExtraItem[]): NavOrderItem[] => normalizeNavItems([
+    ...FIXED_NAV_ITEMS.map(f => ({ id: `fixed-${f.key}`, kind: 'fixed' as const, key: f.key, label: f.label, enabled: navMenu?.[f.key] !== false, parentId: null })),
+    ...(Array.isArray(extra) ? extra : []).map((it, idx) => ({ id: `nav-extra-${idx}`, kind: 'custom' as const, label: it.label, href: it.href, external: !!it.external, enabled: true, parentId: null })),
+]);
 type FooterConfig = {
     logoTop: string;
     logoBottom: string;
@@ -358,7 +359,7 @@ const ClubSettings: React.FC = () => {
                         // Asegura que todos los fijos estén presentes (por si se agregaron nuevos en el sistema).
                         const present = new Set(savedOrder.filter((i: NavOrderItem) => i.kind === 'fixed').map((i: NavOrderItem) => i.key));
                         const missing = FIXED_NAV_ITEMS.filter(f => !present.has(f.key)).map(f => ({ kind: 'fixed' as const, key: f.key, label: f.label, enabled: true }));
-                        return [...savedOrder, ...missing];
+                        return normalizeNavItems([...savedOrder, ...missing]);
                     }
                     const navMenu = (club as any).eventNavMenu || (() => { try { return JSON.parse(settingsMap['event_nav_menu'] || '{}'); } catch { return {}; } })();
                     const extra = (club as any).eventNavExtra || (() => { try { return JSON.parse(settingsMap['event_nav_extra'] || '[]'); } catch { return []; } })();
@@ -1689,79 +1690,13 @@ const ClubSettings: React.FC = () => {
                             </div>
                         )}
 
-                        {/* Menú principal configurable — Clubes y Eventos/Convenciones */}
+                        {/* Menú principal jerárquico configurable — Clubes y Eventos/Convenciones */}
                         {canConfigureNav && (
-                            <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
-                                <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-3">
-                                    <Palette className="w-5 h-5 text-rotary-blue" /> Menú Principal
-                                </h3>
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
-                                    <p className="text-xs text-gray-400">
-                                        Ordena (▲▼), activa/desactiva y agrega elementos al menú de navegación. Crea uno manual o tómalo de una sección del sistema.
-                                    </p>
-                                    <div className="flex items-center gap-2 flex-shrink-0">
-                                        <select
-                                            value=""
-                                            onChange={e => { const sec = SYSTEM_NAV_SECTIONS.find(s => s.href === e.target.value); if (sec) addNavOrderCustom({ label: sec.label, href: sec.href }); e.target.value = ''; }}
-                                            className="px-3 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-rotary-blue bg-white text-sm"
-                                        >
-                                            <option value="">+ Desde una sección…</option>
-                                            {SYSTEM_NAV_SECTIONS.map(s => (
-                                                <option key={s.href} value={s.href}>{s.label}</option>
-                                            ))}
-                                        </select>
-                                        <button type="button" onClick={() => addNavOrderCustom()} className="flex items-center gap-1.5 text-xs font-bold text-rotary-blue bg-blue-50 px-3 py-2 rounded-lg hover:bg-blue-100 transition-all whitespace-nowrap">
-                                            <Plus className="w-4 h-4" /> Crear Link
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-2">
-                                    {formData.eventNavOrder.map((item, idx) => (
-                                        <div key={idx} className={`flex items-stretch gap-2 p-2 rounded-xl border ${item.enabled === false ? 'border-gray-100 bg-gray-50/60 opacity-70' : 'border-gray-100 bg-white'}`}>
-                                            {/* Reordenar */}
-                                            <div className="flex flex-col items-center justify-center text-gray-300">
-                                                <GripVertical className="w-4 h-4 mb-0.5 text-gray-200" />
-                                                <div className="flex flex-col">
-                                                    <button type="button" onClick={() => moveNavOrder(idx, -1)} disabled={idx === 0} className="p-0.5 hover:text-rotary-blue disabled:opacity-30 disabled:hover:text-gray-300" title="Subir"><ChevronUp className="w-4 h-4" /></button>
-                                                    <button type="button" onClick={() => moveNavOrder(idx, 1)} disabled={idx === formData.eventNavOrder.length - 1} className="p-0.5 hover:text-rotary-blue disabled:opacity-30 disabled:hover:text-gray-300" title="Bajar"><ChevronDown className="w-4 h-4" /></button>
-                                                </div>
-                                            </div>
-
-                                            {/* Activar/desactivar */}
-                                            <label className="flex items-center px-1 cursor-pointer" title={item.enabled === false ? 'Activar' : 'Desactivar'}>
-                                                <input type="checkbox" checked={item.enabled !== false} onChange={() => toggleNavOrderEnabled(idx)} className="w-4 h-4 text-rotary-blue rounded border-gray-300 focus:ring-rotary-blue" />
-                                            </label>
-
-                                            {/* Contenido del ítem */}
-                                            {item.kind === 'fixed' ? (
-                                                <div className="flex-1 flex items-center gap-2 px-2">
-                                                    <span className="text-[13px] font-bold text-gray-700">{item.label}</span>
-                                                    <span className="text-[9px] font-black uppercase tracking-wider text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">Sección</span>
-                                                </div>
-                                            ) : (
-                                                <div className="flex-1 flex flex-col md:flex-row gap-2">
-                                                    <input type="text" value={item.label || ''} onChange={e => updateNavOrderItem(idx, 'label', e.target.value)} placeholder="Texto del menú" className="flex-1 px-3 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-rotary-blue text-sm font-bold text-gray-700 bg-white" />
-                                                    <input type="text" value={item.href || ''} onChange={e => updateNavOrderItem(idx, 'href', e.target.value)} placeholder="/ruta o https://…" className="flex-[2] px-3 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-rotary-blue text-sm text-blue-600 bg-white" />
-                                                    <label className="flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 rounded-lg cursor-pointer">
-                                                        <input type="checkbox" checked={!!item.external} onChange={e => updateNavOrderItem(idx, 'external', e.target.checked)} className="w-4 h-4 text-rotary-blue rounded border-gray-300" />
-                                                        <span className="text-[10px] font-bold text-gray-500 whitespace-nowrap">Externo</span>
-                                                    </label>
-                                                </div>
-                                            )}
-
-                                            {/* Eliminar (solo personalizados) */}
-                                            <div className="flex items-center">
-                                                {item.kind === 'custom' ? (
-                                                    <button type="button" onClick={() => removeNavOrder(idx)} className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all" title="Eliminar"><Trash2 className="w-5 h-5" /></button>
-                                                ) : (
-                                                    <span className="w-9" />
-                                                )}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
+                            <NavHierarchyEditor
+                                items={formData.eventNavOrder}
+                                onChange={items => setFormData(prev => ({ ...prev, eventNavOrder: items }))}
+                                club={club}
+                            />
                         )}
 
                         {/* Secciones de la portada (activar/desactivar) — solo Eventos/Convenciones */}

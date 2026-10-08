@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { Search, ShoppingCart, ChevronDown, Menu, X, LogIn, Globe, ExternalLink } from 'lucide-react';
+import { Search, ShoppingCart, ChevronDown, ChevronRight, Menu, X, LogIn, Globe, ExternalLink } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
+import { buildNavTree, type NavOrderItem, type NavTreeItem } from '../lib/navigation';
 import { useAuth } from '../hooks/useAuth';
 import { useClub } from '../contexts/ClubContext';
 import { useCart } from '../contexts/CartContext';
@@ -243,8 +244,9 @@ const Navbar = () => {
   const hasCustomNav = hasFixedNav((club as any)?.type) || isRyeSite;
   // Orden unificado del menú configurable: fijos + personalizados en el orden elegido.
   // Disponible para Clubes y sitios Evento/Convención (todo sitio con navbar estándar).
-  const orderedNav = (!hasCustomNav ? ((club as any)?.eventNavOrder || []) : []) as { kind: 'fixed' | 'custom'; key?: string; label?: string; href?: string; external?: boolean; enabled?: boolean }[];
+  const orderedNav = (!hasCustomNav ? ((club as any)?.eventNavOrder || []) : []) as NavOrderItem[];
   const useOrderedNav = Array.isArray(orderedNav) && orderedNav.length > 0;
+  const navTree = useOrderedNav ? buildNavTree(orderedNav.filter(i => i.enabled !== false)) : [];
 
   // Search state
   const [searchOpen, setSearchOpen] = useState(false);
@@ -543,6 +545,290 @@ const Navbar = () => {
       : <Link key={`cm-${idx}`} to={item.href || '/'} className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>{item.label}</Link>
   );
 
+  // Subcomponente de desplegable multinivel para escritorio
+  const DesktopNavDropdown: React.FC<{ item: NavTreeItem; idx: number }> = ({ item, idx }) => {
+    const [open, setOpen] = useState(false);
+    const [activeFlyout, setActiveFlyout] = useState<string | null>(null);
+    const timeoutRef = useRef<any>(null);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    const handleMouseEnter = () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      setOpen(true);
+    };
+
+    const handleMouseLeave = () => {
+      timeoutRef.current = setTimeout(() => {
+        setOpen(false);
+        setActiveFlyout(null);
+      }, 180);
+    };
+
+    useEffect(() => {
+      const handleOutside = (e: MouseEvent) => {
+        if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+          setOpen(false);
+          setActiveFlyout(null);
+        }
+      };
+      const handleKey = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          setOpen(false);
+          setActiveFlyout(null);
+        }
+      };
+      document.addEventListener('mousedown', handleOutside);
+      document.addEventListener('keydown', handleKey);
+      return () => {
+        document.removeEventListener('mousedown', handleOutside);
+        document.removeEventListener('keydown', handleKey);
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      };
+    }, []);
+
+    return (
+      <div
+        key={`dd-${item.id || idx}`}
+        ref={dropdownRef}
+        className="relative"
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+      >
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          aria-expanded={open}
+          aria-haspopup="true"
+          className="flex items-center gap-1 text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors py-1 cursor-pointer focus:outline-none focus:text-rotary-blue"
+        >
+          <span>{item.label}</span>
+          <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${open ? 'rotate-180 text-rotary-blue' : 'text-gray-400'}`} />
+        </button>
+
+        {open && (
+          <div
+            role="menu"
+            aria-orientation="vertical"
+            className="absolute top-full left-0 mt-2 min-w-[240px] max-w-[340px] bg-white rounded-2xl shadow-xl border border-gray-100 py-2.5 z-50 animate-in fade-in slide-in-from-top-1 duration-150"
+          >
+            {item.children.map((child, cIdx) => {
+              const hasSub = child.children && child.children.length > 0;
+              const isFlyoutOpen = activeFlyout === child.id;
+
+              if (!hasSub) {
+                return child.external ? (
+                  <a
+                    key={child.id || cIdx}
+                    href={child.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    role="menuitem"
+                    className="flex items-center justify-between px-4 py-2 text-xs text-gray-700 hover:bg-sky-50 hover:text-rotary-blue transition-colors font-medium"
+                    onClick={() => setOpen(false)}
+                  >
+                    <span>{child.label}</span>
+                    <ExternalLink className="w-3 h-3 text-gray-400 ml-1.5 flex-shrink-0" />
+                  </a>
+                ) : (
+                  <Link
+                    key={child.id || cIdx}
+                    to={child.href || '/'}
+                    role="menuitem"
+                    className="flex items-center justify-between px-4 py-2 text-xs text-gray-700 hover:bg-sky-50 hover:text-rotary-blue transition-colors font-medium"
+                    onClick={() => setOpen(false)}
+                  >
+                    <span>{child.label}</span>
+                  </Link>
+                );
+              }
+
+              return (
+                <div
+                  key={child.id || cIdx}
+                  className="relative group/sub"
+                  onMouseEnter={() => setActiveFlyout(child.id)}
+                  onMouseLeave={() => setActiveFlyout(null)}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setActiveFlyout(isFlyoutOpen ? null : child.id)}
+                    className="w-full flex items-center justify-between px-4 py-2 text-xs text-gray-700 hover:bg-sky-50 hover:text-rotary-blue transition-colors font-medium text-left"
+                  >
+                    <span>{child.label}</span>
+                    <ChevronRight className="w-3.5 h-3.5 text-gray-400 ml-auto" />
+                  </button>
+
+                  {isFlyoutOpen && (
+                    <div
+                      role="menu"
+                      className="absolute left-full top-0 ml-1 min-w-[220px] max-w-[320px] bg-white rounded-2xl shadow-xl border border-gray-100 py-2.5 z-50 animate-in fade-in slide-in-from-left-1 duration-150"
+                    >
+                      {child.children.map((grandChild, gcIdx) => (
+                        grandChild.external ? (
+                          <a
+                            key={grandChild.id || gcIdx}
+                            href={grandChild.href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            role="menuitem"
+                            className="flex items-center justify-between px-4 py-2 text-xs text-gray-700 hover:bg-sky-50 hover:text-rotary-blue transition-colors font-medium"
+                            onClick={() => { setOpen(false); setActiveFlyout(null); }}
+                          >
+                            <span>{grandChild.label}</span>
+                            <ExternalLink className="w-3 h-3 text-gray-400 ml-1.5 flex-shrink-0" />
+                          </a>
+                        ) : (
+                          <Link
+                            key={grandChild.id || gcIdx}
+                            to={grandChild.href || '/'}
+                            role="menuitem"
+                            className="flex items-center justify-between px-4 py-2 text-xs text-gray-700 hover:bg-sky-50 hover:text-rotary-blue transition-colors font-medium"
+                            onClick={() => { setOpen(false); setActiveFlyout(null); }}
+                          >
+                            <span>{grandChild.label}</span>
+                          </Link>
+                        )
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Subcomponente de acordeón multinivel para móvil (interacción 100% táctil)
+  const MobileNavAccordion: React.FC<{ item: NavTreeItem; idx: number; onNavigate: () => void }> = ({ item, idx, onNavigate }) => {
+    const [open, setOpen] = useState(false);
+    const [expandedChildIds, setExpandedChildIds] = useState<Record<string, boolean>>({});
+
+    return (
+      <div key={`macc-${item.id || idx}`} className="space-y-1">
+        <div className="flex items-center justify-between">
+          {item.href && item.href !== '#' && item.href !== '/' ? (
+            item.external ? (
+              <a
+                href={item.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-gray-700 hover:text-rotary-blue font-medium py-1.5 flex-1"
+                onClick={onNavigate}
+              >
+                {item.label}
+              </a>
+            ) : (
+              <Link
+                to={item.href}
+                className="text-gray-700 hover:text-rotary-blue font-medium py-1.5 flex-1"
+                onClick={onNavigate}
+              >
+                {item.label}
+              </Link>
+            )
+          ) : (
+            <button
+              type="button"
+              onClick={() => setOpen(!open)}
+              className="text-gray-700 hover:text-rotary-blue font-medium py-1.5 flex-1 text-left"
+            >
+              {item.label}
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setOpen(!open)}
+            className="p-1.5 text-gray-400 hover:text-rotary-blue transition-colors"
+            aria-expanded={open}
+            aria-label={`Desplegar submenú de ${item.label}`}
+          >
+            <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${open ? 'rotate-180 text-rotary-blue' : ''}`} />
+          </button>
+        </div>
+
+        {open && (
+          <div className="pl-4 border-l-2 border-gray-200 space-y-2 py-1 animate-in fade-in duration-150">
+            {item.children.map((child, cIdx) => {
+              const hasSub = child.children && child.children.length > 0;
+              const isChildOpen = !!expandedChildIds[child.id];
+
+              if (!hasSub) {
+                return child.external ? (
+                  <a
+                    key={child.id || cIdx}
+                    href={child.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between text-gray-600 text-sm py-1 hover:text-rotary-blue"
+                    onClick={onNavigate}
+                  >
+                    <span>{child.label}</span>
+                    <ExternalLink className="w-3.5 h-3.5 text-gray-400" />
+                  </a>
+                ) : (
+                  <Link
+                    key={child.id || cIdx}
+                    to={child.href || '/'}
+                    className="block text-gray-600 text-sm py-1 hover:text-rotary-blue"
+                    onClick={onNavigate}
+                  >
+                    {child.label}
+                  </Link>
+                );
+              }
+
+              return (
+                <div key={child.id || cIdx} className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-500 uppercase font-semibold">{child.label}</span>
+                    <button
+                      type="button"
+                      onClick={() => setExpandedChildIds(p => ({ ...p, [child.id]: !p[child.id] }))}
+                      className="p-1 text-gray-400"
+                    >
+                      <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isChildOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                  </div>
+                  {isChildOpen && (
+                    <div className="pl-3 border-l-2 border-indigo-200 space-y-1 py-1">
+                      {child.children.map((grandChild, gcIdx) => (
+                        grandChild.external ? (
+                          <a
+                            key={grandChild.id || gcIdx}
+                            href={grandChild.href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center justify-between text-gray-600 text-xs py-1 hover:text-rotary-blue"
+                            onClick={onNavigate}
+                          >
+                            <span>{grandChild.label}</span>
+                            <ExternalLink className="w-3 text-gray-400" />
+                          </a>
+                        ) : (
+                          <Link
+                            key={grandChild.id || gcIdx}
+                            to={grandChild.href || '/'}
+                            className="block text-gray-600 text-xs py-1 hover:text-rotary-blue"
+                            onClick={onNavigate}
+                          >
+                            {grandChild.label}
+                          </Link>
+                        )
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // La barra es `sticky`, así que esto tiene que dar lo MISMO que
   // `ExpirationBanner`: con dos condiciones escritas por separado, el menú se
   // monta encima del aviso y no lo nota nadie.
@@ -641,7 +927,13 @@ const Navbar = () => {
           <div className="hidden md:flex items-center space-x-6">
             {useOrderedNav && (
               <>
-                {orderedNav.filter(i => i.enabled !== false).map((item, idx) => item.kind === 'custom' ? renderCustomDesktop(item, idx) : renderFixedDesktop(item.key || ''))}
+                {navTree.map((item, idx) =>
+                  item.children && item.children.length > 0
+                    ? <DesktopNavDropdown key={item.id || idx} item={item} idx={idx} />
+                    : item.kind === 'custom'
+                    ? renderCustomDesktop(item, idx)
+                    : renderFixedDesktop(item.key || '')
+                )}
                 {club.storeActive && <Link to="/tienda" className="text-rotary-blue font-bold text-sm tracking-wide bg-rotary-blue/5 px-4 py-1.5 rounded-full hover:bg-rotary-blue/10 transition-colors">Tienda</Link>}
               </>
             )}
@@ -848,7 +1140,13 @@ const Navbar = () => {
             <div className="flex flex-col space-y-3 font-medium">
               {useOrderedNav && (
                 <>
-                  {orderedNav.filter(i => i.enabled !== false).map((item, idx) => item.kind === 'custom' ? renderCustomMobile(item, idx) : renderFixedMobile(item.key || ''))}
+                  {navTree.map((item, idx) =>
+                    item.children && item.children.length > 0
+                      ? <MobileNavAccordion key={item.id || idx} item={item} idx={idx} onNavigate={() => setMobileMenuOpen(false)} />
+                      : item.kind === 'custom'
+                      ? renderCustomMobile(item, idx)
+                      : renderFixedMobile(item.key || '')
+                  )}
                   {club.storeActive && <Link to="/tienda" className="text-rotary-blue font-bold" onClick={() => setMobileMenuOpen(false)}>Tienda</Link>}
                 </>
               )}

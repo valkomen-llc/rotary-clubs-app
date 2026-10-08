@@ -42,6 +42,21 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1173.0',
+        title: 'Menús Jerárquicos y Submenús Dinámicos en Toda la Plataforma 🌳🧭',
+        description: 'Nuevo gestor visual de navegación con Drag & Drop, selección accesible de elemento padre, sangrías automáticas (indent/outdent) con soporte para hasta 3 niveles de jerarquía, validación estricta contra referencias circulares y vista previa interactiva en vivo (escritorio y móvil). Integración completa en el Navbar público con menús desplegables fluidos y flyouts en escritorio, y acordeones táctiles sin dependencias de hover en móviles. Configuración y preservación de Términos y Condiciones al Ganador Absoluto en Jaque Mate a la Polio como submenú directo de Términos.',
+        date: new Date().toISOString(),
+        tags: ['navigation', 'menus', 'hierarchical-navigation', 'submenus', 'drag-and-drop', 'accessibility', 'production-release'],
+        type: 'feature',
+        changes: [
+            { type: 'added', text: 'Gestor visual de navegación con Drag & Drop, sangrías (→ / ←), reordenamiento vertical (▲ / ▼) y selector accesible de elemento padre.' },
+            { type: 'added', text: 'Validación en tiempo real contra dependencias circulares (anti-ciclos) y límite de profundidad de 3 niveles con preservación de descendientes al eliminar.' },
+            { type: 'added', text: 'Modal de vista previa interactiva antes de publicar, con previsualización para escritorio (dropdowns/flyouts) y móvil (acordeones táctiles).' },
+            { type: 'improved', text: 'Renderizado dinámico de submenús en Navbar público: dropdowns con delay de seguridad en escritorio y acordeones 100% táctiles en móvil.' },
+            { type: 'fixed', text: 'Configuración de "Términos y Condiciones al Ganador Absoluto" como submenú de "Términos" en Jaque Mate a la Polio preservando su documento PDF en S3.' }
+        ]
+    },
+    {
         version: '4.1172.0',
         title: 'Estabilidad de Acceso al Administrador y Módulo de Analytics 🚀📊',
         description: 'Reparación integral del flujo de carga y renderizado en /admin/analytics: code-splitting de SocialAnalytics reduciendo el bundle crítico a 38 kB, mitigación de condiciones de carrera con deduplicación de promesas en vuelo (promise coalescing) para consultas concurrentes a GA4, blindaje defensivo frente a valores nulos o indefinidos en métricas y mapas geográficos, y aislamiento de fallos con ErrorBoundary en AdminLayout para mantener la navegación siempre operativa.',

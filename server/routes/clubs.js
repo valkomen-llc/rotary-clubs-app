@@ -303,9 +303,52 @@ router.get('/by-domain', async (req, res) => {
                 try { return settings['event_nav_extra'] ? JSON.parse(settings['event_nav_extra']) : []; }
                 catch { return []; }
             })(),
-            // Orden unificado del menú (Evento/Convención): fijos + personalizados ordenados.
+            // Orden unificado del menú (Evento/Convención): fijos + personalizados ordenados jerárquicamente.
             eventNavOrder: (() => {
-                try { return settings['event_nav_order'] ? JSON.parse(settings['event_nav_order']) : []; }
+                try {
+                    let order = settings['event_nav_order'] ? JSON.parse(settings['event_nav_order']) : [];
+                    if (activeClub.id === '3032b804-c726-4303-91e8-0f24d19ae3e1' || activeClub.subdomain === 'jaquematealapolio') {
+                        let terminosItem = order.find(i => (i.label || '').toLowerCase().trim() === 'términos' || (i.label || '').toLowerCase().trim() === 'terminos' || i.id === 'terminos');
+                        if (!terminosItem) {
+                            terminosItem = { id: 'terminos', kind: 'custom', label: 'Términos', href: '/', external: false, enabled: true, parentId: null };
+                            order.push(terminosItem);
+                        } else {
+                            if (!terminosItem.id) terminosItem.id = 'terminos';
+                        }
+                        const pdfUrl = 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/3032b804-c726-4303-91e8-0f24d19ae3e1/documents/1791465933083-Terminos-y-condiciones-del-Ganador-Absoluto-III-Open-IRT-Jaque-Mate.pdf';
+                        let docItem = order.find(i => (i.label || '').toLowerCase().includes('ganador absoluto') || i.id === 'terminos-ganador-absoluto');
+                        let needsPersist = false;
+                        if (docItem) {
+                            if (docItem.parentId !== terminosItem.id || !docItem.id) needsPersist = true;
+                            docItem.parentId = terminosItem.id;
+                            if (!docItem.id) docItem.id = 'terminos-ganador-absoluto';
+                            docItem.href = pdfUrl;
+                            docItem.external = true;
+                            docItem.enabled = true;
+                        } else {
+                            needsPersist = true;
+                            order.push({
+                                id: 'terminos-ganador-absoluto',
+                                kind: 'custom',
+                                label: 'Términos y Condiciones al Ganador Absoluto',
+                                href: pdfUrl,
+                                external: true,
+                                enabled: true,
+                                parentId: terminosItem.id
+                            });
+                        }
+                        if (needsPersist || !settings['event_nav_order']?.includes('terminos-ganador-absoluto')) {
+                            db.query(
+                                `INSERT INTO "Setting" (id, key, value, "clubId", "updatedAt") 
+                                 VALUES (gen_random_uuid(), 'event_nav_order', $1, $2, NOW()) 
+                                 ON CONFLICT (key, "clubId") 
+                                 DO UPDATE SET value = $1, "updatedAt" = NOW()`,
+                                [JSON.stringify(order), activeClub.id]
+                            ).catch(err => console.error('[eventNavOrder AutoSync Error]:', err));
+                        }
+                    }
+                    return order;
+                }
                 catch { return []; }
             })(),
             // Visibilidad del bloque de sellos de credibilidad (La Fundación Rotaria). Default: visible.
