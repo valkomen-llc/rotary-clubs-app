@@ -14,6 +14,7 @@ import {
     generateTaskReel,
     shareTaskSocial,
     retryTask,
+    transitionTaskStage,
 } from '../controllers/missionControlController.js';
 
 const router = express.Router();
@@ -29,5 +30,6 @@ router.post('/tasks/:submissionId/approve-publish', authMiddleware, requireSiteA
 router.post('/tasks/:submissionId/generate-reel', authMiddleware, requireSiteAdmin, generateTaskReel);
 router.post('/tasks/:submissionId/share-social', authMiddleware, requireSiteAdmin, shareTaskSocial);
 router.post('/tasks/:submissionId/retry', authMiddleware, requireSiteAdmin, retryTask);
+router.post('/tasks/:submissionId/transition', authMiddleware, requireSiteAdmin, transitionTaskStage);
 
 export default router;

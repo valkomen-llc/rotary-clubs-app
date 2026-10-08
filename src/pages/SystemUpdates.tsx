@@ -42,6 +42,22 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1177.0',
+        title: 'Centro de Control VIP: Reingeniería Estratégica Operativa (Fase 1) y Despliegue Multi-Cloud Serverless 🚀📊',
+        description: 'Reestructuración y unificación del Centro de Operaciones de Comunicación y Distribución de Contenidos (/admin/mission-control-vip). Reorganización del tablero Kanban en 7 columnas canónicas secuenciales (01. Entradas, 02. En Revisión, 03. Por Aprobar, 04. En Producción, 05. Listo para Distribuir, 06. Programado / En Difusión, 07. Completado). Desacoplamiento de estados técnicos y editoriales con etiquetas especiales (error técnico, requiere ajustes, bloqueado, rechazado, pausado). Introducción del modelo de entregables multiformato (Artículo Web, Reel Audiovisual, Copies para Redes Sociales) con seguimiento individual. Cálculo exacto y deduplicado de indicadores KPI en cabecera. Transición fluida de etapas con trazabilidad de eventos inalterable. Corrección del motor de reintentos para artículos sin club registrado (asignación inteligente al Distrito 4281). Soporte para rutas de módulos en entornos Vercel Serverless (api/index.js).',
+        date: new Date().toISOString(),
+        tags: ['feature', 'mission-control', 'kanban', 'fase-1', 'operations', 'serverless', 'editorial-workflow'],
+        type: 'feature',
+        changes: [
+            { type: 'added', text: 'Tablero Kanban reorganizado en 7 columnas canónicas: Entradas, En Revisión, Por Aprobar, En Producción, Listo para Distribuir, Programado / En Difusión y Completado.' },
+            { type: 'added', text: 'Modelo de entregables multiformato independientes (Web, Reel, Redes) y estados especiales (error técnico, requiere ajustes, etc.) sin pérdida de columna base.' },
+            { type: 'added', text: 'Selector de transición rápida de etapa entre columnas con registro inalterable de auditoría (ContributionSubmissionEvent).' },
+            { type: 'improved', text: 'Indicadores KPI de cabecera sincronizados y deduplicados exactamente con la base de datos de solicitudes.' },
+            { type: 'fixed', text: 'Soporte serverless en api/index.js para el enrutador /api/site-modules solucionando respuestas 404 en producción Vercel.' },
+            { type: 'fixed', text: 'Firma y fallback de retryArticleStage permitiendo reintentar y resolver correctamente solicitudes huérfanas al Distrito 4281.' }
+        ]
+    },
+    {
         version: '4.1176.0',
         title: 'Gestión Centralizada de Módulos, Permisos por Sitio y Visibilidad Dinámica de Menús 🎛️🛡️',
         description: 'Arquitectura SaaS multi-tenant para el control centralizado de módulos y menús en la barra lateral izquierda de cada club rotario. Desactivación predeterminada del grupo Finanzas (Mi Inversión y Bóveda de Fondos) con excepción para Rotary E-Club Origen, y de Resumen / Asistente, Dominio y Publicación y Usuarios y Permisos en Configuración e Identidad. Ocultamiento automático de categorías vacías en el sidebar. Lanzamiento de la herramienta de Gestión de Módulos por Sitio para Superadministradores (/admin/gestion-modulos) con selectores individuales y grupales, indicadores de herencia y restablecimiento. Protección integral multinivel: guardián de rutas en frontend (SiteModuleRouteGuard) y validación de endpoints en backend (requireSiteModule) con respuesta 403 Forbidden para accesos no autorizados.',

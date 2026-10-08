@@ -82,6 +82,18 @@ export interface ReelAudit {
   selectedPhotoIds: string[];
 }
 
+interface OperationalDeliverable {
+  id: string;
+  type: string;
+  label: string;
+  status: string;
+  agent: string;
+  completed: boolean;
+  publicUrl?: string | null;
+  videoUrl?: string | null;
+  isOptimal?: boolean;
+}
+
 interface OperationalTask {
   id: string;
   type: 'content_submission' | 'grant_scout' | 'campaign_reading';
@@ -101,8 +113,9 @@ interface OperationalTask {
   priority?: string | null;
   date: string;
   activityDate?: string;
-  column: 'entradas' | 'en_proceso' | 'por_aprobar' | 'reels' | 'redes' | 'programado' | 'publicado';
+  column: 'entradas' | 'en_revision' | 'por_aprobar' | 'en_produccion' | 'listo_distribuir' | 'difusion' | 'completado';
   actualState: string;
+  specialState?: 'requiere_ajustes' | 'bloqueado' | 'error_tecnico' | 'rechazado' | 'cancelado' | 'pausado' | null;
   isError: boolean;
   working: boolean;
   stageLabel: string;
@@ -113,6 +126,7 @@ interface OperationalTask {
     icon: string;
     color: string;
   };
+  deliverables?: OperationalDeliverable[];
   media: {
     imageCount: number;
     videoCount: number;
@@ -220,14 +234,15 @@ export const MissionControlVIP: React.FC = () => {
   const [campaigns, setCampaigns] = useState<OperationalCampaign[]>([]);
   const [counts, setCounts] = useState({
     total: 0,
-    por_aprobar: 0,
     entradas: 0,
-    en_proceso: 0,
-    reels: 0,
-    redes: 0,
-    programado: 0,
-    publicado: 0,
+    en_revision: 0,
+    por_aprobar: 0,
+    en_produccion: 0,
+    listo_distribuir: 0,
+    difusion: 0,
+    completado: 0,
     errores: 0,
+    requiere_ajustes: 0,
   });
 
   const [isLoading, setIsLoading] = useState(true);
@@ -237,6 +252,7 @@ export const MissionControlVIP: React.FC = () => {
   const [modalTab, setModalTab] = useState<'articulo' | 'reel' | 'redes'>('articulo');
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>("all");
   const [selectedAgentId, setSelectedAgentId] = useState<string>("all");
+  const [selectedSpecialFilter, setSelectedSpecialFilter] = useState<string>("all");
   const [onlyErrors, setOnlyErrors] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [viewDensity, setViewDensity] = useState<'compact' | 'normal' | 'expanded'>('normal');
@@ -503,6 +519,37 @@ export const MissionControlVIP: React.FC = () => {
     }
   };
 
+  // Transicionar una tarea a otra columna o estado especial (FASE 1)
+  const handleTransitionTask = async (task: OperationalTask, targetCol: string, specialState?: string | null, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const loadingToast = toast.loading(`Moviendo «${task.title}» a ${targetCol}...`);
+    try {
+      const res = await fetch(`${API_BASE}/mission-control/tasks/${task.id}/transition`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token() || authToken}`,
+        },
+        body: JSON.stringify({
+          targetColumn: targetCol,
+          specialState: specialState || null,
+        }),
+      });
+      const data = await safeJson(res);
+      toast.dismiss(loadingToast);
+      if (res.ok) {
+        toast.success(`Tarea movida a «${targetCol}».`);
+        await fetchBoard(true);
+        await fetchCampaigns();
+      } else {
+        toast.error(data.error || "No se pudo cambiar de etapa");
+      }
+    } catch (e: any) {
+      toast.dismiss(loadingToast);
+      toast.error(`Error: ${e?.message}`);
+    }
+  };
+
   // Filtrado de tareas
   const filteredTasks = useMemo(() => {
     return tasks.filter((t) => {
@@ -517,6 +564,13 @@ export const MissionControlVIP: React.FC = () => {
       if (selectedAgentId !== "all" && t.assignedAgent?.id !== selectedAgentId) return false;
       if (onlyErrors && !t.isError) return false;
 
+      if (selectedSpecialFilter !== "all") {
+        if (selectedSpecialFilter === "errores" && !t.isError) return false;
+        if (selectedSpecialFilter === "requiere_ajustes" && t.specialState !== "requiere_ajustes") return false;
+        if (selectedSpecialFilter === "bloqueado" && t.specialState !== "bloqueado") return false;
+        if (selectedSpecialFilter === "rechazado" && t.specialState !== "rechazado") return false;
+      }
+
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
         const matchTitle = t.title?.toLowerCase().includes(query);
@@ -528,70 +582,70 @@ export const MissionControlVIP: React.FC = () => {
 
       return true;
     });
-  }, [tasks, selectedCampaignId, selectedAgentId, onlyErrors, searchQuery]);
+  }, [tasks, selectedCampaignId, selectedAgentId, onlyErrors, selectedSpecialFilter, searchQuery]);
 
-  // Columnas Kanban - ¡POR APROBAR va de primero por máxima prioridad operacional ejecutiva!
+  // Columnas Kanban del Flujo Editorial Canónico (01 a 07 - FASE 1)
   const boardCols = {
-    por_aprobar: {
-      id: "por_aprobar",
-      title: "POR APROBAR",
-      subtitle: "Borradores listos para revisión y publicación",
-      icon: "👤",
-      tasks: filteredTasks.filter((t) => t.column === "por_aprobar"),
-      badgeColor: "bg-amber-100 text-amber-900 border-amber-300 ring-2 ring-amber-300/40",
-      isPrimary: true,
-    },
     entradas: {
       id: "entradas",
-      title: "ENTRADAS",
-      subtitle: "Nuevos aportes recibidos (mín. 5 fotos)",
+      title: "01. ENTRADAS",
+      subtitle: "Nuevas solicitudes recibidas",
       icon: "📥",
       tasks: filteredTasks.filter((t) => t.column === "entradas"),
-      badgeColor: "bg-sky-50 text-sky-700 border-sky-200",
+      badgeColor: "bg-sky-50 text-sky-800 border-sky-200",
       isPrimary: false,
     },
-    en_proceso: {
-      id: "en_proceso",
-      title: "EN PROCESO",
-      subtitle: "IA analizando y redactando",
-      icon: "🤖",
-      tasks: filteredTasks.filter((t) => t.column === "en_proceso"),
+    en_revision: {
+      id: "en_revision",
+      title: "02. EN REVISIÓN",
+      subtitle: "Validación técnica y editorial",
+      icon: "🔍",
+      tasks: filteredTasks.filter((t) => t.column === "en_revision"),
+      badgeColor: "bg-amber-50 text-amber-900 border-amber-200",
+      isPrimary: false,
+    },
+    por_aprobar: {
+      id: "por_aprobar",
+      title: "03. POR APROBAR",
+      subtitle: "Autorización y canales",
+      icon: "👤",
+      tasks: filteredTasks.filter((t) => t.column === "por_aprobar"),
+      badgeColor: "bg-orange-50 text-orange-900 border-orange-300 ring-2 ring-orange-300/40",
+      isPrimary: true,
+    },
+    en_produccion: {
+      id: "en_produccion",
+      title: "04. EN PRODUCCIÓN",
+      subtitle: "Entregables (Reels, Copys, Piezas)",
+      icon: "⚙️",
+      tasks: filteredTasks.filter((t) => t.column === "en_produccion"),
       badgeColor: "bg-blue-50 text-[#013388] border-blue-200",
       isPrimary: false,
     },
-    reels: {
-      id: "reels",
-      title: "GENERACIÓN DE REELS",
-      subtitle: "Video vertical 9:16 (IG, TikTok, Shorts)",
-      icon: "🎬",
-      tasks: filteredTasks.filter((t) => t.column === "reels"),
-      badgeColor: "bg-pink-50 text-pink-700 border-pink-200",
+    listo_distribuir: {
+      id: "listo_distribuir",
+      title: "05. LISTO PARA DISTRIBUIR",
+      subtitle: "Entregables validados y listos",
+      icon: "🚀",
+      tasks: filteredTasks.filter((t) => t.column === "listo_distribuir"),
+      badgeColor: "bg-teal-50 text-teal-800 border-teal-200",
       isPrimary: false,
     },
-    redes: {
-      id: "redes",
-      title: "DIFUSIÓN EN REDES",
-      subtitle: "Facebook Fanpage y X",
+    difusion: {
+      id: "difusion",
+      title: "06. PROGRAMADO / EN DIFUSIÓN",
+      subtitle: "Publicación multicanal",
       icon: "📢",
-      tasks: filteredTasks.filter((t) => t.column === "redes"),
+      tasks: filteredTasks.filter((t) => t.column === "difusion"),
       badgeColor: "bg-indigo-50 text-indigo-700 border-indigo-200",
       isPrimary: false,
     },
-    programado: {
-      id: "programado",
-      title: "PROGRAMADO",
-      subtitle: "Emisión diferida",
-      icon: "🕒",
-      tasks: filteredTasks.filter((t) => t.column === "programado"),
-      badgeColor: "bg-purple-50 text-purple-700 border-purple-200",
-      isPrimary: false,
-    },
-    publicado: {
-      id: "publicado",
-      title: "PUBLICADO / COMPLETADO",
-      subtitle: "Distribuido en sitios y redes",
+    completado: {
+      id: "completado",
+      title: "07. COMPLETADO",
+      subtitle: "Publicado y cerrado",
       icon: "✅",
-      tasks: filteredTasks.filter((t) => t.column === "publicado"),
+      tasks: filteredTasks.filter((t) => t.column === "completado"),
       badgeColor: "bg-emerald-50 text-emerald-700 border-emerald-200",
       isPrimary: false,
     },
@@ -674,52 +728,51 @@ export const MissionControlVIP: React.FC = () => {
         </div>
       </div>
 
-      {/* ── BARRA DE CONTADORES OPERACIONALES ── */}
+      {/* ── BARRA DE CONTADORES OPERACIONALES (FASE 1) ── */}
       <div className="bg-white border-b border-gray-200 px-6 py-2.5 flex items-center justify-between shadow-xs shrink-0 flex-wrap gap-2">
         <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide text-xs font-semibold">
           <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-gray-100 text-gray-700">
-            <span>Total procesos:</span>
+            <span>Total:</span>
             <span className="font-black text-gray-900">{counts.total}</span>
           </div>
 
-          {/* Por Aprobar prioritario en primer lugar */}
-          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-lg font-bold border transition-all ${
-            counts.por_aprobar > 0
-              ? "bg-amber-100/90 text-amber-900 border-amber-300 ring-2 ring-amber-300/40 shadow-xs"
-              : "bg-amber-50 text-amber-900 border-amber-200"
-          }`}>
-            <span>👤 Por Aprobar:</span>
-            <span className="font-black text-amber-800">{counts.por_aprobar}</span>
-          </div>
-
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-sky-50 text-sky-800 border border-sky-100">
-            <span>📥 Entradas:</span>
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-sky-50 text-sky-800 border border-sky-200">
+            <span>📥 01. Entradas:</span>
             <span className="font-black">{counts.entradas}</span>
           </div>
 
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-blue-50 text-[#013388] border border-blue-100">
-            <span>🤖 En Proceso:</span>
-            <span className="font-black">{counts.en_proceso}</span>
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-50 text-amber-900 border border-amber-200">
+            <span>🔍 02. En Revisión:</span>
+            <span className="font-black">{counts.en_revision}</span>
           </div>
 
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-pink-50 text-pink-800 border border-pink-100">
-            <span>🎬 Reels IA:</span>
-            <span className="font-black">{counts.reels}</span>
+          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-lg font-bold border transition-all ${
+            counts.por_aprobar > 0
+              ? "bg-orange-100/90 text-orange-950 border-orange-300 ring-2 ring-orange-300/40 shadow-xs"
+              : "bg-orange-50 text-orange-900 border-orange-200"
+          }`}>
+            <span>👤 03. Por Aprobar:</span>
+            <span className="font-black text-orange-800">{counts.por_aprobar}</span>
           </div>
 
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-indigo-50 text-indigo-800 border border-indigo-100">
-            <span>📢 Redes:</span>
-            <span className="font-black">{counts.redes}</span>
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-blue-50 text-[#013388] border border-blue-200">
+            <span>⚙️ 04. Producción:</span>
+            <span className="font-black">{counts.en_produccion}</span>
           </div>
 
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-purple-50 text-purple-800 border border-purple-100">
-            <span>🕒 Programadas:</span>
-            <span className="font-black">{counts.programado}</span>
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-teal-50 text-teal-800 border border-teal-200">
+            <span>🚀 05. Listas:</span>
+            <span className="font-black">{counts.listo_distribuir}</span>
           </div>
 
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-100">
-            <span>✅ Publicadas:</span>
-            <span className="font-black">{counts.publicado}</span>
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-indigo-50 text-indigo-800 border border-indigo-200">
+            <span>📢 06. Difusión:</span>
+            <span className="font-black">{counts.difusion}</span>
+          </div>
+
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200">
+            <span>✅ 07. Completadas:</span>
+            <span className="font-black">{counts.completado}</span>
           </div>
 
           {counts.errores > 0 && (
@@ -729,10 +782,29 @@ export const MissionControlVIP: React.FC = () => {
               <span className="font-black text-rose-700">{counts.errores}</span>
             </div>
           )}
+
+          {counts.requiere_ajustes > 0 && (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-50 text-amber-800 border border-amber-200">
+              <Info className="w-3.5 h-3.5 text-amber-600" />
+              <span>Ajustes:</span>
+              <span className="font-black text-amber-700">{counts.requiere_ajustes}</span>
+            </div>
+          )}
         </div>
 
         {/* CONTROLES DE VISTA */}
         <div className="flex items-center gap-2 shrink-0">
+          <select
+            value={selectedSpecialFilter}
+            onChange={(e) => setSelectedSpecialFilter(e.target.value)}
+            className="text-xs bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1 font-semibold text-gray-700 outline-none"
+          >
+            <option value="all">Filtro: Todos</option>
+            <option value="errores">⚠️ Solo errores técnicos</option>
+            <option value="requiere_ajustes">✏️ Requiere ajustes</option>
+            <option value="bloqueado">🔒 Bloqueados</option>
+            <option value="rechazado">❌ Rechazados</option>
+          </select>
           <button
             onClick={() => setOnlyErrors((v) => !v)}
             className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all border ${
@@ -985,37 +1057,35 @@ export const MissionControlVIP: React.FC = () => {
                           </div>
                         )}
 
-                        {/* BADGES SUPERIORES */}
-                        <div className="flex items-center justify-between gap-1.5 mb-2">
-                          <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-gray-100 text-gray-600 truncate">
+                        {/* BADGES DE ESTADO Y ESPECIALES (FASE 1) */}
+                        <div className="flex items-center justify-between gap-1.5 mb-2 flex-wrap">
+                          <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-gray-100 text-gray-600 truncate max-w-[140px]">
                             {task.club || "Club Rotario"}
                           </span>
 
-                          {task.isError ? (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1 shrink-0">
-                              <AlertCircle className="w-3 h-3 text-rose-600" /> Error
-                            </span>
-                          ) : task.working ? (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-[#013388] border border-blue-200 flex items-center gap-1 shrink-0">
-                              <Loader2 className="w-3 h-3 animate-spin text-[#013388]" /> IA activa
-                            </span>
-                          ) : task.column === "por_aprobar" ? (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1 shrink-0">
-                              👤 Por aprobar
-                            </span>
-                          ) : task.column === "reels" ? (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-pink-50 text-pink-800 border border-pink-200 flex items-center gap-1 shrink-0">
-                              🎬 Reel {task.reel?.status || "en cola"}
-                            </span>
-                          ) : task.column === "redes" ? (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-200 flex items-center gap-1 shrink-0">
-                              📢 Difusión
-                            </span>
-                          ) : task.column === "publicado" ? (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1 shrink-0">
-                              ✅ En línea
-                            </span>
-                          ) : null}
+                          <div className="flex items-center gap-1 shrink-0">
+                            {task.specialState === "error_tecnico" || task.isError ? (
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1" title={task.lastError || task.stageLabel}>
+                                <AlertCircle className="w-3 h-3 text-rose-600" /> Error técnico
+                              </span>
+                            ) : task.specialState === "requiere_ajustes" ? (
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1">
+                                <Edit2 className="w-3 h-3 text-amber-600" /> Requiere ajustes
+                              </span>
+                            ) : task.specialState === "bloqueado" ? (
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                                🔒 Bloqueado
+                              </span>
+                            ) : task.specialState === "rechazado" ? (
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-200">
+                                ❌ Rechazado
+                              </span>
+                            ) : task.working ? (
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-[#013388] border border-blue-200 flex items-center gap-1">
+                                <Loader2 className="w-3 h-3 animate-spin text-[#013388]" /> IA activa
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
 
                         {/* TÍTULO */}
@@ -1024,9 +1094,49 @@ export const MissionControlVIP: React.FC = () => {
                         </h4>
 
                         {/* EXTRACTO O CAMPAÑA */}
-                        <p className="text-[11px] text-gray-500 line-clamp-2 leading-relaxed mb-3">
+                        <p className="text-[11px] text-gray-500 line-clamp-2 leading-relaxed mb-2">
                           {task.article?.excerpt || task.subtitle}
                         </p>
+
+                        {/* ENTREGABLES (MODELO MULTIFORMATO FASE 1) */}
+                        <div className="flex items-center gap-1.5 mb-2.5">
+                          <span
+                            className={`text-[9px] px-1.5 py-0.5 rounded font-bold border transition-colors ${
+                              task.article?.status === "publicado" || task.post?.published
+                                ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                : task.article?.status
+                                ? "bg-blue-50 text-blue-800 border-blue-200"
+                                : "bg-gray-50 text-gray-400 border-gray-200"
+                            }`}
+                            title={`Artículo Web (${task.article?.status || "pendiente"})`}
+                          >
+                            📰 Web
+                          </span>
+                          <span
+                            className={`text-[9px] px-1.5 py-0.5 rounded font-bold border transition-colors ${
+                              task.reel?.status === "aprobada" || task.reel?.status === "publicada"
+                                ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                : task.reel?.videoUrl
+                                ? "bg-pink-50 text-pink-800 border-pink-200"
+                                : task.reelAudit?.isOptimal
+                                ? "bg-pink-50/60 text-pink-700 border-pink-100"
+                                : "bg-gray-50 text-gray-400 border-gray-200"
+                            }`}
+                            title={`Reel Audiovisual (${task.reel?.status || "en cola"})`}
+                          >
+                            🎬 Reel
+                          </span>
+                          <span
+                            className={`text-[9px] px-1.5 py-0.5 rounded font-bold border transition-colors ${
+                              task.social?.hasFacebook || task.social?.hasX
+                                ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                : "bg-gray-50 text-gray-400 border-gray-200"
+                            }`}
+                            title="Difusión en Redes"
+                          >
+                            📢 Redes
+                          </span>
+                        </div>
 
                         {/* METADATOS Y DESTINOS */}
                         <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-[10px] text-gray-500">
@@ -1056,38 +1166,72 @@ export const MissionControlVIP: React.FC = () => {
                           </div>
                         )}
 
-                        {/* ACCIONES RÁPIDAS EN LA TARJETA */}
-                        <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between gap-2">
+                        {/* SELECTOR DE ETAPA / TRANSICIÓN RÁPIDA (FASE 1) */}
+                        <div className="mt-2.5 pt-2 border-t border-gray-100 flex items-center justify-between text-[10px]">
+                          <span className="text-gray-400 font-medium">Mover etapa:</span>
+                          <select
+                            value={task.column}
+                            onChange={(e) => handleTransitionTask(task, e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="bg-gray-50 hover:bg-white border border-gray-200 rounded px-1.5 py-0.5 text-[10px] font-bold text-gray-700 outline-none cursor-pointer"
+                          >
+                            <option value="entradas">01. Entradas</option>
+                            <option value="en_revision">02. En Revisión</option>
+                            <option value="por_aprobar">03. Por Aprobar</option>
+                            <option value="en_produccion">04. Producción</option>
+                            <option value="listo_distribuir">05. Listo Distribuir</option>
+                            <option value="difusion">06. En Difusión</option>
+                            <option value="completado">07. Completado</option>
+                          </select>
+                        </div>
+
+                        {/* ACCIONES RÁPIDAS SEGÚN LA ETAPA (FASE 1) */}
+                        <div className="mt-2 flex items-center justify-between gap-1.5">
                           {task.column === "entradas" && (
                             <button
                               onClick={(e) => handleAdvanceTask(task, e)}
                               className="w-full py-1.5 bg-[#013388] hover:bg-[#002266] text-white text-[10px] font-black rounded-lg flex items-center justify-center gap-1 transition-colors"
                             >
-                              <Sparkles className="w-3 h-3 text-amber-400" /> GENERAR ARTÍCULO IA
+                              <Sparkles className="w-3 h-3 text-amber-400" /> INICIAR VALIDACIÓN IA
                             </button>
                           )}
 
-                          {task.column === "en_proceso" && (
-                            <div className="w-full py-1 text-center text-[10px] text-[#013388] font-bold flex items-center justify-center gap-1.5 bg-blue-50 rounded-lg">
-                              <Loader2 className="w-3 h-3 animate-spin" /> Procesando etapas...
-                            </div>
-                          )}
-
-                          {task.column === "por_aprobar" && (
+                          {task.column === "en_revision" && (
                             <div className="w-full flex items-center gap-1.5">
                               <button
                                 onClick={() => {
                                   setSelectedTask(task);
                                   setModalTab("articulo");
                                 }}
-                                className="flex-1 py-1.5 bg-amber-500 hover:bg-amber-600 text-amber-950 font-black text-[10px] rounded-lg text-center transition-colors"
+                                className="flex-1 py-1.5 bg-amber-500 hover:bg-amber-600 text-amber-950 font-black text-[10px] rounded-lg text-center transition-colors flex items-center justify-center gap-1"
                               >
-                                REVISAR Y APROBAR
+                                <Edit2 className="w-3 h-3" /> REVISAR Y VALIDAR
                               </button>
+                              {task.isError && (
+                                <button
+                                  onClick={(e) => handleRetryTask(task, e)}
+                                  className="px-2 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-black"
+                                  title="Reintentar automatización fallida"
+                                >
+                                  <RefreshCw className="w-3 h-3" />
+                                </button>
+                              )}
                             </div>
                           )}
 
-                          {task.column === "reels" && (
+                          {task.column === "por_aprobar" && (
+                            <button
+                              onClick={() => {
+                                setSelectedTask(task);
+                                setModalTab("articulo");
+                              }}
+                              className="w-full py-1.5 bg-orange-500 hover:bg-orange-600 text-white font-black text-[10px] rounded-lg text-center transition-colors shadow-xs flex items-center justify-center gap-1"
+                            >
+                              <CheckCircle2 className="w-3 h-3" /> REVISAR Y APROBAR
+                            </button>
+                          )}
+
+                          {task.column === "en_produccion" && (
                             <div className="w-full flex items-center gap-1.5">
                               {task.reel?.videoUrl ? (
                                 <button
@@ -1099,18 +1243,40 @@ export const MissionControlVIP: React.FC = () => {
                                 >
                                   <Film className="w-3 h-3" /> VER REEL VERTICAL
                                 </button>
-                              ) : (
+                              ) : task.reelAudit?.isOptimal ? (
                                 <button
                                   onClick={(e) => handleGenerateReel(task, e)}
                                   className="w-full py-1.5 bg-pink-600 hover:bg-pink-700 text-white text-[10px] font-black rounded-lg flex items-center justify-center gap-1 transition-colors shadow-xs"
                                 >
-                                  <Video className="w-3 h-3 text-pink-200" /> GENERAR REEL (5 FOTOS)
+                                  <Video className="w-3 h-3 text-pink-200" /> PRODUCIR REEL 9:16
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => {
+                                    setSelectedTask(task);
+                                    setModalTab("articulo");
+                                  }}
+                                  className="w-full py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-black rounded-lg flex items-center justify-center gap-1 transition-colors"
+                                >
+                                  <Sliders className="w-3 h-3" /> VER ENTREGABLES
                                 </button>
                               )}
                             </div>
                           )}
 
-                          {task.column === "redes" && (
+                          {task.column === "listo_distribuir" && (
+                            <button
+                              onClick={() => {
+                                setSelectedTask(task);
+                                setModalTab("redes");
+                              }}
+                              className="w-full py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-[10px] font-black rounded-lg flex items-center justify-center gap-1 transition-colors shadow-xs"
+                            >
+                              <Share2 className="w-3 h-3 text-teal-200" /> LANZAR DISTRIBUCIÓN
+                            </button>
+                          )}
+
+                          {task.column === "difusion" && (
                             <button
                               onClick={(e) => handleShareSocial(task, e)}
                               className="w-full py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black rounded-lg flex items-center justify-center gap-1 transition-colors shadow-xs"
@@ -1119,7 +1285,7 @@ export const MissionControlVIP: React.FC = () => {
                             </button>
                           )}
 
-                          {task.column === "publicado" && task.article?.publicUrl && (
+                          {task.column === "completado" && task.article?.publicUrl && (
                             <a
                               href={task.article.publicUrl}
                               target="_blank"
@@ -1129,15 +1295,6 @@ export const MissionControlVIP: React.FC = () => {
                             >
                               <ExternalLink className="w-3 h-3" /> VER PUBLICACIÓN
                             </a>
-                          )}
-
-                          {task.isError && (
-                            <button
-                              onClick={(e) => handleRetryTask(task, e)}
-                              className="w-full py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-black rounded-lg flex items-center justify-center gap-1 transition-colors"
-                            >
-                              <RefreshCw className="w-3 h-3" /> REINTENTAR ETAPA
-                            </button>
                           )}
                         </div>
                       </div>

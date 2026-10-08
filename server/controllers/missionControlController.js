@@ -93,14 +93,14 @@ const AGENT_PERSONAS = {
 };
 
 /**
- * Determina a qué columna pertenece un proceso operativo:
- * 1. 'por_aprobar': Borrador listo para revisión y aprobación humana (máxima prioridad)
- * 2. 'entradas': Nueva solicitud recibida sin procesar por IA (mín. 5 fotos)
- * 3. 'en_proceso': IA analizando fotografías y redactando borrador de noticia
- * 4. 'reels': Artículo web aprobado/publicado, en etapa de producción audiovisual de Reel vertical (IG/TikTok/Shorts)
- * 5. 'redes': Publicación y distribución del artículo de blog en Fanpage Facebook y X
- * 6. 'programado': Emisión programada a futuro
- * 7. 'publicado': Completado en todos los canales
+ * Determina a qué columna del flujo editorial canónico pertenece una solicitud (FASE 1):
+ * 01. 'entradas': Solicitud recibida recién ingresada desde formularios vinculados
+ * 02. 'en_revision': Validación técnica y editorial, calidad de fotos, inconsistencias
+ * 03. 'por_aprobar': Borrador listo o autorización editorial requerida para producción
+ * 04. 'en_produccion': Preparación de entregables (redacción IA, reel vertical 9:16, piezas gráficas)
+ * 05. 'listo_distribuir': Entregables obligatorios aprobados y listos para lanzamiento
+ * 06. 'difusion': Programado para emisión futura o en difusión activa multicanal
+ * 07. 'completado': Publicado y cerrado con trazabilidad en todos los canales obligatorios
  */
 function resolveTaskColumn(submission, article, post, reel, socialDists = [], reelAudit = null) {
     const artStatus = article?.status || null;
@@ -109,78 +109,80 @@ function resolveTaskColumn(submission, article, post, reel, socialDists = [], re
     const scheduledAt = post?.scheduledAt ? new Date(post.scheduledAt) : null;
     const reelStatus = reel?.status || null;
 
-    if (artStatus === 'error') {
-        return 'error';
+    const hasFb = socialDists.some(d => (d.network === 'facebook' || d.network === 'facebook_page') && d.status === 'published');
+    const hasX = socialDists.some(d => d.network === 'x' && d.status === 'published');
+    const isReelDone = ['aprobada', 'publicada'].includes(reelStatus);
+
+    // 07. COMPLETADO: Artículo publicado y canales completados (o cerrado explícitamente)
+    if (subStatus === 'publicado' && (postPublished || artStatus === 'publicado') && (isReelDone || !reelAudit?.isOptimal || hasFb || hasX)) {
+        return 'completado';
     }
 
+    // 06. PROGRAMADO / EN DIFUSIÓN: Emisión diferida programada a futuro o difusión activa
     if (scheduledAt && scheduledAt.getTime() > Date.now()) {
-        return 'programado';
+        return 'difusion';
+    }
+    if (postPublished && (!hasFb || !hasX) && (isReelDone || !reelAudit?.isOptimal)) {
+        return 'difusion';
     }
 
-    // 1. Prioridad: Borradores que requieren revisión/aprobación humana antes de publicar en web
-    if (['borrador_listo', 'en_revision', 'requiere_info', 'aprobado'].includes(artStatus) && !postPublished) {
+    // 05. LISTO PARA DISTRIBUIR: Artículo aprobado/listo pero aún no emitido
+    if ((artStatus === 'aprobado' || subStatus === 'listo_difusion') && !postPublished) {
+        return 'listo_distribuir';
+    }
+
+    // 04. EN PRODUCCIÓN: Redacción de artículo en curso o Reel en producción activa
+    const isReelWorking = ['recibida', 'analizando', 'preparando', 'generando', 'componiendo', 'configurando', 'lista'].includes(reelStatus);
+    if (postPublished && isReelWorking) {
+        return 'en_produccion';
+    }
+    if (['analizando', 'generando'].includes(artStatus) || subStatus === 'en_produccion') {
+        return 'en_produccion';
+    }
+
+    // 03. POR APROBAR: Borrador editorial listo esperando visto bueno humano
+    if ((artStatus === 'borrador_listo' || subStatus === 'por_aprobar') && !postPublished) {
         return 'por_aprobar';
     }
 
-    // 2. IA redactando el borrador de noticia
-    if (['analizando', 'generando'].includes(artStatus)) {
-        return 'en_proceso';
+    // 02. EN REVISIÓN: En proceso de revisión editorial, o requiere info/ajustes, o validación
+    if (['en_revision', 'requiere_info'].includes(artStatus) || subStatus === 'en_revision' || artStatus === 'error') {
+        return 'en_revision';
     }
 
-    // 3. Solicitud recibida en cola
-    if (artStatus === 'recibida' || subStatus === 'recibido' || !artStatus) {
-        return 'entradas';
-    }
-
-    // Si el artículo web ya está publicado:
-    if (artStatus === 'publicado' || postPublished) {
-        // ¿Está en proceso o pendiente la generación del Reel?
-        const isReelWorking = ['recibida', 'analizando', 'preparando', 'generando', 'componiendo', 'configurando', 'lista'].includes(reelStatus);
-        const isReelDone = ['aprobada', 'publicada'].includes(reelStatus);
-
-        // Si ya hay un Reel en producción activa
-        if (reel && isReelWorking) {
-            return 'reels';
-        }
-
-        const hasFb = socialDists.some(d => (d.network === 'facebook' || d.network === 'facebook_page') && d.status === 'published');
-        const hasX = socialDists.some(d => d.network === 'x' && d.status === 'published');
-        const isFullyShared = hasFb && hasX;
-
-        // Regla inteligente: Sólo los aportes que superan fotografías reales verificadas
-        // y no hayan fallado por fotos insuficientes aparecen como pendientes en Generación de Reels.
-        if (!isReelDone && reelStatus !== 'fallida' && reelStatus !== 'error') {
-            if (reelAudit?.isOptimal && !isFullyShared) {
-                return 'reels';
-            }
-        }
-
-        // Si el Reel ya fue generado o no califica para Reel automático pero la difusión en redes está pendiente:
-        if (!hasFb || !hasX) {
-            return 'redes';
-        }
-
-        // Si ya completó web + reel + redes
-        return 'publicado';
-    }
-
+    // 01. ENTRADAS: Estado inicial de recepción
     return 'entradas';
 }
 
 /**
- * Resuelve el agente responsable según la etapa.
+ * Resuelve el estado especial complementario (flags sin desarmar la columna principal).
+ */
+function resolveSpecialState(submission, article, reel) {
+    if (submission?.status === 'rechazado') return 'rechazado';
+    if (submission?.status === 'cancelado') return 'cancelado';
+    if (submission?.status === 'bloqueado') return 'bloqueado';
+    if (submission?.status === 'pausado') return 'pausado';
+    if (submission?.status === 'requiere_ajustes' || article?.status === 'requiere_info' || article?.generated?.copyIssues?.length > 0) return 'requiere_ajustes';
+    if (article?.status === 'error' || reel?.status === 'fallida' || reel?.status === 'error' || article?.lastError) return 'error_tecnico';
+    return null;
+}
+
+/**
+ * Resuelve el agente responsable según la etapa del flujo canónico.
  */
 function resolveAssignedAgent(column, article, reel) {
-    if (column === 'error') return AGENT_PERSONAS.error;
+    if (column === 'entradas') return AGENT_PERSONAS.analizando;
+    if (column === 'en_revision') return AGENT_PERSONAS.por_aprobar;
     if (column === 'por_aprobar') return AGENT_PERSONAS.por_aprobar;
-    if (column === 'reels') return AGENT_PERSONAS.reels;
-    if (column === 'redes') return AGENT_PERSONAS.redes;
-    if (column === 'programado') return AGENT_PERSONAS.programado;
-    if (column === 'publicado') return AGENT_PERSONAS.publicado;
-    if (column === 'en_proceso') {
-        if (article?.status === 'analizando') return AGENT_PERSONAS.analizando;
+    if (column === 'en_produccion') {
+        if (reel && ['analizando', 'preparando', 'generando', 'componiendo', 'configurando', 'lista'].includes(reel.status)) {
+            return AGENT_PERSONAS.reels;
+        }
         return AGENT_PERSONAS.generando;
     }
+    if (column === 'listo_distribuir') return AGENT_PERSONAS.programado;
+    if (column === 'difusion') return AGENT_PERSONAS.redes;
+    if (column === 'completado') return AGENT_PERSONAS.publicado;
     return AGENT_PERSONAS.default;
 }
 
@@ -311,18 +313,19 @@ export const getOperationalBoard = async (req, res) => {
             }
         }
 
-        // Mapear cada registro a una OperationalTask
+        // Mapear cada registro a una OperationalTask del flujo editorial canónico
         const tasks = [];
         const counts = {
             total: 0,
-            por_aprobar: 0,
             entradas: 0,
-            en_proceso: 0,
-            reels: 0,
-            redes: 0,
-            programado: 0,
-            publicado: 0,
+            en_revision: 0,
+            por_aprobar: 0,
+            en_produccion: 0,
+            listo_distribuir: 0,
+            difusion: 0,
+            completado: 0,
             errores: 0,
+            requiere_ajustes: 0,
         };
 
         for (const sub of submissions) {
@@ -336,6 +339,7 @@ export const getOperationalBoard = async (req, res) => {
             const postDists = post?.id ? (socialDistsMap[post.id] || []) : [];
 
             const col = resolveTaskColumn(sub, art, post, reel, postDists, reelAudit);
+            const specialState = resolveSpecialState(sub, art, reel);
             const agent = resolveAssignedAgent(col, art, reel);
 
             // Calcular destinos sugeridos
@@ -358,6 +362,47 @@ export const getOperationalBoard = async (req, res) => {
             const hasFacebook = postDists.some(d => (d.network === 'facebook' || d.network === 'facebook_page') && d.status === 'published');
             const hasX = postDists.some(d => d.network === 'x' && d.status === 'published');
 
+            // Modelo desacoplado de entregables multiformato (FASE 1)
+            const isReelDone = ['aprobada', 'publicada'].includes(reel?.status);
+            const isReelWorking = ['recibida', 'analizando', 'preparando', 'generando', 'componiendo', 'configurando', 'lista'].includes(reel?.status);
+            const deliverables = [
+                {
+                    id: 'article_web',
+                    type: 'article_web',
+                    label: 'Artículo Web',
+                    status: (post?.published || art?.status === 'publicado') ? 'publicado' : (art?.status || 'pendiente'),
+                    agent: 'Rafael',
+                    completed: post?.published === true || art?.status === 'publicado',
+                    publicUrl: art?.publicUrl || null,
+                },
+                {
+                    id: 'reel_video',
+                    type: 'reel_video',
+                    label: 'Reel Vertical 9:16',
+                    status: isReelDone ? 'publicado' : (isReelWorking ? 'en_produccion' : (reel?.status === 'fallida' ? 'error' : (reelAudit?.isOptimal ? 'listo' : 'no_requerido'))),
+                    agent: 'Camila',
+                    completed: isReelDone,
+                    videoUrl: reelProj?.videoUrl || null,
+                    isOptimal: reelAudit?.isOptimal,
+                },
+                {
+                    id: 'copy_facebook',
+                    type: 'copy_facebook',
+                    label: 'Copy Fanpage',
+                    status: hasFacebook ? 'publicado' : (post?.published ? 'listo' : 'pendiente'),
+                    agent: 'Lucas',
+                    completed: hasFacebook,
+                },
+                {
+                    id: 'copy_x',
+                    type: 'copy_x',
+                    label: 'Copy Red X',
+                    status: hasX ? 'publicado' : (post?.published ? 'listo' : 'pendiente'),
+                    agent: 'Lucas',
+                    completed: hasX,
+                },
+            ];
+
             const task = {
                 id: sub.id,
                 type: 'content_submission',
@@ -377,12 +422,14 @@ export const getOperationalBoard = async (req, res) => {
                 district: sub.district,
                 date: sub.createdAt,
                 activityDate: sub.activityDate,
-                column: col === 'error' ? 'en_proceso' : col,
+                column: col,
                 actualState: col,
-                isError: col === 'error' || art?.status === 'error' || reel?.status === 'fallida',
-                working: isWorkingState(art?.status) || ['analizando', 'preparando', 'generando', 'componiendo'].includes(reel?.status),
+                specialState,
+                isError: specialState === 'error_tecnico' || art?.status === 'error' || reel?.status === 'fallida',
+                working: isWorkingState(art?.status) || isReelWorking,
                 stageLabel: reel?.statusDetail || art?.statusDetail || (art?.status ? `Estado: ${art.status}` : 'Recibido en cola'),
                 assignedAgent: agent,
+                deliverables,
                 media: {
                     imageCount: imageFiles.length,
                     videoCount: videoFiles.length,
@@ -466,20 +513,11 @@ export const getOperationalBoard = async (req, res) => {
 
             tasks.push(task);
 
-            // Contadores
+            // Contadores rigurosos y deduplicados
             counts.total++;
-            if (col === 'error' || art?.status === 'error' || reel?.status === 'fallida') counts.errores++;
-            if (col === 'por_aprobar') counts.por_aprobar++;
-            else if (col === 'entradas') counts.entradas++;
-            else if (col === 'en_proceso') counts.en_proceso++;
-            else if (col === 'reels') counts.reels++;
-            else if (col === 'redes') counts.redes++;
-            else if (col === 'programado') counts.programado++;
-
-            // Métrica real de publicación: cuenta todo aporte cuyo artículo web ya fue publicado o completó publicación
-            if (col === 'publicado' || art?.status === 'publicado' || post?.published === true) {
-                counts.publicado++;
-            }
+            counts[col] = (counts[col] || 0) + 1;
+            if (task.isError) counts.errores++;
+            if (specialState === 'requiere_ajustes') counts.requiere_ajustes++;
         }
 
         res.json({
@@ -966,3 +1004,83 @@ export const retryTask = async (req, res) => {
         res.status(500).json({ error: e?.message || 'Error al reintentar la etapa' });
     }
 };
+
+/**
+ * POST /api/mission-control/tasks/:submissionId/transition
+ * Permite cambiar el estado editorial o especial de una solicitud (FASE 1),
+ * registrando trazabilidad estricta e inalterable en ContributionSubmissionEvent.
+ */
+export const transitionTaskStage = async (req, res) => {
+    try {
+        const { submissionId } = req.params;
+        const { targetColumn, specialState = null, note = '' } = req.body || {};
+
+        const validColumns = ['entradas', 'en_revision', 'por_aprobar', 'en_produccion', 'listo_distribuir', 'difusion', 'completado'];
+        if (targetColumn && !validColumns.includes(targetColumn)) {
+            return res.status(400).json({ error: `Columna objetivo no válida: ${targetColumn}` });
+        }
+
+        const sub = await getSubmission(submissionId);
+        if (!sub) {
+            return res.status(404).json({ error: 'Solicitud no encontrada' });
+        }
+
+        const art = await articleOf(submissionId);
+        const previousStatus = sub.status || 'recibido';
+        const actor = req.user?.id || null;
+        const actorName = req.user?.name || req.user?.email || 'Administrador';
+
+        // Mapear columna a estado de ContributionSubmission
+        let newSubStatus = sub.status;
+        if (targetColumn === 'entradas') newSubStatus = 'recibido';
+        else if (targetColumn === 'en_revision') newSubStatus = 'en_revision';
+        else if (targetColumn === 'por_aprobar') newSubStatus = 'por_aprobar';
+        else if (targetColumn === 'en_produccion') newSubStatus = 'en_produccion';
+        else if (targetColumn === 'listo_distribuir') newSubStatus = 'listo_difusion';
+        else if (targetColumn === 'difusion') newSubStatus = 'listo_difusion';
+        else if (targetColumn === 'completado') newSubStatus = 'publicado';
+
+        if (specialState) {
+            if (['rechazado', 'cancelado', 'bloqueado', 'pausado', 'requiere_ajustes'].includes(specialState)) {
+                newSubStatus = specialState;
+            }
+        }
+
+        await db.query(
+            `UPDATE "ContributionSubmission" SET status = $2, "updatedAt" = NOW() WHERE id = $1`,
+            [submissionId, newSubStatus]
+        );
+
+        // Si se transicionó a por_aprobar y el artículo estaba en analizando o requiere_info, actualizar
+        if (targetColumn === 'por_aprobar' && art && ['en_revision', 'requiere_info'].includes(art.status)) {
+            await db.query(
+                `UPDATE "SubmissionArticle" SET status = 'borrador_listo', "updatedAt" = NOW() WHERE id = $1`,
+                [art.id]
+            );
+        }
+
+        // Trazabilidad inalterable
+        await logEvent({
+            submissionId,
+            campaignId: sub.campaignId,
+            type: 'editorial_transition',
+            fromState: previousStatus,
+            toState: newSubStatus,
+            detail: `Transición editorial a «${targetColumn}»${specialState ? ` (estado especial: ${specialState})` : ''}. ${note ? `Nota: ${note}` : ''}`,
+            actor,
+            actorName,
+        });
+
+        res.json({
+            ok: true,
+            submissionId,
+            newStatus: newSubStatus,
+            targetColumn,
+            specialState,
+        });
+    } catch (e) {
+        console.error('[mission-control] transitionTaskStage error:', e);
+        res.status(500).json({ error: e?.message || 'Error al transicionar etapa' });
+    }
+};
+

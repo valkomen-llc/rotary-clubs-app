@@ -1186,7 +1186,29 @@ export async function transitionArticle({ row, to, reason = '', actor = null, ac
 }
 
 /** Reintenta UNA etapa sin regenerar las demás. */
-export async function retryArticleStage({ row, stage = '', sessionClubId = null }) {
+export async function retryArticleStage(arg1, arg2 = '', arg3 = null) {
+    let row, stage = '', sessionClubId = null;
+    if (arg1 && typeof arg1 === 'object') {
+        if (arg1.stages || arg1.submissionId) {
+            row = arg1.row || arg1;
+            stage = arg1.stage || (typeof arg2 === 'string' ? arg2 : '');
+            sessionClubId = arg1.sessionClubId || arg3;
+        } else if (arg1.row) {
+            row = arg1.row;
+            stage = arg1.stage || (typeof arg2 === 'string' ? arg2 : '');
+            sessionClubId = arg1.sessionClubId || arg3;
+        } else {
+            row = arg1;
+            stage = typeof arg2 === 'string' ? arg2 : '';
+            sessionClubId = arg3;
+        }
+    } else if (typeof arg1 === 'string') {
+        row = await articleOf(arg1);
+        stage = typeof arg2 === 'string' ? arg2 : '';
+        sessionClubId = arg3;
+    }
+    if (!row) return { ok: false, reason: 'articulo_no_encontrado' };
+
     const stages = { ...(row.stages || {}) };
     const etapa = stageToRetry(stages, stage);
     if (!etapa) return { ok: false, reason: 'nada_que_reintentar' };

@@ -237,6 +237,9 @@ const getContentActivation = async () => _contentActivation || (({ default: _con
 // v4.1118 — Rotary en Acción: motor universal de captación (canal permanente + contextos)
 let _rotaryEnAccion;
 const getRotaryEnAccion = async () => _rotaryEnAccion || (({ default: _rotaryEnAccion } = await import('../server/routes/rotary-en-accion.js')), _rotaryEnAccion);
+// v4.1176 — Gestión Centralizada de Módulos y Permisos por Sitio
+let _siteModules;
+const getSiteModules = async () => _siteModules || (({ default: _siteModules } = await import('../server/routes/siteModules.js')), _siteModules);
 
 // ── Route handlers ────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
@@ -346,6 +349,7 @@ app.use('/api/seo-engine', async (req, res, next) => { try { return (await getSe
 app.use('/api/mission-control', async (req, res, next) => { try { return (await getMissionControl())(req, res, next); } catch (e) { console.error('API Error [mission-control]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/content-activation', async (req, res, next) => { try { return (await getContentActivation())(req, res, next); } catch (e) { console.error('API Error [content-activation]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/rotary-en-accion', async (req, res, next) => { try { return (await getRotaryEnAccion())(req, res, next); } catch (e) { console.error('API Error [rotary-en-accion]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/site-modules', async (req, res, next) => { try { return (await getSiteModules())(req, res, next); } catch (e) { console.error('API Error [site-modules]:', e); res.status(500).json({ error: e.message }); } });
 
 // ── robots.txt y sitemap.xml EN LA RAÍZ ───────────────────────────────────────
 //
