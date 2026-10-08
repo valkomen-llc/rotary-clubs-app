@@ -42,6 +42,23 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1178.0',
+        title: 'Centro de Control VIP: Panel Lateral de 5 Pestañas, Trazabilidad y Optimización (Fase 2) 📋✨',
+        description: 'Reingeniería de interfaz y experiencia de usuario en el Centro de Operaciones (/admin/mission-control-vip). Reemplazo del modal central por un Slide-over Drawer lateral responsive que preserva la visibilidad del tablero Kanban en segundo plano. Arquitectura de 5 pestañas canónicas: 01. Información (contacto con acciones directas mailto/tel/WhatsApp, relato humano original y selectores de prioridad y estado especial), 02. Archivos (cuadrícula de evidencias fotográficas de alta resolución con URLs firmadas en Amazon S3, badges de rol ⭐ Portada/Galería/Descarte, selector de portada con un clic y Lightbox interactivo), 03. Producción (gestión multiformato independiente para Artículo Web, Reel Vertical 9:16 con reproductor o generador Kling/Luma y copys optimizados para redes sociales con copiado rápido), 04. Distribución (matriz multi-tenant de sitios web y sedes, estado en vivo de publicaciones en Facebook Fanpage y X, y botón de difusión inmediata), 05. Historial (bitácora inalterable de auditoría basada en ContributionSubmissionEvent con timeline cronológico y formulario para registro de notas internas). Rediseño de tarjetas Kanban con miniaturas 16:9 con hover-zoom, pills de prioridad (Urgente/Alta/Normal/Baja) y filtros avanzados por club rotario y prioridad.',
+        date: new Date().toISOString(),
+        tags: ['feature', 'mission-control', 'drawer', 'fase-2', 'trazabilidad', 'multiformato', 'production-release'],
+        type: 'feature',
+        changes: [
+            { type: 'added', text: 'Slide-over Drawer lateral responsive con 5 pestañas canónicas (Información, Archivos, Producción, Distribución, Historial) manteniendo visible el tablero Kanban.' },
+            { type: 'added', text: 'Pestaña Archivos con cuadrícula de fotografías en alta calidad, badges de rol (⭐ Portada / Galería), selector de foto de portada y visor Lightbox interactivo.' },
+            { type: 'added', text: 'Pestaña Historial conectada a la bitácora inalterable de ContributionSubmissionEvent con línea de tiempo cronológica y registro de notas internas.' },
+            { type: 'improved', text: 'Rediseño de tarjetas Kanban con miniaturas panorámicas 16:9 con zoom suave al pasar el cursor y badges de prioridad operativa.' },
+            { type: 'added', text: 'Filtros avanzados por Prioridad Operativa (Urgente/Alta/Normal/Baja) y por Club Rotario emisor en la barra de control.' },
+            { type: 'improved', text: 'Acciones de contacto directo con el socio (mailto, tel y enlace directo a WhatsApp) desde la pestaña de Información.' },
+            { type: 'added', text: 'Copys para Facebook y X con botón de copiado rápido al portapapeles con confirmación visual.' }
+        ]
+    },
+    {
         version: '4.1177.0',
         title: 'Centro de Control VIP: Reingeniería Estratégica Operativa (Fase 1) y Despliegue Multi-Cloud Serverless 🚀📊',
         description: 'Reestructuración y unificación del Centro de Operaciones de Comunicación y Distribución de Contenidos (/admin/mission-control-vip). Reorganización del tablero Kanban en 7 columnas canónicas secuenciales (01. Entradas, 02. En Revisión, 03. Por Aprobar, 04. En Producción, 05. Listo para Distribuir, 06. Programado / En Difusión, 07. Completado). Desacoplamiento de estados técnicos y editoriales con etiquetas especiales (error técnico, requiere ajustes, bloqueado, rechazado, pausado). Introducción del modelo de entregables multiformato (Artículo Web, Reel Audiovisual, Copies para Redes Sociales) con seguimiento individual. Cálculo exacto y deduplicado de indicadores KPI en cabecera. Transición fluida de etapas con trazabilidad de eventos inalterable. Corrección del motor de reintentos para artículos sin club registrado (asignación inteligente al Distrito 4281). Soporte para rutas de módulos en entornos Vercel Serverless (api/index.js).',

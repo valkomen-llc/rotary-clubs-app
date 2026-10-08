@@ -15,6 +15,9 @@ import {
     shareTaskSocial,
     retryTask,
     transitionTaskStage,
+    getTaskDetails,
+    updateTaskMeta,
+    setTaskCoverImage,
 } from '../controllers/missionControlController.js';
 
 const router = express.Router();
@@ -25,6 +28,9 @@ router.get('/operational-campaigns', authMiddleware, getOperationalCampaigns);
 router.post('/run-automations', authMiddleware, requireSiteAdmin, runAutomations);
 
 // Paramétricas
+router.get('/tasks/:submissionId/details', authMiddleware, getTaskDetails);
+router.patch('/tasks/:submissionId/meta', authMiddleware, requireSiteAdmin, updateTaskMeta);
+router.post('/tasks/:submissionId/set-cover', authMiddleware, requireSiteAdmin, setTaskCoverImage);
 router.post('/tasks/:submissionId/advance', authMiddleware, advanceTask);
 router.post('/tasks/:submissionId/approve-publish', authMiddleware, requireSiteAdmin, approveAndPublishTask);
 router.post('/tasks/:submissionId/generate-reel', authMiddleware, requireSiteAdmin, generateTaskReel);

@@ -33,6 +33,16 @@ import {
   Play,
   FileText,
   Download,
+  History,
+  Clock,
+  Phone,
+  Mail,
+  MessageSquare,
+  Copy,
+  Star,
+  User,
+  Paperclip,
+  ChevronRight,
 } from "lucide-react";
 
 const getApiBase = () => {
@@ -195,6 +205,60 @@ interface OperationalTask {
   lastError?: string | null;
 }
 
+export interface TaskDetailFile {
+  id: string;
+  submissionId: string;
+  kind: string;
+  s3Key: string;
+  filename: string;
+  contentType?: string;
+  bytes: number;
+  sortOrder: number;
+  mediaId?: string | null;
+  mediaUrl?: string | null;
+  viewUrl?: string | null;
+  isCover?: boolean;
+  role?: string | null;
+  score?: number | null;
+  analysis?: any;
+  coverNote?: string | null;
+  excluded?: boolean;
+  excludedReason?: string | null;
+  createdAt: string;
+}
+
+export interface TaskDetailEvent {
+  id: string;
+  submissionId: string;
+  campaignId: string;
+  type: string;
+  fromState?: string | null;
+  toState?: string | null;
+  detail?: string | null;
+  reference?: string | null;
+  channel?: string | null;
+  actor?: string | null;
+  actorName?: string | null;
+  createdAt: string;
+}
+
+export interface TaskFullDetails {
+  submission: any;
+  column: string;
+  specialState?: string | null;
+  assignedAgent?: any;
+  deliverables?: OperationalDeliverable[];
+  files: TaskDetailFile[];
+  article?: any;
+  reel?: any;
+  reelProject?: any;
+  post?: any;
+  destinations?: any;
+  distributions?: any[];
+  events: TaskDetailEvent[];
+  reelAudit?: ReelAudit;
+}
+
 interface OperationalCampaign {
   id: string;
   title: string;
@@ -249,7 +313,13 @@ export const MissionControlVIP: React.FC = () => {
   const [isRunningAutomations, setIsRunningAutomations] = useState(false);
   const [showRulesModal, setShowRulesModal] = useState(false);
   const [selectedTask, setSelectedTask] = useState<OperationalTask | null>(null);
-  const [modalTab, setModalTab] = useState<'articulo' | 'reel' | 'redes'>('articulo');
+  const [taskDetails, setTaskDetails] = useState<TaskFullDetails | null>(null);
+  const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+  const [drawerTab, setDrawerTab] = useState<'info' | 'files' | 'production' | 'distribution' | 'history'>('info');
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  const [historyNote, setHistoryNote] = useState("");
+  const [selectedPriority, setSelectedPriority] = useState<string>("all");
+  const [selectedClubFilter, setSelectedClubFilter] = useState<string>("all");
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>("all");
   const [selectedAgentId, setSelectedAgentId] = useState<string>("all");
   const [selectedSpecialFilter, setSelectedSpecialFilter] = useState<string>("all");
@@ -350,6 +420,131 @@ export const MissionControlVIP: React.FC = () => {
       setPublishToDistrict(selectedTask.destinations?.publishToDistrict ?? true);
     }
   }, [selectedTask]);
+
+  // Cargar detalles completos al seleccionar tarea (FASE 2)
+  const fetchTaskDetails = useCallback(async (taskId: string) => {
+    setIsLoadingDetails(true);
+    try {
+      const res = await fetch(`${API_BASE}/mission-control/tasks/${taskId}/details`, {
+        headers: { Authorization: `Bearer ${token() || authToken}` },
+      });
+      if (res.ok) {
+        const data = await safeJson(res);
+        setTaskDetails(data);
+      }
+    } catch (e) {
+      console.warn("Error cargando detalles:", e);
+    } finally {
+      setIsLoadingDetails(false);
+    }
+  }, [authToken]);
+
+  useEffect(() => {
+    if (selectedTask?.id) {
+      fetchTaskDetails(selectedTask.id);
+    } else {
+      setTaskDetails(null);
+    }
+  }, [selectedTask?.id, fetchTaskDetails]);
+
+  // Actualizar prioridad (FASE 2)
+  const handleUpdatePriority = async (taskId: string, newPriority: string) => {
+    const t = toast.loading(`Actualizando prioridad a «${newPriority}»...`);
+    try {
+      const res = await fetch(`${API_BASE}/mission-control/tasks/${taskId}/meta`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token() || authToken}`,
+        },
+        body: JSON.stringify({ priority: newPriority }),
+      });
+      const data = await safeJson(res);
+      toast.dismiss(t);
+      if (res.ok) {
+        toast.success("Prioridad actualizada con éxito.");
+        setSelectedTask((prev) => prev ? { ...prev, priority: newPriority } : null);
+        await fetchBoard(true);
+        await fetchTaskDetails(taskId);
+      } else {
+        toast.error(data.error || "No se pudo actualizar prioridad");
+      }
+    } catch (e: any) {
+      toast.dismiss(t);
+      toast.error(`Error: ${e?.message}`);
+    }
+  };
+
+  // Fijar imagen como portada (FASE 2)
+  const handleSetCover = async (taskId: string, fileId: string) => {
+    const t = toast.loading("Definiendo foto de portada...");
+    try {
+      const res = await fetch(`${API_BASE}/mission-control/tasks/${taskId}/set-cover`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token() || authToken}`,
+        },
+        body: JSON.stringify({ fileId }),
+      });
+      const data = await safeJson(res);
+      toast.dismiss(t);
+      if (res.ok) {
+        toast.success("Foto de portada establecida.");
+        await fetchBoard(true);
+        await fetchTaskDetails(taskId);
+      } else {
+        toast.error(data.error || "No se pudo definir portada");
+      }
+    } catch (e: any) {
+      toast.dismiss(t);
+      toast.error(`Error: ${e?.message}`);
+    }
+  };
+
+  // Agregar nota interna al historial (FASE 2)
+  const handleAddHistoryNote = async (taskId: string) => {
+    if (!historyNote.trim()) return;
+    const t = toast.loading("Guardando nota en el historial...");
+    try {
+      const res = await fetch(`${API_BASE}/mission-control/tasks/${taskId}/meta`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token() || authToken}`,
+        },
+        body: JSON.stringify({ note: historyNote.trim() }),
+      });
+      const data = await safeJson(res);
+      toast.dismiss(t);
+      if (res.ok) {
+        toast.success("Nota registrada en el historial.");
+        setHistoryNote("");
+        await fetchTaskDetails(taskId);
+      } else {
+        toast.error(data.error || "No se pudo registrar la nota");
+      }
+    } catch (e: any) {
+      toast.dismiss(t);
+      toast.error(`Error: ${e?.message}`);
+    }
+  };
+
+  // Clubes únicos para filtro (FASE 2)
+  const uniqueClubs = useMemo(() => {
+    const clubsSet = new Set<string>();
+    tasks.forEach((t) => {
+      if (t.club) clubsSet.add(t.club);
+    });
+    return Array.from(clubsSet).sort();
+  }, [tasks]);
+
+  // Copiar al portapapeles con notificación (FASE 2)
+  const handleCopyToClipboard = (text: string, label: string) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    toast.success(`${label} copiado al portapapeles`);
+  };
 
   // Disparar automatizaciones pendientes
   const handleRunAutomations = async () => {
@@ -571,6 +766,9 @@ export const MissionControlVIP: React.FC = () => {
         if (selectedSpecialFilter === "rechazado" && t.specialState !== "rechazado") return false;
       }
 
+      if (selectedPriority !== "all" && (t.priority || "normal") !== selectedPriority) return false;
+      if (selectedClubFilter !== "all" && t.club !== selectedClubFilter) return false;
+
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
         const matchTitle = t.title?.toLowerCase().includes(query);
@@ -582,7 +780,7 @@ export const MissionControlVIP: React.FC = () => {
 
       return true;
     });
-  }, [tasks, selectedCampaignId, selectedAgentId, onlyErrors, selectedSpecialFilter, searchQuery]);
+  }, [tasks, selectedCampaignId, selectedAgentId, onlyErrors, selectedSpecialFilter, selectedPriority, selectedClubFilter, searchQuery]);
 
   // Columnas Kanban del Flujo Editorial Canónico (01 a 07 - FASE 1)
   const boardCols = {
@@ -795,9 +993,34 @@ export const MissionControlVIP: React.FC = () => {
         {/* CONTROLES DE VISTA */}
         <div className="flex items-center gap-2 shrink-0">
           <select
+            value={selectedPriority}
+            onChange={(e) => setSelectedPriority(e.target.value)}
+            className="text-xs bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 font-semibold text-gray-700 outline-none cursor-pointer"
+          >
+            <option value="all">Prioridad: Todas</option>
+            <option value="urgente">🔥 Urgente</option>
+            <option value="alta">⚡ Alta</option>
+            <option value="normal">🔹 Normal</option>
+            <option value="baja">◽ Baja</option>
+          </select>
+
+          {uniqueClubs.length > 1 && (
+            <select
+              value={selectedClubFilter}
+              onChange={(e) => setSelectedClubFilter(e.target.value)}
+              className="text-xs bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 font-semibold text-gray-700 outline-none max-w-[150px] truncate cursor-pointer"
+            >
+              <option value="all">Club: Todos ({uniqueClubs.length})</option>
+              {uniqueClubs.map((club) => (
+                <option key={club} value={club}>{club}</option>
+              ))}
+            </select>
+          )}
+
+          <select
             value={selectedSpecialFilter}
             onChange={(e) => setSelectedSpecialFilter(e.target.value)}
-            className="text-xs bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1 font-semibold text-gray-700 outline-none"
+            className="text-xs bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1 font-semibold text-gray-700 outline-none cursor-pointer"
           >
             <option value="all">Filtro: Todos</option>
             <option value="errores">⚠️ Solo errores técnicos</option>
@@ -1034,9 +1257,10 @@ export const MissionControlVIP: React.FC = () => {
                         key={task.id}
                         onClick={() => {
                           setSelectedTask(task);
-                          if (task.column === "reels") setModalTab("reel");
-                          else if (task.column === "redes") setModalTab("redes");
-                          else setModalTab("articulo");
+                          if (task.column === "en_produccion") setDrawerTab("production");
+                          else if (task.column === "listo_distribuir" || task.column === "difusion") setDrawerTab("distribution");
+                          else if (task.column === "por_aprobar") setDrawerTab("production");
+                          else setDrawerTab("info");
                         }}
                         className={`bg-white rounded-xl border p-3.5 shadow-xs hover:shadow-md transition-all cursor-pointer group ${
                           task.isError
@@ -1046,22 +1270,37 @@ export const MissionControlVIP: React.FC = () => {
                             : "border-gray-200 hover:border-[#013388]/40"
                         }`}
                       >
-                        {/* PORTADA EN MINIATURA */}
+                        {/* PORTADA EN MINIATURA 16:9 (FASE 2) */}
                         {showCovers && task.media.coverUrl && (
-                          <div className="w-full h-24 mb-2.5 rounded-lg overflow-hidden bg-gray-100 border border-gray-100">
+                          <div className="w-full aspect-video mb-2.5 rounded-lg overflow-hidden bg-gray-100 border border-gray-100 relative group/thumb">
                             <img
                               src={task.media.coverUrl}
                               alt=""
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              className="w-full h-full object-cover group-hover/thumb:scale-105 transition-transform duration-300"
                             />
                           </div>
                         )}
 
-                        {/* BADGES DE ESTADO Y ESPECIALES (FASE 1) */}
+                        {/* BADGES DE CLUB, PRIORIDAD Y ESTADOS ESPECIALES (FASE 2) */}
                         <div className="flex items-center justify-between gap-1.5 mb-2 flex-wrap">
-                          <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-gray-100 text-gray-600 truncate max-w-[140px]">
-                            {task.club || "Club Rotario"}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-gray-100 text-gray-600 truncate max-w-[120px]">
+                              {task.club || "Club Rotario"}
+                            </span>
+                            {task.priority && (
+                              <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded border ${
+                                task.priority === 'urgente'
+                                  ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                  : task.priority === 'alta'
+                                  ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                  : task.priority === 'baja'
+                                  ? 'bg-gray-100 text-gray-600 border-gray-200'
+                                  : 'bg-blue-50 text-blue-700 border-blue-200'
+                              }`}>
+                                {task.priority === 'urgente' ? '🔥 Urgente' : task.priority === 'alta' ? '⚡ Alta' : task.priority === 'baja' ? 'Baja' : 'Normal'}
+                              </span>
+                            )}
+                          </div>
 
                           <div className="flex items-center gap-1 shrink-0">
                             {task.specialState === "error_tecnico" || task.isError ? (
@@ -1201,7 +1440,7 @@ export const MissionControlVIP: React.FC = () => {
                               <button
                                 onClick={() => {
                                   setSelectedTask(task);
-                                  setModalTab("articulo");
+                                  setDrawerTab("info");
                                 }}
                                 className="flex-1 py-1.5 bg-amber-500 hover:bg-amber-600 text-amber-950 font-black text-[10px] rounded-lg text-center transition-colors flex items-center justify-center gap-1"
                               >
@@ -1223,7 +1462,7 @@ export const MissionControlVIP: React.FC = () => {
                             <button
                               onClick={() => {
                                 setSelectedTask(task);
-                                setModalTab("articulo");
+                                setDrawerTab("production");
                               }}
                               className="w-full py-1.5 bg-orange-500 hover:bg-orange-600 text-white font-black text-[10px] rounded-lg text-center transition-colors shadow-xs flex items-center justify-center gap-1"
                             >
@@ -1237,7 +1476,7 @@ export const MissionControlVIP: React.FC = () => {
                                 <button
                                   onClick={() => {
                                     setSelectedTask(task);
-                                    setModalTab("reel");
+                                    setDrawerTab("production");
                                   }}
                                   className="w-full py-1.5 bg-pink-600 hover:bg-pink-700 text-white text-[10px] font-black rounded-lg flex items-center justify-center gap-1 transition-colors shadow-xs"
                                 >
@@ -1254,7 +1493,7 @@ export const MissionControlVIP: React.FC = () => {
                                 <button
                                   onClick={() => {
                                     setSelectedTask(task);
-                                    setModalTab("articulo");
+                                    setDrawerTab("production");
                                   }}
                                   className="w-full py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-black rounded-lg flex items-center justify-center gap-1 transition-colors"
                                 >
@@ -1268,7 +1507,7 @@ export const MissionControlVIP: React.FC = () => {
                             <button
                               onClick={() => {
                                 setSelectedTask(task);
-                                setModalTab("redes");
+                                setDrawerTab("distribution");
                               }}
                               className="w-full py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-[10px] font-black rounded-lg flex items-center justify-center gap-1 transition-colors shadow-xs"
                             >
@@ -1307,572 +1546,1001 @@ export const MissionControlVIP: React.FC = () => {
         </div>
       </div>
 
-      {/* ── MODAL / DRAWER DE REVISIÓN Y APROBACIÓN EDITORIAL ── */}
+      {/* ── SLIDE-OVER DRAWER LATERAL DE OPERACIONES (FASE 2) ── */}
       {selectedTask && (
-        <div className="fixed inset-0 z-[10000] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-4xl max-h-[90vh] rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            {/* ENCABEZADO MODAL */}
-            <div className="p-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-3">
-                <span className="text-xl">{selectedTask.assignedAgent?.icon}</span>
-                <div>
+        <div className="fixed inset-0 z-[10000] overflow-hidden">
+          {/* Backdrop con blur sutil para mantener visible el tablero Kanban de fondo */}
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
+            onClick={() => setSelectedTask(null)}
+          />
+
+          <div className="fixed inset-y-0 right-0 max-w-full flex pl-6 sm:pl-10">
+            <div className="w-screen max-w-3xl bg-white shadow-2xl border-l border-gray-200 flex flex-col animate-in slide-in-from-right duration-300">
+              {/* ENCABEZADO DRAWER */}
+              <div className="p-4 bg-gray-50/90 border-b border-gray-200 shrink-0">
+                <div className="flex items-center justify-between gap-3 mb-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-black px-2 py-0.5 rounded bg-blue-100 text-[#013388] uppercase">
-                      {selectedTask.campaignName}
-                    </span>
-                    <span className="text-xs text-gray-500">
-                      {selectedTask.club || "Club Rotario"}
-                    </span>
+                    <span className="text-xl">{selectedTask.assignedAgent?.icon}</span>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black px-2 py-0.5 rounded bg-blue-100 text-[#013388] uppercase">
+                          {selectedTask.campaignName}
+                        </span>
+                        <span className="text-xs font-semibold text-gray-700">
+                          {selectedTask.club || "Club Rotario"}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <h3 className="text-sm font-black text-gray-900 mt-0.5">
+
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={`/admin/campanas-contribucion/solicitudes?q=${encodeURIComponent(selectedTask.id)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Ver solicitud original en Solicitudes de Contenido"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-white border border-gray-300 text-gray-700 hover:bg-blue-50 hover:text-[#013388] hover:border-[#013388]/30 transition-colors shadow-xs"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5 text-gray-500" />
+                      <span className="hidden sm:inline">Solicitud Original</span>
+                    </a>
+                    <button
+                      onClick={() => setSelectedTask(null)}
+                      className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
+                      title="Cerrar panel lateral"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-2 mt-2">
+                  <h3 className="text-sm font-black text-gray-900 leading-snug">
                     {selectedTask.title}
                   </h3>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 border border-slate-200">
+                      {selectedTask.stageLabel}
+                    </span>
+                    {selectedTask.specialState && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                        {selectedTask.specialState}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <a
-                  href={`/admin/campanas-contribucion/solicitudes?q=${encodeURIComponent(selectedTask.id)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="Ver solicitud original en Solicitudes de Contenido"
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-white border border-gray-300 text-gray-700 hover:bg-blue-50 hover:text-[#013388] hover:border-[#013388]/30 transition-colors shadow-xs"
-                >
-                  <ExternalLink className="w-3.5 h-3.5 text-gray-500" />
-                  <span>Solicitud Original</span>
-                </a>
+              {/* BARRA DE 5 PESTAÑAS CANÓNICAS */}
+              <div className="flex items-center border-b border-gray-200 bg-gray-50/50 px-4 shrink-0 overflow-x-auto no-scrollbar">
                 <button
-                  onClick={() => setSelectedTask(null)}
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
+                  onClick={() => setDrawerTab("info")}
+                  className={`flex items-center gap-1.5 py-3 px-3 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${
+                    drawerTab === "info"
+                      ? "border-[#013388] text-[#013388] bg-white rounded-t-lg shadow-2xs"
+                      : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100/50"
+                  }`}
                 >
-                  <X className="w-5 h-5" />
+                  <Info className="w-4 h-4" />
+                  <span>01. Información</span>
+                </button>
+
+                <button
+                  onClick={() => setDrawerTab("files")}
+                  className={`flex items-center gap-1.5 py-3 px-3 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${
+                    drawerTab === "files"
+                      ? "border-[#013388] text-[#013388] bg-white rounded-t-lg shadow-2xs"
+                      : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100/50"
+                  }`}
+                >
+                  <ImageIcon className="w-4 h-4" />
+                  <span>02. Archivos</span>
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-full font-bold bg-blue-100 text-[#013388]">
+                    {taskDetails?.files?.length ?? selectedTask.media.imageCount}
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => setDrawerTab("production")}
+                  className={`flex items-center gap-1.5 py-3 px-3 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${
+                    drawerTab === "production"
+                      ? "border-[#013388] text-[#013388] bg-white rounded-t-lg shadow-2xs"
+                      : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100/50"
+                  }`}
+                >
+                  <Sparkles className="w-4 h-4 text-amber-500" />
+                  <span>03. Producción</span>
+                  {selectedTask.reel?.status && (
+                    <span className="text-[9px] px-1.5 py-0.2 rounded-full font-bold uppercase bg-pink-100 text-pink-700">
+                      Reel
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  onClick={() => setDrawerTab("distribution")}
+                  className={`flex items-center gap-1.5 py-3 px-3 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${
+                    drawerTab === "distribution"
+                      ? "border-[#013388] text-[#013388] bg-white rounded-t-lg shadow-2xs"
+                      : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100/50"
+                  }`}
+                >
+                  <Globe className="w-4 h-4 text-indigo-500" />
+                  <span>04. Distribución</span>
+                  {selectedTask.social?.isFullyShared && (
+                    <span className="text-[9px] px-1.5 py-0.2 rounded-full font-bold uppercase bg-emerald-100 text-emerald-700">
+                      OK
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  onClick={() => setDrawerTab("history")}
+                  className={`flex items-center gap-1.5 py-3 px-3 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${
+                    drawerTab === "history"
+                      ? "border-[#013388] text-[#013388] bg-white rounded-t-lg shadow-2xs"
+                      : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100/50"
+                  }`}
+                >
+                  <History className="w-4 h-4 text-slate-500" />
+                  <span>05. Historial</span>
+                  {taskDetails?.events && (
+                    <span className="text-[10px] px-1.5 py-0.2 rounded-full font-bold bg-slate-200 text-slate-700">
+                      {taskDetails.events.length}
+                    </span>
+                  )}
                 </button>
               </div>
-            </div>
 
-            {/* TABS EDITORIALES / REELS / REDES */}
-            <div className="flex items-center gap-1 px-6 pt-3 bg-gray-50 border-b border-gray-200 shrink-0">
-              <button
-                onClick={() => setModalTab("articulo")}
-                className={`flex items-center gap-2 pb-2.5 px-3 text-xs font-bold border-b-2 transition-all ${
-                  modalTab === "articulo"
-                    ? "border-[#013388] text-[#013388]"
-                    : "border-transparent text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                <FileText className="w-4 h-4" />
-                <span>Artículo Web</span>
-              </button>
-
-              <button
-                onClick={() => setModalTab("reel")}
-                className={`flex items-center gap-2 pb-2.5 px-3 text-xs font-bold border-b-2 transition-all ${
-                  modalTab === "reel"
-                    ? "border-pink-600 text-pink-700"
-                    : "border-transparent text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                <Video className="w-4 h-4" />
-                <span>Reel Vertical (9:16)</span>
-                {selectedTask.reel?.status && (
-                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold uppercase ${
-                    selectedTask.reel.status === 'aprobada' || selectedTask.reel.status === 'publicada'
-                      ? 'bg-emerald-100 text-emerald-800'
-                      : selectedTask.reel.status === 'lista'
-                      ? 'bg-pink-100 text-pink-800'
-                      : 'bg-amber-100 text-amber-800'
-                  }`}>
-                    {selectedTask.reel.status}
-                  </span>
+              {/* CUERPO DEL DRAWER SCROLLEABLE */}
+              <div className="flex-1 overflow-y-auto p-5 space-y-5">
+                {isLoadingDetails && !taskDetails && (
+                  <div className="py-8 flex flex-col items-center justify-center text-gray-400 gap-2">
+                    <Loader2 className="w-6 h-6 animate-spin text-[#013388]" />
+                    <span className="text-xs">Cargando trazabilidad completa...</span>
+                  </div>
                 )}
-              </button>
 
-              <button
-                onClick={() => setModalTab("redes")}
-                className={`flex items-center gap-2 pb-2.5 px-3 text-xs font-bold border-b-2 transition-all ${
-                  modalTab === "redes"
-                    ? "border-indigo-600 text-indigo-700"
-                    : "border-transparent text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                <Share2 className="w-4 h-4" />
-                <span>Difusión en Redes</span>
-                {selectedTask.social?.isFullyShared ? (
-                  <span className="text-[10px] px-1.5 py-0.2 rounded-full font-bold uppercase bg-emerald-100 text-emerald-800">
-                    Completado
-                  </span>
-                ) : (
-                  <span className="text-[10px] px-1.5 py-0.2 rounded-full font-bold uppercase bg-gray-100 text-gray-600">
-                    Fanpage & X
-                  </span>
-                )}
-              </button>
-            </div>
-
-            {/* TAB 1: ARTÍCULO EDITORIAL */}
-            {modalTab === "articulo" && (
-              <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
-                {/* COLUMNA 1 & 2: CONTENIDO EDITORIAL & ORIGINAL */}
-                <div className="md:col-span-2 space-y-5">
-                  {/* PORTADA Y TITULAR GENERADO */}
-                  <div className="rounded-xl border border-gray-200 p-4 bg-white shadow-xs">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-gray-400 block mb-2">
-                      Artículo Generado por IA (Borrador)
-                    </span>
-
-                    {selectedTask.media.coverUrl && (
-                      <div className="w-full h-44 rounded-lg overflow-hidden mb-3 bg-gray-100">
-                        <img
-                          src={selectedTask.media.coverUrl}
-                          alt="Portada"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    )}
-
-                    <h2 className="text-base font-bold text-gray-900 mb-2">
-                      {selectedTask.article?.title || selectedTask.title}
-                    </h2>
-
-                    {selectedTask.article?.excerpt && (
-                      <p className="text-xs text-gray-600 italic bg-gray-50 p-2.5 rounded-lg border border-gray-100 mb-3">
-                        {selectedTask.article.excerpt}
-                      </p>
-                    )}
-
-                    {selectedTask.article?.category && (
-                      <div className="flex items-center gap-2 text-xs text-gray-500">
-                        <span className="font-bold text-gray-700">Categoría:</span>
-                        <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-700 font-semibold">
-                          {selectedTask.article.category}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* INFORMACIÓN NO SUMINISTRADA O VERACIDAD */}
-                  {(selectedTask.article?.missingInfo?.length || selectedTask.article?.copyIssues?.length) ? (
-                    <div className="rounded-xl bg-amber-50 border border-amber-200 p-3.5 text-xs text-amber-900 space-y-1">
-                      <div className="flex items-center gap-1.5 font-bold text-amber-800 mb-1">
-                        <ShieldCheck className="w-4 h-4 text-amber-600" />
-                        <span>Evaluación de Veracidad & Datos</span>
-                      </div>
-                      {selectedTask.article?.missingInfo && selectedTask.article.missingInfo.length > 0 && (
-                        <p>
-                          <b>Datos no suministrados:</b>{" "}
-                          {selectedTask.article.missingInfo.map((m) => m.label).join(", ")}.
-                        </p>
-                      )}
-                      {selectedTask.article?.copyIssues && selectedTask.article.copyIssues.length > 0 && (
-                        <p>
-                          <b>Aviso de redacción:</b> {selectedTask.article.copyIssues.join(" ")}
-                        </p>
-                      )}
-                    </div>
-                  ) : null}
-
-                  {/* MATERIAL ORIGINAL DEL FORMULARIO */}
-                  <div className="rounded-xl border border-gray-200 p-4 bg-gray-50">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-gray-400 block mb-2">
-                      Material Original Enviado
-                    </span>
-
-                    <div className="text-xs text-gray-600 space-y-1.5 mb-3">
-                      <p>
-                        <b>Remitente:</b> {selectedTask.senderName || "No registrado"} (
-                        {selectedTask.senderEmail})
-                      </p>
-                      {selectedTask.senderPhone && (
-                        <p>
-                          <b>Teléfono:</b> {selectedTask.senderPhone}
-                        </p>
-                      )}
-                      {selectedTask.activityDate && (
-                        <p>
-                          <b>Fecha de la actividad:</b> {selectedTask.activityDate}
-                        </p>
-                      )}
-                    </div>
-
-                    <p className="text-xs text-gray-700 whitespace-pre-line leading-relaxed bg-white p-3 rounded-lg border border-gray-200">
-                      {selectedTask.subtitle}
-                    </p>
-                  </div>
-                </div>
-
-                {/* COLUMNA 3: DESTINOS DE DISTRIBUCIÓN & ACCIONES */}
-                <div className="space-y-5">
-                  {/* MATRIZ DE DESTINOS */}
-                  <div className="rounded-xl border border-gray-200 p-4 bg-white shadow-xs">
-                    <div className="flex items-center gap-1.5 text-xs font-black text-gray-900 uppercase tracking-wider mb-2">
-                      <Globe className="w-4 h-4 text-[#013388]" />
-                      <span>Publicar en los destinos:</span>
-                    </div>
-
-                    <p className="text-[11px] text-gray-500 mb-3">
-                      Selecciona los sitios donde este contenido estará visible al aprobar:
-                    </p>
-
-                    <div className="space-y-2">
-                      {selectedTask.destinations?.suggested?.map((dest) => {
-                        const isChecked = targetClubIds.includes(dest.id);
-                        return (
-                          <label
-                            key={dest.id}
-                            className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-all ${
-                              isChecked
-                                ? "bg-blue-50/70 border-[#013388]"
-                                : "bg-gray-50 border-gray-200 opacity-60"
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setTargetClubIds([...targetClubIds, dest.id]);
-                                } else {
-                                  setTargetClubIds(targetClubIds.filter((id) => id !== dest.id));
-                                }
-                              }}
-                              className="mt-0.5 rounded text-[#013388] focus:ring-[#013388]"
-                            />
-                            <div className="min-w-0 flex-1">
-                              <span className="text-xs font-bold text-gray-900 block truncate">
-                                {dest.name}
-                              </span>
-                              <span className="text-[10px] text-gray-500 block">
-                                {dest.typeLabel} {dest.domain ? `· ${dest.domain}` : ""}
-                              </span>
-                            </div>
-                          </label>
-                        );
-                      })}
-
-                      <label className="flex items-center gap-2.5 p-2.5 rounded-lg border border-gray-200 bg-gray-50 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={publishToDistrict}
-                          onChange={(e) => setPublishToDistrict(e.target.checked)}
-                          className="rounded text-[#013388] focus:ring-[#013388]"
-                        />
-                        <span className="text-xs font-bold text-gray-800">
-                          Difundir en sede del Distrito
-                        </span>
-                      </label>
-                    </div>
-                  </div>
-
-                  {/* ACCIONES EDITORIALES */}
-                  <div className="space-y-2.5 pt-2">
-                    <button
-                      onClick={() => handleApproveAndPublish(true)}
-                      disabled={isPublishing}
-                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all disabled:opacity-50"
-                    >
-                      {isPublishing ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Check className="w-4 h-4" />
-                      )}
-                      <span>APROBAR Y PUBLICAR</span>
-                    </button>
-
-                    <button
-                      onClick={() => handleApproveAndPublish(false)}
-                      disabled={isPublishing}
-                      className="w-full py-2 bg-white hover:bg-gray-50 text-gray-700 font-bold text-xs rounded-xl border border-gray-300 transition-all"
-                    >
-                      Guardar como borrador aprobado
-                    </button>
-
-                    {selectedTask.article?.postId && (
-                      <Link
-                        to={`/admin/noticias?post=${selectedTask.article.postId}`}
-                        className="w-full py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" /> Editar en Noticias
-                      </Link>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* TAB 2: REEL VERTICAL 9:16 */}
-            {modalTab === "reel" && (
-              <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                {/* Banner Camila */}
-                <div className="p-4 rounded-xl bg-pink-50/70 border border-pink-200/80 flex items-start gap-3">
-                  <span className="text-2xl">🎬</span>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <h4 className="text-xs font-black text-pink-900 uppercase tracking-wider">
-                        Camila · Directora de Video Vertical & Reels IA
-                      </h4>
-                      <span className="text-[10px] bg-pink-100 text-pink-800 font-bold px-2 py-0.5 rounded-full">
-                        Instagram Reels · TikTok · YouTube Shorts
-                      </span>
-                    </div>
-                    <p className="text-xs text-pink-950/80 mt-1 leading-relaxed">
-                      Transformación de las fotografías de la actividad (mínimo 5 fotos requeridas en el aporte) en una pieza cinematográfica vertical 9:16 con dinamismo, subtítulos y locución IA optimizada para redes sociales de alta viralidad.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Si ya hay video generado */}
-                {selectedTask.reel?.videoUrl ? (
-                  <div className="bg-slate-900 text-white rounded-2xl p-6 border border-slate-800 shadow-xl flex flex-col md:flex-row gap-6 items-center">
-                    <div className="relative w-60 aspect-[9/16] bg-black rounded-xl overflow-hidden shadow-2xl border border-white/10 shrink-0">
-                      <video
-                        src={selectedTask.reel.videoUrl}
-                        poster={selectedTask.reel.posterUrl || selectedTask.media.coverUrl || undefined}
-                        controls
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-
-                    <div className="flex-1 space-y-4">
+                {/* ── TAB 1: INFORMACIÓN ── */}
+                {drawerTab === "info" && (
+                  <div className="space-y-5">
+                    {/* Controles de Prioridad y Estado Especial */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 bg-gray-50 rounded-xl border border-gray-200">
                       <div>
-                        <span className="text-[10px] font-black uppercase tracking-wider text-pink-400 block mb-1">
-                          Reel Vertical 9:16 Generado
+                        <label className="text-[10px] font-black uppercase text-gray-500 block mb-1">
+                          Prioridad Operativa
+                        </label>
+                        <select
+                          value={selectedTask.priority || "normal"}
+                          onChange={(e) => handleUpdatePriority(selectedTask.id, e.target.value)}
+                          className="w-full bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-xs font-bold text-gray-800 outline-none focus:ring-2 focus:ring-[#013388]"
+                        >
+                          <option value="urgente">🔥 Urgente (Prioridad Máxima)</option>
+                          <option value="alta">⚡ Alta</option>
+                          <option value="normal">Normal</option>
+                          <option value="baja">Baja</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-black uppercase text-gray-500 block mb-1">
+                          Estado Especial / Excepción
+                        </label>
+                        <select
+                          value={selectedTask.specialState || "normal"}
+                          onChange={(e) =>
+                            handleTransitionTask(
+                              selectedTask,
+                              selectedTask.column,
+                              e.target.value === "normal" ? null : e.target.value
+                            )
+                          }
+                          className="w-full bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-xs font-bold text-gray-800 outline-none focus:ring-2 focus:ring-[#013388]"
+                        >
+                          <option value="normal">Operación Normal</option>
+                          <option value="requiere_ajustes">⚠️ Requiere ajustes</option>
+                          <option value="bloqueado">🔒 Bloqueado</option>
+                          <option value="error_tecnico">🔴 Error técnico</option>
+                          <option value="rechazado">❌ Rechazado</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Datos de Contacto y Remitente con botones de acción directa */}
+                    <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs space-y-3">
+                      <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                        <span className="text-[11px] font-black uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
+                          <User className="w-3.5 h-3.5 text-[#013388]" />
+                          Contacto del Remitente
                         </span>
-                        <h3 className="text-base font-bold text-white leading-snug">
-                          {selectedTask.title}
-                        </h3>
-                        <p className="text-xs text-slate-300 mt-1">
-                          {selectedTask.reel.durationSec ? `${selectedTask.reel.durationSec}s · ` : ""}
-                          {selectedTask.reel.statusDetail || "Producción audiovisual completada."}
-                        </p>
+                        <span className="text-[10px] text-gray-400">
+                          {selectedTask.club || "Club Rotario"}
+                        </span>
                       </div>
 
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-2">
-                        <div className="bg-white/5 border border-white/10 p-2.5 rounded-xl">
-                          <span className="text-[10px] text-slate-400 block font-semibold">Formato</span>
-                          <span className="text-xs font-bold text-white">9:16 Vertical</span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <span className="text-gray-400 block text-[10px]">Nombre:</span>
+                          <span className="font-bold text-gray-900">
+                            {selectedTask.senderName || "No registrado"}
+                          </span>
                         </div>
-                        <div className="bg-white/5 border border-white/10 p-2.5 rounded-xl">
-                          <span className="text-[10px] text-slate-400 block font-semibold">Motor IA</span>
-                          <span className="text-xs font-bold text-white">Kling / Luma</span>
+
+                        <div>
+                          <span className="text-gray-400 block text-[10px]">Email:</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-gray-800 truncate">
+                              {selectedTask.senderEmail || "Sin email"}
+                            </span>
+                            {selectedTask.senderEmail && (
+                              <a
+                                href={`mailto:${selectedTask.senderEmail}`}
+                                title="Enviar email"
+                                className="p-1 rounded bg-blue-50 text-[#013388] hover:bg-blue-100 transition-colors"
+                              >
+                                <Mail className="w-3.5 h-3.5" />
+                              </a>
+                            )}
+                          </div>
                         </div>
-                        <div className="bg-white/5 border border-white/10 p-2.5 rounded-xl">
-                          <span className="text-[10px] text-slate-400 block font-semibold">Destinos</span>
-                          <span className="text-xs font-bold text-white">IG / TikTok / Shorts</span>
+
+                        <div>
+                          <span className="text-gray-400 block text-[10px]">Teléfono / WhatsApp:</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-gray-800">
+                              {selectedTask.senderPhone || "Sin teléfono"}
+                            </span>
+                            {selectedTask.senderPhone && (
+                              <>
+                                <a
+                                  href={`tel:${selectedTask.senderPhone}`}
+                                  title="Llamar"
+                                  className="p-1 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                                >
+                                  <Phone className="w-3.5 h-3.5" />
+                                </a>
+                                <a
+                                  href={`https://wa.me/${selectedTask.senderPhone.replace(/\D/g, "")}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  title="Abrir WhatsApp"
+                                  className="p-1 rounded bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
+                                >
+                                  <MessageSquare className="w-3.5 h-3.5" />
+                                </a>
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        <div>
+                          <span className="text-gray-400 block text-[10px]">Fecha de la actividad:</span>
+                          <span className="font-semibold text-gray-800">
+                            {selectedTask.activityDate || "No especificada"}
+                          </span>
                         </div>
                       </div>
+                    </div>
 
-                      <div className="flex flex-wrap items-center gap-2.5 pt-2">
-                        <a
-                          href={selectedTask.reel.videoUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          download
-                          className="px-4 py-2.5 bg-pink-600 hover:bg-pink-700 text-white font-black text-xs rounded-xl flex items-center gap-1.5 transition-colors shadow-sm"
-                        >
-                          <Download className="w-3.5 h-3.5" /> Descargar MP4
-                        </a>
+                    {/* Relato humano / Texto original enviado con copia rápida */}
+                    <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[11px] font-black uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
+                          <FileText className="w-3.5 h-3.5 text-[#013388]" />
+                          Relato Original de la Solicitud
+                        </span>
                         <button
-                          onClick={() => handleGenerateReel(selectedTask)}
-                          className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors border border-white/10"
+                          onClick={() =>
+                            handleCopyToClipboard(
+                              taskDetails?.submission?.content || selectedTask.subtitle,
+                              "Relato de la solicitud"
+                            )
+                          }
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-[10px] font-bold transition-colors"
+                          title="Copiar texto original"
                         >
-                          <RefreshCw className="w-3.5 h-3.5" /> Regenerar Reel
+                          <Copy className="w-3 h-3" /> Copiar texto
                         </button>
                       </div>
+
+                      <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 text-xs text-gray-700 leading-relaxed max-h-60 overflow-y-auto whitespace-pre-line">
+                        {taskDetails?.submission?.content || selectedTask.subtitle || "Sin contenido de relato registrado."}
+                      </div>
+                    </div>
+
+                    {/* Metadatos adicionales */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] text-gray-500 bg-gray-50 p-3 rounded-xl border border-gray-200">
+                      <div>
+                        <span className="font-bold text-gray-700 block">ID Tarea:</span>
+                        <span className="font-mono truncate block" title={selectedTask.id}>
+                          {selectedTask.id.slice(0, 12)}...
+                        </span>
+                      </div>
+                      <div>
+                        <span className="font-bold text-gray-700 block">Fecha Recepción:</span>
+                        <span>{new Date(selectedTask.date).toLocaleDateString("es-CO")}</span>
+                      </div>
+                      <div>
+                        <span className="font-bold text-gray-700 block">Agente IA:</span>
+                        <span>{selectedTask.assignedAgent?.name || "Victoria"}</span>
+                      </div>
+                      <div>
+                        <span className="font-bold text-gray-700 block">Destinos:</span>
+                        <span>{selectedTask.destinations?.suggested?.length || 1} vinculados</span>
+                      </div>
                     </div>
                   </div>
-                ) : (
-                  /* Si está pendiente de generar o en proceso */
-                  <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-xs space-y-6">
-                    <div className="flex items-center justify-between">
+                )}
+
+                {/* ── TAB 2: ARCHIVOS Y FOTOGRAFÍAS ── */}
+                {drawerTab === "files" && (
+                  <div className="space-y-4">
+                    {/* Resumen fotográfico y auditoría para Reels */}
+                    <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-200 flex items-start justify-between gap-3">
                       <div>
-                        <span className="text-[10px] font-black uppercase tracking-wider text-gray-400 block mb-1">
-                          Estado de Producción Audiovisual
-                        </span>
-                        <h3 className="text-sm font-bold text-gray-900">
-                          {selectedTask.reel?.statusDetail || "En cola de producción de Reel"}
-                        </h3>
-                      </div>
-                      <span className="px-3 py-1 rounded-full text-xs font-black uppercase bg-pink-100 text-pink-800">
-                        {selectedTask.reel?.status || "Pendiente"}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div className="bg-gray-50 border border-gray-200 p-3.5 rounded-xl">
-                        <span className="text-[10px] font-bold text-gray-500 block uppercase">Fotografías fuente</span>
-                        <span className="text-sm font-black text-gray-900 mt-0.5 block">
-                          {selectedTask.media.imageCount} fotos adjuntas
-                        </span>
-                        <span className="text-[10px] text-gray-500">Mínimo 5 fotos requeridas por la regla distrital</span>
-                      </div>
-                      <div className="bg-gray-50 border border-gray-200 p-3.5 rounded-xl">
-                        <span className="text-[10px] font-bold text-gray-500 block uppercase">Créditos estimados</span>
-                        <span className="text-sm font-black text-gray-900 mt-0.5 block">
-                          {selectedTask.reel?.creditsEstimated || 40} créditos
-                        </span>
-                        <span className="text-[10px] text-gray-500">Kling AI Video Generator</span>
-                      </div>
-                      <div className="bg-gray-50 border border-gray-200 p-3.5 rounded-xl">
-                        <span className="text-[10px] font-bold text-gray-500 block uppercase">Formato de Salida</span>
-                        <span className="text-sm font-black text-gray-900 mt-0.5 block">
-                          1080 × 1920 (9:16)
-                        </span>
-                        <span className="text-[10px] text-gray-500">Vertical cinematográfico</span>
-                      </div>
-                    </div>
-
-                    {selectedTask.reel?.lastError && (
-                      <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-start gap-2">
-                        <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                        <div>
-                          <b>Último error registrado:</b> {selectedTask.reel.lastError}
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-xs font-black text-[#013388] uppercase tracking-wider">
+                            Galería de Evidencias y Recursos Adjuntos
+                          </h4>
+                          <span className="text-[10px] bg-blue-100 text-[#013388] font-bold px-2 py-0.5 rounded-full">
+                            {(taskDetails?.files?.length ?? selectedTask.media.imageCount)} fotografías
+                          </span>
                         </div>
+                        <p className="text-xs text-blue-900/80 mt-1">
+                          Selecciona la fotografía principal que encabezará el artículo periodístico. Clic en cualquier foto para expandir a pantalla completa.
+                        </p>
+                      </div>
+
+                      {/* Pill de aptitud para Reel */}
+                      <div className="shrink-0 text-right">
+                        {(taskDetails?.files?.length ?? selectedTask.media.imageCount) >= 5 ? (
+                          <span className="text-[10px] font-bold px-2 py-1 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                            <Check className="w-3 h-3" /> Apto para Reel (5+ fotos)
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold px-2 py-1 rounded-md bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1">
+                            <AlertTriangle className="w-3 h-3" /> Faltan {5 - (taskDetails?.files?.length ?? selectedTask.media.imageCount)} fotos para Reel
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Cuadrícula de fotos */}
+                    {taskDetails?.files && taskDetails.files.length > 0 ? (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {taskDetails.files.map((file) => {
+                          const isCurrentCover =
+                            file.isCover ||
+                            file.url === selectedTask.media.coverUrl ||
+                            file.viewUrl === selectedTask.media.coverUrl;
+
+                          const imgUrl = file.url || file.viewUrl || file.mediaUrl || "";
+
+                          return (
+                            <div
+                              key={file.id}
+                              className={`group relative rounded-xl overflow-hidden border bg-gray-50 flex flex-col transition-all shadow-2xs hover:shadow-md ${
+                                isCurrentCover
+                                  ? "border-amber-400 ring-2 ring-amber-300/50"
+                                  : "border-gray-200 hover:border-[#013388]/50"
+                              }`}
+                            >
+                              {/* Imagen con aspect ratio 4:3 y Lightbox al hacer clic */}
+                              <div
+                                onClick={() => setLightboxImage(imgUrl)}
+                                className="w-full aspect-[4/3] bg-gray-100 overflow-hidden cursor-zoom-in relative"
+                              >
+                                {imgUrl ? (
+                                  <img
+                                    src={imgUrl}
+                                    alt={file.filename}
+                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                  />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">
+                                    Sin vista previa
+                                  </div>
+                                )}
+
+                                {/* Badges superpuestos */}
+                                <div className="absolute top-2 left-2 flex items-center gap-1">
+                                  {isCurrentCover && (
+                                    <span className="px-2 py-0.5 rounded-md bg-amber-500 text-white font-black text-[9px] shadow-sm flex items-center gap-0.5">
+                                      <Star className="w-2.5 h-2.5 fill-current" /> Portada
+                                    </span>
+                                  )}
+                                  {file.role && file.role !== "cover" && (
+                                    <span className="px-1.5 py-0.5 rounded-md bg-black/60 text-white font-semibold text-[9px]">
+                                      {file.role}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Pie de foto con metadatos y acción fijar portada */}
+                              <div className="p-2 bg-white flex items-center justify-between gap-1 text-[10px]">
+                                <span className="text-gray-500 truncate max-w-[90px]" title={file.filename}>
+                                  {file.filename || "Imagen"}
+                                </span>
+
+                                {!isCurrentCover && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleSetCover(selectedTask.id, file.id);
+                                    }}
+                                    className="px-2 py-1 rounded bg-gray-100 hover:bg-amber-100 text-gray-700 hover:text-amber-900 font-bold text-[9px] transition-colors flex items-center gap-1"
+                                    title="Fijar como foto de portada"
+                                  >
+                                    <Star className="w-3 h-3 text-amber-500" /> Fijar portada
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="py-12 text-center text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                        <ImageIcon className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                        <p className="text-xs font-semibold">No se encontraron archivos multimedia adjuntos</p>
                       </div>
                     )}
+                  </div>
+                )}
 
-                    <div className="pt-2">
+                {/* ── TAB 3: PRODUCCIÓN MULTIFORMATO ── */}
+                {drawerTab === "production" && (
+                  <div className="space-y-6">
+                    {/* ENTREGABLE 1: ARTÍCULO WEB PERIODÍSTICO */}
+                    <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs space-y-3">
+                      <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                        <div className="flex items-center gap-2">
+                          <FileText className="w-4 h-4 text-[#013388]" />
+                          <h4 className="text-xs font-black uppercase text-gray-900 tracking-wider">
+                            Artículo Web Generado por IA
+                          </h4>
+                        </div>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-black uppercase ${
+                          selectedTask.article?.status === "publicado" || selectedTask.post?.published
+                            ? "bg-emerald-100 text-emerald-800"
+                            : selectedTask.article?.status
+                            ? "bg-blue-100 text-blue-800"
+                            : "bg-gray-100 text-gray-600"
+                        }`}>
+                          {selectedTask.article?.status || "Borrador"}
+                        </span>
+                      </div>
+
+                      {/* Portada actual */}
+                      {selectedTask.media.coverUrl && (
+                        <div className="w-full h-40 rounded-lg overflow-hidden bg-gray-100 relative group">
+                          <img
+                            src={selectedTask.media.coverUrl}
+                            alt="Portada"
+                            className="w-full h-full object-cover"
+                          />
+                          <button
+                            onClick={() => setLightboxImage(selectedTask.media.coverUrl || null)}
+                            className="absolute bottom-2 right-2 px-2 py-1 rounded bg-black/60 text-white text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1"
+                          >
+                            <Maximize2 className="w-3 h-3" /> Ver completa
+                          </button>
+                        </div>
+                      )}
+
+                      <div>
+                        <h3 className="text-sm font-bold text-gray-900 leading-snug">
+                          {selectedTask.article?.title || selectedTask.title}
+                        </h3>
+                        {selectedTask.article?.excerpt && (
+                          <p className="text-xs text-gray-600 italic bg-gray-50 p-2.5 rounded-lg border border-gray-100 mt-2">
+                            {selectedTask.article.excerpt}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Alertas periodísticas / veracidad */}
+                      {(selectedTask.article?.missingInfo?.length || selectedTask.article?.copyIssues?.length) ? (
+                        <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900 space-y-1">
+                          <div className="flex items-center gap-1.5 font-bold text-amber-800">
+                            <ShieldCheck className="w-4 h-4 text-amber-600" />
+                            <span>Control Editorial & Veracidad</span>
+                          </div>
+                          {selectedTask.article?.missingInfo && selectedTask.article.missingInfo.length > 0 && (
+                            <p className="text-[11px]">
+                              <b>Datos faltantes:</b> {selectedTask.article.missingInfo.map((m) => m.label).join(", ")}.
+                            </p>
+                          )}
+                          {selectedTask.article?.copyIssues && selectedTask.article.copyIssues.length > 0 && (
+                            <p className="text-[11px]">
+                              <b>Aviso:</b> {selectedTask.article.copyIssues.join(" ")}
+                            </p>
+                          )}
+                        </div>
+                      ) : null}
+
+                      {/* Acciones de publicación de artículo */}
+                      <div className="flex flex-col sm:flex-row items-center gap-2 pt-2">
+                        <button
+                          onClick={() => handleApproveAndPublish(true)}
+                          disabled={isPublishing}
+                          className="w-full sm:flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all disabled:opacity-50"
+                        >
+                          {isPublishing ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Check className="w-4 h-4" />
+                          )}
+                          <span>APROBAR Y PUBLICAR ARTÍCULO</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleApproveAndPublish(false)}
+                          disabled={isPublishing}
+                          className="w-full sm:w-auto px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl transition-all"
+                        >
+                          Guardar borrador
+                        </button>
+
+                        {selectedTask.article?.postId && (
+                          <Link
+                            to={`/admin/noticias?post=${selectedTask.article.postId}`}
+                            className="w-full sm:w-auto px-3 py-2.5 bg-blue-50 text-[#013388] hover:bg-blue-100 font-bold text-xs rounded-xl flex items-center justify-center gap-1 transition-all"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" /> Editar
+                          </Link>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* ENTREGABLE 2: REEL VERTICAL 9:16 */}
+                    <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs space-y-3">
+                      <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                        <div className="flex items-center gap-2">
+                          <Film className="w-4 h-4 text-pink-600" />
+                          <h4 className="text-xs font-black uppercase text-pink-900 tracking-wider">
+                            Reel Audiovisual Vertical (9:16)
+                          </h4>
+                        </div>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-black uppercase ${
+                          selectedTask.reel?.status === 'aprobada' || selectedTask.reel?.status === 'publicada'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : selectedTask.reel?.status === 'lista'
+                            ? 'bg-pink-100 text-pink-800'
+                            : 'bg-amber-100 text-amber-800'
+                        }`}>
+                          {selectedTask.reel?.status || "En cola"}
+                        </span>
+                      </div>
+
+                      {selectedTask.reel?.videoUrl ? (
+                        <div className="bg-slate-900 text-white rounded-xl p-4 border border-slate-800 flex flex-col sm:flex-row gap-4 items-center">
+                          <div className="relative w-44 aspect-[9/16] bg-black rounded-lg overflow-hidden shadow-xl shrink-0">
+                            <video
+                              src={selectedTask.reel.videoUrl}
+                              poster={selectedTask.reel.posterUrl || selectedTask.media.coverUrl || undefined}
+                              controls
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+
+                          <div className="flex-1 space-y-3 text-xs">
+                            <div>
+                              <span className="text-[10px] font-black uppercase tracking-wider text-pink-400 block mb-0.5">
+                                Video Vertical Listo
+                              </span>
+                              <h5 className="font-bold text-white leading-snug">
+                                {selectedTask.title}
+                              </h5>
+                              <p className="text-[11px] text-slate-300 mt-1">
+                                {selectedTask.reel.durationSec ? `${selectedTask.reel.durationSec}s · ` : ""}
+                                Formato 1080 × 1920 (9:16)
+                              </p>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2 pt-1">
+                              <a
+                                href={selectedTask.reel.videoUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                download
+                                className="px-3 py-2 bg-pink-600 hover:bg-pink-700 text-white font-black text-xs rounded-lg flex items-center gap-1.5 transition-colors shadow-xs"
+                              >
+                                <Download className="w-3.5 h-3.5" /> Descargar MP4
+                              </a>
+                              <button
+                                onClick={() => handleGenerateReel(selectedTask)}
+                                className="px-3 py-2 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 transition-colors"
+                              >
+                                <RefreshCw className="w-3.5 h-3.5" /> Regenerar
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="p-3 rounded-lg bg-pink-50/70 border border-pink-200 text-xs text-pink-950 flex items-start gap-2.5">
+                            <span className="text-xl">🎬</span>
+                            <div className="leading-relaxed">
+                              <b>Camila (Video IA):</b> Genera una pieza cinematográfica vertical 9:16 a partir de las fotografías adjuntas utilizando Kling/Luma.
+                              <span className="block text-[11px] text-pink-800 mt-0.5">
+                                Fotografías adjuntas: {selectedTask.media.imageCount} (requiere al menos 5 para resultado cinematográfico óptimo).
+                              </span>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => handleGenerateReel(selectedTask)}
+                            className="w-full py-2.5 bg-pink-600 hover:bg-pink-700 text-white font-black text-xs rounded-xl flex items-center justify-center gap-2 shadow-xs transition-all"
+                          >
+                            <Zap className="w-4 h-4 text-pink-200" />
+                            <span>PRODUCIR REEL VERTICAL IA AHORA</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ENTREGABLE 3: COPYS PARA REDES SOCIALES CON COPIA RÁPIDA */}
+                    <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs space-y-3">
+                      <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                        <div className="flex items-center gap-2">
+                          <Share2 className="w-4 h-4 text-indigo-600" />
+                          <h4 className="text-xs font-black uppercase text-indigo-900 tracking-wider">
+                            Copys Redactados para Redes Sociales
+                          </h4>
+                        </div>
+                        <span className="text-[10px] text-gray-400">Lucas · Difusión</span>
+                      </div>
+
+                      {/* Copy Facebook */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-blue-700 uppercase flex items-center gap-1">
+                            Facebook Post
+                          </span>
+                          <button
+                            onClick={() =>
+                              handleCopyToClipboard(
+                                `${selectedTask.title}\n\n${selectedTask.article?.excerpt || selectedTask.subtitle}\n\nDescubre más en nuestro portal distrital.`,
+                                "Copy de Facebook"
+                              )
+                            }
+                            className="text-[10px] font-bold text-gray-500 hover:text-gray-800 flex items-center gap-1"
+                          >
+                            <Copy className="w-3 h-3" /> Copiar
+                          </button>
+                        </div>
+                        <div className="p-2.5 bg-gray-50 rounded-lg border border-gray-200 text-xs text-gray-700 leading-relaxed">
+                          {selectedTask.title} — {selectedTask.article?.excerpt || selectedTask.subtitle}
+                        </div>
+                      </div>
+
+                      {/* Copy X */}
+                      <div className="space-y-1.5 pt-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-gray-800 uppercase flex items-center gap-1">
+                            𝕏 (Twitter) Post
+                          </span>
+                          <button
+                            onClick={() =>
+                              handleCopyToClipboard(
+                                `${selectedTask.title.slice(0, 160)}... #Rotary #Distrito4281`,
+                                "Copy de X"
+                              )
+                            }
+                            className="text-[10px] font-bold text-gray-500 hover:text-gray-800 flex items-center gap-1"
+                          >
+                            <Copy className="w-3 h-3" /> Copiar
+                          </button>
+                        </div>
+                        <div className="p-2.5 bg-gray-50 rounded-lg border border-gray-200 text-xs text-gray-700 leading-relaxed font-mono">
+                          {selectedTask.title.slice(0, 200)} #Rotary #Distrito4281
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ── TAB 4: DISTRIBUCIÓN MULTI-TENANT & REDES ── */}
+                {drawerTab === "distribution" && (
+                  <div className="space-y-5">
+                    {/* MATRIZ DE DESTINOS */}
+                    <div className="rounded-xl border border-gray-200 p-4 bg-white shadow-xs">
+                      <div className="flex items-center gap-1.5 text-xs font-black text-gray-900 uppercase tracking-wider mb-2">
+                        <Globe className="w-4 h-4 text-[#013388]" />
+                        <span>Matriz de Destinos Multi-Tenant</span>
+                      </div>
+
+                      <p className="text-[11px] text-gray-500 mb-3">
+                        Activa los portales web donde se difundirá este contenido:
+                      </p>
+
+                      <div className="space-y-2">
+                        {selectedTask.destinations?.suggested?.map((dest) => {
+                          const isChecked = targetClubIds.includes(dest.id);
+                          return (
+                            <label
+                              key={dest.id}
+                              className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-all ${
+                                isChecked
+                                  ? "bg-blue-50/70 border-[#013388]"
+                                  : "bg-gray-50 border-gray-200 opacity-60"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setTargetClubIds([...targetClubIds, dest.id]);
+                                  } else {
+                                    setTargetClubIds(targetClubIds.filter((id) => id !== dest.id));
+                                  }
+                                }}
+                                className="mt-0.5 rounded text-[#013388] focus:ring-[#013388]"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <span className="text-xs font-bold text-gray-900 block truncate">
+                                  {dest.name}
+                                </span>
+                                <span className="text-[10px] text-gray-500 block">
+                                  {dest.typeLabel} {dest.domain ? `· ${dest.domain}` : ""}
+                                </span>
+                              </div>
+                            </label>
+                          );
+                        })}
+
+                        <label className="flex items-center gap-2.5 p-2.5 rounded-lg border border-gray-200 bg-gray-50 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={publishToDistrict}
+                            onChange={(e) => setPublishToDistrict(e.target.checked)}
+                            className="rounded text-[#013388] focus:ring-[#013388]"
+                          />
+                          <span className="text-xs font-bold text-gray-800">
+                            Difundir en sede central del Distrito
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* REDES SOCIALES CONECTADAS */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {/* Facebook */}
+                      <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-xs flex flex-col justify-between">
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-black text-gray-900 flex items-center gap-1.5">
+                              <span className="w-5 h-5 rounded bg-blue-600 text-white flex items-center justify-center text-[10px]">f</span>
+                              Facebook Fanpage
+                            </span>
+                            {selectedTask.social?.hasFacebook ? (
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-100 text-emerald-800">
+                                Publicado
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-gray-100 text-gray-600">
+                                Pendiente
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-gray-500 mb-2">
+                            {selectedTask.social?.hasFacebook
+                              ? "Post publicado en el muro oficial de la Fanpage."
+                              : "Pendiente de emitir en la Fanpage vinculada."}
+                          </p>
+                        </div>
+                        {selectedTask.social?.facebook?.externalUrl && (
+                          <a
+                            href={selectedTask.social.facebook.externalUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[11px] font-bold text-blue-600 hover:underline flex items-center gap-1"
+                          >
+                            <ExternalLink className="w-3 h-3" /> Ver post en Facebook
+                          </a>
+                        )}
+                      </div>
+
+                      {/* X */}
+                      <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-xs flex flex-col justify-between">
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-black text-gray-900 flex items-center gap-1.5">
+                              <span className="w-5 h-5 rounded bg-black text-white flex items-center justify-center text-[10px]">𝕏</span>
+                              X (Twitter)
+                            </span>
+                            {selectedTask.social?.hasX ? (
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-100 text-emerald-800">
+                                Publicado
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-gray-100 text-gray-600">
+                                Pendiente
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-gray-500 mb-2">
+                            {selectedTask.social?.hasX
+                              ? "Post emitido en la cuenta de X con enlace al blog."
+                              : "Pendiente de publicar en la cuenta de X."}
+                          </p>
+                        </div>
+                        {selectedTask.social?.x?.externalUrl && (
+                          <a
+                            href={selectedTask.social.x.externalUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[11px] font-bold text-gray-900 hover:underline flex items-center gap-1"
+                          >
+                            <ExternalLink className="w-3 h-3" /> Ver post en X
+                          </a>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* BOTÓN DE DIFUSIÓN INMEDIATA */}
+                    <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+                      <div className="text-xs text-gray-600">
+                        <p className="font-bold text-gray-800">Difusión inmediata en redes</p>
+                        <p className="text-[11px] text-gray-500">
+                          Dispara la publicación del enlace en Fanpage y X reutilizando la arquitectura social.
+                        </p>
+                      </div>
+
                       <button
-                        onClick={() => handleGenerateReel(selectedTask)}
-                        className="w-full py-3 bg-pink-600 hover:bg-pink-700 text-white font-black text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all"
+                        onClick={() => handleShareSocial(selectedTask)}
+                        className="w-full sm:w-auto px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-xl flex items-center justify-center gap-2 shadow-xs transition-all shrink-0"
                       >
-                        <Zap className="w-4 h-4 text-pink-200" />
-                        <span>GENERAR VIDEO REEL IA AHORA (5 FOTOS)</span>
+                        <Share2 className="w-3.5 h-3.5" />
+                        <span>DIFUNDIR EN FANPAGE & X</span>
                       </button>
                     </div>
                   </div>
                 )}
-              </div>
-            )}
 
-            {/* TAB 3: DIFUSIÓN EN REDES SOCIALES */}
-            {modalTab === "redes" && (
-              <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                {/* Banner Lucas */}
-                <div className="p-4 rounded-xl bg-indigo-50/70 border border-indigo-200/80 flex items-start gap-3">
-                  <span className="text-2xl">📢</span>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <h4 className="text-xs font-black text-indigo-900 uppercase tracking-wider">
-                        Lucas · Especialista en Difusión Fanpage & X
-                      </h4>
-                      <span className="text-[10px] bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded-full">
-                        Publicación de Artículo de Blog
+                {/* ── TAB 5: HISTORIAL Y BITÁCORA INALTERABLE ── */}
+                {drawerTab === "history" && (
+                  <div className="space-y-5">
+                    {/* Formulario de Nueva Nota Interna */}
+                    <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs space-y-3">
+                      <div className="flex items-center gap-2">
+                        <MessageSquare className="w-4 h-4 text-[#013388]" />
+                        <h4 className="text-xs font-black uppercase text-gray-900 tracking-wider">
+                          Registrar Nota Interna en Bitácora
+                        </h4>
+                      </div>
+
+                      <textarea
+                        value={historyNote}
+                        onChange={(e) => setHistoryNote(e.target.value)}
+                        placeholder="Escribe una observación, instrucción operativa o apunte sobre esta solicitud..."
+                        rows={3}
+                        className="w-full p-2.5 border border-gray-300 rounded-lg text-xs text-gray-800 focus:ring-2 focus:ring-[#013388] outline-none"
+                      />
+
+                      <div className="flex justify-end">
+                        <button
+                          onClick={() => handleAddHistoryNote(selectedTask.id)}
+                          disabled={!historyNote.trim()}
+                          className="px-4 py-2 bg-[#013388] hover:bg-[#002266] text-white font-bold text-xs rounded-lg transition-colors disabled:opacity-40"
+                        >
+                          Guardar en bitácora
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Timeline de Eventos */}
+                    <div className="space-y-3">
+                      <span className="text-[11px] font-black uppercase tracking-wider text-gray-500 block">
+                        Línea de Tiempo Operativa ({taskDetails?.events?.length ?? 0} eventos)
                       </span>
-                    </div>
-                    <p className="text-xs text-indigo-950/80 mt-1 leading-relaxed">
-                      Publicación automatizada del artículo publicado como enlace con titular periodístico, extracto e imagen destacada en los perfiles y fanpages conectados.
-                    </p>
-                  </div>
-                </div>
 
-                {/* Tarjetas de canales conectados */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Facebook Fanpage */}
-                  <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-black text-sm">
-                            f
-                          </div>
-                          <div>
-                            <h4 className="text-xs font-black text-gray-900">Facebook Fanpage</h4>
-                            <p className="text-[10px] text-gray-500">Página oficial del club / distrito</p>
-                          </div>
+                      {taskDetails?.events && taskDetails.events.length > 0 ? (
+                        <div className="relative pl-6 space-y-4 before:absolute before:top-2 before:bottom-2 before:left-2.5 before:w-0.5 before:bg-gray-200">
+                          {taskDetails.events.map((evt) => {
+                            let iconBg = "bg-blue-100 text-[#013388]";
+                            let icon = <Clock className="w-3 h-3" />;
+
+                            if (evt.type.includes("status") || evt.type.includes("transition")) {
+                              iconBg = "bg-emerald-100 text-emerald-800";
+                              icon = <ChevronRight className="w-3 h-3" />;
+                            } else if (evt.type.includes("cover")) {
+                              iconBg = "bg-amber-100 text-amber-800";
+                              icon = <Star className="w-3 h-3" />;
+                            } else if (evt.type.includes("note")) {
+                              iconBg = "bg-purple-100 text-purple-800";
+                              icon = <MessageSquare className="w-3 h-3" />;
+                            } else if (evt.type.includes("share")) {
+                              iconBg = "bg-indigo-100 text-indigo-800";
+                              icon = <Share2 className="w-3 h-3" />;
+                            }
+
+                            return (
+                              <div key={evt.id} className="relative group">
+                                <div
+                                  className={`absolute -left-6 top-1 w-5 h-5 rounded-full flex items-center justify-center ring-4 ring-white ${iconBg}`}
+                                >
+                                  {icon}
+                                </div>
+
+                                <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-2xs space-y-1">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-xs font-bold text-gray-900">
+                                      {evt.type.replace(/_/g, " ").toUpperCase()}
+                                    </span>
+                                    <span className="text-[10px] text-gray-400">
+                                      {new Date(evt.createdAt).toLocaleString("es-CO", {
+                                        day: "numeric",
+                                        month: "short",
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      })}
+                                    </span>
+                                  </div>
+
+                                  <div className="text-xs text-gray-600">
+                                    {evt.detail || evt.reference || "Evento registrado por el sistema"}
+                                  </div>
+
+                                  {(evt.actorName || evt.actor) && (
+                                    <div className="text-[10px] text-gray-400 pt-1 flex items-center gap-1">
+                                      <User className="w-3 h-3" />
+                                      <span>Por: {evt.actorName || evt.actor}</span>
+                                      {evt.channel && <span>· Canal: {evt.channel}</span>}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
-                        {selectedTask.social?.hasFacebook ? (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 text-emerald-800">
-                            Publicado
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-gray-100 text-gray-600">
-                            Pendiente
-                          </span>
-                        )}
-                      </div>
-
-                      <p className="text-xs text-gray-600 leading-relaxed mb-3">
-                        {selectedTask.social?.hasFacebook
-                          ? "Artículo compartido exitosamente en el muro de la Fanpage."
-                          : "Pendiente de publicar en la Fanpage vinculada."}
-                      </p>
-
-                      {selectedTask.social?.facebook?.externalUrl && (
-                        <a
-                          href={selectedTask.social.facebook.externalUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-[11px] font-bold text-blue-600 hover:underline flex items-center gap-1"
-                        >
-                          <ExternalLink className="w-3 h-3" /> Ver publicación en Facebook
-                        </a>
+                      ) : (
+                        <div className="py-8 text-center text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200 text-xs">
+                          Sin eventos registrados para esta solicitud
+                        </div>
                       )}
                     </div>
                   </div>
-
-                  {/* X (Twitter) */}
-                  <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-lg bg-black text-white flex items-center justify-center font-black text-sm">
-                            𝕏
-                          </div>
-                          <div>
-                            <h4 className="text-xs font-black text-gray-900">X (Twitter)</h4>
-                            <p className="text-[10px] text-gray-500">Cuenta oficial conectada</p>
-                          </div>
-                        </div>
-                        {selectedTask.social?.hasX ? (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 text-emerald-800">
-                            Publicado
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-gray-100 text-gray-600">
-                            Pendiente
-                          </span>
-                        )}
-                      </div>
-
-                      <p className="text-xs text-gray-600 leading-relaxed mb-3">
-                        {selectedTask.social?.hasX
-                          ? "Post emitido en la cuenta de X con enlace al blog."
-                          : "Pendiente de publicar en la cuenta de X."}
-                      </p>
-
-                      {selectedTask.social?.x?.externalUrl && (
-                        <a
-                          href={selectedTask.social.x.externalUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-[11px] font-bold text-gray-900 hover:underline flex items-center gap-1"
-                        >
-                          <ExternalLink className="w-3 h-3" /> Ver post en X
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Acciones de difusión */}
-                <div className="bg-gray-50 rounded-2xl border border-gray-200 p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
-                  <div className="text-xs text-gray-600">
-                    <p className="font-bold text-gray-800">Difusión inmediata en redes</p>
-                    <p className="text-[11px] text-gray-500">
-                      Dispara la publicación del enlace en Fanpage y X reutilizando la arquitectura de distribución social.
-                    </p>
-                  </div>
-
-                  <button
-                    onClick={() => handleShareSocial(selectedTask)}
-                    className="w-full sm:w-auto px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all shrink-0"
-                  >
-                    <Share2 className="w-3.5 h-3.5" />
-                    <span>DIFUNDIR EN FANPAGE & X</span>
-                  </button>
-                </div>
+                )}
               </div>
-            )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── LIGHTBOX MODAL PARA VISTA PREVIA DE IMÁGENES (FASE 2) ── */}
+      {lightboxImage && (
+        <div
+          className="fixed inset-0 z-[10020] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => setLightboxImage(null)}
+        >
+          <div className="relative max-w-5xl max-h-[92vh] flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={lightboxImage}
+              alt="Vista previa ampliada"
+              className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl"
+            />
+            <div className="mt-3 flex items-center gap-3">
+              <a
+                href={lightboxImage}
+                target="_blank"
+                rel="noreferrer"
+                download
+                className="px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white text-xs font-bold transition-colors flex items-center gap-1.5"
+              >
+                <Download className="w-3.5 h-3.5" /> Descargar original
+              </a>
+              <button
+                onClick={() => setLightboxImage(null)}
+                className="px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white text-xs font-bold transition-colors flex items-center gap-1.5"
+              >
+                <X className="w-3.5 h-3.5" /> Cerrar
+              </button>
+            </div>
           </div>
         </div>
       )}

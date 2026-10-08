@@ -23,6 +23,7 @@ import {
 import { resolveSuggestedDestinations } from '../lib/destinationEngine.js';
 import { getSubmission, clubsOf, logEvent } from '../lib/contentSubmissionStore.js';
 import { isWorkingState, stageToRetry } from '../lib/submissionArticleSpec.js';
+import { signedSubmissionUrl } from '../lib/submissionFiles.js';
 
 const isOperator = (req) => req.user?.role === 'administrator' || req.user?.role === 'superadmin';
 
@@ -1082,6 +1083,337 @@ export const transitionTaskStage = async (req, res) => {
     } catch (e) {
         console.error('[mission-control] transitionTaskStage error:', e);
         res.status(500).json({ error: e?.message || 'Error al transicionar etapa' });
+    }
+};
+
+/**
+ * GET /api/mission-control/tasks/:submissionId/details
+ * FASE 2: Devuelve todos los datos detallados de una solicitud para el Panel Lateral:
+ * 1. Información original y metadatos del formulario
+ * 2. Archivos adjuntos con URLs firmadas de visualización y análisis IA
+ * 3. Estado de entregables de producción (Artículo, Reel, Copys)
+ * 4. Matriz de distribución y canales
+ * 5. Historial cronológico inalterable de eventos
+ */
+export const getTaskDetails = async (req, res) => {
+    try {
+        const { submissionId } = req.params;
+        const { rows: [sub] } = await db.query(
+            `SELECT s.*, c.name AS "campaignName", c.slug AS "campaignSlug", c.targeting AS "campaignTargeting"
+             FROM "ContributionSubmission" s
+             LEFT JOIN "ContributionCampaign" c ON c.id = s."campaignId"
+             WHERE s.id = $1`,
+            [submissionId]
+        );
+        if (!sub) return res.status(404).json({ error: 'Solicitud no encontrada' });
+
+        // 1. Archivos
+        const { rows: fileRows } = await db.query(
+            `SELECT f.id, f."submissionId", f.kind, f."s3Key", f.filename, f."contentType", f.bytes, f."sortOrder",
+                    f."mediaId", f."mediaUrl", f."createdAt",
+                    m.role, m.score, m.analysis, m."coverNote", m.excluded, m."excludedReason"
+             FROM "ContributionSubmissionFile" f
+             LEFT JOIN "SubmissionArticleMedia" m ON m."submissionId" = f."submissionId" AND m."fileId" = f.id
+             WHERE f."submissionId" = $1
+             ORDER BY f."sortOrder" ASC, f."createdAt" ASC`,
+            [submissionId]
+        );
+
+        // Resolver URLs de visualización firmadas de forma segura
+        const files = await Promise.all(fileRows.map(async (f) => {
+            let viewUrl = f.mediaUrl;
+            if (!viewUrl && f.s3Key) {
+                try {
+                    viewUrl = await signedSubmissionUrl(f.s3Key);
+                } catch {
+                    viewUrl = null;
+                }
+            }
+            return {
+                ...f,
+                viewUrl,
+                isCover: f.role === 'cover' || f.role === 'portada',
+            };
+        }));
+
+        // 2. Producción: Artículo, Reel y Redes
+        const art = await articleOf(submissionId);
+        const reel = await reelOf(submissionId);
+        let reelProject = null;
+        if (reel?.reelProjectId) {
+            const { rows: [rp] } = await db.query(
+                `SELECT * FROM "ReelProject" WHERE id = $1`,
+                [reel.reelProjectId]
+            );
+            reelProject = rp || null;
+        }
+
+        // Post asociado
+        let post = null;
+        let postDists = [];
+        if (art?.postId) {
+            const { rows: [p] } = await db.query(
+                `SELECT id, title, slug, published, "targetClubIds", "publishToDistrict", "scheduledAt", "distributionStatus", image, category, tags
+                 FROM "Post" WHERE id = $1`,
+                [art.postId]
+            );
+            post = p || null;
+            if (post?.id) {
+                const { rows: dists } = await db.query(
+                    `SELECT "entityId", network, status, "externalUrl", "createdAt", error
+                     FROM "ContentDistribution" WHERE "entityId" = $1 ORDER BY "createdAt" DESC`,
+                    [post.id]
+                );
+                postDists = dists;
+            }
+        }
+
+        // 3. Historial cronológico inalterable
+        const { rows: events } = await db.query(
+            `SELECT id, "submissionId", "campaignId", type, "fromState", "toState", detail, reference, channel, actor, "actorName", "createdAt"
+             FROM "ContributionSubmissionEvent"
+             WHERE "submissionId" = $1
+             ORDER BY "createdAt" ASC`,
+            [submissionId]
+        );
+
+        // Destinos sugeridos
+        const destinations = await resolveSuggestedDestinations({
+            submission: sub,
+            campaign: { id: sub.campaignId, targeting: sub.campaignTargeting },
+        });
+
+        const subMediaAnalysis = {};
+        for (const f of fileRows) {
+            if (f.analysis || f.score) subMediaAnalysis[f.id] = f;
+        }
+        const reelAudit = auditSubmissionPhotosForReel(fileRows, subMediaAnalysis);
+        const col = resolveTaskColumn(sub, art, post, reel, postDists, reelAudit);
+        const specialState = resolveSpecialState(sub, art, reel);
+        const agent = resolveAssignedAgent(col, art, reel);
+
+        // Entregables estructurados
+        const isArtDone = art?.status === 'publicado' || Boolean(post?.published);
+        const isArtWorking = ['analizando', 'generando'].includes(art?.status);
+        const isReelDone = ['aprobada', 'publicada'].includes(reel?.status) || Boolean(reelProject?.videoUrl);
+        const isReelWorking = ['analizando', 'preparando', 'generando', 'componiendo', 'configurando'].includes(reel?.status);
+        const hasFacebook = postDists.some(d => (d.network === 'facebook' || d.network === 'facebook_page') && d.status === 'publicado');
+        const hasX = postDists.some(d => d.network === 'x' && d.status === 'publicado');
+
+        const deliverables = [
+            {
+                id: 'article_web',
+                type: 'article_web',
+                label: 'Artículo Web / Noticia',
+                status: isArtDone ? 'publicado' : (isArtWorking ? 'en_produccion' : (art?.status === 'borrador_listo' ? 'borrador_listo' : (art?.status === 'error' ? 'error' : 'pendiente'))),
+                agent: 'Sofía',
+                completed: isArtDone,
+                postId: art?.postId || null,
+                publicUrl: art?.publicUrl || null,
+            },
+            {
+                id: 'reel_video',
+                type: 'reel_video',
+                label: 'Reel Vertical 9:16',
+                status: isReelDone ? 'publicado' : (isReelWorking ? 'en_produccion' : (reel?.status === 'fallida' ? 'error' : (reelAudit?.isOptimal ? 'listo' : 'no_requerido'))),
+                agent: 'Camila',
+                completed: isReelDone,
+                videoUrl: reelProject?.videoUrl || null,
+                isOptimal: reelAudit?.isOptimal,
+            },
+            {
+                id: 'copy_facebook',
+                type: 'copy_facebook',
+                label: 'Copy Fanpage',
+                status: hasFacebook ? 'publicado' : (post?.published ? 'listo' : 'pendiente'),
+                agent: 'Lucas',
+                completed: hasFacebook,
+            },
+            {
+                id: 'copy_x',
+                type: 'copy_x',
+                label: 'Copy Red X',
+                status: hasX ? 'publicado' : (post?.published ? 'listo' : 'pendiente'),
+                agent: 'Lucas',
+                completed: hasX,
+            },
+        ];
+
+        res.json({
+            ok: true,
+            submission: sub,
+            column: col,
+            specialState,
+            assignedAgent: agent,
+            deliverables,
+            files,
+            article: art ? {
+                id: art.id,
+                postId: art.postId,
+                status: art.status,
+                title: art.generated?.title,
+                excerpt: art.generated?.excerpt,
+                content: art.generated?.content,
+                category: art.generated?.category,
+                tags: art.generated?.tags || [],
+                publicUrl: art.publicUrl,
+                missingInfo: art.generated?.missingInfo || [],
+                copyIssues: art.generated?.copyIssues || [],
+                lastError: art.lastError,
+            } : null,
+            reel: reel ? {
+                id: reel.id,
+                versionNumber: reel.versionNumber,
+                status: reel.status,
+                statusDetail: reel.statusDetail,
+                reelProjectId: reel.reelProjectId,
+                creditsEstimated: reel.creditsEstimated || reelProject?.creditsEstimated || 0,
+                generatedAt: reel.generatedAt,
+                lastError: reel.lastError,
+                videoUrl: reelProject?.videoUrl || null,
+                posterUrl: reelProject?.posterUrl || null,
+                durationSec: reelProject?.durationSec || null,
+                projectStatus: reelProject?.status || null,
+            } : null,
+            reelProject,
+            post: post ? {
+                id: post.id,
+                title: post.title,
+                slug: post.slug,
+                published: post.published,
+                image: post.image,
+                scheduledAt: post.scheduledAt,
+                distributionStatus: post.distributionStatus,
+            } : null,
+            destinations,
+            distributions: postDists,
+            events,
+            reelAudit,
+        });
+    } catch (e) {
+        console.error('[mission-control] getTaskDetails error:', e);
+        res.status(500).json({ error: e?.message || 'Error al obtener detalles de la tarea' });
+    }
+};
+
+/**
+ * PATCH /api/mission-control/tasks/:submissionId/meta
+ * FASE 2: Actualiza prioridad, responsable y notas operacionales registrando auditoría.
+ */
+export const updateTaskMeta = async (req, res) => {
+    try {
+        const { submissionId } = req.params;
+        const { priority, assignee, note } = req.body || {};
+
+        const sub = await getSubmission(submissionId);
+        if (!sub) return res.status(404).json({ error: 'Solicitud no encontrada' });
+
+        const actor = req.user?.id || null;
+        const actorName = req.user?.name || req.user?.email || 'Administrador';
+
+        const updates = [];
+        const params = [submissionId];
+
+        if (priority && ['urgente', 'alta', 'normal', 'baja'].includes(priority)) {
+            params.push(priority);
+            updates.push(`priority = $${params.length}`);
+        }
+        if (assignee !== undefined) {
+            params.push(assignee);
+            updates.push(`assignee = $${params.length}`);
+        }
+
+        if (updates.length > 0) {
+            updates.push(`"updatedAt" = NOW()`);
+            await db.query(
+                `UPDATE "ContributionSubmission" SET ${updates.join(', ')} WHERE id = $1`,
+                params
+            );
+        }
+
+        // Trazabilidad inalterable
+        const details = [];
+        if (priority && priority !== sub.priority) details.push(`Prioridad cambiada de «${sub.priority || 'normal'}» a «${priority}»`);
+        if (assignee !== undefined && assignee !== sub.assignee) details.push(`Responsable asignado: «${assignee || 'Sin asignar'}»`);
+        if (note) details.push(`Nota: ${note}`);
+
+        if (details.length > 0) {
+            await logEvent({
+                submissionId,
+                campaignId: sub.campaignId,
+                type: 'meta_update',
+                detail: details.join('. '),
+                actor,
+                actorName,
+            });
+        }
+
+        res.json({
+            ok: true,
+            submissionId,
+            priority: priority || sub.priority,
+            assignee: assignee !== undefined ? assignee : sub.assignee,
+        });
+    } catch (e) {
+        console.error('[mission-control] updateTaskMeta error:', e);
+        res.status(500).json({ error: e?.message || 'Error al actualizar metadatos' });
+    }
+};
+
+/**
+ * POST /api/mission-control/tasks/:submissionId/set-cover
+ * FASE 2: Establece una foto específica como imagen de portada del artículo y de la publicación.
+ */
+export const setTaskCoverImage = async (req, res) => {
+    try {
+        const { submissionId } = req.params;
+        const { fileId } = req.body || {};
+        if (!fileId) return res.status(400).json({ error: 'fileId es requerido' });
+
+        const sub = await getSubmission(submissionId);
+        if (!sub) return res.status(404).json({ error: 'Solicitud no encontrada' });
+
+        // Obtener el archivo
+        const { rows: [file] } = await db.query(
+            `SELECT * FROM "ContributionSubmissionFile" WHERE id = $1 AND "submissionId" = $2`,
+            [fileId, submissionId]
+        );
+        if (!file) return res.status(404).json({ error: 'Archivo no encontrado para esta solicitud' });
+
+        // Desmarcar otras como portada y marcar esta en SubmissionArticleMedia
+        await db.query(
+            `UPDATE "SubmissionArticleMedia" SET role = 'gallery' WHERE "submissionId" = $1 AND role = 'cover'`,
+            [submissionId]
+        );
+        await db.query(
+            `INSERT INTO "SubmissionArticleMedia" ("submissionId", "fileId", role)
+             VALUES ($1, $2, 'cover')
+             ON CONFLICT ("submissionId", "fileId") DO UPDATE SET role = 'cover'`,
+            [submissionId, fileId]
+        );
+
+        // Si el archivo tiene mediaUrl o si el artículo existe, actualizar
+        const art = await articleOf(submissionId);
+        const coverUrl = file.mediaUrl || null;
+        if (art && coverUrl) {
+            if (art.postId) {
+                await db.query(`UPDATE "Post" SET image = $2, "updatedAt" = NOW() WHERE id = $1`, [art.postId, coverUrl]);
+            }
+        }
+
+        await logEvent({
+            submissionId,
+            campaignId: sub.campaignId,
+            type: 'cover_update',
+            detail: `Imagen «${file.filename || fileId}» seleccionada como foto de portada principal`,
+            actor: req.user?.id || null,
+            actorName: req.user?.name || req.user?.email || 'Administrador',
+        });
+
+        res.json({ ok: true, fileId, coverUrl });
+    } catch (e) {
+        console.error('[mission-control] setTaskCoverImage error:', e);
+        res.status(500).json({ error: e?.message || 'Error al definir foto de portada' });
     }
 };
 
