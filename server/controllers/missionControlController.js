@@ -200,7 +200,7 @@ export const getOperationalBoard = async (req, res) => {
             return res.json({
                 scope: 'site',
                 tasks: [],
-                counts: { total: 0, entradas: 0, en_proceso: 0, por_aprobar: 0, programado: 0, publicado: 0, errores: 0 },
+                counts: { total: 0, entradas: 0, en_revision: 0, por_aprobar: 0, en_produccion: 0, listo_distribuir: 0, difusion: 0, completado: 0, errores: 0, requiere_ajustes: 0 },
             });
         }
 
@@ -423,6 +423,7 @@ export const getOperationalBoard = async (req, res) => {
                 date: sub.createdAt,
                 activityDate: sub.activityDate,
                 column: col,
+                col: col,
                 actualState: col,
                 specialState,
                 isError: specialState === 'error_tecnico' || art?.status === 'error' || reel?.status === 'fallida',
