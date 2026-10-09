@@ -1,9 +1,11 @@
 import React, { useState, useRef } from 'react';
-import { UploadCloud, ClipboardPaste, ArrowRight, ArrowLeft, CheckCircle2, XCircle, AlertCircle, FileSpreadsheet, List } from 'lucide-react';
+import { UploadCloud, ClipboardPaste, ArrowRight, ArrowLeft, CheckCircle2, XCircle, AlertCircle, AlertTriangle, FileSpreadsheet, List, Copy, Globe, HelpCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../../../hooks/useAuth';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
+import { validatePhoneClient, cleanPhoneInput } from '../../../../lib/phoneUtils';
+import { findCountryByNameOrQuery } from '../../../../lib/countryData';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -26,6 +28,7 @@ export default function ImportWizard({ onClose, onSuccess }: { onClose: () => vo
     
     // Validation state
     const [validatedRows, setValidatedRows] = useState<any[]>([]);
+    const [previewFilter, setPreviewFilter] = useState<'all' | 'valid' | 'pending_review' | 'duplicate' | 'error'>('all');
     
     // Config state
     const [config, setConfig] = useState({ onDuplicate: 'ignore', status: 'subscribed' });
@@ -41,7 +44,9 @@ export default function ImportWizard({ onClose, onSuccess }: { onClose: () => vo
     const [results, setResults] = useState<any>(null);
 
     const [crmFields, setCrmFields] = useState<any[]>([
-        { key: 'phone', label: 'Teléfono / WhatsApp (Requerido)' },
+        { key: 'phone', label: 'Teléfono / WhatsApp' },
+        { key: 'countryCode', label: 'Indicativo internacional (+57, +1, etc.)' },
+        { key: 'country', label: 'País (Residencia o contexto telefónico)' },
         { key: 'email', label: 'Correo Electrónico (Opcional)' },
         { key: 'name', label: 'Nombre' },
         { key: 'lastName', label: 'Apellidos' },
@@ -149,18 +154,25 @@ export default function ImportWizard({ onClose, onSuccess }: { onClose: () => vo
     const autoMapColumns = (headers: string[]) => {
         const newMapping: Record<string, string> = {};
         headers.forEach(h => {
-            const hLow = h.toLowerCase();
+            const hLow = h.toLowerCase().trim();
             if (hLow.includes('mail')) newMapping[h] = 'email';
             else if (hLow.includes('lista') || hLow.includes('grupo') || hLow === 'list' || hLow === 'group') newMapping[h] = 'listName';
+            else if (hLow.includes('indicativo') || hLow.includes('prefijo') || hLow.includes('dial') || hLow.includes('cod_pais') || hLow === 'code') newMapping[h] = 'countryCode';
+            else if (hLow.includes('pais') || hLow.includes('país') || hLow === 'country' || hLow.includes('nacion')) newMapping[h] = 'country';
             else if (hLow.includes('last') || hLow.includes('apellido')) newMapping[h] = 'lastName';
             else if (hLow.includes('name') || hLow.includes('nombre')) newMapping[h] = 'name';
-            else if (hLow.includes('phone') || hLow.includes('tel')) newMapping[h] = 'phone';
+            else if (hLow.includes('phone') || hLow.includes('tel') || hLow.includes('movil') || hLow.includes('celular') || hLow.includes('whatsapp')) newMapping[h] = 'phone';
             else if (hLow.includes('company') || hLow.includes('empresa')) newMapping[h] = 'company';
+            else if (hLow.includes('ciudad') || hLow === 'city') newMapping[h] = 'city';
+            else if (hLow.includes('cargo') || hLow === 'title') newMapping[h] = 'title';
         });
         setMapping(newMapping);
     };
 
     const processValidation = () => {
+        const seenPhones = new Set<string>();
+        const seenEmails = new Set<string>();
+
         const rows = parsedData.map(row => {
             const mappedRow: any = {};
             const customFields: any[] = [];
@@ -180,24 +192,74 @@ export default function ImportWizard({ onClose, onSuccess }: { onClose: () => vo
             });
             mappedRow.customFields = customFields;
 
-            // Limpiar espacios (evita que un correo/teléfono con espacios al final se
-            // considere inválido).
-            if (mappedRow.email) mappedRow.email = String(mappedRow.email).trim();
-            if (mappedRow.phone) mappedRow.phone = String(mappedRow.phone).trim();
+            // Limpieza de espacios y comillas residuales de exportación
+            if (mappedRow.email) mappedRow.email = String(mappedRow.email).trim().toLowerCase();
+            if (mappedRow.phone) mappedRow.phone = cleanPhoneInput(mappedRow.phone);
+            if (mappedRow.countryCode) mappedRow.countryCode = cleanPhoneInput(mappedRow.countryCode);
+            if (mappedRow.country) mappedRow.country = String(mappedRow.country).trim();
             if (mappedRow.listName) mappedRow.listName = String(mappedRow.listName).trim();
 
-            // Validación: PRIORIDAD al teléfono/WhatsApp. El correo es opcional y NO se
-            // valida su formato — se importa tal cual esté (regla del cliente). Solo se
-            // descarta una fila si no tiene NI teléfono NI correo (no hay con qué crearla).
-            let status = 'valid'; // valid (green), error (red)
-            let errors = [];
+            let status = 'valid'; // 'valid' | 'pending_review' | 'duplicate' | 'error'
+            let errors: string[] = [];
+            let phoneVal: any = null;
 
-            if (!mappedRow.phone && !mappedRow.email) {
+            // Combinar columna de indicativo separada si se mapeó
+            let phoneToValidate = mappedRow.phone;
+            if (mappedRow.countryCode && phoneToValidate && !phoneToValidate.startsWith('+')) {
+                const ccClean = String(mappedRow.countryCode).replace(/[^0-9]/g, '');
+                const phoneDigits = phoneToValidate.replace(/[^0-9]/g, '');
+                if (ccClean && !phoneDigits.startsWith(ccClean)) {
+                    phoneToValidate = `+${ccClean}${phoneDigits}`;
+                    mappedRow.phone = phoneToValidate;
+                }
+            }
+
+            // Normalización telefónica con estándar E.164
+            if (phoneToValidate) {
+                const countryContext = mappedRow.countryCode || mappedRow.country || 'CO';
+                phoneVal = validatePhoneClient(phoneToValidate, countryContext);
+
+                if (phoneVal.ok) {
+                    mappedRow.phone = phoneVal.e164Formatted;
+                    if (!mappedRow.country && phoneVal.country) {
+                        mappedRow.country = phoneVal.country.name;
+                    }
+                } else if (phoneVal.status === 'pending_review') {
+                    status = 'pending_review';
+                    errors.push(phoneVal.reason);
+                } else {
+                    if (!mappedRow.email) {
+                        status = 'error';
+                        errors.push(phoneVal.reason || 'Teléfono no válido');
+                    } else {
+                        status = 'pending_review';
+                        errors.push(`Teléfono no normalizado: ${phoneVal.reason}`);
+                    }
+                }
+            } else if (!mappedRow.email) {
                 status = 'error';
                 errors.push('Falta Teléfono (o al menos un Correo)');
             }
 
-            return { raw: row, mapped: mappedRow, status, errors };
+            // Detección de duplicados dentro del lote importado
+            const phoneDigits = phoneVal?.e164 || (mappedRow.phone ? mappedRow.phone.replace(/[^0-9]/g, '') : null);
+            if (phoneDigits && seenPhones.has(phoneDigits)) {
+                status = 'duplicate';
+                errors.push('Número duplicado en este archivo');
+            } else if (phoneDigits) {
+                seenPhones.add(phoneDigits);
+            }
+
+            if (mappedRow.email && seenEmails.has(mappedRow.email)) {
+                if (status === 'valid') {
+                    status = 'duplicate';
+                    errors.push('Correo duplicado en este archivo');
+                }
+            } else if (mappedRow.email) {
+                seenEmails.add(mappedRow.email);
+            }
+
+            return { raw: row, mapped: mappedRow, status, errors, phoneValidation: phoneVal };
         });
         
         setValidatedRows(rows);
@@ -398,20 +460,50 @@ export default function ImportWizard({ onClose, onSuccess }: { onClose: () => vo
 
                     {/* STEP 3: PREVIEW & SETTINGS */}
                     {step === 3 && (
-                        <div className="space-y-6">
-                            <div className="flex justify-between items-end">
+                        <div className="space-y-4">
+                            <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-3">
                                 <div>
-                                    <h3 className="text-lg font-bold text-gray-900">Validación y Configuración</h3>
-                                    <p className="text-sm text-gray-500">Revisa los datos antes de importar y define los ajustes masivos.</p>
+                                    <h3 className="text-lg font-bold text-gray-900">Validación Internacional y Configuración</h3>
+                                    <p className="text-sm text-gray-500">Revisa los números normalizados E.164, países detectados y duplicados antes de importar.</p>
                                 </div>
-                                <div className="flex gap-4">
-                                    <div className="text-sm flex items-center gap-1 text-emerald-600 font-bold">
-                                        <CheckCircle2 className="w-4 h-4" /> {validatedRows.filter(r => r.status === 'valid').length} Válidos
+                                <div className="flex flex-wrap gap-2">
+                                    <div className="text-xs px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 font-bold flex items-center gap-1.5 border border-emerald-100">
+                                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> {validatedRows.filter(r => r.status === 'valid').length} Válidos
                                     </div>
-                                    <div className="text-sm flex items-center gap-1 text-red-600 font-bold">
-                                        <AlertCircle className="w-4 h-4" /> {validatedRows.filter(r => r.status === 'error').length} Errores
+                                    <div className="text-xs px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700 font-bold flex items-center gap-1.5 border border-amber-100">
+                                        <AlertTriangle className="w-3.5 h-3.5 text-amber-600" /> {validatedRows.filter(r => r.status === 'pending_review').length} Revisión
+                                    </div>
+                                    <div className="text-xs px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 font-bold flex items-center gap-1.5 border border-blue-100">
+                                        <Copy className="w-3.5 h-3.5 text-blue-600" /> {validatedRows.filter(r => r.status === 'duplicate').length} Duplicados
+                                    </div>
+                                    <div className="text-xs px-3 py-1.5 rounded-lg bg-red-50 text-red-700 font-bold flex items-center gap-1.5 border border-red-100">
+                                        <AlertCircle className="w-3.5 h-3.5 text-red-600" /> {validatedRows.filter(r => r.status === 'error').length} Errores
                                     </div>
                                 </div>
+                            </div>
+
+                            {/* Filtros de Vista Previa */}
+                            <div className="flex flex-wrap gap-2 text-xs border-b border-gray-100 pb-2">
+                                {[
+                                    { key: 'all', label: `Todos (${validatedRows.length})` },
+                                    { key: 'valid', label: `Válidos (${validatedRows.filter(r => r.status === 'valid').length})` },
+                                    { key: 'pending_review', label: `Requieren revisión (${validatedRows.filter(r => r.status === 'pending_review').length})` },
+                                    { key: 'duplicate', label: `Duplicados (${validatedRows.filter(r => r.status === 'duplicate').length})` },
+                                    { key: 'error', label: `Errores (${validatedRows.filter(r => r.status === 'error').length})` },
+                                ].map(tab => (
+                                    <button
+                                        key={tab.key}
+                                        type="button"
+                                        onClick={() => setPreviewFilter(tab.key as any)}
+                                        className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
+                                            previewFilter === tab.key
+                                                ? 'bg-rotary-blue text-white shadow-sm'
+                                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                        }`}
+                                    >
+                                        {tab.label}
+                                    </button>
+                                ))}
                             </div>
 
                             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -420,21 +512,50 @@ export default function ImportWizard({ onClose, onSuccess }: { onClose: () => vo
                                     <table className="w-full text-left text-sm whitespace-nowrap">
                                         <thead className="bg-gray-100 text-gray-500 text-xs font-bold uppercase sticky top-0">
                                             <tr>
-                                                <th className="p-3 w-10">St</th>
-                                                <th className="p-3">Email / Teléfono</th>
+                                                <th className="p-3 w-10">Estado</th>
+                                                <th className="p-3">Teléfono (E.164)</th>
+                                                <th className="p-3">País</th>
                                                 <th className="p-3">Nombre</th>
                                                 {hasListColumn && <th className="p-3">Lista</th>}
-                                                <th className="p-3">Detalle</th>
+                                                <th className="p-3">Detalle / Diagnóstico</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-100">
-                                            {validatedRows.map((row, i) => (
-                                                <tr key={i} className={row.status === 'error' ? 'bg-red-50/50' : 'bg-white'}>
+                                            {validatedRows
+                                                .filter(r => previewFilter === 'all' || r.status === previewFilter)
+                                                .map((row, i) => (
+                                                <tr key={i} className={
+                                                    row.status === 'error' ? 'bg-red-50/50' :
+                                                    row.status === 'pending_review' ? 'bg-amber-50/40' :
+                                                    row.status === 'duplicate' ? 'bg-blue-50/30' : 'bg-white'
+                                                }>
                                                     <td className="p-3">
-                                                        {row.status === 'valid' ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <AlertCircle className="w-4 h-4 text-red-500" />}
+                                                        {row.status === 'valid' ? (
+                                                            <CheckCircle2 className="w-4 h-4 text-emerald-500" title="Válido E.164" />
+                                                        ) : row.status === 'pending_review' ? (
+                                                            <AlertTriangle className="w-4 h-4 text-amber-500" title="Requiere confirmación" />
+                                                        ) : row.status === 'duplicate' ? (
+                                                            <Copy className="w-4 h-4 text-blue-500" title="Duplicado en archivo" />
+                                                        ) : (
+                                                            <AlertCircle className="w-4 h-4 text-red-500" title="Error" />
+                                                        )}
                                                     </td>
-                                                    <td className="p-3 font-medium">{row.mapped.email || row.mapped.phone || '-'}</td>
-                                                    <td className="p-3">{row.mapped.name} {row.mapped.lastName}</td>
+                                                    <td className="p-3 font-mono text-xs font-semibold text-gray-800">
+                                                        {row.mapped.phone || '—'}
+                                                    </td>
+                                                    <td className="p-3 text-xs">
+                                                        {row.phoneValidation?.country ? (
+                                                            <span className="inline-flex items-center gap-1.5 font-medium text-gray-700">
+                                                                <span>{row.phoneValidation.country.flag}</span>
+                                                                <span>{row.phoneValidation.country.name}</span>
+                                                            </span>
+                                                        ) : row.mapped.country ? (
+                                                            <span className="text-gray-600">{row.mapped.country}</span>
+                                                        ) : (
+                                                            <span className="text-gray-300">—</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="p-3 font-medium text-gray-900">{row.mapped.name} {row.mapped.lastName}</td>
                                                     {hasListColumn && (
                                                         <td className="p-3">
                                                             {row.mapped.listName
@@ -442,7 +563,18 @@ export default function ImportWizard({ onClose, onSuccess }: { onClose: () => vo
                                                                 : <span className="text-xs text-gray-400">—</span>}
                                                         </td>
                                                     )}
-                                                    <td className="p-3 text-xs text-red-600 max-w-xs truncate">{row.errors.join(', ')}</td>
+                                                    <td className="p-3 text-xs max-w-xs truncate">
+                                                        {row.errors.length > 0 ? (
+                                                            <span className={
+                                                                row.status === 'error' ? 'text-red-600' :
+                                                                row.status === 'pending_review' ? 'text-amber-700' : 'text-blue-600'
+                                                            }>
+                                                                {row.errors.join('; ')}
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-emerald-600 font-medium">Listo para WhatsApp</span>
+                                                        )}
+                                                    </td>
                                                 </tr>
                                             ))}
                                         </tbody>

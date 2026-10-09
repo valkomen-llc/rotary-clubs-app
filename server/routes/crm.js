@@ -20,9 +20,10 @@ import { initBulkAction, processChunk, getActiveJobs } from '../controllers/crm/
 import {
     getConfig, upsertConfig, verifyConfig,
     archiveContact, deleteConversation, markMessagesRead, getContactMessages, sendMessageToContact, importFromLeads, fixPhoneNumbers,
+    auditContactPhones, batchNormalizePhones,
     addListMembers, removeListMembers,
     getTemplates, createTemplate, updateTemplate, deleteTemplate, syncTemplatesFromMeta,
-    getCampaigns, createCampaign, updateCampaign, deleteCampaign, sendCampaign, getCampaignLogs, getCampaignReport,
+    getCampaigns, createCampaign, updateCampaign, deleteCampaign, sendCampaign, getCampaignLogs, getCampaignReport, getCampaignPreflight,
     getAnalytics, verifyWebhook, handleWebhook
 } from '../controllers/crmController.js';
 import * as connections from '../controllers/crm/connections.controller.js';
@@ -101,6 +102,8 @@ router.get('/kill-locks', async (req, res) => {
 
 // ── Contactos (NUEVO) ────────────────────────────────────────────────────
 router.get('/contacts', getContacts);
+router.get('/contacts/audit-phones', auditContactPhones);
+router.post('/contacts/normalize-phones', batchNormalizePhones);
 router.get('/contacts/:id', getContactById);
 router.post('/contacts', createContact);
 router.put('/contacts/:id', updateContact);
@@ -177,6 +180,7 @@ router.post('/campaigns', createCampaign);
 router.put('/campaigns/:id', updateCampaign);
 router.delete('/campaigns/:id', deleteCampaign);
 router.post('/campaigns/:id/send', sendCampaign);
+router.get('/campaigns/:id/preflight', getCampaignPreflight);
 router.get('/campaigns/:id/logs', getCampaignLogs);
 router.get('/campaigns/:id/report', getCampaignReport);
 

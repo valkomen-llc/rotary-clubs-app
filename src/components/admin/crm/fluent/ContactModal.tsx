@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, User, MapPin, Tag, List as ListIcon, Check, ChevronDown } from 'lucide-react';
+import { X, Plus, User, MapPin, Tag, List as ListIcon, Check, ChevronDown, Globe } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../../../hooks/useAuth';
+import PhoneInputWithCountry from '../../../common/PhoneInputWithCountry';
+import { COUNTRIES, CountryInfo, findCountryByCode, findCountryByNameOrQuery } from '../../../../lib/countryData';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -253,14 +255,41 @@ export default function ContactModal({ onClose, onSaved, contactId }: { onClose:
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
                             <div>
                                 <label className="block text-xs font-bold text-gray-700 mb-1"><span className="text-red-500">*</span> Correo electrónico</label>
-                                <input type="email" name="email" value={formData.email} onChange={handleChange} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:bg-white focus:ring-2 focus:ring-rotary-blue outline-none transition-all" />
+                                <input type="email" name="email" value={formData.email} onChange={handleChange} placeholder="correo@ejemplo.org" className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:bg-white focus:ring-2 focus:ring-rotary-blue outline-none transition-all" />
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-gray-700 mb-1">Teléfono</label>
-                                <input type="text" name="phone" value={formData.phone} onChange={handleChange} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:bg-white focus:ring-2 focus:ring-rotary-blue outline-none transition-all" />
+                                <label className="block text-xs font-bold text-gray-700 mb-1">País (Residencia)</label>
+                                <select
+                                    name="country"
+                                    value={formData.country}
+                                    onChange={(e) => {
+                                        const newCountry = e.target.value;
+                                        setFormData(prev => ({ ...prev, country: newCountry }));
+                                    }}
+                                    className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:bg-white focus:ring-2 focus:ring-rotary-blue outline-none transition-all"
+                                >
+                                    <option value="">Seleccionar país...</option>
+                                    {COUNTRIES.map(c => (
+                                        <option key={c.code} value={c.name}>
+                                            {c.flag} {c.name} ({c.dialCode})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <PhoneInputWithCountry
+                                    label="Teléfono / WhatsApp"
+                                    value={formData.phone}
+                                    defaultCountryCode={
+                                        (formData.country && (findCountryByNameOrQuery(formData.country)?.code)) || 'CO'
+                                    }
+                                    onChange={(newPhone) => {
+                                        setFormData(prev => ({ ...prev, phone: newPhone }));
+                                    }}
+                                />
                             </div>
                         </div>
                     </section>

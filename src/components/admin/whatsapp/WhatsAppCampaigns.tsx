@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
-import { Megaphone, Plus, Trash2, Edit3, Play, Loader2, X, Eye, CheckCircle2, XCircle, Clock, Image, Video, Link2, CheckCheck, Check, MailOpen, FileDown, Sparkles } from 'lucide-react';
+import { Megaphone, Plus, Trash2, Edit3, Play, Loader2, X, Eye, CheckCircle2, XCircle, Clock, Image, Video, Link2, CheckCheck, Check, MailOpen, FileDown, Sparkles, RotateCcw, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import WhatsAppAccountPicker, {
     useWhatsAppAccounts, preselectAccount, accountLabel,
 } from './WhatsAppAccountPicker';
+import PhoneInputWithCountry from '../../common/PhoneInputWithCountry';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -17,6 +18,7 @@ const WhatsAppCampaigns: React.FC = () => {
     const [showForm, setShowForm] = useState(false);
     const [editId, setEditId] = useState<string | null>(null);
     const [sending, setSending] = useState<string | null>(null);
+    const [retrying, setRetrying] = useState(false);
     const [viewLogs, setViewLogs] = useState<string | null>(null);
     const [logs, setLogs] = useState<any[]>([]);
     const [logFilter, setLogFilter] = useState<'all' | 'delivered' | 'read' | 'failed'>('all');
@@ -24,6 +26,13 @@ const WhatsAppCampaigns: React.FC = () => {
     const [reportLoading, setReportLoading] = useState(false);
     const [report, setReport] = useState<any>(null);
     const [reportFetching, setReportFetching] = useState(false);
+
+    // Estados para corrección en línea y diagnóstico preventivo preflight
+    const [editingContact, setEditingContact] = useState<{ id: string; name: string; phone: string; country: string } | null>(null);
+    const [savingContact, setSavingContact] = useState(false);
+    const [preflightData, setPreflightData] = useState<any | null>(null);
+    const [preflightLoading, setPreflightLoading] = useState(false);
+
     // listIds admite VARIAS listas/etiquetas por campaña (v4.921). El servidor
     // conserva listId = la primera, por compatibilidad (patrón EmailCampaign).
     const [form, setForm] = useState({ name: '', description: '', listIds: [] as string[], templateId: '', mediaUrl: '' });
@@ -102,10 +111,7 @@ const WhatsAppCampaigns: React.FC = () => {
         else toast.error((await res.json()).error);
     };
 
-    const handleSend = async (id: string) => {
-        // La confirmación NOMBRA el número por el que va a salir. Es lo único
-        // que separa «enviar una campaña» de «escribirle a cientos de contactos
-        // desde la organización equivocada», y eso no se deshace desde acá.
+    const doActualSend = async (id: string) => {
         const camp = campaigns.find(c => c.id === id);
         const desde = camp?.connection?.label
             ? `Saldrá desde: ${camp.connection.label}`
@@ -118,12 +124,109 @@ const WhatsAppCampaigns: React.FC = () => {
             if (data.success) {
                 toast.success(data.message);
             } else {
-                // El servidor devuelve el motivo Y su salida: un bloqueo cuya
-                // única respuesta es «no se puede» se lee como una avería.
                 toast.error(data.fix ? `${data.error} — ${data.fix}` : (data.error || 'Error al enviar campaña'));
             }
             fetchAll();
         } catch { toast.error('Error al enviar — posible timeout. Recarga para ver el estado.'); } finally { setSending(null); }
+    };
+
+    const handleSend = async (id: string, force = false) => {
+        const camp = campaigns.find(c => c.id === id);
+        if (!force) {
+            setPreflightLoading(true);
+            try {
+                const res = await fetch(`${API}/whatsapp/campaigns/${id}/preflight`, { headers });
+                const data = await res.json();
+                if (data.success && (data.stats.needsReview > 0 || data.stats.invalid > 0)) {
+                    setPreflightData({ campaignId: id, campaignName: camp?.name, ...data });
+                    setPreflightLoading(false);
+                    return;
+                }
+            } catch (e) {
+                console.error('Preflight error:', e);
+            } finally {
+                setPreflightLoading(false);
+            }
+        }
+        await doActualSend(id);
+    };
+
+    const handleRetryFailed = async (id: string) => {
+        if (!confirm('¿Reintentar el envío a los destinatarios que fallaron? Los mensajes ya entregados no se duplicarán.')) return;
+        setRetrying(true);
+        try {
+            const res = await fetch(`${API}/whatsapp/campaigns/${id}/send`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ retryFailed: true }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                toast.success(data.message);
+                await openLogs(id);
+                fetchAll();
+            } else {
+                toast.error(data.error || 'Error al reintentar envío');
+            }
+        } catch {
+            toast.error('Error al reintentar envío — posible timeout');
+        } finally {
+            setRetrying(false);
+        }
+    };
+
+    const handleSaveContactPhone = async () => {
+        if (!editingContact) return;
+        setSavingContact(true);
+        try {
+            const res = await fetch(`/api/crm/contacts/normalize-phones`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    singleContact: {
+                        id: editingContact.id,
+                        phone: editingContact.phone,
+                        country: editingContact.country,
+                    }
+                }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                toast.success('Número corregido y normalizado correctamente');
+                setLogs(prev => prev.map(l => {
+                    if (l.contactId === editingContact.id) {
+                        return {
+                            ...l,
+                            phone: data.contact.phone,
+                            contactCountry: data.contact.country,
+                            errorMessage: 'Número corregido — Listo para reintentar envío',
+                        };
+                    }
+                    return l;
+                }));
+                if (preflightData) {
+                    setPreflightData((prev: any) => {
+                        if (!prev) return prev;
+                        return {
+                            ...prev,
+                            contacts: prev.contacts.map((c: any) => c.id === editingContact.id ? { ...c, phone: data.contact.phone, country: data.contact.country, deliveryStatus: 'ready' } : c),
+                            stats: {
+                                ...prev.stats,
+                                readyToSend: prev.stats.readyToSend + 1,
+                                needsReview: Math.max(0, prev.stats.needsReview - 1),
+                            }
+                        };
+                    });
+                }
+                setEditingContact(null);
+            } else {
+                toast.error(data.error || 'No se pudo guardar el número');
+            }
+        } catch {
+            toast.error('Error al actualizar el número del contacto');
+        } finally {
+            setSavingContact(false);
+        }
     };
 
     const handleDelete = async (id: string) => {
@@ -640,6 +743,14 @@ const WhatsAppCampaigns: React.FC = () => {
                                 {camp && <p className="text-xs text-gray-500 mt-0.5">{camp.name}</p>}
                             </div>
                             <div className="flex items-center gap-2">
+                                {failed > 0 && (
+                                    <button onClick={() => handleRetryFailed(viewLogs)} disabled={retrying}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-bold hover:bg-amber-700 disabled:opacity-50 transition-colors shadow-xs"
+                                        title="Reintentar el envío únicamente a los contactos que fallaron (sin duplicar a los enviados)">
+                                        {retrying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                                        {retrying ? 'Reintentando…' : 'Reintentar fallidos'}
+                                    </button>
+                                )}
                                 <button onClick={() => downloadReport(viewLogs)} disabled={reportLoading}
                                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-bold hover:bg-green-700 disabled:opacity-50"
                                     title="Genera un PDF con el resumen y un análisis del agente Data Analyst">
@@ -695,6 +806,28 @@ const WhatsAppCampaigns: React.FC = () => {
                                             </div>
                                         ))}
                                     </div>
+
+                                    {/* Clasificación de errores estructurados */}
+                                    {report?.stats?.causeCounts && (
+                                        <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap gap-2 text-xs items-center">
+                                            <span className="text-gray-500 font-semibold text-[11px]">Causas de fallo:</span>
+                                            {report.stats.causeCounts.invalid_phone > 0 && (
+                                                <span className="bg-red-50 text-red-700 px-2 py-0.5 rounded font-bold border border-red-200 text-[11px]">
+                                                    {report.stats.causeCounts.invalid_phone} formato o indicativo pendiente
+                                                </span>
+                                            )}
+                                            {report.stats.causeCounts.meta_policy > 0 && (
+                                                <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded font-bold border border-amber-200 text-[11px]">
+                                                    {report.stats.causeCounts.meta_policy} políticas Meta (ecosistema / 24h)
+                                                </span>
+                                            )}
+                                            {report.stats.causeCounts.meta_undeliverable > 0 && (
+                                                <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded font-bold text-[11px]">
+                                                    {report.stats.causeCounts.meta_undeliverable} sin WhatsApp activo
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             ) : (
                                 <div className="flex items-center justify-between gap-2 text-xs text-gray-400 py-2">
@@ -730,7 +863,7 @@ const WhatsAppCampaigns: React.FC = () => {
                                 <thead><tr className="border-b border-gray-100 text-xs text-gray-400 uppercase font-bold">
                                     <th className="p-3">Contacto</th><th className="p-3">Estado</th>
                                     <th className="p-3">Enviado</th><th className="p-3">Entregado</th><th className="p-3">Leído</th>
-                                    <th className="p-3">Error</th>
+                                    <th className="p-3">Error / Acción</th>
                                 </tr></thead>
                                 <tbody className="divide-y divide-gray-50">
                                     {filtered.map(l => (
@@ -744,7 +877,23 @@ const WhatsAppCampaigns: React.FC = () => {
                                             <td className="p-3 text-[11px] text-gray-500">{fmt(l.deliveredAt)}</td>
                                             <td className="p-3 text-[11px] text-gray-500">{fmt(l.readAt)}</td>
                                             <td className={`p-3 text-[11px] ${l.status === 'failed' ? 'text-red-500 font-medium' : 'text-gray-300'}`}>
-                                                {l.errorMessage || (l.status === 'failed' ? 'Error de envío (Meta API)' : '—')}
+                                                <div className="space-y-1.5">
+                                                    <div>{l.errorMessage || (l.status === 'failed' ? 'Error de envío (Meta API)' : '—')}</div>
+                                                    {l.status === 'failed' && (
+                                                        <button
+                                                            onClick={() => setEditingContact({
+                                                                id: l.contactId,
+                                                                name: l.contactName || 'Contacto',
+                                                                phone: l.phone || '',
+                                                                country: l.contactCountry || ''
+                                                            })}
+                                                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 transition-colors shadow-xs"
+                                                            title="Corregir formato o indicativo internacional del contacto"
+                                                        >
+                                                            <Edit3 className="w-3 h-3" /> Corregir número
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </td>
                                         </tr>
                                     ))}
@@ -759,6 +908,141 @@ const WhatsAppCampaigns: React.FC = () => {
                 </div>
                 );
             })()}
+
+            {/* Modal de edición rápida de número de contacto */}
+            {editingContact && (
+                <div className="fixed inset-0 bg-black/50 z-60 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4">
+                        <div className="flex items-center justify-between border-b pb-3">
+                            <div className="flex items-center gap-2">
+                                <Edit3 className="w-5 h-5 text-amber-600" />
+                                <h3 className="font-bold text-gray-900">Corregir número internacional</h3>
+                            </div>
+                            <button onClick={() => setEditingContact(null)} className="text-gray-400 hover:text-gray-600">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div>
+                            <p className="text-xs text-gray-500 mb-0.5">Destinatario:</p>
+                            <p className="text-sm font-semibold text-gray-800">{editingContact.name}</p>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">
+                                Teléfono con indicativo de país
+                            </label>
+                            <PhoneInputWithCountry
+                                value={editingContact.phone}
+                                countryIso={editingContact.country}
+                                onChange={(val, iso) => setEditingContact({ ...editingContact, phone: val, country: iso || editingContact.country })}
+                            />
+                        </div>
+                        <p className="text-xs text-gray-400 bg-gray-50 p-2.5 rounded-lg">
+                            El sistema normalizará automáticamente el número al estándar internacional E.164 preservando el historial en el CRM.
+                        </p>
+                        <div className="flex justify-end gap-2 pt-2 border-t">
+                            <button
+                                onClick={() => setEditingContact(null)}
+                                disabled={savingContact}
+                                className="px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-100 rounded-lg"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={handleSaveContactPhone}
+                                disabled={savingContact}
+                                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-amber-600 text-white hover:bg-amber-700 rounded-lg shadow-xs disabled:opacity-50"
+                            >
+                                {savingContact ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                                Guardar y normalizar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de Diagnóstico Preventivo Preflight */}
+            {preflightData && (
+                <div className="fixed inset-0 bg-black/50 z-60 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden shadow-2xl flex flex-col">
+                        <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-amber-50/50">
+                            <div className="flex items-center gap-2.5">
+                                <ShieldAlert className="w-6 h-6 text-amber-600" />
+                                <div>
+                                    <h3 className="font-bold text-gray-900">Diagnóstico Preventivo Pre-Envío</h3>
+                                    <p className="text-xs text-gray-500">{preflightData.campaignName}</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setPreflightData(null)} className="text-gray-400 hover:text-gray-600">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="p-5 border-b border-gray-100 grid grid-cols-4 gap-3 bg-gray-50/50">
+                            <div className="p-3 bg-white rounded-xl border border-gray-100 text-center">
+                                <p className="text-2xl font-black text-gray-900">{preflightData.stats.total}</p>
+                                <p className="text-[10px] font-bold text-gray-400 uppercase">Total</p>
+                            </div>
+                            <div className="p-3 bg-white rounded-xl border border-gray-100 text-center">
+                                <p className="text-2xl font-black text-emerald-600">{preflightData.stats.readyToSend}</p>
+                                <p className="text-[10px] font-bold text-gray-400 uppercase">Listos E.164</p>
+                            </div>
+                            <div className="p-3 bg-white rounded-xl border border-gray-100 text-center">
+                                <p className="text-2xl font-black text-amber-600">{preflightData.stats.needsReview}</p>
+                                <p className="text-[10px] font-bold text-gray-400 uppercase">Por revisar</p>
+                            </div>
+                            <div className="p-3 bg-white rounded-xl border border-gray-100 text-center">
+                                <p className="text-2xl font-black text-blue-600">{preflightData.stats.qualityScore}%</p>
+                                <p className="text-[10px] font-bold text-gray-400 uppercase">Calidad Base</p>
+                            </div>
+                        </div>
+
+                        <div className="overflow-auto flex-1 p-4 space-y-2">
+                            <p className="text-xs font-bold text-gray-700">Destinatarios que requieren corrección antes del envío:</p>
+                            <div className="divide-y divide-gray-100 border border-gray-100 rounded-xl overflow-hidden">
+                                {preflightData.contacts.filter((c: any) => c.deliveryStatus !== 'ready' && c.deliveryStatus !== 'already_sent').map((c: any) => (
+                                    <div key={c.id} className="p-3 flex items-center justify-between bg-white hover:bg-gray-50">
+                                        <div>
+                                            <p className="text-xs font-bold text-gray-900">{c.name} {c.lastName || ''}</p>
+                                            <p className="text-[11px] font-mono text-gray-500">{c.phone || '(sin teléfono)'}</p>
+                                            <p className="text-[11px] text-amber-700 mt-0.5">{c.validation?.reason || 'Número pendiente de revisión'}</p>
+                                        </div>
+                                        <button
+                                            onClick={() => setEditingContact({
+                                                id: c.id,
+                                                name: `${c.name} ${c.lastName || ''}`,
+                                                phone: c.phone || '',
+                                                country: c.country || ''
+                                            })}
+                                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100"
+                                        >
+                                            <Edit3 className="w-3 h-3" /> Corregir
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="p-4 border-t border-gray-100 flex items-center justify-between bg-gray-50/50">
+                            <button
+                                onClick={() => setPreflightData(null)}
+                                className="px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-100 rounded-lg"
+                            >
+                                Cancelar y revisar después
+                            </button>
+                            <button
+                                onClick={() => {
+                                    const id = preflightData.campaignId;
+                                    setPreflightData(null);
+                                    handleSend(id, true);
+                                }}
+                                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-green-600 text-white hover:bg-green-700 rounded-lg shadow-xs"
+                            >
+                                <Play className="w-3.5 h-3.5" /> Enviar a los listos ({preflightData.stats.readyToSend})
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

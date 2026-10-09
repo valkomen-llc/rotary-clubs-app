@@ -1,5 +1,6 @@
 import db from '../../lib/prisma.js';
 import { resolveClubId } from '../crmController.js';
+import { validatePhoneNumber, sanitizeRawPhone } from '../../lib/phone.js';
 
 export const getContacts = async (req, res) => {
   try {
@@ -116,13 +117,29 @@ export const createContact = async (req, res) => {
       city, country, tags, lists, customFields, status 
     } = req.body;
 
-    if (phone) {
+    let finalPhone = phone ? sanitizeRawPhone(phone) : null;
+    let finalCountry = country || null;
+
+    if (finalPhone) {
+      const norm = validatePhoneNumber(finalPhone, country);
+      if (norm.ok) {
+        finalPhone = norm.e164Formatted;
+        if (!finalCountry && norm.country) finalCountry = norm.country;
+      }
+      const rawDigits = finalPhone.replace(/[^0-9]/g, '');
       const duplicate = await db.crmContact.findFirst({
-        where: { clubId, phone }
+        where: {
+          clubId,
+          OR: [
+            { phone: finalPhone },
+            { phone: rawDigits },
+            { phone: `+${rawDigits}` }
+          ]
+        }
       });
       if (duplicate) {
         return res.status(400).json({ 
-          error: `Ya existe otro contacto (${duplicate.name} ${duplicate.lastName || ''}) con el número de teléfono ${phone}.` 
+          error: `Ya existe otro contacto (${duplicate.name} ${duplicate.lastName || ''}) con el número de teléfono ${finalPhone}.` 
         });
       }
     }
@@ -134,11 +151,11 @@ export const createContact = async (req, res) => {
         name,
         lastName,
         email,
-        phone,
+        phone: finalPhone,
         title,
         company,
         city,
-        country,
+        country: finalCountry,
         status: status || 'subscribed',
         source: 'manual',
         // Optional nested creates
@@ -171,23 +188,36 @@ export const updateContact = async (req, res) => {
   try {
     const { id } = req.params;
     const clubId = await resolveClubId(req, true);
-    const updates = req.body;
+    const updates = { ...req.body };
 
     // Verify ownership
     const existing = await db.crmContact.findFirst({ where: { id, clubId } });
     if (!existing) return res.status(404).json({ error: 'Contact not found' });
 
     if (updates.phone) {
+      let finalPhone = sanitizeRawPhone(updates.phone);
+      const norm = validatePhoneNumber(finalPhone, updates.country || existing.country);
+      if (norm.ok) {
+        finalPhone = norm.e164Formatted;
+        if (!updates.country && norm.country) updates.country = norm.country;
+      }
+      updates.phone = finalPhone;
+
+      const rawDigits = finalPhone.replace(/[^0-9]/g, '');
       const duplicate = await db.crmContact.findFirst({
         where: {
           clubId,
-          phone: updates.phone,
-          id: { not: id }
+          id: { not: id },
+          OR: [
+            { phone: finalPhone },
+            { phone: rawDigits },
+            { phone: `+${rawDigits}` }
+          ]
         }
       });
       if (duplicate) {
         return res.status(400).json({ 
-          error: `Ya existe otro contacto (${duplicate.name} ${duplicate.lastName || ''}) con el número de teléfono ${updates.phone}.` 
+          error: `Ya existe otro contacto (${duplicate.name} ${duplicate.lastName || ''}) con el número de teléfono ${finalPhone}.` 
         });
       }
     }

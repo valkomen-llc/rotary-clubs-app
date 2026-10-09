@@ -7,7 +7,7 @@
 import db from '../lib/db.js';
 import crypto from 'crypto';
 import { s3 } from '../lib/storage.js';
-import { normalizeForMeta, validateForMeta } from '../lib/phone.js';
+import { normalizeForMeta, validateForMeta, validatePhoneNumber, sanitizeRawPhone } from '../lib/phone.js';
 import { openWebhookEvent, closeWebhookEvent, verifySignature, logOutbound } from '../lib/crmWebhookAudit.js';
 import { ensureAutomationSchema } from '../lib/ensureAutomationSchema.js';
 import pkg from '@aws-sdk/client-s3';
@@ -1032,32 +1032,191 @@ export const importContacts = async (req, res) => {
     }
 };
 
-// Fix phone numbers that were imported without country code
-export const fixPhoneNumbers = async (req, res) => {
+// Auditoría preventiva de números de teléfono en la base de contactos
+export const auditContactPhones = async (req, res) => {
     try {
         const clubId = await resolveClubId(req, true);
         if (!clubId) return res.status(400).json({ error: 'No se pudo determinar el club' });
-        const { countryCode = '+57' } = req.body;
-        const cc = countryCode.replace('+', '');
 
-        // Find contacts whose phone doesn't start with the full country code
-        // Colombian mobile numbers start with 3, landlines with other digits
-        // Pattern: +3XXXXXXXXX (10 digits after +) should be +573XXXXXXXXX
-        const r = await db.query(
-            `UPDATE "WhatsAppContact" 
-             SET phone = $2 || SUBSTRING(phone FROM 2)
-             WHERE "clubId" = $1
-             AND phone LIKE '+%'
-             AND phone NOT LIKE $3
-             AND LENGTH(phone) BETWEEN 8 AND 13
-             RETURNING id, phone`,
-            [clubId, countryCode, `${countryCode}%`]
-        );
-        res.json({ success: true, fixed: r.rowCount, sample: r.rows.slice(0, 5) });
+        const { listId, tag } = req.query;
+        let query = `SELECT c.id, c.name, c."lastName", c.email, c.phone, c.country, c.metadata, c.status
+                     FROM "WhatsAppContact" c`;
+        const params = [clubId];
+
+        if (listId) {
+            query += ` JOIN "WhatsAppListMember" m ON m."contactId" = c.id WHERE c."clubId" = $1 AND m."listId"::text = $2`;
+            params.push(listId);
+        } else if (tag) {
+            query += ` WHERE c."clubId" = $1 AND $2 = ANY(c.tags)`;
+            params.push(tag);
+        } else {
+            query += ` WHERE c."clubId" = $1`;
+        }
+        query += ` ORDER BY c.name ASC`;
+
+        const r = await db.query(query, params);
+        const contacts = r.rows;
+
+        const summary = {
+            total: contacts.length,
+            valid: 0,
+            recoverable: 0,
+            pending_review: 0,
+            invalid: 0,
+            byCountry: {},
+        };
+
+        const audited = contacts.map(c => {
+            const v = validatePhoneNumber(c.phone, c.country);
+            let category = 'invalid';
+            if (v.ok) {
+                category = 'valid';
+                summary.valid++;
+            } else if (v.status === 'pending_review') {
+                if (v.isAmbiguous && v.callingCode === '1') {
+                    category = 'recoverable';
+                    summary.recoverable++;
+                } else {
+                    category = 'pending_review';
+                    summary.pending_review++;
+                }
+            } else {
+                category = 'invalid';
+                summary.invalid++;
+            }
+
+            const cCode = v.country || c.country || 'UNKNOWN';
+            summary.byCountry[cCode] = (summary.byCountry[cCode] || 0) + 1;
+
+            return {
+                id: c.id,
+                name: c.name,
+                lastName: c.lastName,
+                email: c.email,
+                phone: c.phone,
+                country: c.country,
+                status: c.status,
+                category,
+                validation: v,
+            };
+        });
+
+        const qualityScore = summary.total > 0
+            ? Math.round((summary.valid / summary.total) * 100)
+            : 100;
+
+        res.json({
+            success: true,
+            summary: {
+                ...summary,
+                qualityScore,
+            },
+            contacts: audited,
+        });
     } catch (err) {
-        console.error('WA fixPhoneNumbers:', err);
+        console.error('WA auditContactPhones:', err);
         res.status(500).json({ error: err.message });
     }
+};
+
+// Normalización controlada individual o por lote con registro de historial en metadata
+export const batchNormalizePhones = async (req, res) => {
+    try {
+        const clubId = await resolveClubId(req, true);
+        if (!clubId) return res.status(400).json({ error: 'No se pudo determinar el club' });
+
+        const { contactIds, defaultCountry, singleContact } = req.body;
+
+        // Caso individual: edición rápida desde tracker o lista de contactos
+        if (singleContact && singleContact.id) {
+            const { id, phone, country } = singleContact;
+            const existingR = await db.query(`SELECT * FROM "WhatsAppContact" WHERE id=$1 AND "clubId"=$2`, [id, clubId]);
+            if (!existingR.rows.length) return res.status(404).json({ error: 'Contacto no encontrado' });
+            const existing = existingR.rows[0];
+
+            const v = validatePhoneNumber(phone, country || existing.country);
+            if (!v.ok && v.status !== 'pending_review') {
+                return res.status(400).json({ error: `Número no válido: ${v.reason}` });
+            }
+
+            let metaObj = {};
+            try { metaObj = JSON.parse(existing.metadata || '{}'); } catch {}
+            if (!metaObj.phoneHistory) metaObj.phoneHistory = [];
+            metaObj.phoneHistory.push({
+                previousPhone: existing.phone,
+                previousCountry: existing.country,
+                updatedAt: new Date().toISOString(),
+                method: 'manual_correction',
+            });
+
+            const newPhone = v.e164Formatted || phone;
+            const newCountry = v.country || country || existing.country;
+
+            await db.query(
+                `UPDATE "WhatsAppContact"
+                 SET phone=$1, country=$2, metadata=$3, "updatedAt"=NOW()
+                 WHERE id=$4 AND "clubId"=$5`,
+                [newPhone, newCountry, JSON.stringify(metaObj), id, clubId]
+            );
+
+            return res.json({
+                success: true,
+                contact: { id, phone: newPhone, country: newCountry, validation: v }
+            });
+        }
+
+        // Caso lote: normaliza de forma segura contactos recuperables sin alterar irreversibles
+        let query = `SELECT id, name, phone, country, metadata FROM "WhatsAppContact" WHERE "clubId"=$1`;
+        const params = [clubId];
+        if (Array.isArray(contactIds) && contactIds.length > 0) {
+            query += ` AND id = ANY($2::text[])`;
+            params.push(contactIds);
+        }
+
+        const r = await db.query(query, params);
+        let updatedCount = 0;
+        const updated = [];
+
+        for (const row of r.rows) {
+            const v = validatePhoneNumber(row.phone, defaultCountry || row.country);
+            if (v.ok && v.e164Formatted && v.e164Formatted !== row.phone) {
+                let metaObj = {};
+                try { metaObj = JSON.parse(row.metadata || '{}'); } catch {}
+                if (!metaObj.phoneHistory) metaObj.phoneHistory = [];
+                metaObj.phoneHistory.push({
+                    previousPhone: row.phone,
+                    previousCountry: row.country,
+                    normalizedTo: v.e164Formatted,
+                    updatedAt: new Date().toISOString(),
+                    method: 'batch_normalization',
+                });
+
+                await db.query(
+                    `UPDATE "WhatsAppContact"
+                     SET phone=$1, country=$2, metadata=$3, "updatedAt"=NOW()
+                     WHERE id=$4 AND "clubId"=$5`,
+                    [v.e164Formatted, v.country || row.country, JSON.stringify(metaObj), row.id, clubId]
+                );
+                updatedCount++;
+                updated.push({ id: row.id, name: row.name, oldPhone: row.phone, newPhone: v.e164Formatted, country: v.country });
+            }
+        }
+
+        res.json({
+            success: true,
+            totalExamined: r.rows.length,
+            updatedCount,
+            updated,
+        });
+    } catch (err) {
+        console.error('WA batchNormalizePhones:', err);
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// Retrocompatibilidad con fixPhoneNumbers llamando a normalización segura
+export const fixPhoneNumbers = async (req, res) => {
+    return batchNormalizePhones(req, res);
 };
 
 export const importFromLeads = async (req, res) => {
@@ -1731,8 +1890,125 @@ export const deleteCampaign = async (req, res) => {
     }
 };
 
+// Diagnóstico preventivo pre-vuelo (preflight) antes de ejecutar el envío
+export const getCampaignPreflight = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const clubId = await resolveClubId(req);
+
+        const campR = await db.query(`SELECT * FROM "WhatsAppCampaign" WHERE id=$1 AND "clubId"=$2`, [id, clubId]);
+        if (!campR.rows.length) return res.status(404).json({ error: 'Campaña no encontrada' });
+        const campaign = campR.rows[0];
+
+        const listRefs = campaignListRefs(campaign);
+        if (!listRefs.length) {
+            return res.json({
+                ready: false,
+                error: 'La campaña no tiene listas o etiquetas asignadas',
+                stats: { total: 0, readyToSend: 0, alreadySent: 0, needsReview: 0, invalid: 0, qualityScore: 0 }
+            });
+        }
+
+        const tagNames = listRefs.filter(x => String(x).startsWith('tag:')).map(x => String(x).slice(4));
+        const plainListIds = listRefs.filter(x => !String(x).startsWith('tag:'));
+        const contactsById = new Map();
+
+        if (plainListIds.length) {
+            const contactsR = await db.query(
+                `SELECT c.* FROM "WhatsAppContact" c JOIN "WhatsAppListMember" m ON m."contactId"=c.id
+                 WHERE m."listId"::text = ANY($1::text[]) AND c."clubId"=$2 AND c.status IN ('active', 'subscribed')`,
+                [plainListIds, clubId]
+            );
+            for (const row of contactsR.rows) contactsById.set(row.id, row);
+        }
+        if (tagNames.length) {
+            const contactsR = await db.query(
+                `SELECT * FROM "WhatsAppContact"
+                 WHERE "clubId"=$1 AND status IN ('active', 'subscribed') AND tags && $2::text[]`,
+                [clubId, tagNames]
+            );
+            for (const row of contactsR.rows) contactsById.set(row.id, row);
+        }
+        const contacts = [...contactsById.values()];
+
+        // Obtener logs previos para distinguir ya enviados vs fallidos
+        const sentLogsR = await db.query(
+            `SELECT "contactId", status FROM "WhatsAppMessageLog" WHERE "campaignId"=$1`,
+            [id]
+        );
+        const sentStatusByContact = new Map();
+        for (const log of sentLogsR.rows) {
+            sentStatusByContact.set(log.contactId, log.status);
+        }
+
+        const breakdown = {
+            total: contacts.length,
+            readyToSend: 0,
+            alreadySent: 0,
+            needsReview: 0,
+            invalid: 0,
+            countries: {},
+        };
+
+        const contactDetails = contacts.map(c => {
+            const logStatus = sentStatusByContact.get(c.id);
+            const isAlreadyDelivered = ['sent', 'delivered', 'read'].includes(logStatus);
+            const v = validatePhoneNumber(c.phone, c.country);
+
+            const countryKey = v.country || c.country || 'UNKNOWN';
+            breakdown.countries[countryKey] = (breakdown.countries[countryKey] || 0) + 1;
+
+            let deliveryStatus = 'ready';
+            if (isAlreadyDelivered) {
+                deliveryStatus = 'already_sent';
+                breakdown.alreadySent++;
+            } else if (v.ok) {
+                deliveryStatus = 'ready';
+                breakdown.readyToSend++;
+            } else if (v.status === 'pending_review') {
+                deliveryStatus = 'needs_review';
+                breakdown.needsReview++;
+            } else {
+                deliveryStatus = 'invalid';
+                breakdown.invalid++;
+            }
+
+            return {
+                id: c.id,
+                name: c.name,
+                lastName: c.lastName,
+                phone: c.phone,
+                country: c.country,
+                deliveryStatus,
+                validation: v,
+                previousLogStatus: logStatus || null,
+            };
+        });
+
+        const qualityScore = breakdown.total > 0
+            ? Math.round(((breakdown.readyToSend + breakdown.alreadySent) / breakdown.total) * 100)
+            : 0;
+
+        res.json({
+            success: true,
+            campaignId: id,
+            campaignName: campaign.name,
+            campaignStatus: campaign.status,
+            stats: {
+                ...breakdown,
+                qualityScore,
+            },
+            contacts: contactDetails,
+        });
+    } catch (err) {
+        console.error('WA getCampaignPreflight:', err);
+        res.status(500).json({ error: err.message });
+    }
+};
+
 export const sendCampaign = async (req, res) => {
     const { id } = req.params;
+    const { retryFailed = false } = req.body || {};
     const clubId = await resolveClubId(req);
     try {
         const campR = await db.query(`SELECT * FROM "WhatsAppCampaign" WHERE id=$1 AND "clubId"=$2`, [id, clubId]);
@@ -1746,12 +2022,16 @@ export const sendCampaign = async (req, res) => {
         const STALE_SENDING_MS = 90 * 1000;
         const updatedMs = campaign.updatedAt ? new Date(campaign.updatedAt).getTime() : 0;
         const isStaleSending = campaign.status === 'sending' && (Date.now() - updatedMs) > STALE_SENDING_MS;
+        
+        // Si es reintento de fallidos o reanudación de envío parcial:
         if (!['draft', 'paused', 'failed'].includes(campaign.status) && !isStaleSending) {
-            return res.status(400).json({
-                error: campaign.status === 'sending'
-                    ? 'La campaña se está enviando en este momento. Espera ~1 minuto y, si sigue detenida, reintenta para reanudar.'
-                    : `No se puede enviar una campaña en estado "${campaign.status}"`,
-            });
+            if (!retryFailed || campaign.status === 'sending') {
+                return res.status(400).json({
+                    error: campaign.status === 'sending'
+                        ? 'La campaña se está enviando en este momento. Espera ~1 minuto y, si sigue detenida, reintenta para reanudar.'
+                        : `No se puede enviar una campaña en estado "${campaign.status}"`,
+                });
+            }
         }
         const listRefs = campaignListRefs(campaign);
         if (!listRefs.length) return res.status(400).json({ error: 'La campaña debe tener al menos una lista asignada' });
@@ -1766,20 +2046,6 @@ export const sendCampaign = async (req, res) => {
         // ═══════════════════════════════════════════════════════════════════
         // POR QUÉ LÍNEA SALE ESTA CAMPAÑA (v4.1060, multi-WABA)
         // ═══════════════════════════════════════════════════════════════════
-        //
-        // ⚠️ SE LEE DE LA FILA, NO DE LA PANTALLA. Hasta v4.1059 esto era
-        // `getClubConfig(clubId)` —la fila única de `WhatsAppConfig`—, así que
-        // una campaña de la Feria de Proyectos salía por el número del
-        // Distrito. Para quien la recibe, es otra organización escribiéndole, y
-        // no se deshace: hay que ir a borrar el mensaje a mano, si es que se
-        // puede. Es el mismo defecto que v4.992 cerró en las RESPUESTAS,
-        // pendiente en el único camino que no nace de un entrante.
-        //
-        // La conexión se congeló al crear la campaña. Si no la tiene —campaña
-        // anterior a esta versión— la resuelve `attributeLegacyRow` al leer
-        // Campañas; y si tampoco, se cae a la línea heredada, que es
-        // literalmente de donde salía antes. Nada que hoy funciona deja de
-        // funcionar.
         const { connectionForEntity, resolveScope } = await import('../lib/whatsappScopeStore.js');
         const { openToken } = await import('../lib/whatsappConnectionStore.js');
         const { sendGuard } = await import('../lib/whatsappConnections.js');
@@ -1791,8 +2057,6 @@ export const sendCampaign = async (req, res) => {
         let sendConnection = await connectionForEntity(clubId, campaign.connectionId);
 
         if (!sendConnection && !campaign.connectionId) {
-            // Sin emisora declarada: la principal es un valor por defecto
-            // legítimo para una campaña que nació antes de multi-cuenta.
             const scope = await resolveScope(clubId);
             sendConnection = scope.connection;
         }
@@ -1800,9 +2064,6 @@ export const sendCampaign = async (req, res) => {
         if (sendConnection) {
             const guard = sendGuard(sendConnection);
             const opened = openToken(sendConnection.accessTokenEnc);
-            // ⚠️ LA PUERTA VA EN EL SERVIDOR. Esconder el botón no protege un
-            // endpoint de quien lo conoce (v4.868), y acá lo que está en juego
-            // es a nombre de qué organización aparece un mensaje.
             const puerta = canCampaignSend({
                 connection: sendConnection,
                 canSend: guard.ok,
@@ -1813,8 +2074,6 @@ export const sendCampaign = async (req, res) => {
             if (!puerta.ok) {
                 return res.status(400).json({
                     error: puerta.label,
-                    // El motivo y su SALIDA. Un bloqueo cuya única respuesta es
-                    // «no se puede» se lee como una avería (v4.1008).
                     fix: puerta.fix,
                     code: puerta.code,
                     connection: { id: sendConnection.id, name: sendConnection.displayName },
@@ -1823,8 +2082,6 @@ export const sendCampaign = async (req, res) => {
             sendPhoneNumberId = sendConnection.phoneNumberId;
             sendToken = opened.token;
         } else if (campaign.connectionId) {
-            // Declarada y ausente: NO se cae a la principal. Sustituirla sería
-            // mandar por otro número lo que alguien configuró para éste.
             return res.status(400).json({
                 error: 'La cuenta de WhatsApp de esta campaña ya no existe.',
                 fix: 'Edita la campaña y elige desde qué cuenta se envía.',
@@ -1837,13 +2094,11 @@ export const sendCampaign = async (req, res) => {
             sendToken = config.accessToken;
         }
 
-        // La audiencia es la UNIÓN de todas las listas y etiquetas de la campaña,
-        // deduplicada por contacto: quien está en dos listas recibe UN mensaje.
+        // Audiencia de la campaña
         const tagNames = listRefs.filter(x => String(x).startsWith('tag:')).map(x => String(x).slice(4));
         const plainListIds = listRefs.filter(x => !String(x).startsWith('tag:'));
         const contactsById = new Map();
         if (plainListIds.length) {
-            // Cast a text en la COLUMNA para tolerar id uuid o text según el entorno.
             const contactsR = await db.query(
                 `SELECT c.* FROM "WhatsAppContact" c JOIN "WhatsAppListMember" m ON m."contactId"=c.id
                  WHERE m."listId"::text = ANY($1::text[]) AND c."clubId"=$2 AND c.status IN ('active', 'subscribed')`,
@@ -1863,15 +2118,13 @@ export const sendCampaign = async (req, res) => {
         if (!contacts.length) return res.status(400).json({ error: 'Las listas/etiquetas seleccionadas no tienen contactos activos' });
 
         await db.query(
-            `UPDATE "WhatsAppCampaign" SET status='sending',"totalContacts"=$1,"sentAt"=NOW(),"updatedAt"=NOW() WHERE id=$2`,
+            `UPDATE "WhatsAppCampaign" SET status='sending',"totalContacts"=$1,"sentAt"=COALESCE("sentAt", NOW()),"updatedAt"=NOW() WHERE id=$2`,
             [contacts.length, id]
         );
 
-        // Process ALL sends BEFORE responding (Vercel freezes after res.json)
         const vars = (() => { try { return JSON.parse(campaign.templateVars || '{}'); } catch { return {}; } })();
         let sent = 0, failed = 0;
 
-        // Build header component (upload once, reuse for all contacts)
         const headerComponents = [];
         if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.headerType)) {
             const hc = await buildMediaHeader({ template, mediaUrl: vars.mediaUrl, config });
@@ -1884,10 +2137,9 @@ export const sendCampaign = async (req, res) => {
         const templatePayload = { name: template.name, language: { code: template.language } };
         if (allComponents.length > 0) templatePayload.components = allComponents;
 
-        // Build body text for message log so the chat view can display the actual template content
         const logBodyText = template.bodyText || `[Template: ${template.name}]`;
 
-        // Check which contacts were already sent (in case of retry after timeout)
+        // Contactos ya enviados exitosamente (evita duplicar)
         const alreadySentR = await db.query(
             `SELECT "contactId" FROM "WhatsAppMessageLog" WHERE "campaignId"=$1 AND status IN ('sent','delivered','read')`,
             [id]
@@ -1895,16 +2147,15 @@ export const sendCampaign = async (req, res) => {
         const alreadySentIds = new Set(alreadySentR.rows.map(r => r.contactId));
         const pendingContacts = contacts.filter(c => !alreadySentIds.has(c.id));
 
-        // Send in parallel batches (10 concurrent) to fit within Vercel timeout
         const BATCH_SIZE = 10;
         const sendOne = async (contact) => {
-            // Validar/normalizar SIN adivinar. Si el número no es confiable NO se envía:
-            // se registra como fallido con motivo (evita mandarlo a un tercero y que el
-            // tracker muestre "entregado/leído" para el contacto equivocado).
-            const v = validateForMeta(contact.phone);
+            // Normalización internacional E.164 considerando país registrado del contacto
+            const v = validatePhoneNumber(contact.phone, contact.country);
             const toPhone = v.e164;
             if (!v.ok) {
                 const invLogId = crypto.randomUUID();
+                // Limpiar log previo si existía para evitar inflar conteos
+                await db.query(`DELETE FROM "WhatsAppMessageLog" WHERE "campaignId"=$1 AND "contactId"=$2 AND status='failed'`, [id, contact.id]).catch(() => {});
                 await db.query(
                     `INSERT INTO "WhatsAppMessageLog" (id,"clubId","connectionId","campaignId","contactId",phone,"templateName","bodyText",status,direction,"errorMessage","failedAt","createdAt","updatedAt")
                      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'failed','outgoing',$9,NOW(),NOW(),NOW())`,
@@ -1935,6 +2186,10 @@ export const sendCampaign = async (req, res) => {
                 });
                 const messageId = apiRes.messages?.[0]?.id;
                 const cMsgId = crypto.randomUUID();
+
+                // Si se reintentó con éxito, remover el registro 'failed' anterior
+                await db.query(`DELETE FROM "WhatsAppMessageLog" WHERE "campaignId"=$1 AND "contactId"=$2 AND status='failed'`, [id, contact.id]).catch(() => {});
+
                 await db.query(
                     `INSERT INTO "WhatsAppMessageLog" (id,"clubId","connectionId","campaignId","contactId",phone,"messageId","templateName","bodyText",status,direction,"sentAt","createdAt","updatedAt")
                      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'sent','outgoing',NOW(),NOW(),NOW())`,
@@ -1944,6 +2199,7 @@ export const sendCampaign = async (req, res) => {
                 return { ok: true };
             } catch (err) {
                 const cfLogId = crypto.randomUUID();
+                await db.query(`DELETE FROM "WhatsAppMessageLog" WHERE "campaignId"=$1 AND "contactId"=$2 AND status='failed'`, [id, contact.id]).catch(() => {});
                 await db.query(
                     `INSERT INTO "WhatsAppMessageLog" (id,"clubId","connectionId","campaignId","contactId",phone,"templateName","bodyText",status,direction,"errorMessage","failedAt","createdAt","updatedAt")
                      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'failed','outgoing',$9,NOW(),NOW(),NOW())`,
@@ -1954,14 +2210,10 @@ export const sendCampaign = async (req, res) => {
             }
         };
 
-        // Presupuesto de tiempo: cortar con margen antes del límite de Vercel (120s) y
-        // dejar la campaña en 'paused' (reanudable) en vez de que la maten a mitad y
-        // quede atascada en 'sending'.
         const loopStart = Date.now();
         const TIME_BUDGET_MS = 90 * 1000;
         for (let i = 0; i < pendingContacts.length; i += BATCH_SIZE) {
             if (Date.now() - loopStart > TIME_BUDGET_MS) {
-                // Envío parcial: guardar progreso y pausar para continuar en un nuevo envío.
                 await db.query(
                     `UPDATE "WhatsAppCampaign" SET status='paused',sent=$1,failed=$2,"updatedAt"=NOW() WHERE id=$3`,
                     [sent + alreadySentIds.size, failed, id]
@@ -1979,28 +2231,33 @@ export const sendCampaign = async (req, res) => {
                 if (r.status === 'fulfilled' && r.value.ok) sent++;
                 else failed++;
             }
-            // Heartbeat: progreso visible + marca de vida (permite detectar si la función
-            // muere por timeout y habilitar la reanudación).
             await db.query(
                 `UPDATE "WhatsAppCampaign" SET sent=$1,failed=$2,"updatedAt"=NOW() WHERE id=$3`,
                 [sent + alreadySentIds.size, failed, id]
             ).catch(() => {});
         }
 
-        // Include previously sent contacts in totals
-        sent += alreadySentIds.size;
+        // Recalcular estadísticas fácticas consolidadas de la base de datos
+        const finalLogsR = await db.query(
+            `SELECT status, count(*)::int as count FROM "WhatsAppMessageLog" WHERE "campaignId"=$1 GROUP BY status`,
+            [id]
+        );
+        let finalSent = 0, finalFailed = 0;
+        for (const row of finalLogsR.rows) {
+            if (['sent', 'delivered', 'read'].includes(row.status)) finalSent += row.count;
+            if (row.status === 'failed') finalFailed += row.count;
+        }
 
-        // Update campaign with final stats
-        const finalStatus = failed === contacts.length ? 'failed' : 'sent';
+        const finalStatus = (finalFailed > 0 && finalSent === 0) ? 'failed' : 'sent';
         await db.query(
             `UPDATE "WhatsAppCampaign" SET status=$1,sent=$2,failed=$3,"updatedAt"=NOW() WHERE id=$4`,
-            [finalStatus, sent, failed, id]
+            [finalStatus, finalSent, finalFailed, id]
         );
 
         res.json({
             success: true,
-            message: `Campaña enviada: ${sent} enviados, ${failed} fallidos de ${contacts.length} contactos`,
-            campaignId: id, sent, failed, total: contacts.length,
+            message: `Campaña procesada: ${finalSent} enviados, ${finalFailed} fallidos de ${contacts.length} destinatarios`,
+            campaignId: id, sent: finalSent, failed: finalFailed, total: contacts.length,
         });
     } catch (err) {
         console.error('WA sendCampaign:', err);
@@ -2012,7 +2269,7 @@ export const sendCampaign = async (req, res) => {
 export const getCampaignLogs = async (req, res) => {
     try {
         const r = await db.query(
-            `SELECT l.*,c.name as "contactName"
+            `SELECT l.*, c.name as "contactName", c."lastName" as "contactLastName", c.country as "contactCountry"
              FROM "WhatsAppMessageLog" l
              LEFT JOIN "WhatsAppContact" c ON c.id=l."contactId"
              WHERE l."campaignId"=$1 ORDER BY l."createdAt" DESC LIMIT 500`,
@@ -2050,14 +2307,10 @@ const explainWhatsAppError = (rawMsg) => {
         { re: /auth|token|oauth|190|expired/, txt: 'Problema de autenticación con Meta (token expirado o inválido). Revisar la configuración de WhatsApp.' },
     ];
     for (const r of rules) if (r.re.test(lower)) return r.txt;
-    // Si no hay coincidencia, devolver el mensaje original más una nota
     return `Error reportado por Meta: ${msg}`;
 };
 
 // ── REPORTE IA (Agente Data Analyst) ─────────────────────────────────────────
-// Genera un análisis ejecutivo de la campaña con conclusiones y recomendaciones
-// usando el agente Data Analyst (routeToModel del ai-router). Lo consume el botón
-// "Descargar PDF" del tracker de campañas en el frontend.
 export const getCampaignReport = async (req, res) => {
     try {
         const { id } = req.params;
@@ -2073,14 +2326,13 @@ export const getCampaignReport = async (req, res) => {
         );
         if (!campR.rows.length) return res.status(404).json({ error: 'Campaña no encontrada' });
         const camp = campR.rows[0];
-        // El reporte nombra TODOS los destinos (varias listas desde v4.921).
         const listLabels = await labelListRefs(campaignListRefs(camp));
         camp.listName = listLabels.length ? listLabels.join(' · ') : null;
 
         // 2. Logs → embudo (misma lógica que el tracker del frontend)
         const logsR = await db.query(
             `SELECT l.status,l.phone,l."sentAt",l."deliveredAt",l."readAt",l."errorMessage",
-                    c.name as "contactName"
+                    c.id as "contactId", c.name as "contactName", c."lastName" as "contactLastName", c.country as "contactCountry"
              FROM "WhatsAppMessageLog" l
              LEFT JOIN "WhatsAppContact" c ON c.id=l."contactId"
              WHERE l."campaignId"=$1 ORDER BY l."createdAt" DESC`,
@@ -2094,7 +2346,7 @@ export const getCampaignReport = async (req, res) => {
         const sent = logs.filter(l => ['sent', 'delivered', 'read'].includes(l.status)).length;
         const pct = (n) => total ? Math.round((n / total) * 100) : 0;
 
-        // Tiempo medio de lectura (entre enviado y leído) en minutos
+        // Tiempo medio de lectura
         const readTimes = logs
             .filter(l => l.status === 'read' && l.sentAt && l.readAt)
             .map(l => (new Date(l.readAt) - new Date(l.sentAt)) / 60000)
@@ -2103,12 +2355,35 @@ export const getCampaignReport = async (req, res) => {
             ? Math.round(readTimes.reduce((a, b) => a + b, 0) / readTimes.length)
             : null;
 
-        // Errores agrupados
+        // Errores agrupados y clasificación por país y causa
         const errorCounts = {};
+        const errorsByCountry = {};
+        const causeCounts = {
+            invalid_phone: 0,
+            meta_undeliverable: 0,
+            meta_policy: 0,
+            other: 0,
+        };
+
         for (const l of logs.filter(l => l.status === 'failed')) {
             const key = (l.errorMessage || 'Error de envío (Meta API)').slice(0, 120);
             errorCounts[key] = (errorCounts[key] || 0) + 1;
+
+            const cCode = l.contactCountry || 'UNKNOWN';
+            errorsByCountry[cCode] = (errorsByCountry[cCode] || 0) + 1;
+
+            const errLow = (l.errorMessage || '').toLowerCase();
+            if (errLow.includes('número inválido') || errLow.includes('no reconocido') || errLow.includes('longitud')) {
+                causeCounts.invalid_phone++;
+            } else if (errLow.includes('131026') || errLow.includes('undeliverable') || errLow.includes('not a whatsapp')) {
+                causeCounts.meta_undeliverable++;
+            } else if (errLow.includes('ecosystem') || errLow.includes('experiment') || errLow.includes('24h') || errLow.includes('131049')) {
+                causeCounts.meta_policy++;
+            } else {
+                causeCounts.other++;
+            }
         }
+
         const topErrors = Object.entries(errorCounts)
             .sort((a, b) => b[1] - a[1]).slice(0, 5)
             .map(([msg, count]) => ({ msg, count }));
@@ -2121,19 +2396,23 @@ export const getCampaignReport = async (req, res) => {
             failed, failedPct: pct(failed),
             avgReadMin,
             topErrors,
+            errorsByCountry,
+            causeCounts,
         };
 
-        // Lista de destinatarios (estado + explicación del fallo cuando aplica).
-        // Orden: primero leídos y entregados, luego enviados, y los fallidos al final.
         const statusRank = { read: 0, delivered: 1, sent: 2, received: 3, pending: 4, failed: 9 };
         const recipients = logs
             .map(l => ({
+                contactId: l.contactId || null,
                 name: l.contactName || null,
+                lastName: l.contactLastName || null,
+                country: l.contactCountry || null,
                 phone: l.phone,
                 status: l.status,
                 sentAt: l.sentAt,
                 deliveredAt: l.deliveredAt,
                 readAt: l.readAt,
+                errorMessage: l.errorMessage || null,
                 errorReason: l.status === 'failed' ? explainWhatsAppError(l.errorMessage) : null,
             }))
             .sort((a, b) => (statusRank[a.status] ?? 5) - (statusRank[b.status] ?? 5));

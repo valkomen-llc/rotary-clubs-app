@@ -1,5 +1,6 @@
 import db from '../../lib/prisma.js';
 import { resolveClubId } from '../crmController.js';
+import { validatePhoneNumber, sanitizeRawPhone } from '../../lib/phone.js';
 
 export const importContacts = async (req, res) => {
   try {
@@ -42,22 +43,50 @@ export const importContacts = async (req, res) => {
       return list.id;
     };
 
-    // Para evitar consultas N+1 en exceso, podríamos usar db.$transaction, pero dadas
-    // las inserciones condicionales y los upserts complejos (con relations),
-    // procesaremos iterativamente (adecuado para lotes de ~500-1000).
-    // Si la carga es muy masiva en el futuro, usaríamos un queue.
-    
+    // Para evitar consultas N+1 en exceso, procesaremos iterativamente
     for (const [index, contact] of contacts.entries()) {
       try {
         if (!contact.email && !contact.phone) {
           throw new Error('El contacto debe tener al menos un Email o Teléfono válido.');
         }
 
-        // Criterio de unicidad: PRIORIDAD al teléfono (identidad en WhatsApp). Si no hay
-        // teléfono, se busca por correo.
+        // Normalización internacional E.164
+        let finalPhone = contact.phone ? sanitizeRawPhone(contact.phone) : null;
+        let finalCountry = contact.country || null;
+
+        if (contact.countryCode && finalPhone && !finalPhone.startsWith('+')) {
+          const ccClean = String(contact.countryCode).replace(/[^0-9]/g, '');
+          const phoneDigits = finalPhone.replace(/[^0-9]/g, '');
+          if (ccClean && !phoneDigits.startsWith(ccClean)) {
+            finalPhone = `+${ccClean}${phoneDigits}`;
+          }
+        }
+
+        if (finalPhone) {
+          const norm = validatePhoneNumber(finalPhone, contact.countryCode || contact.country);
+          if (norm.ok) {
+            finalPhone = norm.e164Formatted;
+            if (!finalCountry && norm.country) {
+              finalCountry = norm.country;
+            }
+          }
+        }
+
+        // Criterio de unicidad: PRIORIDAD al teléfono (identidad en WhatsApp).
+        // Se busca por formato E.164, sin +, o con + para tolerar variaciones previas.
         let existingContact = null;
-        if (contact.phone) {
-           existingContact = await db.crmContact.findFirst({ where: { clubId, phone: contact.phone } });
+        if (finalPhone) {
+           const rawDigits = finalPhone.replace(/[^0-9]/g, '');
+           existingContact = await db.crmContact.findFirst({
+             where: {
+               clubId,
+               OR: [
+                 { phone: finalPhone },
+                 { phone: rawDigits },
+                 { phone: `+${rawDigits}` }
+               ]
+             }
+           });
         }
         if (!existingContact && contact.email) {
            existingContact = await db.crmContact.findFirst({ where: { clubId, email: contact.email } });
@@ -69,11 +98,11 @@ export const importContacts = async (req, res) => {
           name: contact.name || 'Sin nombre',
           lastName: contact.lastName || null,
           email: contact.email || null,
-          phone: contact.phone || null,
+          phone: finalPhone || null,
           title: contact.title || null,
           company: contact.company || null,
           city: contact.city || null,
-          country: contact.country || null,
+          country: finalCountry || null,
           address: contact.address || null,
           website: contact.website || null,
           status: contact.status || status,
@@ -83,10 +112,6 @@ export const importContacts = async (req, res) => {
         let contactId;
 
         if (existingContact) {
-          // El contacto ya existe. Aunque duplicados = "Ignorar", NO lo saltamos por
-          // completo: conservamos sus datos pero SÍ seguimos para enlazarlo a las
-          // listas/etiquetas seleccionadas (antes se hacía `continue` y los contactos
-          // existentes nunca entraban a la lista destino).
           contactId = existingContact.id;
           if (onDuplicate === 'update') {
              await db.crmContact.update({ where: { id: existingContact.id }, data });

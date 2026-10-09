@@ -42,6 +42,24 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1179.0',
+        title: 'Comunicaciones CRM: Motor Telefónico Internacional E.164, Selector de Países, Diagnóstico Pre-Envío y Reintentos Inteligentes de WhatsApp 🌍📲',
+        description: 'Reingeniería integral del sistema de telefonía internacional y motor de campañas de WhatsApp en Club Platform. Incorporación de biblioteca estándar libphonenumber-js con sanitización estricta de importaciones de hojas de cálculo (remoción de comillas simples de Excel), detección de números de Norteamérica (NANP +1), Colombia (+57), Panamá (+507) y más de 240 países sin preasunciones forzadas. Selector de país con búsqueda interactiva, banderas e indicativos telefónicos en formularios de creación y edición de contactos (ContactModal), distinguiendo país de residencia vs. línea telefónica. Asistente predictivo de importación CSV/Excel (ImportWizard) con mapeo de columnas de país e indicativo y resumen de calidad previa. Módulo de auditoría y normalización de la base de contactos con trazabilidad histórica inalterable en metadata.phoneHistory. Diagnóstico preventivo preflight antes de cada envío de campaña y botón de reintento inteligente de mensajes fallidos en el tracker sin duplicar destinatarios previamente entregados.',
+        date: new Date().toISOString(),
+        tags: ['crm', 'whatsapp', 'e164', 'internationalization', 'data-quality', 'preflight', 'production-release'],
+        type: 'feature',
+        changes: [
+            { type: 'added', text: 'Normalización estándar internacional E.164 basada en libphonenumber-js para todos los módulos de Club Platform.' },
+            { type: 'added', text: 'Selector interactivo de país con banderas, búsqueda rápida e indicativo telefónico en creación y edición de contactos (PhoneInputWithCountry).' },
+            { type: 'improved', text: 'Asistente de importación CSV/Excel con mapeo de país e indicativo y resumen predictivo clasificado (válidos, revisión, duplicados, errores).' },
+            { type: 'added', text: 'Diagnóstico preventivo preflight (/api/crm/campaigns/:id/preflight) antes de disparar campañas de WhatsApp para evitar envíos fallidos.' },
+            { type: 'added', text: 'Botón de "Reintentar fallidos" en el tracker de campañas que envía exclusivamente a los contactos pendientes sin duplicar mensajes ya entregados.' },
+            { type: 'added', text: 'Acción rápida "Corregir número" por fila fallida en el seguimiento de campaña con modal de edición y normalización en tiempo real.' },
+            { type: 'improved', text: 'Auditoría y normalización de contactos existentes conservando el historial previo en metadata.phoneHistory.' },
+            { type: 'fixed', text: 'Corrección de lectura de comillas simples de hojas de cálculo y pérdida del prefijo + en contactos internacionales.' }
+        ]
+    },
+    {
         version: '4.1178.0',
         title: 'Centro de Control VIP: Panel Lateral de 5 Pestañas, Trazabilidad y Optimización (Fase 2) 📋✨',
         description: 'Reingeniería de interfaz y experiencia de usuario en el Centro de Operaciones (/admin/mission-control-vip). Reemplazo del modal central por un Slide-over Drawer lateral responsive que preserva la visibilidad del tablero Kanban en segundo plano. Arquitectura de 5 pestañas canónicas: 01. Información (contacto con acciones directas mailto/tel/WhatsApp, relato humano original y selectores de prioridad y estado especial), 02. Archivos (cuadrícula de evidencias fotográficas de alta resolución con URLs firmadas en Amazon S3, badges de rol ⭐ Portada/Galería/Descarte, selector de portada con un clic y Lightbox interactivo), 03. Producción (gestión multiformato independiente para Artículo Web, Reel Vertical 9:16 con reproductor o generador Kling/Luma y copys optimizados para redes sociales con copiado rápido), 04. Distribución (matriz multi-tenant de sitios web y sedes, estado en vivo de publicaciones en Facebook Fanpage y X, y botón de difusión inmediata), 05. Historial (bitácora inalterable de auditoría basada en ContributionSubmissionEvent con timeline cronológico y formulario para registro de notas internas). Rediseño de tarjetas Kanban con miniaturas 16:9 con hover-zoom, pills de prioridad (Urgente/Alta/Normal/Baja) y filtros avanzados por club rotario y prioridad.',
