@@ -17,7 +17,7 @@ const grantOf = async (req) => getUserGrant(req).catch(() => ({ isGlobal: true, 
 // también `req.params.id` por compatibilidad con llamadas internas/tests viejos.
 const tid = (req) => req.params.templateId ?? req.params.id;
 
-const EMAIL_BLOCKS = ['heading', 'text', 'image', 'button', 'columns', 'divider', 'spacer', 'social', 'video', 'html'];
+const EMAIL_BLOCKS = ['heading', 'text', 'image', 'button', 'columns', 'divider', 'spacer', 'social', 'video', 'html', 'table', 'menu', 'global'];
 // Exportada para la prueba de paridad editor↔validador (v4.1170): todo tipo
 // que el modelo `emailBlocks` puede renderizar debe ser aceptado al guardar.
 export { EMAIL_BLOCKS };

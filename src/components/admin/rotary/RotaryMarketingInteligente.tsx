@@ -12,6 +12,7 @@ import {
   FileText, Download, CheckCircle, Flame, Star, BookOpen, AlertTriangle
 } from 'lucide-react';
 import { toast } from 'sonner';
+import VisualTemplateEditor from '../email-marketing/VisualTemplateEditor';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const getToken = () => localStorage.getItem('rotary_token');
@@ -63,6 +64,7 @@ export const RotaryMarketingInteligente: React.FC = () => {
 
   // Horizontes del planificador
   const [horizonte, setHorizonte] = useState<'mensual' | 'trimestral' | 'semestral' | 'anual'>('mensual');
+  const [visualEditorCampaign, setVisualEditorCampaign] = useState<any | null>(null);
 
   // Carga de datos
   const loadData = useCallback(async (isRefresh = false) => {
@@ -1306,7 +1308,7 @@ export const RotaryMarketingInteligente: React.FC = () => {
               )}
             </div>
 
-            <div className="p-4 border-t border-gray-100 bg-gray-50 flex items-center justify-between text-xs">
+            <div className="p-4 border-t border-gray-100 bg-gray-50 flex flex-wrap items-center justify-between gap-2 text-xs">
               <button
                 onClick={() => setPreviewCampaign(null)}
                 className="px-4 py-2 rounded-xl border border-gray-200 text-gray-600 font-bold hover:bg-white"
@@ -1314,16 +1316,47 @@ export const RotaryMarketingInteligente: React.FC = () => {
                 Cerrar
               </button>
 
-              <button
-                onClick={() => handleSyncWithEmailMarketing(previewCampaign)}
-                className="px-4 py-2 rounded-xl bg-rotary-blue hover:bg-sky-800 text-white font-bold flex items-center gap-1.5 shadow-xs"
-              >
-                <Mail className="w-3.5 h-3.5 text-sky-200" />
-                <span>Sincronizar con Email Marketing</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setVisualEditorCampaign(previewCampaign)}
+                  className="px-3.5 py-2 rounded-xl bg-violet-700 hover:bg-violet-600 text-white font-bold flex items-center gap-1.5 shadow-xs transition-all"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-violet-200" />
+                  <span>Diseñar en Editor Visual (FluentCRM)</span>
+                </button>
+
+                <button
+                  onClick={() => handleSyncWithEmailMarketing(previewCampaign)}
+                  className="px-4 py-2 rounded-xl bg-rotary-blue hover:bg-sky-800 text-white font-bold flex items-center gap-1.5 shadow-xs"
+                >
+                  <Mail className="w-3.5 h-3.5 text-sky-200" />
+                  <span>Sincronizar con Email Marketing</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
+      )}
+
+      {/* Editor Visual Institucional Modal */}
+      {visualEditorCampaign && (
+        <VisualTemplateEditor
+          campaignContext={visualEditorCampaign}
+          initialName={`[${visualEditorCampaign.code?.toUpperCase() || 'ROTARY'}] ${visualEditorCampaign.name}`}
+          initialSubject={visualEditorCampaign.subject}
+          initialPreheader={visualEditorCampaign.preheader}
+          onSave={({ subject: s, preheader: p, html }) => {
+            setCampaigns((prev) =>
+              prev.map((c) => (c.id === visualEditorCampaign.id ? { ...c, subject: s, preheader: p, contentHtml: html } : c))
+            );
+            if (previewCampaign?.id === visualEditorCampaign.id) {
+              setPreviewCampaign((prev: any) => ({ ...prev, subject: s, preheader: p, contentHtml: html }));
+            }
+            toast.success('Campaña actualizada con diseño institucional protegido');
+            setVisualEditorCampaign(null);
+          }}
+          onClose={() => setVisualEditorCampaign(null)}
+        />
       )}
 
     </div>

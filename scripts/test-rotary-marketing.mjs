@@ -102,3 +102,69 @@ test('Fase 4: Gobernanza distrital y reglas de frecuencia WhatsApp/Meta', () => 
   assert.equal(governanceRules.respectMetaWindow, true);
   assert.deepEqual(governanceRules.supportedDistricts, ['4271', '4281']);
 });
+
+test('Editor Visual: Plantilla Maestra separa bloques protegidos de dinámicos', async () => {
+  const { createRotaryMasterDesign, injectCampaignIntoDesign, getRotaryGlobalBlocksCatalog } = await import('../src/lib/emailBlocks.ts');
+  const master = createRotaryMasterDesign();
+  assert.ok(master && Array.isArray(master.blocks), 'Debe generar un diseño con bloques');
+
+  // Verificar presencia de bloques protegidos institucionales
+  const protectedBlocks = master.blocks.filter(b => b.isProtected);
+  const dynamicBlocks = master.blocks.filter(b => !b.isProtected);
+  assert.ok(protectedBlocks.length >= 3, 'Debe contener al menos 3 bloques institucionales protegidos (header, footer, firma)');
+  assert.ok(dynamicBlocks.length >= 2, 'Debe contener zonas dinámicas para contenido y CTA');
+
+  // Inyección no destructiva de contenido de campaña
+  const campaignData = {
+    code: 'sem-01',
+    name: 'Captación Comunitaria',
+    messageCentral: 'Invitación a registrar proyectos y jornadas solidarias.',
+    utmCampaign: 'sem01_captacion',
+    formUrl: 'https://app.clubplatform.org/rotary-en-accion?utm_campaign=sem01'
+  };
+  const injected = injectCampaignIntoDesign(master, campaignData);
+  assert.equal(injected.blocks.length, master.blocks.length, 'El número de bloques debe preservarse');
+
+  // Comprobar que los bloques protegidos NO cambiaron
+  injected.blocks.forEach((b, i) => {
+    if (master.blocks[i].isProtected) {
+      assert.equal(b.isProtected, true);
+      assert.equal(b.type, master.blocks[i].type);
+      if (b.type === 'global') {
+        assert.equal(b.globalKey, master.blocks[i].globalKey);
+      }
+    }
+  });
+
+  // Catálogo de Bloques Globales
+  const catalog = getRotaryGlobalBlocksCatalog();
+  assert.equal(catalog.length, 4, 'El catálogo debe contener 4 bloques globales institucionales');
+  const keys = catalog.map(c => c.key);
+  assert.ok(keys.includes('rotary_header'));
+  assert.ok(keys.includes('rotary_areas_focus'));
+  assert.ok(keys.includes('rotary_signature'));
+  assert.ok(keys.includes('rotary_footer'));
+});
+
+test('Editor Visual: Renderiza HTML compatible para table, menu y global', async () => {
+  const { renderDesignToHtml, makeBlock } = await import('../src/lib/emailBlocks.ts');
+  const tableBlock = makeBlock('table');
+  const menuBlock = makeBlock('menu');
+  const globalBlock = makeBlock('global');
+
+  assert.equal(tableBlock.type, 'table');
+  assert.equal(menuBlock.type, 'menu');
+  assert.equal(globalBlock.type, 'global');
+
+  const testDesign = {
+    version: 1,
+    settings: { bg: '#f3f4f6', contentBg: '#ffffff', font: 'Arial', textColor: '#333', linkColor: '#013388', width: 600 },
+    blocks: [globalBlock, menuBlock, tableBlock]
+  };
+
+  const html = renderDesignToHtml(testDesign);
+  assert.ok(html.includes('table'), 'Debe generar tablas HTML');
+  assert.ok(html.includes('ROTARY'), 'Debe incluir la identidad oficial de Rotary');
+  assert.ok(html.includes('Distritos 4271'), 'Debe mencionar los distritos oficiales');
+});
+

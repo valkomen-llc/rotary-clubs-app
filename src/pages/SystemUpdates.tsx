@@ -42,6 +42,23 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1184.0',
+        title: 'Editor Visual de Plantillas Institucionales: Motor FluentCRM, Separación Maestra/Campaña y Bloques Globales 🎨✉️',
+        description: 'Incorporación del nuevo Editor Visual de Plantillas de Correo Electrónico inspirado en la experiencia de FluentCRM, integrado de manera nativa con los módulos de Email Marketing (/admin/email-marketing?tab=plantillas) y Rotary en Acción (/admin/rotary-en-accion?tab=marketing). Implementa una separación fundamental de dos niveles: la Plantilla Maestra institucional reutilizable (con logotipo oficial de Rotary International, lemas distritales, cabecera y pie de página protegidos contra alteraciones o deformaciones por IA) y las Instancias de Campaña (con zonas dinámicas editables para asunto, saludo, cuerpo editorial y llamados a la acción con parámetros UTM). Incluye lienzo central responsivo con selector de ancho (540px, 600px, 660px), alternador de vista móvil/escritorio, zoom dinámico, panel lateral de bloques (Columnas, Botón, Divisor, Encabezado, Párrafo, Imagen con Biblioteca, Menú, HTML, Tabla, Redes Sociales), inspector de propiedades avanzadas con padding vertical y estilos globales, catálogo de Bloques Globales Institucionales sincronizados y modal de envío de correos de prueba en tiempo real.',
+        date: new Date().toISOString(),
+        tags: ['email-marketing', 'editor-visual', 'fluentcrm', 'plantilla-maestra', 'bloques-globales', 'rotary-en-accion', 'production-release'],
+        type: 'feature',
+        changes: [
+            { type: 'added', text: 'Editor Visual de Plantillas de Correo Electrónico inspirado en FluentCRM con lienzo central responsivo y barra lateral de bloques.' },
+            { type: 'added', text: 'Separación estricta entre componentes institucionales protegidos (logos, cabecera oficial, footer legal) y zonas dinámicas de campaña.' },
+            { type: 'added', text: 'Soporte y renderizado email-safe para nuevos tipos de bloque: Tablas estructuradas, Menús de navegación y Bloques Globales.' },
+            { type: 'added', text: 'Catálogo de Bloques Globales Institucionales (Encabezado Oficial, 7 Áreas de Enfoque, Firma Distrital y Pie Oficial Protegido).' },
+            { type: 'added', text: 'Inspector de propiedades de bloques con control de padding vertical (padTop/padBottom), redondeo de bordes, alineación y colores.' },
+            { type: 'added', text: 'Envío de correos de prueba directamente desde el editor visual hacia cualquier dirección de correo para verificación en clientes de email.' },
+            { type: 'added', text: 'Integración en el modal de campañas de Rotary en Acción con botón «Diseñar en Editor Visual (FluentCRM)» antes de sincronizar con Email Marketing.' }
+        ]
+    },
+    {
         version: '4.1183.0',
         title: 'Marketing Inteligente para Rotary en Acción — Despliegue Fases 1 a 4: Triggers, A/B Testing, IA y Gobernanza 🚀🎯',
         description: 'Culminación y despliegue integral de todas las fases del Plan Estratégico de Marketing Inteligente para Rotary en Acción en producción (/admin/rotary-en-accion?tab=marketing). Fase 1: Panel General de KPIs, Planificador de 4 Horizontes, Audiencias Dinámicas en 5 Segmentos, Campañas Piloto SEM 01-04 y Matriz de Atribución UTM. Fase 2: Automatización por Eventos con 4 flujos activos (Bienvenida a nuevos clubes, Alerta preventiva a los 45 días de inactividad, Acuse de recibo de actividades y Celebración de publicación aprobada), Programador de envíos futuros y Generador de Smart Links con tokens seguros (ca_token) y parámetros UTM para prellenado automático sin fricción. Fase 3: Agente Inteligente de Copywriting con IA generativa multicanal ajustada a la voz rotaria y las 7 áreas de interés de Rotary International, Suite de Pruebas A/B multivariantes con cálculo de tasa de apertura, clics y declaración instantánea de variantes ganadoras, y Muro de Casos de Éxito con proyectos reales publicados para emulación comunitaria. Fase 4: Analítica de Penetración Distrital comparando el Distrito 4271 frente al Distrito 4281 (clubes activos, metas de cobertura y clubes pendientes), Matriz de Gobernanza y Políticas de Contacto anti-saturación de WhatsApp Business / Meta (máx 2 promocionales/mes y ventana de 24h), y Generador con descarga en un clic del Informe Ejecutivo en formato Markdown para Gobernadores y autoridades distritales.',

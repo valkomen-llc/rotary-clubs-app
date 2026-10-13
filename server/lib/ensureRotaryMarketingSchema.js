@@ -371,6 +371,19 @@ export async function ensureRotaryMarketingSchema() {
     "createdAt" TIMESTAMPTZ DEFAULT NOW()
   )`);
 
+  // 7. Tabla de Bloques Globales Institucionales Reutilizables
+  await db.query(`CREATE TABLE IF NOT EXISTS "RotaryMarketingGlobalBlock" (
+    id TEXT PRIMARY KEY,
+    key TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT 'general',
+    "isProtected" BOOLEAN NOT NULL DEFAULT TRUE,
+    description TEXT DEFAULT '',
+    design JSONB DEFAULT '{}'::jsonb,
+    html TEXT DEFAULT '',
+    "updatedAt" TIMESTAMPTZ DEFAULT NOW()
+  )`);
+
   // Semillas de campañas piloto (idempotente por code)
   for (const c of PILOT_CAMPAIGNS) {
     await db.query(`INSERT INTO "RotaryMarketingCampaign"
@@ -382,6 +395,47 @@ export async function ensureRotaryMarketingSchema() {
         c.targetSegment, c.channels, c.subject, c.preheader, c.messageCentral,
         c.utmCampaign, c.status, c.contentHtml, c.whatsappTemplate
       ]
+    ).catch(() => {});
+  }
+
+  // Semillas de Bloques Globales Institucionales
+  const GLOBAL_BLOCKS_SEED = [
+    {
+      key: 'rotary_header',
+      name: 'Encabezado Institucional Rotary',
+      category: 'Cabecera',
+      description: 'Logo oficial Rotary International, lema de campaña y Distritos 4271 & 4281.',
+      isProtected: true
+    },
+    {
+      key: 'rotary_areas_focus',
+      name: '7 Áreas de Interés de Rotary',
+      category: 'Contenido',
+      description: 'Tarjeta estructurada con las siete causas oficiales de servicio rotario.',
+      isProtected: true
+    },
+    {
+      key: 'rotary_signature',
+      name: 'Firma Oficial Distrital',
+      category: 'Firmas',
+      description: 'Firma del Comité Distrital de Imagen Pública y Comunicaciones.',
+      isProtected: true
+    },
+    {
+      key: 'rotary_footer',
+      name: 'Footer Institucional Protegido',
+      category: 'Pie de página',
+      description: 'Insignias de áreas de interés, redes sociales, asistencia WhatsApp y enlace de baja legal.',
+      isProtected: true
+    }
+  ];
+
+  for (const gb of GLOBAL_BLOCKS_SEED) {
+    await db.query(`INSERT INTO "RotaryMarketingGlobalBlock"
+      (id, key, name, category, "isProtected", description)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (key) DO UPDATE SET name=$3, category=$4, description=$6`,
+      [`rgb-${gb.key}`, gb.key, gb.name, gb.category, gb.isProtected, gb.description]
     ).catch(() => {});
   }
 
@@ -420,6 +474,49 @@ export async function ensureRotaryMarketingSchema() {
       '¿Qué está haciendo tu club por su comunidad? Compártelo hoy mismo',
       'Tu club en acción: Haz visible el impacto de tu servicio rotario')
     ON CONFLICT (id) DO NOTHING`).catch(() => {});
+
+  // Asegurar Plantilla Maestra Institucional en ContentActivationTemplate si la tabla existe
+  try {
+    const masterDesign = {
+      version: 1,
+      settings: {
+        bg: '#0d233a',
+        contentBg: '#ffffff',
+        font: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+        textColor: '#334155',
+        linkColor: '#013388',
+        width: 600
+      },
+      blocks: [
+        { id: 'b_master_hdr', type: 'global', globalKey: 'rotary_header', label: 'Encabezado Institucional Protegido', isProtected: true, isLocked: true },
+        { id: 'b_master_saludo', type: 'heading', text: 'Hola {{contact.first_name|Líder Rotario(a)}},', level: 2, align: 'left', color: '#0f172a', weight: '800', label: 'Saludo Personalizado', isProtected: false },
+        { id: 'b_master_intro', type: 'text', text: 'Estimadas rotarias y estimados rotarios de los Distritos 4271 y 4281:\n\nCada semana, los clubes realizan un esfuerzo incansable por sus comunidades. Rotary en Acción es la plataforma oficial para visibilizar y registrar ese impacto.', align: 'left', color: '#334155', size: 15, label: 'Cuerpo de Campaña (Editable / IA)', isProtected: false },
+        { id: 'b_master_areas', type: 'global', globalKey: 'rotary_areas_focus', label: '7 Áreas de Enfoque Institucionales', isProtected: true, isLocked: true },
+        { id: 'b_master_cta', type: 'button', text: 'COMPARTIR ACTIVIDAD EN ROTARY EN ACCIÓN', href: '{{form_url}}', bg: '#013388', color: '#ffffff', align: 'center', radius: 12, label: 'Botón CTA Oficial', isProtected: false },
+        { id: 'b_master_firma', type: 'global', globalKey: 'rotary_signature', label: 'Firma Oficial Distrital', isProtected: true, isLocked: true },
+        { id: 'b_master_footer', type: 'global', globalKey: 'rotary_footer', label: 'Pie de Página Institucional Protegido', isProtected: true, isLocked: true }
+      ]
+    };
+    await db.query(`INSERT INTO "ContentActivationTemplate"
+      (id, scope, name, channel, design, html, subject, preheader, "isDefault", status, version, "createdBy")
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      ON CONFLICT (id) DO NOTHING`,
+      [
+        'tpl-rotary-en-accion-master',
+        'global',
+        'Plantilla Maestra Institucional · Rotary en Acción',
+        'email',
+        JSON.stringify(masterDesign),
+        '<div style="text-align:center">Plantilla Maestra Rotary en Acción</div>',
+        'Tu club transforma comunidades. ¡Hagámoslo visible en Rotary en Acción!',
+        'Comparte tus proyectos y actividades comunitarias en Rotary en Acción.',
+        true,
+        'activa',
+        1,
+        'sistema'
+      ]
+    ).catch(() => {});
+  } catch {}
 
   _ready = true;
 }

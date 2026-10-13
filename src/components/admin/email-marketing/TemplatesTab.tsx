@@ -18,6 +18,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import EmailDesigner from '../content-activation/MessageDesigner/EmailDesigner';
 import EmailAiAssistant from './EmailAiAssistant';
+import VisualTemplateEditor from './VisualTemplateEditor';
 import { renderDesignToHtml, newId, DEFAULT_SETTINGS, type EmailDesign, type Block } from '../../../lib/emailBlocks';
 
 // HTML simple de la IA → bloques editables (h2/h3→encabezado, p/li→texto,
@@ -89,6 +90,7 @@ const TemplatesTab: React.FC<{ initialTemplateId?: string | null }> = ({ initial
   const [creating, setCreating] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [aiWorking, setAiWorking] = useState(false);
+  const [visualEditorOpen, setVisualEditorOpen] = useState(false);
 
   // IA → bloques: el HTML propuesto se convierte a bloques editables y se
   // anexa o reemplaza en el diseñador (nada se guarda sin revisión humana).
@@ -363,8 +365,16 @@ const TemplatesTab: React.FC<{ initialTemplateId?: string | null }> = ({ initial
         )}
         {sel && (
           <div className="space-y-3 border rounded-2xl p-4">
-            <div className="font-bold text-sm">
-              {sel.name} <span className="text-gray-400 font-normal">· v{sel.version}{sel.pinned ? ' (versión fijada, solo lectura)' : ''}</span>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2">
+              <div className="font-bold text-sm">
+                {sel.name} <span className="text-gray-400 font-normal">· v{sel.version}{sel.pinned ? ' (versión fijada, solo lectura)' : ''}</span>
+              </div>
+              <button
+                onClick={() => setVisualEditorOpen(true)}
+                className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all"
+              >
+                <span>🎨 Editor Visual (FluentCRM)</span>
+              </button>
             </div>
             {sel.pinned && (
               <div className="text-xs">
@@ -495,6 +505,25 @@ const TemplatesTab: React.FC<{ initialTemplateId?: string | null }> = ({ initial
           </div>
         )}
       </div>
+      {visualEditorOpen && sel && (
+        <VisualTemplateEditor
+          templateId={sel.id}
+          initialName={editName}
+          initialSubject={editSubject}
+          initialPreheader={editPreheader}
+          initialDesign={editDesign}
+          onSave={({ name: n, subject: s, preheader: p, design: d }) => {
+            setEditName(n);
+            setEditSubject(s);
+            setEditPreheader(p);
+            setEditDesign(d);
+            load(soloActivas);
+            open(sel.id);
+          }}
+          onClose={() => setVisualEditorOpen(false)}
+          readOnly={!editable}
+        />
+      )}
     </div>
   );
 };

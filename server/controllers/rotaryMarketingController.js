@@ -10,6 +10,7 @@ import { normClub, universe } from '../lib/rotaryDashboard.js';
 import { ensureRotaryMarketingSchema } from '../lib/ensureRotaryMarketingSchema.js';
 import { resolveClubId } from './crmController.js';
 import { routeToModel, getDefaultModel } from '../lib/ai-router.js';
+import EmailService from '../services/EmailService.js';
 
 const fail = (res, e) => {
   console.error('[rotaryMarketingController]', e);
@@ -717,6 +718,181 @@ export const updateMarketingConfig = async (req, res) => {
     );
 
     res.json({ ok: true, config: rows[0] });
+  } catch (e) {
+    return fail(res, e);
+  }
+};
+
+// ─── 9. Editor Visual de Plantillas Institucionales & Bloques Globales ──────
+export const getMasterTemplate = async (req, res) => {
+  try {
+    await ensureRotaryMarketingSchema();
+    const { rows } = await db.query(
+      `SELECT * FROM "ContentActivationTemplate" WHERE id='tpl-rotary-en-accion-master' LIMIT 1`
+    ).catch(() => ({ rows: [] }));
+
+    let tpl = rows[0];
+    if (!tpl) {
+      tpl = {
+        id: 'tpl-rotary-en-accion-master',
+        name: 'Plantilla Maestra Institucional · Rotary en Acción',
+        channel: 'email',
+        isDefault: true,
+        status: 'activa',
+        version: 1,
+        design: {
+          version: 1,
+          settings: { bg: '#0d233a', contentBg: '#ffffff', font: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif", textColor: '#334155', linkColor: '#013388', width: 600 },
+          blocks: [
+            { id: 'b_master_hdr', type: 'global', globalKey: 'rotary_header', label: 'Encabezado Institucional Protegido', isProtected: true, isLocked: true },
+            { id: 'b_master_saludo', type: 'heading', text: 'Hola {{contact.first_name|Líder Rotario(a)}},', level: 2, align: 'left', color: '#0f172a', weight: '800', label: 'Saludo Personalizado', isProtected: false },
+            { id: 'b_master_intro', type: 'text', text: 'Estimadas rotarias y estimados rotarios de los Distritos 4271 y 4281:\n\nCada semana, los clubes realizan un esfuerzo incansable por sus comunidades. Rotary en Acción es la plataforma oficial para visibilizar y registrar ese impacto.', align: 'left', color: '#334155', size: 15, label: 'Cuerpo de Campaña (Editable / IA)', isProtected: false },
+            { id: 'b_master_areas', type: 'global', globalKey: 'rotary_areas_focus', label: '7 Áreas de Enfoque Institucionales', isProtected: true, isLocked: true },
+            { id: 'b_master_cta', type: 'button', text: 'COMPARTIR ACTIVIDAD EN ROTARY EN ACCIÓN', href: '{{form_url}}', bg: '#013388', color: '#ffffff', align: 'center', radius: 12, label: 'Botón CTA Oficial', isProtected: false },
+            { id: 'b_master_firma', type: 'global', globalKey: 'rotary_signature', label: 'Firma Oficial Distrital', isProtected: true, isLocked: true },
+            { id: 'b_master_footer', type: 'global', globalKey: 'rotary_footer', label: 'Pie de Página Institucional Protegido', isProtected: true, isLocked: true }
+          ]
+        }
+      };
+    } else if (typeof tpl.design === 'string') {
+      try { tpl.design = JSON.parse(tpl.design); } catch {}
+    }
+
+    res.json({ ok: true, template: tpl });
+  } catch (e) {
+    return fail(res, e);
+  }
+};
+
+export const getGlobalBlocks = async (req, res) => {
+  try {
+    await ensureRotaryMarketingSchema();
+    const { rows } = await db.query(
+      `SELECT * FROM "RotaryMarketingGlobalBlock" ORDER BY category, name`
+    ).catch(() => ({ rows: [] }));
+    res.json({ ok: true, blocks: rows });
+  } catch (e) {
+    return fail(res, e);
+  }
+};
+
+export const updateGlobalBlock = async (req, res) => {
+  try {
+    await ensureRotaryMarketingSchema();
+    const { key } = req.params;
+    const { name, category, design, html, description } = req.body;
+    const { rows } = await db.query(
+      `UPDATE "RotaryMarketingGlobalBlock"
+       SET name=COALESCE($1, name),
+           category=COALESCE($2, category),
+           description=COALESCE($3, description),
+           design=COALESCE($4, design),
+           html=COALESCE($5, html),
+           "updatedAt"=NOW()
+       WHERE key=$6 RETURNING *`,
+      [name, category, description, design ? JSON.stringify(design) : null, html, key]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Bloque global no encontrado' });
+    res.json({ ok: true, block: rows[0], message: 'Bloque global actualizado exitosamente' });
+  } catch (e) {
+    return fail(res, e);
+  }
+};
+
+export const applyCampaignToTemplate = async (req, res) => {
+  try {
+    await ensureRotaryMarketingSchema();
+    const { campaignId, templateId } = req.body;
+    if (!campaignId) return res.status(400).json({ error: 'Falta campaignId' });
+
+    const campRes = await db.query(`SELECT * FROM "RotaryMarketingCampaign" WHERE id=$1 OR code=$1`, [campaignId]);
+    const campaign = campRes.rows[0];
+    if (!campaign) return res.status(404).json({ error: 'Campaña no encontrada' });
+
+    let master = null;
+    if (templateId) {
+      const tplRes = await db.query(`SELECT * FROM "ContentActivationTemplate" WHERE id=$1`, [templateId]);
+      master = tplRes.rows[0];
+    }
+    if (!master) {
+      const tplRes = await db.query(`SELECT * FROM "ContentActivationTemplate" WHERE id='tpl-rotary-en-accion-master'`);
+      master = tplRes.rows[0];
+    }
+
+    let design = master?.design;
+    if (typeof design === 'string') {
+      try { design = JSON.parse(design); } catch {}
+    }
+
+    if (!design || !Array.isArray(design.blocks)) {
+      design = {
+        version: 1,
+        settings: { bg: '#0d233a', contentBg: '#ffffff', font: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif", textColor: '#334155', linkColor: '#013388', width: 600 },
+        blocks: [
+          { id: 'b_master_hdr', type: 'global', globalKey: 'rotary_header', label: 'Encabezado Institucional Protegido', isProtected: true, isLocked: true },
+          { id: 'b_master_saludo', type: 'heading', text: 'Hola {{contact.first_name|Líder Rotario(a)}},', level: 2, align: 'left', color: '#0f172a', weight: '800', label: 'Saludo Personalizado', isProtected: false },
+          { id: 'b_master_intro', type: 'text', text: `Estimadas rotarias y estimados rotarios de los Distritos 4271 y 4281:\n\n${campaign.messageCentral || 'Compartimos esta iniciativa con toda nuestra red rotaria.'}`, align: 'left', color: '#334155', size: 15, label: 'Cuerpo de Campaña (Editable / IA)', isProtected: false },
+          { id: 'b_master_areas', type: 'global', globalKey: 'rotary_areas_focus', label: '7 Áreas de Enfoque Institucionales', isProtected: true, isLocked: true },
+          { id: 'b_master_cta', type: 'button', text: 'COMPARTIR ACTIVIDAD EN ROTARY EN ACCIÓN', href: `https://app.clubplatform.org/rotary-en-accion?utm_source=email_marketing&utm_medium=campaign&utm_campaign=${campaign.utmCampaign || 'rotary_campana'}`, bg: '#013388', color: '#ffffff', align: 'center', radius: 12, label: 'Botón CTA Oficial', isProtected: false },
+          { id: 'b_master_firma', type: 'global', globalKey: 'rotary_signature', label: 'Firma Oficial Distrital', isProtected: true, isLocked: true },
+          { id: 'b_master_footer', type: 'global', globalKey: 'rotary_footer', label: 'Pie de Página Institucional Protegido', isProtected: true, isLocked: true }
+        ]
+      };
+    } else {
+      design.blocks = design.blocks.map(b => {
+        if (b.isProtected) return b;
+        if (b.type === 'text' && (b.label?.includes('Cuerpo') || b.label?.includes('Editable'))) {
+          return {
+            ...b,
+            text: `Estimadas rotarias y estimados rotarios de los Distritos 4271 y 4281:\n\n${campaign.messageCentral || b.text}\n\nLos invitamos a ingresar al formulario unificado y postular las evidencias de su club.`
+          };
+        }
+        if (b.type === 'button') {
+          return {
+            ...b,
+            href: `https://app.clubplatform.org/rotary-en-accion?utm_source=email_marketing&utm_medium=campaign&utm_campaign=${campaign.utmCampaign || 'rotary_campana'}`
+          };
+        }
+        return b;
+      });
+    }
+
+    res.json({
+      ok: true,
+      campaignId: campaign.id,
+      campaignName: campaign.name,
+      subject: campaign.subject,
+      preheader: campaign.preheader,
+      design,
+      masterTemplateId: master?.id || 'tpl-rotary-en-accion-master'
+    });
+  } catch (e) {
+    return fail(res, e);
+  }
+};
+
+export const sendTestEmail = async (req, res) => {
+  try {
+    const { to, subject, html } = req.body;
+    if (!to || !to.includes('@')) return res.status(400).json({ error: 'Dirección de correo no válida' });
+    if (!html) return res.status(400).json({ error: 'El contenido del correo no puede estar vacío' });
+
+    const clubId = await resolveClubId(req.user?.clubId);
+    const emailSubject = `[PRUEBA] ${subject || 'Plantilla Institucional · Rotary en Acción'}`;
+
+    const result = await EmailService.sendEmail({
+      clubId,
+      to,
+      subject: emailSubject,
+      html,
+      userId: req.user?.id
+    });
+
+    res.json({
+      ok: true,
+      message: `Correo de prueba enviado con éxito a ${to}`,
+      result
+    });
   } catch (e) {
     return fail(res, e);
   }
