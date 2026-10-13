@@ -138,11 +138,12 @@ test('Editor Visual: Plantilla Maestra separa bloques protegidos de dinámicos',
 
   // Catálogo de Bloques Globales
   const catalog = getRotaryGlobalBlocksCatalog();
-  assert.equal(catalog.length, 4, 'El catálogo debe contener 4 bloques globales institucionales');
+  assert.equal(catalog.length, 5, 'El catálogo debe contener 5 bloques globales institucionales');
   const keys = catalog.map(c => c.key);
   assert.ok(keys.includes('rotary_header'));
   assert.ok(keys.includes('rotary_areas_focus'));
   assert.ok(keys.includes('rotary_signature'));
+  assert.ok(keys.includes('club_platform_cta'));
   assert.ok(keys.includes('rotary_footer'));
 });
 
@@ -317,25 +318,36 @@ test('Editor Visual: 15 Categorías oficiales de Rotary en Acción en diseño co
   // Verificar título oficial
   assert.ok(html.includes('¿Qué puede compartir tu club en Rotary en Acción?'), 'Debe incluir el título actualizado de la sección');
 
-  // Verificar que incluye las categorías oficiales (Proyecto u obra, Alianza, Campaña, etc.)
+  // Verificar que incluye las etiquetas visibles compactas en una sola línea (shortName)
   assert.ok(html.includes('Proyecto u obra'), 'Debe incluir Proyecto u obra');
-  assert.ok(html.includes('Actividad o jornada'), 'Debe incluir Actividad o jornada');
-  assert.ok(html.includes('Emergencia o respuesta humanitaria'), 'Debe incluir Emergencia');
-  assert.ok(html.includes('Historia de servicio'), 'Debe incluir Historia de servicio');
+  assert.ok(html.includes('Actividades'), 'Debe incluir Actividades en una línea');
+  assert.ok(html.includes('Emergencias'), 'Debe incluir Emergencias en una línea en lugar del texto extenso');
+  assert.ok(html.includes('Historias y testimonios'), 'Debe incluir Historias y testimonios en una línea');
+  assert.ok(html.includes('Reconocimientos'), 'Debe incluir Reconocimientos en una línea');
+  assert.ok(html.includes('Recaudación'), 'Debe incluir Recaudación en una línea');
+  assert.ok(html.includes('Historias de servicio'), 'Debe incluir Historias de servicio');
   assert.ok(html.includes('Actividad juvenil'), 'Debe incluir Actividad juvenil');
-  assert.ok(html.includes('Recaudación de fondos'), 'Debe incluir Recaudación de fondos');
   assert.ok(html.includes('Otra acción'), 'Debe incluir Otra acción');
 
-  // Verificar que el diseño es compacto (distribuido en celdas de tabla 3 columnas para email)
-  assert.ok(html.includes('width="33.3%"') || html.includes('width: 33.3%'), 'Debe usar disposición compacta de 3 columnas para evitar longitud excesiva');
+  // Verificar nowrap y layout fijo de 3 columnas para garantizar visualización en una sola línea
+  assert.ok(html.includes('white-space:nowrap'), 'Debe forzar visualización en una sola línea con nowrap');
+  assert.ok(html.includes('table-layout:fixed') || html.includes('width="33.3%"'), 'Debe usar disposición compacta de columnas fijas');
 });
 
 test('Editor Visual: Enlace inteligente y universal para el botón principal según sitio activo', async () => {
   const { renderDesignToHtml, makeBlock, resolveSiteRotaryEnAccionUrl } = await import('../src/lib/emailBlocks.ts');
 
-  // 1. Resolución para Distrito 4281
+  // 1. Resolución para Distrito 4281 (dominio verificado oficial)
   const urlD4281 = resolveSiteRotaryEnAccionUrl({ domain: 'rotary4281.org', isMainPlatform: false });
   assert.equal(urlD4281, 'https://rotary4281.org/rotary-en-accion');
+
+  // 1.b Resolución para Distrito 4281 cuando llega desde el subdominio técnico interno obsoleto
+  const urlD4281Sub = resolveSiteRotaryEnAccionUrl({ domain: 'distrito-4281-de-rotary-international.clubplatform.org' });
+  assert.equal(urlD4281Sub, 'https://rotary4281.org/rotary-en-accion', 'Debe corregir el subdominio técnico interno al dominio público verificado rotary4281.org');
+
+  // 1.c Resolución para Distrito 4281 por nombre de sitio
+  const urlD4281Name = resolveSiteRotaryEnAccionUrl({ siteName: 'Distrito 4281 de Rotary International', domain: 'app.clubplatform.org' });
+  assert.equal(urlD4281Name, 'https://rotary4281.org/rotary-en-accion');
 
   // 2. Resolución para Club Platform central
   const urlPlatform = resolveSiteRotaryEnAccionUrl({ isMainPlatform: true });
@@ -344,6 +356,10 @@ test('Editor Visual: Enlace inteligente y universal para el botón principal seg
   // 3. Resolución para sitio con dominio propio (ej. club)
   const urlClub = resolveSiteRotaryEnAccionUrl({ domain: 'rotarycali.org', isMainPlatform: false });
   assert.equal(urlClub, 'https://rotarycali.org/rotary-en-accion');
+
+  // 3.b Sobrescritura manual de enlace
+  const urlManual = resolveSiteRotaryEnAccionUrl({ rotaryEnAccionUrl: 'https://mi-evento.org/formulario' });
+  assert.equal(urlManual, 'https://mi-evento.org/formulario');
 
   // 4. Resolución dinámica en botón con token {{form_url}}
   const btnBlock = {
@@ -368,5 +384,48 @@ test('Editor Visual: Enlace inteligente y universal para el botón principal seg
   // Render para Club Platform
   const htmlPlatform = renderDesignToHtml(design, { isMainPlatform: true });
   assert.ok(htmlPlatform.includes('href="https://app.clubplatform.org/rotary-en-accion"'), 'El botón debe resolver dinámicamente al formulario de Club Platform');
+});
+
+test('Editor Visual: Bloque Promocional Club Platform (Shopify-style CTA) opcional y configurable', async () => {
+  const { renderDesignToHtml, makeBlock } = await import('../src/lib/emailBlocks.ts');
+
+  const cpCtaBlock = {
+    ...makeBlock('global'),
+    globalKey: 'club_platform_cta',
+    enabled: true,
+    title: '¡Activa el ecosistema digital de tu club!',
+    subtitle: 'Conecta, comunica y potencia el impacto de tu club con Club Platform.',
+    buttonText: 'ACTIVAR MI CLUB',
+    buttonHref: 'https://clubplatform.org?utm_source=email_marketing&utm_medium=campaign&utm_campaign=cta_club_platform',
+    buttonBg: '#f7a81b',
+    buttonColor: '#0c2340',
+    bgColor: '#013388'
+  };
+
+  const designEnabled = {
+    version: 1,
+    settings: { font: "'Open Sans', Helvetica, Arial, sans-serif", bg: '#0d233a', contentBg: '#ffffff', textColor: '#334155', linkColor: '#013388', width: 600 },
+    blocks: [cpCtaBlock]
+  };
+
+  // 1. Render cuando está activo: incluye título, subtítulo, botón y destino oficial
+  const htmlActive = renderDesignToHtml(designEnabled, { interactive: false });
+  assert.ok(htmlActive.includes('¡Activa el ecosistema digital de tu club!'), 'Debe contener el título principal');
+  assert.ok(htmlActive.includes('Conecta, comunica y potencia el impacto'), 'Debe contener el subtítulo');
+  assert.ok(htmlActive.includes('ACTIVAR MI CLUB'), 'Debe contener el botón en mayúsculas de alto contraste');
+  assert.ok(htmlActive.includes('https://clubplatform.org?utm_source='), 'Debe dirigir al portal público de Club Platform con UTMs');
+  assert.ok(htmlActive.includes('#f7a81b'), 'Debe usar color de botón de alto contraste');
+
+  // 2. Render cuando está desactivado (enabled: false) en correo final: no debe emitir HTML
+  const disabledBlock = { ...cpCtaBlock, enabled: false };
+  const designDisabled = { ...designEnabled, blocks: [disabledBlock] };
+  const htmlDisabled = renderDesignToHtml(designDisabled, { interactive: false });
+  assert.ok(!htmlDisabled.includes('¡Activa el ecosistema digital de tu club!'), 'No debe renderizarse en correo enviado si está desactivado');
+  assert.ok(!htmlDisabled.includes('ACTIVAR MI CLUB'), 'No debe renderizar el botón');
+
+  // 3. Render en editor visual interactivo cuando está desactivado: emite placeholder configurable
+  const htmlInteractive = renderDesignToHtml(designDisabled, { interactive: true });
+  assert.ok(htmlInteractive.includes('CTA Club Platform (Opcional)'), 'En vista interactiva debe mostrar placeholder para que el usuario pueda reactivarlo');
+  assert.ok(htmlInteractive.includes('data-bid='), 'Debe incluir data-bid para selección');
 });
 

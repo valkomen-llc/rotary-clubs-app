@@ -104,6 +104,13 @@ export interface GlobalBlockItem extends BaseBlock {
     padding?: string;
     borderColor?: string;
     align?: Align;
+    // CTA Promocional Club Platform (Shopify-style)
+    buttonText?: string;
+    buttonHref?: string;
+    buttonBg?: string;
+    buttonColor?: string;
+    buttonRadius?: number;
+    enabled?: boolean;
 }
 
 export type Block =
@@ -312,22 +319,61 @@ export interface ResolvedLogoResult {
 /**
  * Resuelve dinámicamente la URL pública del formulario de Rotary en Acción
  * según la configuración institucional del sitio activo donde se ejecuta la campaña.
+ *
+ * Prioridades:
+ * 1. Sobrescritura manual explícita (rotaryEnAccionUrl), descartando subdominios técnicos internos si hay dominio propio.
+ * 2. Distrito 4281: mapea cualquier alias o entidad distrital 4281 al dominio verificado oficial https://rotary4281.org/rotary-en-accion.
+ * 3. Dominio público personalizado verificado del sitio (excluyendo subdominios internos *.clubplatform.org).
+ * 4. publicUrl del sitio activo si tiene dominio personalizado.
+ * 5. Subdominio técnico específico de club si no tiene dominio propio aún.
+ * 6. Fallback universal al entorno oficial de Club Platform.
  */
 export const resolveSiteRotaryEnAccionUrl = (siteContext?: SiteBrandingContext): string => {
+    // 1. Si se configuró manualmente una URL explícita (sobrescritura por usuario)
     if (siteContext?.rotaryEnAccionUrl && typeof siteContext.rotaryEnAccionUrl === 'string' && siteContext.rotaryEnAccionUrl.trim()) {
-        return siteContext.rotaryEnAccionUrl.trim();
+        const customUrl = siteContext.rotaryEnAccionUrl.trim();
+        // Si no es un subdominio técnico interno obsoleto de distrito-4281, respetar la sobrescritura
+        if (!customUrl.includes('distrito-4281-de-rotary-international.clubplatform.org')) {
+            return customUrl;
+        }
     }
-    if (siteContext?.domain && typeof siteContext.domain === 'string' && siteContext.domain.trim()) {
-        const clean = siteContext.domain.toLowerCase().trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '');
-        if (clean) return `https://${clean}/rotary-en-accion`;
+
+    const rawDomain = (siteContext?.domain || '').toLowerCase().trim();
+    const rawPublicUrl = (siteContext?.publicUrl || '').toLowerCase().trim();
+    const siteName = (siteContext?.siteName || '').toLowerCase().trim();
+
+    // 2. Detección unívoca de Distrito 4281 (dominio verificado oficial: rotary4281.org)
+    const isD4281 = rawDomain.includes('4281') ||
+        rawPublicUrl.includes('4281') ||
+        siteName.includes('4281') ||
+        rawDomain.includes('distrito-4281');
+
+    if (isD4281) {
+        return 'https://rotary4281.org/rotary-en-accion';
     }
-    if (siteContext?.publicUrl && typeof siteContext.publicUrl === 'string' && siteContext.publicUrl.trim()) {
-        const base = siteContext.publicUrl.trim().replace(/\/+$/, '');
-        return `${base}/rotary-en-accion`;
+
+    // 3. Dominio público personalizado del sitio (excluyendo subdominios técnicos *.clubplatform.org)
+    const cleanDomain = rawDomain.replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '');
+    const isTechnicalSubdomain = cleanDomain.endsWith('.clubplatform.org') || cleanDomain === 'clubplatform.org';
+
+    if (cleanDomain && !isTechnicalSubdomain) {
+        return `https://${cleanDomain}/rotary-en-accion`;
     }
-    if (siteContext?.isMainPlatform) {
-        return 'https://app.clubplatform.org/rotary-en-accion';
+
+    // 4. publicUrl personalizada que no sea subdominio técnico interno
+    if (rawPublicUrl) {
+        const cleanPublic = rawPublicUrl.replace(/^https?:\/\//, '').replace(/\/+$/, '').replace(/^www\./, '');
+        if (cleanPublic && !cleanPublic.endsWith('.clubplatform.org') && cleanPublic !== 'clubplatform.org') {
+            return `https://${cleanPublic}/rotary-en-accion`;
+        }
     }
+
+    // 5. Subdominio técnico individual de un club (no central)
+    if (cleanDomain && cleanDomain.endsWith('.clubplatform.org') && cleanDomain !== 'app.clubplatform.org' && cleanDomain !== 'clubplatform.org') {
+        return `https://${cleanDomain}/rotary-en-accion`;
+    }
+
+    // 6. Entorno central / Fallback universal
     return 'https://app.clubplatform.org/rotary-en-accion';
 };
 
@@ -361,6 +407,13 @@ export const getActiveSiteBrandingContext = (): SiteBrandingContext => {
                     if (typeof c.domain === 'string' && c.domain.trim()) domain = c.domain.trim();
                     else if (typeof c.customDomain === 'string' && c.customDomain.trim()) domain = c.customDomain.trim();
                     if (typeof c.publicUrl === 'string' && c.publicUrl.trim()) publicUrl = c.publicUrl.trim();
+
+                    // Si corresponde a Distrito 4281, el dominio verificado oficial es rotary4281.org
+                    const is4281 = c.district === 4281 || c.district === '4281' || String(c.subdomain || '').includes('4281') || String(c.name || '').includes('4281');
+                    if (is4281 && (!domain || domain.includes('.clubplatform.org'))) {
+                        domain = 'rotary4281.org';
+                        publicUrl = 'https://rotary4281.org';
+                    }
                 }
             }
         } catch {}
@@ -374,6 +427,12 @@ export const getActiveSiteBrandingContext = (): SiteBrandingContext => {
                     if (!siteLogo && u?.club?.logo && typeof u.club.logo === 'string') siteLogo = u.club.logo.trim();
                     if (!siteName && u?.club?.name) siteName = u.club.name.trim();
                     if (!domain && u?.club?.domain && typeof u.club.domain === 'string') domain = u.club.domain.trim();
+
+                    const is4281 = u?.club?.district === 4281 || u?.club?.district === '4281' || String(u?.club?.subdomain || '').includes('4281') || String(u?.club?.name || '').includes('4281');
+                    if (is4281 && (!domain || domain.includes('.clubplatform.org'))) {
+                        domain = 'rotary4281.org';
+                        publicUrl = 'https://rotary4281.org';
+                    }
                 }
             } catch {}
         }
@@ -704,6 +763,7 @@ const renderBlock = (b: Block, s: EmailSettings, interactive = false, siteContex
                 const textColor = b.textColor || '#013388';
 
                 // Generar las 15 categorías oficiales en 5 filas x 3 columnas compactas
+                // Garantiza que cada etiqueta se visualice estrictamente en una sola línea (nowrap)
                 const tipos = DEFAULT_TIPOS || [];
                 const rows: (typeof DEFAULT_TIPOS)[] = [];
                 for (let i = 0; i < tipos.length; i += 3) {
@@ -711,23 +771,70 @@ const renderBlock = (b: Block, s: EmailSettings, interactive = false, siteContex
                 }
 
                 const gridRowsHtml = rows.map((row) => {
-                    const cells = row.map((t) => {
-                        return `<td width="33.3%" valign="top" style="padding:3px 4px;vertical-align:top">
-                            <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;padding:6px 8px;font-size:11px;font-weight:600;color:#1e293b;line-height:1.3;text-align:left">
-                                <span style="font-size:13px;margin-right:4px;vertical-align:middle">${t.icon}</span><span style="vertical-align:middle">${esc(t.name)}</span>
-                            </div>
+                    const cells = row.map((t: any) => {
+                        const labelText = t.shortName || t.name;
+                        return `<td width="33.3%" valign="middle" style="width:33.3%;padding:3px 3px;vertical-align:middle">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%;background:#ffffff;border:1px solid #e2e8f0;border-radius:8px">
+                                <tr>
+                                    <td style="padding:6px 6px;font-size:11px;font-weight:600;color:#1e293b;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                                        <span style="font-size:12px;margin-right:3px;vertical-align:middle;display:inline-block">${t.icon}</span><span style="vertical-align:middle;white-space:nowrap;display:inline-block">${esc(labelText)}</span>
+                                    </td>
+                                </tr>
+                            </table>
                         </td>`;
                     }).join('');
                     return `<tr>${cells}</tr>`;
                 }).join('');
 
-                return C(`<div style="background-color:${esc(areasBg)};border:1px solid #e2e8f0;border-radius:12px;padding:18px 16px;margin:16px 0">
+                return C(`<div style="background-color:${esc(areasBg)};border:1px solid #e2e8f0;border-radius:12px;padding:18px 14px;margin:16px 0">
                     <div style="font-size:14px;font-weight:800;color:${esc(textColor)};margin-bottom:6px;text-transform:uppercase;letter-spacing:0.04em">&#127775; ${esc(title)}</div>
                     ${subtitle ? `<div style="font-size:12px;color:#64748b;margin-bottom:12px;line-height:1.4">${esc(subtitle)}</div>` : ''}
-                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%;table-layout:fixed">
                         ${gridRowsHtml}
                     </table>
                 </div>`);
+            }
+            if (b.globalKey === 'club_platform_cta') {
+                // Si el bloque está desactivado
+                if (b.enabled === false) {
+                    if (interactive) {
+                        return C(`<div style="border:2px dashed #cbd5e1;border-radius:12px;padding:14px 16px;text-align:center;background:#f8fafc;color:#94a3b8;font-size:12px;font-weight:600;cursor:pointer">
+                            &#128276; <strong>CTA Club Platform (Opcional)</strong>: Desactivado para esta campaña &bull; Clic para configurar o reactivar
+                        </div>`, '6px 24px');
+                    }
+                    return ''; // En correo enviado / preview final no se imprime
+                }
+
+                const title = b.title || '¡Activa el ecosistema digital de tu club!';
+                const subtitle = b.subtitle !== undefined ? b.subtitle : 'Conecta, comunica y potencia el impacto de tu club con Club Platform.';
+                const btnText = b.buttonText || 'ACTIVAR MI CLUB';
+                const btnHref = b.buttonHref || 'https://clubplatform.org?utm_source=email_marketing&utm_medium=campaign&utm_campaign=cta_club_platform';
+                const ctaBg = b.bgGradient || b.bgColor || 'linear-gradient(135deg, #013388 0%, #0d233a 100%)';
+                const textColor = b.textColor || '#ffffff';
+                const btnBg = b.buttonBg || '#f7a81b';
+                const btnColor = b.buttonColor || '#0c2340';
+                const btnRadius = typeof b.buttonRadius === 'number' ? b.buttonRadius : 24;
+                const pad = b.padding || '28px 24px';
+
+                return C(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:20px 0;background-color:#013388;background:${esc(ctaBg)};border-radius:12px;overflow:hidden">
+                    <tr>
+                        <td align="center" style="padding:${esc(pad)};text-align:center;color:${esc(textColor)}">
+                            <div style="font-family:'Open Sans',Helvetica,Arial,sans-serif;font-size:18px;font-weight:800;letter-spacing:-0.01em;line-height:1.3;margin-bottom:8px;color:${esc(textColor)}">
+                                ${esc(title)}
+                            </div>
+                            ${subtitle ? `<div style="font-family:'Open Sans',Helvetica,Arial,sans-serif;font-size:13px;line-height:1.5;margin-bottom:18px;opacity:0.92;color:${esc(textColor)}">${esc(subtitle)}</div>` : ''}
+                            <table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:0 auto;border-collapse:collapse">
+                                <tr>
+                                    <td align="center" style="border-radius:${btnRadius}px;background-color:${esc(btnBg)}">
+                                        <a href="${safeUrl(btnHref)}" target="_blank" style="display:inline-block;padding:12px 28px;font-family:'Open Sans',Helvetica,Arial,sans-serif;font-size:13px;font-weight:800;letter-spacing:0.04em;text-transform:uppercase;color:${esc(btnColor)};text-decoration:none;border-radius:${btnRadius}px;mso-padding-alt:0;text-align:center">
+                                            ${esc(btnText)}
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                </table>`, '0px 0px');
             }
             return C(b.customHtml || '<div style="padding:12px;background:#f3f4f6;border-radius:8px">Bloque Global Institucional</div>');
         }
@@ -874,6 +981,23 @@ export const normalizeInstitutionalDesign = (rawDesign?: EmailDesign | null): Em
                 fontFamily: t.fontFamily || "'Open Sans', Helvetica, Arial, sans-serif",
             };
         }
+        if (b.globalKey === 'club_platform_cta') {
+            const cp = b as GlobalBlockItem;
+            return {
+                ...cp,
+                label: 'CTA Promocional Club Platform',
+                enabled: cp.enabled !== false,
+                title: cp.title || '¡Activa el ecosistema digital de tu club!',
+                subtitle: cp.subtitle !== undefined ? cp.subtitle : 'Conecta, comunica y potencia el impacto de tu club con Club Platform.',
+                buttonText: cp.buttonText || 'ACTIVAR MI CLUB',
+                buttonHref: cp.buttonHref || 'https://clubplatform.org?utm_source=email_marketing&utm_medium=campaign&utm_campaign=cta_club_platform',
+                buttonBg: cp.buttonBg || '#f7a81b',
+                buttonColor: cp.buttonColor || '#0c2340',
+                buttonRadius: cp.buttonRadius ?? 24,
+                bgColor: cp.bgColor || '#013388',
+                textColor: cp.textColor || '#ffffff',
+            };
+        }
         return b;
     });
 
@@ -1004,6 +1128,25 @@ export const createRotaryMasterDesign = (): EmailDesign => ({
         {
             id: newId(),
             type: 'global',
+            globalKey: 'club_platform_cta',
+            label: 'CTA Promocional Club Platform',
+            isProtected: true,
+            isLocked: false,
+            enabled: true,
+            title: '¡Activa el ecosistema digital de tu club!',
+            subtitle: 'Conecta, comunica y potencia el impacto de tu club con Club Platform.',
+            buttonText: 'ACTIVAR MI CLUB',
+            buttonHref: 'https://clubplatform.org?utm_source=email_marketing&utm_medium=campaign&utm_campaign=cta_club_platform',
+            buttonBg: '#f7a81b',
+            buttonColor: '#0c2340',
+            buttonRadius: 24,
+            bgColor: '#013388',
+            textColor: '#ffffff',
+            padding: '28px 24px',
+        },
+        {
+            id: newId(),
+            type: 'global',
             globalKey: 'rotary_footer',
             label: 'Pie de Página Institucional Protegido',
             isProtected: true,
@@ -1041,6 +1184,13 @@ export const getRotaryGlobalBlocksCatalog = () => [
         name: 'Firma Oficial Distrital',
         category: 'Firmas',
         description: 'Firma del Comité Distrital de Imagen Pública y Comunicaciones.',
+        isProtected: true,
+    },
+    {
+        key: 'club_platform_cta',
+        name: 'CTA Promocional Club Platform',
+        category: 'Promoción',
+        description: 'Bloque inspirado en Shopify para activar nuevos clubes en Club Platform (global y opcional).',
         isProtected: true,
     },
     {

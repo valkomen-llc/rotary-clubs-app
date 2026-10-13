@@ -64,21 +64,21 @@ export const STEPS = [
 ];
 
 export const DEFAULT_TIPOS = [
-  { slug: 'proyecto', name: 'Proyecto u obra', icon: '🏗️', color: '#1d4ed8' },
-  { slug: 'actividad', name: 'Actividad o jornada', icon: '🤝', color: '#059669' },
-  { slug: 'evento', name: 'Evento', icon: '📅', color: '#7c3aed' },
-  { slug: 'historia-servicio', name: 'Historia de servicio', icon: '💙', color: '#0284c7' },
-  { slug: 'emergencia', name: 'Emergencia o respuesta humanitaria', icon: '🚨', color: '#dc2626' },
-  { slug: 'campana', name: 'Campaña', icon: '📣', color: '#ea580c' },
-  { slug: 'reconocimiento', name: 'Reconocimiento o logro', icon: '🏆', color: '#ca8a04' },
-  { slug: 'alianza', name: 'Alianza', icon: '🤜🤛', color: '#4d7c0f' },
-  { slug: 'juventud', name: 'Actividad juvenil', icon: '🌱', color: '#16a34a' },
-  { slug: 'capacitacion', name: 'Capacitación', icon: '🎓', color: '#0d9488' },
-  { slug: 'recaudacion', name: 'Recaudación de fondos', icon: '💰', color: '#b45309' },
-  { slug: 'testimonio', name: 'Historia personal o testimonio', icon: '💬', color: '#9333ea' },
-  { slug: 'convocatoria', name: 'Convocatoria', icon: '📢', color: '#0891b2' },
-  { slug: 'proyecto-internacional', name: 'Proyecto internacional', icon: '🌍', color: '#1e40af' },
-  { slug: 'otra', name: 'Otra acción', icon: '✨', color: '#64748b' },
+  { slug: 'proyecto', name: 'Proyecto u obra', shortName: 'Proyecto u obra', icon: '🏗️', color: '#1d4ed8' },
+  { slug: 'actividad', name: 'Actividad o jornada', shortName: 'Actividades', icon: '🤝', color: '#059669' },
+  { slug: 'evento', name: 'Evento', shortName: 'Evento', icon: '📅', color: '#7c3aed' },
+  { slug: 'historia-servicio', name: 'Historia de servicio', shortName: 'Historias de servicio', icon: '💙', color: '#0284c7' },
+  { slug: 'emergencia', name: 'Emergencia o respuesta humanitaria', shortName: 'Emergencias', icon: '🚨', color: '#dc2626' },
+  { slug: 'campana', name: 'Campaña', shortName: 'Campaña', icon: '📣', color: '#ea580c' },
+  { slug: 'reconocimiento', name: 'Reconocimiento o logro', shortName: 'Reconocimientos', icon: '🏆', color: '#ca8a04' },
+  { slug: 'alianza', name: 'Alianza', shortName: 'Alianzas', icon: '🤜🤛', color: '#4d7c0f' },
+  { slug: 'juventud', name: 'Actividad juvenil', shortName: 'Actividad juvenil', icon: '🌱', color: '#16a34a' },
+  { slug: 'capacitacion', name: 'Capacitación', shortName: 'Capacitación', icon: '🎓', color: '#0d9488' },
+  { slug: 'recaudacion', name: 'Recaudación de fondos', shortName: 'Recaudación', icon: '💰', color: '#b45309' },
+  { slug: 'testimonio', name: 'Historia personal o testimonio', shortName: 'Historias y testimonios', icon: '💬', color: '#9333ea' },
+  { slug: 'convocatoria', name: 'Convocatoria', shortName: 'Convocatoria', icon: '📢', color: '#0891b2' },
+  { slug: 'proyecto-internacional', name: 'Proyecto internacional', shortName: 'Proyecto internacional', icon: '🌍', color: '#1e40af' },
+  { slug: 'otra', name: 'Otra acción', shortName: 'Otra acción', icon: '✨', color: '#64748b' },
 ];
 
 export const DEFAULT_AREAS = [

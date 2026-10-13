@@ -553,6 +553,13 @@ async function computeSiteConfig(domain, preview) {
             )).rows
         };
 
+        if (!mappedClub.domain || mappedClub.domain.includes('.clubplatform.org')) {
+            const is4281 = activeClub.district === 4281 || activeClub.district === '4281' || String(activeClub.subdomain || '').includes('4281') || String(activeClub.name || '').includes('4281');
+            if (is4281) {
+                mappedClub.domain = 'rotary4281.org';
+            }
+        }
+
         // `resolvedBy` dice CÓMO se llegó a este sitio. Es un dato de
         // diagnóstico, no de contenido: `fallback` significa que el dominio
         // visitado no está asignado a ningún sitio y se está sirviendo el

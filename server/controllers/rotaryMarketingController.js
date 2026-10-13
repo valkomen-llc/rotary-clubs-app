@@ -761,6 +761,7 @@ export const getMasterTemplate = async (req, res) => {
             { id: 'b_master_areas', type: 'global', globalKey: 'rotary_areas_focus', label: '¿Qué puede compartir tu club en Rotary en Acción?', isProtected: true, isLocked: true },
             { id: 'b_master_cta', type: 'button', text: 'COMPARTIR EN ROTARY EN ACCIÓN', href: '{{form_url}}', bg: '#013388', color: '#ffffff', align: 'center', radius: 12, label: 'Botón CTA Oficial', isProtected: false },
             { id: 'b_master_firma', type: 'global', globalKey: 'rotary_signature', label: 'Firma Oficial Distrital', isProtected: true, isLocked: true },
+            { id: 'b_master_cp_cta', type: 'global', globalKey: 'club_platform_cta', label: 'CTA Promocional Club Platform', isProtected: true, isLocked: false, enabled: true, title: '¡Activa el ecosistema digital de tu club!', subtitle: 'Conecta, comunica y potencia el impacto de tu club con Club Platform.', buttonText: 'ACTIVAR MI CLUB', buttonHref: 'https://clubplatform.org?utm_source=email_marketing&utm_medium=campaign&utm_campaign=cta_club_platform', buttonBg: '#f7a81b', buttonColor: '#0c2340', bgColor: '#013388' },
             { id: 'b_master_footer', type: 'global', globalKey: 'rotary_footer', label: 'Pie de Página Institucional Protegido', isProtected: true, isLocked: true }
           ]
         }
@@ -878,6 +879,7 @@ export const applyCampaignToTemplate = async (req, res) => {
           { id: 'b_master_areas', type: 'global', globalKey: 'rotary_areas_focus', label: '¿Qué puede compartir tu club en Rotary en Acción?', isProtected: true, isLocked: true },
           { id: 'b_master_cta', type: 'button', text: 'COMPARTIR EN ROTARY EN ACCIÓN', href: '{{form_url}}', bg: '#013388', color: '#ffffff', align: 'center', radius: 12, label: 'Botón CTA Oficial', isProtected: false },
           { id: 'b_master_firma', type: 'global', globalKey: 'rotary_signature', label: 'Firma Oficial Distrital', isProtected: true, isLocked: true },
+          { id: 'b_master_cp_cta', type: 'global', globalKey: 'club_platform_cta', label: 'CTA Promocional Club Platform', isProtected: true, isLocked: false, enabled: true, title: '¡Activa el ecosistema digital de tu club!', subtitle: 'Conecta, comunica y potencia el impacto de tu club con Club Platform.', buttonText: 'ACTIVAR MI CLUB', buttonHref: 'https://clubplatform.org?utm_source=email_marketing&utm_medium=campaign&utm_campaign=cta_club_platform', buttonBg: '#f7a81b', buttonColor: '#0c2340', bgColor: '#013388' },
           { id: 'b_master_footer', type: 'global', globalKey: 'rotary_footer', label: 'Pie de Página Institucional Protegido', isProtected: true, isLocked: true }
         ]
       };
@@ -918,6 +920,15 @@ export const applyCampaignToTemplate = async (req, res) => {
             ...b,
             text: (!b.text || b.text === 'COMPARTIR ACTIVIDAD EN ROTARY EN ACCIÓN') ? 'COMPARTIR EN ROTARY EN ACCIÓN' : b.text,
             href: (b.href && b.href !== '{{form_url}}' && !b.href.includes('app.clubplatform.org/rotary-en-accion?utm_source')) ? b.href : '{{form_url}}'
+          };
+        }
+        if (b.globalKey === 'club_platform_cta') {
+          return {
+            ...b,
+            label: 'CTA Promocional Club Platform',
+            title: b.title || '¡Activa el ecosistema digital de tu club!',
+            buttonText: b.buttonText || 'ACTIVAR MI CLUB',
+            buttonHref: b.buttonHref || 'https://clubplatform.org?utm_source=email_marketing&utm_medium=campaign&utm_campaign=cta_club_platform'
           };
         }
         return b;

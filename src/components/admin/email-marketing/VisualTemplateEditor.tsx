@@ -111,10 +111,24 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
 
   const siteBranding: SiteBrandingContext = useMemo(() => {
     const ctx = getActiveSiteBrandingContext();
-    const domain = siteClub?.domain || ctx.domain || null;
-    const publicUrl = siteClub?.domain ? `https://${siteClub.domain.replace(/^https?:\/\//, '').replace(/\/+$/, '')}` : ctx.publicUrl;
+    let domain = siteClub?.domain || ctx.domain || null;
+    const isDistrict4281 = (
+      siteClub?.district === 4281 ||
+      siteClub?.district === '4281' ||
+      String(siteClub?.subdomain || '').includes('4281') ||
+      String(siteClub?.name || '').includes('4281')
+    );
+    if (isDistrict4281 && (!domain || domain.includes('.clubplatform.org'))) {
+      domain = 'rotary4281.org';
+    }
+    const publicUrl = domain ? `https://${domain.replace(/^https?:\/\//, '').replace(/\/+$/, '')}` : ctx.publicUrl;
     const isMainPlatform = Boolean((siteClub as any)?.isMainPlatform ?? ctx.isMainPlatform);
-    const rotaryEnAccionUrl = resolveSiteRotaryEnAccionUrl({ domain, publicUrl, isMainPlatform });
+    const rotaryEnAccionUrl = resolveSiteRotaryEnAccionUrl({
+      domain,
+      publicUrl,
+      isMainPlatform,
+      siteName: siteClub?.name || ctx.siteName
+    });
     return {
       siteLogo: siteClub?.logo || ctx.siteLogo || null,
       siteName: siteClub?.name || ctx.siteName || 'Club Platform',
@@ -2467,7 +2481,7 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                             <div className="grid grid-cols-2 gap-1 max-h-40 overflow-y-auto pr-1">
                               {DEFAULT_TIPOS.map((t) => (
                                 <div key={t.slug} className="text-[10px] bg-white border border-slate-200 rounded px-2 py-1 text-slate-800 font-medium truncate flex items-center gap-1">
-                                  <span>{t.icon}</span> <span>{t.name}</span>
+                                  <span>{t.icon}</span> <span>{t.shortName || t.name}</span>
                                 </div>
                               ))}
                             </div>
@@ -2475,8 +2489,180 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                         </div>
                       )}
 
-                      {/* 5. Otros bloques globales genéricos */}
-                      {!['rotary_header', 'rotary_footer', 'rotary_signature', 'rotary_areas_focus'].includes(selectedBlock.globalKey || '') && (
+                      {/* 5. CTA Promocional Club Platform (Shopify-style) */}
+                      {selectedBlock.globalKey === 'club_platform_cta' && (
+                        <div className="space-y-4">
+                          <div className="p-3.5 rounded-2xl bg-gradient-to-br from-indigo-50/90 via-blue-50/60 to-amber-50/60 border border-blue-200/80 text-slate-800 shadow-xs space-y-2">
+                            <div className="flex items-center justify-between gap-1.5">
+                              <div className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#013388] uppercase tracking-wider">
+                                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                                <span>Bloque Promocional Club Platform</span>
+                              </div>
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                selectedBlock.enabled !== false
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                  : 'bg-slate-100 text-slate-600 border-slate-300'
+                              }`}>
+                                {selectedBlock.enabled !== false ? 'Activo' : 'Oculto'}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-600 leading-snug">
+                              Componente global opcional tipo Shopify para impulsar la activación del ecosistema digital de nuevos clubes rotarios.
+                            </p>
+                          </div>
+
+                          {/* Interruptor de activación */}
+                          <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+                            <div>
+                              <div className="text-xs font-bold text-slate-800">Mostrar CTA en la campaña</div>
+                              <div className="text-[10px] text-slate-500">Si está inactivo, no se incluirá en el correo final.</div>
+                            </div>
+                            <input
+                              type="checkbox"
+                              checked={selectedBlock.enabled !== false}
+                              onChange={(e) => updateBlock(selectedBlock.id, { enabled: e.target.checked })}
+                              className="w-4 h-4 accent-rotary-blue rounded cursor-pointer"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Título Destacado</label>
+                            <input
+                              type="text"
+                              value={selectedBlock.title ?? '¡Activa el ecosistema digital de tu club!'}
+                              onChange={(e) => updateBlock(selectedBlock.id, { title: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs font-bold"
+                              placeholder="¡Activa el ecosistema digital de tu club!"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Mensaje Secundario</label>
+                            <textarea
+                              rows={2}
+                              value={selectedBlock.subtitle ?? 'Conecta, comunica y potencia el impacto de tu club con Club Platform.'}
+                              onChange={(e) => updateBlock(selectedBlock.id, { subtitle: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs"
+                              placeholder="Conecta, comunica y potencia el impacto de tu club con Club Platform."
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[11px] font-bold text-slate-700 block mb-1">Texto del Botón</label>
+                              <input
+                                type="text"
+                                value={selectedBlock.buttonText ?? 'ACTIVAR MI CLUB'}
+                                onChange={(e) => updateBlock(selectedBlock.id, { buttonText: e.target.value })}
+                                className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs font-bold"
+                                placeholder="ACTIVAR MI CLUB"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[11px] font-bold text-slate-700 block mb-1">Redondeo Botón</label>
+                              <input
+                                type="number"
+                                min={0}
+                                max={50}
+                                value={selectedBlock.buttonRadius ?? 24}
+                                onChange={(e) => updateBlock(selectedBlock.id, { buttonRadius: Number(e.target.value) })}
+                                className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Enlace de Destino (URL Pública)</label>
+                            <input
+                              type="text"
+                              value={selectedBlock.buttonHref ?? 'https://clubplatform.org?utm_source=email_marketing&utm_medium=campaign&utm_campaign=cta_club_platform'}
+                              onChange={(e) => updateBlock(selectedBlock.id, { buttonHref: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 font-mono text-xs"
+                              placeholder="https://clubplatform.org"
+                            />
+                            <p className="text-[10px] text-slate-500 mt-0.5">
+                              Enlace al portal oficial de Club Platform con medición de conversiones independiente.
+                            </p>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200">
+                            <div>
+                              <label className="text-[11px] font-bold text-slate-700 block mb-1">Fondo Bloque</label>
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="color"
+                                  value={selectedBlock.bgColor || '#013388'}
+                                  onChange={(e) => updateBlock(selectedBlock.id, { bgColor: e.target.value })}
+                                  className="w-7 h-7 rounded border border-slate-300 cursor-pointer p-0"
+                                />
+                                <input
+                                  type="text"
+                                  value={selectedBlock.bgColor || '#013388'}
+                                  onChange={(e) => updateBlock(selectedBlock.id, { bgColor: e.target.value })}
+                                  className="flex-1 bg-white border border-slate-300 rounded-lg p-1 text-xs font-mono"
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <label className="text-[11px] font-bold text-slate-700 block mb-1">Color Texto</label>
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="color"
+                                  value={selectedBlock.textColor || '#ffffff'}
+                                  onChange={(e) => updateBlock(selectedBlock.id, { textColor: e.target.value })}
+                                  className="w-7 h-7 rounded border border-slate-300 cursor-pointer p-0"
+                                />
+                                <input
+                                  type="text"
+                                  value={selectedBlock.textColor || '#ffffff'}
+                                  onChange={(e) => updateBlock(selectedBlock.id, { textColor: e.target.value })}
+                                  className="flex-1 bg-white border border-slate-300 rounded-lg p-1 text-xs font-mono"
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[11px] font-bold text-slate-700 block mb-1">Fondo Botón</label>
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="color"
+                                  value={selectedBlock.buttonBg || '#f7a81b'}
+                                  onChange={(e) => updateBlock(selectedBlock.id, { buttonBg: e.target.value })}
+                                  className="w-7 h-7 rounded border border-slate-300 cursor-pointer p-0"
+                                />
+                                <input
+                                  type="text"
+                                  value={selectedBlock.buttonBg || '#f7a81b'}
+                                  onChange={(e) => updateBlock(selectedBlock.id, { buttonBg: e.target.value })}
+                                  className="flex-1 bg-white border border-slate-300 rounded-lg p-1 text-xs font-mono"
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <label className="text-[11px] font-bold text-slate-700 block mb-1">Texto Botón</label>
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="color"
+                                  value={selectedBlock.buttonColor || '#0c2340'}
+                                  onChange={(e) => updateBlock(selectedBlock.id, { buttonColor: e.target.value })}
+                                  className="w-7 h-7 rounded border border-slate-300 cursor-pointer p-0"
+                                />
+                                <input
+                                  type="text"
+                                  value={selectedBlock.buttonColor || '#0c2340'}
+                                  onChange={(e) => updateBlock(selectedBlock.id, { buttonColor: e.target.value })}
+                                  className="flex-1 bg-white border border-slate-300 rounded-lg p-1 text-xs font-mono"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 6. Otros bloques globales genéricos */}
+                      {!['rotary_header', 'rotary_footer', 'rotary_signature', 'rotary_areas_focus', 'club_platform_cta'].includes(selectedBlock.globalKey || '') && (
                         <div>
                           <label className="text-[11px] font-bold text-slate-700 block mb-1">HTML Personalizado</label>
                           <textarea
