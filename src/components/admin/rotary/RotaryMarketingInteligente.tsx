@@ -1342,17 +1342,34 @@ export const RotaryMarketingInteligente: React.FC = () => {
       {visualEditorCampaign && (
         <VisualTemplateEditor
           campaignContext={visualEditorCampaign}
+          initialDesign={
+            visualEditorCampaign.design
+              ? (typeof visualEditorCampaign.design === 'string'
+                  ? JSON.parse(visualEditorCampaign.design)
+                  : visualEditorCampaign.design)
+              : null
+          }
           initialName={`[${visualEditorCampaign.code?.toUpperCase() || 'ROTARY'}] ${visualEditorCampaign.name}`}
           initialSubject={visualEditorCampaign.subject}
           initialPreheader={visualEditorCampaign.preheader}
-          onSave={({ subject: s, preheader: p, html }) => {
+          onSave={({ subject: s, preheader: p, html, design: savedDesign }) => {
             setCampaigns((prev) =>
-              prev.map((c) => (c.id === visualEditorCampaign.id ? { ...c, subject: s, preheader: p, contentHtml: html } : c))
+              prev.map((c) =>
+                c.id === visualEditorCampaign.id
+                  ? { ...c, subject: s, preheader: p, contentHtml: html, design: savedDesign }
+                  : c
+              )
             );
             if (previewCampaign?.id === visualEditorCampaign.id) {
-              setPreviewCampaign((prev: any) => ({ ...prev, subject: s, preheader: p, contentHtml: html }));
+              setPreviewCampaign((prev: any) => ({
+                ...prev,
+                subject: s,
+                preheader: p,
+                contentHtml: html,
+                design: savedDesign
+              }));
             }
-            toast.success('Campaña actualizada con diseño institucional protegido');
+            toast.success('Campaña actualizada y sincronizada con éxito');
             setVisualEditorCampaign(null);
           }}
           onClose={() => setVisualEditorCampaign(null)}

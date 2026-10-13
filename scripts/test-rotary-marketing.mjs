@@ -168,3 +168,43 @@ test('Editor Visual: Renderiza HTML compatible para table, menu y global', async
   assert.ok(html.includes('Distritos 4271'), 'Debe mencionar los distritos oficiales');
 });
 
+test('Editor Visual: Bloques globales personalizan logo, fondo, insignia, footer, WhatsApp y textos', async () => {
+  const { renderDesignToHtml, makeBlock } = await import('../src/lib/emailBlocks.ts');
+  const customHeader = {
+    ...makeBlock('global'),
+    globalKey: 'rotary_header',
+    logoUrl: 'https://cdn.clubplatform.org/logos/club-bogota.png',
+    bgGradient: '#013388',
+    badge: 'Distrito 4281 Colombia',
+    title: 'Transformando Vidas en Bogotá',
+    subtitle: 'Comunidad Unida',
+  };
+
+  const customFooter = {
+    ...makeBlock('global'),
+    globalKey: 'rotary_footer',
+    logoUrl: 'https://cdn.clubplatform.org/logos/footer-logo.png',
+    title: 'Conéctate con nosotros',
+    whatsappUrl: 'https://wa.me/573001234567',
+    whatsappText: 'Chatea con nuestro equipo',
+    footerText: 'Club Rotario Bogotá • Todos los derechos reservados',
+    showAreas: false,
+    showSocial: true
+  };
+
+  const design = {
+    version: 1,
+    settings: { bg: '#f3f4f6', contentBg: '#ffffff', font: 'Arial', textColor: '#333', linkColor: '#013388', width: 600 },
+    blocks: [customHeader, customFooter]
+  };
+
+  const html = renderDesignToHtml(design);
+  assert.ok(html.includes('club-bogota.png'), 'Debe renderizar la URL del logo personalizado');
+  assert.ok(html.includes('Distrito 4281 Colombia'), 'Debe renderizar la insignia personalizada');
+  assert.ok(html.includes('Transformando Vidas en Bogotá'), 'Debe renderizar el título personalizado');
+  assert.ok(html.includes('footer-logo.png'), 'Debe renderizar el logo del footer');
+  assert.ok(html.includes('573001234567'), 'Debe renderizar el WhatsApp personalizado');
+  assert.ok(html.includes('Club Rotario Bogotá'), 'Debe renderizar el texto legal personalizado');
+  assert.ok(!html.includes('&#128167; Agua'), 'No debe renderizar las áreas de interés si showAreas es false');
+});
+

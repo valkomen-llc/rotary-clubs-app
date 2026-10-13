@@ -42,6 +42,21 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1187.0',
+        title: 'Editor Visual de Plantillas: Persistencia de Guardado, Edición Visual Completa de Bloques Globales y Sincronización Bicolor 💾✨',
+        description: 'Corrección crítica del flujo de guardado y persistencia en el Editor Visual de Plantillas integrado con Rotary en Acción y Email Marketing: resolución de la causa raíz del error 404/500 al guardar implementando los endpoints dedicados de aplicación y guardado de plantillas con serialización JSONB del diseño (design), montaje de rutas /api/email-marketing en server.js, habilitación de la edición visual interactiva de todos los bloques institucionales (cabecera con selección/subida de logo, cambio de degradados y fondos, títulos multilínea, insignias; pie de página con logos, conmutadores de 7 áreas de enfoque y redes, asistencia WhatsApp directa y texto legal con baja), selección en lienzo con anillo de enfoque prominente e interceptor de enlaces, e inmunidad a pérdidas al recargar o sincronizar con el Planificador de Campañas.',
+        date: new Date().toISOString(),
+        tags: ['email-marketing', 'editor-visual', 'persistencia', 'bloques-globales', 'rotary-en-accion', 'production-release'],
+        type: 'feature',
+        changes: [
+            { type: 'fixed', text: 'Reparación del endpoint y sincronización de guardado («Guardar y Sincronizar») en RotaryMarketingCampaign y EmailCampaign, registrando la estructura JSONB completa sin fallos de esquema.' },
+            { type: 'added', text: 'Inspector contextual interactivo para bloques globales (Cabecera, Pie de página, Firma distrital y 7 Áreas de Interés) con personalización de logos, fondos, colores, tipografía y enlaces.' },
+            { type: 'improved', text: 'Lienzo interactivo con selección de bloques destacada mediante anillo de enfoque, prevención de navegación accidental al pulsar enlaces y sincronización bidireccional inmediata con el panel de propiedades.' },
+            { type: 'fixed', text: 'Montaje de rutas de Email Marketing en la raíz de la API del servidor para garantizar compatibilidad con toda la infraestructura de plantillas y campañas.' },
+            { type: 'improved', text: 'Sincronización transparente con el Planificador de Campañas de Rotary en Acción, conservando el diseño visual en memoria y en base de datos al reabrir el editor.' }
+        ]
+    },
+    {
         version: '4.1186.0',
         title: 'Editor Visual de Plantillas: Rediseño Light Mode, Envío Real de Pruebas y Biblioteca Multimedia 🎨✉️',
         description: 'Actualización integral del Editor Visual de Plantillas de Club Platform: transformación completa de la interfaz a modo claro con paleta institucional (#013388, fondos blancos y acentos sutiles), reparación del backend en el envío de correos de prueba resolviendo el error de consulta nula y validando la aceptación estricta del proveedor, integración nativa de la Biblioteca Multimedia (MediaPicker) con subida de imágenes/logos desde el equipo, inspector contextual con control de todas las propiedades (textos, tipografías, colores, alineación, columnas, tablas, menús, redes sociales, botones y pie de página), e incorporación de pila de historial con Deshacer y Rehacer (Undo/Redo con Cmd+Z).',

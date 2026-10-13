@@ -279,7 +279,7 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
     try {
       const fullHtml = renderDesignToHtml(design, { interactive: false });
 
-      // Si viene contexto de campaña, aplicar a la campaña y sincronizar
+      // 1. Si viene contexto de campaña, aplicar y sincronizar con la campaña
       if (campaignContext?.id) {
         const res = await fetch(`${API}/rotary-en-accion/marketing/campaigns/${campaignContext.id}/apply-template`, {
           method: 'POST',
@@ -291,22 +291,51 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
             html: fullHtml
           })
         });
-        if (res.ok) {
+
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.ok) {
           toast.success('¡Diseño aplicado y sincronizado con la campaña!', {
-            description: `Campaña ${campaignContext.code.toUpperCase()} actualizada y sincronizada con Email Marketing.`
+            description: `Campaña ${campaignContext.code.toUpperCase()} guardada y sincronizada con Email Marketing.`
           });
           onSave?.({ name, subject, preheader, design, html: fullHtml });
           onClose?.();
           return;
+        } else {
+          toast.error(data.error || 'No se pudo guardar la plantilla de la campaña');
+          return;
         }
       }
 
-      // Guardar como plantilla maestra central
-      const endpoint = templateId
-        ? `${API}/email-marketing/templates/${templateId}`
-        : `${API}/rotary-en-accion/marketing/templates/save-master`;
+      // 2. Si viene templateId específico, actualizar en content-activation
+      if (templateId) {
+        const res = await fetch(`${API}/content-activation/templates/${templateId}`, {
+          method: 'PUT',
+          headers: authHeaders(),
+          body: JSON.stringify({
+            name: name.trim(),
+            subject: subject.trim(),
+            preheader: preheader.trim(),
+            design,
+            html: fullHtml,
+            note: 'Guardado desde Editor Visual de Plantillas'
+          })
+        });
 
-      const res = await fetch(endpoint, {
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          toast.success(`¡Plantilla guardada como v${data.template?.version || 1}!`, {
+            description: 'Cambios persistidos correctamente.'
+          });
+          onSave?.({ name, subject, preheader, design, html: fullHtml });
+          return;
+        } else {
+          toast.error(data.error || 'No se pudo guardar la plantilla');
+          return;
+        }
+      }
+
+      // 3. Guardar como Plantilla Maestra Central Oficial de Rotary en Acción
+      const res = await fetch(`${API}/rotary-en-accion/marketing/templates/save-master`, {
         method: 'POST',
         headers: authHeaders(),
         body: JSON.stringify({
@@ -319,18 +348,19 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
         })
       });
 
-      if (res.ok) {
-        const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok) {
         toast.success(`¡Plantilla guardada como v${data.template?.version || 1}!`, {
           description: 'Estructura institucional protegida y lista para campañas.'
         });
         onSave?.({ name, subject, preheader, design, html: fullHtml });
       } else {
-        const err = await res.json().catch(() => ({}));
-        toast.error(err.error || 'No se pudo guardar la plantilla');
+        toast.error(data.error || 'No se pudo guardar la plantilla');
       }
-    } catch {
-      toast.error('Error de red al guardar la plantilla');
+    } catch (err: any) {
+      toast.error('Error de red al guardar la plantilla', {
+        description: err?.message || 'No se pudo comunicar con el servidor.'
+      });
     } finally {
       setSaving(false);
     }
@@ -666,11 +696,15 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                         key={block.id}
                         onClick={(e) => {
                           e.stopPropagation();
+                          const target = e.target as HTMLElement;
+                          if (target && target.closest('a')) {
+                            e.preventDefault();
+                          }
                           setSelectedBlockId(block.id);
                         }}
                         className={`relative group transition-all cursor-pointer ${
                           isSelected
-                            ? 'ring-2 ring-rotary-blue z-10'
+                            ? 'ring-2 ring-blue-600 ring-offset-2 shadow-md z-10'
                             : 'hover:outline hover:outline-1 hover:outline-blue-400/80'
                         }`}
                       >
@@ -1527,17 +1561,386 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
 
                   {/* Bloque Global Institucional */}
                   {selectedBlock.type === 'global' && (
-                    <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-xl space-y-2 text-xs">
-                      <div className="flex items-center gap-1.5 font-bold text-rotary-blue">
-                        <Shield className="w-4 h-4 text-amber-500" />
-                        <span>Bloque Global Institucional Sincronizado</span>
+                    <div className="space-y-4">
+                      {/* Cabecera Informativa de Bloque Global */}
+                      <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-xl space-y-1 text-xs">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 font-bold text-amber-900">
+                            <Shield className="w-4 h-4 text-amber-600" />
+                            <span>Componente Institucional Oficial</span>
+                          </div>
+                          <span className="text-[10px] font-mono bg-white px-1.5 py-0.5 rounded border border-amber-200 text-amber-800">
+                            {selectedBlock.globalKey}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-amber-800/90 leading-relaxed">
+                          Personaliza este componente para la plantilla o campaña conservando la armonía y marca de Rotary International.
+                        </p>
                       </div>
-                      <p className="text-slate-600 text-[11px]">
-                        Clave: <code className="bg-white px-1.5 py-0.5 rounded border">{selectedBlock.globalKey}</code>
-                      </p>
-                      <p className="text-[11px] text-slate-500 leading-relaxed">
-                        Este componente utiliza la estructura oficial aprobada por Rotary International (logos, tipografías y pie legal). Modificarlo a nivel global impactará automáticamente en futuras campañas.
-                      </p>
+
+                      {/* 1. Encabezado Oficial Rotary */}
+                      {selectedBlock.globalKey === 'rotary_header' && (
+                        <div className="space-y-3.5">
+                          {/* Logo de Cabecera */}
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-[11px] font-bold text-slate-700">Logo de Cabecera</label>
+                              {selectedBlock.logoUrl && (
+                                <button
+                                  type="button"
+                                  onClick={() => updateBlock(selectedBlock.id, { logoUrl: '' })}
+                                  className="text-[11px] text-rose-600 hover:text-rose-700 font-bold"
+                                >
+                                  Restaurar Emblema
+                                </button>
+                              )}
+                            </div>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                value={selectedBlock.logoUrl || ''}
+                                onChange={(e) => updateBlock(selectedBlock.id, { logoUrl: e.target.value })}
+                                className="flex-1 bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs"
+                                placeholder="URL de logo personalizado..."
+                              />
+                              <button
+                                type="button"
+                                onClick={() => openMediaPickerFor((url) => updateBlock(selectedBlock.id, { logoUrl: url }))}
+                                className="px-3 py-2 bg-rotary-blue hover:bg-blue-700 text-white rounded-xl font-bold text-xs shrink-0 shadow-xs flex items-center gap-1"
+                              >
+                                <ImageIcon className="w-3.5 h-3.5" />
+                                <span>Biblioteca</span>
+                              </button>
+                            </div>
+                            {selectedBlock.logoUrl ? (
+                              <div className="mt-2 p-2 border border-slate-200 rounded-xl bg-white text-center">
+                                <img
+                                  src={selectedBlock.logoUrl}
+                                  alt="Logo Cabecera"
+                                  className="max-h-16 mx-auto object-contain rounded"
+                                />
+                              </div>
+                            ) : (
+                              <div className="mt-1.5 p-2 bg-slate-100/80 rounded-lg text-center text-[11px] text-slate-600 font-medium">
+                                Emblema tipográfico oficial activo (ROTARY INTERNATIONAL)
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Fondo de Cabecera */}
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Fondo de Cabecera</label>
+                            <div className="grid grid-cols-2 gap-1.5 mb-2">
+                              {[
+                                { label: 'Degradado Rotary', val: 'linear-gradient(135deg, #013388 0%, #0c2340 100%)' },
+                                { label: 'Azul Oficial (#013388)', val: '#013388' },
+                                { label: 'Azul Marino (#0c2340)', val: '#0c2340' },
+                                { label: 'Dorado Rotario', val: 'linear-gradient(135deg, #f7a81b 0%, #d97706 100%)' }
+                              ].map((preset) => (
+                                <button
+                                  key={preset.label}
+                                  type="button"
+                                  onClick={() => updateBlock(selectedBlock.id, { bgGradient: preset.val, bgColor: preset.val })}
+                                  className={`p-1.5 text-[10px] font-bold rounded-lg border text-left transition-all truncate ${
+                                    (selectedBlock.bgGradient || selectedBlock.bgColor) === preset.val
+                                      ? 'border-rotary-blue bg-blue-50 text-rotary-blue ring-1 ring-rotary-blue'
+                                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                                  }`}
+                                >
+                                  {preset.label}
+                                </button>
+                              ))}
+                            </div>
+                            <input
+                              type="text"
+                              value={selectedBlock.bgGradient || selectedBlock.bgColor || ''}
+                              onChange={(e) => updateBlock(selectedBlock.id, { bgGradient: e.target.value, bgColor: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs font-mono"
+                              placeholder="CSS de fondo (ej: #013388 o linear-gradient(...))"
+                            />
+                          </div>
+
+                          {/* Insignia / Distritos */}
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Insignia / Distritos</label>
+                            <input
+                              type="text"
+                              value={selectedBlock.badge !== undefined ? selectedBlock.badge : 'Rotary en Acción · Distritos 4271 & 4281'}
+                              onChange={(e) => updateBlock(selectedBlock.id, { badge: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs"
+                              placeholder="Dejar vacío para ocultar insignia"
+                            />
+                          </div>
+
+                          {/* Título Principal */}
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Título Principal</label>
+                            <textarea
+                              rows={2}
+                              value={selectedBlock.title !== undefined ? selectedBlock.title : 'Tu club transforma comunidades.\n¡Hagámoslo visible!'}
+                              onChange={(e) => updateBlock(selectedBlock.id, { title: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs"
+                            />
+                          </div>
+
+                          {/* Subtítulo Opcional */}
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Subtítulo Opcional</label>
+                            <input
+                              type="text"
+                              value={selectedBlock.subtitle || ''}
+                              onChange={(e) => updateBlock(selectedBlock.id, { subtitle: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs"
+                              placeholder="Subtítulo..."
+                            />
+                          </div>
+
+                          {/* Color Texto y Espaciado */}
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[11px] font-bold text-slate-700 block mb-1">Color de Texto</label>
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="color"
+                                  value={selectedBlock.textColor || '#ffffff'}
+                                  onChange={(e) => updateBlock(selectedBlock.id, { textColor: e.target.value })}
+                                  className="w-8 h-8 rounded-lg border border-slate-300 cursor-pointer p-0.5"
+                                />
+                                <input
+                                  type="text"
+                                  value={selectedBlock.textColor || '#ffffff'}
+                                  onChange={(e) => updateBlock(selectedBlock.id, { textColor: e.target.value })}
+                                  className="flex-1 bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-mono"
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <label className="text-[11px] font-bold text-slate-700 block mb-1">Espaciado</label>
+                              <select
+                                value={selectedBlock.padding || '28px 24px'}
+                                onChange={(e) => updateBlock(selectedBlock.id, { padding: e.target.value })}
+                                className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs"
+                              >
+                                <option value="16px 20px">Compacto (16px)</option>
+                                <option value="28px 24px">Estándar (28px)</option>
+                                <option value="40px 24px">Amplio (40px)</option>
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 2. Pie de Página Oficial Rotary */}
+                      {selectedBlock.globalKey === 'rotary_footer' && (
+                        <div className="space-y-3.5">
+                          {/* Logo de Pie */}
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-[11px] font-bold text-slate-700">Logo de Pie de Página (opcional)</label>
+                              {selectedBlock.logoUrl && (
+                                <button
+                                  type="button"
+                                  onClick={() => updateBlock(selectedBlock.id, { logoUrl: '' })}
+                                  className="text-[11px] text-rose-600 hover:text-rose-700 font-bold"
+                                >
+                                  Quitar Logo
+                                </button>
+                              )}
+                            </div>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                value={selectedBlock.logoUrl || ''}
+                                onChange={(e) => updateBlock(selectedBlock.id, { logoUrl: e.target.value })}
+                                className="flex-1 bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs"
+                                placeholder="URL de logo..."
+                              />
+                              <button
+                                type="button"
+                                onClick={() => openMediaPickerFor((url) => updateBlock(selectedBlock.id, { logoUrl: url }))}
+                                className="px-3 py-2 bg-rotary-blue hover:bg-blue-700 text-white rounded-xl font-bold text-xs shrink-0 shadow-xs flex items-center gap-1"
+                              >
+                                <ImageIcon className="w-3.5 h-3.5" />
+                                <span>Biblioteca</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Color Fondo Footer */}
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Color Fondo de Footer</label>
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="color"
+                                value={selectedBlock.bgColor || '#0c2340'}
+                                onChange={(e) => updateBlock(selectedBlock.id, { bgColor: e.target.value })}
+                                className="w-8 h-8 rounded-lg border border-slate-300 cursor-pointer p-0.5"
+                              />
+                              <input
+                                type="text"
+                                value={selectedBlock.bgColor || '#0c2340'}
+                                onChange={(e) => updateBlock(selectedBlock.id, { bgColor: e.target.value })}
+                                className="flex-1 bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-mono"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Título de Footer */}
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Título de Pie</label>
+                            <input
+                              type="text"
+                              value={selectedBlock.title !== undefined ? selectedBlock.title : '¡Síguenos y comparte el orgullo rotario!'}
+                              onChange={(e) => updateBlock(selectedBlock.id, { title: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs"
+                            />
+                          </div>
+
+                          {/* Toggles de Contenido */}
+                          <div className="space-y-2 pt-1 border-t border-slate-200">
+                            <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700">
+                              <input
+                                type="checkbox"
+                                checked={selectedBlock.showAreas !== false}
+                                onChange={(e) => updateBlock(selectedBlock.id, { showAreas: e.target.checked })}
+                                className="rounded border-slate-300 text-rotary-blue focus:ring-rotary-blue"
+                              />
+                              <span>Mostrar insignias de las 7 Áreas de Interés</span>
+                            </label>
+
+                            <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700">
+                              <input
+                                type="checkbox"
+                                checked={selectedBlock.showSocial !== false}
+                                onChange={(e) => updateBlock(selectedBlock.id, { showSocial: e.target.checked })}
+                                className="rounded border-slate-300 text-rotary-blue focus:ring-rotary-blue"
+                              />
+                              <span>Mostrar botones de redes sociales oficiales</span>
+                            </label>
+                          </div>
+
+                          {/* Enlace WhatsApp */}
+                          <div className="pt-1 border-t border-slate-200">
+                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Asistencia WhatsApp</label>
+                            <input
+                              type="text"
+                              value={selectedBlock.whatsappUrl !== undefined ? selectedBlock.whatsappUrl : 'https://wa.me/573108520231'}
+                              onChange={(e) => updateBlock(selectedBlock.id, { whatsappUrl: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs mb-1.5"
+                              placeholder="https://wa.me/..."
+                            />
+                            <input
+                              type="text"
+                              value={selectedBlock.whatsappText || 'Asistencia directa a través de WhatsApp'}
+                              onChange={(e) => updateBlock(selectedBlock.id, { whatsappText: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs"
+                              placeholder="Texto del enlace..."
+                            />
+                          </div>
+
+                          {/* Texto Institucional y Legal */}
+                          <div className="pt-1 border-t border-slate-200">
+                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Texto Institucional y Enlace de Baja</label>
+                            <textarea
+                              rows={3}
+                              value={selectedBlock.footerText !== undefined ? selectedBlock.footerText : 'Rotary en Acción · Distritos 4271 y 4281 Colombia.\n© 2026 Rotary International. Todos los derechos reservados.\n<a href="{{unsubscribe_url}}" target="_blank" style="color:#cbd5e1;text-decoration:underline">Preferencias de comunicación y cancelar suscripción</a>'}
+                              onChange={(e) => updateBlock(selectedBlock.id, { footerText: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs font-mono"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 3. Firma Distrital Oficial */}
+                      {selectedBlock.globalKey === 'rotary_signature' && (
+                        <div className="space-y-3.5">
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Título del Comité / Firmante</label>
+                            <input
+                              type="text"
+                              value={selectedBlock.title || 'Comité Distrital de Imagen Pública y Comunicaciones'}
+                              onChange={(e) => updateBlock(selectedBlock.id, { title: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Subtítulo / Entidad</label>
+                            <input
+                              type="text"
+                              value={selectedBlock.subtitle || 'Rotary en Acción · Distritos 4271 y 4281'}
+                              onChange={(e) => updateBlock(selectedBlock.id, { subtitle: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Lema Institucional</label>
+                            <input
+                              type="text"
+                              value={selectedBlock.motto || '«Dar de sí antes de pensar en sí»'}
+                              onChange={(e) => updateBlock(selectedBlock.id, { motto: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs"
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[11px] font-bold text-slate-700 block mb-1">Color Fondo</label>
+                              <input
+                                type="color"
+                                value={selectedBlock.bgColor || '#f8fafc'}
+                                onChange={(e) => updateBlock(selectedBlock.id, { bgColor: e.target.value })}
+                                className="w-full h-8 rounded-lg border border-slate-300 cursor-pointer p-0.5"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[11px] font-bold text-slate-700 block mb-1">Color Acento</label>
+                              <input
+                                type="color"
+                                value={selectedBlock.borderColor || '#013388'}
+                                onChange={(e) => updateBlock(selectedBlock.id, { borderColor: e.target.value })}
+                                className="w-full h-8 rounded-lg border border-slate-300 cursor-pointer p-0.5"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 4. 7 Áreas de Interés */}
+                      {selectedBlock.globalKey === 'rotary_areas_focus' && (
+                        <div className="space-y-3.5">
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Título de Sección</label>
+                            <input
+                              type="text"
+                              value={selectedBlock.title || 'Las 7 Áreas de Interés de Rotary International:'}
+                              onChange={(e) => updateBlock(selectedBlock.id, { title: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Color Fondo</label>
+                            <input
+                              type="color"
+                              value={selectedBlock.bgColor || '#f8fafc'}
+                              onChange={(e) => updateBlock(selectedBlock.id, { bgColor: e.target.value })}
+                              className="w-full h-8 rounded-lg border border-slate-300 cursor-pointer p-0.5"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 5. Otros bloques globales genéricos */}
+                      {!['rotary_header', 'rotary_footer', 'rotary_signature', 'rotary_areas_focus'].includes(selectedBlock.globalKey || '') && (
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-700 block mb-1">HTML Personalizado</label>
+                          <textarea
+                            rows={5}
+                            value={selectedBlock.customHtml || ''}
+                            onChange={(e) => updateBlock(selectedBlock.id, { customHtml: e.target.value })}
+                            className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs font-mono"
+                            placeholder="<div>...</div>"
+                          />
+                        </div>
+                      )}
                     </div>
                   )}
 

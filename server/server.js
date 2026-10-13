@@ -181,6 +181,7 @@ import rotaryEnAccionRoutes from './routes/rotary-en-accion.js';
 import contentStudioRoutes from './routes/contentStudio.js';
 import videoEditorRoutes from './routes/videoEditor.js';
 import siteModulesRoutes from './routes/siteModules.js';
+import emailMarketingRoutes from './routes/email-marketing.js';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
@@ -190,6 +191,7 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/communications', communicationsRoutes);
+app.use('/api/email-marketing', emailMarketingRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/translate', translateRoutes);

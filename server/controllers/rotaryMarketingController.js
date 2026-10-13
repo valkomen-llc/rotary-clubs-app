@@ -871,6 +871,181 @@ export const applyCampaignToTemplate = async (req, res) => {
   }
 };
 
+export const applyCampaignTemplate = async (req, res) => {
+  try {
+    await ensureRotaryMarketingSchema();
+    const id = req.params.id || req.body.campaignId;
+    const { design, subject, preheader, html } = req.body;
+
+    if (!id) return res.status(400).json({ error: 'Identificador de campaña requerido' });
+    if (!design) return res.status(400).json({ error: 'El diseño de la plantilla es requerido' });
+
+    const { rows } = await db.query(
+      `SELECT * FROM "RotaryMarketingCampaign" WHERE id=$1 OR code=$1`, [id]
+    );
+    const campaign = rows[0];
+    if (!campaign) return res.status(404).json({ error: 'Campaña no encontrada' });
+
+    const updatedRes = await db.query(
+      `UPDATE "RotaryMarketingCampaign"
+       SET subject = COALESCE($2, subject),
+           preheader = COALESCE($3, preheader),
+           "contentHtml" = COALESCE($4, "contentHtml"),
+           design = $5,
+           "updatedAt" = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [
+        campaign.id,
+        subject?.trim() || null,
+        preheader?.trim() || null,
+        html || null,
+        JSON.stringify(design)
+      ]
+    );
+
+    const updatedCampaign = updatedRes.rows[0];
+
+    // Sincronizar con Email Marketing si aplica
+    let emailCamp = null;
+    const clubId = await resolveClubId(req, true);
+
+    if (campaign.emailCampaignId) {
+      try {
+        emailCamp = await prisma.emailCampaign.update({
+          where: { id: campaign.emailCampaignId },
+          data: {
+            subject: subject || campaign.subject,
+            preheader: preheader || campaign.preheader || '',
+            content: html || campaign.contentHtml || '',
+            design: JSON.stringify(design),
+            status: 'draft'
+          }
+        });
+      } catch (err) {
+        console.warn('[rotaryMarketing] Error actualizando emailCampaign:', err.message);
+      }
+    } else if (clubId) {
+      try {
+        emailCamp = await prisma.emailCampaign.create({
+          data: {
+            clubId,
+            name: `[Rotary en Acción] ${campaign.name}`,
+            subject: subject || campaign.subject,
+            fromName: 'Rotary en Acción',
+            preheader: preheader || campaign.preheader || '',
+            content: html || campaign.contentHtml || '',
+            design: JSON.stringify(design),
+            status: 'draft',
+            audience: 'all'
+          }
+        });
+        if (emailCamp?.id) {
+          await db.query(
+            `UPDATE "RotaryMarketingCampaign" SET "emailCampaignId"=$1 WHERE id=$2`,
+            [emailCamp.id, campaign.id]
+          );
+          updatedCampaign.emailCampaignId = emailCamp.id;
+        }
+      } catch (err) {
+        console.warn('[rotaryMarketing] Error creando emailCampaign:', err.message);
+      }
+    }
+
+    res.json({
+      ok: true,
+      message: 'Campaña guardada y sincronizada con éxito',
+      campaign: updatedCampaign,
+      emailCampaign: emailCamp
+    });
+  } catch (e) {
+    return fail(res, e);
+  }
+};
+
+export const saveMasterTemplate = async (req, res) => {
+  try {
+    await ensureRotaryMarketingSchema();
+    const { name, subject, preheader, design, html, note } = req.body;
+    if (!design) return res.status(400).json({ error: 'El diseño de la plantilla es requerido' });
+
+    const templateId = 'tpl-rotary-en-accion-master';
+    const existing = await db.query(
+      `SELECT * FROM "ContentActivationTemplate" WHERE id=$1`, [templateId]
+    ).catch(() => ({ rows: [] }));
+
+    let saved = null;
+    if (existing.rows.length) {
+      const cur = existing.rows[0];
+      const nextVer = (cur.version || 1) + 1;
+
+      // Registrar versión en ContentActivationTemplateVersion
+      await db.query(
+        `INSERT INTO "ContentActivationTemplateVersion" (id, "templateId", version, design, html, subject, preheader, note, "createdBy")
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          `ver_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          templateId,
+          cur.version || 1,
+          JSON.stringify(cur.design),
+          cur.html || '',
+          cur.subject || '',
+          cur.preheader || '',
+          note || 'Versión previa',
+          req.user?.id || 'sistema'
+        ]
+      ).catch(() => {});
+
+      const { rows } = await db.query(
+        `UPDATE "ContentActivationTemplate"
+         SET name = COALESCE($2, name),
+             subject = COALESCE($3, subject),
+             preheader = COALESCE($4, preheader),
+             design = $5,
+             html = $6,
+             version = $7,
+             "updatedAt" = NOW()
+         WHERE id = $1
+         RETURNING *`,
+        [
+          templateId,
+          name || cur.name,
+          subject || cur.subject,
+          preheader || cur.preheader,
+          JSON.stringify(design),
+          html || cur.html,
+          nextVer
+        ]
+      );
+      saved = rows[0];
+    } else {
+      const { rows } = await db.query(
+        `INSERT INTO "ContentActivationTemplate" (id, scope, name, channel, design, html, subject, preheader, "isDefault", status, version, "createdBy")
+         VALUES ($1, 'global', $2, 'email', $3, $4, $5, $6, TRUE, 'activa', 1, $7)
+         RETURNING *`,
+        [
+          templateId,
+          name || 'Plantilla Maestra Institucional · Rotary en Acción',
+          JSON.stringify(design),
+          html || '',
+          subject || '',
+          preheader || '',
+          req.user?.id || 'sistema'
+        ]
+      );
+      saved = rows[0];
+    }
+
+    res.json({
+      ok: true,
+      message: `Plantilla maestra guardada con éxito (v${saved?.version || 1})`,
+      template: saved
+    });
+  } catch (e) {
+    return fail(res, e);
+  }
+};
+
 export const sendTestEmail = async (req, res) => {
   try {
     const { to, subject, html } = req.body;

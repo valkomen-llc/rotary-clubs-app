@@ -52,9 +52,11 @@ router.put('/marketing/config', requireSubmissionInboxAccess, mktCtrl.updateMark
 
 // Editor Visual de Plantillas Institucionales & Bloques Globales
 router.get('/marketing/templates/master', requireSubmissionInboxAccess, mktCtrl.getMasterTemplate);
+router.post('/marketing/templates/save-master', requireSubmissionInboxAccess, mktCtrl.saveMasterTemplate);
 router.get('/marketing/templates/global-blocks', requireSubmissionInboxAccess, mktCtrl.getGlobalBlocks);
 router.put('/marketing/templates/global-blocks/:key', requireSubmissionInboxAccess, mktCtrl.updateGlobalBlock);
-router.post('/marketing/templates/apply-campaign', requireSubmissionInboxAccess, mktCtrl.applyCampaignToTemplate);
+router.post('/marketing/campaigns/:id/apply-template', requireSubmissionInboxAccess, mktCtrl.applyCampaignTemplate);
+router.post('/marketing/templates/apply-campaign', requireSubmissionInboxAccess, mktCtrl.applyCampaignTemplate);
 router.post('/marketing/templates/test-email', requireSubmissionInboxAccess, mktCtrl.sendTestEmail);
 
 export default router;

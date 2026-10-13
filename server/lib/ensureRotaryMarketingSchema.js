@@ -287,8 +287,9 @@ export async function ensureRotaryMarketingSchema() {
     "updatedAt" TIMESTAMPTZ DEFAULT NOW()
   )`);
 
-  // Asegurar columna scheduledAt si no existiera
+  // Asegurar columnas de scheduledAt y design si no existieran
   await db.query(`ALTER TABLE "RotaryMarketingCampaign" ADD COLUMN IF NOT EXISTS "scheduledAt" TIMESTAMPTZ`).catch(() => {});
+  await db.query(`ALTER TABLE "RotaryMarketingCampaign" ADD COLUMN IF NOT EXISTS "design" JSONB`).catch(() => {});
 
   // 2. Tabla de sugerencias y optimizaciones del agente de IA
   await db.query(`CREATE TABLE IF NOT EXISTS "RotaryMarketingInsight" (

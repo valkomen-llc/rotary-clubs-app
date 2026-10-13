@@ -35,8 +35,27 @@ export interface ColumnsBlock extends BaseBlock { type: 'columns'; left: ColumnC
 export interface MenuItem { label: string; url: string; }
 export interface MenuBlock extends BaseBlock { type: 'menu'; items: MenuItem[]; align: Align; color: string; size: number; }
 export interface TableRow { cells: string[]; }
-export interface TableBlock extends BaseBlock { type: 'table'; headers?: string[]; rows: TableRow[]; borderColor: string; headerBg: string; headerColor: string; textColor: string; align: Align; }
-export interface GlobalBlockItem extends BaseBlock { type: 'global'; globalKey: string; title?: string; customHtml?: string; }
+export interface GlobalBlockItem extends BaseBlock {
+    type: 'global';
+    globalKey: string;
+    title?: string;
+    subtitle?: string;
+    badge?: string;
+    logoUrl?: string;
+    bgGradient?: string;
+    bgColor?: string;
+    textColor?: string;
+    whatsappUrl?: string;
+    whatsappText?: string;
+    motto?: string;
+    footerText?: string;
+    showAreas?: boolean;
+    showSocial?: boolean;
+    customHtml?: string;
+    padding?: string;
+    borderColor?: string;
+    align?: Align;
+}
 
 export type Block =
     | HeadingBlock | TextBlock | ImageBlock | ButtonBlock | DividerBlock
@@ -289,21 +308,35 @@ const renderBlock = (b: Block, s: EmailSettings, interactive = false): string =>
         }
         case 'global': {
             if (b.globalKey === 'rotary_header') {
+                const headerBg = b.bgGradient || b.bgColor || 'linear-gradient(135deg, #013388 0%, #0c2340 100%)';
+                const headerPadding = b.padding || '28px 24px';
+                const headerTextColor = b.textColor || '#ffffff';
+                const titleRaw = b.title !== undefined ? b.title : 'Tu club transforma comunidades.<br/>¡Hagámoslo visible!';
+                const titleHtml = titleRaw.includes('<br') ? titleRaw : esc(titleRaw).replace(/\n/g, '<br/>');
+                const badgeText = b.badge !== undefined ? b.badge : 'Rotary en Acción · Distritos 4271 & 4281';
+
+                const logoMarkup = b.logoUrl
+                    ? `<div style="display:inline-block;background-color:#ffffff;padding:8px 16px;border-radius:10px;box-shadow:0 2px 4px rgba(0,0,0,0.1)">
+                        <img src="${safeUrl(b.logoUrl)}" alt="Logo Rotary" style="max-height:56px;max-width:260px;height:auto;width:auto;display:inline-block;vertical-align:middle;object-fit:contain" />
+                       </div>`
+                    : `<div style="display:inline-block;background-color:#ffffff;padding:8px 16px;border-radius:10px">
+                        <span style="font-size:18px;font-weight:900;color:#013388;letter-spacing:-0.5px">ROTARY</span> <span style="color:#f7a81b;font-size:18px;font-weight:900">&#9881;</span> <span style="font-size:14px;font-weight:700;color:#0c2340">INTERNATIONAL</span>
+                       </div>`;
+
                 return C(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-radius:12px 12px 0 0;overflow:hidden">
                     <tr>
-                        <td style="background:linear-gradient(135deg, #013388 0%, #0c2340 100%);padding:28px 24px;text-align:center;color:#ffffff">
-                            <table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:0 auto">
+                        <td style="background:${esc(headerBg)};padding:${esc(headerPadding)};text-align:${b.align || 'center'};color:${esc(headerTextColor)}">
+                            <table role="presentation" align="${b.align || 'center'}" cellpadding="0" cellspacing="0" style="margin:0 auto">
                                 <tr>
                                     <td align="center" style="padding-bottom:12px">
-                                        <div style="display:inline-block;background-color:#ffffff;padding:8px 16px;border-radius:10px">
-                                            <span style="font-size:18px;font-weight:900;color:#013388;letter-spacing:-0.5px">ROTARY</span> <span style="color:#f7a81b;font-size:18px;font-weight:900">&#9881;</span> <span style="font-size:14px;font-weight:700;color:#0c2340">INTERNATIONAL</span>
-                                        </div>
+                                        ${logoMarkup}
                                     </td>
                                 </tr>
                                 <tr>
                                     <td align="center">
-                                        <span style="display:inline-block;background-color:rgba(255,255,255,0.18);color:#ffffff;font-size:10px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;padding:3px 10px;border-radius:9999px;margin-bottom:6px">Rotary en Acci&oacute;n &middot; Distritos 4271 &amp; 4281</span>
-                                        <div style="font-size:22px;font-weight:800;color:#ffffff;margin:4px 0 0 0;line-height:1.25">Tu club transforma comunidades.<br/>&iexcl;Hag&aacute;moslo visible!</div>
+                                        ${badgeText ? `<span style="display:inline-block;background-color:rgba(255,255,255,0.18);color:${esc(headerTextColor)};font-size:10px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;padding:3px 10px;border-radius:9999px;margin-bottom:6px">${esc(badgeText)}</span>` : ''}
+                                        <div style="font-size:22px;font-weight:800;color:${esc(headerTextColor)};margin:4px 0 0 0;line-height:1.25">${titleHtml}</div>
+                                        ${b.subtitle ? `<div style="font-size:14px;color:rgba(255,255,255,0.85);margin-top:6px;line-height:1.4">${esc(b.subtitle).replace(/\n/g, '<br/>')}</div>` : ''}
                                     </td>
                                 </tr>
                             </table>
@@ -312,51 +345,77 @@ const renderBlock = (b: Block, s: EmailSettings, interactive = false): string =>
                 </table>`, '0px 0px');
             }
             if (b.globalKey === 'rotary_footer') {
-                return C(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;background-color:#0c2340;border-radius:0 0 12px 12px;overflow:hidden;margin-top:24px">
+                const footerBg = b.bgColor || '#0c2340';
+                const footerTitle = b.title !== undefined ? b.title : '¡Síguenos y comparte el orgullo rotario!';
+                const showAreas = b.showAreas !== false;
+                const showSocial = b.showSocial !== false;
+                const whatsappUrl = b.whatsappUrl !== undefined ? b.whatsappUrl : 'https://wa.me/573108520231';
+                const whatsappText = b.whatsappText || 'Asistencia directa a través de WhatsApp';
+                const footerText = b.footerText !== undefined ? b.footerText : 'Rotary en Acción · Distritos 4271 y 4281 Colombia.<br/>&copy; 2026 Rotary International. Todos los derechos reservados.<br/><a href="{{unsubscribe_url}}" target="_blank" style="color:#cbd5e1;text-decoration:underline">Preferencias de comunicación y cancelar suscripción</a>';
+
+                const footerLogo = b.logoUrl
+                    ? `<div style="margin-bottom:14px"><img src="${safeUrl(b.logoUrl)}" alt="Footer Logo" style="max-height:48px;max-width:220px;display:inline-block;vertical-align:middle" /></div>`
+                    : '';
+
+                const areasHtml = showAreas ? `<div style="margin-bottom:18px">
+                    <span style="display:inline-block;background-color:rgba(255,255,255,0.12);padding:4px 10px;border-radius:20px;font-size:11px;margin:2px 3px;color:#e2e8f0">&#128167; Agua</span>
+                    <span style="display:inline-block;background-color:rgba(255,255,255,0.12);padding:4px 10px;border-radius:20px;font-size:11px;margin:2px 3px;color:#e2e8f0">&#128737;&#65039; Salud</span>
+                    <span style="display:inline-block;background-color:rgba(255,255,255,0.12);padding:4px 10px;border-radius:20px;font-size:11px;margin:2px 3px;color:#e2e8f0">&#128118; Madres y Ni&ntilde;os</span>
+                    <span style="display:inline-block;background-color:rgba(255,255,255,0.12);padding:4px 10px;border-radius:20px;font-size:11px;margin:2px 3px;color:#e2e8f0">&#128218; Educaci&oacute;n</span>
+                    <span style="display:inline-block;background-color:rgba(255,255,255,0.12);padding:4px 10px;border-radius:20px;font-size:11px;margin:2px 3px;color:#e2e8f0">&#128104;&#8205;&#127806; Econom&iacute;a</span>
+                    <span style="display:inline-block;background-color:rgba(255,255,255,0.12);padding:4px 10px;border-radius:20px;font-size:11px;margin:2px 3px;color:#e2e8f0">&#127807; Ambiente</span>
+                    <span style="display:inline-block;background-color:rgba(255,255,255,0.12);padding:4px 10px;border-radius:20px;font-size:11px;margin:2px 3px;color:#e2e8f0">&#128330;&#65039; Paz</span>
+                </div>` : '';
+
+                const socialHtml = showSocial ? `<div style="margin-bottom:16px">
+                    <a href="https://instagram.com" target="_blank" style="display:inline-block;width:32px;height:32px;line-height:32px;border-radius:50%;background:#013388;color:#fff;text-decoration:none;margin:0 4px;font-weight:700">IG</a>
+                    <a href="https://facebook.com" target="_blank" style="display:inline-block;width:32px;height:32px;line-height:32px;border-radius:50%;background:#013388;color:#fff;text-decoration:none;margin:0 4px;font-weight:700">FB</a>
+                    <a href="https://youtube.com" target="_blank" style="display:inline-block;width:32px;height:32px;line-height:32px;border-radius:50%;background:#013388;color:#fff;text-decoration:none;margin:0 4px;font-weight:700">&#9654;</a>
+                    <a href="https://app.clubplatform.org/rotary-en-accion" target="_blank" style="display:inline-block;width:32px;height:32px;line-height:32px;border-radius:50%;background:#013388;color:#fff;text-decoration:none;margin:0 4px;font-weight:700">&#127760;</a>
+                </div>` : '';
+
+                const whatsappHtml = whatsappUrl ? `<div style="font-size:13px;margin-bottom:12px">
+                    <a href="${safeUrl(whatsappUrl)}" target="_blank" style="color:#38bdf8;text-decoration:underline;font-weight:700">&#128172; ${esc(whatsappText)}</a>
+                </div>` : '';
+
+                return C(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;background-color:${esc(footerBg)};border-radius:0 0 12px 12px;overflow:hidden;margin-top:24px">
                     <tr>
                         <td style="padding:28px 24px;text-align:center;color:#ffffff">
-                            <div style="font-size:14px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:14px;color:#ffffff">&iexcl;S&iacute;guenos y comparte el orgullo rotario!</div>
-                            <div style="margin-bottom:18px">
-                                <span style="display:inline-block;background-color:rgba(255,255,255,0.12);padding:4px 10px;border-radius:20px;font-size:11px;margin:2px 3px;color:#e2e8f0">&#128167; Agua</span>
-                                <span style="display:inline-block;background-color:rgba(255,255,255,0.12);padding:4px 10px;border-radius:20px;font-size:11px;margin:2px 3px;color:#e2e8f0">&#128737;&#65039; Salud</span>
-                                <span style="display:inline-block;background-color:rgba(255,255,255,0.12);padding:4px 10px;border-radius:20px;font-size:11px;margin:2px 3px;color:#e2e8f0">&#128118; Madres y Ni&ntilde;os</span>
-                                <span style="display:inline-block;background-color:rgba(255,255,255,0.12);padding:4px 10px;border-radius:20px;font-size:11px;margin:2px 3px;color:#e2e8f0">&#128218; Educaci&oacute;n</span>
-                                <span style="display:inline-block;background-color:rgba(255,255,255,0.12);padding:4px 10px;border-radius:20px;font-size:11px;margin:2px 3px;color:#e2e8f0">&#128104;&#8205;&#127806; Econom&iacute;a</span>
-                                <span style="display:inline-block;background-color:rgba(255,255,255,0.12);padding:4px 10px;border-radius:20px;font-size:11px;margin:2px 3px;color:#e2e8f0">&#127807; Ambiente</span>
-                                <span style="display:inline-block;background-color:rgba(255,255,255,0.12);padding:4px 10px;border-radius:20px;font-size:11px;margin:2px 3px;color:#e2e8f0">&#128330;&#65039; Paz</span>
-                            </div>
-                            <div style="margin-bottom:16px">
-                                <a href="https://instagram.com" target="_blank" style="display:inline-block;width:32px;height:32px;line-height:32px;border-radius:50%;background:#013388;color:#fff;text-decoration:none;margin:0 4px;font-weight:700">IG</a>
-                                <a href="https://facebook.com" target="_blank" style="display:inline-block;width:32px;height:32px;line-height:32px;border-radius:50%;background:#013388;color:#fff;text-decoration:none;margin:0 4px;font-weight:700">FB</a>
-                                <a href="https://youtube.com" target="_blank" style="display:inline-block;width:32px;height:32px;line-height:32px;border-radius:50%;background:#013388;color:#fff;text-decoration:none;margin:0 4px;font-weight:700">&#9654;</a>
-                                <a href="https://app.clubplatform.org/rotary-en-accion" target="_blank" style="display:inline-block;width:32px;height:32px;line-height:32px;border-radius:50%;background:#013388;color:#fff;text-decoration:none;margin:0 4px;font-weight:700">&#127760;</a>
-                            </div>
-                            <div style="font-size:13px;margin-bottom:12px">
-                                <a href="https://wa.me/573108520231" target="_blank" style="color:#38bdf8;text-decoration:underline;font-weight:700">&#128172; Asistencia directa a trav&eacute;s de WhatsApp</a>
-                            </div>
+                            ${footerLogo}
+                            ${footerTitle ? `<div style="font-size:14px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:14px;color:#ffffff">${esc(footerTitle)}</div>` : ''}
+                            ${areasHtml}
+                            ${socialHtml}
+                            ${whatsappHtml}
                             <div style="font-size:11px;color:#94a3b8;line-height:1.5;margin-top:12px;border-top:1px solid rgba(255,255,255,0.1);padding-top:12px">
-                                Rotary en Acci&oacute;n &middot; Distritos 4271 y 4281 Colombia.<br/>
-                                &copy; 2026 Rotary International. Todos los derechos reservados.<br/>
-                                <a href="{{unsubscribe_url}}" target="_blank" style="color:#cbd5e1;text-decoration:underline">Preferencias de comunicaci&oacute;n y cancelar suscripci&oacute;n</a>
+                                ${footerText}
                             </div>
                         </td>
                     </tr>
                 </table>`, '0px 0px');
             }
             if (b.globalKey === 'rotary_signature') {
-                return C(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:16px 0;border-left:4px solid #013388;background-color:#f8fafc;border-radius:0 12px 12px 0">
+                const title = b.title || 'Comité Distrital de Imagen Pública y Comunicaciones';
+                const subtitle = b.subtitle || 'Rotary en Acción · Distritos 4271 y 4281';
+                const motto = b.motto || '«Dar de sí antes de pensar en sí»';
+                const sigBg = b.bgColor || '#f8fafc';
+                const sigBorder = b.borderColor || '#013388';
+
+                return C(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:16px 0;border-left:4px solid ${esc(sigBorder)};background-color:${esc(sigBg)};border-radius:0 12px 12px 0">
                     <tr>
                         <td style="padding:16px 20px;color:#334155;font-size:14px;line-height:1.6">
-                            <div style="font-weight:700;color:#0f172a;font-size:15px">Comit&eacute; Distrital de Imagen P&uacute;blica y Comunicaciones</div>
-                            <div style="color:#64748b;font-size:13px">Rotary en Acci&oacute;n &middot; Distritos 4271 y 4281</div>
-                            <div style="margin-top:8px;font-weight:600;color:#013388">&laquo;Dar de s&iacute; antes de pensar en s&iacute;&raquo;</div>
+                            <div style="font-weight:700;color:#0f172a;font-size:15px">${esc(title)}</div>
+                            <div style="color:#64748b;font-size:13px">${esc(subtitle)}</div>
+                            <div style="margin-top:8px;font-weight:600;color:${esc(sigBorder)}">${esc(motto)}</div>
                         </td>
                     </tr>
                 </table>`);
             }
             if (b.globalKey === 'rotary_areas_focus') {
-                return C(`<div style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin:16px 0">
-                    <div style="font-size:14px;font-weight:800;color:#013388;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.05em">&#127775; Las 7 &Aacute;reas de Inter&eacute;s de Rotary International:</div>
+                const title = b.title || 'Las 7 Áreas de Interés de Rotary International:';
+                const areasBg = b.bgColor || '#f8fafc';
+
+                return C(`<div style="background-color:${esc(areasBg)};border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin:16px 0">
+                    <div style="font-size:14px;font-weight:800;color:#013388;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.05em">&#127775; ${esc(title)}</div>
                     <ul style="margin:0;padding-left:18px;color:#334155;font-size:13px;line-height:1.7">
                         <li><strong>&#128167; Agua, saneamiento e higiene</strong> &mdash; Acceso a agua potable y h&aacute;bitos saludables.</li>
                         <li><strong>&#128737;&#65039; Prevenci&oacute;n y tratamiento de enfermedades</strong> &mdash; Jornadas m&eacute;dicas y salud preventiva.</li>
@@ -421,7 +480,13 @@ export const createRotaryMasterDesign = (): EmailDesign => ({
             globalKey: 'rotary_header',
             label: 'Encabezado Institucional Protegido',
             isProtected: true,
-            isLocked: true,
+            isLocked: false,
+            badge: 'Rotary en Acción · Distritos 4271 & 4281',
+            title: 'Tu club transforma comunidades.\n¡Hagámoslo visible!',
+            subtitle: '',
+            bgGradient: 'linear-gradient(135deg, #013388 0%, #0c2340 100%)',
+            textColor: '#ffffff',
+            logoUrl: '',
         },
         {
             id: newId(),
@@ -450,7 +515,9 @@ export const createRotaryMasterDesign = (): EmailDesign => ({
             globalKey: 'rotary_areas_focus',
             label: '7 Áreas de Enfoque Institucionales',
             isProtected: true,
-            isLocked: true,
+            isLocked: false,
+            title: 'Las 7 Áreas de Interés de Rotary International:',
+            bgColor: '#f8fafc',
         },
         {
             id: newId(),
@@ -480,7 +547,12 @@ export const createRotaryMasterDesign = (): EmailDesign => ({
             globalKey: 'rotary_signature',
             label: 'Firma Oficial Distrital',
             isProtected: true,
-            isLocked: true,
+            isLocked: false,
+            title: 'Comité Distrital de Imagen Pública y Comunicaciones',
+            subtitle: 'Rotary en Acción · Distritos 4271 y 4281',
+            motto: '«Dar de sí antes de pensar en sí»',
+            bgColor: '#f8fafc',
+            borderColor: '#013388',
         },
         {
             id: newId(),
@@ -488,7 +560,15 @@ export const createRotaryMasterDesign = (): EmailDesign => ({
             globalKey: 'rotary_footer',
             label: 'Pie de Página Institucional Protegido',
             isProtected: true,
-            isLocked: true,
+            isLocked: false,
+            title: '¡Síguenos y comparte el orgullo rotario!',
+            bgColor: '#0c2340',
+            showAreas: true,
+            showSocial: true,
+            whatsappUrl: 'https://wa.me/573108520231',
+            whatsappText: 'Asistencia directa a través de WhatsApp',
+            footerText: 'Rotary en Acción · Distritos 4271 y 4281 Colombia.<br/>&copy; 2026 Rotary International. Todos los derechos reservados.<br/><a href="{{unsubscribe_url}}" target="_blank" style="color:#cbd5e1;text-decoration:underline">Preferencias de comunicación y cancelar suscripción</a>',
+            logoUrl: '',
         },
     ],
 });
