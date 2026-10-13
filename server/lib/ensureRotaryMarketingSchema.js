@@ -403,9 +403,9 @@ export async function ensureRotaryMarketingSchema() {
   const GLOBAL_BLOCKS_SEED = [
     {
       key: 'rotary_header',
-      name: 'Encabezado Institucional Rotary',
+      name: 'Cabecera Institucional Adaptable',
       category: 'Cabecera',
-      description: 'Logo oficial Rotary International, lema de campaña y Distritos 4271 & 4281.',
+      description: 'Identidad visual inteligente por sitio (logo institucional limpio, dimensiones y fondo configurables).',
       isProtected: true
     },
     {
@@ -489,9 +489,10 @@ export async function ensureRotaryMarketingSchema() {
         width: 600
       },
       blocks: [
-        { id: 'b_master_hdr', type: 'global', globalKey: 'rotary_header', label: 'Encabezado Institucional Protegido', isProtected: true, isLocked: true },
+        { id: 'b_master_hdr', type: 'global', globalKey: 'rotary_header', label: 'Cabecera Institucional Adaptable', isProtected: true, isLocked: true, logoUrl: '', logoMaxWidth: 240, logoMaxHeight: 60, align: 'center', bgColor: '#ffffff', padding: '24px 20px' },
+        { id: 'b_master_titulo', type: 'heading', text: 'Tu club transforma comunidades.\n¡Hagámoslo visible!', level: 1, align: 'center', color: '#013388', weight: '800', label: 'Título de Campaña (Editable)', isProtected: false },
         { id: 'b_master_saludo', type: 'heading', text: 'Hola {{contact.first_name|Líder Rotario(a)}},', level: 2, align: 'left', color: '#0f172a', weight: '800', label: 'Saludo Personalizado', isProtected: false },
-        { id: 'b_master_intro', type: 'text', text: 'Estimadas rotarias y estimados rotarios de los Distritos 4271 y 4281:\n\nCada semana, los clubes realizan un esfuerzo incansable por sus comunidades. Rotary en Acción es la plataforma oficial para visibilizar y registrar ese impacto.', align: 'left', color: '#334155', size: 15, label: 'Cuerpo de Campaña (Editable / IA)', isProtected: false },
+        { id: 'b_master_intro', type: 'text', text: 'Estimadas rotarias y estimados rotarios:\n\nCada semana, los clubes realizan un esfuerzo incansable por sus comunidades. Rotary en Acción es la plataforma oficial para visibilizar y registrar ese impacto.', align: 'left', color: '#334155', size: 15, label: 'Cuerpo de Campaña (Editable / IA)', isProtected: false },
         { id: 'b_master_areas', type: 'global', globalKey: 'rotary_areas_focus', label: '7 Áreas de Enfoque Institucionales', isProtected: true, isLocked: true },
         { id: 'b_master_cta', type: 'button', text: 'COMPARTIR ACTIVIDAD EN ROTARY EN ACCIÓN', href: '{{form_url}}', bg: '#013388', color: '#ffffff', align: 'center', radius: 12, label: 'Botón CTA Oficial', isProtected: false },
         { id: 'b_master_firma', type: 'global', globalKey: 'rotary_signature', label: 'Firma Oficial Distrital', isProtected: true, isLocked: true },

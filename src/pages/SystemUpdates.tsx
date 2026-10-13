@@ -42,6 +42,21 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1188.0',
+        title: 'Cabecera Institucional Inteligente y Adaptable Multisitio | Club Platform 🏛️✨',
+        description: 'Transformación integral de la cabecera en el Editor Visual de Plantillas hacia un sistema institucional multisitio de alta fidelidad: eliminación total de copys promocionales y menciones rígidas de distritos en la cabecera, reservando el espacio exclusivamente para la identidad visual de la organización activa; resolución inteligente y jerárquica de logos (Prioridad 1: logo personalizado de plantilla; Prioridad 2: logo institucional de ajustes de sitio; Prioridad 3: fallback oficial de Club Platform; Prioridad 4: encabezado tipográfico institucional limpio para evitar suplantaciones o mezclas indebidas entre organizaciones); suite de personalización avanzada en el inspector con biblioteca de medios, carga de archivos locales, persistencia como logo predeterminado del sitio vía API, control milimétrico de dimensiones y alineación protegiendo la proporción original sin distorsiones, y previsualización sincronizada en el panel de campañas y envíos de prueba.',
+        date: new Date().toISOString(),
+        tags: ['email-marketing', 'editor-visual', 'cabecera-institucional', 'multisitio', 'branding', 'rotary-en-accion', 'production-release'],
+        type: 'feature',
+        changes: [
+            { type: 'improved', text: 'Cabecera institucional minimalista y pura: exclusión de títulos de campañas y distritos fijos de la cabecera, manteniendo todo el contenido comunicacional y promocional estrictamente en el cuerpo editable.' },
+            { type: 'added', text: 'Resolución inteligente de identidad visual multisitio: jerarquía estricta que prioriza logo de bloque, logo del sitio activo, fallback oficial de plataforma y tipografía institucional sin cruce de logos entre organizaciones.' },
+            { type: 'added', text: 'Suite de personalización en inspector: integración de Biblioteca de Medios, subida directa desde el ordenador, definición de logo predeterminado del club vía API (/admin/clubs/:id) y restauración de valores por defecto.' },
+            { type: 'improved', text: 'Protección de proporciones originales y dimensiones: control de ancho máximo (logoMaxWidth) y alto máximo (logoMaxHeight) con object-fit: contain para garantizar visualización perfecta en cualquier cliente de correo.' },
+            { type: 'improved', text: 'Sincronización integral en previsualizaciones de campañas, guardado y envíos de prueba en tiempo real dentro del Planificador de Marketing Inteligente.' }
+        ]
+    },
+    {
         version: '4.1187.0',
         title: 'Editor Visual de Plantillas: Persistencia de Guardado, Edición Visual Completa de Bloques Globales y Sincronización Bicolor 💾✨',
         description: 'Corrección crítica del flujo de guardado y persistencia en el Editor Visual de Plantillas integrado con Rotary en Acción y Email Marketing: resolución de la causa raíz del error 404/500 al guardar implementando los endpoints dedicados de aplicación y guardado de plantillas con serialización JSONB del diseño (design), montaje de rutas /api/email-marketing en server.js, habilitación de la edición visual interactiva de todos los bloques institucionales (cabecera con selección/subida de logo, cambio de degradados y fondos, títulos multilínea, insignias; pie de página con logos, conmutadores de 7 áreas de enfoque y redes, asistencia WhatsApp directa y texto legal con baja), selección en lienzo con anillo de enfoque prominente e interceptor de enlaces, e inmunidad a pérdidas al recargar o sincronizar con el Planificador de Campañas.',

@@ -42,6 +42,8 @@ export interface GlobalBlockItem extends BaseBlock {
     subtitle?: string;
     badge?: string;
     logoUrl?: string;
+    logoMaxWidth?: number;
+    logoMaxHeight?: number;
     bgGradient?: string;
     bgColor?: string;
     textColor?: string;
@@ -149,8 +151,14 @@ export const makeBlock = (type: BlockType): Block => {
         case 'global': return {
             id, type,
             globalKey: 'rotary_header',
-            label: 'Encabezado Institucional Rotary',
-            isProtected: true
+            label: 'Cabecera Institucional Adaptable',
+            isProtected: true,
+            logoUrl: '',
+            logoMaxWidth: 240,
+            logoMaxHeight: 60,
+            align: 'center',
+            bgColor: '#ffffff',
+            padding: '24px 20px',
         };
         default: return { id, type: 'text', text: '', align: 'left', color: '#333333', size: 15 } as TextBlock;
     }
@@ -215,6 +223,154 @@ const num = (v: unknown, fb: number): number => {
     return Number.isFinite(n) && n >= 0 && n <= 120 ? n : fb;
 };
 
+export interface SiteBrandingContext {
+    siteLogo?: string | null;
+    siteName?: string | null;
+    siteType?: string | null;
+    isMainPlatform?: boolean;
+    platformLogo?: string | null;
+}
+
+export interface ResolvedLogoResult {
+    url?: string;
+    logoUrl?: string | null;
+    text?: string;
+    siteName?: string | null;
+    alt?: string;
+    source: 'custom' | 'template_custom' | 'site_settings' | 'platform_default' | 'typography' | 'site_name';
+}
+
+/**
+ * Obtiene el contexto institucional activo del sitio actual desde el entorno / almacenamiento local
+ * cuando no se pasa un siteContext explícito. Reutiliza la arquitectura multitenant del sistema.
+ */
+export const getActiveSiteBrandingContext = (): SiteBrandingContext => {
+    if (typeof window === 'undefined') {
+        return { isMainPlatform: false, siteName: 'Rotary' };
+    }
+    try {
+        const host = window.location.hostname;
+        const isMainPlatform = host === 'clubplatform.org' || host === 'www.clubplatform.org' || host === 'app.clubplatform.org' || (host === 'localhost' && window.location.port !== '5173');
+
+        let siteLogo: string | null = null;
+        let siteName: string | null = null;
+        let siteType: string | null = null;
+
+        // 1. Datos del club / sitio en almacenamiento local (persistencia de sesión multitenant)
+        try {
+            const rawClub = localStorage.getItem('rotary_club');
+            if (rawClub) {
+                const c = JSON.parse(rawClub);
+                if (c && typeof c === 'object') {
+                    if (typeof c.logo === 'string' && c.logo.trim()) siteLogo = c.logo.trim();
+                    if (typeof c.name === 'string' && c.name.trim()) siteName = c.name.trim();
+                    if (typeof c.type === 'string') siteType = c.type;
+                }
+            }
+        } catch {}
+
+        // 2. Si no hay logo del club en rotary_club, consultar sesión del usuario logueado
+        if (!siteLogo) {
+            try {
+                const rawUser = localStorage.getItem('rotary_user');
+                if (rawUser) {
+                    const u = JSON.parse(rawUser);
+                    if (u?.club?.logo && typeof u.club.logo === 'string') siteLogo = u.club.logo.trim();
+                    if (!siteName && u?.club?.name) siteName = u.club.name.trim();
+                }
+            } catch {}
+        }
+
+        // 3. Logo de plataforma central
+        let platformLogo: string | null = null;
+        try {
+            const cpLogo = localStorage.getItem('cp_platform_logo');
+            if (cpLogo) {
+                const cp = JSON.parse(cpLogo);
+                if (cp?.url) platformLogo = cp.url;
+            }
+        } catch {}
+
+        return {
+            siteLogo,
+            siteName: siteName || (isMainPlatform ? 'Club Platform' : 'Organización'),
+            siteType,
+            isMainPlatform,
+            platformLogo: platformLogo || '/images/platform_logo_premium.png'
+        };
+    } catch {
+        return { isMainPlatform: false, siteName: 'Club Platform' };
+    }
+};
+
+/**
+ * Resuelve la identidad visual institucional con la prioridad estricta del sistema:
+ * 1. Logo personalizado asignado a la plantilla del sitio (block.logoUrl).
+ * 2. Logo institucional configurado en los ajustes del sitio activo (siteContext.siteLogo).
+ * 3. Logo predeterminado de Club Platform, únicamente cuando corresponda al entorno central o como fallback explícitamente autorizado.
+ * 4. Tipografía institucional limpia del nombre de la organización si el sitio no ha configurado imagen aún (evita suplantación de marca entre organizaciones).
+ */
+export const resolveInstitutionalLogo = (
+    block: GlobalBlockItem,
+    siteContext?: SiteBrandingContext
+): ResolvedLogoResult => {
+    // 1. Logo personalizado asignado a la plantilla del sitio
+    if (block.logoUrl && typeof block.logoUrl === 'string' && block.logoUrl.trim().length > 0) {
+        const u = block.logoUrl.trim();
+        return {
+            url: u,
+            logoUrl: u,
+            source: 'custom',
+            alt: siteContext?.siteName ? `Logo de ${siteContext.siteName}` : 'Logo de la Plantilla'
+        };
+    }
+
+    // 2. Logo institucional configurado en los ajustes del sitio activo
+    if (siteContext?.siteLogo && typeof siteContext.siteLogo === 'string' && siteContext.siteLogo.trim().length > 0) {
+        const u = siteContext.siteLogo.trim();
+        return {
+            url: u,
+            logoUrl: u,
+            source: 'site_settings',
+            alt: siteContext.siteName ? `Logo Institucional de ${siteContext.siteName}` : 'Logo Institucional del Sitio'
+        };
+    }
+
+    // 3. Logo predeterminado de Club Platform, ÚNICAMENTE cuando corresponda al entorno central o como fallback explícitamente autorizado
+    if (siteContext?.isMainPlatform) {
+        const platLogo = siteContext.platformLogo || 'https://assets.cdn.clubplatform.org/logos/rotary-international-logo-blue.png';
+        return {
+            url: platLogo,
+            logoUrl: platLogo,
+            source: 'platform_default',
+            alt: 'Club Platform Oficial'
+        };
+    }
+
+    // 4. Si es un sitio particular (Distrito, Club, etc.) que no tiene logo cargado aún:
+    // Nunca usurpar identidad ajena ni mezclar logos de otras organizaciones.
+    if (siteContext?.siteName && siteContext.siteName.trim().length > 0) {
+        const name = siteContext.siteName.trim();
+        return {
+            url: undefined,
+            logoUrl: null,
+            text: name,
+            siteName: name,
+            source: 'typography',
+            alt: name
+        };
+    }
+
+    return {
+        url: undefined,
+        logoUrl: null,
+        text: 'Club Platform',
+        siteName: 'Club Platform',
+        source: 'typography',
+        alt: 'Club Platform'
+    };
+};
+
 // Celda con padding vertical por bloque (padTop/padBottom, 0-120px) y
 // `data-bid` SOLO en vista previa interactiva (el HTML guardado/enviado
 // nunca lo lleva: renderDesignToHtml sin `interactive` no lo emite).
@@ -235,7 +391,7 @@ const cell = (inner: string, b?: Block, vPad = '8px 24px', interactive = false):
     return `<tr${bid}><td style="padding:${pad}">${inner}</td></tr>`;
 };
 
-const renderBlock = (b: Block, s: EmailSettings, interactive = false): string => {
+const renderBlock = (b: Block, s: EmailSettings, interactive = false, siteContext?: SiteBrandingContext): string => {
     const C = (inner: string, vPad = '8px 24px'): string => cell(inner, b, vPad, interactive);
     switch (b.type) {
         case 'heading': {
@@ -308,35 +464,30 @@ const renderBlock = (b: Block, s: EmailSettings, interactive = false): string =>
         }
         case 'global': {
             if (b.globalKey === 'rotary_header') {
-                const headerBg = b.bgGradient || b.bgColor || 'linear-gradient(135deg, #013388 0%, #0c2340 100%)';
-                const headerPadding = b.padding || '28px 24px';
-                const headerTextColor = b.textColor || '#ffffff';
-                const titleRaw = b.title !== undefined ? b.title : 'Tu club transforma comunidades.<br/>¡Hagámoslo visible!';
-                const titleHtml = titleRaw.includes('<br') ? titleRaw : esc(titleRaw).replace(/\n/g, '<br/>');
-                const badgeText = b.badge !== undefined ? b.badge : 'Rotary en Acción · Distritos 4271 & 4281';
+                const ctx = siteContext || getActiveSiteBrandingContext();
+                const branding = resolveInstitutionalLogo(b, ctx);
+                const align = b.align || 'center';
+                const headerBg = b.bgGradient || b.bgColor || '#ffffff';
+                const headerPadding = b.padding || '24px 20px';
+                const maxW = typeof b.logoMaxWidth === 'number' && b.logoMaxWidth > 0 ? b.logoMaxWidth : 240;
+                const maxH = typeof b.logoMaxHeight === 'number' && b.logoMaxHeight > 0 ? b.logoMaxHeight : 60;
 
-                const logoMarkup = b.logoUrl
-                    ? `<div style="display:inline-block;background-color:#ffffff;padding:8px 16px;border-radius:10px;box-shadow:0 2px 4px rgba(0,0,0,0.1)">
-                        <img src="${safeUrl(b.logoUrl)}" alt="Logo Rotary" style="max-height:56px;max-width:260px;height:auto;width:auto;display:inline-block;vertical-align:middle;object-fit:contain" />
-                       </div>`
-                    : `<div style="display:inline-block;background-color:#ffffff;padding:8px 16px;border-radius:10px">
-                        <span style="font-size:18px;font-weight:900;color:#013388;letter-spacing:-0.5px">ROTARY</span> <span style="color:#f7a81b;font-size:18px;font-weight:900">&#9881;</span> <span style="font-size:14px;font-weight:700;color:#0c2340">INTERNATIONAL</span>
-                       </div>`;
+                const resolvedUrl = branding.url || branding.logoUrl;
+                const resolvedText = branding.text || branding.siteName;
+                let logoHtml = '';
+                if (resolvedUrl) {
+                    logoHtml = `<img src="${safeUrl(resolvedUrl)}" alt="${esc(branding.alt || ctx.siteName || 'Identidad Institucional')}" style="max-height: ${maxH}px; max-width: ${maxW}px; width: auto; height: auto; display: inline-block; vertical-align: middle; object-fit: contain; border: 0; outline: none; text-decoration: none;" />`;
+                } else if (resolvedText) {
+                    logoHtml = `<span style="font-size:20px;font-weight:800;letter-spacing:-0.02em;color:${esc(b.textColor || '#013388')};display:inline-block;text-transform:uppercase">${esc(resolvedText)}</span>`;
+                }
 
-                return C(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-radius:12px 12px 0 0;overflow:hidden">
+                return C(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%">
                     <tr>
-                        <td style="background:${esc(headerBg)};padding:${esc(headerPadding)};text-align:${b.align || 'center'};color:${esc(headerTextColor)}">
-                            <table role="presentation" align="${b.align || 'center'}" cellpadding="0" cellspacing="0" style="margin:0 auto">
+                        <td data-rotary-header="true" align="${align}" style="background:${esc(headerBg)};padding:${esc(headerPadding)};text-align:${align};vertical-align:middle">
+                            <table role="presentation" align="${align}" cellpadding="0" cellspacing="0" style="${align === 'center' ? 'margin:0 auto;' : align === 'right' ? 'margin-left:auto;margin-right:0;' : 'margin-right:auto;margin-left:0;'}border-collapse:collapse">
                                 <tr>
-                                    <td align="center" style="padding-bottom:12px">
-                                        ${logoMarkup}
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td align="center">
-                                        ${badgeText ? `<span style="display:inline-block;background-color:rgba(255,255,255,0.18);color:${esc(headerTextColor)};font-size:10px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;padding:3px 10px;border-radius:9999px;margin-bottom:6px">${esc(badgeText)}</span>` : ''}
-                                        <div style="font-size:22px;font-weight:800;color:${esc(headerTextColor)};margin:4px 0 0 0;line-height:1.25">${titleHtml}</div>
-                                        ${b.subtitle ? `<div style="font-size:14px;color:rgba(255,255,255,0.85);margin-top:6px;line-height:1.4">${esc(b.subtitle).replace(/\n/g, '<br/>')}</div>` : ''}
+                                    <td align="${align}" style="text-align:${align};vertical-align:middle;line-height:1">
+                                        ${logoHtml}
                                     </td>
                                 </tr>
                             </table>
@@ -436,10 +587,13 @@ const renderBlock = (b: Block, s: EmailSettings, interactive = false): string =>
 
 // Renderiza el diseño completo a un fragmento HTML listo para EmailCampaign.content.
 // No incluye <html>/<body> ni el pie de baja (eso lo añade buildEmailHtml al enviar).
-export const renderDesignToHtml = (design: EmailDesign, opts: { interactive?: boolean } = {}): string => {
+export const renderDesignToHtml = (
+    design: EmailDesign,
+    opts: { interactive?: boolean; siteContext?: SiteBrandingContext } = {}
+): string => {
     const s = { ...DEFAULT_SETTINGS, ...(design?.settings || {}) };
     const blocks = Array.isArray(design?.blocks) ? design.blocks : [];
-    const rows = blocks.map((b) => renderBlock(b, s, !!opts.interactive)).join('');
+    const rows = blocks.map((b) => renderBlock(b, s, !!opts.interactive, opts.siteContext)).join('');
     const script = opts.interactive
         ? `<script>document.addEventListener('click',function(e){var el=e.target&&e.target.closest?e.target.closest('[data-bid]'):null;if(el&&window.parent){window.parent.postMessage({type:'ca-select-block',id:el.getAttribute('data-bid')},'*');}});<\/script>`
         : '';
@@ -462,6 +616,59 @@ export const parseDesign = (raw?: string | null): EmailDesign | null => {
     }
 };
 
+/**
+ * Normaliza y desacopla cualquier diseño recibido:
+ * Garantiza que la cabecera contenga EXCLUSIVAMENTE la identidad institucional del sitio,
+ * y que si el diseño previo contenía títulos promocionales en la cabecera, estos se muevan
+ * limpiamente al cuerpo editable de la campaña sin pérdida de contenido.
+ */
+export const normalizeInstitutionalDesign = (rawDesign?: EmailDesign | null): EmailDesign => {
+    const base = rawDesign || createRotaryMasterDesign();
+    if (!base || !Array.isArray(base.blocks)) return createRotaryMasterDesign();
+
+    const headerIdx = base.blocks.findIndex((b) => b.globalKey === 'rotary_header');
+    if (headerIdx === -1) return base;
+
+    const hdr = base.blocks[headerIdx] as GlobalBlockItem;
+    const oldTitle = hdr.title ? String(hdr.title).replace(/<br\s*\/?>/gi, '\n').trim() : '';
+
+    const cleanedHeader: GlobalBlockItem = {
+        ...hdr,
+        label: 'Cabecera Institucional Adaptable',
+        align: hdr.align || 'center',
+        bgColor: hdr.bgColor || hdr.bgGradient || '#ffffff',
+        bgGradient: hdr.bgGradient || undefined,
+        padding: hdr.padding || '24px 20px',
+        logoMaxWidth: typeof hdr.logoMaxWidth === 'number' && hdr.logoMaxWidth > 0 ? hdr.logoMaxWidth : 240,
+        logoMaxHeight: typeof hdr.logoMaxHeight === 'number' && hdr.logoMaxHeight > 0 ? hdr.logoMaxHeight : 60,
+        title: undefined,
+        subtitle: undefined,
+        badge: undefined,
+    };
+
+    const newBlocks = [...base.blocks];
+    newBlocks[headerIdx] = cleanedHeader;
+
+    if (oldTitle && !newBlocks.some((b) => b.type === 'heading' && b.text?.includes(oldTitle.split('\n')[0]))) {
+        newBlocks.splice(headerIdx + 1, 0, {
+            id: newId(),
+            type: 'heading',
+            text: oldTitle,
+            level: 1,
+            align: 'center',
+            color: '#013388',
+            weight: '800',
+            label: 'Título de Campaña (Editable)',
+            isProtected: false,
+        });
+    }
+
+    return {
+        ...base,
+        blocks: newBlocks
+    };
+};
+
 // ─── Plantilla Maestra Institucional: Rotary en Acción ──────────────────────
 export const createRotaryMasterDesign = (): EmailDesign => ({
     version: 1,
@@ -478,15 +685,26 @@ export const createRotaryMasterDesign = (): EmailDesign => ({
             id: newId(),
             type: 'global',
             globalKey: 'rotary_header',
-            label: 'Encabezado Institucional Protegido',
+            label: 'Cabecera Institucional Adaptable',
             isProtected: true,
             isLocked: false,
-            badge: 'Rotary en Acción · Distritos 4271 & 4281',
-            title: 'Tu club transforma comunidades.\n¡Hagámoslo visible!',
-            subtitle: '',
-            bgGradient: 'linear-gradient(135deg, #013388 0%, #0c2340 100%)',
-            textColor: '#ffffff',
             logoUrl: '',
+            logoMaxWidth: 240,
+            logoMaxHeight: 60,
+            align: 'center',
+            bgColor: '#ffffff',
+            padding: '24px 20px',
+        },
+        {
+            id: newId(),
+            type: 'heading',
+            text: 'Tu club transforma comunidades.\n¡Hagámoslo visible!',
+            level: 1,
+            align: 'center',
+            color: '#013388',
+            weight: '800',
+            label: 'Título de Campaña (Editable)',
+            isProtected: false,
         },
         {
             id: newId(),
@@ -502,7 +720,7 @@ export const createRotaryMasterDesign = (): EmailDesign => ({
         {
             id: newId(),
             type: 'text',
-            text: 'Estimadas rotarias y estimados rotarios de los Distritos 4271 y 4281:\n\nCada semana, los clubes realizan un esfuerzo incansable por sus comunidades: jornadas de salud, agua potable, becas educativas y proyectos sostenibles. Rotary en Acción es la plataforma oficial para visibilizar, registrar y difundir ese impacto ante el mundo.',
+            text: 'Estimadas rotarias y estimados rotarios:\n\nCada semana, los clubes realizan un esfuerzo incansable por sus comunidades: jornadas de salud, agua potable, becas educativas y proyectos sostenibles. Rotary en Acción es la plataforma oficial para visibilizar, registrar y difundir ese impacto ante el mundo.',
             align: 'left',
             color: '#334155',
             size: 15,
@@ -549,7 +767,7 @@ export const createRotaryMasterDesign = (): EmailDesign => ({
             isProtected: true,
             isLocked: false,
             title: 'Comité Distrital de Imagen Pública y Comunicaciones',
-            subtitle: 'Rotary en Acción · Distritos 4271 y 4281',
+            subtitle: 'Rotary en Acción',
             motto: '«Dar de sí antes de pensar en sí»',
             bgColor: '#f8fafc',
             borderColor: '#013388',
@@ -567,7 +785,7 @@ export const createRotaryMasterDesign = (): EmailDesign => ({
             showSocial: true,
             whatsappUrl: 'https://wa.me/573108520231',
             whatsappText: 'Asistencia directa a través de WhatsApp',
-            footerText: 'Rotary en Acción · Distritos 4271 y 4281 Colombia.<br/>&copy; 2026 Rotary International. Todos los derechos reservados.<br/><a href="{{unsubscribe_url}}" target="_blank" style="color:#cbd5e1;text-decoration:underline">Preferencias de comunicación y cancelar suscripción</a>',
+            footerText: 'Rotary en Acción • Plataforma Oficial de Visibilidad.<br/>&copy; 2026 Rotary International. Todos los derechos reservados.<br/><a href="{{unsubscribe_url}}" target="_blank" style="color:#cbd5e1;text-decoration:underline">Preferencias de comunicación y cancelar suscripción</a>',
             logoUrl: '',
         },
     ],
@@ -577,9 +795,9 @@ export const createRotaryMasterDesign = (): EmailDesign => ({
 export const getRotaryGlobalBlocksCatalog = () => [
     {
         key: 'rotary_header',
-        name: 'Encabezado Institucional Rotary',
+        name: 'Cabecera Institucional Adaptable',
         category: 'Cabecera',
-        description: 'Logo oficial Rotary International, lema de campaña y Distritos 4271 & 4281.',
+        description: 'Logo oficial adaptado automáticamente a la identidad institucional del sitio activo.',
         isProtected: true,
     },
     {
@@ -617,17 +835,25 @@ export const injectCampaignIntoDesign = (
         utmCampaign?: string;
     }
 ): EmailDesign => {
-    const base = masterDesign || createRotaryMasterDesign();
+    const base = normalizeInstitutionalDesign(masterDesign || createRotaryMasterDesign());
     const blocks = base.blocks.map((b) => {
         // Bloques protegidos quedan 100% intactos
         if (b.isProtected) return { ...b };
+
+        // Actualizar el título de campaña en el bloque editable de cabecera de contenido
+        if (b.type === 'heading' && (b.label?.includes('Título') || b.level === 1)) {
+            return {
+                ...b,
+                text: campaign.name || b.text,
+            };
+        }
 
         // Si es el texto de campaña editable
         if (b.type === 'text' && (b.label?.includes('Cuerpo') || b.label?.includes('Editable'))) {
             return {
                 ...b,
                 text: campaign.messageCentral
-                    ? `Estimadas rotarias y estimados rotarios de los Distritos 4271 y 4281:\n\n${campaign.messageCentral}\n\nLos invitamos a ingresar al formulario unificado y postular las evidencias de su club.`
+                    ? `Estimadas rotarias y estimados rotarios:\n\n${campaign.messageCentral}\n\nLos invitamos a ingresar al formulario unificado y postular las evidencias de su club.`
                     : b.text,
             };
         }
@@ -649,3 +875,4 @@ export const injectCampaignIntoDesign = (
         blocks,
     };
 };
+

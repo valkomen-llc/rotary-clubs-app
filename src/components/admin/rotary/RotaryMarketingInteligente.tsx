@@ -3,7 +3,7 @@
 // Captación, automatización omnicanal, agente IA, escalamiento y gobernanza.
 // ════════════════════════════════════════════════════════════════════════════
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Sparkles, Target, Users, Calendar, Megaphone, Bot, BarChart3,
   CheckCircle2, RefreshCw, Send, ShieldCheck, Copy, ExternalLink,
@@ -13,6 +13,11 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import VisualTemplateEditor from '../email-marketing/VisualTemplateEditor';
+import { useClub } from '../../../contexts/ClubContext';
+import {
+  renderDesignToHtml, parseDesign, getActiveSiteBrandingContext,
+  type SiteBrandingContext
+} from '../../../lib/emailBlocks';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const getToken = () => localStorage.getItem('rotary_token');
@@ -20,6 +25,23 @@ const getToken = () => localStorage.getItem('rotary_token');
 export type MarketingSubtab = 'panel' | 'planificador' | 'audiencias' | 'campanas' | 'agente' | 'resultados';
 
 export const RotaryMarketingInteligente: React.FC = () => {
+  let siteClub: any = null;
+  try {
+    const clubCtx = useClub();
+    siteClub = clubCtx?.club || null;
+  } catch {}
+
+  const siteBranding: SiteBrandingContext = useMemo(() => {
+    const ctx = getActiveSiteBrandingContext();
+    return {
+      siteLogo: siteClub?.logo || ctx.siteLogo || null,
+      siteName: siteClub?.name || ctx.siteName || 'Club Platform',
+      siteType: siteClub?.type || ctx.siteType || null,
+      isMainPlatform: siteClub?.isMainPlatform ?? ctx.isMainPlatform,
+      platformLogo: ctx.platformLogo
+    };
+  }, [siteClub]);
+
   const [subtab, setSubtab] = useState<MarketingSubtab>('panel');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -45,6 +67,21 @@ export const RotaryMarketingInteligente: React.FC = () => {
   const [previewCampaign, setPreviewCampaign] = useState<any | null>(null);
   const [previewTab, setPreviewTab] = useState<'email' | 'whatsapp'>('email');
   const [syncingCampaignId, setSyncingCampaignId] = useState<string | null>(null);
+
+  const renderedPreviewHtml = useMemo(() => {
+    if (!previewCampaign) return '';
+    if (previewCampaign.design) {
+      try {
+        const parsed = typeof previewCampaign.design === 'string'
+          ? parseDesign(previewCampaign.design)
+          : previewCampaign.design;
+        return renderDesignToHtml(parsed, { interactive: false, siteContext: siteBranding });
+      } catch (e) {
+        console.warn('Error rendering previewCampaign.design:', e);
+      }
+    }
+    return previewCampaign.contentHtml || '';
+  }, [previewCampaign, siteBranding]);
   const [schedulingCampaignId, setSchedulingCampaignId] = useState<string | null>(null);
   const [scheduleDateTime, setScheduleDateTime] = useState<string>('');
 
@@ -1284,7 +1321,7 @@ export const RotaryMarketingInteligente: React.FC = () => {
                   </div>
                   <div
                     className="border border-gray-200 rounded-2xl p-4 bg-white"
-                    dangerouslySetInnerHTML={{ __html: previewCampaign.contentHtml }}
+                    dangerouslySetInnerHTML={{ __html: renderedPreviewHtml }}
                   />
                 </div>
               ) : (

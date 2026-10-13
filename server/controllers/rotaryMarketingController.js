@@ -744,9 +744,10 @@ export const getMasterTemplate = async (req, res) => {
           version: 1,
           settings: { bg: '#0d233a', contentBg: '#ffffff', font: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif", textColor: '#334155', linkColor: '#013388', width: 600 },
           blocks: [
-            { id: 'b_master_hdr', type: 'global', globalKey: 'rotary_header', label: 'Encabezado Institucional Protegido', isProtected: true, isLocked: true },
+            { id: 'b_master_hdr', type: 'global', globalKey: 'rotary_header', label: 'Cabecera Institucional Adaptable', isProtected: true, isLocked: true, logoUrl: '', logoMaxWidth: 240, logoMaxHeight: 60, align: 'center', bgColor: '#ffffff', padding: '24px 20px' },
+            { id: 'b_master_titulo', type: 'heading', text: 'Tu club transforma comunidades.\n¡Hagámoslo visible!', level: 1, align: 'center', color: '#013388', weight: '800', label: 'Título de Campaña (Editable)', isProtected: false },
             { id: 'b_master_saludo', type: 'heading', text: 'Hola {{contact.first_name|Líder Rotario(a)}},', level: 2, align: 'left', color: '#0f172a', weight: '800', label: 'Saludo Personalizado', isProtected: false },
-            { id: 'b_master_intro', type: 'text', text: 'Estimadas rotarias y estimados rotarios de los Distritos 4271 y 4281:\n\nCada semana, los clubes realizan un esfuerzo incansable por sus comunidades. Rotary en Acción es la plataforma oficial para visibilizar y registrar ese impacto.', align: 'left', color: '#334155', size: 15, label: 'Cuerpo de Campaña (Editable / IA)', isProtected: false },
+            { id: 'b_master_intro', type: 'text', text: 'Estimadas rotarias y estimados rotarios:\n\nCada semana, los clubes realizan un esfuerzo incansable por sus comunidades. Rotary en Acción es la plataforma oficial para visibilizar y registrar ese impacto.', align: 'left', color: '#334155', size: 15, label: 'Cuerpo de Campaña (Editable / IA)', isProtected: false },
             { id: 'b_master_areas', type: 'global', globalKey: 'rotary_areas_focus', label: '7 Áreas de Enfoque Institucionales', isProtected: true, isLocked: true },
             { id: 'b_master_cta', type: 'button', text: 'COMPARTIR ACTIVIDAD EN ROTARY EN ACCIÓN', href: '{{form_url}}', bg: '#013388', color: '#ffffff', align: 'center', radius: 12, label: 'Botón CTA Oficial', isProtected: false },
             { id: 'b_master_firma', type: 'global', globalKey: 'rotary_signature', label: 'Firma Oficial Distrital', isProtected: true, isLocked: true },
@@ -756,6 +757,25 @@ export const getMasterTemplate = async (req, res) => {
       };
     } else if (typeof tpl.design === 'string') {
       try { tpl.design = JSON.parse(tpl.design); } catch {}
+    }
+
+    // Normalizar cabecera institucional si existe
+    if (tpl?.design && Array.isArray(tpl.design.blocks)) {
+      tpl.design.blocks = tpl.design.blocks.map(b => {
+        if (b.globalKey === 'rotary_header') {
+          const { badge, title, subtitle, ...cleanHdr } = b;
+          return {
+            ...cleanHdr,
+            label: 'Cabecera Institucional Adaptable',
+            logoMaxWidth: b.logoMaxWidth || 240,
+            logoMaxHeight: b.logoMaxHeight || 60,
+            align: b.align || 'center',
+            bgColor: b.bgColor || '#ffffff',
+            padding: b.padding || '24px 20px',
+          };
+        }
+        return b;
+      });
     }
 
     res.json({ ok: true, template: tpl });
@@ -829,9 +849,10 @@ export const applyCampaignToTemplate = async (req, res) => {
         version: 1,
         settings: { bg: '#0d233a', contentBg: '#ffffff', font: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif", textColor: '#334155', linkColor: '#013388', width: 600 },
         blocks: [
-          { id: 'b_master_hdr', type: 'global', globalKey: 'rotary_header', label: 'Encabezado Institucional Protegido', isProtected: true, isLocked: true },
+          { id: 'b_master_hdr', type: 'global', globalKey: 'rotary_header', label: 'Cabecera Institucional Adaptable', isProtected: true, isLocked: true, logoUrl: '', logoMaxWidth: 240, logoMaxHeight: 60, align: 'center', bgColor: '#ffffff', padding: '24px 20px' },
+          { id: 'b_master_titulo', type: 'heading', text: campaign.name || 'Tu club transforma comunidades.\n¡Hagámoslo visible!', level: 1, align: 'center', color: '#013388', weight: '800', label: 'Título de Campaña (Editable)', isProtected: false },
           { id: 'b_master_saludo', type: 'heading', text: 'Hola {{contact.first_name|Líder Rotario(a)}},', level: 2, align: 'left', color: '#0f172a', weight: '800', label: 'Saludo Personalizado', isProtected: false },
-          { id: 'b_master_intro', type: 'text', text: `Estimadas rotarias y estimados rotarios de los Distritos 4271 y 4281:\n\n${campaign.messageCentral || 'Compartimos esta iniciativa con toda nuestra red rotaria.'}`, align: 'left', color: '#334155', size: 15, label: 'Cuerpo de Campaña (Editable / IA)', isProtected: false },
+          { id: 'b_master_intro', type: 'text', text: `Estimadas rotarias y estimados rotarios:\n\n${campaign.messageCentral || 'Compartimos esta iniciativa con toda nuestra red rotaria.'}`, align: 'left', color: '#334155', size: 15, label: 'Cuerpo de Campaña (Editable / IA)', isProtected: false },
           { id: 'b_master_areas', type: 'global', globalKey: 'rotary_areas_focus', label: '7 Áreas de Enfoque Institucionales', isProtected: true, isLocked: true },
           { id: 'b_master_cta', type: 'button', text: 'COMPARTIR ACTIVIDAD EN ROTARY EN ACCIÓN', href: `https://app.clubplatform.org/rotary-en-accion?utm_source=email_marketing&utm_medium=campaign&utm_campaign=${campaign.utmCampaign || 'rotary_campana'}`, bg: '#013388', color: '#ffffff', align: 'center', radius: 12, label: 'Botón CTA Oficial', isProtected: false },
           { id: 'b_master_firma', type: 'global', globalKey: 'rotary_signature', label: 'Firma Oficial Distrital', isProtected: true, isLocked: true },
@@ -840,11 +861,28 @@ export const applyCampaignToTemplate = async (req, res) => {
       };
     } else {
       design.blocks = design.blocks.map(b => {
-        if (b.isProtected) return b;
+        if (b.globalKey === 'rotary_header') {
+          const { badge, title, subtitle, ...cleanHdr } = b;
+          return {
+            ...cleanHdr,
+            label: 'Cabecera Institucional Adaptable',
+            logoMaxWidth: b.logoMaxWidth || 240,
+            logoMaxHeight: b.logoMaxHeight || 60,
+            align: b.align || 'center',
+            bgColor: b.bgColor || '#ffffff',
+            padding: b.padding || '24px 20px',
+          };
+        }
+        if (b.type === 'heading' && (b.label?.includes('Título') || b.id === 'b_master_titulo')) {
+          return {
+            ...b,
+            text: campaign.name || b.text
+          };
+        }
         if (b.type === 'text' && (b.label?.includes('Cuerpo') || b.label?.includes('Editable'))) {
           return {
             ...b,
-            text: `Estimadas rotarias y estimados rotarios de los Distritos 4271 y 4281:\n\n${campaign.messageCentral || b.text}\n\nLos invitamos a ingresar al formulario unificado y postular las evidencias de su club.`
+            text: `Estimadas rotarias y estimados rotarios:\n\n${campaign.messageCentral || b.text}\n\nLos invitamos a ingresar al formulario unificado y postular las evidencias de su club.`
           };
         }
         if (b.type === 'button') {
@@ -855,6 +893,23 @@ export const applyCampaignToTemplate = async (req, res) => {
         }
         return b;
       });
+
+      // Asegurar que exista el bloque con el título de la campaña si no está presente
+      const hasHeadingTitle = design.blocks.some(b => b.type === 'heading' && (b.label?.includes('Título') || b.id === 'b_master_titulo'));
+      if (!hasHeadingTitle && campaign.name) {
+        const hdrIdx = design.blocks.findIndex(b => b.globalKey === 'rotary_header');
+        design.blocks.splice(hdrIdx >= 0 ? hdrIdx + 1 : 0, 0, {
+          id: 'b_master_titulo',
+          type: 'heading',
+          text: campaign.name,
+          level: 1,
+          align: 'center',
+          color: '#013388',
+          weight: '800',
+          label: 'Título de Campaña (Editable)',
+          isProtected: false
+        });
+      }
     }
 
     res.json({

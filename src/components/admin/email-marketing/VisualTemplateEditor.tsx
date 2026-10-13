@@ -4,7 +4,7 @@
 // Lienzo central con vista responsiva, inspector de bloques contextual y
 // separación estricta entre Plantilla Maestra y zonas dinámicas de Campaña.
 // ════════════════════════════════════════════════════════════════════════════
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import {
   Shield, Lock, Unlock, Sparkles, Send, Save, Layout, Box, Palette,
@@ -12,17 +12,21 @@ import {
   Columns, Type, Image as ImageIcon, Square,
   Minus, Table as TableIcon, Menu as MenuIcon, Share2, Video, Code,
   Tag, X, ArrowLeft, RefreshCw, ZoomIn, ZoomOut, Undo2, Redo2,
-  Check, CheckCircle2, Eye, AlertCircle
+  Check, CheckCircle2, Eye, AlertCircle, Upload, RotateCcw, Building2,
+  Sliders, AlignLeft, AlignCenter, AlignRight
 } from 'lucide-react';
 
 import {
   renderDesignToHtml, makeBlock, BLOCK_LABELS,
   FONT_OPTIONS, newId, createRotaryMasterDesign, getRotaryGlobalBlocksCatalog,
+  resolveInstitutionalLogo, getActiveSiteBrandingContext,
   type EmailDesign, type Block, type BlockType, type Align, type SocialNetwork,
-  type TableRow, type MenuItem
+  type TableRow, type MenuItem, type SiteBrandingContext
 } from '../../../lib/emailBlocks';
 import MediaPicker from '../content-studio/MediaPicker';
 import EmailAiAssistant from './EmailAiAssistant';
+import { useClub } from '../../../contexts/ClubContext';
+import { uploadMediaFiles } from '../../../lib/mediaUpload';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const getToken = () => localStorage.getItem('rotary_token') || '';
@@ -91,6 +95,95 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
   const [sendingTest, setSendingTest] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testReceipt, setTestReceipt] = useState<{ to: string; messageId?: string; timestamp: string } | null>(null);
+
+  // Identidad institucional multisitio inteligente y subida de archivos
+  const logoFileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [savingSiteLogo, setSavingSiteLogo] = useState(false);
+
+  // Contexto institucional multisitio activo
+  let siteClub: any = null;
+  try {
+    const clubCtx = useClub();
+    siteClub = clubCtx?.club || null;
+  } catch {}
+
+  const siteBranding: SiteBrandingContext = useMemo(() => {
+    const ctx = getActiveSiteBrandingContext();
+    return {
+      siteLogo: siteClub?.logo || ctx.siteLogo || null,
+      siteName: siteClub?.name || ctx.siteName || 'Club Platform',
+      siteType: siteClub?.type || ctx.siteType || null,
+      isMainPlatform: siteClub?.isMainPlatform ?? ctx.isMainPlatform,
+      platformLogo: ctx.platformLogo
+    };
+  }, [siteClub]);
+
+  // Subida directa de archivo local para logo de cabecera
+  const handleLogoFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedBlockId) return;
+    setUploadingLogo(true);
+    try {
+      const res = await uploadMediaFiles([file], {
+        clubId: siteClub?.id || null,
+        maxDimension: 1200
+      });
+      if (res.uploaded && res.uploaded.length > 0) {
+        const url = res.uploaded[0].url;
+        updateBlock(selectedBlockId, { logoUrl: url });
+        toast.success('Logo subido y aplicado a la cabecera');
+      } else {
+        toast.error('No se pudo subir el archivo de logo');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error al subir el logo');
+    } finally {
+      setUploadingLogo(false);
+      if (e.target) e.target.value = '';
+    }
+  };
+
+  // Guardar logo como predeterminado en los ajustes del sitio activo
+  const handleSetAsSiteDefaultLogo = async (url: string) => {
+    if (!url) return;
+    if (!siteClub?.id) {
+      try {
+        localStorage.setItem('cp_platform_logo', JSON.stringify({ url, size: 48 }));
+        toast.success('Logo predeterminado de plataforma guardado');
+      } catch {
+        toast.info('Logo configurado localmente');
+      }
+      return;
+    }
+    setSavingSiteLogo(true);
+    try {
+      const token = getToken();
+      const res = await fetch(`${API}/admin/clubs/${siteClub.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ logo: url })
+      });
+      if (res.ok) {
+        toast.success('Logo institucional guardado como predeterminado del sitio', {
+          description: `Se actualizaron los ajustes para ${siteClub.name || 'el sitio'}.`
+        });
+        try {
+          const stored = JSON.parse(localStorage.getItem('rotary_club') || '{}');
+          localStorage.setItem('rotary_club', JSON.stringify({ ...stored, logo: url }));
+        } catch {}
+      } else {
+        toast.error('No se pudo guardar en los ajustes del sitio');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error al guardar logo del sitio');
+    } finally {
+      setSavingSiteLogo(false);
+    }
+  };
 
   // Bloque actualmente seleccionado
   const selectedBlock = useMemo(() => {
@@ -263,11 +356,11 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
   // HTML compilado completo
   const compiledHtml = useMemo(() => {
     try {
-      return renderDesignToHtml(design, { interactive: false });
+      return renderDesignToHtml(design, { interactive: false, siteContext: siteBranding });
     } catch {
       return '<div style="padding:20px;text-align:center;color:#ef4444">Error al compilar vista previa</div>';
     }
-  }, [design]);
+  }, [design, siteBranding]);
 
   // Guardar plantilla
   const handleSave = async () => {
@@ -277,7 +370,7 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
     }
     setSaving(true);
     try {
-      const fullHtml = renderDesignToHtml(design, { interactive: false });
+      const fullHtml = renderDesignToHtml(design, { interactive: false, siteContext: siteBranding });
 
       // 1. Si viene contexto de campaña, aplicar y sincronizar con la campaña
       if (campaignContext?.id) {
@@ -376,7 +469,7 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
     setSendingTest(true);
     setTestReceipt(null);
     try {
-      const testHtml = renderDesignToHtml(design, { interactive: false });
+      const testHtml = renderDesignToHtml(design, { interactive: false, siteContext: siteBranding });
       const res = await fetch(`${API}/rotary-en-accion/marketing/templates/test-email`, {
         method: 'POST',
         headers: authHeaders(),
@@ -780,7 +873,7 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                           dangerouslySetInnerHTML={{
                             __html: renderDesignToHtml(
                               { version: 1, settings: design.settings, blocks: [block] },
-                              { interactive: false }
+                              { interactive: false, siteContext: siteBranding }
                             )
                           }}
                         />
@@ -1578,157 +1671,291 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                         </p>
                       </div>
 
-                      {/* 1. Encabezado Oficial Rotary */}
-                      {selectedBlock.globalKey === 'rotary_header' && (
-                        <div className="space-y-3.5">
-                          {/* Logo de Cabecera */}
-                          <div>
-                            <div className="flex items-center justify-between mb-1">
-                              <label className="text-[11px] font-bold text-slate-700">Logo de Cabecera</label>
-                              {selectedBlock.logoUrl && (
+                      {/* 1. Cabecera Institucional Adaptable */}
+                      {selectedBlock.globalKey === 'rotary_header' && (() => {
+                        const branding = resolveInstitutionalLogo(selectedBlock, siteBranding);
+                        const isCustom = Boolean(selectedBlock.logoUrl && selectedBlock.logoUrl.trim());
+                        const activeAlign = selectedBlock.align || 'center';
+                        const currentBg = selectedBlock.bgGradient || selectedBlock.bgColor || '#ffffff';
+                        const maxW = typeof selectedBlock.logoMaxWidth === 'number' && selectedBlock.logoMaxWidth > 0 ? selectedBlock.logoMaxWidth : 240;
+                        const maxH = typeof selectedBlock.logoMaxHeight === 'number' && selectedBlock.logoMaxHeight > 0 ? selectedBlock.logoMaxHeight : 60;
+                        const currentPadding = selectedBlock.padding || '24px 20px';
+
+                        return (
+                          <div className="space-y-4">
+                            {/* Input oculto para subida de archivo desde equipo */}
+                            <input
+                              type="file"
+                              ref={logoFileInputRef}
+                              onChange={handleLogoFileUpload}
+                              accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                              className="hidden"
+                            />
+
+                            {/* Card de Identidad Institucional Inteligente */}
+                            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-blue-50/90 via-sky-50/60 to-indigo-50/80 border border-blue-200/80 text-slate-800 shadow-xs space-y-2">
+                              <div className="flex items-center justify-between gap-1.5">
+                                <div className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#013388] uppercase tracking-wider">
+                                  <Building2 className="w-3.5 h-3.5 text-[#013388]" />
+                                  <span>Identidad del Sitio Activo</span>
+                                </div>
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                  isCustom
+                                    ? 'bg-amber-50 text-amber-800 border-amber-300'
+                                    : 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                }`}>
+                                  {isCustom ? 'Personalizado' : 'Heredado'}
+                                </span>
+                              </div>
+                              <p className="text-xs font-bold text-slate-900 truncate">
+                                {siteBranding.siteName || 'Club Platform'}
+                              </p>
+                              <p className="text-[11px] text-slate-600 leading-snug">
+                                {isCustom
+                                  ? 'Esta plantilla tiene un logo exclusivo asignado que sobrescribe el institucional del sitio.'
+                                  : (siteBranding.siteLogo
+                                    ? 'Resolviendo dinámicamente el logo institucional configurado en los ajustes del sitio.'
+                                    : (siteBranding.isMainPlatform
+                                      ? 'Entorno central: mostrando la identidad oficial de Club Platform.'
+                                      : 'Mostrando tipografía institucional limpia con el nombre oficial del sitio.'))}
+                              </p>
+                            </div>
+
+                            {/* Selector y Carga de Logo */}
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <label className="text-[11px] font-bold text-slate-700">Logo Institucional</label>
+                                {isCustom && (
+                                  <button
+                                    type="button"
+                                    onClick={() => updateBlock(selectedBlock.id, { logoUrl: '' })}
+                                    className="text-[11px] text-rose-600 hover:text-rose-700 font-bold flex items-center gap-1"
+                                    title="Restaurar al logo institucional predeterminado del sitio"
+                                  >
+                                    <RotateCcw className="w-3 h-3" />
+                                    <span>Restaurar Logo del Sitio</span>
+                                  </button>
+                                )}
+                              </div>
+
+                              <div className="flex gap-1.5">
+                                <input
+                                  type="text"
+                                  value={selectedBlock.logoUrl || ''}
+                                  onChange={(e) => updateBlock(selectedBlock.id, { logoUrl: e.target.value })}
+                                  className="flex-1 bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs"
+                                  placeholder={siteBranding.siteLogo ? 'Usando logo predeterminado del sitio...' : 'URL de logo o subir...'}
+                                />
                                 <button
                                   type="button"
-                                  onClick={() => updateBlock(selectedBlock.id, { logoUrl: '' })}
-                                  className="text-[11px] text-rose-600 hover:text-rose-700 font-bold"
+                                  onClick={() => openMediaPickerFor((url) => updateBlock(selectedBlock.id, { logoUrl: url }))}
+                                  className="px-2.5 py-2 bg-rotary-blue hover:bg-blue-700 text-white rounded-xl font-bold text-xs shrink-0 shadow-xs flex items-center gap-1"
+                                  title="Elegir desde la Biblioteca Multimedia"
                                 >
-                                  Restaurar Emblema
+                                  <ImageIcon className="w-3.5 h-3.5" />
+                                  <span className="hidden sm:inline">Biblioteca</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={uploadingLogo}
+                                  onClick={() => logoFileInputRef.current?.click()}
+                                  className="px-2.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shrink-0 shadow-xs flex items-center gap-1 disabled:opacity-50"
+                                  title="Subir logo desde este equipo"
+                                >
+                                  {uploadingLogo ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                                  <span className="hidden sm:inline">Subir</span>
+                                </button>
+                              </div>
+
+                              {/* Vista previa en miniatura del logo resuelto */}
+                              <div className="p-3 border border-slate-200 rounded-xl bg-slate-50 text-center flex flex-col items-center justify-center min-h-[70px]">
+                                {branding.url ? (
+                                  <img
+                                    src={branding.url}
+                                    alt="Vista Previa Logo"
+                                    className="max-h-14 max-w-[220px] w-auto h-auto object-contain mx-auto transition-transform"
+                                  />
+                                ) : (
+                                  <span className="text-base font-extrabold text-[#013388] tracking-tight uppercase">
+                                    {branding.text || siteBranding.siteName || 'Identidad Institucional'}
+                                  </span>
+                                )}
+                                <span className="text-[10px] text-slate-500 mt-1 font-medium">
+                                  {branding.source === 'template_custom' ? 'Logo personalizado para esta plantilla' :
+                                    branding.source === 'site_settings' ? 'Logo oficial del sitio activo' :
+                                    branding.source === 'platform_default' ? 'Logo oficial de Club Platform' : 'Tipografía institucional'}
+                                </span>
+                              </div>
+
+                              {/* Botón para definir como logo predeterminado del sitio si hay un logo personalizado */}
+                              {isCustom && selectedBlock.logoUrl && (
+                                <button
+                                  type="button"
+                                  disabled={savingSiteLogo}
+                                  onClick={() => handleSetAsSiteDefaultLogo(selectedBlock.logoUrl!)}
+                                  className="w-full py-1.5 px-3 rounded-xl bg-slate-100 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 text-slate-700 hover:text-blue-700 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                                >
+                                  {savingSiteLogo ? <RefreshCw className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3 text-emerald-600" />}
+                                  <span>Definir como logo predeterminado del sitio</span>
                                 </button>
                               )}
                             </div>
-                            <div className="flex gap-2">
+
+                            {/* Dimensiones y Proporciones */}
+                            <div className="space-y-2 pt-1 border-t border-slate-200">
+                              <label className="text-[11px] font-bold text-slate-700 block">Dimensiones del Logo</label>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <div className="flex items-center justify-between text-[11px] text-slate-600 mb-1">
+                                    <span>Ancho Máx</span>
+                                    <span className="font-mono font-bold text-slate-900">{maxW}px</span>
+                                  </div>
+                                  <input
+                                    type="range"
+                                    min="80"
+                                    max="400"
+                                    step="10"
+                                    value={maxW}
+                                    onChange={(e) => updateBlock(selectedBlock.id, { logoMaxWidth: Number(e.target.value) })}
+                                    className="w-full accent-rotary-blue cursor-pointer"
+                                  />
+                                </div>
+                                <div>
+                                  <div className="flex items-center justify-between text-[11px] text-slate-600 mb-1">
+                                    <span>Alto Máx</span>
+                                    <span className="font-mono font-bold text-slate-900">{maxH}px</span>
+                                  </div>
+                                  <input
+                                    type="range"
+                                    min="24"
+                                    max="140"
+                                    step="4"
+                                    value={maxH}
+                                    onChange={(e) => updateBlock(selectedBlock.id, { logoMaxHeight: Number(e.target.value) })}
+                                    className="w-full accent-rotary-blue cursor-pointer"
+                                  />
+                                </div>
+                              </div>
+                              <p className="text-[10px] text-slate-500 leading-tight">
+                                Conserva 100% las proporciones y calidad original del logo sin deformaciones ni regeneraciones.
+                              </p>
+                            </div>
+
+                            {/* Alineación */}
+                            <div className="space-y-1.5 pt-1 border-t border-slate-200">
+                              <label className="text-[11px] font-bold text-slate-700 block">Alineación del Logo</label>
+                              <div className="grid grid-cols-3 gap-1.5">
+                                {[
+                                  { id: 'left', label: 'Izquierda', icon: AlignLeft },
+                                  { id: 'center', label: 'Centro', icon: AlignCenter },
+                                  { id: 'right', label: 'Derecha', icon: AlignRight }
+                                ].map((opt) => {
+                                  const IconComponent = opt.icon;
+                                  const isActive = activeAlign === opt.id;
+                                  return (
+                                    <button
+                                      key={opt.id}
+                                      type="button"
+                                      onClick={() => updateBlock(selectedBlock.id, { align: opt.id as Align })}
+                                      className={`py-1.5 px-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                                        isActive
+                                          ? 'bg-blue-50 border-rotary-blue text-rotary-blue ring-1 ring-rotary-blue'
+                                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                                      }`}
+                                    >
+                                      <IconComponent className="w-3.5 h-3.5" />
+                                      <span>{opt.label}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            {/* Fondo de Cabecera */}
+                            <div className="space-y-2 pt-1 border-t border-slate-200">
+                              <label className="text-[11px] font-bold text-slate-700 block">Fondo de Cabecera</label>
+                              <div className="grid grid-cols-2 gap-1.5">
+                                {[
+                                  { label: 'Blanco Limpio', val: '#ffffff' },
+                                  { label: 'Gris Sutil', val: '#f8fafc' },
+                                  { label: 'Azul Oficial', val: '#013388' },
+                                  { label: 'Azul Marino', val: '#0c2340' },
+                                  { label: 'Degradado Rotary', val: 'linear-gradient(135deg, #013388 0%, #0c2340 100%)' }
+                                ].map((preset) => (
+                                  <button
+                                    key={preset.label}
+                                    type="button"
+                                    onClick={() => updateBlock(selectedBlock.id, { bgGradient: preset.val.includes('gradient') ? preset.val : '', bgColor: preset.val })}
+                                    className={`p-1.5 text-[10px] font-bold rounded-lg border text-left transition-all truncate ${
+                                      currentBg === preset.val
+                                        ? 'border-rotary-blue bg-blue-50 text-rotary-blue ring-1 ring-rotary-blue'
+                                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                                    }`}
+                                  >
+                                    {preset.label}
+                                  </button>
+                                ))}
+                              </div>
                               <input
                                 type="text"
-                                value={selectedBlock.logoUrl || ''}
-                                onChange={(e) => updateBlock(selectedBlock.id, { logoUrl: e.target.value })}
-                                className="flex-1 bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs"
-                                placeholder="URL de logo personalizado..."
+                                value={selectedBlock.bgGradient || selectedBlock.bgColor || '#ffffff'}
+                                onChange={(e) => updateBlock(selectedBlock.id, { bgGradient: e.target.value.includes('gradient') ? e.target.value : '', bgColor: e.target.value })}
+                                className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs font-mono"
+                                placeholder="#ffffff o linear-gradient(...)"
                               />
+                            </div>
+
+                            {/* Espaciado Vertical (Padding) */}
+                            <div className="space-y-1.5 pt-1 border-t border-slate-200">
+                              <label className="text-[11px] font-bold text-slate-700 block">Espaciado Vertical (Padding)</label>
+                              <div className="grid grid-cols-2 gap-1.5">
+                                {[
+                                  { label: 'Compacto (16px)', val: '16px 20px' },
+                                  { label: 'Estándar (24px)', val: '24px 20px' },
+                                  { label: 'Amplio (32px)', val: '32px 24px' },
+                                  { label: 'Elegante (40px)', val: '40px 24px' }
+                                ].map((pad) => (
+                                  <button
+                                    key={pad.label}
+                                    type="button"
+                                    onClick={() => updateBlock(selectedBlock.id, { padding: pad.val })}
+                                    className={`p-1.5 text-[10px] font-bold rounded-lg border text-left transition-all truncate ${
+                                      currentPadding === pad.val
+                                        ? 'border-rotary-blue bg-blue-50 text-rotary-blue ring-1 ring-rotary-blue'
+                                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                                    }`}
+                                  >
+                                    {pad.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Restaurar Identidad Institucional Predeterminada */}
+                            <div className="pt-2 border-t border-slate-200">
                               <button
                                 type="button"
-                                onClick={() => openMediaPickerFor((url) => updateBlock(selectedBlock.id, { logoUrl: url }))}
-                                className="px-3 py-2 bg-rotary-blue hover:bg-blue-700 text-white rounded-xl font-bold text-xs shrink-0 shadow-xs flex items-center gap-1"
+                                onClick={() => {
+                                  updateBlock(selectedBlock.id, {
+                                    logoUrl: '',
+                                    logoMaxWidth: 240,
+                                    logoMaxHeight: 60,
+                                    align: 'center',
+                                    bgColor: '#ffffff',
+                                    bgGradient: '',
+                                    padding: '24px 20px'
+                                  });
+                                  toast.success('Cabecera institucional restaurada a valores predeterminados');
+                                }}
+                                className="w-full py-2 px-3 rounded-xl border border-slate-200 hover:border-slate-300 text-slate-600 hover:text-slate-900 text-xs font-bold flex items-center justify-center gap-1.5 bg-white hover:bg-slate-50 transition-colors"
                               >
-                                <ImageIcon className="w-3.5 h-3.5" />
-                                <span>Biblioteca</span>
+                                <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+                                <span>Restaurar Identidad Institucional</span>
                               </button>
                             </div>
-                            {selectedBlock.logoUrl ? (
-                              <div className="mt-2 p-2 border border-slate-200 rounded-xl bg-white text-center">
-                                <img
-                                  src={selectedBlock.logoUrl}
-                                  alt="Logo Cabecera"
-                                  className="max-h-16 mx-auto object-contain rounded"
-                                />
-                              </div>
-                            ) : (
-                              <div className="mt-1.5 p-2 bg-slate-100/80 rounded-lg text-center text-[11px] text-slate-600 font-medium">
-                                Emblema tipográfico oficial activo (ROTARY INTERNATIONAL)
-                              </div>
-                            )}
                           </div>
-
-                          {/* Fondo de Cabecera */}
-                          <div>
-                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Fondo de Cabecera</label>
-                            <div className="grid grid-cols-2 gap-1.5 mb-2">
-                              {[
-                                { label: 'Degradado Rotary', val: 'linear-gradient(135deg, #013388 0%, #0c2340 100%)' },
-                                { label: 'Azul Oficial (#013388)', val: '#013388' },
-                                { label: 'Azul Marino (#0c2340)', val: '#0c2340' },
-                                { label: 'Dorado Rotario', val: 'linear-gradient(135deg, #f7a81b 0%, #d97706 100%)' }
-                              ].map((preset) => (
-                                <button
-                                  key={preset.label}
-                                  type="button"
-                                  onClick={() => updateBlock(selectedBlock.id, { bgGradient: preset.val, bgColor: preset.val })}
-                                  className={`p-1.5 text-[10px] font-bold rounded-lg border text-left transition-all truncate ${
-                                    (selectedBlock.bgGradient || selectedBlock.bgColor) === preset.val
-                                      ? 'border-rotary-blue bg-blue-50 text-rotary-blue ring-1 ring-rotary-blue'
-                                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                                  }`}
-                                >
-                                  {preset.label}
-                                </button>
-                              ))}
-                            </div>
-                            <input
-                              type="text"
-                              value={selectedBlock.bgGradient || selectedBlock.bgColor || ''}
-                              onChange={(e) => updateBlock(selectedBlock.id, { bgGradient: e.target.value, bgColor: e.target.value })}
-                              className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs font-mono"
-                              placeholder="CSS de fondo (ej: #013388 o linear-gradient(...))"
-                            />
-                          </div>
-
-                          {/* Insignia / Distritos */}
-                          <div>
-                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Insignia / Distritos</label>
-                            <input
-                              type="text"
-                              value={selectedBlock.badge !== undefined ? selectedBlock.badge : 'Rotary en Acción · Distritos 4271 & 4281'}
-                              onChange={(e) => updateBlock(selectedBlock.id, { badge: e.target.value })}
-                              className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs"
-                              placeholder="Dejar vacío para ocultar insignia"
-                            />
-                          </div>
-
-                          {/* Título Principal */}
-                          <div>
-                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Título Principal</label>
-                            <textarea
-                              rows={2}
-                              value={selectedBlock.title !== undefined ? selectedBlock.title : 'Tu club transforma comunidades.\n¡Hagámoslo visible!'}
-                              onChange={(e) => updateBlock(selectedBlock.id, { title: e.target.value })}
-                              className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs"
-                            />
-                          </div>
-
-                          {/* Subtítulo Opcional */}
-                          <div>
-                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Subtítulo Opcional</label>
-                            <input
-                              type="text"
-                              value={selectedBlock.subtitle || ''}
-                              onChange={(e) => updateBlock(selectedBlock.id, { subtitle: e.target.value })}
-                              className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs"
-                              placeholder="Subtítulo..."
-                            />
-                          </div>
-
-                          {/* Color Texto y Espaciado */}
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <label className="text-[11px] font-bold text-slate-700 block mb-1">Color de Texto</label>
-                              <div className="flex items-center gap-1.5">
-                                <input
-                                  type="color"
-                                  value={selectedBlock.textColor || '#ffffff'}
-                                  onChange={(e) => updateBlock(selectedBlock.id, { textColor: e.target.value })}
-                                  className="w-8 h-8 rounded-lg border border-slate-300 cursor-pointer p-0.5"
-                                />
-                                <input
-                                  type="text"
-                                  value={selectedBlock.textColor || '#ffffff'}
-                                  onChange={(e) => updateBlock(selectedBlock.id, { textColor: e.target.value })}
-                                  className="flex-1 bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-mono"
-                                />
-                              </div>
-                            </div>
-                            <div>
-                              <label className="text-[11px] font-bold text-slate-700 block mb-1">Espaciado</label>
-                              <select
-                                value={selectedBlock.padding || '28px 24px'}
-                                onChange={(e) => updateBlock(selectedBlock.id, { padding: e.target.value })}
-                                className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs"
-                              >
-                                <option value="16px 20px">Compacto (16px)</option>
-                                <option value="28px 24px">Estándar (28px)</option>
-                                <option value="40px 24px">Amplio (40px)</option>
-                              </select>
-                            </div>
-                          </div>
-                        </div>
-                      )}
+                        );
+                      })()}
 
                       {/* 2. Pie de Página Oficial Rotary */}
                       {selectedBlock.globalKey === 'rotary_footer' && (

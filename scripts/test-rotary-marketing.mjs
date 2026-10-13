@@ -164,20 +164,45 @@ test('Editor Visual: Renderiza HTML compatible para table, menu y global', async
 
   const html = renderDesignToHtml(testDesign);
   assert.ok(html.includes('table'), 'Debe generar tablas HTML');
-  assert.ok(html.includes('ROTARY'), 'Debe incluir la identidad oficial de Rotary');
-  assert.ok(html.includes('Distritos 4271'), 'Debe mencionar los distritos oficiales');
+  assert.ok(html.includes('data-rotary-header="true"'), 'Debe incluir la celda de cabecera institucional');
+  assert.ok(!html.includes('Distritos 4271 &amp; 4281'), 'No debe fijar nombres de distritos en la cabecera institucional');
 });
 
-test('Editor Visual: Bloques globales personalizan logo, fondo, insignia, footer, WhatsApp y textos', async () => {
-  const { renderDesignToHtml, makeBlock } = await import('../src/lib/emailBlocks.ts');
+test('Editor Visual: Cabecera institucional inteligente y bloques globales adaptables', async () => {
+  const { renderDesignToHtml, makeBlock, resolveInstitutionalLogo } = await import('../src/lib/emailBlocks.ts');
+
+  // Test 1: Prioridad de resolución de logo
+  // 1. Logo personalizado en bloque
+  const r1 = resolveInstitutionalLogo({ logoUrl: 'https://cdn.clubplatform.org/logos/custom.png' }, { siteLogo: 'https://site.org/logo.png', siteName: 'Club Cali' });
+  assert.equal(r1.logoUrl, 'https://cdn.clubplatform.org/logos/custom.png');
+  assert.equal(r1.source, 'custom');
+
+  // 2. Logo institucional del sitio
+  const r2 = resolveInstitutionalLogo({ logoUrl: '' }, { siteLogo: 'https://site.org/logo.png', siteName: 'Club Cali' });
+  assert.equal(r2.logoUrl, 'https://site.org/logo.png');
+  assert.equal(r2.source, 'site_settings');
+
+  // 3. Fallback de plataforma central
+  const r3 = resolveInstitutionalLogo({ logoUrl: '' }, { isMainPlatform: true });
+  assert.ok(r3.logoUrl && r3.logoUrl.includes('rotary-international-logo'), 'Debe usar fallback oficial si es plataforma central');
+  assert.equal(r3.source, 'platform_default');
+
+  // 4. Fallback tipográfico institucional si no es plataforma central y no hay logo
+  const r4 = resolveInstitutionalLogo({ logoUrl: '' }, { siteName: 'Club Rotario Medellín', isMainPlatform: false });
+  assert.equal(r4.logoUrl, null);
+  assert.equal(r4.source, 'typography');
+  assert.equal(r4.siteName, 'Club Rotario Medellín');
+
+  // Test 2: Renderizado de cabecera limpia sin títulos promocionales ni distritos
   const customHeader = {
     ...makeBlock('global'),
     globalKey: 'rotary_header',
     logoUrl: 'https://cdn.clubplatform.org/logos/club-bogota.png',
-    bgGradient: '#013388',
-    badge: 'Distrito 4281 Colombia',
-    title: 'Transformando Vidas en Bogotá',
-    subtitle: 'Comunidad Unida',
+    bgGradient: '#ffffff',
+    logoMaxWidth: 260,
+    logoMaxHeight: 70,
+    align: 'center',
+    padding: '24px 20px',
   };
 
   const customFooter = {
@@ -200,8 +225,11 @@ test('Editor Visual: Bloques globales personalizan logo, fondo, insignia, footer
 
   const html = renderDesignToHtml(design);
   assert.ok(html.includes('club-bogota.png'), 'Debe renderizar la URL del logo personalizado');
-  assert.ok(html.includes('Distrito 4281 Colombia'), 'Debe renderizar la insignia personalizada');
-  assert.ok(html.includes('Transformando Vidas en Bogotá'), 'Debe renderizar el título personalizado');
+  assert.ok(html.includes('max-height: 70px'), 'Debe respetar max-height para proteger proporciones');
+  assert.ok(html.includes('max-width: 260px'), 'Debe respetar max-width');
+  assert.ok(html.includes('object-fit: contain'), 'Debe contener el ratio original sin distorsión');
+  assert.ok(!html.includes('Tu club transforma comunidades'), 'No debe incluir copys de campaña en la cabecera');
+  assert.ok(!html.includes('Rotary en Acción · Distritos'), 'No debe incluir textos fijos de distritos en la cabecera');
   assert.ok(html.includes('footer-logo.png'), 'Debe renderizar el logo del footer');
   assert.ok(html.includes('573001234567'), 'Debe renderizar el WhatsApp personalizado');
   assert.ok(html.includes('Club Rotario Bogotá'), 'Debe renderizar el texto legal personalizado');
