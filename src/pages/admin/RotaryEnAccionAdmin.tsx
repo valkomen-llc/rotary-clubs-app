@@ -37,6 +37,7 @@ import {
   Kpis, Serie, TipoBars, Ranking, SinReportar, Impacto, Macro, ClubDrawer,
   tipoIcon, tipoLabel
 } from '../../components/admin/rotary/RotaryDashboard';
+import RotaryMarketingInteligente from '../../components/admin/rotary/RotaryMarketingInteligente';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const getToken = () => localStorage.getItem('rotary_token');
@@ -48,7 +49,8 @@ const KINDS = [
   { id: 'tema', label: 'Temáticas', desc: 'Categorías y etiquetas temáticas transversales' },
 ];
 
-export type RotaryEnAccionTab = 'resumen' | 'solicitudes' | 'control' | 'tax' | 'config' | 'impacto';
+export type RotaryEnAccionTab = 'resumen' | 'solicitudes' | 'control' | 'marketing' | 'tax' | 'config' | 'impacto';
+
 
 interface Fila {
   id: string; campaignId: string; campaignName?: string;
@@ -120,6 +122,7 @@ const RotaryEnAccionAdmin: React.FC<RotaryEnAccionAdminProps> = ({
     if (tabParam === 'resumen') return 'resumen';
     if (tabParam === 'solicitudes') return 'solicitudes';
     if (tabParam === 'control') return 'control';
+    if (tabParam === 'marketing' || tabParam === 'marketing-inteligente') return 'marketing';
     if (tabParam === 'tax' || tabParam === 'taxonomias') return 'tax';
     if (tabParam === 'config' || tabParam === 'configuracion') return 'config';
     if (tabParam === 'impacto') return 'impacto';
@@ -512,6 +515,21 @@ const RotaryEnAccionAdmin: React.FC<RotaryEnAccionAdminProps> = ({
         >
           <Zap className="w-4 h-4 text-amber-500" />
           <span>Centro de Control</span>
+        </button>
+
+        <button
+          onClick={() => cambiarTab('marketing')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
+            activeTab === 'marketing'
+              ? 'bg-white text-gray-900 shadow-sm border border-gray-200/60'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+          }`}
+        >
+          <Sparkles className="w-4 h-4 text-purple-600" />
+          <span>Marketing Inteligente</span>
+          <span className="text-[10px] font-black uppercase tracking-wider bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full border border-purple-200">
+            IA
+          </span>
         </button>
 
         <button
@@ -1288,7 +1306,12 @@ const RotaryEnAccionAdmin: React.FC<RotaryEnAccionAdminProps> = ({
         </div>
       )}
 
-      {/* ── 6. SECCIÓN: TAXONOMÍAS ───────────────────────────────────── */}
+      {/* ── 6. SECCIÓN: MARKETING INTELIGENTE ───────────────────────── */}
+      {activeTab === 'marketing' && (
+        <RotaryMarketingInteligente />
+      )}
+
+      {/* ── 7. SECCIÓN: TAXONOMÍAS ───────────────────────────────────── */}
       {activeTab === 'tax' && (
         <div className="bg-white border border-gray-100 shadow-sm rounded-3xl p-5 sm:p-6 space-y-6">
           <div>
