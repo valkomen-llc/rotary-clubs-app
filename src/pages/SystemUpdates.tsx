@@ -42,20 +42,22 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
-        version: '4.1184.0',
-        title: 'Editor Visual de Plantillas Institucionales: Motor FluentCRM, Separación Maestra/Campaña y Bloques Globales 🎨✉️',
-        description: 'Incorporación del nuevo Editor Visual de Plantillas de Correo Electrónico inspirado en la experiencia de FluentCRM, integrado de manera nativa con los módulos de Email Marketing (/admin/email-marketing?tab=plantillas) y Rotary en Acción (/admin/rotary-en-accion?tab=marketing). Implementa una separación fundamental de dos niveles: la Plantilla Maestra institucional reutilizable (con logotipo oficial de Rotary International, lemas distritales, cabecera y pie de página protegidos contra alteraciones o deformaciones por IA) y las Instancias de Campaña (con zonas dinámicas editables para asunto, saludo, cuerpo editorial y llamados a la acción con parámetros UTM). Incluye lienzo central responsivo con selector de ancho (540px, 600px, 660px), alternador de vista móvil/escritorio, zoom dinámico, panel lateral de bloques (Columnas, Botón, Divisor, Encabezado, Párrafo, Imagen con Biblioteca, Menú, HTML, Tabla, Redes Sociales), inspector de propiedades avanzadas con padding vertical y estilos globales, catálogo de Bloques Globales Institucionales sincronizados y modal de envío de correos de prueba en tiempo real.',
+        version: '4.1185.0',
+        title: 'Editor Visual de Plantillas Institucionales: Diagnóstico de Importaciones y Nomenclatura Oficial 🎨✉️',
+        description: 'Corrección del icono Square de Lucide React en la barra lateral de bloques del Editor Visual de Plantillas y ajuste integral de la nomenclatura del sistema, estableciendo la denominación oficial «Editor Visual de Plantillas» y «Diseñar en Editor Visual» en todo el ecosistema de Club Platform. Se consolida la separación fundamental entre la Plantilla Maestra institucional (con logotipo oficial de Rotary International, cabecera protegida, 7 Áreas de Enfoque y pie de página legal inalterables) y las Instancias de Campaña para Rotary en Acción y Email Marketing, con lienzo responsivo, previsualización móvil/escritorio, gestión de bloques globales sincronizados y envío de correos de prueba en vivo.',
         date: new Date().toISOString(),
-        tags: ['email-marketing', 'editor-visual', 'fluentcrm', 'plantilla-maestra', 'bloques-globales', 'rotary-en-accion', 'production-release'],
+        tags: ['email-marketing', 'editor-visual', 'plantilla-maestra', 'bloques-globales', 'rotary-en-accion', 'production-release'],
         type: 'feature',
         changes: [
-            { type: 'added', text: 'Editor Visual de Plantillas de Correo Electrónico inspirado en FluentCRM con lienzo central responsivo y barra lateral de bloques.' },
+            { type: 'fixed', text: 'Corrección de la importación del icono Square de Lucide React en el botón de acción de la paleta de bloques.' },
+            { type: 'improved', text: 'Estandarización de la nomenclatura institucional a «Editor Visual de Plantillas» y «Diseñar en Editor Visual» en todos los módulos.' },
+            { type: 'added', text: 'Editor Visual de Plantillas de Correo Electrónico con lienzo central responsivo y barra lateral de bloques.' },
             { type: 'added', text: 'Separación estricta entre componentes institucionales protegidos (logos, cabecera oficial, footer legal) y zonas dinámicas de campaña.' },
             { type: 'added', text: 'Soporte y renderizado email-safe para nuevos tipos de bloque: Tablas estructuradas, Menús de navegación y Bloques Globales.' },
             { type: 'added', text: 'Catálogo de Bloques Globales Institucionales (Encabezado Oficial, 7 Áreas de Enfoque, Firma Distrital y Pie Oficial Protegido).' },
             { type: 'added', text: 'Inspector de propiedades de bloques con control de padding vertical (padTop/padBottom), redondeo de bordes, alineación y colores.' },
             { type: 'added', text: 'Envío de correos de prueba directamente desde el editor visual hacia cualquier dirección de correo para verificación en clientes de email.' },
-            { type: 'added', text: 'Integración en el modal de campañas de Rotary en Acción con botón «Diseñar en Editor Visual (FluentCRM)» antes de sincronizar con Email Marketing.' }
+            { type: 'added', text: 'Integración en el modal de campañas de Rotary en Acción con botón «Diseñar en Editor Visual» antes de sincronizar con Email Marketing.' }
         ]
     },
     {

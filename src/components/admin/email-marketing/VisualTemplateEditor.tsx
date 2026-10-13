@@ -1,22 +1,21 @@
 // ════════════════════════════════════════════════════════════════════════════
 // Editor Visual de Plantillas Institucionales — Club Platform & Rotary en Acción
-// Inspirado en la arquitectura visual de FluentCRM con lienzo central, barra
-// de propiedades y bloques arrastrables/insertables.
+// Lienzo central con vista responsiva, barra de propiedades y bloques configurables.
 // Separa estrictamente la Plantilla Maestra (componentes institucionales protegidos)
 // de las Instancias de Campaña (zonas dinámicas editables e impulsadas por IA).
 // ════════════════════════════════════════════════════════════════════════════
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { toast } from 'sonner';
 import {
-  Shield, Lock, Unlock, Sparkles, Send, Save, Eye, Layout, Box, Palette,
-  Plus, Trash2, Copy, ArrowUp, ArrowDown, Smartphone, Monitor, CheckCircle2,
-  AlertCircle, ExternalLink, Columns, Type, Image as ImageIcon,
+  Shield, Lock, Unlock, Sparkles, Send, Save, Layout, Box, Palette,
+  Plus, Trash2, Copy, ArrowUp, ArrowDown, Smartphone, Monitor,
+  Columns, Type, Image as ImageIcon, Square,
   Minus, Table as TableIcon, Menu as MenuIcon, Share2, Video, Code,
   Tag, X, ArrowLeft, RefreshCw, ZoomIn, ZoomOut
 } from 'lucide-react';
 
 import {
-  renderDesignToHtml, makeBlock, BLOCK_LABELS, DEFAULT_SETTINGS,
+  renderDesignToHtml, makeBlock, BLOCK_LABELS,
   FONT_OPTIONS, newId, createRotaryMasterDesign, getRotaryGlobalBlocksCatalog,
   type EmailDesign, type Block, type BlockType, type Align
 } from '../../../lib/emailBlocks';
@@ -243,7 +242,7 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
           preheader: preheader.trim(),
           design,
           html: fullHtml,
-          note: 'Guardado desde Editor Visual Institucional (FluentCRM Engine)'
+          note: 'Guardado desde Editor Visual de Plantillas'
         })
       });
 
@@ -347,7 +346,7 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <span className="text-[10px] uppercase tracking-wider font-extrabold bg-blue-900/60 text-blue-400 px-2 py-0.5 rounded-full border border-blue-700/50">
-                FluentCRM Engine · Club Platform
+                Club Platform · Editor Visual de Plantillas
               </span>
               <span className="text-xs text-slate-400 truncate">
                 {campaignContext ? `Campaña: ${campaignContext.name}` : 'Plantillas de Correo'}
@@ -433,7 +432,7 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
 
         {/* Controles de Vista de Lienzo (Ancho, Dispositivo, Zoom) */}
         <div className="flex items-center gap-2 shrink-0">
-          {/* Selector de Ancho (FluentCRM Style) */}
+          {/* Selector de Ancho */}
           <div className="flex items-center bg-slate-950 rounded-lg p-0.5 border border-slate-800">
             <button
               onClick={() => { setBodyWidthPreset(540); updateSettings({ width: 540 }); }}
@@ -666,7 +665,7 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
           </div>
         </main>
 
-        {/* ─── 4. BARRA LATERAL DERECHA (INSPIRADA EN FLUENTCRM) ───────── */}
+        {/* ─── 4. BARRA LATERAL DERECHA (BLOQUES Y PROPIEDADES) ───────── */}
         <aside className="w-80 sm:w-96 bg-slate-900 border-l border-slate-800 flex flex-col shrink-0">
           {/* Pestañas de la barra lateral */}
           <div className="flex border-b border-slate-800 bg-slate-950/60 p-1">
@@ -1022,7 +1021,7 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
               </div>
             ) : null}
 
-            {/* PESTAÑA: BLOQUES (FLUENTCRM STYLE GRID) */}
+            {/* PESTAÑA: BLOQUES DISPONIBLES */}
             {activeTab === 'blocks' && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">

@@ -373,7 +373,7 @@ const TemplatesTab: React.FC<{ initialTemplateId?: string | null }> = ({ initial
                 onClick={() => setVisualEditorOpen(true)}
                 className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all"
               >
-                <span>🎨 Editor Visual (FluentCRM)</span>
+                <span>🎨 Editor Visual de Plantillas</span>
               </button>
             </div>
             {sel.pinned && (

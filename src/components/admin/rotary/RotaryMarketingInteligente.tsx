@@ -1322,7 +1322,7 @@ export const RotaryMarketingInteligente: React.FC = () => {
                   className="px-3.5 py-2 rounded-xl bg-violet-700 hover:bg-violet-600 text-white font-bold flex items-center gap-1.5 shadow-xs transition-all"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-violet-200" />
-                  <span>Diseñar en Editor Visual (FluentCRM)</span>
+                  <span>Diseñar en Editor Visual</span>
                 </button>
 
                 <button

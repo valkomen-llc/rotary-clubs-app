@@ -25,7 +25,7 @@ export interface TextBlock extends BaseBlock { type: 'text'; text: string; align
 export interface ImageBlock extends BaseBlock { type: 'image'; url: string; alt: string; href: string; align: Align; width: number; radius: number; }
 export interface ButtonBlock extends BaseBlock { type: 'button'; text: string; href: string; bg: string; color: string; align: Align; radius: number; }
 export interface DividerBlock extends BaseBlock { type: 'divider'; color: string; thickness: number; }
-export interface SpacerBlock { id: string; type: 'spacer'; height: number; isProtected?: boolean; }
+export interface SpacerBlock extends BaseBlock { type: 'spacer'; height: number; }
 export interface SocialLink { network: SocialNetwork; url: string; }
 export interface SocialBlock extends BaseBlock { type: 'social'; align: Align; links: SocialLink[]; color: string; }
 export interface VideoBlock extends BaseBlock { type: 'video'; url: string; thumbnail: string; title: string; align: Align; }
