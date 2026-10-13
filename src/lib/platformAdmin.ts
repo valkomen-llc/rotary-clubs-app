@@ -42,8 +42,12 @@ export const isOnPlatformDomain = (): boolean =>
  * Acción— aunque el servidor ya lo trataba como operador global.
  */
 export const isPlatformSuperAdmin = (user?: { role?: string; isSuperAdmin?: boolean } | null): boolean => {
+    if (!user) return false;
+    const u = user as unknown as { role?: string; isSuperAdmin?: boolean };
+    // Quien tiene la marca explícita de superadministrador global lo es en cualquier dominio
+    if (u.isSuperAdmin === true || u.role === 'superadmin') return true;
+    // El rol genérico 'administrator' requiere estar en dominio de plataforma
+    // para no confundirse con el administrador local de un club
     if (!isOnPlatformDomain()) return false;
-    const role = String((user as unknown as { role?: string })?.role || '');
-    return role === 'administrator' || role === 'superadmin'
-        || (user as unknown as { isSuperAdmin?: boolean })?.isSuperAdmin === true;
+    return u.role === 'administrator';
 };

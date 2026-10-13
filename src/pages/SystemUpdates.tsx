@@ -81,7 +81,7 @@ const TRAMO_1: UpdateItem[] = [
         changes: [
             { type: 'added', text: 'Selector tipográfico por bloque y plantilla global: Open Sans predeterminada con variantes Light 300 a ExtraBold 800, Arial, Helvetica, Georgia, Verdana y controles de tamaño, interlineado y espaciado entre letras.' },
             { type: 'improved', text: 'Compatibilidad de correo electrónico robusta: importación oficial de Open Sans y reglas condicionales MSO para Outlook de escritorio garantizando renderizado impecable sin roturas de maquetación.' },
-            { type: 'updated', text: 'Actualización a las 15 categorías oficiales de Rotary en Acción en tarjeta compacta: sustitución de la lista vertical por una cuadrícula 5×3 de micro-tarjetas con ícono institucional (Proyecto, Jornada, Evento, Historia, etc.).' },
+            { type: 'improved', text: 'Actualización a las 15 categorías oficiales de Rotary en Acción en tarjeta compacta: sustitución de la lista vertical por una cuadrícula 5×3 de micro-tarjetas con ícono institucional (Proyecto, Jornada, Evento, Historia, etc.).' },
             { type: 'added', text: 'Enlace inteligente y universal para el botón principal: llamada a la acción «COMPARTIR EN ROTARY EN ACCIÓN» con resolución automática al formulario público del sitio activo (rotary4281.org, app.clubplatform.org o dominio personalizado).' },
             { type: 'improved', text: 'Control de restauración de enlace inteligente en el inspector del botón con indicador visual de la URL resuelta en tiempo real.' }
         ]

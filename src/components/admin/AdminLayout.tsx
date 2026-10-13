@@ -1039,7 +1039,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                     administra el sitio de un club ve el aviso, pero no la lista de
                     lo que vamos publicando. El enlace se oculta Y la ruta se
                     protege en `App.tsx`; esconderlo solo no sería suficiente. */}
-                {isSuperAdmin && (
+                {(isSuperAdmin || user?.role === 'district_admin' || (user as any)?.isSuperAdmin) && (
                     <>
                         <div className="hidden sm:block h-3 w-[1px] bg-slate-600 mx-1" />
                         <Link to="/system-updates" className="flex items-center gap-1.5 text-amber-400 hover:text-amber-300 transition-colors font-bold tracking-wide">
@@ -1287,7 +1287,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                             </button>
                             {/* Mismo criterio: el número de versión es información
                                 interna de la plataforma. */}
-                            {isSuperAdmin && (
+                            {(isSuperAdmin || user?.role === 'district_admin' || user?.role === 'administrator' || (user as any)?.isSuperAdmin) && (
                                 <div className="flex justify-center mt-2">
                                     <span className="text-[10px] font-black tracking-widest text-gray-300 uppercase py-1 px-2 border border-gray-100 rounded-full bg-gray-50/50">
                                         Release {APP_VERSION}

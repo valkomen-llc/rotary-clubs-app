@@ -29,6 +29,7 @@ import MediaPicker from '../content-studio/MediaPicker';
 import EmailAiAssistant from './EmailAiAssistant';
 import { useClub } from '../../../contexts/ClubContext';
 import { uploadMediaFiles } from '../../../lib/mediaUpload';
+import { APP_VERSION } from '../../../lib/appVersion';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const getToken = () => localStorage.getItem('rotary_token') || '';
@@ -590,7 +591,7 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
           <div className="min-w-0">
             <div className="flex items-center gap-2 mb-0.5">
               <span className="text-[10px] uppercase tracking-wider font-extrabold bg-blue-50 text-rotary-blue px-2.5 py-0.5 rounded-full border border-blue-200">
-                Club Platform · Editor Visual de Plantillas
+                Club Platform · Editor Visual de Plantillas v{APP_VERSION}
               </span>
               <span className="text-xs text-slate-500 truncate">
                 {campaignContext ? `Campaña: ${campaignContext.name}` : 'Plantillas de Correo'}
