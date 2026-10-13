@@ -429,3 +429,146 @@ test('Editor Visual: Bloque Promocional Club Platform (Shopify-style CTA) opcion
   assert.ok(htmlInteractive.includes('data-bid='), 'Debe incluir data-bid para selección');
 });
 
+test('Editor Visual: Unificación visual continua de CTA y Footer sin espacios blancos', async () => {
+  const { renderDesignToHtml, makeBlock, createRotaryMasterDesign } = await import('../src/lib/emailBlocks.ts');
+
+  const master = createRotaryMasterDesign();
+  const ctaBlock = master.blocks.find(b => b.type === 'global' && b.globalKey === 'club_platform_cta');
+  const footerBlock = master.blocks.find(b => b.type === 'global' && b.globalKey === 'rotary_footer');
+
+  assert.ok(ctaBlock, 'El diseño maestro debe incluir club_platform_cta');
+  assert.ok(footerBlock, 'El diseño maestro debe incluir rotary_footer');
+
+  // 1. Ambos bloques comparten #0c2340 como color institucional por defecto
+  assert.equal(ctaBlock.bgColor, '#0c2340', 'CTA debe tener fondo institucional #0c2340 por defecto');
+  assert.equal(footerBlock.bgColor, '#0c2340', 'Footer debe tener fondo institucional #0c2340 por defecto');
+
+  // 2. Renderizado con CTA activo: unión continua
+  const html = renderDesignToHtml(master, { interactive: false });
+
+  // CTA debe tener esquinas superiores redondeadas y 0 margin-bottom
+  assert.ok(html.includes('border-radius:12px 12px 0 0'), 'CTA debe tener esquinas superiores redondeadas (12px 12px 0 0)');
+  assert.ok(html.includes('margin:24px 0 0 0'), 'CTA debe tener margin-top 24px y 0 margin-bottom');
+
+  // Footer debe tener esquinas inferiores redondeadas, 0 margin-top
+  assert.ok(html.includes('border-radius:0 0 12px 12px'), 'Footer debe tener esquinas inferiores redondeadas (0 0 12px 12px)');
+  assert.ok(html.includes('margin:0;background-color:#0c2340'), 'Footer debe tener margin:0 cuando CTA está activo');
+
+  // Eliminar espacios blancos de celdas intermedias
+  assert.ok(html.includes('font-size:0px;line-height:0px'), 'Celdas wrapper con 0px padding deben eliminar line-height para evitar espacios fantasma en Outlook');
+
+  // 3. Renderizado cuando CTA está inactivo: Footer se comporta como bloque independiente
+  const masterDisabled = {
+    ...master,
+    blocks: master.blocks.map(b => b.globalKey === 'club_platform_cta' ? { ...b, enabled: false } : b)
+  };
+  const htmlNoCta = renderDesignToHtml(masterDisabled, { interactive: false });
+  assert.ok(!htmlNoCta.includes('border-radius:0 0 12px 12px'), 'Footer no debe tener esquinas superiores rectas si CTA está ausente');
+  assert.ok(htmlNoCta.includes('margin:24px 0 0 0;background-color:#0c2340;border-radius:12px'), 'Footer debe tener margin-top 24px y border-radius completo de 12px si CTA está ausente');
+});
+
+test('Editor Visual: Gestor de Iconos Oficiales de Redes Sociales en el Footer', async () => {
+  const { renderDesignToHtml, renderFooterSocialIcons, makeBlock, DEFAULT_FOOTER_SOCIAL_LINKS } = await import('../src/lib/emailBlocks.ts');
+
+  // 1. Catálogo por defecto
+  assert.ok(Array.isArray(DEFAULT_FOOTER_SOCIAL_LINKS), 'Debe proveer enlaces sociales por defecto');
+  assert.ok(DEFAULT_FOOTER_SOCIAL_LINKS.length >= 4, 'Debe incluir al menos 4 redes principales');
+
+  // 2. Prueba de renderFooterSocialIcons en los 3 estilos
+  const testLinks = [
+    { network: 'instagram', url: 'https://instagram.com/rotary', label: 'Instagram' },
+    { network: 'facebook', url: 'https://facebook.com/rotary', label: 'Facebook' },
+    { network: 'youtube', url: 'https://youtube.com/rotary', label: 'YouTube' },
+    { network: 'whatsapp', url: 'https://wa.me/573001234567', label: 'WhatsApp' },
+  ];
+
+  // Estilo 'white' (monocromático blanco)
+  const htmlWhite = renderFooterSocialIcons(testLinks, 'white', 28, 12);
+  assert.ok(htmlWhite.includes('/icons/social/instagram-white.png'), 'Debe usar PNG oficial en estilo white');
+  assert.ok(htmlWhite.includes('/icons/social/facebook-white.png'), 'Debe usar PNG oficial en estilo white');
+  assert.ok(htmlWhite.includes('width="28" height="28"'), 'Debe respetar el tamaño de icono');
+  assert.ok(htmlWhite.includes('href="https://instagram.com/rotary"'), 'Debe apuntar a la URL configurada');
+  assert.ok(!htmlWhite.includes('>IG<'), 'No debe usar letras o siglas');
+
+  // Estilo 'color' (colores oficiales)
+  const htmlColor = renderFooterSocialIcons(testLinks, 'color', 32, 16);
+  assert.ok(htmlColor.includes('/icons/social/instagram-color.png'), 'Debe usar PNG oficial en estilo color');
+  assert.ok(htmlColor.includes('/icons/social/youtube-color.png'), 'Debe usar PNG oficial en estilo color');
+  assert.ok(htmlColor.includes('width="32" height="32"'), 'Debe respetar el tamaño modificado (32px)');
+
+  // Estilo 'black' (monocromático negro)
+  const htmlBlack = renderFooterSocialIcons(testLinks, 'black', 24, 8);
+  assert.ok(htmlBlack.includes('/icons/social/whatsapp-black.png'), 'Debe usar PNG oficial en estilo black');
+
+  // Soporte de icono personalizado
+  const customLinks = [
+    { network: 'custom', url: 'https://mired.org', label: 'Mi Red', customIconUrl: 'https://cdn.clubplatform.org/custom-icon.png' }
+  ];
+  const htmlCustom = renderFooterSocialIcons(customLinks, 'white', 28, 12);
+  assert.ok(htmlCustom.includes('https://cdn.clubplatform.org/custom-icon.png'), 'Debe permitir iconos personalizados desde la biblioteca');
+
+  // 3. Integración en bloque rotary_footer
+  const footerBlock = {
+    ...makeBlock('global'),
+    globalKey: 'rotary_footer',
+    showSocial: true,
+    socialIconStyle: 'color',
+    socialIconSize: 30,
+    socialLinks: testLinks
+  };
+  const design = {
+    version: 1,
+    settings: { font: 'Arial', bg: '#0d233a', contentBg: '#ffffff', textColor: '#333', linkColor: '#013388', width: 600 },
+    blocks: [footerBlock]
+  };
+  const htmlFooter = renderDesignToHtml(design);
+  assert.ok(htmlFooter.includes('instagram-color.png'), 'Footer debe renderizar los iconos con el estilo seleccionado');
+  assert.ok(htmlFooter.includes('width="30" height="30"'), 'Footer debe respetar tamaño de 30px');
+});
+
+test('Editor Visual: Personalización completa del Enlace de WhatsApp en el Footer', async () => {
+  const { renderDesignToHtml, makeBlock } = await import('../src/lib/emailBlocks.ts');
+
+  // 1. Configuración personalizada con blanco por defecto
+  const footerBlock = {
+    ...makeBlock('global'),
+    globalKey: 'rotary_footer',
+    showWhatsapp: true,
+    showWhatsappIcon: true,
+    whatsappUrl: 'https://wa.me/573108520231',
+    whatsappText: 'Escríbenos directamente a WhatsApp',
+    whatsappColor: '#ffffff', // Blanco institucional
+    whatsappFontSize: 14,
+    whatsappFontWeight: '700',
+    whatsappAlign: 'center',
+    showSocial: false,
+    showAreas: false
+  };
+
+  const design = {
+    version: 1,
+    settings: { font: 'Arial', bg: '#0d233a', contentBg: '#ffffff', textColor: '#333', linkColor: '#013388', width: 600 },
+    blocks: [footerBlock]
+  };
+
+  const html = renderDesignToHtml(design);
+  assert.ok(html.includes('color:#ffffff'), 'El color del texto de WhatsApp debe ser blanco (#ffffff)');
+  assert.ok(html.includes('Escríbenos directamente a WhatsApp'), 'Debe respetar el texto editable');
+  assert.ok(html.includes('https://wa.me/573108520231'), 'Debe respetar el enlace configurable');
+  assert.ok(html.includes('whatsapp-color.png'), 'Debe incluir el icono oficial de WhatsApp');
+  assert.ok(html.includes('font-size:14px'), 'Debe respetar el tamaño de fuente configurado');
+  assert.ok(html.includes('font-weight:700'), 'Debe respetar el peso tipográfico');
+
+  // 2. Opción de ocultar icono de WhatsApp
+  const footerNoIcon = { ...footerBlock, showWhatsappIcon: false, whatsappColor: '#38bdf8' };
+  const htmlNoIcon = renderDesignToHtml({ ...design, blocks: [footerNoIcon] });
+  assert.ok(!htmlNoIcon.includes('whatsapp-color.png'), 'No debe renderizar el icono si showWhatsappIcon es false');
+  assert.ok(htmlNoIcon.includes('color:#38bdf8'), 'Debe permitir personalizar el color a celeste');
+
+  // 3. Opción de desactivar el enlace de WhatsApp por completo
+  const footerDisabled = { ...footerBlock, showWhatsapp: false };
+  const htmlDisabled = renderDesignToHtml({ ...design, blocks: [footerDisabled] });
+  assert.ok(!htmlDisabled.includes('Escríbenos directamente a WhatsApp'), 'No debe renderizarse si showWhatsapp es false');
+});
+
+

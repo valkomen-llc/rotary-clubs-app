@@ -12,16 +12,17 @@ import {
   Columns, Type, Image as ImageIcon, Square,
   Minus, Table as TableIcon, Menu as MenuIcon, Share2, Video, Code,
   Tag, X, ArrowLeft, RefreshCw, ZoomIn, ZoomOut, Undo2, Redo2,
-  Check, CheckCircle2, Eye, AlertCircle, Upload, RotateCcw, Building2,
-  Sliders, AlignLeft, AlignCenter, AlignRight, Globe, AlignJustify
+  CheckCircle2, Eye, Upload, RotateCcw, Building2,
+  AlignLeft, AlignCenter, AlignRight, Globe
 } from 'lucide-react';
 
 import {
   renderDesignToHtml, makeBlock, BLOCK_LABELS,
   FONT_OPTIONS, FONT_WEIGHT_OPTIONS, LINE_HEIGHT_OPTIONS, newId, createRotaryMasterDesign, getRotaryGlobalBlocksCatalog,
   resolveInstitutionalLogo, getActiveSiteBrandingContext, normalizeInstitutionalDesign, resolveSiteRotaryEnAccionUrl,
+  DEFAULT_FOOTER_SOCIAL_LINKS,
   type EmailDesign, type Block, type BlockType, type Align, type SocialNetwork,
-  type TableRow, type MenuItem, type SiteBrandingContext
+  type TableRow, type MenuItem, type SiteBrandingContext, type FooterSocialLink, type SocialIconStyle, type GlobalBlockItem
 } from '../../../lib/emailBlocks';
 import { DEFAULT_TIPOS } from '../../../lib/rotaryEnAccionSpec';
 import MediaPicker from '../content-studio/MediaPicker';
@@ -2235,10 +2236,9 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                           </div>
                         );
                       })()}
-
                       {/* 2. Pie de Página Oficial Rotary */}
                       {selectedBlock.globalKey === 'rotary_footer' && (
-                        <div className="space-y-3.5">
+                        <div className="space-y-4">
                           {/* Logo de Pie */}
                           <div>
                             <div className="flex items-center justify-between mb-1">
@@ -2272,10 +2272,25 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                             </div>
                           </div>
 
-                          {/* Color Fondo Footer */}
-                          <div>
-                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Color Fondo de Footer</label>
-                            <div className="flex items-center gap-1.5">
+                          {/* Color Fondo Footer y Unificación */}
+                          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                            <div className="flex items-center justify-between">
+                              <label className="text-[11px] font-bold text-slate-700">Color Fondo de Footer</label>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const ctaBlock = design.blocks.find(b => b.type === 'global' && (b as GlobalBlockItem).globalKey === 'club_platform_cta') as GlobalBlockItem | undefined;
+                                  const targetBg = ctaBlock?.bgColor || '#0c2340';
+                                  updateBlock(selectedBlock.id, { bgColor: targetBg });
+                                }}
+                                className="text-[10px] font-bold text-rotary-blue hover:text-blue-800 flex items-center gap-1"
+                                title="Unifica el fondo con el CTA promocional superior para continuidad visual"
+                              >
+                                <Sparkles className="w-3 h-3 text-amber-500" />
+                                <span>Unificar con CTA ({(design.blocks.find(b => b.type === 'global' && (b as GlobalBlockItem).globalKey === 'club_platform_cta') as GlobalBlockItem | undefined)?.bgColor || '#0c2340'})</span>
+                              </button>
+                            </div>
+                            <div className="flex items-center gap-2">
                               <input
                                 type="color"
                                 value={selectedBlock.bgColor || '#0c2340'}
@@ -2288,6 +2303,14 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                                 onChange={(e) => updateBlock(selectedBlock.id, { bgColor: e.target.value })}
                                 className="flex-1 bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-mono"
                               />
+                              <button
+                                type="button"
+                                onClick={() => updateBlock(selectedBlock.id, { bgColor: '#0c2340' })}
+                                className="px-2 py-1 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg text-[10px] font-bold text-slate-700"
+                                title="Restablecer a Azul Marino Institucional (#0c2340)"
+                              >
+                                Rotary Navy
+                              </button>
                             </div>
                           </div>
 
@@ -2298,12 +2321,12 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                               type="text"
                               value={selectedBlock.title !== undefined ? selectedBlock.title : '¡Síguenos y comparte el orgullo rotario!'}
                               onChange={(e) => updateBlock(selectedBlock.id, { title: e.target.value })}
-                              className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs"
+                              className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs font-bold"
                             />
                           </div>
 
                           {/* Toggles de Contenido */}
-                          <div className="space-y-2 pt-1 border-t border-slate-200">
+                          <div className="space-y-2 pt-2 border-t border-slate-200">
                             <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700">
                               <input
                                 type="checkbox"
@@ -2313,39 +2336,414 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                               />
                               <span>Mostrar insignias de las 7 Áreas de Interés</span>
                             </label>
-
-                            <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700">
-                              <input
-                                type="checkbox"
-                                checked={selectedBlock.showSocial !== false}
-                                onChange={(e) => updateBlock(selectedBlock.id, { showSocial: e.target.checked })}
-                                className="rounded border-slate-300 text-rotary-blue focus:ring-rotary-blue"
-                              />
-                              <span>Mostrar botones de redes sociales oficiales</span>
-                            </label>
                           </div>
 
-                          {/* Enlace WhatsApp */}
-                          <div className="pt-1 border-t border-slate-200">
-                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Asistencia WhatsApp</label>
-                            <input
-                              type="text"
-                              value={selectedBlock.whatsappUrl !== undefined ? selectedBlock.whatsappUrl : 'https://wa.me/573108520231'}
-                              onChange={(e) => updateBlock(selectedBlock.id, { whatsappUrl: e.target.value })}
-                              className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs mb-1.5"
-                              placeholder="https://wa.me/..."
-                            />
-                            <input
-                              type="text"
-                              value={selectedBlock.whatsappText || 'Asistencia directa a través de WhatsApp'}
-                              onChange={(e) => updateBlock(selectedBlock.id, { whatsappText: e.target.value })}
-                              className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs"
-                              placeholder="Texto del enlace..."
-                            />
+                          {/* GESTOR OFICIAL DE REDES SOCIALES */}
+                          <div className="pt-2 border-t border-slate-200 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-800">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedBlock.showSocial !== false}
+                                  onChange={(e) => updateBlock(selectedBlock.id, { showSocial: e.target.checked })}
+                                  className="rounded border-slate-300 text-rotary-blue focus:ring-rotary-blue"
+                                />
+                                <span>Redes Sociales Oficiales</span>
+                              </label>
+                              {selectedBlock.showSocial !== false && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const links: FooterSocialLink[] = [];
+                                    const sc = siteClub || {};
+                                    const soc = sc.socialNetworks || sc.social || {};
+                                    const ig = soc.instagram || sc.instagram;
+                                    if (ig) links.push({ network: 'instagram', url: ig.startsWith('http') ? ig : `https://instagram.com/${ig.replace('@', '')}`, label: 'Instagram' });
+                                    const fb = soc.facebook || sc.facebook;
+                                    if (fb) links.push({ network: 'facebook', url: fb.startsWith('http') ? fb : `https://facebook.com/${fb}`, label: 'Facebook' });
+                                    const yt = soc.youtube || sc.youtube;
+                                    if (yt) links.push({ network: 'youtube', url: yt.startsWith('http') ? yt : `https://youtube.com/${yt}`, label: 'YouTube' });
+                                    const li = soc.linkedin || sc.linkedin;
+                                    if (li) links.push({ network: 'linkedin', url: li.startsWith('http') ? li : `https://linkedin.com/in/${li}`, label: 'LinkedIn' });
+                                    const x = soc.x || soc.twitter || sc.x || sc.twitter;
+                                    if (x) links.push({ network: 'x', url: x.startsWith('http') ? x : `https://x.com/${x.replace('@', '')}`, label: 'X (Twitter)' });
+                                    const tt = soc.tiktok || sc.tiktok;
+                                    if (tt) links.push({ network: 'tiktok', url: tt.startsWith('http') ? tt : `https://tiktok.com/@${tt.replace('@', '')}`, label: 'TikTok' });
+                                    const wa = soc.whatsapp || sc.whatsapp || sc.phone;
+                                    if (wa) {
+                                      const cleanWa = String(wa).replace(/\D/g, '');
+                                      if (cleanWa) links.push({ network: 'whatsapp', url: `https://wa.me/${cleanWa}`, label: 'WhatsApp' });
+                                    }
+                                    const web = sc.publicUrl || (siteBranding.domain ? `https://${siteBranding.domain}` : siteBranding.rotaryEnAccionUrl);
+                                    if (web) links.push({ network: 'web', url: web, label: siteBranding.siteName || 'Sitio Oficial' });
+                                    const finalLinks = links.length > 0 ? links : DEFAULT_FOOTER_SOCIAL_LINKS;
+                                    updateBlock(selectedBlock.id, { socialLinks: finalLinks });
+                                    toast.success('Redes sociales cargadas según el sitio activo');
+                                  }}
+                                  className="text-[10px] font-bold text-rotary-blue hover:text-blue-800 flex items-center gap-1"
+                                  title="Cargar automáticamente las redes sociales configuradas para el sitio activo"
+                                >
+                                  <RefreshCw className="w-3 h-3" />
+                                  <span>Cargar del sitio</span>
+                                </button>
+                              )}
+                            </div>
+
+                            {selectedBlock.showSocial !== false && (
+                              <div className="space-y-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                                {/* Estilo de Iconos */}
+                                <div>
+                                  <label className="text-[11px] font-bold text-slate-700 block mb-1">Estilo de Iconos</label>
+                                  <div className="grid grid-cols-3 gap-1.5 p-1 bg-white border border-slate-200 rounded-xl">
+                                    {(['white', 'black', 'color'] as SocialIconStyle[]).map((st) => {
+                                      const currentSt = selectedBlock.socialIconStyle || 'white';
+                                      const isSel = currentSt === st;
+                                      const labels: Record<SocialIconStyle, string> = {
+                                        white: 'Blanco',
+                                        black: 'Negro',
+                                        color: 'Color Oficial'
+                                      };
+                                      return (
+                                        <button
+                                          key={st}
+                                          type="button"
+                                          onClick={() => updateBlock(selectedBlock.id, { socialIconStyle: st })}
+                                          className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all ${
+                                            isSel
+                                              ? 'bg-rotary-blue text-white shadow-xs'
+                                              : 'text-slate-600 hover:bg-slate-100'
+                                          }`}
+                                        >
+                                          {labels[st]}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+
+                                {/* Tamaño y Separación */}
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <div className="flex justify-between items-center mb-1">
+                                      <label className="text-[11px] font-bold text-slate-700">Tamaño</label>
+                                      <span className="text-[10px] font-mono text-slate-500 font-bold">{selectedBlock.socialIconSize || 28}px</span>
+                                    </div>
+                                    <input
+                                      type="range"
+                                      min={18}
+                                      max={40}
+                                      step={2}
+                                      value={selectedBlock.socialIconSize || 28}
+                                      onChange={(e) => updateBlock(selectedBlock.id, { socialIconSize: Number(e.target.value) })}
+                                      className="w-full accent-rotary-blue cursor-pointer"
+                                    />
+                                  </div>
+                                  <div>
+                                    <div className="flex justify-between items-center mb-1">
+                                      <label className="text-[11px] font-bold text-slate-700">Separación</label>
+                                      <span className="text-[10px] font-mono text-slate-500 font-bold">{selectedBlock.socialIconGap || 12}px</span>
+                                    </div>
+                                    <input
+                                      type="range"
+                                      min={4}
+                                      max={24}
+                                      step={2}
+                                      value={selectedBlock.socialIconGap || 12}
+                                      onChange={(e) => updateBlock(selectedBlock.id, { socialIconGap: Number(e.target.value) })}
+                                      className="w-full accent-rotary-blue cursor-pointer"
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Lista de redes configuradas */}
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <label className="text-[11px] font-bold text-slate-700">Redes Activas</label>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const current: FooterSocialLink[] = Array.isArray(selectedBlock.socialLinks) && selectedBlock.socialLinks.length > 0
+                                          ? [...selectedBlock.socialLinks]
+                                          : [...DEFAULT_FOOTER_SOCIAL_LINKS];
+                                        current.push({ network: 'instagram', url: 'https://instagram.com', label: 'Instagram' });
+                                        updateBlock(selectedBlock.id, { socialLinks: current });
+                                      }}
+                                      className="text-[10px] font-bold text-rotary-blue hover:text-blue-800 flex items-center gap-0.5"
+                                    >
+                                      <Plus className="w-3 h-3" />
+                                      <span>Añadir red</span>
+                                    </button>
+                                  </div>
+
+                                  {(() => {
+                                    const links: FooterSocialLink[] = Array.isArray(selectedBlock.socialLinks) && selectedBlock.socialLinks.length > 0
+                                      ? selectedBlock.socialLinks
+                                      : DEFAULT_FOOTER_SOCIAL_LINKS;
+                                    const iconStyle = selectedBlock.socialIconStyle || 'white';
+
+                                    return links.map((link, idx) => {
+                                      const net = (link.network || 'web').toLowerCase();
+                                      const isCustom = net === 'custom';
+                                      const iconSrc = link.customIconUrl
+                                        ? link.customIconUrl
+                                        : `/icons/social/${encodeURIComponent(net)}-${iconStyle}.png`;
+
+                                      return (
+                                        <div key={idx} className="p-2 bg-white border border-slate-200 rounded-xl space-y-1.5 shadow-2xs">
+                                          <div className="flex items-center gap-1.5">
+                                            {/* Preview del icono */}
+                                            <div className="w-6 h-6 rounded-md bg-slate-800 flex items-center justify-center shrink-0 p-0.5 overflow-hidden">
+                                              <img
+                                                src={iconSrc}
+                                                alt={link.label || net}
+                                                className="w-5 h-5 object-contain"
+                                                onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/icons/social/web-color.png'; }}
+                                              />
+                                            </div>
+
+                                            {/* Selector de Red */}
+                                            <select
+                                              value={link.network || 'instagram'}
+                                              onChange={(e) => {
+                                                const next = [...links];
+                                                next[idx] = { ...next[idx], network: e.target.value, label: e.target.value.toUpperCase() };
+                                                updateBlock(selectedBlock.id, { socialLinks: next });
+                                              }}
+                                              className="bg-white border border-slate-200 rounded-lg py-1 px-1.5 text-xs font-bold text-slate-800 w-28 shrink-0"
+                                            >
+                                              <option value="instagram">Instagram</option>
+                                              <option value="facebook">Facebook</option>
+                                              <option value="youtube">YouTube</option>
+                                              <option value="linkedin">LinkedIn</option>
+                                              <option value="tiktok">TikTok</option>
+                                              <option value="x">X (Twitter)</option>
+                                              <option value="whatsapp">WhatsApp</option>
+                                              <option value="web">Sitio Web</option>
+                                              <option value="custom">Personalizado</option>
+                                            </select>
+
+                                            {/* Input URL */}
+                                            <input
+                                              type="text"
+                                              value={link.url || ''}
+                                              onChange={(e) => {
+                                                const next = [...links];
+                                                next[idx] = { ...next[idx], url: e.target.value };
+                                                updateBlock(selectedBlock.id, { socialLinks: next });
+                                              }}
+                                              placeholder="https://..."
+                                              className="flex-1 bg-white border border-slate-200 rounded-lg py-1 px-2 text-xs font-mono text-slate-800"
+                                            />
+
+                                            {/* Acciones: Subir, Bajar, Eliminar */}
+                                            <div className="flex items-center gap-0.5 shrink-0">
+                                              <button
+                                                type="button"
+                                                disabled={idx === 0}
+                                                onClick={() => {
+                                                  if (idx === 0) return;
+                                                  const next = [...links];
+                                                  const temp = next[idx - 1];
+                                                  next[idx - 1] = next[idx];
+                                                  next[idx] = temp;
+                                                  updateBlock(selectedBlock.id, { socialLinks: next });
+                                                }}
+                                                className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-20"
+                                                title="Subir"
+                                              >
+                                                <ArrowUp className="w-3.5 h-3.5" />
+                                              </button>
+                                              <button
+                                                type="button"
+                                                disabled={idx === links.length - 1}
+                                                onClick={() => {
+                                                  if (idx === links.length - 1) return;
+                                                  const next = [...links];
+                                                  const temp = next[idx + 1];
+                                                  next[idx + 1] = next[idx];
+                                                  next[idx] = temp;
+                                                  updateBlock(selectedBlock.id, { socialLinks: next });
+                                                }}
+                                                className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-20"
+                                                title="Bajar"
+                                              >
+                                                <ArrowDown className="w-3.5 h-3.5" />
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  const next = links.filter((_, i) => i !== idx);
+                                                  updateBlock(selectedBlock.id, { socialLinks: next });
+                                                }}
+                                                className="p-1 text-rose-500 hover:text-rose-700"
+                                                title="Eliminar red"
+                                              >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                              </button>
+                                            </div>
+                                          </div>
+
+                                          {/* Si es personalizado, permitir cargar imagen de icono */}
+                                          {isCustom && (
+                                            <div className="flex gap-2 pt-1 border-t border-slate-100">
+                                              <input
+                                                type="text"
+                                                value={link.customIconUrl || ''}
+                                                onChange={(e) => {
+                                                  const next = [...links];
+                                                  next[idx] = { ...next[idx], customIconUrl: e.target.value };
+                                                  updateBlock(selectedBlock.id, { socialLinks: next });
+                                                }}
+                                                placeholder="URL icono PNG..."
+                                                className="flex-1 bg-white border border-slate-200 rounded-lg p-1 text-xs"
+                                              />
+                                              <button
+                                                type="button"
+                                                onClick={() => openMediaPickerFor((url) => {
+                                                  const next = [...links];
+                                                  next[idx] = { ...next[idx], customIconUrl: url };
+                                                  updateBlock(selectedBlock.id, { socialLinks: next });
+                                                })}
+                                                className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold"
+                                              >
+                                                Icono
+                                              </button>
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    });
+                                  })()}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* PERSONALIZACIÓN COMPLETA DE WHATSAPP */}
+                          <div className="pt-2 border-t border-slate-200 space-y-2.5">
+                            <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-800">
+                              <input
+                                type="checkbox"
+                                checked={selectedBlock.showWhatsapp !== false}
+                                onChange={(e) => updateBlock(selectedBlock.id, { showWhatsapp: e.target.checked })}
+                                className="rounded border-slate-300 text-rotary-blue focus:ring-rotary-blue"
+                              />
+                              <span>Enlace de Asistencia WhatsApp</span>
+                            </label>
+
+                            {selectedBlock.showWhatsapp !== false && (
+                              <div className="space-y-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                                <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedBlock.showWhatsappIcon !== false}
+                                    onChange={(e) => updateBlock(selectedBlock.id, { showWhatsappIcon: e.target.checked })}
+                                    className="rounded border-slate-300 text-rotary-blue focus:ring-rotary-blue"
+                                  />
+                                  <span>Mostrar icono oficial de WhatsApp</span>
+                                </label>
+
+                                <div>
+                                  <label className="text-[11px] font-bold text-slate-700 block mb-1">Texto del Enlace</label>
+                                  <input
+                                    type="text"
+                                    value={selectedBlock.whatsappText || 'Asistencia directa a través de WhatsApp'}
+                                    onChange={(e) => updateBlock(selectedBlock.id, { whatsappText: e.target.value })}
+                                    className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs font-medium"
+                                    placeholder="Texto del enlace..."
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="text-[11px] font-bold text-slate-700 block mb-1">Destino (URL o Número)</label>
+                                  <input
+                                    type="text"
+                                    value={selectedBlock.whatsappUrl !== undefined ? selectedBlock.whatsappUrl : 'https://wa.me/573108520231'}
+                                    onChange={(e) => updateBlock(selectedBlock.id, { whatsappUrl: e.target.value })}
+                                    className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs font-mono"
+                                    placeholder="https://wa.me/57..."
+                                  />
+                                </div>
+
+                                {/* Color del texto y enlace de WhatsApp */}
+                                <div>
+                                  <div className="flex items-center justify-between mb-1">
+                                    <label className="text-[11px] font-bold text-slate-700">Color del Enlace</label>
+                                    <div className="flex gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => updateBlock(selectedBlock.id, { whatsappColor: '#ffffff' })}
+                                        className="text-[10px] font-bold text-slate-600 hover:text-slate-900 px-1 py-0.5 rounded bg-white border border-slate-200"
+                                      >
+                                        Blanco
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => updateBlock(selectedBlock.id, { whatsappColor: '#38bdf8' })}
+                                        className="text-[10px] font-bold text-sky-600 hover:text-sky-800 px-1 py-0.5 rounded bg-white border border-slate-200"
+                                      >
+                                        Celeste
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => updateBlock(selectedBlock.id, { whatsappColor: '#25D366' })}
+                                        className="text-[10px] font-bold text-emerald-600 hover:text-emerald-800 px-1 py-0.5 rounded bg-white border border-slate-200"
+                                      >
+                                        Verde WA
+                                      </button>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <input
+                                      type="color"
+                                      value={selectedBlock.whatsappColor || '#ffffff'}
+                                      onChange={(e) => updateBlock(selectedBlock.id, { whatsappColor: e.target.value })}
+                                      className="w-8 h-8 rounded-lg border border-slate-300 cursor-pointer p-0.5"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={selectedBlock.whatsappColor || '#ffffff'}
+                                      onChange={(e) => updateBlock(selectedBlock.id, { whatsappColor: e.target.value })}
+                                      className="flex-1 bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-mono"
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Tamaño y Peso tipográfico */}
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <label className="text-[11px] font-bold text-slate-700 block mb-1">Tamaño Fuente</label>
+                                    <select
+                                      value={selectedBlock.whatsappFontSize || 13}
+                                      onChange={(e) => updateBlock(selectedBlock.id, { whatsappFontSize: Number(e.target.value) })}
+                                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-bold"
+                                    >
+                                      <option value={11}>11px</option>
+                                      <option value={12}>12px</option>
+                                      <option value={13}>13px (Default)</option>
+                                      <option value={14}>14px</option>
+                                      <option value={15}>15px</option>
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label className="text-[11px] font-bold text-slate-700 block mb-1">Peso Tipográfico</label>
+                                    <select
+                                      value={selectedBlock.whatsappFontWeight || '600'}
+                                      onChange={(e) => updateBlock(selectedBlock.id, { whatsappFontWeight: e.target.value as any })}
+                                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-bold"
+                                    >
+                                      <option value="400">Normal (400)</option>
+                                      <option value="600">Seminegrita (600)</option>
+                                      <option value="700">Negrita (700)</option>
+                                    </select>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                           </div>
 
                           {/* Texto Institucional y Legal */}
-                          <div className="pt-1 border-t border-slate-200">
+                          <div className="pt-2 border-t border-slate-200">
                             <label className="text-[11px] font-bold text-slate-700 block mb-1">Texto Institucional y Enlace de Baja</label>
                             <textarea
                               rows={3}
@@ -2587,21 +2985,36 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
 
                           <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200">
                             <div>
-                              <label className="text-[11px] font-bold text-slate-700 block mb-1">Fondo Bloque</label>
+                              <div className="flex items-center justify-between mb-1">
+                                <label className="text-[11px] font-bold text-slate-700">Fondo Bloque</label>
+                              </div>
                               <div className="flex items-center gap-1.5">
                                 <input
                                   type="color"
-                                  value={selectedBlock.bgColor || '#013388'}
+                                  value={selectedBlock.bgColor || '#0c2340'}
                                   onChange={(e) => updateBlock(selectedBlock.id, { bgColor: e.target.value })}
                                   className="w-7 h-7 rounded border border-slate-300 cursor-pointer p-0"
                                 />
                                 <input
                                   type="text"
-                                  value={selectedBlock.bgColor || '#013388'}
+                                  value={selectedBlock.bgColor || '#0c2340'}
                                   onChange={(e) => updateBlock(selectedBlock.id, { bgColor: e.target.value })}
                                   className="flex-1 bg-white border border-slate-300 rounded-lg p-1 text-xs font-mono"
                                 />
                               </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const footerBlock = design.blocks.find(b => b.type === 'global' && (b as GlobalBlockItem).globalKey === 'rotary_footer') as GlobalBlockItem | undefined;
+                                  const targetBg = footerBlock?.bgColor || '#0c2340';
+                                  updateBlock(selectedBlock.id, { bgColor: targetBg });
+                                }}
+                                className="mt-1 text-[10px] font-bold text-rotary-blue hover:text-blue-800 flex items-center gap-1"
+                                title="Alinea el fondo del CTA con el color del pie para continuidad visual"
+                              >
+                                <Sparkles className="w-3 h-3 text-amber-500" />
+                                <span>Unificar con Footer ({(design.blocks.find(b => b.type === 'global' && (b as GlobalBlockItem).globalKey === 'rotary_footer') as GlobalBlockItem | undefined)?.bgColor || '#0c2340'})</span>
+                              </button>
                             </div>
                             <div>
                               <label className="text-[11px] font-bold text-slate-700 block mb-1">Color Texto</label>
@@ -2866,7 +3279,7 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                     >
                       <div>
                         <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                          <span>{gb.title}</span>
+                          <span>{gb.name}</span>
                           <span className="text-[9px] font-black bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full border border-amber-300">
                             OFICIAL
                           </span>
@@ -2876,7 +3289,7 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                         </div>
                       </div>
                       <button
-                        onClick={() => handleInsertGlobalBlock(gb.key, gb.title)}
+                        onClick={() => handleInsertGlobalBlock(gb.key, gb.name)}
                         className="px-2.5 py-1 bg-rotary-blue hover:bg-blue-700 text-white text-[11px] font-bold rounded-lg shrink-0 flex items-center gap-1 shadow-xs"
                       >
                         <Plus className="w-3 h-3" />

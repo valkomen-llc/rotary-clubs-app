@@ -67,5 +67,8 @@ temp.json
 !public/*.jpg
 !public/defaults/**/*.png
 !public/defaults/**/*.jpg
+!public/icons/**/*.png
+!public/icons/**/*.jpg
+!public/icons/**/*.svg
 
 .env.production

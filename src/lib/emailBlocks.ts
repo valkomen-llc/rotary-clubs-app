@@ -82,6 +82,24 @@ export interface TableBlock extends BaseBlock {
     align?: Align;
 }
 
+export type SocialIconStyle = 'white' | 'black' | 'color';
+
+export interface FooterSocialLink {
+    network: string; // 'instagram' | 'facebook' | 'youtube' | 'linkedin' | 'tiktok' | 'x' | 'whatsapp' | 'web' | string;
+    url: string;
+    label?: string;
+    customIconUrl?: string;
+}
+
+export const DEFAULT_FOOTER_SOCIAL_LINKS: FooterSocialLink[] = [
+    { network: 'instagram', url: 'https://instagram.com', label: 'Instagram' },
+    { network: 'facebook', url: 'https://facebook.com', label: 'Facebook' },
+    { network: 'youtube', url: 'https://youtube.com', label: 'YouTube' },
+    { network: 'linkedin', url: 'https://linkedin.com', label: 'LinkedIn' },
+    { network: 'x', url: 'https://x.com', label: 'X (Twitter)' },
+    { network: 'web', url: 'https://app.clubplatform.org/rotary-en-accion', label: 'Rotary en Acción' },
+];
+
 export interface GlobalBlockItem extends BaseBlock {
     type: 'global';
     globalKey: string;
@@ -96,10 +114,21 @@ export interface GlobalBlockItem extends BaseBlock {
     textColor?: string;
     whatsappUrl?: string;
     whatsappText?: string;
+    showWhatsapp?: boolean;
+    showWhatsappIcon?: boolean;
+    whatsappColor?: string;
+    whatsappFontSize?: number;
+    whatsappFontWeight?: '400' | '600' | '700';
+    whatsappAlign?: Align;
     motto?: string;
     footerText?: string;
     showAreas?: boolean;
     showSocial?: boolean;
+    socialLinks?: FooterSocialLink[];
+    socialIconStyle?: SocialIconStyle;
+    socialIconSize?: number;
+    socialIconGap?: number;
+    socialAlign?: Align;
     customHtml?: string;
     padding?: string;
     borderColor?: string;
@@ -553,10 +582,49 @@ const cell = (inner: string, b?: Block, vPad = '8px 24px', interactive = false):
         }
     }
     const bid = interactive && b ? ` data-bid="${esc(b.id)}"` : '';
-    return `<tr${bid}><td style="padding:${pad}">${inner}</td></tr>`;
+    const isZeroPad = pad === '0px 0px' || pad === '0px' || pad === '0';
+    const tdExtraStyle = isZeroPad ? ';margin:0;font-size:0px;line-height:0px;border-collapse:collapse' : '';
+    return `<tr${bid} style="margin:0;padding:0"><td style="padding:${pad}${tdExtraStyle}">${inner}</td></tr>`;
 };
 
-const renderBlock = (b: Block, s: EmailSettings, interactive = false, siteContext?: SiteBrandingContext): string => {
+export interface RenderBlockContext {
+    isCtaActive?: boolean;
+}
+
+export const renderFooterSocialIcons = (
+    links: FooterSocialLink[],
+    style: SocialIconStyle = 'white',
+    size = 28,
+    gap = 12
+): string => {
+    const activeLinks = (links || []).filter(l => l && l.url && l.url.trim().length > 0);
+    if (!activeLinks.length) return '';
+
+    const baseUrl = 'https://app.clubplatform.org';
+    const halfGap = Math.round(gap / 2);
+
+    const iconsHtml = activeLinks.map(l => {
+        const net = (l.network || 'web').toLowerCase();
+        const iconSrc = l.customIconUrl && l.customIconUrl.trim().length > 0
+            ? safeUrl(l.customIconUrl)
+            : `${baseUrl}/icons/social/${encodeURIComponent(net)}-${style}.png`;
+        const label = l.label || net.toUpperCase();
+
+        return `<a href="${safeUrl(l.url)}" target="_blank" style="display:inline-block;margin:0 ${halfGap}px 6px ${halfGap}px;text-decoration:none;border:0;line-height:1">` +
+            `<img src="${iconSrc}" alt="${esc(label)}" width="${size}" height="${size}" style="display:inline-block;width:${size}px;height:${size}px;border:0;outline:none;text-decoration:none;vertical-align:middle" />` +
+            `</a>`;
+    }).join('');
+
+    return `<div style="text-align:center;margin-bottom:16px;line-height:1">${iconsHtml}</div>`;
+};
+
+const renderBlock = (
+    b: Block,
+    s: EmailSettings,
+    interactive = false,
+    siteContext?: SiteBrandingContext,
+    renderCtx?: RenderBlockContext
+): string => {
     const C = (inner: string, vPad = '8px 24px'): string => cell(inner, b, vPad, interactive);
     switch (b.type) {
         case 'heading': {
@@ -695,12 +763,18 @@ const renderBlock = (b: Block, s: EmailSettings, interactive = false, siteContex
                 const footerTitle = b.title !== undefined ? b.title : '¡Síguenos y comparte el orgullo rotario!';
                 const showAreas = b.showAreas !== false;
                 const showSocial = b.showSocial !== false;
+                const showWhatsapp = b.showWhatsapp !== false;
                 const whatsappUrl = b.whatsappUrl !== undefined ? b.whatsappUrl : 'https://wa.me/573108520231';
                 const whatsappText = b.whatsappText || 'Asistencia directa a través de WhatsApp';
+                const showWhatsappIcon = b.showWhatsappIcon !== false;
+                const whatsappColor = b.whatsappColor || '#ffffff';
+                const whatsappFontSize = typeof b.whatsappFontSize === 'number' ? b.whatsappFontSize : 13;
+                const whatsappFontWeight = b.whatsappFontWeight || '600';
+                const whatsappAlign = b.whatsappAlign || 'center';
                 const footerText = b.footerText !== undefined ? b.footerText : 'Rotary en Acción · Distritos 4271 y 4281 Colombia.<br/>&copy; 2026 Rotary International. Todos los derechos reservados.<br/><a href="{{unsubscribe_url}}" target="_blank" style="color:#cbd5e1;text-decoration:underline">Preferencias de comunicación y cancelar suscripción</a>';
 
                 const footerLogo = b.logoUrl
-                    ? `<div style="margin-bottom:14px"><img src="${safeUrl(b.logoUrl)}" alt="Footer Logo" style="max-height:48px;max-width:220px;display:inline-block;vertical-align:middle" /></div>`
+                    ? `<div style="margin-bottom:14px"><img src="${safeUrl(b.logoUrl)}" alt="Footer Logo" style="max-height:48px;max-width:220px;display:inline-block;vertical-align:middle;border:0" /></div>`
                     : '';
 
                 const areasHtml = showAreas ? `<div style="margin-bottom:18px">
@@ -713,22 +787,36 @@ const renderBlock = (b: Block, s: EmailSettings, interactive = false, siteContex
                     <span style="display:inline-block;background-color:rgba(255,255,255,0.12);padding:4px 10px;border-radius:20px;font-size:11px;margin:2px 3px;color:#e2e8f0">&#128330;&#65039; Paz</span>
                 </div>` : '';
 
-                const socialHtml = showSocial ? `<div style="margin-bottom:16px">
-                    <a href="https://instagram.com" target="_blank" style="display:inline-block;width:32px;height:32px;line-height:32px;border-radius:50%;background:#013388;color:#fff;text-decoration:none;margin:0 4px;font-weight:700">IG</a>
-                    <a href="https://facebook.com" target="_blank" style="display:inline-block;width:32px;height:32px;line-height:32px;border-radius:50%;background:#013388;color:#fff;text-decoration:none;margin:0 4px;font-weight:700">FB</a>
-                    <a href="https://youtube.com" target="_blank" style="display:inline-block;width:32px;height:32px;line-height:32px;border-radius:50%;background:#013388;color:#fff;text-decoration:none;margin:0 4px;font-weight:700">&#9654;</a>
-                    <a href="https://app.clubplatform.org/rotary-en-accion" target="_blank" style="display:inline-block;width:32px;height:32px;line-height:32px;border-radius:50%;background:#013388;color:#fff;text-decoration:none;margin:0 4px;font-weight:700">&#127760;</a>
-                </div>` : '';
+                const socialIconStyle: SocialIconStyle = b.socialIconStyle || 'white';
+                const socialIconSize = typeof b.socialIconSize === 'number' && b.socialIconSize >= 16 ? b.socialIconSize : 28;
+                const socialIconGap = typeof b.socialIconGap === 'number' && b.socialIconGap >= 0 ? b.socialIconGap : 12;
+                const socialLinks = Array.isArray(b.socialLinks) && b.socialLinks.length > 0
+                    ? b.socialLinks
+                    : DEFAULT_FOOTER_SOCIAL_LINKS;
 
-                const whatsappHtml = whatsappUrl ? `<div style="font-size:13px;margin-bottom:12px">
-                    <a href="${safeUrl(whatsappUrl)}" target="_blank" style="color:#38bdf8;text-decoration:underline;font-weight:700">&#128172; ${esc(whatsappText)}</a>
-                </div>` : '';
+                const socialHtml = showSocial ? renderFooterSocialIcons(socialLinks, socialIconStyle, socialIconSize, socialIconGap) : '';
 
-                return C(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;background-color:${esc(footerBg)};border-radius:0 0 12px 12px;overflow:hidden;margin-top:24px">
+                let whatsappHtml = '';
+                if (showWhatsapp && whatsappUrl && whatsappText) {
+                    const iconHtml = showWhatsappIcon
+                        ? `<img src="https://app.clubplatform.org/icons/social/whatsapp-color.png" alt="WhatsApp" width="16" height="16" style="display:inline-block;width:16px;height:16px;vertical-align:middle;margin-right:6px;border:0;outline:none;text-decoration:none" />`
+                        : '';
+                    whatsappHtml = `<div style="text-align:${esc(whatsappAlign)};font-size:${whatsappFontSize}px;margin-bottom:14px;line-height:1.4">
+                        <a href="${safeUrl(whatsappUrl)}" target="_blank" style="color:${esc(whatsappColor)};text-decoration:none;font-weight:${esc(whatsappFontWeight)};font-size:${whatsappFontSize}px;display:inline-block;vertical-align:middle">
+                            ${iconHtml}<span style="vertical-align:middle;text-decoration:underline">${esc(whatsappText)}</span>
+                        </a>
+                    </div>`;
+                }
+
+                const isCtaActive = renderCtx?.isCtaActive;
+                const tableMargin = isCtaActive ? 'margin:0;' : 'margin:24px 0 0 0;';
+                const tableRadius = isCtaActive ? 'border-radius:0 0 12px 12px;' : 'border-radius:12px;';
+
+                return C(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt;${tableMargin}background-color:${esc(footerBg)};${tableRadius}overflow:hidden;border:none">
                     <tr>
                         <td style="padding:28px 24px;text-align:center;color:#ffffff">
                             ${footerLogo}
-                            ${footerTitle ? `<div style="font-size:14px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:14px;color:#ffffff">${esc(footerTitle)}</div>` : ''}
+                            ${footerTitle ? `<div style="font-family:'Open Sans',Helvetica,Arial,sans-serif;font-size:14px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:14px;color:#ffffff">${esc(footerTitle)}</div>` : ''}
                             ${areasHtml}
                             ${socialHtml}
                             ${whatsappHtml}
@@ -809,21 +897,21 @@ const renderBlock = (b: Block, s: EmailSettings, interactive = false, siteContex
                 const subtitle = b.subtitle !== undefined ? b.subtitle : 'Conecta, comunica y potencia el impacto de tu club con Club Platform.';
                 const btnText = b.buttonText || 'ACTIVAR MI CLUB';
                 const btnHref = b.buttonHref || 'https://clubplatform.org?utm_source=email_marketing&utm_medium=campaign&utm_campaign=cta_club_platform';
-                const ctaBg = b.bgGradient || b.bgColor || 'linear-gradient(135deg, #013388 0%, #0d233a 100%)';
+                const ctaBg = b.bgGradient || b.bgColor || '#0c2340';
                 const textColor = b.textColor || '#ffffff';
                 const btnBg = b.buttonBg || '#f7a81b';
                 const btnColor = b.buttonColor || '#0c2340';
                 const btnRadius = typeof b.buttonRadius === 'number' ? b.buttonRadius : 24;
                 const pad = b.padding || '28px 24px';
 
-                return C(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:20px 0;background-color:#013388;background:${esc(ctaBg)};border-radius:12px;overflow:hidden">
+                return C(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt;margin:24px 0 0 0;background-color:${esc(ctaBg)};background:${esc(ctaBg)};border-radius:12px 12px 0 0;overflow:hidden;border:none">
                     <tr>
                         <td align="center" style="padding:${esc(pad)};text-align:center;color:${esc(textColor)}">
                             <div style="font-family:'Open Sans',Helvetica,Arial,sans-serif;font-size:18px;font-weight:800;letter-spacing:-0.01em;line-height:1.3;margin-bottom:8px;color:${esc(textColor)}">
                                 ${esc(title)}
                             </div>
                             ${subtitle ? `<div style="font-family:'Open Sans',Helvetica,Arial,sans-serif;font-size:13px;line-height:1.5;margin-bottom:18px;opacity:0.92;color:${esc(textColor)}">${esc(subtitle)}</div>` : ''}
-                            <table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:0 auto;border-collapse:collapse">
+                            <table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:0 auto;border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt">
                                 <tr>
                                     <td align="center" style="border-radius:${btnRadius}px;background-color:${esc(btnBg)}">
                                         <a href="${safeUrl(btnHref)}" target="_blank" style="display:inline-block;padding:12px 28px;font-family:'Open Sans',Helvetica,Arial,sans-serif;font-size:13px;font-weight:800;letter-spacing:0.04em;text-transform:uppercase;color:${esc(btnColor)};text-decoration:none;border-radius:${btnRadius}px;mso-padding-alt:0;text-align:center">
@@ -852,7 +940,9 @@ export const renderDesignToHtml = (
     const s = { ...DEFAULT_SETTINGS, ...(design?.settings || {}) };
     const blocks = Array.isArray(design?.blocks) ? design.blocks : [];
     const siteContext: SiteBrandingContext | undefined = opts.siteContext || (('domain' in opts || 'siteLogo' in opts || 'isMainPlatform' in opts || 'siteName' in opts || 'rotaryEnAccionUrl' in opts) ? (opts as SiteBrandingContext) : undefined);
-    const rows = blocks.map((b) => renderBlock(b, s, !!opts.interactive, siteContext)).join('');
+    const ctaItem = blocks.find(b => b.type === 'global' && (b as GlobalBlockItem).globalKey === 'club_platform_cta') as GlobalBlockItem | undefined;
+    const isCtaActive = !!ctaItem && ctaItem.enabled !== false;
+    const rows = blocks.map((b) => renderBlock(b, s, !!opts.interactive, siteContext, { isCtaActive })).join('');
     const script = opts.interactive
         ? `<script>document.addEventListener('click',function(e){var el=e.target&&e.target.closest?e.target.closest('[data-bid]'):null;if(el&&window.parent){window.parent.postMessage({type:'ca-select-block',id:el.getAttribute('data-bid')},'*');}});<\/script>`
         : '';
@@ -949,11 +1039,12 @@ export const normalizeInstitutionalDesign = (rawDesign?: EmailDesign | null): Em
     // Normalizar bloques de contenido (categorías y botón CTA)
     newBlocks = newBlocks.map((b) => {
         if (b.globalKey === 'rotary_areas_focus' || b.globalKey === 'rotary_categories') {
+            const gb = b as GlobalBlockItem;
             return {
-                ...b,
+                ...gb,
                 label: '¿Qué puede compartir tu club en Rotary en Acción?',
-                title: b.title && !b.title.includes('7 Áreas') ? b.title : '¿Qué puede compartir tu club en Rotary en Acción?',
-                subtitle: b.subtitle !== undefined ? b.subtitle : 'El formulario unificado se adapta a lo que elijas para visibilizar el impacto de tu club:',
+                title: gb.title && !gb.title.includes('7 Áreas') ? gb.title : '¿Qué puede compartir tu club en Rotary en Acción?',
+                subtitle: gb.subtitle !== undefined ? gb.subtitle : 'El formulario unificado se adapta a lo que elijas para visibilizar el impacto de tu club:',
             };
         }
         if (b.type === 'button') {
@@ -994,8 +1085,27 @@ export const normalizeInstitutionalDesign = (rawDesign?: EmailDesign | null): Em
                 buttonBg: cp.buttonBg || '#f7a81b',
                 buttonColor: cp.buttonColor || '#0c2340',
                 buttonRadius: cp.buttonRadius ?? 24,
-                bgColor: cp.bgColor || '#013388',
+                bgColor: cp.bgColor && cp.bgColor !== '#013388' ? cp.bgColor : '#0c2340',
                 textColor: cp.textColor || '#ffffff',
+            };
+        }
+        if (b.globalKey === 'rotary_footer') {
+            const rf = b as GlobalBlockItem;
+            return {
+                ...rf,
+                label: 'Pie de Página Institucional Protegido',
+                bgColor: rf.bgColor || '#0c2340',
+                socialIconStyle: rf.socialIconStyle || 'white',
+                socialIconSize: rf.socialIconSize || 28,
+                socialIconGap: rf.socialIconGap || 12,
+                socialLinks: Array.isArray(rf.socialLinks) && rf.socialLinks.length > 0 ? rf.socialLinks : DEFAULT_FOOTER_SOCIAL_LINKS,
+                showWhatsapp: rf.showWhatsapp !== false,
+                showWhatsappIcon: rf.showWhatsappIcon !== false,
+                whatsappColor: rf.whatsappColor || '#ffffff',
+                whatsappText: rf.whatsappText || 'Asistencia directa a través de WhatsApp',
+                whatsappUrl: rf.whatsappUrl !== undefined ? rf.whatsappUrl : 'https://wa.me/573108520231',
+                whatsappFontSize: rf.whatsappFontSize || 13,
+                whatsappFontWeight: rf.whatsappFontWeight || '600',
             };
         }
         return b;
@@ -1140,7 +1250,7 @@ export const createRotaryMasterDesign = (): EmailDesign => ({
             buttonBg: '#f7a81b',
             buttonColor: '#0c2340',
             buttonRadius: 24,
-            bgColor: '#013388',
+            bgColor: '#0c2340',
             textColor: '#ffffff',
             padding: '28px 24px',
         },
@@ -1155,8 +1265,17 @@ export const createRotaryMasterDesign = (): EmailDesign => ({
             bgColor: '#0c2340',
             showAreas: true,
             showSocial: true,
+            socialIconStyle: 'white',
+            socialIconSize: 28,
+            socialIconGap: 12,
+            socialLinks: DEFAULT_FOOTER_SOCIAL_LINKS,
+            showWhatsapp: true,
+            showWhatsappIcon: true,
             whatsappUrl: 'https://wa.me/573108520231',
             whatsappText: 'Asistencia directa a través de WhatsApp',
+            whatsappColor: '#ffffff',
+            whatsappFontSize: 13,
+            whatsappFontWeight: '600',
             footerText: 'Rotary en Acción • Plataforma Oficial de Visibilidad.<br/>&copy; 2026 Rotary International. Todos los derechos reservados.<br/><a href="{{unsubscribe_url}}" target="_blank" style="color:#cbd5e1;text-decoration:underline">Preferencias de comunicación y cancelar suscripción</a>',
             logoUrl: '',
         },
