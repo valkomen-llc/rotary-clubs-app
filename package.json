@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1179.0",
-  "cache_bust": "4.1179.0",
+  "version": "4.1180.0",
+  "cache_bust": "4.1180.0",
   "type": "module",
   "//": "UI V4.1179.0 | 2026-10-09 (Comunicaciones CRM: Motor de Normalización Telefónica E.164, Selector Internacional, Diagnóstico Pre-Envío y Reintento de WhatsApp)",
   "scripts": {
@@ -176,7 +176,9 @@
     "test:meta:oauth": "node scripts/test-meta-oauth.mjs",
     "test:content:activation:templates": "node scripts/test-content-activation-templates.mjs",
     "test:content:activation:schedule": "node scripts/test-content-activation-schedule.mjs",
-    "test:template:editor": "node scripts/test-template-editor.mjs"
+    "test:template:editor": "node scripts/test-template-editor.mjs",
+    "test:resilience": "node scripts/test-resilience.mjs",
+    "site:health": "node scripts/site-health.mjs"
   },
   "engines": {
     "node": "22.x"

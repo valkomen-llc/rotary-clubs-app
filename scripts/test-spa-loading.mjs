@@ -84,8 +84,13 @@ console.log('\n▸ El servidor: 404 de verdad, y el documento sin caché');
     // explica el catch-all nombra `renderPublicDocument` mucho antes.
     check('...antes de servir el documento, o no serviría de nada',
         api.indexOf('isBuildAssetPath(req.path)') < api.indexOf("const { renderPublicDocument } ="));
+    // v4.1180: las cabeceras viven en `baseDocumentHeaders` y las usan el
+    // camino resuelto Y el de respaldo. Se comprueba la INVARIANTE, no la forma.
+    const budget = readFileSync(path.join(root, 'server/lib/documentBudget.js'), 'utf8');
     check('el documento se sirve SIN caché: es quien nombra los hashes del build',
-        /Cache-Control', 'no-store, must-revalidate'\);\s*\n\s*res\.setHeader\('Content-Type', 'text\/html/.test(api));
+        /'Cache-Control': 'no-store, must-revalidate'/.test(budget) && /baseDocumentHeaders\(\)/.test(api));
+    check('...y el respaldo ya no usa sendFile (salía sin no-store)',
+        !/res\.sendFile\(indexPath\)/.test(api));
 }
 
 // ───────────────────────────────────────────────────────────────────────────

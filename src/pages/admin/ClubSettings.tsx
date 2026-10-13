@@ -822,7 +822,7 @@ const ClubSettings: React.FC = () => {
         setDomainCheck(null);
         try {
             const API = import.meta.env.VITE_API_URL || '/api';
-            const res = await fetch(`${API}/clubs/by-domain?domain=${encodeURIComponent(value)}`);
+            const res = await fetch(`${API}/clubs/by-domain?domain=${encodeURIComponent(value)}&fresh=1`);
             if (!res.ok) throw new Error('No se pudo consultar');
             const data = await res.json();
 

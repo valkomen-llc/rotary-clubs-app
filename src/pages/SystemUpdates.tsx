@@ -42,6 +42,22 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1180.0',
+        title: 'Disponibilidad de los sitios: ninguna dependencia lenta deja la página en blanco 🛡️⚡',
+        description: 'Auditoría de causa raíz de las cargas intermitentes de rotary4281.org (pantalla en blanco o «Cargando plataforma…» sin fin). El documento HTML de cada sitio y la configuración del sitio (/clubs/by-domain) se resolvían esperando a la base de datos sin ningún tope, sobre una función compartida con los crons: con el pool ocupado, una visita podía esperar decenas de segundos y el navegador no tenía cómo recuperarse sin recargar. Ahora el documento se resuelve con tope de tiempo y caché con copia de respaldo (si la base tarda, se sirve la última copia buena o el documento base, nunca nada), la configuración del sitio igual, y el arranque del navegador tiene tope por intento, reintentos acotados, arranque instantáneo desde la última configuración buena y una pantalla con «Reintentar» en vez de un giro infinito. Se agregan sondas /api/health/live y /api/health/deps y un monitor reutilizable para todos los dominios (npm run site:health).',
+        date: new Date().toISOString(),
+        tags: ['infraestructura', 'disponibilidad', 'rendimiento', 'monitoreo', 'production-release'],
+        type: 'hotfix',
+        changes: [
+            { type: 'fixed', text: 'El documento HTML se sirve siempre dentro de un tope (≈2,5 s): si la base tarda, sale la copia en caché o el documento base, con X-Doc-Source y Server-Timing para diagnosticar.' },
+            { type: 'fixed', text: '/clubs/by-domain con caché por dominio, tope de 7 s y respaldo de la última copia buena; un tope vencido responde 503 con su código, nunca cuelga.' },
+            { type: 'fixed', text: 'El arranque del sitio en el navegador ya no gira sin fin: tope por intento, tres intentos acotados, aviso a los 5 s y pantalla «Reintentar» si se agotan.' },
+            { type: 'improved', text: 'Visitas repetidas arrancan al instante desde la última configuración buena guardada y se actualizan en segundo plano.' },
+            { type: 'added', text: 'Sondas /api/health/live (sin base) y /api/health/deps (base con tope) para distinguir función caída de base lenta.' },
+            { type: 'added', text: 'Monitor reutilizable npm run site:health <dominio…>: DNS, redirecciones, documento, programa principal, API y base, clasificados por capa y contra metas medibles.' }
+        ]
+    },
+    {
         version: '4.1179.0',
         title: 'Comunicaciones CRM: Motor Telefónico Internacional E.164, Selector de Países, Diagnóstico Pre-Envío y Reintentos Inteligentes de WhatsApp 🌍📲',
         description: 'Reingeniería integral del sistema de telefonía internacional y motor de campañas de WhatsApp en Club Platform. Incorporación de biblioteca estándar libphonenumber-js con sanitización estricta de importaciones de hojas de cálculo (remoción de comillas simples de Excel), detección de números de Norteamérica (NANP +1), Colombia (+57), Panamá (+507) y más de 240 países sin preasunciones forzadas. Selector de país con búsqueda interactiva, banderas e indicativos telefónicos en formularios de creación y edición de contactos (ContactModal), distinguiendo país de residencia vs. línea telefónica. Asistente predictivo de importación CSV/Excel (ImportWizard) con mapeo de columnas de país e indicativo y resumen de calidad previa. Módulo de auditoría y normalización de la base de contactos con trazabilidad histórica inalterable en metadata.phoneHistory. Diagnóstico preventivo preflight antes de cada envío de campaña y botón de reintento inteligente de mensajes fallidos en el tracker sin duplicar destinatarios previamente entregados.',
