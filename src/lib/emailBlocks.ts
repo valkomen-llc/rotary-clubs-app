@@ -133,6 +133,15 @@ export interface GlobalBlockItem extends BaseBlock {
     padding?: string;
     borderColor?: string;
     align?: Align;
+    // Fondo y Degradados (Sólido / Degradado)
+    bgType?: 'solid' | 'gradient';
+    bgGradientStart?: string;
+    bgGradientEnd?: string;
+    bgGradientAngle?: number;
+    bgGradientType?: 'linear' | 'radial';
+    titleColor?: string;
+    subtitleColor?: string;
+    linkColor?: string;
     // CTA Promocional Club Platform (Shopify-style)
     buttonText?: string;
     buttonHref?: string;
@@ -760,7 +769,19 @@ const renderBlock = (
             }
             if (b.globalKey === 'rotary_footer') {
                 const footerBg = b.bgColor || '#0c2340';
+                const footerBgType = b.bgType || 'solid';
+                const footerGradientStart = b.bgGradientStart || footerBg;
+                const footerGradientEnd = b.bgGradientEnd || footerBg;
+                const footerGradientAngle = typeof b.bgGradientAngle === 'number' ? b.bgGradientAngle : 180;
+                let footerBgCss = footerBg;
+                if (footerBgType === 'gradient') {
+                    footerBgCss = b.bgGradient || `linear-gradient(${footerGradientAngle}deg, ${footerGradientStart} 0%, ${footerGradientEnd} 100%)`;
+                }
+
                 const footerTitle = b.title !== undefined ? b.title : '¡Síguenos y comparte el orgullo rotario!';
+                const footerTitleColor = b.titleColor || '#ffffff';
+                const footerTextColor = b.textColor || '#94a3b8';
+                const footerLinkColor = b.linkColor || '#cbd5e1';
                 const showAreas = b.showAreas !== false;
                 const showSocial = b.showSocial !== false;
                 const showWhatsapp = b.showWhatsapp !== false;
@@ -810,18 +831,20 @@ const renderBlock = (
 
                 const isCtaActive = renderCtx?.isCtaActive;
                 const tableMargin = isCtaActive ? 'margin:0;' : 'margin:24px 0 0 0;';
-                const tableRadius = isCtaActive ? 'border-radius:0 0 12px 12px;' : 'border-radius:12px;';
+                const tableRadius = 'border-radius:0;'; // 0 border-radius!
 
-                return C(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt;${tableMargin}background-color:${esc(footerBg)};${tableRadius}overflow:hidden;border:none">
+                const formattedFooterText = footerText.replace(/color:#cbd5e1/g, `color:${esc(footerLinkColor)}`);
+
+                return C(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${esc(footerBg)}" style="border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt;${tableMargin}background-color:${esc(footerBg)};${footerBgType === 'gradient' ? `background:${footerBgCss};` : ''}${tableRadius}overflow:hidden;border:none">
                     <tr>
-                        <td style="padding:28px 24px;text-align:center;color:#ffffff">
+                        <td style="padding:28px 24px;text-align:center;color:${esc(footerTextColor)};background-color:${esc(footerBg)};${footerBgType === 'gradient' ? `background:${footerBgCss};` : ''}">
                             ${footerLogo}
-                            ${footerTitle ? `<div style="font-family:'Open Sans',Helvetica,Arial,sans-serif;font-size:14px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:14px;color:#ffffff">${esc(footerTitle)}</div>` : ''}
+                            ${footerTitle ? `<div style="font-family:'Open Sans',Helvetica,Arial,sans-serif;font-size:14px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:14px;color:${esc(footerTitleColor)}">${esc(footerTitle)}</div>` : ''}
                             ${areasHtml}
                             ${socialHtml}
                             ${whatsappHtml}
-                            <div style="font-size:11px;color:#94a3b8;line-height:1.5;margin-top:12px;border-top:1px solid rgba(255,255,255,0.1);padding-top:12px">
-                                ${footerText}
+                            <div style="font-size:11px;color:${esc(footerTextColor)};line-height:1.5;margin-top:12px;border-top:1px solid rgba(255,255,255,0.1);padding-top:12px">
+                                ${formattedFooterText}
                             </div>
                         </td>
                     </tr>
@@ -886,7 +909,7 @@ const renderBlock = (
                 // Si el bloque está desactivado
                 if (b.enabled === false) {
                     if (interactive) {
-                        return C(`<div style="border:2px dashed #cbd5e1;border-radius:12px;padding:14px 16px;text-align:center;background:#f8fafc;color:#94a3b8;font-size:12px;font-weight:600;cursor:pointer">
+                        return C(`<div style="border:2px dashed #cbd5e1;border-radius:0;padding:14px 16px;text-align:center;background:#f8fafc;color:#94a3b8;font-size:12px;font-weight:600;cursor:pointer">
                             &#128276; <strong>CTA Club Platform (Opcional)</strong>: Desactivado para esta campaña &bull; Clic para configurar o reactivar
                         </div>`, '6px 24px');
                     }
@@ -897,20 +920,45 @@ const renderBlock = (
                 const subtitle = b.subtitle !== undefined ? b.subtitle : 'Conecta, comunica y potencia el impacto de tu club con Club Platform.';
                 const btnText = b.buttonText || 'ACTIVAR MI CLUB';
                 const btnHref = b.buttonHref || 'https://clubplatform.org?utm_source=email_marketing&utm_medium=campaign&utm_campaign=cta_club_platform';
-                const ctaBg = b.bgGradient || b.bgColor || '#0c2340';
                 const textColor = b.textColor || '#ffffff';
+                const titleColor = b.titleColor || textColor;
+                const subtitleColor = b.subtitleColor || textColor;
                 const btnBg = b.buttonBg || '#f7a81b';
                 const btnColor = b.buttonColor || '#0c2340';
                 const btnRadius = typeof b.buttonRadius === 'number' ? b.buttonRadius : 24;
                 const pad = b.padding || '28px 24px';
 
-                return C(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt;margin:24px 0 0 0;background-color:${esc(ctaBg)};background:${esc(ctaBg)};border-radius:12px 12px 0 0;overflow:hidden;border:none">
+                // Soporte integral de fondos sólidos y degradados con fallback seguro para Outlook/clientes clásicos
+                const bgType = b.bgType || (b.bgGradient ? 'gradient' : 'gradient'); // default institucional: degradado
+                const gradientStart = b.bgGradientStart || '#013388';
+                const gradientEnd = b.bgGradientEnd || '#0c2340';
+                const gradientAngle = typeof b.bgGradientAngle === 'number' ? b.bgGradientAngle : 180;
+                const gradientType = b.bgGradientType || 'linear';
+                const fallbackBg = b.bgColor || gradientEnd || '#0c2340';
+
+                let bgCss = fallbackBg;
+                if (bgType === 'gradient') {
+                    if (b.bgGradient) {
+                        bgCss = b.bgGradient;
+                    } else if (gradientType === 'radial') {
+                        bgCss = `radial-gradient(circle at center, ${gradientStart} 0%, ${gradientEnd} 100%)`;
+                    } else {
+                        bgCss = `linear-gradient(${gradientAngle}deg, ${gradientStart} 0%, ${gradientEnd} 100%)`;
+                    }
+                }
+
+                return C(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${esc(fallbackBg)}" style="border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt;margin:24px 0 0 0;background-color:${esc(fallbackBg)};background:${bgCss};border-radius:0;overflow:hidden;border:none">
+                    <!--[if mso]>
+                    <v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:600px;">
+                    <v:fill type="${bgType === 'gradient' ? 'gradient' : 'solid'}" color="${esc(gradientStart)}" color2="${esc(gradientEnd)}" angle="${gradientAngle}" />
+                    <v:textbox style="mso-fit-shape-to-text:true" inset="0,0,0,0">
+                    <![endif]-->
                     <tr>
-                        <td align="center" style="padding:${esc(pad)};text-align:center;color:${esc(textColor)}">
-                            <div style="font-family:'Open Sans',Helvetica,Arial,sans-serif;font-size:18px;font-weight:800;letter-spacing:-0.01em;line-height:1.3;margin-bottom:8px;color:${esc(textColor)}">
+                        <td align="center" style="padding:${esc(pad)};text-align:center;color:${esc(textColor)};background-color:${esc(fallbackBg)};background:${bgCss}">
+                            <div style="font-family:'Open Sans',Helvetica,Arial,sans-serif;font-size:18px;font-weight:800;letter-spacing:-0.01em;line-height:1.3;margin-bottom:8px;color:${esc(titleColor)}">
                                 ${esc(title)}
                             </div>
-                            ${subtitle ? `<div style="font-family:'Open Sans',Helvetica,Arial,sans-serif;font-size:13px;line-height:1.5;margin-bottom:18px;opacity:0.92;color:${esc(textColor)}">${esc(subtitle)}</div>` : ''}
+                            ${subtitle ? `<div style="font-family:'Open Sans',Helvetica,Arial,sans-serif;font-size:13px;line-height:1.5;margin-bottom:18px;opacity:0.92;color:${esc(subtitleColor)}">${esc(subtitle)}</div>` : ''}
                             <table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:0 auto;border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt">
                                 <tr>
                                     <td align="center" style="border-radius:${btnRadius}px;background-color:${esc(btnBg)}">
@@ -922,6 +970,10 @@ const renderBlock = (
                             </table>
                         </td>
                     </tr>
+                    <!--[if mso]>
+                    </v:textbox>
+                    </v:rect>
+                    <![endif]-->
                 </table>`, '0px 0px');
             }
             return C(b.customHtml || '<div style="padding:12px;background:#f3f4f6;border-radius:8px">Bloque Global Institucional</div>');
@@ -935,13 +987,15 @@ const renderBlock = (
 // No incluye <html>/<body> ni el pie de baja (eso lo añade buildEmailHtml al enviar).
 export const renderDesignToHtml = (
     design: EmailDesign,
-    opts: { interactive?: boolean; siteContext?: SiteBrandingContext } & Partial<SiteBrandingContext> = {}
+    opts: { interactive?: boolean; siteContext?: SiteBrandingContext; isCtaActive?: boolean } & Partial<SiteBrandingContext> = {}
 ): string => {
     const s = { ...DEFAULT_SETTINGS, ...(design?.settings || {}) };
     const blocks = Array.isArray(design?.blocks) ? design.blocks : [];
     const siteContext: SiteBrandingContext | undefined = opts.siteContext || (('domain' in opts || 'siteLogo' in opts || 'isMainPlatform' in opts || 'siteName' in opts || 'rotaryEnAccionUrl' in opts) ? (opts as SiteBrandingContext) : undefined);
     const ctaItem = blocks.find(b => b.type === 'global' && (b as GlobalBlockItem).globalKey === 'club_platform_cta') as GlobalBlockItem | undefined;
-    const isCtaActive = !!ctaItem && ctaItem.enabled !== false;
+    const isCtaActive = opts.isCtaActive !== undefined
+        ? opts.isCtaActive
+        : (!!ctaItem && ctaItem.enabled !== false);
     const rows = blocks.map((b) => renderBlock(b, s, !!opts.interactive, siteContext, { isCtaActive })).join('');
     const script = opts.interactive
         ? `<script>document.addEventListener('click',function(e){var el=e.target&&e.target.closest?e.target.closest('[data-bid]'):null;if(el&&window.parent){window.parent.postMessage({type:'ca-select-block',id:el.getAttribute('data-bid')},'*');}});<\/script>`
@@ -1085,8 +1139,15 @@ export const normalizeInstitutionalDesign = (rawDesign?: EmailDesign | null): Em
                 buttonBg: cp.buttonBg || '#f7a81b',
                 buttonColor: cp.buttonColor || '#0c2340',
                 buttonRadius: cp.buttonRadius ?? 24,
-                bgColor: cp.bgColor && cp.bgColor !== '#013388' ? cp.bgColor : '#0c2340',
+                bgType: cp.bgType || 'gradient',
+                bgGradientStart: cp.bgGradientStart || '#013388',
+                bgGradientEnd: cp.bgGradientEnd || '#0c2340',
+                bgGradientAngle: typeof cp.bgGradientAngle === 'number' ? cp.bgGradientAngle : 180,
+                bgGradientType: cp.bgGradientType || 'linear',
+                bgColor: cp.bgColor || '#0c2340',
                 textColor: cp.textColor || '#ffffff',
+                titleColor: cp.titleColor || cp.textColor || '#ffffff',
+                subtitleColor: cp.subtitleColor || cp.textColor || '#ffffff',
             };
         }
         if (b.globalKey === 'rotary_footer') {
@@ -1094,7 +1155,14 @@ export const normalizeInstitutionalDesign = (rawDesign?: EmailDesign | null): Em
             return {
                 ...rf,
                 label: 'Pie de Página Institucional Protegido',
+                bgType: rf.bgType || 'solid',
                 bgColor: rf.bgColor || '#0c2340',
+                bgGradientStart: rf.bgGradientStart || rf.bgColor || '#0c2340',
+                bgGradientEnd: rf.bgGradientEnd || rf.bgColor || '#0c2340',
+                bgGradientAngle: typeof rf.bgGradientAngle === 'number' ? rf.bgGradientAngle : 180,
+                textColor: rf.textColor || '#94a3b8',
+                titleColor: rf.titleColor || '#ffffff',
+                linkColor: rf.linkColor || '#cbd5e1',
                 socialIconStyle: rf.socialIconStyle || 'white',
                 socialIconSize: rf.socialIconSize || 28,
                 socialIconGap: rf.socialIconGap || 12,
@@ -1250,8 +1318,14 @@ export const createRotaryMasterDesign = (): EmailDesign => ({
             buttonBg: '#f7a81b',
             buttonColor: '#0c2340',
             buttonRadius: 24,
+            bgType: 'gradient',
+            bgGradientStart: '#013388',
+            bgGradientEnd: '#0c2340',
+            bgGradientAngle: 180,
             bgColor: '#0c2340',
             textColor: '#ffffff',
+            titleColor: '#ffffff',
+            subtitleColor: '#ffffff',
             padding: '28px 24px',
         },
         {
@@ -1262,7 +1336,11 @@ export const createRotaryMasterDesign = (): EmailDesign => ({
             isProtected: true,
             isLocked: false,
             title: '¡Síguenos y comparte el orgullo rotario!',
+            bgType: 'solid',
             bgColor: '#0c2340',
+            titleColor: '#ffffff',
+            textColor: '#94a3b8',
+            linkColor: '#cbd5e1',
             showAreas: true,
             showSocial: true,
             socialIconStyle: 'white',
@@ -1271,9 +1349,9 @@ export const createRotaryMasterDesign = (): EmailDesign => ({
             socialLinks: DEFAULT_FOOTER_SOCIAL_LINKS,
             showWhatsapp: true,
             showWhatsappIcon: true,
-            whatsappUrl: 'https://wa.me/573108520231',
-            whatsappText: 'Asistencia directa a través de WhatsApp',
             whatsappColor: '#ffffff',
+            whatsappText: 'Asistencia directa a través de WhatsApp',
+            whatsappUrl: 'https://wa.me/573108520231',
             whatsappFontSize: 13,
             whatsappFontWeight: '600',
             footerText: 'Rotary en Acción • Plataforma Oficial de Visibilidad.<br/>&copy; 2026 Rotary International. Todos los derechos reservados.<br/><a href="{{unsubscribe_url}}" target="_blank" style="color:#cbd5e1;text-decoration:underline">Preferencias de comunicación y cancelar suscripción</a>',

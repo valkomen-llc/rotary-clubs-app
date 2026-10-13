@@ -439,32 +439,37 @@ test('Editor Visual: Unificación visual continua de CTA y Footer sin espacios b
   assert.ok(ctaBlock, 'El diseño maestro debe incluir club_platform_cta');
   assert.ok(footerBlock, 'El diseño maestro debe incluir rotary_footer');
 
-  // 1. Ambos bloques comparten #0c2340 como color institucional por defecto
-  assert.equal(ctaBlock.bgColor, '#0c2340', 'CTA debe tener fondo institucional #0c2340 por defecto');
+  // 1. CTA con degradado azul Rotary #013388 a #0c2340 y Footer con fondo institucional #0c2340
+  assert.equal(ctaBlock.bgGradientStart, '#013388', 'CTA debe tener inicio de degradado en azul Rotary #013388');
+  assert.equal(ctaBlock.bgGradientEnd, '#0c2340', 'CTA debe tener fin de degradado en azul marino #0c2340');
   assert.equal(footerBlock.bgColor, '#0c2340', 'Footer debe tener fondo institucional #0c2340 por defecto');
 
-  // 2. Renderizado con CTA activo: unión continua
+  // 2. Renderizado con CTA activo: unión continua sin bordes redondeados
   const html = renderDesignToHtml(master, { interactive: false });
 
-  // CTA debe tener esquinas superiores redondeadas y 0 margin-bottom
-  assert.ok(html.includes('border-radius:12px 12px 0 0'), 'CTA debe tener esquinas superiores redondeadas (12px 12px 0 0)');
+  // CTA y Footer deben tener border-radius:0 (100% esquinas rectas, sin curvaturas)
+  assert.ok(html.includes('border-radius:0'), 'CTA y Footer deben tener border-radius:0 para continuidad perfecta');
+  assert.ok(!html.includes('border-radius:12px 12px 0 0'), 'No debe haber esquinas superiores redondeadas en CTA');
+  assert.ok(!html.includes('border-radius:0 0 12px 12px'), 'No debe haber esquinas inferiores redondeadas en Footer');
   assert.ok(html.includes('margin:24px 0 0 0'), 'CTA debe tener margin-top 24px y 0 margin-bottom');
 
-  // Footer debe tener esquinas inferiores redondeadas, 0 margin-top
-  assert.ok(html.includes('border-radius:0 0 12px 12px'), 'Footer debe tener esquinas inferiores redondeadas (0 0 12px 12px)');
+  // Footer debe tener margin:0 cuando CTA está activo
   assert.ok(html.includes('margin:0;background-color:#0c2340'), 'Footer debe tener margin:0 cuando CTA está activo');
+
+  // Degradado CSS y VML para soporte Outlook
+  assert.ok(html.includes('linear-gradient(180deg, #013388 0%, #0c2340 100%)'), 'CTA debe renderizar el linear-gradient');
+  assert.ok(html.includes('v:fill type="gradient" color="#013388" color2="#0c2340"'), 'CTA debe incluir VML gradient para Outlook');
 
   // Eliminar espacios blancos de celdas intermedias
   assert.ok(html.includes('font-size:0px;line-height:0px'), 'Celdas wrapper con 0px padding deben eliminar line-height para evitar espacios fantasma en Outlook');
 
-  // 3. Renderizado cuando CTA está inactivo: Footer se comporta como bloque independiente
+  // 3. Renderizado cuando CTA está inactivo: Footer mantiene esquinas rectas (border-radius:0) y margin-top 24px
   const masterDisabled = {
     ...master,
     blocks: master.blocks.map(b => b.globalKey === 'club_platform_cta' ? { ...b, enabled: false } : b)
   };
   const htmlNoCta = renderDesignToHtml(masterDisabled, { interactive: false });
-  assert.ok(!htmlNoCta.includes('border-radius:0 0 12px 12px'), 'Footer no debe tener esquinas superiores rectas si CTA está ausente');
-  assert.ok(htmlNoCta.includes('margin:24px 0 0 0;background-color:#0c2340;border-radius:12px'), 'Footer debe tener margin-top 24px y border-radius completo de 12px si CTA está ausente');
+  assert.ok(htmlNoCta.includes('margin:24px 0 0 0;background-color:#0c2340;border-radius:0;'), 'Footer debe tener margin-top 24px y border-radius:0 si CTA está ausente');
 });
 
 test('Editor Visual: Gestor de Iconos Oficiales de Redes Sociales en el Footer', async () => {

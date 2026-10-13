@@ -58,6 +58,112 @@ interface VisualTemplateEditorProps {
   readOnly?: boolean;
 }
 
+export const INSTITUTIONAL_PRESET_COLORS = [
+  { label: 'Navy', value: '#0C2340' },
+  { label: 'Azul', value: '#013388' },
+  { label: 'Dorado', value: '#F7A81B' },
+  { label: 'Blanco', value: '#FFFFFF' },
+  { label: 'Gris', value: '#94A3B8' },
+  { label: 'Oscuro', value: '#1E293B' },
+];
+
+interface ColorPickerInputProps {
+  label?: string;
+  value: string;
+  onChange: (hex: string) => void;
+  presets?: { label: string; value: string }[];
+  helpText?: string;
+  showPresets?: boolean;
+  className?: string;
+}
+
+export const ColorPickerInput: React.FC<ColorPickerInputProps> = ({
+  label,
+  value = '#000000',
+  onChange,
+  presets = INSTITUTIONAL_PRESET_COLORS,
+  helpText,
+  showPresets = true,
+  className = '',
+}) => {
+  const normalizedHex = useMemo(() => {
+    const v = (value || '').trim();
+    if (/^#[0-9A-Fa-f]{6}$/.test(v)) return v;
+    if (/^#[0-9A-Fa-f]{3}$/.test(v)) {
+      return `#${v[1]}${v[1]}${v[2]}${v[2]}${v[3]}${v[3]}`;
+    }
+    return '#0C2340';
+  }, [value]);
+
+  return (
+    <div className={`space-y-1.5 ${className}`}>
+      {label && (
+        <div className="flex items-center justify-between">
+          <label className="text-[11px] font-bold text-slate-700">{label}</label>
+          <span className="text-[10px] font-mono text-slate-400 font-semibold">{value || '#000000'}</span>
+        </div>
+      )}
+      <div className="flex items-center gap-2">
+        <div
+          className="relative w-8 h-8 rounded-lg border border-slate-300 shadow-2xs overflow-hidden shrink-0 cursor-pointer group hover:scale-105 transition-transform"
+          style={{ backgroundColor: value || '#000000' }}
+        >
+          <input
+            type="color"
+            value={normalizedHex}
+            onChange={(e) => onChange(e.target.value)}
+            className="absolute -top-2 -left-2 w-12 h-12 opacity-0 cursor-pointer"
+            title="Seleccionar color visual"
+          />
+        </div>
+        <div className="relative flex-1">
+          <input
+            type="text"
+            value={value || ''}
+            onChange={(e) => {
+              let val = e.target.value.trim();
+              if (val && !val.startsWith('#') && !val.startsWith('rgba') && !val.startsWith('rgb')) {
+                val = '#' + val;
+              }
+              onChange(val);
+            }}
+            placeholder="#000000"
+            className="w-full bg-white border border-slate-300 rounded-lg py-1 px-2 text-xs font-mono text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-rotary-blue uppercase"
+          />
+        </div>
+      </div>
+      {showPresets && presets && presets.length > 0 && (
+        <div className="flex items-center gap-1.5 pt-0.5 flex-wrap">
+          <span className="text-[9px] uppercase tracking-wider font-extrabold text-slate-400">Paleta:</span>
+          {presets.map((p) => {
+            const isActive = (value || '').toLowerCase() === p.value.toLowerCase();
+            return (
+              <button
+                key={p.value}
+                type="button"
+                onClick={() => onChange(p.value)}
+                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold transition-all border ${
+                  isActive
+                    ? 'border-rotary-blue bg-blue-50 text-rotary-blue ring-1 ring-rotary-blue'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                }`}
+                title={`${p.label} (${p.value})`}
+              >
+                <span
+                  className="w-2.5 h-2.5 rounded-full border border-black/15 inline-block shrink-0 shadow-2xs"
+                  style={{ backgroundColor: p.value }}
+                />
+                <span>{p.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {helpText && <p className="text-[10px] text-slate-400 leading-tight">{helpText}</p>}
+    </div>
+  );
+};
+
 type TabMode = 'blocks' | 'layouts' | 'global' | 'style' | 'tags';
 
 export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
@@ -830,7 +936,7 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                         }}
                         className={`relative group transition-all cursor-pointer ${
                           isSelected
-                            ? 'ring-2 ring-blue-600 ring-offset-2 shadow-md z-10'
+                            ? 'ring-2 ring-blue-600 ring-inset shadow-md z-10'
                             : 'hover:outline hover:outline-1 hover:outline-blue-400/80'
                         }`}
                       >
@@ -906,7 +1012,13 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                           dangerouslySetInnerHTML={{
                             __html: renderDesignToHtml(
                               { version: 1, settings: design.settings, blocks: [block] },
-                              { interactive: false, siteContext: siteBranding }
+                              {
+                                interactive: false,
+                                siteContext: siteBranding,
+                                isCtaActive: design.blocks.some(
+                                  (b) => b.type === 'global' && (b as GlobalBlockItem).globalKey === 'club_platform_cta' && (b as GlobalBlockItem).enabled !== false
+                                )
+                              }
                             )
                           }}
                         />
@@ -2240,10 +2352,43 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                       {/* 2. Pie de Página Oficial Rotary */}
                       {selectedBlock.globalKey === 'rotary_footer' && (
                         <div className="space-y-4">
-                          {/* Logo de Pie */}
-                          <div>
-                            <div className="flex items-center justify-between mb-1">
-                              <label className="text-[11px] font-bold text-slate-700">Logo de Pie de Página (opcional)</label>
+                          {/* SECCIÓN 1: FONDO DEL FOOTER */}
+                          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                                <Palette className="w-3.5 h-3.5 text-rotary-blue" />
+                                <span>Fondo del Footer</span>
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const ctaBlock = design.blocks.find(b => b.type === 'global' && (b as GlobalBlockItem).globalKey === 'club_platform_cta') as GlobalBlockItem | undefined;
+                                  const targetBg = ctaBlock?.bgGradientEnd || ctaBlock?.bgColor || '#0c2340';
+                                  updateBlock(selectedBlock.id, { bgColor: targetBg });
+                                }}
+                                className="text-[10px] font-bold text-rotary-blue hover:text-blue-800 flex items-center gap-1"
+                                title="Unifica el fondo con el color inferior del CTA para una transición continua y perfecta"
+                              >
+                                <Sparkles className="w-3 h-3 text-amber-500" />
+                                <span>Unificar con CTA</span>
+                              </button>
+                            </div>
+
+                            <ColorPickerInput
+                              label="Color de Fondo Institucional"
+                              value={selectedBlock.bgColor || '#0c2340'}
+                              onChange={(hex) => updateBlock(selectedBlock.id, { bgColor: hex })}
+                              helpText="Color sólido continuo del pie de página institucional."
+                            />
+                          </div>
+
+                          {/* SECCIÓN 2: LOGOTIPO INSTITUCIONAL */}
+                          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                                <ImageIcon className="w-3.5 h-3.5 text-rotary-blue" />
+                                <span>Logotipo Institucional</span>
+                              </span>
                               {selectedBlock.logoUrl && (
                                 <button
                                   type="button"
@@ -2260,7 +2405,7 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                                 value={selectedBlock.logoUrl || ''}
                                 onChange={(e) => updateBlock(selectedBlock.id, { logoUrl: e.target.value })}
                                 className="flex-1 bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs"
-                                placeholder="URL de logo..."
+                                placeholder="URL de logo (dejar vacío para logo blanco oficial de Rotary)..."
                               />
                               <button
                                 type="button"
@@ -2273,56 +2418,40 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                             </div>
                           </div>
 
-                          {/* Color Fondo Footer y Unificación */}
-                          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                            <div className="flex items-center justify-between">
-                              <label className="text-[11px] font-bold text-slate-700">Color Fondo de Footer</label>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const ctaBlock = design.blocks.find(b => b.type === 'global' && (b as GlobalBlockItem).globalKey === 'club_platform_cta') as GlobalBlockItem | undefined;
-                                  const targetBg = ctaBlock?.bgColor || '#0c2340';
-                                  updateBlock(selectedBlock.id, { bgColor: targetBg });
-                                }}
-                                className="text-[10px] font-bold text-rotary-blue hover:text-blue-800 flex items-center gap-1"
-                                title="Unifica el fondo con el CTA promocional superior para continuidad visual"
-                              >
-                                <Sparkles className="w-3 h-3 text-amber-500" />
-                                <span>Unificar con CTA ({(design.blocks.find(b => b.type === 'global' && (b as GlobalBlockItem).globalKey === 'club_platform_cta') as GlobalBlockItem | undefined)?.bgColor || '#0c2340'})</span>
-                              </button>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="color"
-                                value={selectedBlock.bgColor || '#0c2340'}
-                                onChange={(e) => updateBlock(selectedBlock.id, { bgColor: e.target.value })}
-                                className="w-8 h-8 rounded-lg border border-slate-300 cursor-pointer p-0.5"
-                              />
+                          {/* SECCIÓN 3: TÍTULOS Y COLORES DE TEXTO */}
+                          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                            <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                              <Type className="w-3.5 h-3.5 text-rotary-blue" />
+                              <span>Textos y Colores</span>
+                            </span>
+
+                            <div>
+                              <label className="text-[11px] font-bold text-slate-700 block mb-1">Título de Pie</label>
                               <input
                                 type="text"
-                                value={selectedBlock.bgColor || '#0c2340'}
-                                onChange={(e) => updateBlock(selectedBlock.id, { bgColor: e.target.value })}
-                                className="flex-1 bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-mono"
+                                value={selectedBlock.title !== undefined ? selectedBlock.title : '¡Síguenos y comparte el orgullo rotario!'}
+                                onChange={(e) => updateBlock(selectedBlock.id, { title: e.target.value })}
+                                className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs font-bold"
                               />
-                              <button
-                                type="button"
-                                onClick={() => updateBlock(selectedBlock.id, { bgColor: '#0c2340' })}
-                                className="px-2 py-1 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg text-[10px] font-bold text-slate-700"
-                                title="Restablecer a Azul Marino Institucional (#0c2340)"
-                              >
-                                Rotary Navy
-                              </button>
                             </div>
-                          </div>
 
-                          {/* Título de Footer */}
-                          <div>
-                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Título de Pie</label>
-                            <input
-                              type="text"
-                              value={selectedBlock.title !== undefined ? selectedBlock.title : '¡Síguenos y comparte el orgullo rotario!'}
-                              onChange={(e) => updateBlock(selectedBlock.id, { title: e.target.value })}
-                              className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs font-bold"
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <ColorPickerInput
+                                label="Color del Título"
+                                value={selectedBlock.titleColor || '#ffffff'}
+                                onChange={(hex) => updateBlock(selectedBlock.id, { titleColor: hex })}
+                              />
+                              <ColorPickerInput
+                                label="Color de Textos Legales"
+                                value={selectedBlock.textColor || '#94a3b8'}
+                                onChange={(hex) => updateBlock(selectedBlock.id, { textColor: hex })}
+                              />
+                            </div>
+
+                            <ColorPickerInput
+                              label="Color de Enlaces (Desuscripción / Preferencias)"
+                              value={selectedBlock.linkColor || '#cbd5e1'}
+                              onChange={(hex) => updateBlock(selectedBlock.id, { linkColor: hex })}
                             />
                           </div>
 
@@ -2667,48 +2796,17 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                                 </div>
 
                                 {/* Color del texto y enlace de WhatsApp */}
-                                <div>
-                                  <div className="flex items-center justify-between mb-1">
-                                    <label className="text-[11px] font-bold text-slate-700">Color del Enlace</label>
-                                    <div className="flex gap-1">
-                                      <button
-                                        type="button"
-                                        onClick={() => updateBlock(selectedBlock.id, { whatsappColor: '#ffffff' })}
-                                        className="text-[10px] font-bold text-slate-600 hover:text-slate-900 px-1 py-0.5 rounded bg-white border border-slate-200"
-                                      >
-                                        Blanco
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => updateBlock(selectedBlock.id, { whatsappColor: '#38bdf8' })}
-                                        className="text-[10px] font-bold text-sky-600 hover:text-sky-800 px-1 py-0.5 rounded bg-white border border-slate-200"
-                                      >
-                                        Celeste
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => updateBlock(selectedBlock.id, { whatsappColor: '#25D366' })}
-                                        className="text-[10px] font-bold text-emerald-600 hover:text-emerald-800 px-1 py-0.5 rounded bg-white border border-slate-200"
-                                      >
-                                        Verde WA
-                                      </button>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-1.5">
-                                    <input
-                                      type="color"
-                                      value={selectedBlock.whatsappColor || '#ffffff'}
-                                      onChange={(e) => updateBlock(selectedBlock.id, { whatsappColor: e.target.value })}
-                                      className="w-8 h-8 rounded-lg border border-slate-300 cursor-pointer p-0.5"
-                                    />
-                                    <input
-                                      type="text"
-                                      value={selectedBlock.whatsappColor || '#ffffff'}
-                                      onChange={(e) => updateBlock(selectedBlock.id, { whatsappColor: e.target.value })}
-                                      className="flex-1 bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-mono"
-                                    />
-                                  </div>
-                                </div>
+                                <ColorPickerInput
+                                  label="Color del Enlace WhatsApp"
+                                  value={selectedBlock.whatsappColor || '#ffffff'}
+                                  onChange={(hex) => updateBlock(selectedBlock.id, { whatsappColor: hex })}
+                                  presets={[
+                                    { label: 'Blanco', value: '#FFFFFF' },
+                                    { label: 'Celeste', value: '#38BDF8' },
+                                    { label: 'Verde WA', value: '#25D366' },
+                                    { label: 'Dorado', value: '#F7A81B' },
+                                  ]}
+                                />
 
                                 {/* Tamaño y Peso tipográfico */}
                                 <div className="grid grid-cols-2 gap-2">
@@ -2906,7 +3004,7 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                               </span>
                             </div>
                             <p className="text-[11px] text-slate-600 leading-snug">
-                              Componente global opcional tipo Shopify para impulsar la activación del ecosistema digital de nuevos clubes rotarios.
+                              Componente continuo con el Footer para potenciar el ecosistema digital de nuevos clubes rotarios.
                             </p>
                           </div>
 
@@ -2924,152 +3022,243 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                             />
                           </div>
 
-                          <div>
-                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Título Destacado</label>
-                            <input
-                              type="text"
-                              value={selectedBlock.title ?? '¡Activa el ecosistema digital de tu club!'}
-                              onChange={(e) => updateBlock(selectedBlock.id, { title: e.target.value })}
-                              className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs font-bold"
-                              placeholder="¡Activa el ecosistema digital de tu club!"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Mensaje Secundario</label>
-                            <textarea
-                              rows={2}
-                              value={selectedBlock.subtitle ?? 'Conecta, comunica y potencia el impacto de tu club con Club Platform.'}
-                              onChange={(e) => updateBlock(selectedBlock.id, { subtitle: e.target.value })}
-                              className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs"
-                              placeholder="Conecta, comunica y potencia el impacto de tu club con Club Platform."
-                            />
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <label className="text-[11px] font-bold text-slate-700 block mb-1">Texto del Botón</label>
-                              <input
-                                type="text"
-                                value={selectedBlock.buttonText ?? 'ACTIVAR MI CLUB'}
-                                onChange={(e) => updateBlock(selectedBlock.id, { buttonText: e.target.value })}
-                                className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs font-bold"
-                                placeholder="ACTIVAR MI CLUB"
-                              />
-                            </div>
-                            <div>
-                              <label className="text-[11px] font-bold text-slate-700 block mb-1">Redondeo Botón</label>
-                              <input
-                                type="number"
-                                min={0}
-                                max={50}
-                                value={selectedBlock.buttonRadius ?? 24}
-                                onChange={(e) => updateBlock(selectedBlock.id, { buttonRadius: Number(e.target.value) })}
-                                className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs"
-                              />
-                            </div>
-                          </div>
-
-                          <div>
-                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Enlace de Destino (URL Pública)</label>
-                            <input
-                              type="text"
-                              value={selectedBlock.buttonHref ?? 'https://clubplatform.org?utm_source=email_marketing&utm_medium=campaign&utm_campaign=cta_club_platform'}
-                              onChange={(e) => updateBlock(selectedBlock.id, { buttonHref: e.target.value })}
-                              className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 font-mono text-xs"
-                              placeholder="https://clubplatform.org"
-                            />
-                            <p className="text-[10px] text-slate-500 mt-0.5">
-                              Enlace al portal oficial de Club Platform con medición de conversiones independiente.
-                            </p>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200">
-                            <div>
-                              <div className="flex items-center justify-between mb-1">
-                                <label className="text-[11px] font-bold text-slate-700">Fondo Bloque</label>
-                              </div>
-                              <div className="flex items-center gap-1.5">
-                                <input
-                                  type="color"
-                                  value={selectedBlock.bgColor || '#0c2340'}
-                                  onChange={(e) => updateBlock(selectedBlock.id, { bgColor: e.target.value })}
-                                  className="w-7 h-7 rounded border border-slate-300 cursor-pointer p-0"
-                                />
-                                <input
-                                  type="text"
-                                  value={selectedBlock.bgColor || '#0c2340'}
-                                  onChange={(e) => updateBlock(selectedBlock.id, { bgColor: e.target.value })}
-                                  className="flex-1 bg-white border border-slate-300 rounded-lg p-1 text-xs font-mono"
-                                />
-                              </div>
+                          {/* SECCIÓN 1: FONDO Y DEGRADADO */}
+                          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                                <Palette className="w-3.5 h-3.5 text-rotary-blue" />
+                                <span>Fondo y Degradado</span>
+                              </span>
                               <button
                                 type="button"
                                 onClick={() => {
                                   const footerBlock = design.blocks.find(b => b.type === 'global' && (b as GlobalBlockItem).globalKey === 'rotary_footer') as GlobalBlockItem | undefined;
                                   const targetBg = footerBlock?.bgColor || '#0c2340';
-                                  updateBlock(selectedBlock.id, { bgColor: targetBg });
+                                  updateBlock(selectedBlock.id, {
+                                    bgType: 'solid',
+                                    bgColor: targetBg,
+                                    bgGradientStart: targetBg,
+                                    bgGradientEnd: targetBg,
+                                  });
+                                  toast.success(`Fondo alineado con el Footer (${targetBg})`);
                                 }}
-                                className="mt-1 text-[10px] font-bold text-rotary-blue hover:text-blue-800 flex items-center gap-1"
-                                title="Alinea el fondo del CTA con el color del pie para continuidad visual"
+                                className="text-[10px] font-bold text-rotary-blue hover:text-blue-800 flex items-center gap-1"
+                                title="Alinea el fondo con el Footer para una continuidad visual perfecta"
                               >
                                 <Sparkles className="w-3 h-3 text-amber-500" />
-                                <span>Unificar con Footer ({(design.blocks.find(b => b.type === 'global' && (b as GlobalBlockItem).globalKey === 'rotary_footer') as GlobalBlockItem | undefined)?.bgColor || '#0c2340'})</span>
+                                <span>Unificar con Footer</span>
                               </button>
                             </div>
-                            <div>
-                              <label className="text-[11px] font-bold text-slate-700 block mb-1">Color Texto</label>
-                              <div className="flex items-center gap-1.5">
-                                <input
-                                  type="color"
-                                  value={selectedBlock.textColor || '#ffffff'}
-                                  onChange={(e) => updateBlock(selectedBlock.id, { textColor: e.target.value })}
-                                  className="w-7 h-7 rounded border border-slate-300 cursor-pointer p-0"
-                                />
-                                <input
-                                  type="text"
-                                  value={selectedBlock.textColor || '#ffffff'}
-                                  onChange={(e) => updateBlock(selectedBlock.id, { textColor: e.target.value })}
-                                  className="flex-1 bg-white border border-slate-300 rounded-lg p-1 text-xs font-mono"
+
+                            {/* Switch Sólido vs Degradado */}
+                            <div className="grid grid-cols-2 gap-1.5 p-1 bg-white border border-slate-200 rounded-xl">
+                              <button
+                                type="button"
+                                onClick={() => updateBlock(selectedBlock.id, { bgType: 'gradient' })}
+                                className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all ${
+                                  (selectedBlock.bgType || 'gradient') === 'gradient'
+                                    ? 'bg-rotary-blue text-white shadow-xs'
+                                    : 'text-slate-600 hover:bg-slate-100'
+                                }`}
+                              >
+                                Degradado
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => updateBlock(selectedBlock.id, { bgType: 'solid' })}
+                                className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all ${
+                                  selectedBlock.bgType === 'solid'
+                                    ? 'bg-rotary-blue text-white shadow-xs'
+                                    : 'text-slate-600 hover:bg-slate-100'
+                                }`}
+                              >
+                                Color Sólido
+                              </button>
+                            </div>
+
+                            {/* Controles si es Degradado */}
+                            {(selectedBlock.bgType || 'gradient') === 'gradient' && (
+                              <div className="space-y-3 pt-1">
+                                {/* Preset rápido institucional Rotary */}
+                                <div className="flex items-center justify-between pb-1 border-b border-slate-200/80">
+                                  <span className="text-[10px] font-bold text-slate-500">Preset Oficial Rotary:</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => updateBlock(selectedBlock.id, {
+                                      bgType: 'gradient',
+                                      bgGradientType: 'linear',
+                                      bgGradientAngle: 180,
+                                      bgGradientStart: '#013388',
+                                      bgGradientEnd: '#0C2340',
+                                      bgColor: '#0C2340',
+                                    })}
+                                    className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-rotary-blue border border-blue-200 hover:bg-blue-100 flex items-center gap-1"
+                                  >
+                                    <span className="w-2.5 h-2.5 rounded-full bg-gradient-to-b from-[#013388] to-[#0C2340] border border-black/10 inline-block" />
+                                    <span>Azul #013388 → Marino #0C2340</span>
+                                  </button>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                  <ColorPickerInput
+                                    label="Color Inicial (Superior)"
+                                    value={selectedBlock.bgGradientStart || '#013388'}
+                                    onChange={(hex) => updateBlock(selectedBlock.id, { bgGradientStart: hex })}
+                                  />
+                                  <ColorPickerInput
+                                    label="Color Final (Inferior)"
+                                    value={selectedBlock.bgGradientEnd || '#0c2340'}
+                                    onChange={(hex) => updateBlock(selectedBlock.id, { bgGradientEnd: hex, bgColor: hex })}
+                                  />
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2 pt-1">
+                                  <div>
+                                    <label className="text-[11px] font-bold text-slate-700 block mb-1">Tipo Degradado</label>
+                                    <select
+                                      value={selectedBlock.bgGradientType || 'linear'}
+                                      onChange={(e) => updateBlock(selectedBlock.id, { bgGradientType: e.target.value as 'linear' | 'radial' })}
+                                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs text-slate-800 font-medium"
+                                    >
+                                      <option value="linear">Lineal</option>
+                                      <option value="radial">Radial</option>
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label className="text-[11px] font-bold text-slate-700 block mb-1">Dirección / Ángulo</label>
+                                    <select
+                                      disabled={(selectedBlock.bgGradientType || 'linear') === 'radial'}
+                                      value={selectedBlock.bgGradientAngle ?? 180}
+                                      onChange={(e) => updateBlock(selectedBlock.id, { bgGradientAngle: Number(e.target.value) })}
+                                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs text-slate-800 font-medium disabled:opacity-40"
+                                    >
+                                      <option value={180}>180° (Arriba → Abajo)</option>
+                                      <option value={90}>90° (Izquierda → Derecha)</option>
+                                      <option value={135}>135° (Diagonal)</option>
+                                      <option value={0}>0° (Abajo → Arriba)</option>
+                                      <option value={270}>270° (Derecha → Izquierda)</option>
+                                    </select>
+                                  </div>
+                                </div>
+
+                                {/* Color Sólido de Respaldo Fallback para Outlook */}
+                                <ColorPickerInput
+                                  label="Color de Respaldo Fallback (Outlook y Clientes sin CSS3)"
+                                  value={selectedBlock.bgColor || selectedBlock.bgGradientEnd || '#0c2340'}
+                                  onChange={(hex) => updateBlock(selectedBlock.id, { bgColor: hex })}
+                                  helpText="Utilizado como alternativa en clientes que no procesan degradados CSS."
                                 />
                               </div>
-                            </div>
+                            )}
+
+                            {/* Controles si es Fondo Sólido */}
+                            {selectedBlock.bgType === 'solid' && (
+                              <ColorPickerInput
+                                label="Color de Fondo Sólido"
+                                value={selectedBlock.bgColor || '#0c2340'}
+                                onChange={(hex) => updateBlock(selectedBlock.id, { bgColor: hex, bgGradientStart: hex, bgGradientEnd: hex })}
+                              />
+                            )}
                           </div>
 
-                          <div className="grid grid-cols-2 gap-2">
+                          {/* SECCIÓN 2: TIPOGRAFÍA Y TEXTOS */}
+                          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                            <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                              <Type className="w-3.5 h-3.5 text-rotary-blue" />
+                              <span>Textos y Tipografía</span>
+                            </span>
+
                             <div>
-                              <label className="text-[11px] font-bold text-slate-700 block mb-1">Fondo Botón</label>
-                              <div className="flex items-center gap-1.5">
-                                <input
-                                  type="color"
-                                  value={selectedBlock.buttonBg || '#f7a81b'}
-                                  onChange={(e) => updateBlock(selectedBlock.id, { buttonBg: e.target.value })}
-                                  className="w-7 h-7 rounded border border-slate-300 cursor-pointer p-0"
-                                />
+                              <label className="text-[11px] font-bold text-slate-700 block mb-1">Título Destacado</label>
+                              <input
+                                type="text"
+                                value={selectedBlock.title ?? '¡Activa el ecosistema digital de tu club!'}
+                                onChange={(e) => updateBlock(selectedBlock.id, { title: e.target.value })}
+                                className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs font-bold"
+                                placeholder="¡Activa el ecosistema digital de tu club!"
+                              />
+                            </div>
+
+                            <ColorPickerInput
+                              label="Color del Título"
+                              value={selectedBlock.titleColor || selectedBlock.textColor || '#ffffff'}
+                              onChange={(hex) => updateBlock(selectedBlock.id, { titleColor: hex })}
+                            />
+
+                            <div>
+                              <label className="text-[11px] font-bold text-slate-700 block mb-1">Mensaje Secundario</label>
+                              <textarea
+                                rows={2}
+                                value={selectedBlock.subtitle ?? 'Conecta, comunica y potencia el impacto de tu club con Club Platform.'}
+                                onChange={(e) => updateBlock(selectedBlock.id, { subtitle: e.target.value })}
+                                className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs"
+                                placeholder="Conecta, comunica y potencia el impacto de tu club con Club Platform."
+                              />
+                            </div>
+
+                            <ColorPickerInput
+                              label="Color del Subtítulo / Texto Secundario"
+                              value={selectedBlock.subtitleColor || selectedBlock.textColor || '#ffffff'}
+                              onChange={(hex) => updateBlock(selectedBlock.id, { subtitleColor: hex, textColor: hex })}
+                            />
+                          </div>
+
+                          {/* SECCIÓN 3: BOTÓN DE ACCIÓN */}
+                          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                            <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                              <Square className="w-3.5 h-3.5 text-amber-500" />
+                              <span>Botón de Llamado a la Acción</span>
+                            </span>
+
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="text-[11px] font-bold text-slate-700 block mb-1">Texto del Botón</label>
                                 <input
                                   type="text"
-                                  value={selectedBlock.buttonBg || '#f7a81b'}
-                                  onChange={(e) => updateBlock(selectedBlock.id, { buttonBg: e.target.value })}
-                                  className="flex-1 bg-white border border-slate-300 rounded-lg p-1 text-xs font-mono"
+                                  value={selectedBlock.buttonText ?? 'ACTIVAR MI CLUB'}
+                                  onChange={(e) => updateBlock(selectedBlock.id, { buttonText: e.target.value })}
+                                  className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs font-bold"
+                                  placeholder="ACTIVAR MI CLUB"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[11px] font-bold text-slate-700 block mb-1">Redondeo Botón (px)</label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={50}
+                                  value={selectedBlock.buttonRadius ?? 24}
+                                  onChange={(e) => updateBlock(selectedBlock.id, { buttonRadius: Number(e.target.value) })}
+                                  className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs font-bold"
                                 />
                               </div>
                             </div>
+
                             <div>
-                              <label className="text-[11px] font-bold text-slate-700 block mb-1">Texto Botón</label>
-                              <div className="flex items-center gap-1.5">
-                                <input
-                                  type="color"
-                                  value={selectedBlock.buttonColor || '#0c2340'}
-                                  onChange={(e) => updateBlock(selectedBlock.id, { buttonColor: e.target.value })}
-                                  className="w-7 h-7 rounded border border-slate-300 cursor-pointer p-0"
-                                />
-                                <input
-                                  type="text"
-                                  value={selectedBlock.buttonColor || '#0c2340'}
-                                  onChange={(e) => updateBlock(selectedBlock.id, { buttonColor: e.target.value })}
-                                  className="flex-1 bg-white border border-slate-300 rounded-lg p-1 text-xs font-mono"
-                                />
-                              </div>
+                              <label className="text-[11px] font-bold text-slate-700 block mb-1">Enlace de Destino (URL Pública)</label>
+                              <input
+                                type="text"
+                                value={selectedBlock.buttonHref ?? 'https://clubplatform.org?utm_source=email_marketing&utm_medium=campaign&utm_campaign=cta_club_platform'}
+                                onChange={(e) => updateBlock(selectedBlock.id, { buttonHref: e.target.value })}
+                                className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 font-mono text-xs"
+                                placeholder="https://clubplatform.org"
+                              />
+                              <p className="text-[10px] text-slate-500 mt-0.5">
+                                Enlace oficial con parámetros para atribución y medición de impacto.
+                              </p>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <ColorPickerInput
+                                label="Fondo del Botón"
+                                value={selectedBlock.buttonBg || '#f7a81b'}
+                                onChange={(hex) => updateBlock(selectedBlock.id, { buttonBg: hex })}
+                              />
+                              <ColorPickerInput
+                                label="Texto del Botón"
+                                value={selectedBlock.buttonColor || '#0c2340'}
+                                onChange={(hex) => updateBlock(selectedBlock.id, { buttonColor: hex })}
+                              />
                             </div>
                           </div>
                         </div>
