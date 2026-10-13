@@ -19,7 +19,7 @@ import {
 import {
   renderDesignToHtml, makeBlock, BLOCK_LABELS,
   FONT_OPTIONS, newId, createRotaryMasterDesign, getRotaryGlobalBlocksCatalog,
-  resolveInstitutionalLogo, getActiveSiteBrandingContext,
+  resolveInstitutionalLogo, getActiveSiteBrandingContext, normalizeInstitutionalDesign,
   type EmailDesign, type Block, type BlockType, type Align, type SocialNetwork,
   type TableRow, type MenuItem, type SiteBrandingContext
 } from '../../../lib/emailBlocks';
@@ -72,11 +72,11 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
   const [name, setName] = useState(initialName);
   const [subject, setSubject] = useState(initialSubject);
   const [preheader, setPreheader] = useState(initialPreheader);
-  const [design, setDesign] = useState<EmailDesign>(() => initialDesign || createRotaryMasterDesign());
+  const [design, setDesign] = useState<EmailDesign>(() => normalizeInstitutionalDesign(initialDesign || createRotaryMasterDesign()));
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
 
   // Pila de Deshacer / Rehacer (Undo / Redo)
-  const [history, setHistory] = useState<EmailDesign[]>([initialDesign || createRotaryMasterDesign()]);
+  const [history, setHistory] = useState<EmailDesign[]>([normalizeInstitutionalDesign(initialDesign || createRotaryMasterDesign())]);
   const [historyIdx, setHistoryIdx] = useState(0);
 
   // Inspector y barra lateral
@@ -149,8 +149,17 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
     if (!url) return;
     if (!siteClub?.id) {
       try {
+        const token = getToken();
+        await fetch(`${API}/platform-config/logo/url`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ url })
+        }).catch(() => {});
         localStorage.setItem('cp_platform_logo', JSON.stringify({ url, size: 48 }));
-        toast.success('Logo predeterminado de plataforma guardado');
+        toast.success('Logo institucional oficial de Club Platform guardado');
       } catch {
         toast.info('Logo configurado localmente');
       }
@@ -347,7 +356,7 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
   // Restaurar plantilla institucional base
   const handleResetToRotaryMaster = () => {
     if (!window.confirm('¿Deseas restaurar la Plantilla Maestra Oficial de Rotary en Acción? Se perderán las modificaciones no guardadas.')) return;
-    const master = createRotaryMasterDesign();
+    const master = normalizeInstitutionalDesign(createRotaryMasterDesign());
     pushDesignState(master);
     setSelectedBlockId(null);
     toast.success('Plantilla Maestra Oficial restaurada');

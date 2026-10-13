@@ -87,6 +87,25 @@ router.post('/logo/upload', (req, res) => {
     });
 });
 
+// ── Save platform logo url directly ───────────────────────────
+router.post('/logo/url', async (req, res) => {
+    const { url } = req.body;
+    if (!url || typeof url !== 'string') {
+        return res.status(400).json({ error: 'URL requerida' });
+    }
+    try {
+        await db.prisma.platformConfig.upsert({
+            where: { key: 'platform_logo' },
+            update: { value: url.trim(), updatedAt: new Date() },
+            create: { key: 'platform_logo', value: url.trim() }
+        });
+        res.json({ ok: true, url: url.trim() });
+    } catch (error) {
+        console.error('[PlatformConfig] Logo url error:', error);
+        res.status(500).json({ error: 'Error al guardar el logo de la plataforma' });
+    }
+});
+
 // ── Save platform logo size ───────────────────────────────────
 router.post('/logo/size', async (req, res) => {
     const size = parseInt(req.body.size, 10);
