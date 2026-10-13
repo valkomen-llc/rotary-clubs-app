@@ -55,6 +55,15 @@ async function syncMetaMediaToS3(mediaId, token, clubId, fileExtension = 'jpg', 
 
 /** Resolve clubId — super admins may not have clubId in JWT, fallback to first club with config */
 export async function resolveClubId(req, fromBody = false) {
+    if (!req) {
+        const platformClubId = '3c648ce7-3c47-41e2-9461-6e40a8615ae6';
+        const hasPlatformConfig = await db.query(`SELECT 1 FROM "WhatsAppConfig" WHERE "clubId"=$1`, [platformClubId]).catch(() => ({ rows: [] }));
+        if (hasPlatformConfig.rows?.length) return platformClubId;
+        const first = await db.query(`SELECT id FROM "Club" LIMIT 1`).catch(() => ({ rows: [] }));
+        return first.rows?.[0]?.id || null;
+    }
+    if (typeof req === 'string') return req;
+
     const src = fromBody ? req.body : req.query;
     const isAdmin = req.user?.role === 'administrator' || req.user?.role === 'superadmin';
 

@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1185.0",
-  "cache_bust": "4.1185.0",
+  "version": "4.1186.0",
+  "cache_bust": "4.1186.0",
   "type": "module",
-  "//": "UI V4.1185.0 | 2026-10-12 (Editor Visual de Plantillas Institucionales: Corrección import Square de Lucide React, Nomenclatura Oficial Club Platform, Separación Maestra/Campaña)",
+  "//": "UI V4.1186.0 | 2026-10-12 (Editor Visual de Plantillas Institucionales: Rediseño Light Mode Club Platform, Reparación Envío de Pruebas, Biblioteca Multimedia y Edición Total de Bloques)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs && node scripts/check-version-parity.mjs && node scripts/check-syntax.mjs && node scripts/check-hooks.mjs && node scripts/check-routes.mjs && node scripts/check-imports.mjs && node scripts/check-server-undef.mjs && node scripts/check-route-handlers.mjs",

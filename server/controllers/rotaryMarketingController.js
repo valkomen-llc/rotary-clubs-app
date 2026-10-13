@@ -244,7 +244,7 @@ export const syncWithEmailMarketing = async (req, res) => {
     const campaign = rows[0];
     if (!campaign) return res.status(404).json({ error: 'Campaña no encontrada' });
 
-    const clubId = await resolveClubId(req.user?.clubId);
+    const clubId = await resolveClubId(req, true);
 
     let emailCamp;
     if (campaign.emailCampaignId) {
@@ -877,7 +877,7 @@ export const sendTestEmail = async (req, res) => {
     if (!to || !to.includes('@')) return res.status(400).json({ error: 'Dirección de correo no válida' });
     if (!html) return res.status(400).json({ error: 'El contenido del correo no puede estar vacío' });
 
-    const clubId = await resolveClubId(req.user?.clubId);
+    const clubId = await resolveClubId(req, true);
     const emailSubject = `[PRUEBA] ${subject || 'Plantilla Institucional · Rotary en Acción'}`;
 
     const result = await EmailService.sendEmail({
@@ -888,9 +888,22 @@ export const sendTestEmail = async (req, res) => {
       userId: req.user?.id
     });
 
+    if (!result || !result.success) {
+      const errorMsg = result?.error || 'El proveedor de correo no aceptó el envío del correo de prueba';
+      return res.status(400).json({
+        ok: false,
+        error: errorMsg,
+        result
+      });
+    }
+
     res.json({
       ok: true,
-      message: `Correo de prueba enviado con éxito a ${to}`,
+      message: `Correo de prueba aceptado por el proveedor y enviado a ${to}`,
+      messageId: result.messageId || null,
+      to,
+      subject: emailSubject,
+      timestamp: new Date().toISOString(),
       result
     });
   } catch (e) {

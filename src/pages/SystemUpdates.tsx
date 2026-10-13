@@ -42,6 +42,22 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1186.0',
+        title: 'Editor Visual de Plantillas: Rediseño Light Mode, Envío Real de Pruebas y Biblioteca Multimedia 🎨✉️',
+        description: 'Actualización integral del Editor Visual de Plantillas de Club Platform: transformación completa de la interfaz a modo claro con paleta institucional (#013388, fondos blancos y acentos sutiles), reparación del backend en el envío de correos de prueba resolviendo el error de consulta nula y validando la aceptación estricta del proveedor, integración nativa de la Biblioteca Multimedia (MediaPicker) con subida de imágenes/logos desde el equipo, inspector contextual con control de todas las propiedades (textos, tipografías, colores, alineación, columnas, tablas, menús, redes sociales, botones y pie de página), e incorporación de pila de historial con Deshacer y Rehacer (Undo/Redo con Cmd+Z).',
+        date: new Date().toISOString(),
+        tags: ['email-marketing', 'editor-visual', 'light-mode', 'media-library', 'test-email', 'rotary-en-accion', 'production-release'],
+        type: 'feature',
+        changes: [
+            { type: 'improved', text: 'Rediseño completo de la interfaz a modo claro (fondos limpios, superficies blancas, azul institucional y contraste optimizado con la plantilla).' },
+            { type: 'fixed', text: 'Corrección del backend en sendTestEmail para resolver referencias nulas de clubId y validar la aceptación real por el proveedor de correo.' },
+            { type: 'added', text: 'Historial de modificaciones con Deshacer y Rehacer (Undo/Redo con atajos de teclado Cmd+Z / Cmd+Shift+Z).' },
+            { type: 'added', text: 'Integración completa con la Biblioteca Multimedia de Club Platform (MediaPicker) para selección o subida de imágenes y logos.' },
+            { type: 'added', text: 'Inspector contextual exhaustivo para todos los bloques: encabezados, párrafos, botones, imágenes, columnas, tablas, menús, redes y globales.' },
+            { type: 'improved', text: 'Modal de envío de correo de prueba con validación de formato, reporte de ID del mensaje entregado y visualización de errores detallados.' }
+        ]
+    },
+    {
         version: '4.1185.0',
         title: 'Editor Visual de Plantillas Institucionales: Diagnóstico de Importaciones y Nomenclatura Oficial 🎨✉️',
         description: 'Corrección del icono Square de Lucide React en la barra lateral de bloques del Editor Visual de Plantillas y ajuste integral de la nomenclatura del sistema, estableciendo la denominación oficial «Editor Visual de Plantillas» y «Diseñar en Editor Visual» en todo el ecosistema de Club Platform. Se consolida la separación fundamental entre la Plantilla Maestra institucional (con logotipo oficial de Rotary International, cabecera protegida, 7 Áreas de Enfoque y pie de página legal inalterables) y las Instancias de Campaña para Rotary en Acción y Email Marketing, con lienzo responsivo, previsualización móvil/escritorio, gestión de bloques globales sincronizados y envío de correos de prueba en vivo.',
