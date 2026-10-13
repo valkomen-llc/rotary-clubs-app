@@ -29,14 +29,25 @@ router.put('/config-admin', ctrl.adminConfigPut);
 router.get('/stats', requireSubmissionInboxAccess, ctrl.stats);
 router.get('/dashboard', requireSubmissionInboxAccess, ctrl.board);
 
-// ── Admin: Marketing Inteligente ─────────────────────────────────────
+// ── Admin: Marketing Inteligente (Fases 1, 2, 3 y 4) ─────────────────
 router.get('/marketing/overview', requireSubmissionInboxAccess, mktCtrl.getOverview);
 router.get('/marketing/campaigns', requireSubmissionInboxAccess, mktCtrl.getCampaigns);
 router.post('/marketing/campaigns/:id/status', requireSubmissionInboxAccess, mktCtrl.updateCampaignStatus);
+router.post('/marketing/campaigns/:id/schedule', requireSubmissionInboxAccess, mktCtrl.scheduleCampaign);
 router.post('/marketing/campaigns/:id/sync-email', requireSubmissionInboxAccess, mktCtrl.syncWithEmailMarketing);
+router.get('/marketing/automations', requireSubmissionInboxAccess, mktCtrl.getAutomations);
+router.post('/marketing/automations/:id/toggle', requireSubmissionInboxAccess, mktCtrl.toggleAutomation);
+router.post('/marketing/generate-smart-link', requireSubmissionInboxAccess, mktCtrl.generateSmartLink);
 router.get('/marketing/ai-insights', requireSubmissionInboxAccess, mktCtrl.getAiInsights);
 router.post('/marketing/ai-insights/:id/action', requireSubmissionInboxAccess, mktCtrl.actionAiInsight);
+router.get('/marketing/ab-tests', requireSubmissionInboxAccess, mktCtrl.getAbTests);
+router.post('/marketing/ab-tests/:id/winner', requireSubmissionInboxAccess, mktCtrl.declareAbWinner);
+router.post('/marketing/ai/generate-copy', requireSubmissionInboxAccess, mktCtrl.generateCopyAi);
+router.get('/marketing/success-stories', requireSubmissionInboxAccess, mktCtrl.getSuccessStories);
 router.get('/marketing/attribution', requireSubmissionInboxAccess, mktCtrl.getAttribution);
+router.get('/marketing/reports/district', requireSubmissionInboxAccess, mktCtrl.getDistrictAnalysis);
+router.get('/marketing/reports/governance', requireSubmissionInboxAccess, mktCtrl.getGovernanceStatus);
+router.get('/marketing/reports/executive-summary', requireSubmissionInboxAccess, mktCtrl.getExecutiveReport);
 router.put('/marketing/config', requireSubmissionInboxAccess, mktCtrl.updateMarketingConfig);
 
 export default router;

@@ -1,5 +1,6 @@
 // Esquema de persistencia para Marketing Inteligente de Rotary en Acción.
-// Gestiona campañas piloto, propuestas de optimización de IA y políticas de frecuencia.
+// Gestiona campañas piloto, automatizaciones de captación, experimentos A/B,
+// propuestas de optimización de IA y políticas de frecuencia y gobernanza.
 // Runtime idempotente sobre Postgres, sin Prisma.
 import db from './db.js';
 
@@ -21,7 +22,7 @@ const PILOT_CAMPAIGNS = [
     status: 'draft',
     contentHtml: `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0;">
   <div style="background: linear-gradient(135deg, #013388 0%, #0c2340 100%); padding: 36px 32px; text-align: center; color: #ffffff;">
-    <span style="display: inline-block; background-color: rgba(255,255,255,0.15); color: #ffffff; font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; padding: 4px 12px; rounded-full; border-radius: 9999px; margin-bottom: 12px;">Rotary en Acción · Captación</span>
+    <span style="display: inline-block; background-color: rgba(255,255,255,0.15); color: #ffffff; font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; padding: 4px 12px; border-radius: 9999px; margin-bottom: 12px;">Rotary en Acción · Captación</span>
     <h1 style="font-size: 26px; font-weight: 700; margin: 0 0 10px 0; line-height: 1.25;">Tu club transforma comunidades.<br/>¡Hagámoslo visible!</h1>
     <p style="font-size: 14px; opacity: 0.9; margin: 0; line-height: 1.5;">El espacio donde cada obra, proyecto y jornada de servicio encuentra su mayor alcance.</p>
   </div>
@@ -206,6 +207,57 @@ const SEED_INSIGHTS = [
   }
 ];
 
+const SEED_AUTOMATIONS = [
+  {
+    slug: 'bienvenida-clubes-nuevos',
+    name: 'Bienvenida a Clubes Nuevos',
+    description: 'Secuencia automatizada de inducción para clubes sin reportes registrados. Explica cómo utilizar el formulario en 3 minutos.',
+    triggerEvent: 'nuevo_club',
+    channels: ['email', 'whatsapp'],
+    delayHours: 0,
+    active: true,
+    subject: 'Bienvenido a Rotary en Acción: Haz visible el servicio de tu club',
+    templateHtml: '<p>Estimado Presidente y Comité de Imagen Pública: Este es el espacio para documentar el impacto de su club rotario...</p>',
+    whatsappTemplate: '🤝 *Bienvenido a Rotary en Acción*\nRegistrar tus proyectos ahora es más fácil que nunca. Accede en: https://app.clubplatform.org/rotary-en-accion'
+  },
+  {
+    slug: 'alerta-preventiva-inactividad',
+    name: 'Alerta Preventiva de Inactividad (45 Días)',
+    description: 'Recordatorio amistoso a clubes que llevan 45 días sin compartir actividades, antes de cumplir el umbral de inactividad de 60 días.',
+    triggerEvent: 'inactividad_45d',
+    channels: ['email'],
+    delayHours: 1080, // 45 días en horas
+    active: true,
+    subject: '¿Qué proyectos ha desarrollado tu club recientemente?',
+    templateHtml: '<p>Ha pasado más de un mes desde tu última publicación. Queremos seguir compartiendo las obras de tu club...</p>',
+    whatsappTemplate: '🌟 *¿Qué nuevas obras tiene tu club?* Sigue compartiendo tu impacto rotario en: https://app.clubplatform.org/rotary-en-accion'
+  },
+  {
+    slug: 'acuse-recibo-actividad',
+    name: 'Confirmación de Actividad Recibida',
+    description: 'Disparador transaccional inmediato que notifica al remitente que su evidencia fotográfica y datos entraron a triaje editorial.',
+    triggerEvent: 'solicitud_recibida',
+    channels: ['email', 'whatsapp'],
+    delayHours: 0,
+    active: true,
+    subject: 'Hemos recibido la actividad de tu club en Rotary en Acción',
+    templateHtml: '<p>¡Gracias por compartir! Tu envío ha sido registrado y nuestro equipo editorial está revisando el material...</p>',
+    whatsappTemplate: '✅ *Aporte recibido con éxito:* Tu actividad está en proceso de revisión editorial. Te notificaremos al publicarse.'
+  },
+  {
+    slug: 'celebracion-publicacion',
+    name: 'Difusión de Actividad Publicada',
+    description: 'Envía el enlace oficial del artículo web y material para redes sociales una vez la actividad pasa a estado publicado.',
+    triggerEvent: 'solicitud_publicada',
+    channels: ['email', 'whatsapp'],
+    delayHours: 0,
+    active: true,
+    subject: '¡Tu actividad ya está publicada en Rotary en Acción!',
+    templateHtml: '<p>Felicitaciones. El impacto de tu club ya está disponible para toda la red rotaria en el portal distrital...</p>',
+    whatsappTemplate: '🎉 *¡Tu actividad ha sido publicada!* Visualiza el artículo web y compártelo con tu comunidad.'
+  }
+];
+
 export async function ensureRotaryMarketingSchema() {
   if (_ready) return;
 
@@ -227,12 +279,16 @@ export async function ensureRotaryMarketingSchema() {
     "contentHtml" TEXT DEFAULT '',
     "whatsappTemplate" TEXT DEFAULT '',
     "emailCampaignId" TEXT,
+    "scheduledAt" TIMESTAMPTZ,
     stats JSONB DEFAULT '{"sent":0,"delivered":0,"opens":0,"clicks":0,"submissions":0}'::jsonb,
     "approvedAt" TIMESTAMPTZ,
     "approvedBy" TEXT,
     "createdAt" TIMESTAMPTZ DEFAULT NOW(),
     "updatedAt" TIMESTAMPTZ DEFAULT NOW()
   )`);
+
+  // Asegurar columna scheduledAt si no existiera
+  await db.query(`ALTER TABLE "RotaryMarketingCampaign" ADD COLUMN IF NOT EXISTS "scheduledAt" TIMESTAMPTZ`).catch(() => {});
 
   // 2. Tabla de sugerencias y optimizaciones del agente de IA
   await db.query(`CREATE TABLE IF NOT EXISTS "RotaryMarketingInsight" (
@@ -248,21 +304,74 @@ export async function ensureRotaryMarketingSchema() {
     "createdAt" TIMESTAMPTZ DEFAULT NOW()
   )`);
 
-  // 3. Tabla de configuración de marketing y límites
+  // 3. Tabla de configuración de marketing, límites y gobernanza
   await db.query(`CREATE TABLE IF NOT EXISTS "RotaryMarketingConfig" (
     id TEXT PRIMARY KEY,
     "inactivityDays" INT DEFAULT 60,
     "maxPromoPerClubMonth" INT DEFAULT 2,
     "requireApproval" BOOLEAN DEFAULT TRUE,
     "enableWhatsApp" BOOLEAN DEFAULT TRUE,
+    "governanceRules" JSONB DEFAULT '{"metaPolicyOk":true,"respectQuietHours":true,"requireOptIn":true}'::jsonb,
     "updatedAt" TIMESTAMPTZ DEFAULT NOW()
   )`);
+
+  await db.query(`ALTER TABLE "RotaryMarketingConfig" ADD COLUMN IF NOT EXISTS "governanceRules" JSONB DEFAULT '{"metaPolicyOk":true,"respectQuietHours":true,"requireOptIn":true}'::jsonb`).catch(() => {});
 
   await db.query(`INSERT INTO "RotaryMarketingConfig" (id, "inactivityDays", "maxPromoPerClubMonth", "requireApproval", "enableWhatsApp")
     VALUES ('default', 60, 2, TRUE, TRUE)
     ON CONFLICT (id) DO NOTHING`);
 
-  // 4. Semillas de campañas piloto (idempotente por code)
+  // 4. Tabla de automatizaciones (Fase 2)
+  await db.query(`CREATE TABLE IF NOT EXISTS "RotaryMarketingAutomation" (
+    id TEXT PRIMARY KEY,
+    slug TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL,
+    "triggerEvent" TEXT NOT NULL,
+    channels TEXT[] NOT NULL DEFAULT ARRAY['email']::TEXT[],
+    "delayHours" INT DEFAULT 0,
+    active BOOLEAN DEFAULT TRUE,
+    subject TEXT NOT NULL,
+    "templateHtml" TEXT DEFAULT '',
+    "whatsappTemplate" TEXT DEFAULT '',
+    stats JSONB DEFAULT '{"executions":0,"delivered":0,"opens":0,"clicks":0}'::jsonb,
+    "createdAt" TIMESTAMPTZ DEFAULT NOW(),
+    "updatedAt" TIMESTAMPTZ DEFAULT NOW()
+  )`);
+
+  // 5. Tabla de experimentos A/B (Fase 3)
+  await db.query(`CREATE TABLE IF NOT EXISTS "RotaryMarketingABTest" (
+    id TEXT PRIMARY KEY,
+    "campaignId" TEXT NOT NULL,
+    name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'testing',
+    "metricTarget" TEXT NOT NULL DEFAULT 'clicks',
+    "samplePct" INT NOT NULL DEFAULT 20,
+    "variantASubject" TEXT NOT NULL,
+    "variantBSubject" TEXT NOT NULL,
+    "variantAContent" TEXT,
+    "variantBContent" TEXT,
+    "winnerVariant" TEXT,
+    stats JSONB DEFAULT '{"variantA":{"sent":40,"opens":24,"clicks":11},"variantB":{"sent":40,"opens":31,"clicks":18}}'::jsonb,
+    "startedAt" TIMESTAMPTZ DEFAULT NOW(),
+    "completedAt" TIMESTAMPTZ,
+    "createdAt" TIMESTAMPTZ DEFAULT NOW()
+  )`);
+
+  // 6. Tabla de reportes ejecutivos e históricos (Fase 4)
+  await db.query(`CREATE TABLE IF NOT EXISTS "RotaryMarketingReport" (
+    id TEXT PRIMARY KEY,
+    period TEXT NOT NULL,
+    horizon TEXT NOT NULL,
+    district TEXT DEFAULT 'global',
+    metrics JSONB NOT NULL,
+    summary TEXT,
+    "governanceStatus" JSONB DEFAULT '{"metaPolicyOk":true,"frequencyCapCompliant":true,"optOutCompliant":true}'::jsonb,
+    "generatedBy" TEXT,
+    "createdAt" TIMESTAMPTZ DEFAULT NOW()
+  )`);
+
+  // Semillas de campañas piloto (idempotente por code)
   for (const c of PILOT_CAMPAIGNS) {
     await db.query(`INSERT INTO "RotaryMarketingCampaign"
       (id, code, week, name, type, horizon, "targetSegment", channels, subject, preheader, "messageCentral", "utmCampaign", status, "contentHtml", "whatsappTemplate")
@@ -276,7 +385,7 @@ export async function ensureRotaryMarketingSchema() {
     ).catch(() => {});
   }
 
-  // 5. Semillas de insights del agente IA (idempotente)
+  // Semillas de insights del agente IA (idempotente)
   for (const ins of SEED_INSIGHTS) {
     await db.query(`INSERT INTO "RotaryMarketingInsight"
       (id, category, title, description, "impactMetric", confidence, status, "actionPayload")
@@ -289,6 +398,28 @@ export async function ensureRotaryMarketingSchema() {
       ]
     ).catch(() => {});
   }
+
+  // Semillas de automatizaciones
+  for (const auto of SEED_AUTOMATIONS) {
+    await db.query(`INSERT INTO "RotaryMarketingAutomation"
+      (id, slug, name, description, "triggerEvent", channels, "delayHours", active, subject, "templateHtml", "whatsappTemplate")
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      ON CONFLICT (slug) DO NOTHING`,
+      [
+        `rma-${auto.slug}`, auto.slug, auto.name, auto.description,
+        auto.triggerEvent, auto.channels, auto.delayHours, auto.active,
+        auto.subject, auto.templateHtml, auto.whatsappTemplate
+      ]
+    ).catch(() => {});
+  }
+
+  // Semilla de experimento A/B de ejemplo activo
+  await db.query(`INSERT INTO "RotaryMarketingABTest"
+    (id, "campaignId", name, status, "metricTarget", "samplePct", "variantASubject", "variantBSubject")
+    VALUES ('ab-sem02-preg-vs-orgullo', 'rmk-sem-02', 'SEM 02: Pregunta Directa vs Llamado al Orgullo Rotario', 'testing', 'clicks', 20,
+      '¿Qué está haciendo tu club por su comunidad? Compártelo hoy mismo',
+      'Tu club en acción: Haz visible el impacto de tu servicio rotario')
+    ON CONFLICT (id) DO NOTHING`).catch(() => {});
 
   _ready = true;
 }

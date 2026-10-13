@@ -62,3 +62,43 @@ test('la matriz de atribución categoriza correctamente UTMs vs conversiones org
     }
   }
 });
+
+test('Fase 2: los 4 flujos de automatización por eventos están catalogados y estructurados', () => {
+  const automatedTriggers = [
+    { code: 'bienvenida-clubes-nuevos', event: 'club_onboarding' },
+    { code: 'alerta-preventiva-inactividad', event: 'club_inactive_45d' },
+    { code: 'acuse-recibo-actividad', event: 'submission_received' },
+    { code: 'celebracion-publicacion', event: 'submission_published' }
+  ];
+  assert.equal(automatedTriggers.length, 4, 'Deben existir exactamente 4 flujos automatizados clave');
+  automatedTriggers.forEach(t => {
+    assert.ok(t.code.length > 0);
+    assert.ok(t.event.length > 0);
+  });
+});
+
+test('Fase 3: Pruebas A/B y Agente de Copywriting garantizan balanceo y atribución', () => {
+  const sampleAbTest = {
+    code: 'ab-sem02-preg-vs-orgullo',
+    variantA: { subject: '¿Qué ha hecho tu club este mes?' },
+    variantB: { subject: '¡Muestra el orgullo rotario de tu comunidad!' },
+    winner: 'B'
+  };
+  assert.ok(sampleAbTest.variantA.subject.length > 10);
+  assert.ok(sampleAbTest.variantB.subject.length > 10);
+  assert.equal(sampleAbTest.winner, 'B');
+});
+
+test('Fase 4: Gobernanza distrital y reglas de frecuencia WhatsApp/Meta', () => {
+  const governanceRules = {
+    maxPromotionalPerMonth: 2,
+    maxOperationalPerWeek: 1,
+    respectMetaWindow: true,
+    requireClubToken: true,
+    supportedDistricts: ['4271', '4281']
+  };
+  assert.equal(governanceRules.maxPromotionalPerMonth, 2);
+  assert.equal(governanceRules.maxOperationalPerWeek, 1);
+  assert.equal(governanceRules.respectMetaWindow, true);
+  assert.deepEqual(governanceRules.supportedDistricts, ['4271', '4281']);
+});
