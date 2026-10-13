@@ -171,6 +171,16 @@ test('la portada personalizada se preserva y tiene prioridad', () => {
     assert.strictEqual(res.description, 'La XIII Conferencia en la puerta de los llanos.');
 });
 
+test('la portada con ruta relativa (/images/...) se preserva y acepta', () => {
+    const relativeCover = '/images/villavicencio2027-video-cover.jpg';
+    const res = resolveEventVideo({
+        url: 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/8aa470c5-0a5a-4a8d-b872-38645b8b9f3a/videos/1790624336344-VIDEO-2026-04-30-05-47-20.mp4',
+        coverImage: relativeCover,
+    });
+    assert(res !== null);
+    assert.strictEqual(res.coverImage, relativeCover);
+});
+
 test('normalización para almacenamiento', () => {
     const norm = normalizeEventVideo({
         url: '  https://youtu.be/dQw4w9WgXcQ  ',

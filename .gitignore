@@ -65,6 +65,9 @@ temp.json
 *.png
 !public/*.png
 !public/*.jpg
+!public/images/**/*.png
+!public/images/**/*.jpg
+!public/images/**/*.webp
 !public/defaults/**/*.png
 !public/defaults/**/*.jpg
 !public/icons/**/*.png

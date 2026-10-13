@@ -42,6 +42,19 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1194.0',
+        title: 'Eventos: Sincronización de Fotograma Real del Video como Portada 16:9 de la XIII Conferencia Rotaria 🎬🤠',
+        description: 'Perfeccionamiento visual y sincronización de portada del video promocional de la XIII Conferencia Rotaria del Distrito 4281 (Villavicencio 2027): 1) Fotograma de alta fidelidad: extracción precisa del fotograma inicial del video promocional de Villavicencio mostrando al representante rotario en indumentaria llanera tradicional y camisa institucional Rotary, eliminando la discrepancia con fotos genéricas del carrusel. 2) Carga optimizada y asset estático servido desde CDN: despliegue de la imagen de portada en /images/villavicencio2027-video-cover.jpg con soporte en .gitignore, garantizando disponibilidad inmediata, alta velocidad y tiempo de carga imperceptible sin peticiones pesadas previas. 3) Sincronización de metadatos en base de datos de producción: actualización de metadata.video.coverImage para la XIII Conferencia Rotaria reflejando el fotograma real en la interfaz pública y el panel administrativo.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'video-player', 'xiii-conferencia-rotaria', 'villavicencio-2027', 'video-cover', 'sincronizacion-fotograma', 'production-release'],
+        type: 'improvement',
+        changes: [
+            { type: 'improved', text: 'Sincronización de portada con fotograma real del video: imagen representativa exacta de la XIII Conferencia Rotaria en Villavicencio 2027.' },
+            { type: 'added', text: 'Asset estático optimizado /images/villavicencio2027-video-cover.jpg en proporción 16:9 de alta definición.' },
+            { type: 'improved', text: 'Actualización en base de datos de producción del evento villavicencio2027 con la nueva portada sincronizada.' }
+        ]
+    },
+    {
         version: '4.1193.0',
         title: 'Eventos y Conferencias: Contenedor y Reproductor de Video Promocional 16:9 con Portada y Gestor Multimedia Administrativo 🎬✨',
         description: 'Ampliación interactiva y audiovisual para páginas públicas de eventos de Club Platform y la XIII Conferencia Rotaria del Distrito 4281 (Villavicencio 2027): 1) Contenedor de Video 16:9 de alta definición: ubicación armónica entre los párrafos descriptivos y la galería fotográfica de Villavicencio, con esquinas redondeadas modernas, sombra suave y proporciones responsivas adaptadas a móviles, tabletas y computadores de escritorio. 2) Reproducción flexible y optimizada: soporte completo para videos de YouTube (con modo de privacidad mejorada youtube-nocookie y detección de marcas de tiempo), Vimeo y archivos directos de video alojados en S3 o almacenamiento de la plataforma (MP4, WebM, OGV), con controles nativos de reproducción, pausa, volumen y pantalla completa. 3) Portada inteligente y carga diferida (lazy load): renderizado inicial con imagen de portada personalizada (o miniatura automática en alta resolución), botón central de reproducción con microanimación de pulso, cero reproducción automática con sonido y carga del reproductor bajo demanda para preservar la velocidad y Core Web Vitals del sitio. 4) Gestión integral desde el Panel Administrativo (/admin/eventos): sección «Video Promocional del Evento» en la pestaña Multimedia con entrada de URL, selector/subida de imagen de portada, título, descripción y vista previa en tiempo real sin requerir edición de código. 5) Estado limpio sin video: si el evento no tiene video configurado, el componente no se renderiza ni genera espacios vacíos en la página pública.',
