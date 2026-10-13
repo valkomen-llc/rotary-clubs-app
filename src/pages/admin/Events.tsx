@@ -12,6 +12,7 @@ import type { Area } from 'react-easy-crop';
 import AdminLayout from '../../components/admin/AdminLayout';
 import EventRegistrationTab from '../../components/admin/events/EventRegistrationTab';
 import EventVenueEditor from '../../components/admin/events/EventVenueEditor';
+import EventVideoEditor from '../../components/admin/events/EventVideoEditor';
 import EcosystemPicker from '../../components/admin/events/EcosystemPicker';
 import { useAuth } from '../../hooks/useAuth';
 import { useSiteAccess } from '../../hooks/useSiteAccess';
@@ -1441,6 +1442,12 @@ const EventsManagement = () => {
                                                             currentUrl={event.image || ''}
                                                             onUploaded={url => updateEventField(event.id, 'image', url)}
                                                             onUrlChange={url => updateEventField(event.id, 'image', url)}
+                                                        />
+                                                        <hr className="border-gray-100" />
+                                                        <EventVideoEditor
+                                                            video={event.metadata?.video}
+                                                            onChange={v => updateEventField(event.id, 'metadata', { ...event.metadata, video: v })}
+                                                            fallbackCover={event.image}
                                                         />
                                                         <hr className="border-gray-100" />
                                                         <GalleryManager

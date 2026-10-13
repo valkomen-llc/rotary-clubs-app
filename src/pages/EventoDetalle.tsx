@@ -6,6 +6,8 @@ import Footer from '../sections/Footer';
 import RegistrationPanel from '../components/RegistrationPanel';
 import EventRegistrationCta, { useEventCta, hasVisibleCta } from '../components/EventRegistrationCta';
 import MediaGallery from '../components/MediaGallery';
+import EventVideoPlayer from '../components/EventVideoPlayer';
+import { hasEventVideo } from '../lib/eventVideo';
 import EventVenueCard from '../components/EventVenueCard';
 import { normalizeVenue } from '../lib/eventVenue';
 import { sourceTraceOf } from '../lib/districtEcosystem';
@@ -280,6 +282,17 @@ const EventoDetalle = () => {
                             </div>
                         ) : (
                             !event.htmlContent && <p className="text-gray-400 italic">Sin descripción disponible.</p>
+                        )}
+
+                        {/* Video promocional / informativo del evento */}
+                        {hasEventVideo(event.metadata?.video) && (
+                            <div className="my-8">
+                                <EventVideoPlayer
+                                    video={event.metadata?.video}
+                                    fallbackCover={coverImg}
+                                    title={event.title}
+                                />
+                            </div>
                         )}
 
                         {/* Galería del evento — v4.607

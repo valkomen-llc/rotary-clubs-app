@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1192.0",
-  "cache_bust": "4.1192.0",
+  "version": "4.1193.0",
+  "cache_bust": "4.1193.0",
   "type": "module",
-  "//": "UI V4.1192.0 | 2026-10-13 (Editor Visual de Plantillas: Estructura Visual Continua CTA-Footer sin Esquinas Redondeadas, Degradados Avanzados y Selector Visual de Color)",
+  "//": "UI V4.1193.0 | 2026-10-13 (Eventos: Contenedor y Reproductor de Video Promocional 16:9 con Portada y Gestor Multimedia Administrativo)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs && node scripts/check-version-parity.mjs && node scripts/check-syntax.mjs && node scripts/check-hooks.mjs && node scripts/check-routes.mjs && node scripts/check-imports.mjs && node scripts/check-server-undef.mjs && node scripts/check-route-handlers.mjs",
@@ -54,6 +54,7 @@
     "test:fair:payment": "node scripts/test-project-fair-payment.mjs",
     "test:fair:payment:path": "node scripts/test-project-fair-payment-path.mjs",
     "test:event-venue": "node scripts/test-event-venue.mjs",
+    "test:event-video": "node scripts/test-event-video.mjs",
     "test:cta": "node scripts/test-cta-styles.mjs",
     "test:nav": "node scripts/test-site-nav.mjs",
     "test:nav:hierarchy": "node scripts/test-hierarchical-nav.mjs",
@@ -184,6 +185,8 @@
     "node": "22.x"
   },
   "dependencies": {
+    "@aws-sdk/client-route-53": "^3.1151.0",
+    "@aws-sdk/client-route-53-domains": "^3.1151.0",
     "@aws-sdk/client-s3": "^3.1003.0",
     "@aws-sdk/s3-request-presigner": "^3.1003.0",
     "@google/generative-ai": "^0.24.1",

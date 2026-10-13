@@ -40,6 +40,35 @@ router.post('/events/upload-image', authMiddleware, (req, res, next) => {
     res.json({ url: req.file.location });
 });
 
+// S3 Upload para video del evento (MP4, WEBM, OGV, MOV hasta 100MB)
+const uploadEventVideo = multer({
+    storage: multerS3({
+        s3,
+        bucket: process.env.AWS_BUCKET_NAME || 'rotary-platform-assets',
+        contentType: multerS3.AUTO_CONTENT_TYPE,
+        key: (req, file, cb) => {
+            const safe = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '');
+            cb(null, `events/videos/${Date.now()}-${safe}`);
+        },
+    }),
+    fileFilter: (req, file, cb) => {
+        if (/video\/(mp4|webm|ogg|quicktime|x-msvideo)/.test(file.mimetype) || /\.(mp4|webm|ogv|mov|m4v)$/i.test(file.originalname)) return cb(null, true);
+        cb(new Error('Solo se permiten archivos de video MP4, WEBM, OGV o MOV'));
+    },
+    limits: { fileSize: 100 * 1024 * 1024 }, // 100 MB
+});
+
+// POST /api/calendar/events/upload-video — sube video directo a S3
+router.post('/events/upload-video', authMiddleware, (req, res, next) => {
+    uploadEventVideo.single('video')(req, res, (err) => {
+        if (err) return res.status(400).json({ error: err.message });
+        next();
+    });
+}, (req, res) => {
+    if (!req.file) return res.status(400).json({ error: 'No se recibió video' });
+    res.json({ url: req.file.location });
+});
+
 // GET /api/calendar/events/image-proxy — proxy same-origin para canvas (evita CORS de S3)
 router.get('/events/image-proxy', authMiddleware, async (req, res) => {
     const { url } = req.query;
@@ -178,7 +207,7 @@ const EVENT_FIELDS_BY_CAPABILITY = {
     media: ['image', 'images'],
     html: ['htmlContent'],
 };
-const METADATA_KEYS_BY_CAPABILITY = { venue: ['venue'], registration_panel: ['latir'] };
+const METADATA_KEYS_BY_CAPABILITY = { venue: ['venue'], registration_panel: ['latir'], media: ['video'] };
 
 const mergeEventUpdate = (actual, cuerpo, caps) => {
     const puede = (c) => caps === null || caps.includes(c);
