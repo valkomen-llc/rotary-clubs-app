@@ -1576,10 +1576,10 @@ export const MissionControlVIP: React.FC = () => {
 
                   <div className="flex items-center gap-2">
                     <a
-                      href={`/admin/campanas-contribucion/solicitudes?q=${encodeURIComponent(selectedTask.id)}`}
+                      href={`/admin/rotary-en-accion?tab=solicitudes&q=${encodeURIComponent(selectedTask.id)}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      title="Ver solicitud original en Solicitudes de Contenido"
+                      title="Ver solicitud original en Rotary en Acción"
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-white border border-gray-300 text-gray-700 hover:bg-blue-50 hover:text-[#013388] hover:border-[#013388]/30 transition-colors shadow-xs"
                     >
                       <ExternalLink className="w-3.5 h-3.5 text-gray-500" />

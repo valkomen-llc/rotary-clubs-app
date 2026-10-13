@@ -1145,7 +1145,7 @@ const ReelDetail: React.FC<{
                                             <p className="text-[11px] text-gray-700">Artículo: <span data-no-translate>{reel.origin.articleTitle}</span></p>
                                         )}
                                         {canSeeSubmissions && (
-                                            <a href={`/admin/campanas-contribucion/solicitudes?abrir=${reel.origin.submissionId}`}
+                                            <a href={`/admin/rotary-en-accion?tab=solicitudes&abrir=${reel.origin.submissionId}`}
                                                 className="inline-block mt-1 text-[11px] font-bold text-fuchsia-700 hover:underline">
                                                 Ver la solicitud de origen
                                             </a>

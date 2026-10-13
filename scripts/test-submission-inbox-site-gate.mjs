@@ -282,7 +282,7 @@ test('src/pages/admin/RotaryEnAccionAdmin.tsx protege la pantalla y redirige sit
 test('el Super Admin ve Rotary en Acción en el menú central (Management, sin duplicar)', () => {
     const layout = leer('src/components/admin/AdminLayout.tsx');
     assert.ok(/label: 'Rotary en Acción', path: '\/admin\/rotary-en-accion', category: 'Management'/.test(layout));
-    assert.ok(/label: 'Solicitudes de Contenido', path: '\/admin\/campanas-contribucion\/solicitudes', category: 'Management'/.test(layout));
+    assert.ok(!/label: 'Solicitudes de Contenido'/.test(layout), 'Solicitudes de Contenido consolidado en Rotary en Acción y no visible como acceso independiente');
     const apariciones = (layout.match(/path: '\/admin\/rotary-en-accion'/g) || []).length;
     assert.equal(apariciones, 2, 'una entrada para el operador (Management) y una para sitios habilitados (Contenido), no dos módulos');
     const plat = leer('src/lib/platformAdmin.ts');

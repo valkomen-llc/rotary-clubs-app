@@ -123,14 +123,15 @@ export const describeInboxView = (
     return p > 0 ? `${base} · ${p} sin revisar` : `${base} · ninguna sin revisar`;
 };
 
-/** La dirección de la bandeja, con sus filtros. En UN solo sitio: con la ruta
- *  escrita a mano en cada pantalla que enlaza, el día que cambie una se queda
- *  apuntando a una página que no existe. */
-export const INBOX_PATH = '/admin/campanas-contribucion/solicitudes';
+/** La dirección de la bandeja unificada en Rotary en Acción, con sus filtros.
+ *  En UN solo sitio: con la ruta escrita a mano en cada pantalla que enlaza,
+ *  el día que cambie una se queda apuntando a una página que no existe. */
+export const INBOX_PATH = '/admin/rotary-en-accion';
 export const inboxLink = (q: Partial<InboxQuery> = {}): string => {
     const p = toSearchParams(q);
+    if (!p.has('tab')) p.set('tab', 'solicitudes');
     const s = p.toString();
-    return s ? `${INBOX_PATH}?${s}` : INBOX_PATH;
+    return s ? `${INBOX_PATH}?${s}` : `${INBOX_PATH}?tab=solicitudes`;
 };
 
 import { PLATFORM_HOSTS } from './platformAdmin';

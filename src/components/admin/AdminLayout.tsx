@@ -633,9 +633,8 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                 { icon: Users, label: 'Super Users', path: '/admin/usuarios', category: 'Management', keywords: ['usuario', 'admin'] },
                 { icon: HeartHandshake, label: 'Donaciones Globales', path: '/admin/donaciones', category: 'Management', keywords: ['donacion', 'aportes'] },
                 { icon: Megaphone, label: 'Campañas de Contribución', path: '/admin/campanas-contribucion', category: 'Management', keywords: ['campana', 'campaña', 'contribucion', 'emergencia', 'terremoto', 'donaciones', 'acopio', 'maneras de contribuir'] },
-                { icon: Megaphone, label: 'Campañas de Contenido', path: '/admin/activacion-contenido', category: 'Management', keywords: ['campana', 'campaña', 'contenido', 'activacion', 'rotary en accion', 'segmentar', 'audiencia', 'destinatarios'] },
-                { icon: HeartHandshake, label: 'Rotary en Acción', path: '/admin/rotary-en-accion', category: 'Management', keywords: ['rotary en accion', 'historias', 'captacion', 'banco', 'testimonios', 'solicitudes'], badge: 'nuevo' },
-                { icon: Inbox, label: 'Solicitudes de Contenido', path: '/admin/campanas-contribucion/solicitudes', category: 'Management', keywords: ['solicitudes', 'contenido', 'rotary en accion', 'buzon', 'evidencias', 'bandeja'], badge: solicitudes.medido && solicitudes.count > 0 ? String(solicitudes.count > 99 ? '99+' : solicitudes.count) : undefined },
+                { icon: Megaphone, label: 'Campañas de Contenido', path: '/admin/activacion-contenido', category: 'Management', keywords: ['campana', 'campaña', 'contenido', 'activacion', 'segmentar', 'audiencia', 'destinatarios'] },
+                { icon: HeartHandshake, label: 'Rotary en Acción', path: '/admin/rotary-en-accion', category: 'Management', keywords: ['rotary en accion', 'historias', 'captacion', 'banco', 'testimonios', 'solicitudes', 'contenido', 'buzon', 'evidencias', 'bandeja'], badge: solicitudes.medido && solicitudes.count > 0 ? String(solicitudes.count > 99 ? '99+' : solicitudes.count) : undefined },
                 { icon: LayoutTemplate, label: 'Slider Global / Llamados a la Acción', path: '/admin/slider-global', category: 'Management', keywords: ['slider', 'slide', 'carrusel', 'llamado', 'accion', 'destacado', 'bloque destacado', 'polio', 'end polio', 'banner', 'portada', 'global', 'spotlight'] },
                 { icon: Mail, label: 'Notificaciones de Aportes', path: '/admin/notificaciones-aportes', category: 'Management', keywords: ['notificacion', 'notificaciones', 'correo', 'email', 'recibo', 'confirmacion', 'aporte', 'aportes', 'donacion', 'colrotarios', 'remitente', 'plantilla'] },
                 { icon: Bell, label: 'Comunicaciones CRM', path: '/admin/crm', category: 'General', keywords: ['crm', 'email', 'campana', 'whatsapp'] },
@@ -756,13 +755,12 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
             }
             if (siteModules.activation_campaigns !== false) {
                 items.push(
-                    { icon: Megaphone, label: 'Campañas', path: '/admin/activacion-contenido', category: 'Contenido', keywords: ['campana', 'campaña', 'contenido', 'activacion', 'rotary en accion', 'audiencia', 'email', 'whatsapp'] }
+                    { icon: Megaphone, label: 'Campañas', path: '/admin/activacion-contenido', category: 'Contenido', keywords: ['campana', 'campaña', 'contenido', 'activacion', 'audiencia', 'email', 'whatsapp'] }
                 );
             }
             if (isSubmissionsAllowed) {
                 items.push(
-                    { icon: HeartHandshake, label: 'Rotary en Acción', path: '/admin/rotary-en-accion', category: 'Contenido', keywords: ['rotary en accion', 'historias', 'captacion', 'banco', 'testimonios', 'solicitudes'], badge: 'nuevo' },
-                    { icon: Inbox, label: 'Solicitudes de Contenido', path: '/admin/campanas-contribucion/solicitudes', category: 'Contenido', keywords: ['solicitudes', 'contenido', 'rotary en accion', 'buzon', 'evidencias', 'bandeja'], badge: solicitudes.medido && solicitudes.count > 0 ? String(solicitudes.count > 99 ? '99+' : solicitudes.count) : undefined },
+                    { icon: HeartHandshake, label: 'Rotary en Acción', path: '/admin/rotary-en-accion', category: 'Contenido', keywords: ['rotary en accion', 'historias', 'captacion', 'banco', 'testimonios', 'solicitudes', 'contenido', 'buzon', 'evidencias', 'bandeja'], badge: solicitudes.medido && solicitudes.count > 0 ? String(solicitudes.count > 99 ? '99+' : solicitudes.count) : undefined },
                 );
             }
         }
@@ -974,8 +972,8 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
 
     // ⚠️ EL ICONO DEL ENCABEZADO Y EL BUZÓN SE PINTAN EXCLUSIVAMENTE
     // PARA LAS 4 ENTIDADES AUTORIZADAS (Club Platform, Rotary 4281, Feria de Proyectos, Colrotarios)
-    // Y si el módulo de campañas es alcanzable.
-    const puedeVerSolicitudes = menuItems.some(item => item.path === '/admin/campanas-contribucion') && isSubmissionsAllowed;
+    // Y si el módulo de Rotary en Acción o campañas es alcanzable.
+    const puedeVerSolicitudes = menuItems.some(item => item.path === '/admin/rotary-en-accion' || item.path === '/admin/campanas-contribucion') && isSubmissionsAllowed;
 
     // ⚠️ QUÉ ENTRADA ESTÁ ACTIVA LO DECIDE `activeMenuPath`, NO UNA COMPARACIÓN
     // CON `location.pathname`. Hay entradas que enlazan una vista dentro de una
@@ -1478,7 +1476,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                                                      {borradoresIA.items.map(b => (
                                                          <li key={b.id}>
                                                              <Link
-                                                                 to={`${INBOX_PATH}?abrir=${encodeURIComponent(b.submissionId)}`}
+                                                                 to={`${INBOX_PATH}?tab=solicitudes&abrir=${encodeURIComponent(b.submissionId)}`}
                                                                  onClick={() => setCampanaAbierta(false)}
                                                                  className="block rounded-xl px-3 py-2 hover:bg-amber-50 transition-colors"
                                                              >
@@ -1566,7 +1564,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                                                                     la bandeja ya entiende (v4.999): abre esa
                                                                     ficha sin arrastrar la campaña por la URL. */}
                                                                 <Link
-                                                                    to={`${INBOX_PATH}?abrir=${encodeURIComponent(sol.id)}`}
+                                                                    to={`${INBOX_PATH}?tab=solicitudes&abrir=${encodeURIComponent(sol.id)}`}
                                                                     onClick={() => setBandejaAbierta(false)}
                                                                     className="block rounded-xl px-3 py-2 hover:bg-emerald-50 transition-colors"
                                                                 >

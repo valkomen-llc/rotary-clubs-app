@@ -42,6 +42,22 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1181.0',
+        title: 'Rotary en Acción Unificado: Fusión Definitiva de Solicitudes y Operaciones en Módulo Único (/admin/rotary-en-accion) 🚀🏛️',
+        description: 'Unificación arquitectónica y funcional de los módulos administrativos «Solicitudes de Contenido» y «Rotary en Acción» en una sola herramienta consolidada en /admin/rotary-en-accion. Eliminación completa de duplicidades en el menú lateral y en el índice de búsqueda del sistema sin pérdida de datos, preservando la tabla única de base de datos ContributionSubmission. La nueva vista unificada incorpora 6 secciones operativas: 01. Resumen (KPIs globales, métricas por tipo y programa, series temporales, ranking por club y clubes sin reportar con cajón de detalles), 02. Solicitudes (bandeja completa de gestión con filtrado facetado, tarjetas táctiles optimizadas para móviles, detalle en panel lateral y acciones editoriales), 03. Centro de Control (vista previa del flujo de 5 etapas y lanzador transversal en pantalla completa o embebido a Mission Control VIP), 04. Taxonomías (editor y normalizador de tipos, programas, áreas de interés y metas de impacto), 05. Configuración (políticas de captura fotográfica, umbrales de publicación y campos condicionales por categoría), y 06. Impacto (consolidación territorial, mapa de ciudades beneficiadas y métricas globales de alcance). Preservación total de redirecciones transparentes desde rutas históricas (/admin/campanas-contribucion/solicitudes), enlaces profundos de notificaciones (?tab=solicitudes&abrir=...) y aislamiento multi-tenant con puertas de seguridad estrictas (isContentSubmissionsAllowedSite).',
+        date: new Date().toISOString(),
+        tags: ['rotary-en-accion', 'unification', 'submissions', 'mission-control', 'taxonomy', 'impact', 'production-release'],
+        type: 'feature',
+        changes: [
+            { type: 'added', text: 'Módulo único consolidado en /admin/rotary-en-accion con 6 pestañas: Resumen, Solicitudes, Centro de Control, Taxonomías, Configuración e Impacto.' },
+            { type: 'improved', text: 'Bandeja completa de solicitudes integrada nativamente con soporte para vista embebida, filtros facetados y cajón lateral de detalles.' },
+            { type: 'improved', text: 'Integración transversal con el Centro de Control VIP sin duplicar lógica ni desvincular el flujo Kanban de producción.' },
+            { type: 'added', text: 'Redirección transparente y compatibilidad retroactiva de enlaces profundos (?abrir=..., ?q=...) desde la ruta histórica /admin/campanas-contribucion/solicitudes.' },
+            { type: 'improved', text: 'Depuración total de duplicidades en el buscador administrativo y sidebar: búsqueda de «sol» o «Rotary» conduce únicamente a Rotary en Acción.' },
+            { type: 'fixed', text: 'Garantía de integridad de datos sobre ContributionSubmission y aislamiento multi-tenant estricto con verificaciones de seguridad de sitio.' }
+        ]
+    },
+    {
         version: '4.1180.0',
         title: 'Disponibilidad de los sitios: ninguna dependencia lenta deja la página en blanco 🛡️⚡',
         description: 'Auditoría de causa raíz de las cargas intermitentes de rotary4281.org (pantalla en blanco o «Cargando plataforma…» sin fin). El documento HTML de cada sitio y la configuración del sitio (/clubs/by-domain) se resolvían esperando a la base de datos sin ningún tope, sobre una función compartida con los crons: con el pool ocupado, una visita podía esperar decenas de segundos y el navegador no tenía cómo recuperarse sin recargar. Ahora el documento se resuelve con tope de tiempo y caché con copia de respaldo (si la base tarda, se sirve la última copia buena o el documento base, nunca nada), la configuración del sitio igual, y el arranque del navegador tiene tope por intento, reintentos acotados, arranque instantáneo desde la última configuración buena y una pantalla con «Reintentar» en vez de un giro infinito. Se agregan sondas /api/health/live y /api/health/deps y un monitor reutilizable para todos los dominios (npm run site:health).',

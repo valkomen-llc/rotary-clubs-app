@@ -1598,7 +1598,7 @@ const MediaLibrary: React.FC = () => {
                             <div className="ml-auto flex flex-wrap items-center gap-2">
                                 {canSeeSubmissions && (
                                 <a
-                                    href={`/admin/campanas-contribucion/solicitudes?abrir=${encodeURIComponent(origenCarpeta.submissionId)}`}
+                                    href={`/admin/rotary-en-accion?tab=solicitudes&abrir=${encodeURIComponent(origenCarpeta.submissionId)}`}
                                     className="px-3 py-1.5 rounded-lg text-[11px] font-black bg-white border border-sky-200 text-sky-700 hover:bg-sky-50 transition-colors"
                                 >
                                     VER SOLICITUD →

@@ -2123,7 +2123,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                         )}
                                                         {post.submissionOrigin && canSeeSubmissions && (
                                                             <Link
-                                                                to={`/admin/campanas-contribucion/solicitudes?abrir=${encodeURIComponent(post.submissionOrigin.submissionId)}`}
+                                                                to={`/admin/rotary-en-accion?tab=solicitudes&abrir=${encodeURIComponent(post.submissionOrigin.submissionId)}`}
                                                                 onClick={(e) => e.stopPropagation()}
                                                                 title={`Generado desde solicitud: ${post.submissionOrigin.club || post.submissionOrigin.senderName || 'Club'}`}
                                                                 className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100"
@@ -2422,7 +2422,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                         no existe es peor que ninguno (v4.650). */}
                                                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5">
                                                         {canSeeSubmissions && (
-                                                            <Link to={`/admin/campanas-contribucion/solicitudes?abrir=${encodeURIComponent(editingPost.submissionOrigin.submissionId)}`}
+                                                            <Link to={`/admin/rotary-en-accion?tab=solicitudes&abrir=${encodeURIComponent(editingPost.submissionOrigin.submissionId)}`}
                                                                 className="inline-flex items-center gap-1 font-black text-sky-700 hover:underline">
                                                                 VER SOLICITUD ORIGINAL →
                                                             </Link>
