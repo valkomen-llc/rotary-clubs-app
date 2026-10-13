@@ -13,17 +13,67 @@ import { getPublicSections } from '../controllers/cmsController.js';
 import { recordPublicArticleView } from '../controllers/submissionArticleController.js';
 import { canonicalDomain, domainCandidates, subdomainLabel } from '../lib/domains.js';
 import { DISTRICT_SITE_SQL, districtSiteParams, pickDistrictSite, districtBranding } from '../lib/districtSite.js';
+import { createSwrCache, serverTiming } from '../lib/resilience.js';
+import { SITE_CONFIG_BUDGET, siteConfigCacheKey } from '../lib/documentBudget.js';
 
 const router = express.Router();
 
 // Get club by domain or subdomain
+/**
+ * La configuración del sitio que pinta la SPA, con TOPE de tiempo y caché con
+ * respaldo (v4.1180).
+ *
+ * Hasta v4.1179 cada visita la recalculaba entera —ocho o más consultas
+ * encadenadas a la base— y sin tope: con la base lenta, el navegador se quedaba
+ * en «Cargando plataforma...» indefinidamente. Ahora:
+ *   - lo fresco (20 s) se sirve sin tocar la base;
+ *   - con la base caída o lenta se sirve la última configuración buena del
+ *     dominio (hasta 6 h), con `X-Site-Config: stale`;
+ *   - `fresh=1` se salta lo fresco: es lo que pide el panel tras guardar, para
+ *     ver su cambio en el acto (y sigue cayendo a lo viejo si la base falla).
+ * Las visitas simultáneas al mismo dominio comparten un solo cálculo.
+ */
+const siteConfigCache = createSwrCache({
+    ttlMs: SITE_CONFIG_BUDGET.cacheTtlMs,
+    staleMs: SITE_CONFIG_BUDGET.cacheStaleMs,
+    max: SITE_CONFIG_BUDGET.cacheMax,
+});
+
 router.get('/by-domain', async (req, res) => {
-    const { domain, preview } = req.query;
+    const { domain, preview, fresh } = req.query;
     if (!domain) {
         return res.status(400).json({ error: 'Domain is required' });
     }
-
+    const t0 = Date.now();
     try {
+        const out = await siteConfigCache.get(
+            siteConfigCacheKey(domain, preview),
+            () => computeSiteConfig(String(domain), preview),
+            { deadlineMs: SITE_CONFIG_BUDGET.computeMs, bypass: fresh === '1' || fresh === 'true' },
+        );
+        if (out.error) console.warn(`[by-domain] ${domain}: se sirve la última configuración buena (${out.error.message})`);
+        res.setHeader('Cache-Control', 'no-store');
+        res.setHeader('X-Site-Config', out.source);
+        res.setHeader('Server-Timing', serverTiming([['site', Date.now() - t0, out.source]]));
+        res.json(out.value);
+    } catch (error) {
+        console.error('Error fetching club:', error);
+        // Sin pila hacia el navegador: es información interna del servidor.
+        // `code` distingue una demora de un fallo para quien diagnostica.
+        // Una base que no responde (tope vencido, o Prisma sin conexión: P1xxx
+        // o PrismaClientInitializationError) es una dependencia NO DISPONIBLE,
+        // no un error del código: 503, que el navegador reintenta.
+        const unavailable = error?.code === 'DEADLINE_EXCEEDED'
+            || /^P1\d{3}$/.test(String(error?.errorCode || error?.code || ''))
+            || error?.name === 'PrismaClientInitializationError';
+        res.setHeader('Cache-Control', 'no-store');
+        res.status(unavailable ? 503 : 500)
+            .json({ error: unavailable ? 'Service unavailable' : 'Internal server error', code: error?.code || error?.errorCode || (unavailable ? 'DB_UNAVAILABLE' : 'ERROR'), message: error.message });
+    }
+});
+
+async function computeSiteConfig(domain, preview) {
+    {
         // Forma canónica de lo que se pide: minúsculas, sin protocolo, sin ruta,
         // sin puerto, sin punto final y sin `www.`.
         const cleanDomain = canonicalDomain(domain);
@@ -507,12 +557,9 @@ router.get('/by-domain', async (req, res) => {
         // diagnóstico, no de contenido: `fallback` significa que el dominio
         // visitado no está asignado a ningún sitio y se está sirviendo el
         // «Origen». El panel lo usa para poder decirlo con todas las letras.
-        res.json({ ...mappedClub, resolvedBy });
-    } catch (error) {
-        console.error('Error fetching club:', error);
-        res.status(500).json({ error: 'Internal server error', message: error.message, stack: error.stack });
+        return { ...mappedClub, resolvedBy };
     }
-});
+}
 
 // Public search endpoint — searches posts, projects, events for a club
 router.get('/:clubId/search', async (req, res) => {

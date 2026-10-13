@@ -46,7 +46,10 @@ const server = createServer(app);
 await new Promise((r) => server.listen(0, r));
 const base = `http://127.0.0.1:${server.address().port}/api/clubs/by-domain`;
 const get = async (domain) => {
-    const res = await fetch(`${base}?domain=${encodeURIComponent(domain)}`);
+    // fresh=1: cada caso reescribe la base en memoria, y desde v4.1180 la ruta
+    // guarda la configuración en caché por dominio. Lo que se prueba acá es la
+    // RESOLUCIÓN; la caché tiene su propia prueba (test:resilience).
+    const res = await fetch(`${base}?domain=${encodeURIComponent(domain)}&fresh=1`);
     return { status: res.status, body: await res.json() };
 };
 

@@ -6,6 +6,8 @@ import fs from 'fs';
 import dotenv from 'dotenv';
 dotenv.config();
 import { isBuildAssetPath, isBuildScriptPath, reloadShim } from '../server/lib/staticAssets.js';
+import { withDeadline, createSwrCache, serverTiming } from '../server/lib/resilience.js';
+import { DOCUMENT_BUDGET, documentCacheKey, baseDocumentHeaders } from '../server/lib/documentBudget.js';
 import prisma from '../server/lib/prisma.js';
 import Stripe from 'stripe';
 import authRoutes from '../server/routes/auth.js';
@@ -144,6 +146,36 @@ app.get('/api/technical-requests', async (req, res) => {
 
 app.get('/api', (req, res) => {
     res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.1154.0', release: 'Rotary En Accion S3 Fix 🎬' });
+});
+
+// ── Salud por capas (v4.1180) ────────────────────────────────────────────────
+//
+// Distinguen DÓNDE está una falla, que es lo que faltó para diagnosticar la
+// página en blanco de rotary4281.org: `live` no toca nada (si falla, es el
+// dominio, el DNS, el certificado o la plataforma); `deps` mide la base con
+// tope (si falla sólo ésta, la página igual se sirve: degradada). Las consume
+// `scripts/site-health.mjs` y el monitoreo externo. Sin caché, sin sesión.
+app.get('/api/health/live', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ status: 'ok', layer: 'function', host: req.hostname, at: new Date().toISOString() });
+});
+
+app.get('/api/health/deps', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const t0 = Date.now();
+    const checks = {};
+    const medir = async (nombre, fn) => {
+        const t = Date.now();
+        try { await withDeadline(fn(), 3000, nombre); checks[nombre] = { ok: true, ms: Date.now() - t }; }
+        catch (e) { checks[nombre] = { ok: false, ms: Date.now() - t, error: e?.code || e?.message || 'error' }; }
+    };
+    const { default: db } = await import('../server/lib/db.js');
+    await Promise.all([
+        medir('pg', () => db.query('SELECT 1')),
+        medir('prisma', () => prisma.$queryRaw`SELECT 1`),
+    ]);
+    const ok = Object.values(checks).every(c => c.ok);
+    res.status(ok ? 200 : 503).json({ status: ok ? 'ok' : 'degraded', ms: Date.now() - t0, checks });
 });
 
 app.get('/api/health', async (req, res) => {
@@ -403,9 +435,9 @@ app.get('*', async (req, res) => {
     
     if (isMainDomain && !isSystemPath) {
         try {
-            const redirectConfig = await prisma.platformConfig.findFirst({
+            const redirectConfig = await withDeadline(prisma.platformConfig.findFirst({
                 where: { key: 'saas_redirect' }
-            });
+            }), DOCUMENT_BUDGET.redirectsMs, 'saas_redirect');
             
             if (redirectConfig?.value === 'true') {
                 const targetUrl = `https://app.clubplatform.org${req.path === '/' ? '' : req.path}`;
@@ -433,7 +465,10 @@ app.get('*', async (req, res) => {
 
         // La lista del sitio va CACHEADA (60 s), así que una página normal no
         // paga ninguna consulta de más por pasar por acá.
-        const link = matchLink(req.path, await readRedirectsForHost(hostname));
+        // v4.1180 — con TOPE: si la base no contesta, se sigue sin redirección en
+        // vez de dejar al visitante esperando un documento que no llega.
+        const link = matchLink(req.path, await withDeadline(
+            readRedirectsForHost(hostname), DOCUMENT_BUDGET.redirectsMs, 'redirects'));
         if (link) {
             const search = req.originalUrl.includes('?')
                 ? req.originalUrl.slice(req.originalUrl.indexOf('?'))
@@ -537,52 +572,79 @@ app.get('*', async (req, res) => {
             .send('Archivo no encontrado. Probablemente pertenece a una versión anterior del sitio.');
     }
 
-    try {
-        const indexPath = path.resolve(process.cwd(), 'dist/index.html');
-        if (!fs.existsSync(indexPath)) return res.status(404).send('Frontend not built.');
-        const html = fs.readFileSync(indexPath, 'utf8');
+    // ── El documento, con TOPE de tiempo y caché con respaldo (v4.1180) ──
+    //
+    // Causa raíz de la página en blanco de rotary4281.org: el documento HTML se
+    // entregaba DESPUÉS de resolver el <head> contra la base, sin ningún tope.
+    // Con la función compartida (Fluid compute atiende visitas y crons en la
+    // misma instancia) y el pool de conexiones ocupado, esa espera podía durar
+    // decenas de segundos: el navegador no recibía ni un byte, la pestaña se
+    // quedaba en blanco con el indicador girando, y recargar o cambiar de red
+    // «lo arreglaba» porque caía en otra instancia. Ahora:
+    //   1. `index.html` se lee del disco UNA vez por instancia.
+    //   2. El documento resuelto se cachea por dominio y ruta (SWR): una visita
+    //      repetida no toca la base, y si la base falla se sirve el último bueno.
+    //   3. Si nada de eso alcanza dentro de `DOCUMENT_BUDGET.renderMs`, se
+    //      entrega el documento BASE: pierde las etiquetas de SEO de esa visita,
+    //      no la página. Ninguna dependencia lenta deja el sitio en blanco.
+    const t0 = Date.now();
+    const html = readIndexHtml();
+    if (!html) return res.status(404).send('Frontend not built.');
 
+    let doc = null;
+    let source = 'base';
+    try {
         const { renderPublicDocument } = await import('../server/lib/seoServe.js');
-        const doc = await renderPublicDocument({
+        const key = documentCacheKey(hostname, req.path);
+        const out = await documentCache.get(key, () => renderPublicDocument({
             html,
             host: hostname,
             path: req.path,
             protocol: req.headers['x-forwarded-proto'] || 'https',
-        });
-
-        // Una entidad que ya no existe responde 404 y no 200 con la SPA vacía:
-        // un *soft 404* se indexa como página buena y acaba diluyendo el sitio.
-        // El cuerpo sigue siendo la aplicación, así que el visitante ve la
-        // pantalla de "no encontrado" con su navegación intacta.
-        res.status(doc.status);
-        // La ficha depende del dominio, así que una caché compartida tiene que
-        // saberlo. Sin `Vary: Host` un proxy podría servirle a un sitio el <head>
-        // de otro.
-        res.setHeader('Vary', 'Host');
-        // ── El documento NO se cachea (v4.789) ──
-        //
-        // Es la otra mitad del panel en blanco. El documento nombra los
-        // archivos del build por su hash, y esos hashes cambian en cada
-        // despliegue: un documento guardado en caché manda al navegador a pedir
-        // archivos que ya no existen. Y como se sirve desde una función, sin
-        // esta cabecera queda a merced de la caché heurística del navegador —
-        // por eso una recarga normal no bastaba y hacía falta forzarla varias
-        // veces.
-        //
-        // No encarece nada: lo pesado son los archivos de `/assets/`, que
-        // llevan hash en el nombre, son inmutables y siguen cacheándose.
-        res.setHeader('Cache-Control', 'no-store, must-revalidate');
-        res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        res.send(doc.html);
+        }), { deadlineMs: DOCUMENT_BUDGET.renderMs });
+        doc = out.value;
+        source = out.source;
+        if (out.error) console.warn(`[doc] ${hostname}${req.path}: se sirve copia previa (${out.error.message})`);
     } catch (err) {
-        // Un fallo del módulo de SEO NUNCA puede dejar el sitio sin servir. Se
-        // entrega el documento tal cual: pierde las etiquetas resueltas, no la
-        // página.
-        console.error('[seo] Fallo al resolver el <head>, se sirve el documento base:', err);
-        const indexPath = path.resolve(process.cwd(), 'dist/index.html');
-        if (fs.existsSync(indexPath)) return res.sendFile(indexPath);
-        res.status(500).send('Error loading page.');
+        // Un fallo o una demora del módulo de SEO NUNCA puede dejar el sitio sin
+        // servir: se entrega el documento base.
+        console.error(`[doc] ${hostname}${req.path}: se sirve el documento base —`, err?.message || err);
     }
+
+    const headers = baseDocumentHeaders();
+    for (const [k, v] of Object.entries(headers)) res.setHeader(k, v);
+    // Diagnóstico sin abrir los logs: cuánto tardó y de dónde salió el
+    // documento (computed | fresh | stale | base). Lo lee `scripts/site-health.mjs`.
+    res.setHeader('Server-Timing', serverTiming([['doc', Date.now() - t0, source]]));
+    res.setHeader('X-Doc-Source', source);
+    // Una entidad que ya no existe responde 404 y no 200 con la SPA vacía (un
+    // *soft 404* se indexa como página buena). Sólo con un documento resuelto:
+    // el documento base no sabe si la entidad existe y responde 200.
+    res.status(doc ? doc.status : 200);
+    res.send(doc ? doc.html : html);
+});
+
+// `index.html` no cambia mientras viva la instancia (cambia con el despliegue,
+// que es otra instancia): leerlo del disco en cada visita era trabajo sin
+// motivo dentro del camino crítico.
+let indexHtmlCache = null;
+function readIndexHtml() {
+    if (indexHtmlCache) return indexHtmlCache;
+    try {
+        const indexPath = path.resolve(process.cwd(), 'dist/index.html');
+        if (!fs.existsSync(indexPath)) return null;
+        indexHtmlCache = fs.readFileSync(indexPath, 'utf8');
+        return indexHtmlCache;
+    } catch (e) {
+        console.error('[doc] no se pudo leer dist/index.html:', e.message);
+        return null;
+    }
+}
+
+const documentCache = createSwrCache({
+    ttlMs: DOCUMENT_BUDGET.cacheTtlMs,
+    staleMs: DOCUMENT_BUDGET.cacheStaleMs,
+    max: DOCUMENT_BUDGET.cacheMax,
 });
 
 export default app;
