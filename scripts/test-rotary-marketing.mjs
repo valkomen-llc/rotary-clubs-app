@@ -233,6 +233,140 @@ test('Editor Visual: Cabecera institucional inteligente y bloques globales adapt
   assert.ok(html.includes('footer-logo.png'), 'Debe renderizar el logo del footer');
   assert.ok(html.includes('573001234567'), 'Debe renderizar el WhatsApp personalizado');
   assert.ok(html.includes('Club Rotario Bogotá'), 'Debe renderizar el texto legal personalizado');
-  assert.ok(!html.includes('&#128167; Agua'), 'No debe renderizar las áreas de interés si showAreas es false');
+  assert(!html.includes('&#128167; Agua'), 'No debe renderizar las áreas de interés si showAreas es false');
+});
+
+test('Editor Visual: Tipografía Open Sans por defecto, variantes y fallbacks de correo', async () => {
+  const { renderDesignToHtml, DEFAULT_SETTINGS, FONT_WEIGHT_OPTIONS, LINE_HEIGHT_OPTIONS, makeBlock } = await import('../src/lib/emailBlocks.ts');
+
+  // 1. Open Sans es la fuente predeterminada
+  assert.ok(DEFAULT_SETTINGS.font.includes('Open Sans'), 'La tipografía predeterminada debe ser Open Sans');
+  assert.ok(DEFAULT_SETTINGS.font.includes('Helvetica') || DEFAULT_SETTINGS.font.includes('Arial'), 'Debe incluir fallbacks seguros para clientes de correo');
+
+  // 2. Variantes de peso tipográfico (Light 300 a ExtraBold 800)
+  const weights = FONT_WEIGHT_OPTIONS.map(w => w.value);
+  ['300', '400', '500', '600', '700', '800'].forEach(w => {
+    assert.ok(weights.includes(w), `Debe soportar peso tipográfico ${w}`);
+  });
+
+  // 3. Interlineados disponibles
+  const lineHeights = LINE_HEIGHT_OPTIONS.map(lh => lh.value);
+  assert.ok(lineHeights.includes(1.25) && lineHeights.includes(1.5) && lineHeights.includes(1.8));
+
+  // 4. Bloques con tipografía personalizada individual
+  const customHeading = {
+    ...makeBlock('heading'),
+    text: 'Título con Tipografía Personalizada',
+    fontFamily: 'Georgia, serif',
+    fontWeight: '700',
+    fontSize: 28,
+    lineHeight: '1.3',
+    letterSpacing: '0.02em',
+    color: '#013388',
+    align: 'center'
+  };
+
+  const customText = {
+    ...makeBlock('text'),
+    text: 'Párrafo con Open Sans Light y espaciado amplio.',
+    fontFamily: "'Open Sans', Helvetica, Arial, sans-serif",
+    fontWeight: '300',
+    fontSize: 16,
+    lineHeight: '1.6',
+    letterSpacing: '0.01em',
+    color: '#334155',
+    align: 'left'
+  };
+
+  const design = {
+    version: 1,
+    settings: { ...DEFAULT_SETTINGS },
+    blocks: [customHeading, customText]
+  };
+
+  const html = renderDesignToHtml(design);
+  // Verificar importación de Google Fonts Open Sans
+  assert.ok(html.includes('fonts.googleapis.com/css2?family=Open+Sans'), 'Debe importar Open Sans');
+  // Verificar estilos aplicados al heading y texto
+  assert.ok(html.includes('Georgia, serif'), 'Debe aplicar tipografía personalizada al encabezado');
+  assert.ok(html.includes('letter-spacing: 0.02em'), 'Debe aplicar letter-spacing al encabezado');
+  assert.ok(html.includes('font-weight: 300'), 'Debe aplicar font-weight 300 al párrafo');
+  assert.ok(html.includes('line-height: 1.6'), 'Debe aplicar interlineado al párrafo');
+});
+
+test('Editor Visual: 15 Categorías oficiales de Rotary en Acción en diseño compacto y dinámico', async () => {
+  const { renderDesignToHtml, makeBlock } = await import('../src/lib/emailBlocks.ts');
+  const { DEFAULT_TIPOS } = await import('../src/lib/rotaryEnAccionSpec.ts');
+
+  assert.equal(DEFAULT_TIPOS.length, 15, 'Debe haber exactamente 15 categorías oficiales');
+
+  const areasBlock = {
+    ...makeBlock('global'),
+    globalKey: 'rotary_areas_focus',
+    title: '¿Qué puede compartir tu club en Rotary en Acción?'
+  };
+
+  const design = {
+    version: 1,
+    settings: { font: "'Open Sans', Helvetica, Arial, sans-serif", bg: '#0d233a', contentBg: '#ffffff', textColor: '#334155', linkColor: '#013388', width: 600 },
+    blocks: [areasBlock]
+  };
+
+  const html = renderDesignToHtml(design);
+
+  // Verificar título oficial
+  assert.ok(html.includes('¿Qué puede compartir tu club en Rotary en Acción?'), 'Debe incluir el título actualizado de la sección');
+
+  // Verificar que incluye las categorías oficiales (Proyecto u obra, Alianza, Campaña, etc.)
+  assert.ok(html.includes('Proyecto u obra'), 'Debe incluir Proyecto u obra');
+  assert.ok(html.includes('Actividad o jornada'), 'Debe incluir Actividad o jornada');
+  assert.ok(html.includes('Emergencia o respuesta humanitaria'), 'Debe incluir Emergencia');
+  assert.ok(html.includes('Historia de servicio'), 'Debe incluir Historia de servicio');
+  assert.ok(html.includes('Actividad juvenil'), 'Debe incluir Actividad juvenil');
+  assert.ok(html.includes('Recaudación de fondos'), 'Debe incluir Recaudación de fondos');
+  assert.ok(html.includes('Otra acción'), 'Debe incluir Otra acción');
+
+  // Verificar que el diseño es compacto (distribuido en celdas de tabla 3 columnas para email)
+  assert.ok(html.includes('width="33.3%"') || html.includes('width: 33.3%'), 'Debe usar disposición compacta de 3 columnas para evitar longitud excesiva');
+});
+
+test('Editor Visual: Enlace inteligente y universal para el botón principal según sitio activo', async () => {
+  const { renderDesignToHtml, makeBlock, resolveSiteRotaryEnAccionUrl } = await import('../src/lib/emailBlocks.ts');
+
+  // 1. Resolución para Distrito 4281
+  const urlD4281 = resolveSiteRotaryEnAccionUrl({ domain: 'rotary4281.org', isMainPlatform: false });
+  assert.equal(urlD4281, 'https://rotary4281.org/rotary-en-accion');
+
+  // 2. Resolución para Club Platform central
+  const urlPlatform = resolveSiteRotaryEnAccionUrl({ isMainPlatform: true });
+  assert.equal(urlPlatform, 'https://app.clubplatform.org/rotary-en-accion');
+
+  // 3. Resolución para sitio con dominio propio (ej. club)
+  const urlClub = resolveSiteRotaryEnAccionUrl({ domain: 'rotarycali.org', isMainPlatform: false });
+  assert.equal(urlClub, 'https://rotarycali.org/rotary-en-accion');
+
+  // 4. Resolución dinámica en botón con token {{form_url}}
+  const btnBlock = {
+    ...makeBlock('button'),
+    text: 'COMPARTIR EN ROTARY EN ACCIÓN',
+    href: '{{form_url}}',
+    bg: '#013388',
+    color: '#ffffff'
+  };
+
+  const design = {
+    version: 1,
+    settings: { font: "'Open Sans', Helvetica, Arial, sans-serif", bg: '#0d233a', contentBg: '#ffffff', textColor: '#334155', linkColor: '#013388', width: 600 },
+    blocks: [btnBlock]
+  };
+
+  // Render para Distrito 4281
+  const htmlD4281 = renderDesignToHtml(design, { domain: 'rotary4281.org' });
+  assert.ok(htmlD4281.includes('href="https://rotary4281.org/rotary-en-accion"'), 'El botón debe resolver dinámicamente al formulario del Distrito 4281');
+  assert.ok(htmlD4281.includes('COMPARTIR EN ROTARY EN ACCIÓN'), 'Debe utilizar el llamado a la acción universal');
+
+  // Render para Club Platform
+  const htmlPlatform = renderDesignToHtml(design, { isMainPlatform: true });
+  assert.ok(htmlPlatform.includes('href="https://app.clubplatform.org/rotary-en-accion"'), 'El botón debe resolver dinámicamente al formulario de Club Platform');
 });
 

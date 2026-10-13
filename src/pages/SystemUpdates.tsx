@@ -42,6 +42,21 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1189.0',
+        title: 'Optimización Tipográfica, Categorías Dinámicas y Enlaces Inteligentes | Rotary en Acción 🔤🌐✨',
+        description: 'Optimización integral del Editor Visual de Plantillas de Club Platform para garantizar máxima coherencia con la identidad gráfica oficial de Rotary International y soporte multisitio inteligente: adopción de Open Sans como tipografía predeterminada del sistema con sus 6 variantes de peso (300 a 800) y controles avanzados de interlineado (line-height) y espaciado (letter-spacing), compatibles al 100% con clientes como Gmail, Apple Mail y Outlook mediante estilos MSO y Google Fonts; actualización del bloque de causas institucionales por las 15 categorías oficiales del formulario unificado de Rotary en Acción en una cuadrícula compacta y elegante de micro-tarjetas 5×3 que evita correos excesivamente largos; y resolución dinámica inteligente del botón principal universal («COMPARTIR EN ROTARY EN ACCIÓN») según el sitio activo (Distrito 4281, Club Platform o dominio del club), con opción de modificación manual y restauración instantánea.',
+        date: new Date().toISOString(),
+        tags: ['email-marketing', 'editor-visual', 'tipografia', 'open-sans', 'enlaces-inteligentes', 'rotary-en-accion', 'multisitio', 'production-release'],
+        type: 'feature',
+        changes: [
+            { type: 'added', text: 'Selector tipográfico por bloque y plantilla global: Open Sans predeterminada con variantes Light 300 a ExtraBold 800, Arial, Helvetica, Georgia, Verdana y controles de tamaño, interlineado y espaciado entre letras.' },
+            { type: 'improved', text: 'Compatibilidad de correo electrónico robusta: importación oficial de Open Sans y reglas condicionales MSO para Outlook de escritorio garantizando renderizado impecable sin roturas de maquetación.' },
+            { type: 'updated', text: 'Actualización a las 15 categorías oficiales de Rotary en Acción en tarjeta compacta: sustitución de la lista vertical por una cuadrícula 5×3 de micro-tarjetas con ícono institucional (Proyecto, Jornada, Evento, Historia, etc.).' },
+            { type: 'added', text: 'Enlace inteligente y universal para el botón principal: llamada a la acción «COMPARTIR EN ROTARY EN ACCIÓN» con resolución automática al formulario público del sitio activo (rotary4281.org, app.clubplatform.org o dominio personalizado).' },
+            { type: 'improved', text: 'Control de restauración de enlace inteligente en el inspector del botón con indicador visual de la URL resuelta en tiempo real.' }
+        ]
+    },
+    {
         version: '4.1188.0',
         title: 'Cabecera Institucional Inteligente y Adaptable Multisitio | Club Platform 🏛️✨',
         description: 'Transformación integral de la cabecera en el Editor Visual de Plantillas hacia un sistema institucional multisitio de alta fidelidad: eliminación total de copys promocionales y menciones rígidas de distritos en la cabecera, reservando el espacio exclusivamente para la identidad visual de la organización activa; resolución inteligente y jerárquica de logos (Prioridad 1: logo personalizado de plantilla; Prioridad 2: logo institucional de ajustes de sitio; Prioridad 3: fallback oficial de Club Platform; Prioridad 4: encabezado tipográfico institucional limpio para evitar suplantaciones o mezclas indebidas entre organizaciones); suite de personalización avanzada en el inspector con biblioteca de medios, carga de archivos locales, persistencia como logo predeterminado del sitio vía API, control milimétrico de dimensiones y alineación protegiendo la proporción original sin distorsiones, y previsualización sincronizada en el panel de campañas y envíos de prueba.',

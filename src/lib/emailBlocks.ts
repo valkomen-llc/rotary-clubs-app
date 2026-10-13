@@ -1,14 +1,10 @@
-// Email Marketing — Editor visual de bloques (v4.566).
-// Define el modelo de "diseño" (bloques) de un correo y su renderizado a HTML
-// compatible con clientes de correo (tablas + estilos inline). El HTML resultante
-// se guarda en EmailCampaign.content y lo consume el pipeline de envío existente
-// (buildEmailHtml envuelve este contenido con tracking + pie de baja).
+import { DEFAULT_TIPOS } from './rotaryEnAccionSpec.ts';
 
 export type Align = 'left' | 'center' | 'right';
 
 // Espaciado vertical por bloque (v4.1170, opcional: ausente = 0).
 export interface BlockPad { padTop?: number; padBottom?: number; }
-export type BlockWeight = 'normal' | 'bold' | '800';
+export type BlockWeight = '300' | '400' | '500' | '600' | '700' | '800' | 'normal' | 'bold';
 
 export type SocialNetwork = 'facebook' | 'instagram' | 'x' | 'linkedin' | 'youtube' | 'whatsapp' | 'web';
 
@@ -20,10 +16,50 @@ export interface BaseBlock extends BlockPad {
     globalKey?: string; // Clave de bloque global ('rotary_header' | 'rotary_footer' | 'rotary_signature' | 'rotary_areas_focus')
 }
 
-export interface HeadingBlock extends BaseBlock { type: 'heading'; text: string; level: 1 | 2 | 3; align: Align; color: string; weight?: BlockWeight; }
-export interface TextBlock extends BaseBlock { type: 'text'; text: string; align: Align; color: string; size: number; weight?: BlockWeight; }
+export interface HeadingBlock extends BaseBlock {
+    type: 'heading';
+    text: string;
+    level: 1 | 2 | 3;
+    align: Align;
+    color: string;
+    weight?: BlockWeight;
+    fontFamily?: string;
+    fontWeight?: BlockWeight;
+    fontSize?: number;
+    lineHeight?: number;
+    letterSpacing?: number | string;
+}
+
+export interface TextBlock extends BaseBlock {
+    type: 'text';
+    text: string;
+    align: Align;
+    color: string;
+    size: number;
+    weight?: BlockWeight;
+    fontFamily?: string;
+    fontWeight?: BlockWeight;
+    lineHeight?: number;
+    letterSpacing?: number | string;
+}
+
 export interface ImageBlock extends BaseBlock { type: 'image'; url: string; alt: string; href: string; align: Align; width: number; radius: number; }
-export interface ButtonBlock extends BaseBlock { type: 'button'; text: string; href: string; bg: string; color: string; align: Align; radius: number; }
+
+export interface ButtonBlock extends BaseBlock {
+    type: 'button';
+    text: string;
+    href: string;
+    bg: string;
+    color: string;
+    align: Align;
+    radius: number;
+    fontFamily?: string;
+    fontWeight?: BlockWeight;
+    fontSize?: number;
+    lineHeight?: number;
+    letterSpacing?: number | string;
+}
+
 export interface DividerBlock extends BaseBlock { type: 'divider'; color: string; thickness: number; }
 export interface SpacerBlock extends BaseBlock { type: 'spacer'; height: number; }
 export interface SocialLink { network: SocialNetwork; url: string; }
@@ -35,6 +71,17 @@ export interface ColumnsBlock extends BaseBlock { type: 'columns'; left: ColumnC
 export interface MenuItem { label: string; url: string; }
 export interface MenuBlock extends BaseBlock { type: 'menu'; items: MenuItem[]; align: Align; color: string; size: number; }
 export interface TableRow { cells: string[]; }
+export interface TableBlock extends BaseBlock {
+    type: 'table';
+    headers?: string[];
+    rows: TableRow[];
+    borderColor?: string;
+    headerBg?: string;
+    headerColor?: string;
+    textColor?: string;
+    align?: Align;
+}
+
 export interface GlobalBlockItem extends BaseBlock {
     type: 'global';
     globalKey: string;
@@ -82,21 +129,40 @@ export interface EmailDesign {
 }
 
 export const DEFAULT_SETTINGS: EmailSettings = {
-    bg: '#f3f4f6',
+    bg: '#0d233a',
     contentBg: '#ffffff',
-    font: "Arial, Helvetica, sans-serif",
-    textColor: '#333333',
-    linkColor: '#0c3c7c',
+    font: "'Open Sans', Helvetica, Arial, sans-serif",
+    textColor: '#334155',
+    linkColor: '#013388',
     width: 600,
 };
 
 export const FONT_OPTIONS = [
+    { value: "'Open Sans', Helvetica, Arial, sans-serif", label: 'Open Sans (Institucional Rotary & Club Platform)' },
     { value: "Arial, Helvetica, sans-serif", label: 'Arial' },
-    { value: "'Helvetica Neue', Helvetica, Arial, sans-serif", label: 'Helvetica' },
+    { value: "Helvetica, Arial, sans-serif", label: 'Helvetica' },
     { value: "Georgia, 'Times New Roman', serif", label: 'Georgia' },
-    { value: "'Trebuchet MS', Tahoma, sans-serif", label: 'Trebuchet' },
     { value: "Verdana, Geneva, sans-serif", label: 'Verdana' },
+    { value: "'Trebuchet MS', Tahoma, sans-serif", label: 'Trebuchet MS' },
     { value: "Tahoma, Verdana, sans-serif", label: 'Tahoma' },
+];
+
+export const FONT_WEIGHT_OPTIONS = [
+    { value: '300', label: 'Light (300)' },
+    { value: '400', label: 'Regular (400)' },
+    { value: '500', label: 'Medium (500)' },
+    { value: '600', label: 'SemiBold (600)' },
+    { value: '700', label: 'Bold (700)' },
+    { value: '800', label: 'ExtraBold (800)' },
+];
+
+export const LINE_HEIGHT_OPTIONS = [
+    { value: 1.15, label: '1.15 (Muy Compacto)' },
+    { value: 1.25, label: '1.25 (Encabezados)' },
+    { value: 1.4, label: '1.4 (Compacto)' },
+    { value: 1.5, label: '1.5 (Estándar)' },
+    { value: 1.6, label: '1.6 (Lectura Óptima)' },
+    { value: 1.8, label: '1.8 (Aireado)' },
 ];
 
 let _idc = 0;
@@ -229,6 +295,9 @@ export interface SiteBrandingContext {
     siteType?: string | null;
     isMainPlatform?: boolean;
     platformLogo?: string | null;
+    domain?: string | null;
+    publicUrl?: string | null;
+    rotaryEnAccionUrl?: string | null;
 }
 
 export interface ResolvedLogoResult {
@@ -241,12 +310,34 @@ export interface ResolvedLogoResult {
 }
 
 /**
+ * Resuelve dinámicamente la URL pública del formulario de Rotary en Acción
+ * según la configuración institucional del sitio activo donde se ejecuta la campaña.
+ */
+export const resolveSiteRotaryEnAccionUrl = (siteContext?: SiteBrandingContext): string => {
+    if (siteContext?.rotaryEnAccionUrl && typeof siteContext.rotaryEnAccionUrl === 'string' && siteContext.rotaryEnAccionUrl.trim()) {
+        return siteContext.rotaryEnAccionUrl.trim();
+    }
+    if (siteContext?.domain && typeof siteContext.domain === 'string' && siteContext.domain.trim()) {
+        const clean = siteContext.domain.toLowerCase().trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '');
+        if (clean) return `https://${clean}/rotary-en-accion`;
+    }
+    if (siteContext?.publicUrl && typeof siteContext.publicUrl === 'string' && siteContext.publicUrl.trim()) {
+        const base = siteContext.publicUrl.trim().replace(/\/+$/, '');
+        return `${base}/rotary-en-accion`;
+    }
+    if (siteContext?.isMainPlatform) {
+        return 'https://app.clubplatform.org/rotary-en-accion';
+    }
+    return 'https://app.clubplatform.org/rotary-en-accion';
+};
+
+/**
  * Obtiene el contexto institucional activo del sitio actual desde el entorno / almacenamiento local
  * cuando no se pasa un siteContext explícito. Reutiliza la arquitectura multitenant del sistema.
  */
 export const getActiveSiteBrandingContext = (): SiteBrandingContext => {
     if (typeof window === 'undefined') {
-        return { isMainPlatform: false, siteName: 'Rotary' };
+        return { isMainPlatform: false, siteName: 'Rotary', rotaryEnAccionUrl: 'https://app.clubplatform.org/rotary-en-accion' };
     }
     try {
         const host = window.location.hostname;
@@ -255,6 +346,8 @@ export const getActiveSiteBrandingContext = (): SiteBrandingContext => {
         let siteLogo: string | null = null;
         let siteName: string | null = null;
         let siteType: string | null = null;
+        let domain: string | null = null;
+        let publicUrl: string | null = null;
 
         // 1. Datos del club / sitio en almacenamiento local (persistencia de sesión multitenant)
         try {
@@ -265,23 +358,32 @@ export const getActiveSiteBrandingContext = (): SiteBrandingContext => {
                     if (typeof c.logo === 'string' && c.logo.trim()) siteLogo = c.logo.trim();
                     if (typeof c.name === 'string' && c.name.trim()) siteName = c.name.trim();
                     if (typeof c.type === 'string') siteType = c.type;
+                    if (typeof c.domain === 'string' && c.domain.trim()) domain = c.domain.trim();
+                    else if (typeof c.customDomain === 'string' && c.customDomain.trim()) domain = c.customDomain.trim();
+                    if (typeof c.publicUrl === 'string' && c.publicUrl.trim()) publicUrl = c.publicUrl.trim();
                 }
             }
         } catch {}
 
         // 2. Si no hay logo del club en rotary_club, consultar sesión del usuario logueado
-        if (!siteLogo) {
+        if (!siteLogo || !domain) {
             try {
                 const rawUser = localStorage.getItem('rotary_user');
                 if (rawUser) {
                     const u = JSON.parse(rawUser);
-                    if (u?.club?.logo && typeof u.club.logo === 'string') siteLogo = u.club.logo.trim();
+                    if (!siteLogo && u?.club?.logo && typeof u.club.logo === 'string') siteLogo = u.club.logo.trim();
                     if (!siteName && u?.club?.name) siteName = u.club.name.trim();
+                    if (!domain && u?.club?.domain && typeof u.club.domain === 'string') domain = u.club.domain.trim();
                 }
             } catch {}
         }
 
-        // 3. Logo de plataforma central
+        // 3. Fallback de dominio desde el hostname activo si no es entorno genérico
+        if (!domain && host && host !== 'localhost' && !isMainPlatform) {
+            domain = host.replace(/^www\./, '');
+        }
+
+        // 4. Logo de plataforma central
         let platformLogo: string | null = null;
         try {
             const cpLogo = localStorage.getItem('cp_platform_logo');
@@ -291,15 +393,19 @@ export const getActiveSiteBrandingContext = (): SiteBrandingContext => {
             }
         } catch {}
 
-        return {
+        const ctx: SiteBrandingContext = {
             siteLogo,
             siteName: siteName || (isMainPlatform ? 'Club Platform' : 'Organización'),
             siteType,
             isMainPlatform,
-            platformLogo: platformLogo || '/images/platform_logo_premium.png'
+            platformLogo: platformLogo || '/images/platform_logo_premium.png',
+            domain,
+            publicUrl: publicUrl || (domain ? `https://${domain}` : null),
         };
+        ctx.rotaryEnAccionUrl = resolveSiteRotaryEnAccionUrl(ctx);
+        return ctx;
     } catch {
-        return { isMainPlatform: false, siteName: 'Club Platform' };
+        return { isMainPlatform: false, siteName: 'Club Platform', rotaryEnAccionUrl: 'https://app.clubplatform.org/rotary-en-accion' };
     }
 };
 
@@ -396,18 +502,48 @@ const renderBlock = (b: Block, s: EmailSettings, interactive = false, siteContex
     switch (b.type) {
         case 'heading': {
             const sizes = { 1: 28, 2: 22, 3: 18 } as const;
-            return C(`<h${b.level} style="margin:0;font-size:${sizes[b.level]}px;line-height:1.25;color:${esc(b.color)};text-align:${b.align};font-weight:${b.weight === 'normal' ? '400' : b.weight === 'bold' ? '700' : '800'}">${esc(b.text)}</h${b.level}>`);
+            const fontFam = b.fontFamily || s.font;
+            const fontW = b.fontWeight || (b.weight === 'normal' ? '400' : b.weight === 'bold' ? '700' : '800');
+            const fontSz = b.fontSize || sizes[b.level];
+            const lineH = b.lineHeight || 1.25;
+            const letterSp = b.letterSpacing !== undefined && b.letterSpacing !== null && b.letterSpacing !== ''
+                ? (typeof b.letterSpacing === 'number' || /^-?\d+(\.\d+)?$/.test(String(b.letterSpacing).trim()) ? `${b.letterSpacing}px` : String(b.letterSpacing))
+                : '-0.02em';
+            return C(`<h${b.level} style="margin: 0; font-family: ${fontFam}; font-size: ${fontSz}px; line-height: ${lineH}; letter-spacing: ${letterSp}; color: ${esc(b.color)}; text-align: ${b.align}; font-weight: ${fontW}">${esc(b.text)}</h${b.level}>`);
         }
-        case 'text':
-            return C(`<div style="font-size:${b.size}px;line-height:1.6;color:${esc(b.color)};text-align:${b.align};font-weight:${b.weight === 'bold' || b.weight === '800' ? '700' : '400'}">${textToHtml(b.text)}</div>`);
+        case 'text': {
+            const fontFam = b.fontFamily || s.font;
+            const fontW = b.fontWeight || (b.weight === 'bold' || b.weight === '800' ? '700' : '400');
+            const fontSz = b.size || 15;
+            const lineH = b.lineHeight || 1.6;
+            const letterSp = b.letterSpacing !== undefined && b.letterSpacing !== null && b.letterSpacing !== ''
+                ? (typeof b.letterSpacing === 'number' || /^-?\d+(\.\d+)?$/.test(String(b.letterSpacing).trim()) ? `${b.letterSpacing}px` : String(b.letterSpacing))
+                : 'normal';
+            return C(`<div style="font-family: ${fontFam}; font-size: ${fontSz}px; line-height: ${lineH}; letter-spacing: ${letterSp}; color: ${esc(b.color)}; text-align: ${b.align}; font-weight: ${fontW}">${textToHtml(b.text)}</div>`);
+        }
         case 'image': {
-            if (!b.url) return C(`<div style="padding:24px;text-align:center;color:#9ca3af;border:1px dashed #d1d5db;border-radius:8px">Sin imagen</div>`);
-            const img = `<img src="${safeUrl(b.url)}" alt="${esc(b.alt)}" style="width:${b.width}%;max-width:100%;height:auto;border-radius:${b.radius}px;display:inline-block" />`;
-            const wrapped = b.href ? `<a href="${safeUrl(b.href)}" target="_blank" style="text-decoration:none">${img}</a>` : img;
-            return C(`<div style="text-align:${b.align}">${wrapped}</div>`);
+            if (!b.url) return C(`<div style="padding: 24px; text-align: center; color: #9ca3af; border: 1px dashed #d1d5db; border-radius: 8px">Sin imagen</div>`);
+            const img = `<img src="${safeUrl(b.url)}" alt="${esc(b.alt)}" style="width: ${b.width}%; max-width: 100%; height: auto; border-radius: ${b.radius}px; display: inline-block" />`;
+            const wrapped = b.href ? `<a href="${safeUrl(b.href)}" target="_blank" style="text-decoration: none">${img}</a>` : img;
+            return C(`<div style="text-align: ${b.align}">${wrapped}</div>`);
         }
         case 'button': {
-            const btn = `<a href="${safeUrl(b.href)}" target="_blank" style="display:inline-block;background:${esc(b.bg)};color:${esc(b.color)};text-decoration:none;padding:12px 28px;border-radius:${b.radius}px;font-weight:700;font-size:15px">${esc(b.text)}</a>`;
+            const fontFam = b.fontFamily || s.font;
+            const fontW = b.fontWeight || '700';
+            const fontSz = b.fontSize || 15;
+            const lineH = b.lineHeight || 1.2;
+            const letterSp = b.letterSpacing !== undefined && b.letterSpacing !== null && b.letterSpacing !== ''
+                ? (typeof b.letterSpacing === 'number' || /^-?\d+(\.\d+)?$/.test(String(b.letterSpacing).trim()) ? `${b.letterSpacing}px` : String(b.letterSpacing))
+                : '0.02em';
+
+            // Resolución dinámica de URL inteligente si contiene {{form_url}} o es enlace de formulario oficial
+            let targetHref = b.href || '';
+            if (targetHref === '{{form_url}}' || targetHref.includes('{{form_url}}')) {
+                const smartUrl = resolveSiteRotaryEnAccionUrl(siteContext);
+                targetHref = targetHref.replace(/\{\{form_url\}\}/g, smartUrl);
+            }
+
+            const btn = `<a href="${safeUrl(targetHref)}" target="_blank" style="display: inline-block; background: ${esc(b.bg)}; color: ${esc(b.color)}; text-decoration: none; padding: 12px 28px; border-radius: ${b.radius}px; font-family: ${fontFam}; font-weight: ${fontW}; font-size: ${fontSz}px; line-height: ${lineH}; letter-spacing: ${letterSp}; mso-padding-alt: 0; text-align: center">${esc(b.text)}</a>`;
             return C(`<div style="text-align:${b.align}">${btn}</div>`, '12px 24px');
         }
         case 'divider':
@@ -561,21 +697,36 @@ const renderBlock = (b: Block, s: EmailSettings, interactive = false, siteContex
                     </tr>
                 </table>`);
             }
-            if (b.globalKey === 'rotary_areas_focus') {
-                const title = b.title || 'Las 7 Áreas de Interés de Rotary International:';
+            if (b.globalKey === 'rotary_areas_focus' || b.globalKey === 'rotary_categories') {
+                const title = b.title || '¿Qué puede compartir tu club en Rotary en Acción?';
+                const subtitle = b.subtitle !== undefined ? b.subtitle : 'El formulario unificado se adapta a lo que elijas para visibilizar el impacto de tu club:';
                 const areasBg = b.bgColor || '#f8fafc';
+                const textColor = b.textColor || '#013388';
 
-                return C(`<div style="background-color:${esc(areasBg)};border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin:16px 0">
-                    <div style="font-size:14px;font-weight:800;color:#013388;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.05em">&#127775; ${esc(title)}</div>
-                    <ul style="margin:0;padding-left:18px;color:#334155;font-size:13px;line-height:1.7">
-                        <li><strong>&#128167; Agua, saneamiento e higiene</strong> &mdash; Acceso a agua potable y h&aacute;bitos saludables.</li>
-                        <li><strong>&#128737;&#65039; Prevenci&oacute;n y tratamiento de enfermedades</strong> &mdash; Jornadas m&eacute;dicas y salud preventiva.</li>
-                        <li><strong>&#128118; Salud materno-infantil</strong> &mdash; Protecci&oacute;n de madres, beb&eacute;s y nutrici&oacute;n b&aacute;sica.</li>
-                        <li><strong>&#128218; Apoyo a la educaci&oacute;n</strong> &mdash; Alfabetizaci&oacute;n, becas y dotaci&oacute;n escolar.</li>
-                        <li><strong>&#128104;&#8205;&#127806; Desarrollo econ&oacute;mico local</strong> &mdash; Emprendimiento y capacitaci&oacute;n comunitaria.</li>
-                        <li><strong>&#127807; Medio ambiente</strong> &mdash; Reforestaci&oacute;n, reciclaje y cuidado del ecosistema.</li>
-                        <li><strong>&#128330;&#65039; Construcci&oacute;n de la paz</strong> &mdash; Resoluci&oacute;n de conflictos y armon&iacute;a social.</li>
-                    </ul>
+                // Generar las 15 categorías oficiales en 5 filas x 3 columnas compactas
+                const tipos = DEFAULT_TIPOS || [];
+                const rows: (typeof DEFAULT_TIPOS)[] = [];
+                for (let i = 0; i < tipos.length; i += 3) {
+                    rows.push(tipos.slice(i, i + 3));
+                }
+
+                const gridRowsHtml = rows.map((row) => {
+                    const cells = row.map((t) => {
+                        return `<td width="33.3%" valign="top" style="padding:3px 4px;vertical-align:top">
+                            <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;padding:6px 8px;font-size:11px;font-weight:600;color:#1e293b;line-height:1.3;text-align:left">
+                                <span style="font-size:13px;margin-right:4px;vertical-align:middle">${t.icon}</span><span style="vertical-align:middle">${esc(t.name)}</span>
+                            </div>
+                        </td>`;
+                    }).join('');
+                    return `<tr>${cells}</tr>`;
+                }).join('');
+
+                return C(`<div style="background-color:${esc(areasBg)};border:1px solid #e2e8f0;border-radius:12px;padding:18px 16px;margin:16px 0">
+                    <div style="font-size:14px;font-weight:800;color:${esc(textColor)};margin-bottom:6px;text-transform:uppercase;letter-spacing:0.04em">&#127775; ${esc(title)}</div>
+                    ${subtitle ? `<div style="font-size:12px;color:#64748b;margin-bottom:12px;line-height:1.4">${esc(subtitle)}</div>` : ''}
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%">
+                        ${gridRowsHtml}
+                    </table>
                 </div>`);
             }
             return C(b.customHtml || '<div style="padding:12px;background:#f3f4f6;border-radius:8px">Bloque Global Institucional</div>');
@@ -589,15 +740,27 @@ const renderBlock = (b: Block, s: EmailSettings, interactive = false, siteContex
 // No incluye <html>/<body> ni el pie de baja (eso lo añade buildEmailHtml al enviar).
 export const renderDesignToHtml = (
     design: EmailDesign,
-    opts: { interactive?: boolean; siteContext?: SiteBrandingContext } = {}
+    opts: { interactive?: boolean; siteContext?: SiteBrandingContext } & Partial<SiteBrandingContext> = {}
 ): string => {
     const s = { ...DEFAULT_SETTINGS, ...(design?.settings || {}) };
     const blocks = Array.isArray(design?.blocks) ? design.blocks : [];
-    const rows = blocks.map((b) => renderBlock(b, s, !!opts.interactive, opts.siteContext)).join('');
+    const siteContext: SiteBrandingContext | undefined = opts.siteContext || (('domain' in opts || 'siteLogo' in opts || 'isMainPlatform' in opts || 'siteName' in opts || 'rotaryEnAccionUrl' in opts) ? (opts as SiteBrandingContext) : undefined);
+    const rows = blocks.map((b) => renderBlock(b, s, !!opts.interactive, siteContext)).join('');
     const script = opts.interactive
         ? `<script>document.addEventListener('click',function(e){var el=e.target&&e.target.closest?e.target.closest('[data-bid]'):null;if(el&&window.parent){window.parent.postMessage({type:'ca-select-block',id:el.getAttribute('data-bid')},'*');}});<\/script>`
         : '';
+    const fontsHead = `<style type="text/css">
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300..800;1,300..800&display=swap');
+/* Fallback para Outlook (mso) y clientes antiguos */
+<!--[if mso]>
+<style type="text/css">
+body, table, td, p, a, span, h1, h2, h3 { font-family: Helvetica, Arial, sans-serif !important; }
+</style>
+<![endif]-->
+</style>`;
+
     return `<div style="background:${esc(s.bg)};font-family:${s.font};color:${esc(s.textColor)}">
+${fontsHead}
 <table role="presentation" align="center" width="${s.width}" cellpadding="0" cellspacing="0" style="width:100%;max-width:${s.width}px;margin:0 auto;background:${esc(s.contentBg)};border-collapse:collapse">
 ${rows}
 </table>
@@ -618,54 +781,106 @@ export const parseDesign = (raw?: string | null): EmailDesign | null => {
 
 /**
  * Normaliza y desacopla cualquier diseño recibido:
- * Garantiza que la cabecera contenga EXCLUSIVAMENTE la identidad institucional del sitio,
- * y que si el diseño previo contenía títulos promocionales en la cabecera, estos se muevan
- * limpiamente al cuerpo editable de la campaña sin pérdida de contenido.
+ * 1. Garantiza que la cabecera contenga EXCLUSIVAMENTE la identidad institucional del sitio.
+ * 2. Si el diseño previo contenía títulos promocionales en la cabecera, los traslada a un encabezado de cuerpo.
+ * 3. Actualiza el bloque de categorías de Rotary en Acción con el título y formato institucional oficial.
+ * 4. Actualiza el botón CTA a la redacción universal "COMPARTIR EN ROTARY EN ACCIÓN".
+ * 5. Establece Open Sans como tipografía predeterminada si no había una configurada explícitamente.
  */
 export const normalizeInstitutionalDesign = (rawDesign?: EmailDesign | null): EmailDesign => {
     const base = rawDesign || createRotaryMasterDesign();
     if (!base || !Array.isArray(base.blocks)) return createRotaryMasterDesign();
 
-    const headerIdx = base.blocks.findIndex((b) => b.globalKey === 'rotary_header');
-    if (headerIdx === -1) return base;
-
-    const hdr = base.blocks[headerIdx] as GlobalBlockItem;
-    const oldTitle = hdr.title ? String(hdr.title).replace(/<br\s*\/?>/gi, '\n').trim() : '';
-
-    const cleanedHeader: GlobalBlockItem = {
-        ...hdr,
-        label: 'Cabecera Institucional Adaptable',
-        align: hdr.align || 'center',
-        bgColor: hdr.bgColor || hdr.bgGradient || '#ffffff',
-        bgGradient: hdr.bgGradient || undefined,
-        padding: hdr.padding || '24px 20px',
-        logoMaxWidth: typeof hdr.logoMaxWidth === 'number' && hdr.logoMaxWidth > 0 ? hdr.logoMaxWidth : 240,
-        logoMaxHeight: typeof hdr.logoMaxHeight === 'number' && hdr.logoMaxHeight > 0 ? hdr.logoMaxHeight : 60,
-        title: undefined,
-        subtitle: undefined,
-        badge: undefined,
+    const normalizedSettings: EmailSettings = {
+        ...DEFAULT_SETTINGS,
+        ...(base.settings || {}),
+        font: base.settings?.font && !base.settings.font.includes('-apple-system')
+            ? base.settings.font
+            : "'Open Sans', Helvetica, Arial, sans-serif",
     };
 
-    const newBlocks = [...base.blocks];
-    newBlocks[headerIdx] = cleanedHeader;
+    const headerIdx = base.blocks.findIndex((b) => b.globalKey === 'rotary_header');
+    let newBlocks = [...base.blocks];
 
-    if (oldTitle && !newBlocks.some((b) => b.type === 'heading' && b.text?.includes(oldTitle.split('\n')[0]))) {
-        newBlocks.splice(headerIdx + 1, 0, {
-            id: newId(),
-            type: 'heading',
-            text: oldTitle,
-            level: 1,
-            align: 'center',
-            color: '#013388',
-            weight: '800',
-            label: 'Título de Campaña (Editable)',
-            isProtected: false,
-        });
+    if (headerIdx !== -1) {
+        const hdr = base.blocks[headerIdx] as GlobalBlockItem;
+        const oldTitle = hdr.title ? String(hdr.title).replace(/<br\s*\/?>/gi, '\n').trim() : '';
+
+        const cleanedHeader: GlobalBlockItem = {
+            ...hdr,
+            label: 'Cabecera Institucional Adaptable',
+            align: hdr.align || 'center',
+            bgColor: hdr.bgColor || hdr.bgGradient || '#ffffff',
+            bgGradient: hdr.bgGradient || undefined,
+            padding: hdr.padding || '24px 20px',
+            logoMaxWidth: typeof hdr.logoMaxWidth === 'number' && hdr.logoMaxWidth > 0 ? hdr.logoMaxWidth : 240,
+            logoMaxHeight: typeof hdr.logoMaxHeight === 'number' && hdr.logoMaxHeight > 0 ? hdr.logoMaxHeight : 60,
+            title: undefined,
+            subtitle: undefined,
+            badge: undefined,
+        };
+
+        newBlocks[headerIdx] = cleanedHeader;
+
+        if (oldTitle && !newBlocks.some((b) => b.type === 'heading' && b.text?.includes(oldTitle.split('\n')[0]))) {
+            newBlocks.splice(headerIdx + 1, 0, {
+                id: newId(),
+                type: 'heading',
+                text: oldTitle,
+                level: 1,
+                align: 'center',
+                color: '#013388',
+                weight: '800',
+                fontFamily: "'Open Sans', Helvetica, Arial, sans-serif",
+                fontWeight: '800',
+                label: 'Título de Campaña (Editable)',
+                isProtected: false,
+            });
+        }
     }
+
+    // Normalizar bloques de contenido (categorías y botón CTA)
+    newBlocks = newBlocks.map((b) => {
+        if (b.globalKey === 'rotary_areas_focus' || b.globalKey === 'rotary_categories') {
+            return {
+                ...b,
+                label: '¿Qué puede compartir tu club en Rotary en Acción?',
+                title: b.title && !b.title.includes('7 Áreas') ? b.title : '¿Qué puede compartir tu club en Rotary en Acción?',
+                subtitle: b.subtitle !== undefined ? b.subtitle : 'El formulario unificado se adapta a lo que elijas para visibilizar el impacto de tu club:',
+            };
+        }
+        if (b.type === 'button') {
+            const currentBtn = b as ButtonBlock;
+            return {
+                ...currentBtn,
+                text: currentBtn.text === 'COMPARTIR ACTIVIDAD EN ROTARY EN ACCIÓN'
+                    ? 'COMPARTIR EN ROTARY EN ACCIÓN'
+                    : currentBtn.text,
+                fontFamily: currentBtn.fontFamily || "'Open Sans', Helvetica, Arial, sans-serif",
+                fontWeight: currentBtn.fontWeight || '700',
+            };
+        }
+        if (b.type === 'heading') {
+            const h = b as HeadingBlock;
+            return {
+                ...h,
+                fontFamily: h.fontFamily || "'Open Sans', Helvetica, Arial, sans-serif",
+            };
+        }
+        if (b.type === 'text') {
+            const t = b as TextBlock;
+            return {
+                ...t,
+                fontFamily: t.fontFamily || "'Open Sans', Helvetica, Arial, sans-serif",
+            };
+        }
+        return b;
+    });
 
     return {
         ...base,
-        blocks: newBlocks
+        settings: normalizedSettings,
+        blocks: newBlocks,
     };
 };
 
@@ -675,7 +890,7 @@ export const createRotaryMasterDesign = (): EmailDesign => ({
     settings: {
         bg: '#0d233a',
         contentBg: '#ffffff',
-        font: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+        font: "'Open Sans', Helvetica, Arial, sans-serif",
         textColor: '#334155',
         linkColor: '#013388',
         width: 600,
@@ -703,6 +918,8 @@ export const createRotaryMasterDesign = (): EmailDesign => ({
             align: 'center',
             color: '#013388',
             weight: '800',
+            fontFamily: "'Open Sans', Helvetica, Arial, sans-serif",
+            fontWeight: '800',
             label: 'Título de Campaña (Editable)',
             isProtected: false,
         },
@@ -714,6 +931,8 @@ export const createRotaryMasterDesign = (): EmailDesign => ({
             align: 'left',
             color: '#0f172a',
             weight: '800',
+            fontFamily: "'Open Sans', Helvetica, Arial, sans-serif",
+            fontWeight: '700',
             label: 'Saludo Personalizado',
             isProtected: false,
         },
@@ -724,6 +943,9 @@ export const createRotaryMasterDesign = (): EmailDesign => ({
             align: 'left',
             color: '#334155',
             size: 15,
+            fontFamily: "'Open Sans', Helvetica, Arial, sans-serif",
+            fontWeight: '400',
+            lineHeight: 1.6,
             label: 'Cuerpo de Campaña (Editable / Asistido por IA)',
             isProtected: false,
         },
@@ -731,32 +953,39 @@ export const createRotaryMasterDesign = (): EmailDesign => ({
             id: newId(),
             type: 'global',
             globalKey: 'rotary_areas_focus',
-            label: '7 Áreas de Enfoque Institucionales',
+            label: '¿Qué puede compartir tu club en Rotary en Acción?',
             isProtected: true,
             isLocked: false,
-            title: 'Las 7 Áreas de Interés de Rotary International:',
+            title: '¿Qué puede compartir tu club en Rotary en Acción?',
+            subtitle: 'El formulario unificado se adapta a lo que elijas para visibilizar el impacto de tu club:',
             bgColor: '#f8fafc',
         },
         {
             id: newId(),
             type: 'text',
-            text: '¡Tu club tiene mucho que contar! Ingresa al formulario de Rotary en Acción y comparte las fotos y detalles de tu proyecto en menos de 3 minutos.',
+            text: '¡Tu club tiene mucho que contar! Ingresa al formulario de Rotary en Acción y comparte las fotos y detalles de tu iniciativa en menos de 3 minutos.',
             align: 'left',
             color: '#334155',
             size: 15,
+            fontFamily: "'Open Sans', Helvetica, Arial, sans-serif",
+            fontWeight: '400',
+            lineHeight: 1.6,
             label: 'Llamado al Registro (Editable)',
             isProtected: false,
         },
         {
             id: newId(),
             type: 'button',
-            text: 'COMPARTIR ACTIVIDAD EN ROTARY EN ACCIÓN',
+            text: 'COMPARTIR EN ROTARY EN ACCIÓN',
             href: '{{form_url}}',
             bg: '#013388',
             color: '#ffffff',
             align: 'center',
             radius: 12,
-            label: 'Botón de Acción Principal (Estilo Protegido / Enlace Dinámico)',
+            fontFamily: "'Open Sans', Helvetica, Arial, sans-serif",
+            fontWeight: '700',
+            fontSize: 15,
+            label: 'Botón de Acción Principal (Enlace Inteligente Adaptable)',
             isProtected: false,
         },
         {
@@ -802,9 +1031,9 @@ export const getRotaryGlobalBlocksCatalog = () => [
     },
     {
         key: 'rotary_areas_focus',
-        name: '7 Áreas de Interés de Rotary',
+        name: '¿Qué puede compartir tu club en Rotary en Acción?',
         category: 'Contenido',
-        description: 'Tarjeta estructurada con las siete causas oficiales de servicio rotario.',
+        description: 'Las 15 categorías oficiales del formulario público de Rotary en Acción en formato compacto y adaptable.',
         isProtected: true,
     },
     {

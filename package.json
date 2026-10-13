@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1188.0",
-  "cache_bust": "4.1188.0",
+  "version": "4.1189.0",
+  "cache_bust": "4.1189.0",
   "type": "module",
-  "//": "UI V4.1188.0 | 2026-10-13 (Cabecera Institucional Inteligente y Adaptable Multisitio: Separación Estricta de Identidad Institucional, Resolución Priorizada de Logos, Soporte Completo en Biblioteca de Medios y Subida Local)",
+  "//": "UI V4.1189.0 | 2026-10-13 (Optimización Tipográfica, Categorías Dinámicas y Enlaces Inteligentes: Open Sans Oficial, 15 Categorías Compactas de Rotary en Acción y Enlaces Dinámicos Multisitio)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs && node scripts/check-version-parity.mjs && node scripts/check-syntax.mjs && node scripts/check-hooks.mjs && node scripts/check-routes.mjs && node scripts/check-imports.mjs && node scripts/check-server-undef.mjs && node scripts/check-route-handlers.mjs",

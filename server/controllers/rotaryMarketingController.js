@@ -331,11 +331,21 @@ export const toggleAutomation = async (req, res) => {
 
 export const generateSmartLink = async (req, res) => {
   try {
-    const { clubName, campaignCode = 'sem01_captacion', channel = 'email' } = req.body || {};
+    const { clubName, campaignCode = 'sem01_captacion', channel = 'email', siteDomain, publicUrl } = req.body || {};
     const norm = normClub(clubName);
     const token = `ca_${randomUUID().replace(/-/g, '').slice(0, 10)}`;
 
-    const url = `https://app.clubplatform.org/rotary-en-accion?utm_source=${encodeURIComponent(channel)}&utm_medium=campaign&utm_campaign=${encodeURIComponent(campaignCode)}&utm_content=${encodeURIComponent(norm || 'club')}&ca_token=${token}`;
+    let baseUrl = 'https://app.clubplatform.org';
+    if (siteDomain) {
+      const clean = siteDomain.replace(/^https?:\/\//, '').replace(/\/.*$/, '').trim();
+      if (clean) baseUrl = `https://${clean}`;
+    } else if (publicUrl) {
+      baseUrl = publicUrl.replace(/\/+$/, '');
+    } else if (req.headers.host && !req.headers.host.includes('localhost')) {
+      baseUrl = `https://${req.headers.host}`;
+    }
+
+    const url = `${baseUrl}/rotary-en-accion?utm_source=${encodeURIComponent(channel)}&utm_medium=campaign&utm_campaign=${encodeURIComponent(campaignCode)}&utm_content=${encodeURIComponent(norm || 'club')}&ca_token=${token}`;
 
     res.json({
       ok: true,
@@ -742,14 +752,14 @@ export const getMasterTemplate = async (req, res) => {
         version: 1,
         design: {
           version: 1,
-          settings: { bg: '#0d233a', contentBg: '#ffffff', font: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif", textColor: '#334155', linkColor: '#013388', width: 600 },
+          settings: { bg: '#0d233a', contentBg: '#ffffff', font: "'Open Sans', Helvetica, Arial, sans-serif", textColor: '#334155', linkColor: '#013388', width: 600 },
           blocks: [
             { id: 'b_master_hdr', type: 'global', globalKey: 'rotary_header', label: 'Cabecera Institucional Adaptable', isProtected: true, isLocked: true, logoUrl: '', logoMaxWidth: 240, logoMaxHeight: 60, align: 'center', bgColor: '#ffffff', padding: '24px 20px' },
             { id: 'b_master_titulo', type: 'heading', text: 'Tu club transforma comunidades.\n¡Hagámoslo visible!', level: 1, align: 'center', color: '#013388', weight: '800', label: 'Título de Campaña (Editable)', isProtected: false },
             { id: 'b_master_saludo', type: 'heading', text: 'Hola {{contact.first_name|Líder Rotario(a)}},', level: 2, align: 'left', color: '#0f172a', weight: '800', label: 'Saludo Personalizado', isProtected: false },
             { id: 'b_master_intro', type: 'text', text: 'Estimadas rotarias y estimados rotarios:\n\nCada semana, los clubes realizan un esfuerzo incansable por sus comunidades. Rotary en Acción es la plataforma oficial para visibilizar y registrar ese impacto.', align: 'left', color: '#334155', size: 15, label: 'Cuerpo de Campaña (Editable / IA)', isProtected: false },
-            { id: 'b_master_areas', type: 'global', globalKey: 'rotary_areas_focus', label: '7 Áreas de Enfoque Institucionales', isProtected: true, isLocked: true },
-            { id: 'b_master_cta', type: 'button', text: 'COMPARTIR ACTIVIDAD EN ROTARY EN ACCIÓN', href: '{{form_url}}', bg: '#013388', color: '#ffffff', align: 'center', radius: 12, label: 'Botón CTA Oficial', isProtected: false },
+            { id: 'b_master_areas', type: 'global', globalKey: 'rotary_areas_focus', label: '¿Qué puede compartir tu club en Rotary en Acción?', isProtected: true, isLocked: true },
+            { id: 'b_master_cta', type: 'button', text: 'COMPARTIR EN ROTARY EN ACCIÓN', href: '{{form_url}}', bg: '#013388', color: '#ffffff', align: 'center', radius: 12, label: 'Botón CTA Oficial', isProtected: false },
             { id: 'b_master_firma', type: 'global', globalKey: 'rotary_signature', label: 'Firma Oficial Distrital', isProtected: true, isLocked: true },
             { id: 'b_master_footer', type: 'global', globalKey: 'rotary_footer', label: 'Pie de Página Institucional Protegido', isProtected: true, isLocked: true }
           ]
@@ -772,6 +782,18 @@ export const getMasterTemplate = async (req, res) => {
             align: b.align || 'center',
             bgColor: b.bgColor || '#ffffff',
             padding: b.padding || '24px 20px',
+          };
+        }
+        if (b.globalKey === 'rotary_areas_focus') {
+          return {
+            ...b,
+            label: '¿Qué puede compartir tu club en Rotary en Acción?'
+          };
+        }
+        if (b.id === 'b_master_cta' && b.text === 'COMPARTIR ACTIVIDAD EN ROTARY EN ACCIÓN') {
+          return {
+            ...b,
+            text: 'COMPARTIR EN ROTARY EN ACCIÓN'
           };
         }
         return b;
@@ -847,14 +869,14 @@ export const applyCampaignToTemplate = async (req, res) => {
     if (!design || !Array.isArray(design.blocks)) {
       design = {
         version: 1,
-        settings: { bg: '#0d233a', contentBg: '#ffffff', font: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif", textColor: '#334155', linkColor: '#013388', width: 600 },
+        settings: { bg: '#0d233a', contentBg: '#ffffff', font: "'Open Sans', Helvetica, Arial, sans-serif", textColor: '#334155', linkColor: '#013388', width: 600 },
         blocks: [
           { id: 'b_master_hdr', type: 'global', globalKey: 'rotary_header', label: 'Cabecera Institucional Adaptable', isProtected: true, isLocked: true, logoUrl: '', logoMaxWidth: 240, logoMaxHeight: 60, align: 'center', bgColor: '#ffffff', padding: '24px 20px' },
           { id: 'b_master_titulo', type: 'heading', text: campaign.name || 'Tu club transforma comunidades.\n¡Hagámoslo visible!', level: 1, align: 'center', color: '#013388', weight: '800', label: 'Título de Campaña (Editable)', isProtected: false },
           { id: 'b_master_saludo', type: 'heading', text: 'Hola {{contact.first_name|Líder Rotario(a)}},', level: 2, align: 'left', color: '#0f172a', weight: '800', label: 'Saludo Personalizado', isProtected: false },
           { id: 'b_master_intro', type: 'text', text: `Estimadas rotarias y estimados rotarios:\n\n${campaign.messageCentral || 'Compartimos esta iniciativa con toda nuestra red rotaria.'}`, align: 'left', color: '#334155', size: 15, label: 'Cuerpo de Campaña (Editable / IA)', isProtected: false },
-          { id: 'b_master_areas', type: 'global', globalKey: 'rotary_areas_focus', label: '7 Áreas de Enfoque Institucionales', isProtected: true, isLocked: true },
-          { id: 'b_master_cta', type: 'button', text: 'COMPARTIR ACTIVIDAD EN ROTARY EN ACCIÓN', href: `https://app.clubplatform.org/rotary-en-accion?utm_source=email_marketing&utm_medium=campaign&utm_campaign=${campaign.utmCampaign || 'rotary_campana'}`, bg: '#013388', color: '#ffffff', align: 'center', radius: 12, label: 'Botón CTA Oficial', isProtected: false },
+          { id: 'b_master_areas', type: 'global', globalKey: 'rotary_areas_focus', label: '¿Qué puede compartir tu club en Rotary en Acción?', isProtected: true, isLocked: true },
+          { id: 'b_master_cta', type: 'button', text: 'COMPARTIR EN ROTARY EN ACCIÓN', href: '{{form_url}}', bg: '#013388', color: '#ffffff', align: 'center', radius: 12, label: 'Botón CTA Oficial', isProtected: false },
           { id: 'b_master_firma', type: 'global', globalKey: 'rotary_signature', label: 'Firma Oficial Distrital', isProtected: true, isLocked: true },
           { id: 'b_master_footer', type: 'global', globalKey: 'rotary_footer', label: 'Pie de Página Institucional Protegido', isProtected: true, isLocked: true }
         ]
@@ -873,6 +895,12 @@ export const applyCampaignToTemplate = async (req, res) => {
             padding: b.padding || '24px 20px',
           };
         }
+        if (b.globalKey === 'rotary_areas_focus') {
+          return {
+            ...b,
+            label: '¿Qué puede compartir tu club en Rotary en Acción?'
+          };
+        }
         if (b.type === 'heading' && (b.label?.includes('Título') || b.id === 'b_master_titulo')) {
           return {
             ...b,
@@ -888,7 +916,8 @@ export const applyCampaignToTemplate = async (req, res) => {
         if (b.type === 'button') {
           return {
             ...b,
-            href: `https://app.clubplatform.org/rotary-en-accion?utm_source=email_marketing&utm_medium=campaign&utm_campaign=${campaign.utmCampaign || 'rotary_campana'}`
+            text: (!b.text || b.text === 'COMPARTIR ACTIVIDAD EN ROTARY EN ACCIÓN') ? 'COMPARTIR EN ROTARY EN ACCIÓN' : b.text,
+            href: (b.href && b.href !== '{{form_url}}' && !b.href.includes('app.clubplatform.org/rotary-en-accion?utm_source')) ? b.href : '{{form_url}}'
           };
         }
         return b;

@@ -13,16 +13,17 @@ import {
   Minus, Table as TableIcon, Menu as MenuIcon, Share2, Video, Code,
   Tag, X, ArrowLeft, RefreshCw, ZoomIn, ZoomOut, Undo2, Redo2,
   Check, CheckCircle2, Eye, AlertCircle, Upload, RotateCcw, Building2,
-  Sliders, AlignLeft, AlignCenter, AlignRight
+  Sliders, AlignLeft, AlignCenter, AlignRight, Globe, AlignJustify
 } from 'lucide-react';
 
 import {
   renderDesignToHtml, makeBlock, BLOCK_LABELS,
-  FONT_OPTIONS, newId, createRotaryMasterDesign, getRotaryGlobalBlocksCatalog,
-  resolveInstitutionalLogo, getActiveSiteBrandingContext, normalizeInstitutionalDesign,
+  FONT_OPTIONS, FONT_WEIGHT_OPTIONS, LINE_HEIGHT_OPTIONS, newId, createRotaryMasterDesign, getRotaryGlobalBlocksCatalog,
+  resolveInstitutionalLogo, getActiveSiteBrandingContext, normalizeInstitutionalDesign, resolveSiteRotaryEnAccionUrl,
   type EmailDesign, type Block, type BlockType, type Align, type SocialNetwork,
   type TableRow, type MenuItem, type SiteBrandingContext
 } from '../../../lib/emailBlocks';
+import { DEFAULT_TIPOS } from '../../../lib/rotaryEnAccionSpec';
 import MediaPicker from '../content-studio/MediaPicker';
 import EmailAiAssistant from './EmailAiAssistant';
 import { useClub } from '../../../contexts/ClubContext';
@@ -110,12 +111,19 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
 
   const siteBranding: SiteBrandingContext = useMemo(() => {
     const ctx = getActiveSiteBrandingContext();
+    const domain = siteClub?.domain || ctx.domain || null;
+    const publicUrl = siteClub?.domain ? `https://${siteClub.domain.replace(/^https?:\/\//, '').replace(/\/+$/, '')}` : ctx.publicUrl;
+    const isMainPlatform = Boolean((siteClub as any)?.isMainPlatform ?? ctx.isMainPlatform);
+    const rotaryEnAccionUrl = resolveSiteRotaryEnAccionUrl({ domain, publicUrl, isMainPlatform });
     return {
       siteLogo: siteClub?.logo || ctx.siteLogo || null,
       siteName: siteClub?.name || ctx.siteName || 'Club Platform',
       siteType: siteClub?.type || ctx.siteType || null,
-      isMainPlatform: siteClub?.isMainPlatform ?? ctx.isMainPlatform,
-      platformLogo: ctx.platformLogo
+      isMainPlatform,
+      platformLogo: ctx.platformLogo,
+      domain,
+      publicUrl,
+      rotaryEnAccionUrl
     };
   }, [siteClub]);
 
@@ -1002,11 +1010,11 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                     <>
                       <div>
                         <label className="text-[11px] font-bold text-slate-600 block mb-1">Texto del encabezado</label>
-                        <input
-                          type="text"
+                        <textarea
+                          rows={2}
                           value={selectedBlock.text}
                           onChange={(e) => updateBlock(selectedBlock.id, { text: e.target.value })}
-                          className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 focus:border-rotary-blue focus:ring-1 focus:ring-rotary-blue"
+                          className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 focus:border-rotary-blue focus:ring-1 focus:ring-rotary-blue text-xs font-semibold"
                         />
                       </div>
                       <div className="grid grid-cols-2 gap-2">
@@ -1015,7 +1023,7 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                           <select
                             value={selectedBlock.level}
                             onChange={(e) => updateBlock(selectedBlock.id, { level: Number(e.target.value) as any })}
-                            className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900"
+                            className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs"
                           >
                             <option value={1}>H1 (28px)</option>
                             <option value={2}>H2 (22px)</option>
@@ -1040,6 +1048,89 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                           </div>
                         </div>
                       </div>
+
+                      {/* Controles de Tipografía */}
+                      <div className="bg-slate-50/90 border border-slate-200 rounded-xl p-3 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5 uppercase tracking-wide">
+                            <Type className="w-3.5 h-3.5 text-rotary-blue" />
+                            Tipografía Institucional
+                          </label>
+                          <span className="text-[10px] bg-blue-100 text-rotary-blue font-bold px-1.5 py-0.5 rounded">
+                            {selectedBlock.fontFamily ? 'Personalizada' : 'Open Sans (Por defecto)'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-slate-500 font-medium block mb-1">Familia Tipográfica</span>
+                          <select
+                            value={selectedBlock.fontFamily || ''}
+                            onChange={(e) => updateBlock(selectedBlock.id, { fontFamily: e.target.value || undefined })}
+                            className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs text-slate-900"
+                          >
+                            <option value="">Predeterminada ({design.settings.font.split(',')[0].replace(/['"]/g, '')})</option>
+                            {FONT_OPTIONS.map((f) => (
+                              <option key={f.value} value={f.value}>
+                                {f.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <span className="text-[10px] text-slate-500 font-medium block mb-1">Variante de Peso</span>
+                            <select
+                              value={String(selectedBlock.fontWeight || (selectedBlock.weight === 'normal' ? '400' : selectedBlock.weight === '800' ? '800' : '700'))}
+                              onChange={(e) => updateBlock(selectedBlock.id, { fontWeight: e.target.value as any, weight: e.target.value as any })}
+                              className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs text-slate-900"
+                            >
+                              {FONT_WEIGHT_OPTIONS.map((w) => (
+                                <option key={w.value} value={w.value}>
+                                  {w.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-500 font-medium block mb-1">Tamaño ({selectedBlock.fontSize || (selectedBlock.level === 1 ? 28 : selectedBlock.level === 2 ? 22 : 18)}px)</span>
+                            <input
+                              type="number"
+                              min={14}
+                              max={48}
+                              value={selectedBlock.fontSize || (selectedBlock.level === 1 ? 28 : selectedBlock.level === 2 ? 22 : 18)}
+                              onChange={(e) => updateBlock(selectedBlock.id, { fontSize: Number(e.target.value) })}
+                              className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs text-slate-900"
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <span className="text-[10px] text-slate-500 font-medium block mb-1">Interlineado</span>
+                            <select
+                              value={Number(selectedBlock.lineHeight || 1.25)}
+                              onChange={(e) => updateBlock(selectedBlock.id, { lineHeight: Number(e.target.value) })}
+                              className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs text-slate-900"
+                            >
+                              {LINE_HEIGHT_OPTIONS.map((lh) => (
+                                <option key={lh.value} value={lh.value}>
+                                  {lh.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-500 font-medium block mb-1">Espaciado ({selectedBlock.letterSpacing ?? -0.5}px)</span>
+                            <input
+                              type="number"
+                              step={0.5}
+                              min={-2}
+                              max={4}
+                              value={selectedBlock.letterSpacing ?? -0.5}
+                              onChange={(e) => updateBlock(selectedBlock.id, { letterSpacing: Number(e.target.value) })}
+                              className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs text-slate-900"
+                            />
+                          </div>
+                        </div>
+                      </div>
                     </>
                   )}
 
@@ -1058,7 +1149,7 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label className="text-[11px] font-bold text-slate-600 block mb-1">Tamaño (px)</label>
+                          <label className="text-[11px] font-bold text-slate-600 block mb-1">Tamaño Base (px)</label>
                           <input
                             type="number"
                             min={11}
@@ -1086,6 +1177,76 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                           </div>
                         </div>
                       </div>
+
+                      {/* Controles de Tipografía */}
+                      <div className="bg-slate-50/90 border border-slate-200 rounded-xl p-3 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5 uppercase tracking-wide">
+                            <Type className="w-3.5 h-3.5 text-rotary-blue" />
+                            Tipografía Institucional
+                          </label>
+                          <span className="text-[10px] bg-blue-100 text-rotary-blue font-bold px-1.5 py-0.5 rounded">
+                            {selectedBlock.fontFamily ? 'Personalizada' : 'Open Sans (Por defecto)'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-slate-500 font-medium block mb-1">Familia Tipográfica</span>
+                          <select
+                            value={selectedBlock.fontFamily || ''}
+                            onChange={(e) => updateBlock(selectedBlock.id, { fontFamily: e.target.value || undefined })}
+                            className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs text-slate-900"
+                          >
+                            <option value="">Predeterminada ({design.settings.font.split(',')[0].replace(/['"]/g, '')})</option>
+                            {FONT_OPTIONS.map((f) => (
+                              <option key={f.value} value={f.value}>
+                                {f.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <span className="text-[10px] text-slate-500 font-medium block mb-1">Variante de Peso</span>
+                            <select
+                              value={String(selectedBlock.fontWeight || (selectedBlock.weight === 'bold' || selectedBlock.weight === '800' ? '700' : '400'))}
+                              onChange={(e) => updateBlock(selectedBlock.id, { fontWeight: e.target.value as any, weight: e.target.value as any })}
+                              className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs text-slate-900"
+                            >
+                              {FONT_WEIGHT_OPTIONS.map((w) => (
+                                <option key={w.value} value={w.value}>
+                                  {w.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-500 font-medium block mb-1">Interlineado</span>
+                            <select
+                              value={Number(selectedBlock.lineHeight || 1.6)}
+                              onChange={(e) => updateBlock(selectedBlock.id, { lineHeight: Number(e.target.value) })}
+                              className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs text-slate-900"
+                            >
+                              {LINE_HEIGHT_OPTIONS.map((lh) => (
+                                <option key={lh.value} value={lh.value}>
+                                  {lh.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-slate-500 font-medium block mb-1">Espaciado de Letras ({selectedBlock.letterSpacing ?? 0}px)</span>
+                          <input
+                            type="number"
+                            step={0.5}
+                            min={-1}
+                            max={3}
+                            value={selectedBlock.letterSpacing ?? 0}
+                            onChange={(e) => updateBlock(selectedBlock.id, { letterSpacing: Number(e.target.value) })}
+                            className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs text-slate-900"
+                          />
+                        </div>
+                      </div>
                     </>
                   )}
 
@@ -1098,18 +1259,46 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                           type="text"
                           value={selectedBlock.text}
                           onChange={(e) => updateBlock(selectedBlock.id, { text: e.target.value })}
-                          className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900"
+                          className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-semibold"
+                          placeholder="COMPARTIR EN ROTARY EN ACCIÓN"
                         />
                       </div>
                       <div>
-                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Destino URL</label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[11px] font-bold text-slate-600">Destino URL</label>
+                          {siteBranding.rotaryEnAccionUrl && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                updateBlock(selectedBlock.id, { href: siteBranding.rotaryEnAccionUrl || 'https://app.clubplatform.org/rotary-en-accion' });
+                                toast.success('Enlace inteligente del sitio aplicado');
+                              }}
+                              className="text-[10px] text-rotary-blue hover:underline font-bold flex items-center gap-1 cursor-pointer"
+                              title="Restaurar enlace automático del sitio activo"
+                            >
+                              <RotateCcw className="w-3 h-3" /> Restaurar enlace del sitio
+                            </button>
+                          )}
+                        </div>
                         <input
                           type="text"
                           value={selectedBlock.href}
                           onChange={(e) => updateBlock(selectedBlock.id, { href: e.target.value })}
-                          className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900"
+                          className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-mono text-xs"
                           placeholder="https://... o {{form_url}}"
                         />
+                        <div className="mt-1.5 bg-blue-50/80 border border-blue-200 rounded-lg p-2 text-[11px] text-blue-900 flex items-start gap-1.5">
+                          <Globe className="w-3.5 h-3.5 text-rotary-blue mt-0.5 shrink-0" />
+                          <div>
+                            <span className="font-bold">Enlace inteligente del sitio: </span>
+                            <span className="font-mono text-[10px] text-rotary-blue font-semibold break-all">
+                              {siteBranding.rotaryEnAccionUrl || 'https://app.clubplatform.org/rotary-en-accion'}
+                            </span>
+                            <p className="text-[10px] text-slate-500 mt-0.5">
+                              Resuelve dinámicamente el dominio público de la organización activa.
+                            </p>
+                          </div>
+                        </div>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
@@ -1157,6 +1346,73 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                           onChange={(e) => updateBlock(selectedBlock.id, { radius: Number(e.target.value) })}
                           className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900"
                         />
+                      </div>
+
+                      {/* Controles de Tipografía en Botón */}
+                      <div className="bg-slate-50/90 border border-slate-200 rounded-xl p-3 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5 uppercase tracking-wide">
+                            <Type className="w-3.5 h-3.5 text-rotary-blue" />
+                            Tipografía del Botón
+                          </label>
+                          <span className="text-[10px] bg-blue-100 text-rotary-blue font-bold px-1.5 py-0.5 rounded">
+                            {selectedBlock.fontFamily ? 'Personalizada' : 'Open Sans'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-slate-500 font-medium block mb-1">Familia Tipográfica</span>
+                          <select
+                            value={selectedBlock.fontFamily || ''}
+                            onChange={(e) => updateBlock(selectedBlock.id, { fontFamily: e.target.value || undefined })}
+                            className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs text-slate-900"
+                          >
+                            <option value="">Predeterminada ({design.settings.font.split(',')[0].replace(/['"]/g, '')})</option>
+                            {FONT_OPTIONS.map((f) => (
+                              <option key={f.value} value={f.value}>
+                                {f.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <span className="text-[10px] text-slate-500 font-medium block mb-1">Variante de Peso</span>
+                            <select
+                              value={String(selectedBlock.fontWeight || '700')}
+                              onChange={(e) => updateBlock(selectedBlock.id, { fontWeight: e.target.value as any })}
+                              className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs text-slate-900"
+                            >
+                              {FONT_WEIGHT_OPTIONS.map((w) => (
+                                <option key={w.value} value={w.value}>
+                                  {w.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-500 font-medium block mb-1">Tamaño ({selectedBlock.fontSize || 15}px)</span>
+                            <input
+                              type="number"
+                              min={12}
+                              max={22}
+                              value={selectedBlock.fontSize || 15}
+                              onChange={(e) => updateBlock(selectedBlock.id, { fontSize: Number(e.target.value) })}
+                              className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs text-slate-900"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-slate-500 font-medium block mb-1">Espaciado de Letras ({selectedBlock.letterSpacing ?? 0.5}px)</span>
+                          <input
+                            type="number"
+                            step={0.5}
+                            min={-1}
+                            max={3}
+                            value={selectedBlock.letterSpacing ?? 0.5}
+                            onChange={(e) => updateBlock(selectedBlock.id, { letterSpacing: Number(e.target.value) })}
+                            className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs text-slate-900"
+                          />
+                        </div>
                       </div>
                     </>
                   )}
@@ -2140,26 +2396,81 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                         </div>
                       )}
 
-                      {/* 4. 7 Áreas de Interés */}
-                      {selectedBlock.globalKey === 'rotary_areas_focus' && (
+                      {/* 4. Categorías Oficiales de Rotary en Acción */}
+                      {(selectedBlock.globalKey === 'rotary_areas_focus' || selectedBlock.globalKey === 'rotary_categories') && (
                         <div className="space-y-3.5">
+                          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-900">
+                            <div className="font-bold flex items-center gap-1.5 mb-1 text-rotary-blue">
+                              <Sparkles className="w-3.5 h-3.5" />
+                              Categorías Oficiales Rotary en Acción
+                            </div>
+                            <p className="text-[11px] text-slate-600 leading-relaxed">
+                              Sincronizadas automáticamente con el formulario público activo. Se presentan en un formato compacto de 5 filas x 3 columnas adaptable a móviles y compatible con todos los clientes de correo.
+                            </p>
+                          </div>
                           <div>
                             <label className="text-[11px] font-bold text-slate-700 block mb-1">Título de Sección</label>
                             <input
                               type="text"
-                              value={selectedBlock.title || 'Las 7 Áreas de Interés de Rotary International:'}
+                              value={selectedBlock.title || '¿Qué puede compartir tu club en Rotary en Acción?'}
                               onChange={(e) => updateBlock(selectedBlock.id, { title: e.target.value })}
-                              className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs"
+                              className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs font-semibold"
                             />
                           </div>
                           <div>
-                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Color Fondo</label>
+                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Subtítulo / Instrucción</label>
                             <input
-                              type="color"
-                              value={selectedBlock.bgColor || '#f8fafc'}
-                              onChange={(e) => updateBlock(selectedBlock.id, { bgColor: e.target.value })}
-                              className="w-full h-8 rounded-lg border border-slate-300 cursor-pointer p-0.5"
+                              type="text"
+                              value={selectedBlock.subtitle !== undefined ? selectedBlock.subtitle : 'El formulario unificado se adapta a lo que elijas para visibilizar el impacto de tu club:'}
+                              onChange={(e) => updateBlock(selectedBlock.id, { subtitle: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs"
                             />
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[11px] font-bold text-slate-700 block mb-1">Color Fondo</label>
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="color"
+                                  value={selectedBlock.bgColor || '#f8fafc'}
+                                  onChange={(e) => updateBlock(selectedBlock.id, { bgColor: e.target.value })}
+                                  className="w-8 h-8 rounded-lg border border-slate-300 cursor-pointer p-0.5"
+                                />
+                                <input
+                                  type="text"
+                                  value={selectedBlock.bgColor || '#f8fafc'}
+                                  onChange={(e) => updateBlock(selectedBlock.id, { bgColor: e.target.value })}
+                                  className="flex-1 bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-mono"
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <label className="text-[11px] font-bold text-slate-700 block mb-1">Color Título</label>
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="color"
+                                  value={selectedBlock.textColor || '#013388'}
+                                  onChange={(e) => updateBlock(selectedBlock.id, { textColor: e.target.value })}
+                                  className="w-8 h-8 rounded-lg border border-slate-300 cursor-pointer p-0.5"
+                                />
+                                <input
+                                  type="text"
+                                  value={selectedBlock.textColor || '#013388'}
+                                  onChange={(e) => updateBlock(selectedBlock.id, { textColor: e.target.value })}
+                                  className="flex-1 bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-mono"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                          <div className="border border-slate-200 rounded-xl p-2.5 bg-slate-50">
+                            <div className="text-[11px] font-bold text-slate-700 mb-2">15 Categorías Oficiales del Formulario:</div>
+                            <div className="grid grid-cols-2 gap-1 max-h-40 overflow-y-auto pr-1">
+                              {DEFAULT_TIPOS.map((t) => (
+                                <div key={t.slug} className="text-[10px] bg-white border border-slate-200 rounded px-2 py-1 text-slate-800 font-medium truncate flex items-center gap-1">
+                                  <span>{t.icon}</span> <span>{t.name}</span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         </div>
                       )}
@@ -2480,12 +2791,20 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                     </div>
                   </div>
 
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Tipografía Principal</label>
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <Type className="w-3.5 h-3.5 text-rotary-blue" />
+                        Tipografía Global de la Plantilla
+                      </span>
+                      <span className="text-[10px] bg-blue-100 text-rotary-blue font-bold px-1.5 py-0.5 rounded">
+                        Open Sans Oficial
+                      </span>
+                    </label>
                     <select
                       value={design.settings.font}
                       onChange={(e) => updateSettings({ font: e.target.value })}
-                      className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900"
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 text-xs font-medium"
                     >
                       {FONT_OPTIONS.map((f) => (
                         <option key={f.value} value={f.value}>
@@ -2493,6 +2812,9 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                         </option>
                       ))}
                     </select>
+                    <p className="text-[10px] text-slate-500 leading-normal">
+                      Gobierna el estilo base de todos los bloques. Open Sans se entrega con sus variantes oficiales (300 a 800) y fallbacks automáticos a Helvetica/Arial para clientes de correo como Gmail y Outlook.
+                    </p>
                   </div>
                 </div>
               </div>
