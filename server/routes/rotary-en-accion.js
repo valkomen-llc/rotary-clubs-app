@@ -4,6 +4,7 @@ import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
 import * as ctrl from '../controllers/rotaryEnAccionController.js';
 import * as mktCtrl from '../controllers/rotaryMarketingController.js';
+import * as actCtrl from '../controllers/rotaryActivationController.js';
 import { lightPublicLimit } from '../middleware/rotaryPublicLimit.js';
 import { requireSubmissionInboxAccess } from '../middleware/submissionInboxGuard.js';
 
@@ -19,6 +20,11 @@ router.delete('/drafts/:token', lightPublicLimit, ctrl.deleteDraftEp);
 router.post('/assist', lightPublicLimit, ctrl.assist);
 router.get('/related/:id', ctrl.related);
 
+// Embudo público de activación de clubes (/activar-mi-club)
+router.get('/activacion/config', lightPublicLimit, actCtrl.getActivationConfig);
+router.post('/activacion/hit', lightPublicLimit, actCtrl.recordFunnelHit);
+router.post('/activacion/submit', lightPublicLimit, actCtrl.submitActivationInterest);
+
 // ── Admin ────────────────────────────────────────────────────────────
 router.use(authMiddleware);
 router.get('/taxonomies', ctrl.adminList);
@@ -28,6 +34,12 @@ router.get('/config-admin', ctrl.adminConfigGet);
 router.put('/config-admin', ctrl.adminConfigPut);
 router.get('/stats', requireSubmissionInboxAccess, ctrl.stats);
 router.get('/dashboard', requireSubmissionInboxAccess, ctrl.board);
+
+// ── Admin: Activación de Clubes (CRM & KPIs) ─────────────────────────
+router.get('/activacion/leads', requireSubmissionInboxAccess, actCtrl.getActivationLeads);
+router.get('/activacion/kpis', requireSubmissionInboxAccess, actCtrl.getActivationKpis);
+router.put('/activacion/leads/:id/status', requireSubmissionInboxAccess, actCtrl.updateLeadStatus);
+router.put('/activacion/leads/:id', requireSubmissionInboxAccess, actCtrl.updateLeadDetails);
 
 // ── Admin: Marketing Inteligente (Fases 1, 2, 3 y 4) ─────────────────
 router.get('/marketing/overview', requireSubmissionInboxAccess, mktCtrl.getOverview);
@@ -60,4 +72,5 @@ router.post('/marketing/templates/apply-campaign', requireSubmissionInboxAccess,
 router.post('/marketing/templates/test-email', requireSubmissionInboxAccess, mktCtrl.sendTestEmail);
 
 export default router;
+
 

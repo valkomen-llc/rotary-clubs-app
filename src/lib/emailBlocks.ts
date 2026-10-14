@@ -416,6 +416,62 @@ export const resolveSiteRotaryEnAccionUrl = (siteContext?: SiteBrandingContext):
 };
 
 /**
+ * Resuelve la URL pública de la landing de activación de club (/activar-mi-club) según el sitio activo.
+ * Respeta prioritariamente el dominio público personalizado verificado del sitio y evita subdominios técnicos.
+ */
+export const resolveSiteActivarClubUrl = (siteContext?: SiteBrandingContext, queryParams?: Record<string, string>): string => {
+    let baseUrl = '';
+
+    const rawDomain = (siteContext?.domain || '').toLowerCase().trim();
+    const rawPublicUrl = (siteContext?.publicUrl || '').toLowerCase().trim();
+    const siteName = (siteContext?.siteName || '').toLowerCase().trim();
+
+    // 1. Detección unívoca de Distrito 4281 (dominio verificado oficial: rotary4281.org)
+    const isD4281 = rawDomain.includes('4281') ||
+        rawPublicUrl.includes('4281') ||
+        siteName.includes('4281') ||
+        rawDomain.includes('distrito-4281');
+
+    if (isD4281) {
+        baseUrl = 'https://rotary4281.org/activar-mi-club';
+    } else {
+        // 2. Dominio público personalizado del sitio (excluyendo subdominios técnicos *.clubplatform.org)
+        const cleanDomain = rawDomain.replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '');
+        const isTechnicalSubdomain = cleanDomain.endsWith('.clubplatform.org') || cleanDomain === 'clubplatform.org';
+
+        if (cleanDomain && !isTechnicalSubdomain) {
+            baseUrl = `https://${cleanDomain}/activar-mi-club`;
+        } else if (rawPublicUrl) {
+            const cleanPublic = rawPublicUrl.replace(/^https?:\/\//, '').replace(/\/+$/, '').replace(/^www\./, '');
+            if (cleanPublic && !cleanPublic.endsWith('.clubplatform.org') && cleanPublic !== 'clubplatform.org') {
+                baseUrl = `https://${cleanPublic}/activar-mi-club`;
+            }
+        } else if (cleanDomain && cleanDomain.endsWith('.clubplatform.org') && cleanDomain !== 'app.clubplatform.org' && cleanDomain !== 'clubplatform.org') {
+            baseUrl = `https://${cleanDomain}/activar-mi-club`;
+        }
+    }
+
+    if (!baseUrl) {
+        if (typeof window !== 'undefined' && window.location?.origin && !window.location.origin.includes('localhost')) {
+            baseUrl = `${window.location.origin}/activar-mi-club`;
+        } else {
+            baseUrl = 'https://rotary4281.org/activar-mi-club';
+        }
+    }
+
+    if (queryParams && Object.keys(queryParams).length > 0) {
+        const sp = new URLSearchParams();
+        for (const [k, v] of Object.entries(queryParams)) {
+            if (v !== undefined && v !== null && v !== '') sp.set(k, String(v));
+        }
+        const qs = sp.toString();
+        if (qs) baseUrl += (baseUrl.includes('?') ? '&' : '?') + qs;
+    }
+
+    return baseUrl;
+};
+
+/**
  * Obtiene el contexto institucional activo del sitio actual desde el entorno / almacenamiento local
  * cuando no se pasa un siteContext explícito. Reutiliza la arquitectura multitenant del sistema.
  */
@@ -919,9 +975,28 @@ const renderBlock = (
                 const title = b.title || '¡Activa el ecosistema digital de tu club!';
                 const subtitle = b.subtitle !== undefined ? b.subtitle : 'Conecta, comunica y potencia el impacto de tu club con Club Platform.';
                 const btnText = b.buttonText || 'ACTIVAR MI CLUB';
-                const btnHref = b.buttonHref || 'https://clubplatform.org?utm_source=email_marketing&utm_medium=campaign&utm_campaign=cta_club_platform';
+                let btnHref = b.buttonHref || '{{activar_club_url}}';
+                if (btnHref === '{{activar_club_url}}') {
+                    btnHref = resolveSiteActivarClubUrl(siteContext, {
+                        utm_source: 'email_marketing',
+                        utm_medium: 'campaign',
+                        utm_campaign: 'cta_club_platform'
+                    });
+                } else if (siteContext && (siteContext.domain || siteContext.publicUrl || siteContext.siteName) && btnHref.includes('clubplatform.org')) {
+                    btnHref = resolveSiteActivarClubUrl(siteContext, {
+                        utm_source: 'email_marketing',
+                        utm_medium: 'campaign',
+                        utm_campaign: 'cta_club_platform'
+                    });
+                } else if (btnHref.includes('{{activar_club_url}}')) {
+                    const smartActivarUrl = resolveSiteActivarClubUrl(siteContext);
+                    btnHref = btnHref.replace(/\{\{activar_club_url\}\}/g, smartActivarUrl);
+                }
+
+
                 const textColor = b.textColor || '#ffffff';
                 const titleColor = b.titleColor || textColor;
+
                 const subtitleColor = b.subtitleColor || textColor;
                 const btnBg = b.buttonBg || '#f7a81b';
                 const btnColor = b.buttonColor || '#0c2340';

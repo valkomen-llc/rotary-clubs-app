@@ -189,6 +189,7 @@ const AgentsManagement = lazyWithRetry(() => import('./pages/admin/Agents'), 'Ag
 const MissionControlVIP = lazyWithRetry(() => import('./pages/admin/MissionControlVIP'), 'MissionControlVIP');
 const ContentActivationPage = lazyWithRetry(() => import('./pages/admin/ContentActivation'), 'ContentActivation');
 const RotaryEnAccion = lazyWithRetry(() => import('./pages/RotaryEnAccion'), 'RotaryEnAccion');
+const ActivarMiClub = lazyWithRetry(() => import('./pages/ActivarMiClub'), 'ActivarMiClub');
 const LegacyAportarRedirect = lazyWithRetry(() => import('./pages/LegacyAportarRedirect'), 'LegacyAportarRedirect');
 const RotaryEnAccionAdmin = lazyWithRetry(() => import('./pages/admin/RotaryEnAccionAdmin'), 'RotaryEnAccionAdmin');
 const SystemUpdates = lazyWithRetry(() => import('./pages/SystemUpdates'), 'SystemUpdates');
@@ -756,6 +757,8 @@ function App() {
                     es legacy y redirige al slug universal conservando
                     ?campaign= y el resto de parámetros. */}
                 <Route path="/rotary-en-accion" element={<RotaryEnAccion />} />
+                <Route path="/activar-mi-club" element={<ActivarMiClub />} />
+                <Route path="/activar-club" element={<Navigate to="/activar-mi-club" replace />} />
                 <Route path="/aportar-contenido/:ref" element={<LegacyAportarRedirect />} />
                 {/* Herramienta pública de capacitaciones (sin login), como el generador de pendones */}
                 <Route path="/agendar-capacitacion" element={<AgendarCapacitacion />} />

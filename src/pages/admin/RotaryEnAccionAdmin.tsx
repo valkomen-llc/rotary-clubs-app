@@ -38,6 +38,7 @@ import {
   tipoIcon, tipoLabel
 } from '../../components/admin/rotary/RotaryDashboard';
 import RotaryMarketingInteligente from '../../components/admin/rotary/RotaryMarketingInteligente';
+import RotaryActivacionClubes from '../../components/admin/rotary/RotaryActivacionClubes';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const getToken = () => localStorage.getItem('rotary_token');
@@ -49,7 +50,7 @@ const KINDS = [
   { id: 'tema', label: 'Temáticas', desc: 'Categorías y etiquetas temáticas transversales' },
 ];
 
-export type RotaryEnAccionTab = 'resumen' | 'solicitudes' | 'control' | 'marketing' | 'tax' | 'config' | 'impacto';
+export type RotaryEnAccionTab = 'resumen' | 'solicitudes' | 'control' | 'marketing' | 'activacion' | 'tax' | 'config' | 'impacto';
 
 
 interface Fila {
@@ -123,6 +124,7 @@ const RotaryEnAccionAdmin: React.FC<RotaryEnAccionAdminProps> = ({
     if (tabParam === 'solicitudes') return 'solicitudes';
     if (tabParam === 'control') return 'control';
     if (tabParam === 'marketing' || tabParam === 'marketing-inteligente') return 'marketing';
+    if (tabParam === 'activacion' || tabParam === 'activaciones' || tabParam === 'activar-club') return 'activacion';
     if (tabParam === 'tax' || tabParam === 'taxonomias') return 'tax';
     if (tabParam === 'config' || tabParam === 'configuracion') return 'config';
     if (tabParam === 'impacto') return 'impacto';
@@ -529,6 +531,21 @@ const RotaryEnAccionAdmin: React.FC<RotaryEnAccionAdminProps> = ({
           <span>Marketing Inteligente</span>
           <span className="text-[10px] font-black uppercase tracking-wider bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full border border-purple-200">
             IA
+          </span>
+        </button>
+
+        <button
+          onClick={() => cambiarTab('activacion')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
+            activeTab === 'activacion'
+              ? 'bg-white text-gray-900 shadow-sm border border-gray-200/60'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+          }`}
+        >
+          <Users className="w-4 h-4 text-emerald-600" />
+          <span>Activación de Clubes</span>
+          <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-200">
+            Embudo
           </span>
         </button>
 
@@ -1309,6 +1326,11 @@ const RotaryEnAccionAdmin: React.FC<RotaryEnAccionAdminProps> = ({
       {/* ── 6. SECCIÓN: MARKETING INTELIGENTE ───────────────────────── */}
       {activeTab === 'marketing' && (
         <RotaryMarketingInteligente />
+      )}
+
+      {/* ── SECCIÓN: ACTIVACIÓN DE CLUBES (EMBUDO & CRM) ─────────────── */}
+      {activeTab === 'activacion' && (
+        <RotaryActivacionClubes />
       )}
 
       {/* ── 7. SECCIÓN: TAXONOMÍAS ───────────────────────────────────── */}
