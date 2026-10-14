@@ -300,7 +300,7 @@ const ADMIN_ROLES = [
  */
 const PlatformOnlyRoute = ({ children }: { children: React.ReactNode }) => {
   const { user } = useAuth();
-  if (!isPlatformSuperAdmin(user as any) && (user as any)?.role !== 'district_admin' && !(user as any)?.isSuperAdmin) {
+  if (!isPlatformSuperAdmin(user as any) && (user as any)?.role !== 'district_admin' && (user as any)?.role !== 'club_admin' && (user as any)?.role !== 'administrator' && !(user as any)?.isSuperAdmin) {
     return <Navigate to="/" replace />;
   }
   return <>{children}</>;

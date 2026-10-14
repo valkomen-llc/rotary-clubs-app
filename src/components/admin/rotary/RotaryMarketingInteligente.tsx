@@ -19,6 +19,7 @@ import {
   renderDesignToHtml, parseDesign, getActiveSiteBrandingContext,
   type SiteBrandingContext
 } from '../../../lib/emailBlocks';
+import { APP_VERSION } from '../../../lib/appVersion';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const getToken = () => localStorage.getItem('rotary_token');
@@ -734,6 +735,9 @@ export const RotaryMarketingInteligente: React.FC = () => {
               </span>
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-200 border border-emerald-400/30">
                 Fases 1, 2, 3 y 4 · Ecosistema Integral
+              </span>
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-sky-500/20 text-sky-200 border border-sky-400/30 tracking-wide">
+                v{APP_VERSION}
               </span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-light tracking-tight text-white">
