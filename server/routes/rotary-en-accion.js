@@ -47,6 +47,11 @@ router.get('/marketing/campaigns', requireSubmissionInboxAccess, mktCtrl.getCamp
 router.post('/marketing/campaigns/:id/status', requireSubmissionInboxAccess, mktCtrl.updateCampaignStatus);
 router.post('/marketing/campaigns/:id/schedule', requireSubmissionInboxAccess, mktCtrl.scheduleCampaign);
 router.post('/marketing/campaigns/:id/sync-email', requireSubmissionInboxAccess, mktCtrl.syncWithEmailMarketing);
+router.post('/marketing/campaigns/:id/send', requireSubmissionInboxAccess, mktCtrl.sendCampaignNow);
+router.post('/marketing/campaigns/:id/retry', requireSubmissionInboxAccess, mktCtrl.retryFailedCampaignRecipients);
+router.get('/marketing/history', requireSubmissionInboxAccess, mktCtrl.getCampaignsHistory);
+router.get('/marketing/history/:id', requireSubmissionInboxAccess, mktCtrl.getCampaignHistoryDetail);
+router.get('/marketing/deliverability/diagnostics', requireSubmissionInboxAccess, mktCtrl.getDeliverabilityDiagnostics);
 router.get('/marketing/automations', requireSubmissionInboxAccess, mktCtrl.getAutomations);
 router.post('/marketing/automations/:id/toggle', requireSubmissionInboxAccess, mktCtrl.toggleAutomation);
 router.post('/marketing/generate-smart-link', requireSubmissionInboxAccess, mktCtrl.generateSmartLink);

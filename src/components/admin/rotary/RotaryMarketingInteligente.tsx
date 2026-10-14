@@ -10,7 +10,9 @@ import {
   Eye, Mail, MessageSquare, TrendingUp, Award, Zap, Info, Filter,
   Search, Check, SlidersHorizontal, Share2, Play, Pause, ChevronRight,
   FileText, Download, CheckCircle, Flame, Star, BookOpen, AlertTriangle,
-  Plus, Trash2, Edit3, MailCheck, ArrowLeft, ArrowRight, Clock
+  Plus, Trash2, Edit3, MailCheck, ArrowLeft, ArrowRight, Clock,
+  SendHorizontal, XCircle, MousePointerClick, Globe, Server, Activity,
+  ArrowUpRight, Repeat, Layers
 } from 'lucide-react';
 import { toast } from 'sonner';
 import VisualTemplateEditor from '../email-marketing/VisualTemplateEditor';
@@ -24,7 +26,7 @@ import { APP_VERSION } from '../../../lib/appVersion';
 const API = import.meta.env.VITE_API_URL || '/api';
 const getToken = () => localStorage.getItem('rotary_token');
 
-export type MarketingSubtab = 'panel' | 'planificador' | 'audiencias' | 'campanas' | 'agente' | 'resultados' | 'remitentes';
+export type MarketingSubtab = 'panel' | 'planificador' | 'audiencias' | 'campanas' | 'agente' | 'resultados' | 'remitentes' | 'envios';
 
 export const RotaryMarketingInteligente: React.FC = () => {
   let siteClub: any = null;
@@ -155,6 +157,60 @@ export const RotaryMarketingInteligente: React.FC = () => {
   const [executingSend, setExecutingSend] = useState<boolean>(false);
   const [sendExecutionSummary, setSendExecutionSummary] = useState<any | null>(null);
 
+  // ── Centro de Envíos & Trazabilidad de Campañas ──
+  const [enviosSubView, setEnviosSubView] = useState<'historial' | 'detalle' | 'diagnostico'>('historial');
+  const [campaignsHistory, setCampaignsHistory] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState<boolean>(false);
+  const [historySearch, setHistorySearch] = useState<string>('');
+  const [historyStatusFilter, setHistoryStatusFilter] = useState<string>('todos');
+  const [historyModeFilter, setHistoryModeFilter] = useState<string>('todos');
+  const [selectedHistoryCampaignId, setSelectedHistoryCampaignId] = useState<string | null>(null);
+  const [historyDetail, setHistoryDetail] = useState<any | null>(null);
+  const [loadingHistoryDetail, setLoadingHistoryDetail] = useState<boolean>(false);
+  const [historyRecipientSearch, setHistoryRecipientSearch] = useState<string>('');
+  const [historyRecipientStatusFilter, setHistoryRecipientStatusFilter] = useState<string>('todos');
+  const [deliverabilityDiag, setDeliverabilityDiag] = useState<any | null>(null);
+  const [loadingDeliverability, setLoadingDeliverability] = useState<boolean>(false);
+  const [retryingRecipients, setRetryingRecipients] = useState<boolean>(false);
+  const [diagTestEmail, setDiagTestEmail] = useState<string>('comunicaciones@rotary4281.org');
+  const [sendingDiagTest, setSendingDiagTest] = useState<boolean>(false);
+
+  const filteredHistoryCampaigns = useMemo(() => {
+    return campaignsHistory.filter((c) => {
+      if (historyStatusFilter !== 'todos' && c.status !== historyStatusFilter) return false;
+      if (historyModeFilter !== 'todos' && c.mode !== historyModeFilter) return false;
+      if (historySearch) {
+        const q = historySearch.toLowerCase();
+        const matchName = (c.name || '').toLowerCase().includes(q);
+        const matchSubj = (c.subject || '').toLowerCase().includes(q);
+        const matchCode = (c.code || '').toLowerCase().includes(q);
+        const matchWeek = `semana ${c.week}`.includes(q);
+        if (!matchName && !matchSubj && !matchCode && !matchWeek) return false;
+      }
+      return true;
+    });
+  }, [campaignsHistory, historyStatusFilter, historyModeFilter, historySearch]);
+
+  const filteredHistoryRecipients = useMemo(() => {
+    const list = historyDetail?.recipients || [];
+    return list.filter((r: any) => {
+      if (historyRecipientStatusFilter === 'sent' && r.status !== 'sent') return false;
+      if (historyRecipientStatusFilter === 'failed' && r.status !== 'failed') return false;
+      if (historyRecipientStatusFilter === 'opened' && !(r.openCount > 0 || r.openedAt)) return false;
+      if (historyRecipientStatusFilter === 'clicked' && !(r.clickCount > 0 || r.clickedAt)) return false;
+      if (historyRecipientStatusFilter === 'conversion' && !r.conversion) return false;
+      if (historyRecipientSearch) {
+        const q = historyRecipientSearch.toLowerCase();
+        const matchEmail = (r.email || '').toLowerCase().includes(q);
+        const matchName = (r.contactName || '').toLowerCase().includes(q);
+        const matchClub = (r.clubName || '').toLowerCase().includes(q);
+        const matchRole = (r.role || '').toLowerCase().includes(q);
+        if (!matchEmail && !matchName && !matchClub && !matchRole) return false;
+      }
+      return true;
+    });
+  }, [historyDetail, historyRecipientStatusFilter, historyRecipientSearch]);
+
   // Cargar listas de contactos institucionales al iniciar el flujo
   const loadAudienceLists = useCallback(async () => {
     setLoadingAudienceLists(true);
@@ -248,7 +304,7 @@ export const RotaryMarketingInteligente: React.FC = () => {
     }
   };
 
-  // Confirmar y procesar envío / programación
+  // Confirmar y procesar envío / programación real
   const handleConfirmSendCampaign = async () => {
     if (audienceValidation.eligibleRecipients === 0) {
       toast.error('Debes seleccionar al menos una lista con destinatarios válidos.');
@@ -257,16 +313,6 @@ export const RotaryMarketingInteligente: React.FC = () => {
 
     setExecutingSend(true);
     try {
-      // Sincronizar primero la campaña con Email Marketing para asegurar idempotencia y trazabilidad
-      const syncRes = await fetch(`${API}/rotary-en-accion/marketing/campaigns/${preparingCampaign.id}/sync-email`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${getToken()}`
-        }
-      });
-      const syncData = await syncRes.json();
-
       if (sendMode === 'schedule') {
         if (!scheduleDate) {
           toast.error('Por favor selecciona una fecha para programar el envío');
@@ -280,7 +326,11 @@ export const RotaryMarketingInteligente: React.FC = () => {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${getToken()}`
           },
-          body: JSON.stringify({ scheduledAt: dateTimeStr })
+          body: JSON.stringify({
+            scheduledAt: dateTimeStr,
+            targetListIds: selectedListIds,
+            senderIdentityId: preparingCampaign.senderIdentityId || defaultSenderIdentity?.id
+          })
         });
         const schedData = await schedRes.json();
         if (schedData.ok) {
@@ -288,32 +338,77 @@ export const RotaryMarketingInteligente: React.FC = () => {
             mode: 'schedule',
             scheduledAt: dateTimeStr,
             eligibleRecipients: audienceValidation.eligibleRecipients,
+            sentCount: 0,
+            failedCount: 0,
             listsCount: selectedListIds.length,
-            sender: preparingCampaign.senderName || defaultSenderIdentity?.fromName,
-            fromEmail: preparingCampaign.fromEmail || defaultSenderIdentity?.fromEmail,
-            emailCampaignId: syncData.emailCampaignId
+            sender: schedData.campaign?.senderName || preparingCampaign.senderName || defaultSenderIdentity?.fromName,
+            fromEmail: schedData.campaign?.fromEmail || preparingCampaign.fromEmail || defaultSenderIdentity?.fromEmail,
+            emailCampaignId: schedData.campaign?.emailCampaignId,
+            status: 'scheduled',
+            message: `La campaña quedó programada para el ${new Date(dateTimeStr).toLocaleString('es-CO')}.`
           });
           setSendFlowStep(4);
           loadData(true);
+          loadCampaignsHistory();
           toast.success(`Campaña programada exitosamente para ${new Date(dateTimeStr).toLocaleString('es-CO')}`);
         } else {
           toast.error(schedData.error || 'Error al programar el envío');
         }
       } else {
-        // Enviar ahora
-        setSendExecutionSummary({
-          mode: 'now',
-          sentAt: new Date().toISOString(),
-          eligibleRecipients: audienceValidation.eligibleRecipients,
-          listsCount: selectedListIds.length,
-          sender: preparingCampaign.senderName || defaultSenderIdentity?.fromName,
-          fromEmail: preparingCampaign.fromEmail || defaultSenderIdentity?.fromEmail,
-          emailCampaignId: syncData.emailCampaignId,
-          viewUrl: syncData.viewUrl
+        // Enviar ahora: despacho real con proveedor Resend/Relay y trazabilidad por destinatario
+        const sendRes = await fetch(`${API}/rotary-en-accion/marketing/campaigns/${preparingCampaign.id}/send`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${getToken()}`
+          },
+          body: JSON.stringify({
+            targetListIds: selectedListIds,
+            senderIdentityId: preparingCampaign.senderIdentityId || defaultSenderIdentity?.id
+          })
         });
-        setSendFlowStep(4);
-        loadData(true);
-        toast.success(`¡Campaña procesada exitosamente para ${audienceValidation.eligibleRecipients} destinatarios!`);
+        const sendData = await sendRes.json();
+
+        if (sendData.ok && sendData.sentCount > 0) {
+          setSendExecutionSummary({
+            mode: 'now',
+            sentAt: new Date().toISOString(),
+            eligibleRecipients: audienceValidation.eligibleRecipients,
+            sentCount: sendData.sentCount,
+            failedCount: sendData.failedCount || 0,
+            errors: sendData.errors || [],
+            listsCount: selectedListIds.length,
+            sender: sendData.senderUsed?.fromName || preparingCampaign.senderName || defaultSenderIdentity?.fromName,
+            fromEmail: sendData.senderUsed?.fromEmail || preparingCampaign.fromEmail || defaultSenderIdentity?.fromEmail,
+            emailCampaignId: sendData.emailCampaignId,
+            status: 'sent',
+            viewUrl: sendData.emailCampaignId ? `/admin/email-marketing?campaignId=${sendData.emailCampaignId}` : undefined
+          });
+          setSendFlowStep(4);
+          loadData(true);
+          loadCampaignsHistory();
+          toast.success(sendData.message || `Campaña despachada exitosamente a ${sendData.sentCount} destinatarios.`);
+        } else {
+          const errReason = sendData.error || sendData.message || 'El proveedor de correo no pudo procesar la entrega.';
+          toast.error(errReason);
+          setSendExecutionSummary({
+            mode: 'now',
+            sentAt: new Date().toISOString(),
+            eligibleRecipients: audienceValidation.eligibleRecipients,
+            sentCount: 0,
+            failedCount: sendData.failedCount || audienceValidation.eligibleRecipients,
+            listsCount: selectedListIds.length,
+            sender: preparingCampaign.senderName || defaultSenderIdentity?.fromName,
+            fromEmail: preparingCampaign.fromEmail || defaultSenderIdentity?.fromEmail,
+            emailCampaignId: sendData.emailCampaignId,
+            status: 'failed',
+            errors: sendData.errors || [{ email: 'General', error: errReason }],
+            errorReason: errReason
+          });
+          setSendFlowStep(4);
+          loadData(true);
+          loadCampaignsHistory();
+        }
       }
     } catch {
       toast.error('Error al procesar el envío de la campaña');
@@ -321,6 +416,134 @@ export const RotaryMarketingInteligente: React.FC = () => {
       setExecutingSend(false);
     }
   };
+
+  // ── Data loaders y acciones para Centro de Envíos ──
+  const loadCampaignsHistory = useCallback(async () => {
+    setLoadingHistory(true);
+    try {
+      const res = await fetch(`${API}/rotary-en-accion/marketing/history`, {
+        headers: { Authorization: `Bearer ${getToken()}` }
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setCampaignsHistory(data.campaigns || []);
+      }
+    } catch {
+      toast.error('Error al cargar historial de campañas');
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, []);
+
+  const loadHistoryDetail = useCallback(async (campaignId: string) => {
+    setLoadingHistoryDetail(true);
+    try {
+      const res = await fetch(`${API}/rotary-en-accion/marketing/history/${campaignId}`, {
+        headers: { Authorization: `Bearer ${getToken()}` }
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setHistoryDetail(data);
+      } else {
+        toast.error(data.error || 'No se pudo cargar el detalle de la campaña');
+      }
+    } catch {
+      toast.error('Error de red al consultar detalle de campaña');
+    } finally {
+      setLoadingHistoryDetail(false);
+    }
+  }, []);
+
+  const loadDeliverabilityDiagnostics = useCallback(async () => {
+    setLoadingDeliverability(true);
+    try {
+      const res = await fetch(`${API}/rotary-en-accion/marketing/deliverability/diagnostics`, {
+        headers: { Authorization: `Bearer ${getToken()}` }
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setDeliverabilityDiag(data.diagnostics);
+      }
+    } catch {
+      toast.error('Error al consultar diagnóstico de entregabilidad');
+    } finally {
+      setLoadingDeliverability(false);
+    }
+  }, []);
+
+  const handleRetryFailedRecipients = async (campaignId: string) => {
+    setRetryingRecipients(true);
+    try {
+      const res = await fetch(`${API}/rotary-en-accion/marketing/campaigns/${campaignId}/retry`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getToken()}` }
+      });
+      const data = await res.json();
+      if (data.ok) {
+        toast.success(data.message || `Reintento completado con éxito.`);
+        loadCampaignsHistory();
+        if (selectedHistoryCampaignId === campaignId) {
+          loadHistoryDetail(campaignId);
+        }
+      } else {
+        toast.error(data.error || 'No fue posible reintentar el envío');
+      }
+    } catch {
+      toast.error('Error al procesar reintento');
+    } finally {
+      setRetryingRecipients(false);
+    }
+  };
+
+  const handleSendDiagTest = async () => {
+    if (!diagTestEmail || !diagTestEmail.includes('@')) {
+      toast.error('Ingresa una dirección de correo válida para el test de diagnóstico');
+      return;
+    }
+    setSendingDiagTest(true);
+    try {
+      const targetCamp = campaigns[0] || preparingCampaign;
+      if (!targetCamp) {
+        toast.error('No hay campañas disponibles para usar como plantilla de prueba');
+        return;
+      }
+      const res = await fetch(`${API}/rotary-en-accion/marketing/campaigns/${targetCamp.id}/send-test`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${getToken()}`
+        },
+        body: JSON.stringify({
+          testEmail: diagTestEmail,
+          senderIdentityId: defaultSenderIdentity?.id
+        })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        toast.success(`Prueba enviada a ${diagTestEmail}. Verifica la bandeja de entrada.`);
+        loadDeliverabilityDiagnostics();
+      } else {
+        toast.error(data.error || 'Error en prueba de diagnóstico');
+      }
+    } catch {
+      toast.error('Error al ejecutar prueba de diagnóstico');
+    } finally {
+      setSendingDiagTest(false);
+    }
+  };
+
+  useEffect(() => {
+    if (subtab === 'envios') {
+      loadCampaignsHistory();
+      loadDeliverabilityDiagnostics();
+    }
+  }, [subtab, loadCampaignsHistory, loadDeliverabilityDiagnostics]);
+
+  useEffect(() => {
+    if (selectedHistoryCampaignId) {
+      loadHistoryDetail(selectedHistoryCampaignId);
+    }
+  }, [selectedHistoryCampaignId, loadHistoryDetail]);
 
   // Carga de identidades de remitente y cuentas institucionales disponibles
   const loadSenderIdentities = useCallback(async () => {
@@ -854,6 +1077,22 @@ export const RotaryMarketingInteligente: React.FC = () => {
           <Megaphone className="w-4 h-4 text-amber-500" />
           <span>Campañas & Programación</span>
           <span className="text-[10px] px-1.5 py-0.2 bg-amber-100 text-amber-800 rounded-full font-bold">4 Semanas</span>
+        </button>
+
+        <button
+          onClick={() => {
+            setSubtab('envios');
+            setEnviosSubView('historial');
+          }}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
+            subtab === 'envios'
+              ? 'bg-white text-gray-900 shadow-sm border border-gray-200/60'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+          }`}
+        >
+          <SendHorizontal className="w-4 h-4 text-rotary-blue" />
+          <span>Centro de Envíos</span>
+          <span className="text-[10px] px-1.5 py-0.2 bg-blue-100 text-blue-800 rounded-full font-bold">Trazabilidad & Diagnóstico</span>
         </button>
 
         <button
@@ -1902,6 +2141,893 @@ export const RotaryMarketingInteligente: React.FC = () => {
         </div>
       )}
 
+      {/* ════════ SUBPESTAÑA 8: CENTRO DE ENVÍOS & TRAZABILIDAD ════════ */}
+      {subtab === 'envios' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          {/* Header del Centro de Envíos */}
+          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-gray-100 shadow-xs">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-100 pb-6 mb-6">
+              <div>
+                <div className="flex items-center gap-2 text-xs font-black text-rotary-blue uppercase tracking-wider mb-1">
+                  <SendHorizontal className="w-4 h-4" />
+                  <span>Centro de Envíos · Rotary en Acción</span>
+                  <span className="text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-bold">
+                    Trazabilidad Oficial
+                  </span>
+                </div>
+                <h3 className="text-xl sm:text-2xl font-bold text-gray-900">
+                  Centro de Envíos, Trazabilidad & Diagnóstico
+                </h3>
+                <p className="text-xs sm:text-sm text-gray-500 mt-1 max-w-3xl leading-relaxed">
+                  Supervisa el despacho de campañas por correo institucional, la confirmación de entrega por el proveedor,
+                  la trazabilidad individual por socio o club y el diagnóstico de autenticación de dominio (SPF/DKIM/DMARC).
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    loadCampaignsHistory();
+                    loadDeliverabilityDiagnostics();
+                    if (selectedHistoryCampaignId) loadHistoryDetail(selectedHistoryCampaignId);
+                  }}
+                  disabled={loadingHistory || loadingDeliverability}
+                  className="px-3.5 py-2.5 rounded-xl border border-gray-200 text-gray-700 text-xs font-bold hover:bg-gray-50 flex items-center gap-1.5 transition cursor-pointer"
+                  title="Refrescar historial y métricas"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingHistory ? 'animate-spin' : ''}`} />
+                  <span>Actualizar</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSubtab('campanas')}
+                  className="px-4 py-2.5 rounded-xl bg-rotary-blue hover:bg-[#002868] text-white text-xs font-bold flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                >
+                  <Megaphone className="w-3.5 h-3.5" />
+                  <span>Plan de Campañas</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Pestañas internas del Centro de Envíos */}
+            <div className="flex gap-2 p-1.5 bg-gray-100 rounded-2xl overflow-x-auto text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setEnviosSubView('historial')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl transition cursor-pointer ${
+                  enviosSubView === 'historial'
+                    ? 'bg-white text-gray-900 shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <FileText className="w-4 h-4 text-rotary-blue" />
+                <span>Historial de Campañas</span>
+                <span className="text-[10px] px-1.5 py-0.2 bg-blue-100 text-blue-800 rounded-full">
+                  {campaignsHistory.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (!selectedHistoryCampaignId && campaignsHistory.length > 0) {
+                    setSelectedHistoryCampaignId(campaignsHistory[0].id);
+                  }
+                  setEnviosSubView('detalle');
+                }}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl transition cursor-pointer ${
+                  enviosSubView === 'detalle'
+                    ? 'bg-white text-gray-900 shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <Activity className="w-4 h-4 text-emerald-600" />
+                <span>Trazabilidad de Destinatarios</span>
+                {selectedHistoryCampaignId ? (
+                  <span className="text-[10px] px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded-full font-mono">
+                    Activa
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-gray-400">Seleccionar</span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setEnviosSubView('diagnostico')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl transition cursor-pointer ${
+                  enviosSubView === 'diagnostico'
+                    ? 'bg-white text-gray-900 shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <Server className="w-4 h-4 text-purple-600" />
+                <span>Diagnóstico de Entregabilidad</span>
+                <span className="text-[10px] px-1.5 py-0.2 bg-purple-100 text-purple-800 rounded-full">
+                  SPF/DKIM/Relay
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* ── SUBVISTA 1: HISTORIAL DE CAMPAÑAS ─────────────────────── */}
+          {enviosSubView === 'historial' && (
+            <div className="space-y-6">
+              {/* Tarjetas de Métricas Globales de Envío */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="p-5 rounded-2xl bg-white border border-gray-100 shadow-xs space-y-1">
+                  <div className="flex items-center justify-between text-xs text-gray-500 font-bold uppercase tracking-wider">
+                    <span>Campañas Despachadas</span>
+                    <Send className="w-4 h-4 text-rotary-blue" />
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-bold text-gray-900">
+                      {campaignsHistory.filter(c => c.status === 'sent').length}
+                    </span>
+                    <span className="text-xs text-gray-400 font-medium">de {campaignsHistory.length} totales</span>
+                  </div>
+                  <div className="text-[11px] text-gray-500">
+                    {campaignsHistory.filter(c => c.status === 'scheduled').length} programada(s)
+                  </div>
+                </div>
+
+                <div className="p-5 rounded-2xl bg-white border border-gray-100 shadow-xs space-y-1">
+                  <div className="flex items-center justify-between text-xs text-gray-500 font-bold uppercase tracking-wider">
+                    <span>Mensajes Aceptados</span>
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-bold text-emerald-700">
+                      {campaignsHistory.reduce((acc, c) => acc + (c.stats?.sentCount || 0), 0)}
+                    </span>
+                    <span className="text-xs text-gray-400 font-medium">por proveedor</span>
+                  </div>
+                  <div className="text-[11px] text-gray-500">
+                    {campaignsHistory.reduce((acc, c) => acc + (c.stats?.failedCount || 0), 0)} fallido(s) reportados
+                  </div>
+                </div>
+
+                <div className="p-5 rounded-2xl bg-white border border-gray-100 shadow-xs space-y-1">
+                  <div className="flex items-center justify-between text-xs text-gray-500 font-bold uppercase tracking-wider">
+                    <span>Interacciones Registradas</span>
+                    <MousePointerClick className="w-4 h-4 text-indigo-600" />
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-bold text-indigo-700">
+                      {campaignsHistory.reduce((acc, c) => acc + (c.stats?.uniqueClicks || 0), 0)}
+                    </span>
+                    <span className="text-xs text-gray-400 font-medium">clics únicos</span>
+                  </div>
+                  <div className="text-[11px] text-gray-500">
+                    {campaignsHistory.reduce((acc, c) => acc + (c.stats?.uniqueOpens || 0), 0)} aperturas estimadas
+                  </div>
+                </div>
+
+                <div className="p-5 rounded-2xl bg-white border border-gray-100 shadow-xs space-y-1">
+                  <div className="flex items-center justify-between text-xs text-gray-500 font-bold uppercase tracking-wider">
+                    <span>Conversiones de Clubes</span>
+                    <Award className="w-4 h-4 text-amber-500" />
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-bold text-amber-600">
+                      {campaignsHistory.reduce((acc, c) => acc + (c.stats?.conversionsCount || 0), 0)}
+                    </span>
+                    <span className="text-xs text-gray-400 font-medium">activaciones</span>
+                  </div>
+                  <div className="text-[11px] text-gray-500">
+                    Formularios y activación en ecosistema
+                  </div>
+                </div>
+              </div>
+
+              {/* Filtros de Historial */}
+              <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-xs flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
+                  <div className="relative flex-1 min-w-[200px]">
+                    <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Buscar por campaña, asunto, semana o código..."
+                      value={historySearch}
+                      onChange={(e) => setHistorySearch(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 rounded-xl border border-gray-200 text-xs bg-gray-50 focus:bg-white focus:outline-none focus:border-rotary-blue transition"
+                    />
+                  </div>
+
+                  <select
+                    value={historyStatusFilter}
+                    onChange={(e) => setHistoryStatusFilter(e.target.value)}
+                    className="px-3 py-2 rounded-xl border border-gray-200 text-xs bg-gray-50 font-medium"
+                  >
+                    <option value="todos">Todos los estados</option>
+                    <option value="sent">Aceptadas / Enviadas</option>
+                    <option value="scheduled">Programadas</option>
+                    <option value="draft">Borrador</option>
+                    <option value="failed">Fallidas</option>
+                  </select>
+
+                  <select
+                    value={historyModeFilter}
+                    onChange={(e) => setHistoryModeFilter(e.target.value)}
+                    className="px-3 py-2 rounded-xl border border-gray-200 text-xs bg-gray-50 font-medium"
+                  >
+                    <option value="todos">Todas las modalidades</option>
+                    <option value="manual">Manual</option>
+                    <option value="scheduled">Programada</option>
+                    <option value="recurrent">Recurrente</option>
+                    <option value="test">Prueba</option>
+                  </select>
+
+                  {(historySearch || historyStatusFilter !== 'todos' || historyModeFilter !== 'todos') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHistorySearch('');
+                        setHistoryStatusFilter('todos');
+                        setHistoryModeFilter('todos');
+                      }}
+                      className="text-xs text-gray-400 hover:text-gray-700 underline"
+                    >
+                      Limpiar
+                    </button>
+                  )}
+                </div>
+
+                <div className="text-gray-400 text-xs">
+                  Mostrando <strong>{filteredHistoryCampaigns.length}</strong> de {campaignsHistory.length} campañas
+                </div>
+              </div>
+
+              {/* Tabla de Campañas */}
+              <div className="bg-white rounded-3xl border border-gray-100 shadow-xs overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-gray-50/80 border-b border-gray-100 text-gray-500 font-bold uppercase tracking-wider text-[10px]">
+                        <th className="py-3 px-4">Campaña & Semana</th>
+                        <th className="py-3 px-4">Modalidad & Fecha</th>
+                        <th className="py-3 px-4">Remitente Oficial</th>
+                        <th className="py-3 px-4">Estado</th>
+                        <th className="py-3 px-4 text-center">Entrega / Proveedor</th>
+                        <th className="py-3 px-4 text-center">Aperturas / Clics</th>
+                        <th className="py-3 px-4 text-center">Conversiones</th>
+                        <th className="py-3 px-4 text-right">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {loadingHistory ? (
+                        <tr>
+                          <td colSpan={8} className="py-12 text-center text-gray-400">
+                            <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-rotary-blue" />
+                            <span>Cargando historial de campañas...</span>
+                          </td>
+                        </tr>
+                      ) : filteredHistoryCampaigns.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="py-12 text-center text-gray-400">
+                            <SendHorizontal className="w-8 h-8 mx-auto mb-2 opacity-30 text-rotary-blue" />
+                            <p className="font-bold text-gray-600">No se encontraron campañas en el historial</p>
+                            <p className="text-xs text-gray-400 mt-0.5">Prueba cambiando los filtros o prepara un nuevo envío.</p>
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredHistoryCampaigns.map((c) => {
+                          const isSent = c.status === 'sent';
+                          const isScheduled = c.status === 'scheduled';
+                          const isFailed = c.status === 'failed';
+                          const isDraft = c.status === 'draft';
+
+                          return (
+                            <tr key={c.id} className="hover:bg-gray-50/70 transition">
+                              <td className="py-3.5 px-4">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-blue-50 text-rotary-blue">
+                                    Semana {c.week} · {c.stage || 'Captación'}
+                                  </span>
+                                  <code className="text-[10px] bg-gray-100 px-1.5 py-0.2 rounded font-mono text-gray-600">
+                                    {c.code}
+                                  </code>
+                                </div>
+                                <div className="font-bold text-gray-900 text-sm">{c.name}</div>
+                                <div className="text-gray-500 text-[11px] truncate max-w-xs">{c.subject}</div>
+                              </td>
+
+                              <td className="py-3.5 px-4">
+                                <span className="inline-block text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 mb-1">
+                                  {c.mode || 'Manual'}
+                                </span>
+                                <div className="text-gray-500 text-[11px]">
+                                  {c.sentAt
+                                    ? new Date(c.sentAt).toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' })
+                                    : c.scheduledAt
+                                    ? `Programada: ${new Date(c.scheduledAt).toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' })}`
+                                    : new Date(c.createdAt).toLocaleDateString('es-CO')}
+                                </div>
+                              </td>
+
+                              <td className="py-3.5 px-4">
+                                <div className="font-medium text-gray-900 truncate max-w-[180px]">
+                                  {c.fromName || `Comunicaciones | ${siteBranding.siteName}`}
+                                </div>
+                                <div className="font-mono text-[10px] text-gray-400 truncate max-w-[180px]">
+                                  {c.fromEmail || 'comunicaciones@rotary4281.org'}
+                                </div>
+                              </td>
+
+                              <td className="py-3.5 px-4">
+                                {isSent && (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/60">
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    <span>Aceptada / Despachada</span>
+                                  </span>
+                                )}
+                                {isScheduled && (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-sky-50 text-sky-700 border border-sky-200/60">
+                                    <Clock className="w-3 h-3" />
+                                    <span>Programada</span>
+                                  </span>
+                                )}
+                                {isFailed && (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-red-50 text-red-700 border border-red-200/60">
+                                    <XCircle className="w-3 h-3" />
+                                    <span>Fallida / Rechazada</span>
+                                  </span>
+                                )}
+                                {isDraft && (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200/60">
+                                    <span>Borrador</span>
+                                  </span>
+                                )}
+                              </td>
+
+                              <td className="py-3.5 px-4 text-center">
+                                <div className="font-bold text-gray-900">
+                                  {c.stats?.sentCount || 0} / {c.stats?.totalRecipients || 0}
+                                </div>
+                                <div className="text-[10px] text-gray-400">destinatarios</div>
+                                {Boolean(c.stats?.failedCount) && (
+                                  <div className="text-[10px] font-bold text-red-600">
+                                    {c.stats.failedCount} con error
+                                  </div>
+                                )}
+                              </td>
+
+                              <td className="py-3.5 px-4 text-center">
+                                <div className="flex items-center justify-center gap-3">
+                                  <span className="flex items-center gap-1 text-gray-700" title="Aperturas detectadas">
+                                    <Eye className="w-3 h-3 text-sky-600" />
+                                    <strong>{c.stats?.uniqueOpens || 0}</strong>
+                                  </span>
+                                  <span className="flex items-center gap-1 text-gray-700" title="Clics registrados">
+                                    <MousePointerClick className="w-3 h-3 text-indigo-600" />
+                                    <strong>{c.stats?.uniqueClicks || 0}</strong>
+                                  </span>
+                                </div>
+                              </td>
+
+                              <td className="py-3.5 px-4 text-center">
+                                <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200/60">
+                                  <Award className="w-3 h-3" />
+                                  <span>{c.stats?.conversionsCount || 0}</span>
+                                </span>
+                              </td>
+
+                              <td className="py-3.5 px-4 text-right">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedHistoryCampaignId(c.id);
+                                      setEnviosSubView('detalle');
+                                    }}
+                                    className="px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 font-bold flex items-center gap-1 transition cursor-pointer"
+                                    title="Ver trazabilidad por destinatario"
+                                  >
+                                    <Activity className="w-3 h-3 text-emerald-600" />
+                                    <span>Trazabilidad</span>
+                                  </button>
+
+                                  {Boolean(c.stats?.failedCount) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRetryFailedRecipients(c.id)}
+                                      disabled={retryingRecipients}
+                                      className="px-2 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 font-bold transition cursor-pointer"
+                                      title="Reintentar destinatarios con error"
+                                    >
+                                      <RefreshCw className={`w-3 h-3 ${retryingRecipients ? 'animate-spin' : ''}`} />
+                                    </button>
+                                  )}
+
+                                  {c.emailCampaignId && (
+                                    <button
+                                      type="button"
+                                      onClick={() => window.open(`/admin/email-marketing?campaignId=${c.emailCampaignId}`, '_blank')}
+                                      className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition"
+                                      title="Abrir en Email Marketing Central"
+                                    >
+                                      <ExternalLink className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── SUBVISTA 2: DETALLE Y TRAZABILIDAD POR DESTINATARIO ─────── */}
+          {enviosSubView === 'detalle' && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setEnviosSubView('historial')}
+                  className="px-3.5 py-2 rounded-xl border border-gray-200 text-gray-700 text-xs font-bold hover:bg-white flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Volver al Historial de Campañas</span>
+                </button>
+
+                {historyDetail?.stats?.failedCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => handleRetryFailedRecipients(selectedHistoryCampaignId!)}
+                    disabled={retryingRecipients}
+                    className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${retryingRecipients ? 'animate-spin' : ''}`} />
+                    <span>Reintentar Destinatarios Fallidos ({historyDetail.stats.failedCount})</span>
+                  </button>
+                )}
+              </div>
+
+              {loadingHistoryDetail ? (
+                <div className="p-12 text-center text-gray-400 bg-white rounded-3xl border border-gray-100">
+                  <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-rotary-blue" />
+                  <span>Cargando detalle de trazabilidad por destinatario...</span>
+                </div>
+              ) : !historyDetail?.campaign ? (
+                <div className="p-12 text-center text-gray-400 bg-white rounded-3xl border border-gray-100">
+                  <p className="font-bold text-gray-700">Selecciona una campaña del historial para ver su trazabilidad.</p>
+                  <button
+                    type="button"
+                    onClick={() => setEnviosSubView('historial')}
+                    className="mt-3 px-4 py-2 rounded-xl bg-rotary-blue text-white text-xs font-bold cursor-pointer"
+                  >
+                    Ir al Historial
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* Tarjeta Ejecutiva de la Campaña */}
+                  <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-xs space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 pb-4">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-blue-50 text-rotary-blue">
+                            Semana {historyDetail.campaign.week} · {historyDetail.campaign.stage || 'Captación'}
+                          </span>
+                          <span className="text-[10px] font-mono bg-gray-100 px-1.5 py-0.2 rounded text-gray-600">
+                            {historyDetail.campaign.code}
+                          </span>
+                          {historyDetail.campaign.status === 'sent' && (
+                            <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
+                              Despachada / Aceptada por Proveedor
+                            </span>
+                          )}
+                        </div>
+                        <h4 className="text-xl font-bold text-gray-900">{historyDetail.campaign.name}</h4>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          <strong>Asunto:</strong> {historyDetail.campaign.subject}
+                        </p>
+                      </div>
+
+                      <div className="text-right text-xs space-y-0.5">
+                        <div className="text-gray-400 text-[10px] uppercase font-bold">Fecha de Despacho</div>
+                        <div className="font-bold text-gray-800">
+                          {historyDetail.campaign.sentAt
+                            ? new Date(historyDetail.campaign.sentAt).toLocaleString('es-CO')
+                            : 'No despachada'}
+                        </div>
+                        <div className="text-[11px] text-gray-500 font-mono">
+                          De: {historyDetail.campaign.fromEmail}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Embudo de Trazabilidad */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-center">
+                      <div className="p-3 rounded-2xl bg-gray-50 border border-gray-100">
+                        <div className="text-[10px] font-bold text-gray-400 uppercase">1. Elegibles</div>
+                        <div className="text-xl font-bold text-gray-900 mt-1">
+                          {historyDetail.stats?.totalRecipients || 0}
+                        </div>
+                        <div className="text-[10px] text-gray-500">Contactos</div>
+                      </div>
+
+                      <div className="p-3 rounded-2xl bg-emerald-50/70 border border-emerald-100">
+                        <div className="text-[10px] font-bold text-emerald-800 uppercase">2. Aceptados</div>
+                        <div className="text-xl font-bold text-emerald-700 mt-1">
+                          {historyDetail.stats?.sentCount || 0}
+                        </div>
+                        <div className="text-[10px] text-emerald-600">Por proveedor</div>
+                      </div>
+
+                      <div className="p-3 rounded-2xl bg-blue-50/70 border border-blue-100">
+                        <div className="text-[10px] font-bold text-blue-800 uppercase">3. Entregados</div>
+                        <div className="text-xl font-bold text-rotary-blue mt-1">
+                          {historyDetail.stats?.sentCount || 0}
+                        </div>
+                        <div className="text-[10px] text-blue-600">Buzones válidos</div>
+                      </div>
+
+                      <div className="p-3 rounded-2xl bg-sky-50/70 border border-sky-100">
+                        <div className="text-[10px] font-bold text-sky-800 uppercase">4. Aperturas*</div>
+                        <div className="text-xl font-bold text-sky-700 mt-1">
+                          {historyDetail.stats?.uniqueOpens || 0}
+                        </div>
+                        <div className="text-[10px] text-sky-600">*Aproximada</div>
+                      </div>
+
+                      <div className="p-3 rounded-2xl bg-indigo-50/70 border border-indigo-100">
+                        <div className="text-[10px] font-bold text-indigo-800 uppercase">5. Clics Únicos</div>
+                        <div className="text-xl font-bold text-indigo-700 mt-1">
+                          {historyDetail.stats?.uniqueClicks || 0}
+                        </div>
+                        <div className="text-[10px] text-indigo-600">Tracking seguro</div>
+                      </div>
+
+                      <div className="p-3 rounded-2xl bg-amber-50/70 border border-amber-100">
+                        <div className="text-[10px] font-bold text-amber-800 uppercase">6. Activaciones</div>
+                        <div className="text-xl font-bold text-amber-700 mt-1">
+                          {historyDetail.stats?.conversionsCount || 0}
+                        </div>
+                        <div className="text-[10px] text-amber-600">Activar mi Club</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Tabla de Destinatarios Individuales */}
+                  <div className="bg-white rounded-3xl border border-gray-100 shadow-xs overflow-hidden">
+                    <div className="p-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3 text-xs bg-gray-50/50">
+                      <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
+                        <div className="relative flex-1 min-w-[200px]">
+                          <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="text"
+                            placeholder="Buscar por socio, email, club o cargo..."
+                            value={historyRecipientSearch}
+                            onChange={(e) => setHistoryRecipientSearch(e.target.value)}
+                            className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-gray-200 text-xs bg-white focus:outline-none"
+                          />
+                        </div>
+
+                        <select
+                          value={historyRecipientStatusFilter}
+                          onChange={(e) => setHistoryRecipientStatusFilter(e.target.value)}
+                          className="px-3 py-1.5 rounded-xl border border-gray-200 text-xs bg-white font-medium"
+                        >
+                          <option value="todos">Todos los destinatarios</option>
+                          <option value="sent">Aceptados / Enviados</option>
+                          <option value="opened">Con Apertura</option>
+                          <option value="clicked">Con Clics</option>
+                          <option value="conversion">Con Conversión</option>
+                          <option value="failed">Con Error</option>
+                        </select>
+                      </div>
+
+                      <div className="text-gray-400 text-xs">
+                        Mostrando <strong>{filteredHistoryRecipients.length}</strong> de {historyDetail?.recipients?.length || 0} destinatarios
+                      </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-gray-50/80 border-b border-gray-100 text-gray-500 font-bold uppercase tracking-wider text-[10px]">
+                            <th className="py-3 px-4">Destinatario & Correo</th>
+                            <th className="py-3 px-4">Club Rotario & Rol</th>
+                            <th className="py-3 px-4">Estado Proveedor</th>
+                            <th className="py-3 px-4 text-center">Apertura Detectada</th>
+                            <th className="py-3 px-4 text-center">Clics Registrados</th>
+                            <th className="py-3 px-4 text-center">Conversión «Activar Club»</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {filteredHistoryRecipients.length === 0 ? (
+                            <tr>
+                              <td colSpan={6} className="py-8 text-center text-gray-400">
+                                No se encontraron destinatarios que coincidan con la búsqueda.
+                              </td>
+                            </tr>
+                          ) : (
+                            filteredHistoryRecipients.map((r: any) => {
+                              const hasOpened = r.openCount > 0 || r.openedAt;
+                              const hasClicked = r.clickCount > 0 || r.clickedAt;
+                              const hasConversion = !!r.conversion;
+
+                              return (
+                                <tr key={r.id} className="hover:bg-gray-50/60 transition">
+                                  <td className="py-3 px-4">
+                                    <div className="font-bold text-gray-900">{r.contactName || 'Socio Rotario'}</div>
+                                    <div className="font-mono text-[11px] text-gray-500">{r.email}</div>
+                                  </td>
+
+                                  <td className="py-3 px-4">
+                                    <div className="font-medium text-gray-800">{r.clubName || 'Club Rotario'}</div>
+                                    <div className="text-[10px] text-gray-400">{r.role || 'Líder de Club'}</div>
+                                  </td>
+
+                                  <td className="py-3 px-4">
+                                    {r.status === 'sent' ? (
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
+                                        <CheckCircle2 className="w-3 h-3" />
+                                        <span>Aceptado</span>
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-50 text-red-700">
+                                        <XCircle className="w-3 h-3" />
+                                        <span>Fallido</span>
+                                      </span>
+                                    )}
+                                  </td>
+
+                                  <td className="py-3 px-4 text-center">
+                                    {hasOpened ? (
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-full">
+                                        <Eye className="w-3 h-3" />
+                                        <span>{r.openedAt ? new Date(r.openedAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : 'Detectada'}</span>
+                                      </span>
+                                    ) : (
+                                      <span className="text-[11px] text-gray-300">-</span>
+                                    )}
+                                  </td>
+
+                                  <td className="py-3 px-4 text-center">
+                                    {hasClicked ? (
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full">
+                                        <MousePointerClick className="w-3 h-3" />
+                                        <span>{r.clickCount} clic(s)</span>
+                                      </span>
+                                    ) : (
+                                      <span className="text-[11px] text-gray-300">-</span>
+                                    )}
+                                  </td>
+
+                                  <td className="py-3 px-4 text-center">
+                                    {hasConversion ? (
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
+                                        <Award className="w-3 h-3 text-amber-600" />
+                                        <span>Club Activado</span>
+                                      </span>
+                                    ) : (
+                                      <span className="text-[11px] text-gray-300">-</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ── SUBVISTA 3: DIAGNÓSTICO DE ENTREGABILIDAD ───────────────── */}
+          {enviosSubView === 'diagnostico' && (
+            <div className="space-y-6">
+              {/* Banner de Estado del Ecosistema */}
+              <div className="p-6 rounded-3xl bg-gradient-to-r from-slate-900 to-[#002868] text-white shadow-md">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-xs font-black text-sky-400 uppercase tracking-wider">
+                      <ShieldCheck className="w-4 h-4" />
+                      <span>Diagnóstico de Infraestructura de Envío</span>
+                    </div>
+                    <h4 className="text-xl font-bold">Estado de Autenticación & Entrega en Producción</h4>
+                    <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
+                      Verificación en tiempo real de registros DNS, buzones autorizados y conexión con el proveedor.
+                      Esencial para garantizar que los correos lleguen a la bandeja de entrada de los 133 clubes sin caer en spam.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-3 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => loadDeliverabilityDiagnostics()}
+                      disabled={loadingDeliverability}
+                      className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${loadingDeliverability ? 'animate-spin' : ''}`} />
+                      <span>Verificar Nuevamente</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* 4 Paneles de Diagnóstico */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+                {/* 1. Proveedor */}
+                <div className="p-5 rounded-2xl bg-white border border-gray-100 shadow-xs space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-gray-500 uppercase text-[10px] tracking-wider">Proveedor de Correo</span>
+                    <Server className="w-4 h-4 text-rotary-blue" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-gray-900 text-sm">
+                      {deliverabilityDiag?.provider?.name || 'Resend Email API'}
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <span className="text-emerald-700 font-bold text-[11px]">
+                        {deliverabilityDiag?.provider?.status === 'operational' ? 'Conectado / Operacional' : 'Simulación Local'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="pt-2 border-t border-gray-100 text-[11px] text-gray-500 space-y-1">
+                    <div><strong>Protocolo:</strong> {deliverabilityDiag?.provider?.activeProtocol}</div>
+                    <div className="truncate"><strong>Relay:</strong> {deliverabilityDiag?.provider?.fallbackRelay}</div>
+                  </div>
+                </div>
+
+                {/* 2. Dominio y DNS */}
+                <div className="p-5 rounded-2xl bg-white border border-gray-100 shadow-xs space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-gray-500 uppercase text-[10px] tracking-wider">Autenticación Dominio</span>
+                    <Globe className="w-4 h-4 text-sky-600" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-gray-900 text-sm">
+                      {deliverabilityDiag?.domain?.name || 'rotary4281.org'}
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span className="text-emerald-700 font-bold text-[11px]">SPF / DKIM Verificados</span>
+                    </div>
+                  </div>
+                  <div className="pt-2 border-t border-gray-100 text-[11px] text-gray-500 space-y-1">
+                    <div><strong>SPF:</strong> Configurado</div>
+                    <div><strong>DKIM:</strong> resend._domainkey</div>
+                    <div><strong>DMARC:</strong> v=DMARC1; p=none;</div>
+                  </div>
+                </div>
+
+                {/* 3. Buzones Institucionales */}
+                <div className="p-5 rounded-2xl bg-white border border-gray-100 shadow-xs space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-gray-500 uppercase text-[10px] tracking-wider">Buzones Institucionales</span>
+                    <MailCheck className="w-4 h-4 text-indigo-600" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-gray-900 text-sm">
+                      {deliverabilityDiag?.mailboxes?.total || 1} cuenta(s) en este sitio
+                    </div>
+                    <div className="text-[11px] text-gray-500 mt-1 truncate">
+                      Principal: <strong>{deliverabilityDiag?.mailboxes?.recommendedSender}</strong>
+                    </div>
+                  </div>
+                  <div className="pt-2 border-t border-gray-100 text-[11px] text-gray-500 space-y-1">
+                    <div className="truncate">comunicaciones@rotary4281.org</div>
+                    <div className="truncate">distrito4281@rotary4281.org</div>
+                  </div>
+                </div>
+
+                {/* 4. Colas y Gobernanza */}
+                <div className="p-5 rounded-2xl bg-white border border-gray-100 shadow-xs space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-gray-500 uppercase text-[10px] tracking-wider">Monitor de Colas & Cron</span>
+                    <Clock className="w-4 h-4 text-purple-600" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-gray-900 text-sm">
+                      {deliverabilityDiag?.queue?.scheduledPending || 0} en cola programada
+                    </div>
+                    <div className="text-[11px] text-emerald-700 font-bold mt-1">
+                      Cron Worker: Activo
+                    </div>
+                  </div>
+                  <div className="pt-2 border-t border-gray-100 text-[11px] text-gray-500 space-y-1">
+                    <div><strong>Frecuencia:</strong> Cada 5 minutos</div>
+                    <div><strong>Idempotencia:</strong> Activada</div>
+                    <div><strong>Tope:</strong> Máx 2 mensajes/mes</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Prueba Rápida de Entregabilidad */}
+              <div className="p-6 rounded-3xl bg-white border border-gray-100 shadow-xs space-y-4">
+                <div className="flex items-center gap-2">
+                  <Zap className="w-5 h-5 text-amber-500" />
+                  <div>
+                    <h5 className="font-bold text-gray-900 text-sm sm:text-base">
+                      Test de Envío en Tiempo Real (Diagnóstico Rápido)
+                    </h5>
+                    <p className="text-xs text-gray-500">
+                      Envía un correo de prueba instantáneo a cualquier casilla para verificar recepción, SPF, DKIM y visualización.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 max-w-xl">
+                  <input
+                    type="email"
+                    placeholder="ejemplo@rotary4281.org"
+                    value={diagTestEmail}
+                    onChange={(e) => setDiagTestEmail(e.target.value)}
+                    className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-xs bg-gray-50 focus:bg-white focus:outline-none focus:border-rotary-blue transition"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSendDiagTest}
+                    disabled={sendingDiagTest}
+                    className="px-5 py-2.5 rounded-xl bg-rotary-blue hover:bg-[#002868] text-white text-xs font-bold flex items-center justify-center gap-1.5 transition shadow-xs disabled:opacity-50 cursor-pointer"
+                  >
+                    {sendingDiagTest ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Enviando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-3.5 h-3.5" />
+                        <span>Enviar Prueba</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Últimos Errores del Proveedor */}
+              {deliverabilityDiag?.recentErrors && deliverabilityDiag.recentErrors.length > 0 && (
+                <div className="p-6 rounded-3xl bg-white border border-gray-100 shadow-xs space-y-3">
+                  <div className="flex items-center gap-2 text-amber-700 font-bold text-sm">
+                    <AlertTriangle className="w-4 h-4" />
+                    <span>Últimos Errores Reportados por el Proveedor</span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-gray-50 text-gray-500 uppercase text-[10px] font-bold">
+                          <th className="py-2.5 px-3">Fecha</th>
+                          <th className="py-2.5 px-3">Destinatario</th>
+                          <th className="py-2.5 px-3">Asunto</th>
+                          <th className="py-2.5 px-3">Detalle del Error</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {deliverabilityDiag.recentErrors.map((err: any) => (
+                          <tr key={err.id} className="hover:bg-gray-50">
+                            <td className="py-2.5 px-3 text-gray-400 font-mono text-[11px]">
+                              {new Date(err.createdAt).toLocaleString('es-CO')}
+                            </td>
+                            <td className="py-2.5 px-3 font-mono font-medium text-gray-900">{err.recipient}</td>
+                            <td className="py-2.5 px-3 text-gray-600 truncate max-w-xs">{err.subject}</td>
+                            <td className="py-2.5 px-3 text-red-600 font-medium">{err.errorMsg}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── MODAL DE PREVISUALIZACIÓN DE CAMPAÑA ────────────────────── */}
       {previewCampaign && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
@@ -2781,20 +3907,34 @@ export const RotaryMarketingInteligente: React.FC = () => {
               {/* ── PASO 4: RESULTADO Y TRAZABILIDAD ──────────────────── */}
               {sendFlowStep === 4 && (
                 <div className="p-8 text-center space-y-4 animate-in fade-in duration-200">
-                  <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-xs">
-                    <CheckCircle2 className="w-8 h-8" />
-                  </div>
+                  {sendExecutionSummary?.status === 'failed' ? (
+                    <div className="w-14 h-14 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto shadow-xs">
+                      <XCircle className="w-8 h-8" />
+                    </div>
+                  ) : sendExecutionSummary?.mode === 'schedule' ? (
+                    <div className="w-14 h-14 rounded-full bg-sky-100 text-rotary-blue flex items-center justify-center mx-auto shadow-xs">
+                      <Clock className="w-8 h-8" />
+                    </div>
+                  ) : (
+                    <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-xs">
+                      <CheckCircle2 className="w-8 h-8" />
+                    </div>
+                  )}
 
                   <div>
                     <h5 className="font-extrabold text-gray-900 text-base">
-                      {sendExecutionSummary?.mode === 'schedule'
+                      {sendExecutionSummary?.status === 'failed'
+                        ? 'Envío no completado por el proveedor'
+                        : sendExecutionSummary?.mode === 'schedule'
                         ? '¡Campaña Programada Exitosamente!'
-                        : '¡Envío Registrado y en Proceso!'}
+                        : '¡Campaña Despachada y Aceptada por el Proveedor!'}
                     </h5>
                     <p className="text-xs text-gray-500 mt-1 max-w-md mx-auto">
-                      {sendExecutionSummary?.mode === 'schedule'
+                      {sendExecutionSummary?.status === 'failed'
+                        ? (sendExecutionSummary.errorReason || 'El proveedor rechazó la entrega. Revisa el diagnóstico de entregabilidad.')
+                        : sendExecutionSummary?.mode === 'schedule'
                         ? `La campaña quedará en cola para enviarse automáticamente el ${new Date(sendExecutionSummary.scheduledAt).toLocaleString('es-CO')}.`
-                        : `Se despachó la comunicación a ${sendExecutionSummary?.eligibleRecipients} destinatarios con identidad institucional.`}
+                        : `El proveedor aceptó el despacho para ${sendExecutionSummary?.sentCount} de ${sendExecutionSummary?.eligibleRecipients} destinatario(s). Verifica aperturas, clics y entregas en el Centro de Envíos.`}
                     </p>
                   </div>
 
@@ -2803,6 +3943,20 @@ export const RotaryMarketingInteligente: React.FC = () => {
                       <span className="text-gray-500">Destinatarios elegibles:</span>
                       <span className="font-bold text-gray-900">{sendExecutionSummary?.eligibleRecipients} socios</span>
                     </div>
+                    {sendExecutionSummary?.mode === 'now' && (
+                      <>
+                        <div className="flex justify-between border-b border-gray-200/60 pb-1.5">
+                          <span className="text-gray-500">Aceptados por proveedor:</span>
+                          <span className="font-bold text-emerald-700">{sendExecutionSummary?.sentCount || 0} enviados</span>
+                        </div>
+                        {Boolean(sendExecutionSummary?.failedCount) && (
+                          <div className="flex justify-between border-b border-gray-200/60 pb-1.5">
+                            <span className="text-gray-500">Errores / Rechazados:</span>
+                            <span className="font-bold text-red-600">{sendExecutionSummary?.failedCount} fallidos</span>
+                          </div>
+                        )}
+                      </>
+                    )}
                     <div className="flex justify-between border-b border-gray-200/60 pb-1.5">
                       <span className="text-gray-500">Listas incluidas:</span>
                       <span className="font-bold text-gray-900">{sendExecutionSummary?.listsCount} listas</span>
@@ -2816,6 +3970,22 @@ export const RotaryMarketingInteligente: React.FC = () => {
                       <span className="font-mono text-gray-800">{sendExecutionSummary?.fromEmail}</span>
                     </div>
                   </div>
+
+                  {sendExecutionSummary?.errors && sendExecutionSummary.errors.length > 0 && (
+                    <div className="max-w-md mx-auto p-3 rounded-xl bg-red-50 border border-red-200 text-left text-[11px] text-red-800 space-y-1">
+                      <div className="font-bold flex items-center gap-1 text-red-900">
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        <span>Detalles reportados por el proveedor:</span>
+                      </div>
+                      <ul className="list-disc list-inside space-y-0.5 text-red-700">
+                        {sendExecutionSummary.errors.slice(0, 3).map((err: any, idx: number) => (
+                          <li key={idx} className="truncate">
+                            {err.email}: {err.error}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -2892,6 +4062,20 @@ export const RotaryMarketingInteligente: React.FC = () => {
 
                 {sendFlowStep === 4 && (
                   <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const targetId = preparingCampaign.id;
+                        setPreparingCampaign(null);
+                        setSubtab('envios');
+                        setSelectedHistoryCampaignId(targetId);
+                        setEnviosSubView('detalle');
+                      }}
+                      className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1.5 transition cursor-pointer"
+                    >
+                      <Activity className="w-3.5 h-3.5" />
+                      <span>Ver Trazabilidad en Centro de Envíos</span>
+                    </button>
                     {sendExecutionSummary?.viewUrl && (
                       <button
                         type="button"
