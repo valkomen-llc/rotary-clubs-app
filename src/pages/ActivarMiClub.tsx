@@ -46,17 +46,17 @@ export const SIX_PILLARS: PillarDetail[] = [
     accentBorder: 'border-blue-100',
     badge: 'Identidad Propia',
     extendedPoints: [
-      'Sitio web institucional personalizado para el club.',
-      'Dominio propio y correos corporativos oficiales.',
-      'Directorio digital de socios y junta directiva actualizada.',
-      'Historia, misión, visión y valores rotarios del club.',
-      'Información institucional, estatutos y gestión administrativa.',
+      'Sitio web institucional personalizado para el club con dominio oficial y correos corporativos.',
+      'Directorio digital de socios, cuadro social y junta directiva actualizada.',
+      'Historia, misión, visión, proyectos emblemáticos y memoria rotaria del club.',
+      'Legado digital y continuidad institucional: transición ordenada entre juntas directivas.',
+      'Información institucional, estatutos, actas y gestión administrativa por período rotario.',
       'Programas de nuevas generaciones: Rotaract, Interact, ROTEX e intercambios.',
-      'Publicación de documentos, manuales, actas e informes periódicos.',
-      'Mayor visibilidad pública para personas interesadas en conocer el club.',
-      'Fortalecimiento del cuadro social y atracción continua de nuevos socios.'
+      'Publicación de documentos, manuales e informes periódicos.',
+      'Mayor visibilidad para atraer personas interesadas en conocer y vincularse al club.',
+      'Fortalecimiento de la membresía: haz visible tu club para atraer nuevos socios y líderes.'
     ],
-    membershipImpact: 'Una presencia institucional digital profesional permite que potenciales socios encuentren tu club en Google y conozcan sus valores y causas de servicio.'
+    membershipImpact: '«Haz visible tu club, conecta con tu comunidad y abre nuevas oportunidades para atraer socios, voluntarios y aliados». Una presencia institucional profesional facilita la llegada de nuevos líderes y asegura la continuidad del legado rotario entre juntas directivas.'
   },
   {
     id: 'marketing_inteligente',
@@ -68,19 +68,18 @@ export const SIX_PILLARS: PillarDetail[] = [
     accentBorder: 'border-amber-100',
     badge: 'Impacto & Difusión',
     extendedPoints: [
-      'Creación asistida de contenidos con inteligencia artificial.',
-      'Generación de piezas y copys listos para redes sociales.',
-      'Integración con canales digitales, WhatsApp y correo institucional.',
-      'Módulo de noticias y blog para destacar el impacto del club.',
+      'Creación asistida de contenidos con inteligencia artificial y copys listos para redes.',
+      'Integración con canales digitales, WhatsApp y boletines institucionales.',
+      'Módulo de noticias y blog para destacar el impacto de las obras del club.',
       'Calendario centralizado de actividades, reuniones y eventos distritales.',
       'Campañas de comunicación y boletines institucionales automatizados.',
-      'Posicionamiento orgánico en motores de búsqueda (SEO local).',
+      'Posicionamiento orgánico en motores de búsqueda (SEO local) para encontrar al club.',
       'Estadísticas claras de alcance y métricas de crecimiento.',
-      'Promoción activa de proyectos y actividades de servicio.',
-      'Estrategias probadas para atraer nuevos socios, voluntarios y aliados.',
-      'Comunicación 100% alineada con las directrices de Rotary International.'
+      'Promoción activa de proyectos y actividades de servicio comunitario.',
+      'Fortalecimiento del cuadro social: estrategias probadas para atraer nuevos socios, voluntarios y aliados.',
+      'Comunicación 100% alineada con las directrices de imagen pública de Rotary International.'
     ],
-    membershipImpact: 'Difundir el impacto de tus proyectos en canales digitales despierta el interés comunitario y facilita la vinculación de voluntarios y líderes profesionales.'
+    membershipImpact: '«Haz visible tu club, conecta con tu comunidad y abre nuevas oportunidades para atraer socios, voluntarios y aliados». La comunicación activa y profesional despierta el interés comunitario y facilita la incorporación de líderes con vocación de servicio.'
   },
   {
     id: 'proyectos_recursos',
@@ -115,20 +114,20 @@ export const SIX_PILLARS: PillarDetail[] = [
     accentBorder: 'border-indigo-100',
     badge: 'Memoria Institucional',
     extendedPoints: [
-      'Alojamiento web de alta velocidad y disponibilidad.',
+      'Alojamiento web en la nube de alta velocidad, disponibilidad y certificados SSL.',
       'Infraestructura tecnológica en la nube moderna y escalable.',
       'Gestión técnica de dominios y certificados SSL seguros.',
       'Cuentas de correo institucionales bajo el dominio del club.',
-      'Biblioteca multimedia institucional para fotos y videos.',
+      'Biblioteca multimedia institucional para fotos, videos y evidencias de proyectos.',
       'Almacenamiento organizado de archivos, evidencias y resoluciones.',
-      'Clasificación histórica de contenidos por período rotario.',
+      'Legado digital y archivo histórico: clasificación de contenidos por período rotario.',
+      'Continuidad institucional: transición ordenada entre juntas directivas entrantes y salientes.',
       'Panel administrativo intuitivo para la junta directiva.',
       'Estadísticas de visitas y comportamiento del portal.',
       'Copias de seguridad periódicas y protección contra pérdida de datos.',
-      'Gestión centralizada de la información del club.',
-      'Soporte técnico conforme a las condiciones de la plataforma.'
+      'Gestión centralizada de la información del club.'
     ],
-    membershipImpact: 'Conserva ordenada la memoria institucional y facilita una transición impecable y sin traumatismos entre juntas directivas entrantes y salientes.'
+    membershipImpact: '«Tu club evoluciona. Su legado permanece». Conserva la historia, los proyectos, las actividades y el conocimiento de tu club en un solo lugar, facilitando una transición impecable y sin traumatismos entre juntas directivas y períodos rotarios.'
   },
   {
     id: 'acompanamiento_continuo',
@@ -569,23 +568,9 @@ export const ActivarMiClub: React.FC = () => {
           subtitle="Conecta, comunica y potencia el impacto de tu club con tecnología inteligente, herramientas integradas y acompañamiento durante todo el período rotario."
         />
 
-        {/* ── SECCIÓN 2: LOS 6 PILARES DEL ECOSISTEMA ─────────────────────── */}
-        <section className="max-w-6xl mx-auto px-4 sm:px-6 pt-10 md:pt-14 pb-4 relative z-10">
-          <div className="text-center max-w-3xl mx-auto mb-10 md:mb-12">
-            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-rotary-blue uppercase tracking-widest bg-blue-50/90 border border-blue-200/70 px-3.5 py-1 rounded-full mb-3 shadow-2xs">
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              Ecosistema Digital Integral
-            </span>
-            <h2 className="text-2xl sm:text-3xl md:text-[34px] text-gray-900 font-normal tracking-tight font-['Open_Sans',sans-serif] leading-tight">
-              Todo lo que tu club necesita, en un solo ecosistema.
-            </h2>
-            <p className="text-gray-600 text-sm sm:text-base mt-3 leading-relaxed">
-              Descubre las herramientas que ayudarán a tu club a fortalecer su presencia institucional, atraer nuevos socios, comunicar sus actividades, gestionar proyectos y generar un impacto duradero.
-            </p>
-          </div>
-
-          {/* Cuadrícula de 6 Tarjetas (3 columnas escritorio, 2 tabletas, 1 móvil) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
+        {/* ── SECCIÓN 2: SEIS PILARES DEL ECOSISTEMA ──────────────────────── */}
+        <section className="max-w-4xl mx-auto px-4 sm:px-6 pt-6 sm:pt-8 pb-3 relative z-10">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
             {SIX_PILLARS.map((pillar) => (
               <div
                 key={pillar.id}
@@ -593,98 +578,35 @@ export const ActivarMiClub: React.FC = () => {
                 role="button"
                 tabIndex={0}
                 onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); setActiveModalPillar(pillar); } }}
-                className="bg-white rounded-3xl p-6 sm:p-7 border border-gray-100 shadow-sm hover:shadow-xl hover:border-blue-200 transition-all duration-300 flex flex-col justify-between h-full group text-left cursor-pointer relative overflow-hidden"
+                className="bg-white rounded-2xl p-4 sm:p-5 border border-gray-100 shadow-xs hover:shadow-md hover:border-blue-200 transition-all duration-200 flex flex-col justify-between h-full group text-left cursor-pointer"
               >
                 <div>
-                  <div className="flex items-center justify-between gap-3 mb-4">
-                    <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border transition-transform duration-300 group-hover:scale-105", pillar.accentBg, pillar.accentText, pillar.accentBorder)}>
-                      {getPillarIcon(pillar.iconName, "w-6 h-6")}
-                    </div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 bg-gray-50 px-2.5 py-1 rounded-lg border border-gray-100">
-                      {pillar.badge}
-                    </span>
+                  <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border mb-3 transition-transform duration-200 group-hover:scale-105", pillar.accentBg, pillar.accentText, pillar.accentBorder)}>
+                    {getPillarIcon(pillar.iconName, "w-5 h-5")}
                   </div>
 
-                  <h3 className="text-lg font-bold text-gray-900 group-hover:text-rotary-blue transition-colors">
+                  <h3 className="text-sm sm:text-base font-bold text-gray-900 group-hover:text-rotary-blue transition-colors">
                     {pillar.title}
                   </h3>
 
-                  <p className="text-sm text-gray-600 leading-relaxed mt-2.5">
+                  <p className="text-xs text-gray-500 leading-relaxed mt-1 line-clamp-2">
                     {pillar.shortDesc}
                   </p>
                 </div>
 
-                <div className="pt-4 mt-5 border-t border-gray-100/80 flex items-center justify-between text-xs font-bold text-rotary-blue group-hover:text-[#002868] transition-colors">
+                <div className="pt-2.5 mt-2.5 border-t border-gray-50 flex items-center text-xs font-bold text-rotary-blue group-hover:text-[#002868] transition-colors">
                   <span className="inline-flex items-center gap-1">
-                    <span>Conocer características</span>
-                    <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                  </span>
-                  <span className="text-[11px] text-gray-400 font-normal">
-                    {pillar.extendedPoints.length} herramientas
+                    <span>Ver beneficios</span>
+                    <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
                   </span>
                 </div>
               </div>
             ))}
           </div>
-
-          {/* Banner Transversal: Fortalecimiento de la Membresía */}
-          <div className="mt-8 bg-gradient-to-r from-[#013388] via-[#002868] to-[#0c2340] text-white rounded-3xl p-6 sm:p-8 shadow-md relative overflow-hidden">
-            <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
-              <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center shrink-0 text-[#f7a81b]">
-                  <TrendingUp className="w-6 h-6" />
-                </div>
-                <div>
-                  <span className="text-[11px] font-bold text-[#f7a81b] uppercase tracking-widest block mb-1">
-                    Crecimiento del Cuadro Social
-                  </span>
-                  <h4 className="text-base sm:text-lg font-semibold text-white mb-1.5">
-                    «Haz visible tu club, conecta con tu comunidad y abre nuevas oportunidades para atraer socios, voluntarios y aliados».
-                  </h4>
-                  <p className="text-xs sm:text-sm text-blue-100/90 leading-relaxed max-w-3xl">
-                    El fortalecimiento de la membresía es el resultado natural de articular presencia web profesional, comunicación digital activa, proyectos transparentes y apertura comunitaria.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Contenedor Discreto: Legado Digital */}
-          <div className="mt-6 bg-white/90 backdrop-blur-xs rounded-2xl border border-gray-200/80 p-5 sm:p-6 shadow-xs flex flex-col sm:flex-row items-start sm:items-center gap-4 max-w-4xl mx-auto">
-            <div className="w-11 h-11 rounded-xl bg-amber-50 border border-amber-200/60 text-amber-700 flex items-center justify-center shrink-0">
-              <History className="w-5 h-5" />
-            </div>
-            <div className="flex-1">
-              <h4 className="text-sm sm:text-base font-bold text-gray-900">
-                Tu club evoluciona. Su legado permanece.
-              </h4>
-              <p className="text-xs sm:text-sm text-gray-600 mt-0.5 leading-relaxed">
-                Conserva la historia, los proyectos, las actividades y el conocimiento de tu club en un solo lugar, facilitando la continuidad institucional entre juntas directivas y períodos rotarios.
-              </p>
-            </div>
-          </div>
-
-          {/* ── SECCIÓN 3: LLAMADO A LA ACCIÓN ───────────────────────────── */}
-          <div className="mt-8 text-center bg-white rounded-3xl p-6 sm:p-8 border border-blue-100/90 shadow-sm max-w-2xl mx-auto">
-            <h3 className="text-xl sm:text-2xl font-bold text-gray-900">
-              Tu club puede dar el siguiente paso.
-            </h3>
-            <p className="text-gray-600 text-sm sm:text-base mt-2 mb-6">
-              Selecciona tu club, registra tus datos y descubre cómo activar un ecosistema digital adaptado a sus necesidades.
-            </p>
-            <button
-              type="button"
-              onClick={scrollToForm}
-              className="inline-flex items-center gap-2.5 bg-rotary-blue hover:bg-[#002868] text-white font-black px-8 py-3.5 rounded-xl shadow-md hover:shadow-lg transition-all text-sm uppercase tracking-wider group cursor-pointer"
-            >
-              <span>SOLICITAR ACTIVACIÓN</span>
-              <ArrowDown className="w-4 h-4 group-hover:translate-y-1 transition-transform" />
-            </button>
-          </div>
         </section>
 
-        {/* ── SECCIÓN 4: FORMULARIO INTELIGENTE DE 4 PASOS ─────────────────── */}
-        <div id="formulario-activacion" className="max-w-4xl mx-auto px-4 sm:px-6 py-6 pb-20 space-y-4 relative z-10 scroll-mt-6">
+        {/* ── SECCIÓN 3: FORMULARIO DE ACTIVACIÓN ─────────────────────────── */}
+        <div id="formulario-activacion" className="max-w-4xl mx-auto px-4 sm:px-6 pt-2 pb-16 space-y-4 relative z-10 scroll-mt-4">
           {submittedSuccess ? (
             /* PANTALLA DE ÉXITO */
             <div className="bg-white rounded-3xl p-8 sm:p-12 shadow-xl border border-gray-100 text-center animate-in fade-in zoom-in-95 duration-300">
@@ -1339,16 +1261,24 @@ export const ActivarMiClub: React.FC = () => {
                   </ul>
                 </div>
 
-                {/* Impacto en Membresía */}
+                {/* Impacto en Membresía / Legado */}
                 <div className="bg-blue-50/60 border border-blue-200/70 rounded-2xl p-4 sm:p-5 flex items-start gap-3.5">
                   <div className="w-9 h-9 rounded-xl bg-blue-100 text-rotary-blue flex items-center justify-center shrink-0 mt-0.5">
-                    <TrendingUp className="w-4 h-4" />
+                    {activeModalPillar.id === 'gestion_nube' ? (
+                      <History className="w-4 h-4" />
+                    ) : (
+                      <TrendingUp className="w-4 h-4" />
+                    )}
                   </div>
                   <div>
                     <h5 className="text-xs font-bold text-rotary-blue uppercase tracking-wider mb-1">
-                      Impacto en Membresía y Cuadro Social
+                      {activeModalPillar.id === 'gestion_nube'
+                        ? 'Legado Digital y Continuidad Institucional'
+                        : activeModalPillar.id === 'presencia_institucional' || activeModalPillar.id === 'marketing_inteligente'
+                        ? 'Fortalecimiento de la Membresía y Cuadro Social'
+                        : 'Impacto Estratégico y Sostenibilidad'}
                     </h5>
-                    <p className="text-xs sm:text-sm text-blue-950 leading-relaxed">
+                    <p className="text-xs sm:text-sm text-blue-950 leading-relaxed font-medium">
                       {activeModalPillar.membershipImpact}
                     </p>
                   </div>
