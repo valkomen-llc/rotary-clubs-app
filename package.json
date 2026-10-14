@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1197.0",
-  "cache_bust": "4.1197.0",
+  "version": "4.1198.0",
+  "cache_bust": "4.1198.0",
   "type": "module",
-  "//": "UI V4.1197.0 | 2026-10-14 (Cabeceras Institucionales: Tipografía Open Sans Regular 400 y Título Unificado en una Línea en Escritorio)",
+  "//": "UI V4.1198.0 | 2026-10-14 (Landing Activar mi Club: Ecosistema Digital Integral — 6 Pilares Estratégicos, Membresía, Legado Digital y Conversión)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs && node scripts/check-version-parity.mjs && node scripts/check-syntax.mjs && node scripts/check-hooks.mjs && node scripts/check-routes.mjs && node scripts/check-imports.mjs && node scripts/check-server-undef.mjs && node scripts/check-route-handlers.mjs",

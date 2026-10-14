@@ -23,6 +23,7 @@ export async function ensureRotaryActivationSchema() {
     email TEXT NOT NULL,
     phone TEXT NOT NULL,
     "mainInterest" TEXT DEFAULT 'ecosistema_integral',
+    "selectedPillars" JSONB DEFAULT '[]'::jsonb,
     "dataConsent" BOOLEAN DEFAULT TRUE,
     status TEXT NOT NULL DEFAULT 'nuevo',
     "assignedTo" TEXT,
@@ -48,6 +49,9 @@ export async function ensureRotaryActivationSchema() {
     "createdAt" TIMESTAMPTZ DEFAULT NOW(),
     "updatedAt" TIMESTAMPTZ DEFAULT NOW()
   )`);
+
+  // Migraciones no destructivas para instalaciones previas
+  await db.query(`ALTER TABLE "RotaryClubActivation" ADD COLUMN IF NOT EXISTS "selectedPillars" JSONB DEFAULT '[]'::jsonb`).catch(() => {});
 
   // Índices para optimización de consultas facetadas y aislamiento multisitio
   await db.query(`CREATE INDEX IF NOT EXISTS idx_rca_siteId ON "RotaryClubActivation"("siteId")`).catch(() => {});

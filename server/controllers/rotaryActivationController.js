@@ -21,13 +21,20 @@ const fail = (res, e, status = 500) => {
   res.status(status).json({ error: e.message || 'Error en el módulo de activación de clubes' });
 };
 
-// Catálogo de intereses clave para la activación del club
+// Catálogo de intereses y los 6 pilares estratégicos del ecosistema Club Platform
 export const ACTIVATION_INTERESTS = [
-  { id: 'ecosistema_integral', label: 'Ecosistema Integral (Web, Socios, Donaciones y Difusión)', icon: 'Sparkles', desc: 'Activación completa de todas las herramientas digitales de Club Platform.' },
+  { id: 'ecosistema_integral', label: 'Ecosistema Integral (Los 6 pilares)', icon: 'Sparkles', desc: 'Activación de los 6 pilares estratégicos de Club Platform.', isFeatured: true },
+  { id: 'presencia_institucional', label: 'Presencia institucional', icon: 'Globe', desc: 'Tu club con identidad propia, presencia profesional y mayor visibilidad en internet.' },
+  { id: 'marketing_inteligente', label: 'Marketing inteligente', icon: 'Megaphone', desc: 'Comunica tus actividades, fortalece tu imagen pública y conecta con nuevas audiencias.' },
+  { id: 'proyectos_recursos', label: 'Proyectos y recursos', icon: 'CreditCard', desc: 'Impulsa tus proyectos, recibe donaciones y crea nuevas oportunidades de financiación.' },
+  { id: 'gestion_nube', label: 'Gestión en la nube', icon: 'Cloud', desc: 'Centraliza la información de tu club con infraestructura tecnológica segura y organizada.' },
+  { id: 'acompanamiento_continuo', label: 'Acompañamiento continuo', icon: 'GraduationCap', desc: 'Tu club cuenta con orientación y formación para aprovechar su ecosistema digital.' },
+  { id: 'evolucion_continua', label: 'Evolución continua', icon: 'Rocket', desc: 'Un ecosistema que evoluciona constantemente con nuevas herramientas, mejoras e innovación.' },
+  // Compatibilidad con registros y pruebas previas:
   { id: 'sitio_web', label: 'Sitio Web Oficial Autogestionable & Dominio Propio', icon: 'Globe', desc: 'Presencia institucional moderna en Google con dominio oficial del club.' },
+  { id: 'rotary_en_accion', label: 'Difusión de Proyectos en Rotary en Acción & Redes', icon: 'Megaphone', desc: 'Registro ágil de obras comunitarias y cobertura en canales distritales.' },
   { id: 'socios_cuotas', label: 'Gestión de Socios, Membresía y Tesorería', icon: 'Users', desc: 'Directorio digital, roles de junta directiva y control de cuotas.' },
   { id: 'donaciones_recaudacion', label: 'Bóveda de Fondos y Recaudación Online', icon: 'CreditCard', desc: 'Pasarela de aportes transparente con tarjeta, PSE o PayPal.' },
-  { id: 'rotary_en_accion', label: 'Difusión de Proyectos en Rotary en Acción & Redes', icon: 'Megaphone', desc: 'Registro ágil de obras comunitarias y cobertura en canales distritales.' },
   { id: 'marketing_redes', label: 'Automatización de Email & WhatsApp Marketing', icon: 'Send', desc: 'Campañas institucionales periódicas sin saturación.' },
 ];
 
@@ -265,6 +272,7 @@ export const submitActivationInterest = async (req, res) => {
       email,
       phone,
       mainInterest = 'ecosistema_integral',
+      selectedPillars = [],
       dataConsent,
       campaignId,
       campaignName,
@@ -405,9 +413,9 @@ export const submitActivationInterest = async (req, res) => {
     await db.query(
       `INSERT INTO "RotaryClubActivation"
        (id, "siteId", "clubName", "matchedClubId", district, city, "responsibleName", role, email, phone,
-        "mainInterest", "dataConsent", status, notes, history, "isEcosystemActive", "campaignId", "campaignName",
+        "mainInterest", "selectedPillars", "dataConsent", status, notes, history, "isEcosystemActive", "campaignId", "campaignName",
         channel, "utmSource", "utmMedium", "utmCampaign", "utmContent", "utmTerm", "originHost", "visitorId", "linkedLeadId")
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)`,
       [
         activationId,
         site.id,
@@ -420,6 +428,7 @@ export const submitActivationInterest = async (req, res) => {
         cleanEmail,
         cleanPhone,
         mainInterest,
+        JSON.stringify(Array.isArray(selectedPillars) ? selectedPillars : []),
         true,
         'nuevo',
         `Interés principal: ${mainInterest}`,

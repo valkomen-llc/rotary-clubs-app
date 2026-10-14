@@ -28,6 +28,7 @@ export interface ActivationLead {
   email: string;
   phone: string;
   mainInterest: string;
+  selectedPillars?: string[] | null;
   dataConsent: boolean;
   status: 'nuevo' | 'contactado' | 'interesado' | 'en_activacion' | 'activado' | 'descartado' | 'no_interesado';
   assignedTo: string | null;
@@ -649,9 +650,30 @@ export const RotaryActivacionClubes: React.FC = () => {
                   <span className="text-gray-400 block font-bold uppercase tracking-wider text-[10px]">Canal y Campaña</span>
                   <span className="font-bold text-gray-800">{selectedLead.channel} ({selectedLead.utmCampaign || 'Orgánico'})</span>
                 </div>
-                <div>
-                  <span className="text-gray-400 block font-bold uppercase tracking-wider text-[10px]">Interés Principal</span>
-                  <span className="font-bold text-rotary-blue">{selectedLead.mainInterest}</span>
+                <div className="sm:col-span-2">
+                  <span className="text-gray-400 block font-bold uppercase tracking-wider text-[10px] mb-1">Pilares de Interés Solicitados</span>
+                  {selectedLead.selectedPillars && Array.isArray(selectedLead.selectedPillars) && selectedLead.selectedPillars.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {selectedLead.selectedPillars.map((p) => {
+                        const label = {
+                          ecosistema_integral: 'Ecosistema Integral (6 pilares)',
+                          presencia_institucional: 'Presencia institucional',
+                          marketing_inteligente: 'Marketing inteligente',
+                          proyectos_recursos: 'Proyectos y recursos',
+                          gestion_nube: 'Gestión en la nube',
+                          acompanamiento_continuo: 'Acompañamiento continuo',
+                          evolucion_continua: 'Evolución continua',
+                        }[p] || p;
+                        return (
+                          <span key={p} className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-200/60">
+                            {label}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <span className="font-bold text-rotary-blue">{selectedLead.mainInterest}</span>
+                  )}
                 </div>
               </div>
 

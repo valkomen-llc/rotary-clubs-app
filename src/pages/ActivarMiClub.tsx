@@ -9,16 +9,185 @@ import {
   Sparkles, Globe, Users, CreditCard, Megaphone, CheckCircle2,
   AlertTriangle, ArrowRight, ArrowLeft, ShieldCheck, Send, Check,
   ChevronDown, ExternalLink, MessageSquare, Phone, Mail, Building,
-  HelpCircle, Star, Compass, Info, Lock
+  HelpCircle, Star, Compass, Info, Lock, Cloud, GraduationCap,
+  Rocket, TrendingUp, History, X, ArrowDown, ChevronRight
 } from 'lucide-react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { PublicPageHeader } from '../components/common/PublicInstitutionalComponents';
 import { useSEO } from '../hooks/useSEO';
 import { COUNTRIES, DEFAULT_COUNTRY, findCountry, flagEmoji } from '../lib/countryPhones';
+import { cn } from '../lib/utils';
 import { toast } from 'sonner';
 
 const API = import.meta.env.VITE_API_URL || '/api';
+
+export interface PillarDetail {
+  id: string;
+  title: string;
+  shortDesc: string;
+  iconName: string;
+  accentBg: string;
+  accentText: string;
+  accentBorder: string;
+  badge: string;
+  extendedPoints: string[];
+  membershipImpact: string;
+}
+
+export const SIX_PILLARS: PillarDetail[] = [
+  {
+    id: 'presencia_institucional',
+    title: 'Presencia institucional',
+    shortDesc: 'Tu club con identidad propia, presencia profesional y mayor visibilidad en internet.',
+    iconName: 'Globe',
+    accentBg: 'bg-blue-50',
+    accentText: 'text-blue-700',
+    accentBorder: 'border-blue-100',
+    badge: 'Identidad Propia',
+    extendedPoints: [
+      'Sitio web institucional personalizado para el club.',
+      'Dominio propio y correos corporativos oficiales.',
+      'Directorio digital de socios y junta directiva actualizada.',
+      'Historia, misión, visión y valores rotarios del club.',
+      'Información institucional, estatutos y gestión administrativa.',
+      'Programas de nuevas generaciones: Rotaract, Interact, ROTEX e intercambios.',
+      'Publicación de documentos, manuales, actas e informes periódicos.',
+      'Mayor visibilidad pública para personas interesadas en conocer el club.',
+      'Fortalecimiento del cuadro social y atracción continua de nuevos socios.'
+    ],
+    membershipImpact: 'Una presencia institucional digital profesional permite que potenciales socios encuentren tu club en Google y conozcan sus valores y causas de servicio.'
+  },
+  {
+    id: 'marketing_inteligente',
+    title: 'Marketing inteligente',
+    shortDesc: 'Comunica tus actividades, fortalece tu imagen pública y conecta con nuevas audiencias.',
+    iconName: 'Megaphone',
+    accentBg: 'bg-amber-50',
+    accentText: 'text-amber-700',
+    accentBorder: 'border-amber-100',
+    badge: 'Impacto & Difusión',
+    extendedPoints: [
+      'Creación asistida de contenidos con inteligencia artificial.',
+      'Generación de piezas y copys listos para redes sociales.',
+      'Integración con canales digitales, WhatsApp y correo institucional.',
+      'Módulo de noticias y blog para destacar el impacto del club.',
+      'Calendario centralizado de actividades, reuniones y eventos distritales.',
+      'Campañas de comunicación y boletines institucionales automatizados.',
+      'Posicionamiento orgánico en motores de búsqueda (SEO local).',
+      'Estadísticas claras de alcance y métricas de crecimiento.',
+      'Promoción activa de proyectos y actividades de servicio.',
+      'Estrategias probadas para atraer nuevos socios, voluntarios y aliados.',
+      'Comunicación 100% alineada con las directrices de Rotary International.'
+    ],
+    membershipImpact: 'Difundir el impacto de tus proyectos en canales digitales despierta el interés comunitario y facilita la vinculación de voluntarios y líderes profesionales.'
+  },
+  {
+    id: 'proyectos_recursos',
+    title: 'Proyectos y recursos',
+    shortDesc: 'Impulsa tus proyectos, recibe donaciones y crea nuevas oportunidades de financiación.',
+    iconName: 'CreditCard',
+    accentBg: 'bg-emerald-50',
+    accentText: 'text-emerald-700',
+    accentBorder: 'border-emerald-100',
+    badge: 'Sostenibilidad',
+    extendedPoints: [
+      'Fichas públicas de gestión y promoción de proyectos humanitarios.',
+      'Campañas de crowdfunding y financiamiento participativo.',
+      'Bóveda de donaciones en línea seguras con tarjeta, PSE o PayPal.',
+      'Estrategias de recaudación de fondos institucionales (Fundraising).',
+      'Módulo de recaudación y control de cuotas de membresía.',
+      'Tienda virtual del club para productos y actividades benéficas.',
+      'Venta de recuerdos, artículos institucionales y pines rotarios.',
+      'Inscripciones, acreditación y boletería digital para eventos.',
+      'Campañas especiales de recaudación de fondos y ayuda en emergencias.',
+      'Mayor visibilidad de proyectos para conseguir patrocinadores y aliados.'
+    ],
+    membershipImpact: 'Proyectos transparentes con captación en línea aumentan la confianza de donantes, aliados estratégicos y nuevos miembros comprometidos con el servicio.'
+  },
+  {
+    id: 'gestion_nube',
+    title: 'Gestión en la nube',
+    shortDesc: 'Centraliza la información de tu club con infraestructura tecnológica segura y organizada.',
+    iconName: 'Cloud',
+    accentBg: 'bg-indigo-50',
+    accentText: 'text-indigo-700',
+    accentBorder: 'border-indigo-100',
+    badge: 'Memoria Institucional',
+    extendedPoints: [
+      'Alojamiento web de alta velocidad y disponibilidad.',
+      'Infraestructura tecnológica en la nube moderna y escalable.',
+      'Gestión técnica de dominios y certificados SSL seguros.',
+      'Cuentas de correo institucionales bajo el dominio del club.',
+      'Biblioteca multimedia institucional para fotos y videos.',
+      'Almacenamiento organizado de archivos, evidencias y resoluciones.',
+      'Clasificación histórica de contenidos por período rotario.',
+      'Panel administrativo intuitivo para la junta directiva.',
+      'Estadísticas de visitas y comportamiento del portal.',
+      'Copias de seguridad periódicas y protección contra pérdida de datos.',
+      'Gestión centralizada de la información del club.',
+      'Soporte técnico conforme a las condiciones de la plataforma.'
+    ],
+    membershipImpact: 'Conserva ordenada la memoria institucional y facilita una transición impecable y sin traumatismos entre juntas directivas entrantes y salientes.'
+  },
+  {
+    id: 'acompanamiento_continuo',
+    title: 'Acompañamiento continuo',
+    shortDesc: 'Tu club cuenta con orientación y formación para aprovechar su ecosistema digital.',
+    iconName: 'GraduationCap',
+    accentBg: 'bg-purple-50',
+    accentText: 'text-purple-700',
+    accentBorder: 'border-purple-100',
+    badge: 'Capacitación & Guía',
+    extendedPoints: [
+      'Capacitación inicial y continua en el uso de Club Platform.',
+      'Sesiones de inducción para administradores y secretarios.',
+      'Formación práctica en herramientas digitales y redes.',
+      'Acompañamiento en estrategia de comunicación institucional.',
+      'Asistencia personalizada para la carga inicial de contenidos.',
+      'Guías y manuales de buenas prácticas digitales para clubes.',
+      'Repositorio de recursos de aprendizaje y videos explicativos.',
+      'Canal de soporte y orientación activa durante todo el período rotario.'
+    ],
+    membershipImpact: 'Acompañamos a tu equipo paso a paso, asegurando que cualquier socio del club pueda gestionar el ecosistema sin requerir conocimientos técnicos avanzados.'
+  },
+  {
+    id: 'evolucion_continua',
+    title: 'Evolución continua',
+    shortDesc: 'Un ecosistema que evoluciona constantemente con nuevas herramientas, mejoras e innovación.',
+    iconName: 'Rocket',
+    accentBg: 'bg-rose-50',
+    accentText: 'text-rose-700',
+    accentBorder: 'border-rose-100',
+    badge: 'Innovación Activa',
+    extendedPoints: [
+      'Desarrollo e ingeniería constante de Club Platform.',
+      'Despliegue periódico de nuevas funcionalidades y mejoras.',
+      'Incorporación progresiva de herramientas según las necesidades de los clubes.',
+      'Innovación y automatización con modelos de inteligencia artificial.',
+      'Optimización permanente de velocidad y rendimiento web.',
+      'Actualizaciones de seguridad y refinamiento de la experiencia de usuario.',
+      'Nuevas integraciones con herramientas digitales de Rotary y pasarelas.',
+      'Evolución de herramientas administrativas y analítica institucional.',
+      'Actualizaciones orientadas a las necesidades reales de los clubes.',
+      'Desarrollo de soluciones para nuevos desafíos institucionales.'
+    ],
+    membershipImpact: 'Tu club accede a una tecnología de vanguardia que no se vuelve obsoleta, manteniendo a tu membresía a la vanguardia de la innovación social.'
+  }
+];
+
+export const getPillarIcon = (iconName: string, className = "w-6 h-6") => {
+  switch (iconName) {
+    case 'Globe': return <Globe className={className} />;
+    case 'Megaphone': return <Megaphone className={className} />;
+    case 'CreditCard': return <CreditCard className={className} />;
+    case 'Cloud': return <Cloud className={className} />;
+    case 'GraduationCap': return <GraduationCap className={className} />;
+    case 'Rocket': return <Rocket className={className} />;
+    case 'Users': return <Users className={className} />;
+    default: return <Sparkles className={className} />;
+  }
+};
 
 interface ClubOption {
   name: string;
@@ -135,11 +304,61 @@ export const ActivarMiClub: React.FC = () => {
   const [mainInterest, setMainInterest] = useState<string>('ecosistema_integral');
   const [dataConsent, setDataConsent] = useState<boolean>(true);
 
+  // Pilares seleccionados en el enfoque (por defecto todos seleccionados: Ecosistema Integral)
+  const [selectedPillars, setSelectedPillars] = useState<string[]>(SIX_PILLARS.map(p => p.id));
+  const [activeModalPillar, setActiveModalPillar] = useState<PillarDetail | null>(null);
+
   // Estados de interfaz y envío
   const [submitting, setSubmitting] = useState(false);
   const [submittedSuccess, setSubmittedSuccess] = useState(false);
   const [hasStartedForm, setHasStartedForm] = useState(false);
   const visitorIdRef = useRef<string>(getVisitorId());
+
+  // ¿Está seleccionado el ecosistema integral completo (los 6 pilares)?
+  const isEcosistemaIntegral = useMemo(() => {
+    return SIX_PILLARS.length > 0 && SIX_PILLARS.every(p => selectedPillars.includes(p.id));
+  }, [selectedPillars]);
+
+  const toggleEcosistemaIntegral = useCallback(() => {
+    setSelectedPillars(prev => {
+      const allSelected = SIX_PILLARS.length > 0 && SIX_PILLARS.every(p => prev.includes(p.id));
+      return allSelected ? [] : SIX_PILLARS.map(p => p.id);
+    });
+  }, []);
+
+  const togglePillar = useCallback((id: string) => {
+    setSelectedPillars(prev => {
+      if (prev.includes(id)) {
+        return prev.filter(x => x !== id);
+      } else {
+        return [...prev, id];
+      }
+    });
+  }, []);
+
+  const scrollToForm = useCallback(() => {
+    const el = document.getElementById('formulario-activacion');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, []);
+
+  // Manejo de tecla Escape y bloqueo de scroll para el modal de pilar
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setActiveModalPillar(null);
+    };
+    if (activeModalPillar) {
+      window.addEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
+  }, [activeModalPillar]);
 
   useSEO({
     title: '¡Activa el ecosistema digital de tu club! · Club Platform & Rotary en Acción',
@@ -270,6 +489,11 @@ export const ActivarMiClub: React.FC = () => {
       setStep(2);
       return;
     }
+    if (selectedPillars.length === 0) {
+      toast.error('Por favor selecciona al menos un pilar o área de interés.');
+      setStep(3);
+      return;
+    }
     if (!dataConsent) {
       toast.error('Debes aceptar la autorización de tratamiento de datos personales.');
       return;
@@ -278,6 +502,10 @@ export const ActivarMiClub: React.FC = () => {
     setSubmitting(true);
     const country = findCountry(phoneIso);
     const fullPhone = `${country.dial} ${phoneNumber.trim()}`;
+
+    const finalInterest = isEcosistemaIntegral
+      ? 'ecosistema_integral'
+      : (selectedPillars[0] || 'ecosistema_integral');
 
     try {
       const res = await fetch(`${API}/rotary-en-accion/activacion/submit`, {
@@ -289,7 +517,8 @@ export const ActivarMiClub: React.FC = () => {
           role: finalRole,
           email: email.trim().toLowerCase(),
           phone: fullPhone,
-          mainInterest,
+          mainInterest: finalInterest,
+          selectedPillars,
           dataConsent: true,
           channel: urlChannel,
           campaignId,
@@ -333,19 +562,129 @@ export const ActivarMiClub: React.FC = () => {
       <Navbar />
 
       <main className="flex-1">
-        {/* ── CABECERA INSTITUCIONAL COMPARTIDA ───────────────────────────── */}
+        {/* ── SECCIÓN 1: CABECERA INSTITUCIONAL COMPARTIDA ────────────────── */}
         <PublicPageHeader
           title="¡Activa el ecosistema digital de tu club!"
-          titleClassName="text-2xl sm:text-3xl md:text-4xl lg:text-[36px] xl:text-[40px] leading-tight"
-          subtitle={
-            <>
-              Conecta, comunica y potencia el impacto de tu club rotario con herramientas tecnológicas modernas, integradas oficialmente con <strong>Rotary en Acción</strong>.
-            </>
-          }
+          titleClassName="text-2xl sm:text-3xl md:text-4xl lg:text-[36px] xl:text-[40px] leading-tight font-normal whitespace-normal lg:whitespace-nowrap"
+          subtitle="Conecta, comunica y potencia el impacto de tu club con tecnología inteligente, herramientas integradas y acompañamiento durante todo el período rotario."
         />
 
-        {/* ── CUERPO PRINCIPAL / FORMULARIO INTELIGENTE (ANCHO UNIFICADO max-w-4xl) ── */}
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-10 md:py-12 pb-20 space-y-4 relative z-10">
+        {/* ── SECCIÓN 2: LOS 6 PILARES DEL ECOSISTEMA ─────────────────────── */}
+        <section className="max-w-6xl mx-auto px-4 sm:px-6 pt-10 md:pt-14 pb-4 relative z-10">
+          <div className="text-center max-w-3xl mx-auto mb-10 md:mb-12">
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-rotary-blue uppercase tracking-widest bg-blue-50/90 border border-blue-200/70 px-3.5 py-1 rounded-full mb-3 shadow-2xs">
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              Ecosistema Digital Integral
+            </span>
+            <h2 className="text-2xl sm:text-3xl md:text-[34px] text-gray-900 font-normal tracking-tight font-['Open_Sans',sans-serif] leading-tight">
+              Todo lo que tu club necesita, en un solo ecosistema.
+            </h2>
+            <p className="text-gray-600 text-sm sm:text-base mt-3 leading-relaxed">
+              Descubre las herramientas que ayudarán a tu club a fortalecer su presencia institucional, atraer nuevos socios, comunicar sus actividades, gestionar proyectos y generar un impacto duradero.
+            </p>
+          </div>
+
+          {/* Cuadrícula de 6 Tarjetas (3 columnas escritorio, 2 tabletas, 1 móvil) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
+            {SIX_PILLARS.map((pillar) => (
+              <div
+                key={pillar.id}
+                onClick={() => setActiveModalPillar(pillar)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); setActiveModalPillar(pillar); } }}
+                className="bg-white rounded-3xl p-6 sm:p-7 border border-gray-100 shadow-sm hover:shadow-xl hover:border-blue-200 transition-all duration-300 flex flex-col justify-between h-full group text-left cursor-pointer relative overflow-hidden"
+              >
+                <div>
+                  <div className="flex items-center justify-between gap-3 mb-4">
+                    <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border transition-transform duration-300 group-hover:scale-105", pillar.accentBg, pillar.accentText, pillar.accentBorder)}>
+                      {getPillarIcon(pillar.iconName, "w-6 h-6")}
+                    </div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 bg-gray-50 px-2.5 py-1 rounded-lg border border-gray-100">
+                      {pillar.badge}
+                    </span>
+                  </div>
+
+                  <h3 className="text-lg font-bold text-gray-900 group-hover:text-rotary-blue transition-colors">
+                    {pillar.title}
+                  </h3>
+
+                  <p className="text-sm text-gray-600 leading-relaxed mt-2.5">
+                    {pillar.shortDesc}
+                  </p>
+                </div>
+
+                <div className="pt-4 mt-5 border-t border-gray-100/80 flex items-center justify-between text-xs font-bold text-rotary-blue group-hover:text-[#002868] transition-colors">
+                  <span className="inline-flex items-center gap-1">
+                    <span>Conocer características</span>
+                    <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                  </span>
+                  <span className="text-[11px] text-gray-400 font-normal">
+                    {pillar.extendedPoints.length} herramientas
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Banner Transversal: Fortalecimiento de la Membresía */}
+          <div className="mt-8 bg-gradient-to-r from-[#013388] via-[#002868] to-[#0c2340] text-white rounded-3xl p-6 sm:p-8 shadow-md relative overflow-hidden">
+            <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center shrink-0 text-[#f7a81b]">
+                  <TrendingUp className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="text-[11px] font-bold text-[#f7a81b] uppercase tracking-widest block mb-1">
+                    Crecimiento del Cuadro Social
+                  </span>
+                  <h4 className="text-base sm:text-lg font-semibold text-white mb-1.5">
+                    «Haz visible tu club, conecta con tu comunidad y abre nuevas oportunidades para atraer socios, voluntarios y aliados».
+                  </h4>
+                  <p className="text-xs sm:text-sm text-blue-100/90 leading-relaxed max-w-3xl">
+                    El fortalecimiento de la membresía es el resultado natural de articular presencia web profesional, comunicación digital activa, proyectos transparentes y apertura comunitaria.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Contenedor Discreto: Legado Digital */}
+          <div className="mt-6 bg-white/90 backdrop-blur-xs rounded-2xl border border-gray-200/80 p-5 sm:p-6 shadow-xs flex flex-col sm:flex-row items-start sm:items-center gap-4 max-w-4xl mx-auto">
+            <div className="w-11 h-11 rounded-xl bg-amber-50 border border-amber-200/60 text-amber-700 flex items-center justify-center shrink-0">
+              <History className="w-5 h-5" />
+            </div>
+            <div className="flex-1">
+              <h4 className="text-sm sm:text-base font-bold text-gray-900">
+                Tu club evoluciona. Su legado permanece.
+              </h4>
+              <p className="text-xs sm:text-sm text-gray-600 mt-0.5 leading-relaxed">
+                Conserva la historia, los proyectos, las actividades y el conocimiento de tu club en un solo lugar, facilitando la continuidad institucional entre juntas directivas y períodos rotarios.
+              </p>
+            </div>
+          </div>
+
+          {/* ── SECCIÓN 3: LLAMADO A LA ACCIÓN ───────────────────────────── */}
+          <div className="mt-8 text-center bg-white rounded-3xl p-6 sm:p-8 border border-blue-100/90 shadow-sm max-w-2xl mx-auto">
+            <h3 className="text-xl sm:text-2xl font-bold text-gray-900">
+              Tu club puede dar el siguiente paso.
+            </h3>
+            <p className="text-gray-600 text-sm sm:text-base mt-2 mb-6">
+              Selecciona tu club, registra tus datos y descubre cómo activar un ecosistema digital adaptado a sus necesidades.
+            </p>
+            <button
+              type="button"
+              onClick={scrollToForm}
+              className="inline-flex items-center gap-2.5 bg-rotary-blue hover:bg-[#002868] text-white font-black px-8 py-3.5 rounded-xl shadow-md hover:shadow-lg transition-all text-sm uppercase tracking-wider group cursor-pointer"
+            >
+              <span>SOLICITAR ACTIVACIÓN</span>
+              <ArrowDown className="w-4 h-4 group-hover:translate-y-1 transition-transform" />
+            </button>
+          </div>
+        </section>
+
+        {/* ── SECCIÓN 4: FORMULARIO INTELIGENTE DE 4 PASOS ─────────────────── */}
+        <div id="formulario-activacion" className="max-w-4xl mx-auto px-4 sm:px-6 py-6 pb-20 space-y-4 relative z-10 scroll-mt-6">
           {submittedSuccess ? (
             /* PANTALLA DE ÉXITO */
             <div className="bg-white rounded-3xl p-8 sm:p-12 shadow-xl border border-gray-100 text-center animate-in fade-in zoom-in-95 duration-300">
@@ -377,9 +716,15 @@ export const ActivarMiClub: React.FC = () => {
                   <span className="text-gray-500">Correo:</span>
                   <span className="font-semibold text-gray-800">{email}</span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between border-b border-gray-200/60 pb-2">
                   <span className="text-gray-500">WhatsApp:</span>
                   <span className="font-semibold text-gray-800">{findCountry(phoneIso).dial} {phoneNumber}</span>
+                </div>
+                <div className="flex justify-between pt-1">
+                  <span className="text-gray-500">Enfoque:</span>
+                  <span className="font-bold text-rotary-blue text-right">
+                    {isEcosistemaIntegral ? 'Ecosistema Integral (6 Pilares)' : `${selectedPillars.length} pilares seleccionados`}
+                  </span>
                 </div>
               </div>
 
@@ -698,44 +1043,115 @@ export const ActivarMiClub: React.FC = () => {
                   </div>
                 )}
 
-                {/* ── PASO 3: PRIORIDADES E INTERÉS ──────────────────────── */}
+                {/* ── PASO 3: ENFOQUE Y SELECCIÓN DE PILARES ─────────────── */}
                 {step === 3 && (
                   <div className="space-y-6 animate-in fade-in duration-200">
                     <div>
                       <h2 className="text-xl sm:text-2xl font-black text-gray-900 mb-1">
-                        ¿Cuál es la prioridad para tu club?
+                        ¿Qué pilares le interesan a tu club?
                       </h2>
                       <p className="text-sm text-gray-500">
-                        Selecciona el módulo o beneficio que más le urge habilitar a tu junta directiva.
+                        Puedes seleccionar el ecosistema integral con todos los beneficios incluidos, o indicar qué áreas le urgen a tu junta directiva.
                       </p>
                     </div>
 
+                    {/* Opción Destacada: Ecosistema Integral */}
+                    <div
+                      onClick={toggleEcosistemaIntegral}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggleEcosistemaIntegral(); } }}
+                      className={cn(
+                        "p-4 sm:p-5 rounded-2xl border-2 transition-all cursor-pointer flex items-center justify-between gap-4",
+                        isEcosistemaIntegral
+                          ? "bg-gradient-to-r from-blue-50 to-amber-50/60 border-rotary-blue shadow-sm ring-1 ring-rotary-blue"
+                          : "bg-gray-50/70 border-gray-200 hover:border-gray-300 hover:bg-white"
+                      )}
+                    >
+                      <div className="flex items-center gap-3.5">
+                        <div className={cn(
+                          "w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border",
+                          isEcosistemaIntegral ? "bg-[#f7a81b] text-[#0c2340] border-[#e69b15]" : "bg-white text-gray-400 border-gray-200"
+                        )}>
+                          <Sparkles className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-black text-sm sm:text-base text-gray-900">
+                              Me interesa el ecosistema integral
+                            </span>
+                            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-200">
+                              Recomendado
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-600 mt-0.5">
+                            Habilita los 6 pilares estratégicos de Club Platform para tu club (sitio web, marketing, recursos, nube, acompañamiento e innovación).
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="shrink-0">
+                        <div className={cn(
+                          "w-6 h-6 rounded-lg border flex items-center justify-center transition-colors",
+                          isEcosistemaIntegral
+                            ? "bg-rotary-blue border-rotary-blue text-white shadow-xs"
+                            : "border-gray-300 bg-white"
+                        )}>
+                          {isEcosistemaIntegral && <Check className="w-4 h-4" />}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Indicador de selección */}
+                    <div className="flex items-center justify-between text-xs text-gray-500 pt-1">
+                      <span className="font-bold text-gray-700">Seleccionar pilares individuales:</span>
+                      <span className="text-gray-500 font-medium">{selectedPillars.length} de {SIX_PILLARS.length} seleccionados</span>
+                    </div>
+
+                    {/* Cuadrícula de 6 Pilares Seleccionables */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {interests.map((item) => {
-                        const isSelected = mainInterest === item.id;
+                      {SIX_PILLARS.map((p) => {
+                        const isChecked = selectedPillars.includes(p.id);
                         return (
-                          <button
-                            type="button"
-                            key={item.id}
-                            onClick={() => setMainInterest(item.id)}
-                            className={`text-left p-4 rounded-2xl border-2 transition-all flex items-start gap-3.5 ${
-                              isSelected
-                                ? 'bg-blue-50/60 border-rotary-blue shadow-sm ring-1 ring-rotary-blue'
-                                : 'bg-gray-50/50 border-gray-100 hover:bg-white hover:border-gray-200'
-                            }`}
+                          <div
+                            key={p.id}
+                            onClick={() => togglePillar(p.id)}
+                            role="checkbox"
+                            aria-checked={isChecked}
+                            tabIndex={0}
+                            onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); togglePillar(p.id); } }}
+                            className={cn(
+                              "text-left p-4 rounded-2xl border-2 transition-all flex items-start justify-between gap-3 cursor-pointer select-none",
+                              isChecked
+                                ? "bg-blue-50/50 border-rotary-blue shadow-2xs ring-1 ring-rotary-blue/70"
+                                : "bg-gray-50/40 border-gray-100 hover:bg-white hover:border-gray-200"
+                            )}
                           >
-                            <div className="p-2.5 rounded-xl bg-white shadow-xs shrink-0">
-                              {getInterestIcon(item.icon)}
-                            </div>
-                            <div>
-                              <div className="font-bold text-sm text-gray-900">
-                                {item.label}
+                            <div className="flex items-start gap-3">
+                              <div className={cn("p-2 rounded-xl bg-white shadow-2xs shrink-0 border", p.accentBorder, p.accentText)}>
+                                {getPillarIcon(p.iconName, "w-4 h-4")}
                               </div>
-                              <div className="text-xs text-gray-500 mt-1 line-clamp-2">
-                                {item.desc}
+                              <div>
+                                <div className="font-bold text-sm text-gray-900 flex items-center gap-1.5">
+                                  <span>{p.title}</span>
+                                </div>
+                                <div className="text-xs text-gray-500 mt-0.5 line-clamp-2">
+                                  {p.shortDesc}
+                                </div>
                               </div>
                             </div>
-                          </button>
+
+                            <div className="shrink-0 mt-0.5">
+                              <div className={cn(
+                                "w-5 h-5 rounded-md border flex items-center justify-center transition-colors",
+                                isChecked
+                                  ? "bg-rotary-blue border-rotary-blue text-white"
+                                  : "border-gray-300 bg-white"
+                              )}>
+                                {isChecked && <Check className="w-3.5 h-3.5" />}
+                              </div>
+                            </div>
+                          </div>
                         );
                       })}
                     </div>
@@ -752,8 +1168,9 @@ export const ActivarMiClub: React.FC = () => {
 
                       <button
                         type="button"
+                        disabled={selectedPillars.length === 0}
                         onClick={() => setStep(4)}
-                        className="inline-flex items-center gap-2 bg-rotary-blue hover:bg-[#002868] text-white font-bold px-6 py-3 rounded-xl shadow-md transition-all text-sm"
+                        className="inline-flex items-center gap-2 bg-rotary-blue hover:bg-[#002868] text-white font-bold px-6 py-3 rounded-xl shadow-md transition-all disabled:opacity-50 text-sm"
                       >
                         <span>Revisar y Enviar</span>
                         <ArrowRight className="w-4 h-4" />
@@ -792,9 +1209,25 @@ export const ActivarMiClub: React.FC = () => {
                         <span className="text-gray-500">WhatsApp:</span>
                         <span className="font-semibold text-gray-800">{findCountry(phoneIso).dial} {phoneNumber}</span>
                       </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-500">Interés Principal:</span>
-                        <span className="font-bold text-rotary-blue">{interests.find(i => i.id === mainInterest)?.label || mainInterest}</span>
+                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 pt-1">
+                        <span className="text-gray-500 shrink-0">Pilares Solicitados:</span>
+                        <div className="flex flex-wrap gap-1.5 sm:justify-end">
+                          {isEcosistemaIntegral ? (
+                            <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-blue-100 text-[#013388] border border-blue-200 flex items-center gap-1.5">
+                              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                              Ecosistema Integral (6 Pilares)
+                            </span>
+                          ) : (
+                            selectedPillars.map(pId => {
+                              const pil = SIX_PILLARS.find(p => p.id === pId);
+                              return (
+                                <span key={pId} className="text-xs font-bold px-2.5 py-1 rounded-lg bg-blue-50 text-blue-800 border border-blue-200/60">
+                                  {pil?.title || pId}
+                                </span>
+                              );
+                            })
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -825,7 +1258,7 @@ export const ActivarMiClub: React.FC = () => {
                       <button
                         type="submit"
                         disabled={submitting || !dataConsent}
-                        className="inline-flex items-center gap-2 bg-[#f7a81b] hover:bg-[#e69b15] text-[#0c2340] font-black px-8 py-3.5 rounded-xl shadow-lg hover:shadow-xl transition-all disabled:opacity-50 text-sm tracking-wide uppercase"
+                        className="inline-flex items-center gap-2 bg-[#f7a81b] hover:bg-[#e69b15] text-[#0c2340] font-black px-8 py-3.5 rounded-xl shadow-lg hover:shadow-xl transition-all disabled:opacity-50 text-sm tracking-wide uppercase cursor-pointer"
                       >
                         {submitting ? (
                           <>
@@ -848,70 +1281,107 @@ export const ActivarMiClub: React.FC = () => {
           )}
         </div>
 
-        {/* ── SECCIÓN DE BENEFICIOS DETALLADOS ────────────────────────────── */}
-        <section className="py-12 px-4 sm:px-6 max-w-4xl mx-auto border-t border-gray-200/60 mt-4 pb-20">
-          <div className="text-center max-w-2xl mx-auto mb-12">
-            <h3 className="text-xs font-black text-rotary-blue uppercase tracking-widest mb-2">
-              Impacto y Escalabilidad
-            </h3>
-            <h2 className="text-2xl sm:text-3xl font-black text-gray-900">
-              ¿Por qué activar Club Platform para tu club?
-            </h2>
-            <p className="text-gray-500 text-sm sm:text-base mt-2">
-              Diseñado para resolver las necesidades reales de los clubes rotarios, integrando imagen pública, administración y tesorería en un solo lugar.
-            </p>
+        {/* ── MODAL LIGERO DE CARACTERÍSTICAS DEL PILAR ─────────────────── */}
+        {activeModalPillar && (
+          <div
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6 overflow-y-auto animate-in fade-in duration-200"
+            onClick={() => setActiveModalPillar(null)}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-pillar-title"
+          >
+            <div
+              className="bg-white rounded-3xl shadow-2xl border border-gray-100 max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden my-auto animate-in zoom-in-95 duration-200"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Cabecera del Modal */}
+              <div className="p-6 sm:p-7 border-b border-gray-100 flex items-start justify-between gap-4 bg-gray-50/50">
+                <div className="flex items-start gap-4">
+                  <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border", activeModalPillar.accentBg, activeModalPillar.accentText, activeModalPillar.accentBorder)}>
+                    {getPillarIcon(activeModalPillar.iconName, "w-6 h-6")}
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-rotary-blue bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200/60 inline-block mb-1.5">
+                      {activeModalPillar.badge}
+                    </span>
+                    <h3 id="modal-pillar-title" className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight">
+                      {activeModalPillar.title}
+                    </h3>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {activeModalPillar.shortDesc}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveModalPillar(null)}
+                  aria-label="Cerrar detalles del pilar"
+                  className="w-9 h-9 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 flex items-center justify-center shrink-0 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Contenido / Bullets */}
+              <div className="p-6 sm:p-7 overflow-y-auto space-y-6 flex-1 text-left">
+                <div>
+                  <h4 className="text-xs font-black text-gray-400 uppercase tracking-wider mb-3">
+                    Herramientas y Capacidades Incluidas
+                  </h4>
+                  <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {activeModalPillar.extendedPoints.map((point, idx) => (
+                      <li key={idx} className="flex items-start gap-2.5 text-xs sm:text-sm text-gray-700 bg-gray-50/60 p-2.5 rounded-xl border border-gray-100">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                        <span className="leading-snug">{point}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* Impacto en Membresía */}
+                <div className="bg-blue-50/60 border border-blue-200/70 rounded-2xl p-4 sm:p-5 flex items-start gap-3.5">
+                  <div className="w-9 h-9 rounded-xl bg-blue-100 text-rotary-blue flex items-center justify-center shrink-0 mt-0.5">
+                    <TrendingUp className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h5 className="text-xs font-bold text-rotary-blue uppercase tracking-wider mb-1">
+                      Impacto en Membresía y Cuadro Social
+                    </h5>
+                    <p className="text-xs sm:text-sm text-blue-950 leading-relaxed">
+                      {activeModalPillar.membershipImpact}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer del Modal */}
+              <div className="p-4 sm:p-6 border-t border-gray-100 bg-gray-50/80 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => setActiveModalPillar(null)}
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-bold text-sm hover:bg-gray-100 transition-colors"
+                >
+                  Cerrar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!selectedPillars.includes(activeModalPillar.id)) {
+                      setSelectedPillars(prev => [...prev, activeModalPillar.id]);
+                    }
+                    setActiveModalPillar(null);
+                    scrollToForm();
+                  }}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-rotary-blue hover:bg-[#002868] text-white font-bold px-6 py-2.5 rounded-xl shadow-sm text-sm transition-all cursor-pointer"
+                >
+                  <span>Activar para mi club con este pilar</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex items-start gap-4">
-              <div className="p-3 bg-blue-50 text-rotary-blue rounded-xl shrink-0">
-                <Globe className="w-6 h-6" />
-              </div>
-              <div>
-                <h4 className="font-bold text-gray-900 text-base mb-1">Sitio Web Oficial y Autogestionable</h4>
-                <p className="text-gray-600 text-xs sm:text-sm leading-relaxed">
-                  Tu club contará con un portal público seguro bajo dominio oficial (.org), optimizado para computadores y teléfonos, sin depender de programadores externos.
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex items-start gap-4">
-              <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl shrink-0">
-                <Megaphone className="w-6 h-6" />
-              </div>
-              <div>
-                <h4 className="font-bold text-gray-900 text-base mb-1">Rotary en Acción Automatizado</h4>
-                <p className="text-gray-600 text-xs sm:text-sm leading-relaxed">
-                  Reporta las actividades y proyectos comunitarios de tu club en 3 minutos. El sistema redacta borradores de artículos con IA y genera Reels listos para redes.
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex items-start gap-4">
-              <div className="p-3 bg-purple-50 text-purple-600 rounded-xl shrink-0">
-                <Users className="w-6 h-6" />
-              </div>
-              <div>
-                <h4 className="font-bold text-gray-900 text-base mb-1">Directorio de Socios y Gobernanza</h4>
-                <p className="text-gray-600 text-xs sm:text-sm leading-relaxed">
-                  Visualiza la junta directiva activa, comités, historial de membresía y comunicación institucional sin duplicar planillas de Excel.
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex items-start gap-4">
-              <div className="p-3 bg-amber-50 text-amber-600 rounded-xl shrink-0">
-                <CreditCard className="w-6 h-6" />
-              </div>
-              <div>
-                <h4 className="font-bold text-gray-900 text-base mb-1">Bóveda de Fondos y Recaudación Segura</h4>
-                <p className="text-gray-600 text-xs sm:text-sm leading-relaxed">
-                  Recibe donaciones online con tarjetas de crédito, débito o transferencias locales para tus obras sociales, con trazabilidad contable inmediata.
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
+        )}
       </main>
 
       <Footer />

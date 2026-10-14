@@ -42,6 +42,22 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1198.0',
+        title: 'Landing Activar mi Club: Ecosistema Digital Integral — 6 Pilares Estratégicos, Membresía y Legado Digital 🌐🏛️🚀',
+        description: 'Evolución integral de la experiencia de usuario y conversión de la página pública «Activar mi Club» (/activar-mi-club): 1) Los 6 Pilares Estratégicos del Ecosistema: presentación compacta e intuitiva ubicada inmediatamente después de la cabecera institucional en cuadrícula responsiva (3 columnas escritorio, 2 tableta, 1 móvil) con tarjetas balanceadas para Presencia Institucional, Marketing Inteligente, Proyectos y Recursos, Gestión en la Nube, Acompañamiento Continuo y Evolución Continua. 2) Modal Ligero Interactivo de Características: exploración detallada de herramientas, capacidades operativas e impacto directo en membresía para cada pilar sin abandonar la página ni generar desplazamientos innecesarios. 3) Ejes Transversales de Crecimiento: integración destacada del fortalecimiento del cuadro social («Haz visible tu club, conecta con tu comunidad y abre nuevas oportunidades para atraer socios, voluntarios y aliados») y preservación del Legado Digital institucional («Tu club evoluciona. Su legado permanece») como puente natural entre juntas directivas. 4) Llamado a la Acción y Formulario de 4 Pasos: botón institucional «SOLICITAR ACTIVACIÓN» con desplazamiento suave al formulario inteligente; el Paso 3 «Enfoque» incorpora la selección múltiple de los 6 pilares con la opción destacada «Me interesa el ecosistema integral» que marca automáticamente toda la suite, persistiendo la selección en la base de datos y en el CRM administrativo de activación de clubes.',
+        date: new Date().toISOString(),
+        tags: ['activar-mi-club', 'ecosistema-digital', '6-pilares', 'membresia', 'legado-digital', 'conversion', 'multisitio', 'rotary-en-accion', 'production-release'],
+        type: 'feature',
+        changes: [
+            { type: 'added', text: 'Sección compacta de los 6 Pilares Estratégicos del Ecosistema con cuadrícula responsive equilibrada y badges de categoría institucional.' },
+            { type: 'added', text: 'Modal ligero interactivo con características detalladas, herramientas incluidas e impacto en membresía para cada pilar.' },
+            { type: 'added', text: 'Bloques institucionales dedicados al Fortalecimiento de la Membresía y preservación del Legado Digital entre períodos rotarios.' },
+            { type: 'improved', text: 'Paso 3 «Enfoque» del formulario con selección múltiple de pilares y selector inteligente «Me interesa el ecosistema integral».' },
+            { type: 'improved', text: 'Resumen del Paso 4 de confirmación y pantalla de éxito con badges visibles de los pilares solicitados.' },
+            { type: 'improved', text: 'Trazabilidad completa en base de datos ("selectedPillars" JSONB) y visualización en el CRM administrativo de seguimiento.' }
+        ]
+    },
+    {
         version: '4.1197.0',
         title: 'Cabeceras Institucionales: Tipografía Open Sans Regular 400 y Título Unificado en una Línea en Escritorio 🏛️✨',
         description: 'Perfeccionamiento tipográfico y de composición visual en las cabeceras institucionales públicas de Rotary en Acción y Activar mi Club: 1) Tipografía Open Sans Regular (400) sin negrillas: eliminación estricta de font-weight bold (700/800) en los títulos H1 principales, aplicando peso 400 regular institucional para una presencia más limpia, elegante y profesional, preservando intactas las negrillas en botones, tarjetas y componentes internos. 2) Título en una Sola Línea en Escritorio: ajuste del título «¡Activa el ecosistema digital de tu club!» con contenedor expandido (max-w-4xl lg:max-w-5xl xl:max-w-6xl) y escala tipográfica fluida adaptativa (text-2xl sm:text-3xl md:text-4xl lg:text-[36px] xl:text-[40px]), garantizando visualización completa en una única línea en pantallas de escritorio y distribución natural en varias líneas en móviles y tabletas sin desbordamientos. 3) Consistencia Multisitio en PublicPageHeader: ampliación del componente compartido con props titleClassName, contentClassName y subtitleClassName, centralizando el centrado, color blanco (#ffffff), fondo institucional PAGE_HEADER_BACKGROUND con textura geométrica Rotary (#0c3c7c con /geo-darkblue.png) y compatibilidad total entre distritos.',
