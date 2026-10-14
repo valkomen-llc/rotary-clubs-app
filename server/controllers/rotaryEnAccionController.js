@@ -28,8 +28,32 @@ export const getEngineConfig = async (req, res) => {
     await ensureRotaryEnAccionSchema();
     const { campaign, topic, program, area, ref, ca_token } = req.query;
     const ctx = await resolveContext({ campaign, topic, program, area, ref });
-    const tax = await treeTaxonomies();
     const cfg = await getConfig();
+
+    // Detección dinámica del sitio activo para cabecera e identidad multisitio
+    const host = String(req.headers['x-forwarded-host'] || req.headers.host || '');
+    let site = null;
+    try {
+      const { resolveSiteId } = await import('../lib/linkRedirectStore.js');
+      const siteId = await resolveSiteId(host);
+      if (siteId) {
+        const { rows: siteRows } = await db.query(
+          `SELECT id, name, logo, district, domain, subdomain FROM "Club" WHERE id=$1 LIMIT 1`,
+          [siteId]
+        );
+        if (siteRows[0]) {
+          site = {
+            id: siteRows[0].id,
+            name: siteRows[0].name,
+            logo: siteRows[0].logo,
+            district: siteRows[0].district,
+            domain: siteRows[0].domain,
+            subdomain: siteRows[0].subdomain,
+          };
+        }
+      }
+    } catch {}
+
     // Identificación inteligente: el token de campaña ya sabe club/contacto.
     let prefill = {};
     if (ca_token) {
@@ -77,7 +101,9 @@ export const getEngineConfig = async (req, res) => {
         }
       } catch { /* sin sugerencia: el formulario arranca neutro */ }
     }
+    const tax = await treeTaxonomies();
     res.json({
+      site,
       mode: ctx.mode,
       campaign: camp ? { id: camp.id, slug: camp.slug, name: camp.name, headline: sub.headline || camp.name, intro: sub.intro || '', thanksMessage: sub.thanksMessage || '', consentText: consentTextFor(sub), consentIsProvisional: !consentIsConfigured(sub.consentText), image: content.hero?.image || '' } : null,
       contextTax: ctx.tax,

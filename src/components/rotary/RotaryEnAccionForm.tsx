@@ -10,6 +10,7 @@ import { COUNTRIES, DEFAULT_COUNTRY, findCountry, flagEmoji } from '../../lib/co
 import { toast } from 'sonner';
 import Navbar from '../../sections/Navbar';
 import Footer from '../../sections/Footer';
+import { PublicPageHeader } from '../common/PublicInstitutionalComponents';
 import { ACCEPT_ATTR, MIN_PHOTOS, MAX_PHOTOS, MAX_VIDEOS, checkFileMeta, overweightMessage, DUPLICATE_MESSAGE, duplicateKey, partialFileHash, countValidPhotos } from '../../lib/contentSubmissionSpec';
 import {
   fieldsForTipo, IMPACT_META, EXTRA_LABELS, photoAdvice,
@@ -31,7 +32,7 @@ import {
 const API = import.meta.env.VITE_API_URL || '/api';
 const CAMPO = 'w-full p-3.5 rounded-xl border-2 border-gray-100 text-base bg-gray-50/60 outline-none focus:border-rotary-blue transition-colors';
 const ROTULO = 'block text-[11px] font-black text-gray-400 uppercase tracking-[0.15em] mb-2';
-const TARJETA = 'bg-white rounded-3xl p-6 shadow-sm border border-gray-100';
+const TARJETA = 'bg-white rounded-3xl p-6 sm:p-8 md:p-10 shadow-sm border border-gray-100';
 const nuevoId = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 
 const PASOS = ['Qué quieres compartir', 'Cuéntanos', 'Evidencias y contacto', 'Revisar y enviar'];
@@ -191,26 +192,15 @@ const Marco: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   </div>
 );
 
-const Cabecera: React.FC = () => (
-  <section
-    className="relative overflow-hidden"
-    style={{
-      backgroundColor: '#0c3c7c',
-      backgroundImage: "url('/geo-darkblue.png')",
-      backgroundPosition: '50% 0',
-      backgroundRepeat: 'repeat',
-      backgroundSize: '71px 85px',
-    }}
-  >
-    <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
-      <div className="text-center max-w-3xl mx-auto">
-        <h1 className="text-3xl md:text-5xl text-white mb-6">Rotary en Acción</h1>
-        <p className="text-white/80 text-lg md:text-xl">
-          Comparte las actividades, proyectos, obras y eventos de tu club y ayúdanos a mostrar el impacto de Rotary a través de los canales del Distrito 4281.
-        </p>
-      </div>
-    </div>
-  </section>
+const Cabecera: React.FC<{ siteName?: string }> = ({ siteName }) => (
+  <PublicPageHeader
+    title="Rotary en Acción"
+    subtitle={
+      siteName
+        ? `Comparte las actividades, proyectos, obras y eventos de tu club y ayúdanos a mostrar el impacto de Rotary a través de los canales de ${siteName}.`
+        : 'Comparte las actividades, proyectos, obras y eventos de tu club y ayúdanos a mostrar el impacto de Rotary a través de los canales del Distrito 4281.'
+    }
+  />
 );
 
 export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: string }) {
@@ -901,34 +891,67 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
 
   return (
     <Marco>
-      <Cabecera />
-      <div className="max-w-2xl mx-auto px-4 py-10 md:py-12 pb-20 space-y-4">
+      <Cabecera siteName={cfg?.site?.name} />
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-10 md:py-12 pb-20 space-y-4">
         {!enviado && (
-          <nav aria-label="Progreso" className="bg-white rounded-2xl border border-gray-100 px-4 py-3">
-            <div className="flex items-center gap-1.5 overflow-x-auto">
+          <nav aria-label="Progreso" className="bg-white rounded-2xl border border-gray-100 px-4 sm:px-6 py-3.5 shadow-sm">
+            <div className="flex items-center justify-between gap-2 overflow-x-auto">
               {PASOS.map((label, i) => (
-                <button key={label} onClick={() => irA(i)} disabled={i > step} aria-current={i === step ? 'step' : undefined}
-                  className={`flex items-center gap-1.5 text-[11px] font-bold whitespace-nowrap px-2 py-1 rounded-full ${i === step ? 'bg-rotary-blue text-white' : i < step ? 'text-rotary-blue' : 'text-gray-400 disabled:opacity-60'}`}>
-                  <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${i === step ? 'bg-white/25' : i < step ? 'bg-rotary-blue text-white' : 'bg-gray-100'}`}>{i + 1}</span>
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => irA(i)}
+                  disabled={i > step}
+                  aria-current={i === step ? 'step' : undefined}
+                  className={`flex items-center gap-2 text-xs font-bold whitespace-nowrap px-3 py-1.5 rounded-full transition-all ${
+                    i === step
+                      ? 'bg-rotary-blue text-white shadow-sm'
+                      : i < step
+                      ? 'text-rotary-blue hover:bg-blue-50 cursor-pointer'
+                      : 'text-gray-400 disabled:opacity-60 cursor-default'
+                  }`}
+                >
+                  <span
+                    className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${
+                      i === step
+                        ? 'bg-white/25 text-white'
+                        : i < step
+                        ? 'bg-rotary-blue text-white'
+                        : 'bg-gray-100 text-gray-500'
+                    }`}
+                  >
+                    {i + 1}
+                  </span>
                   <span className="hidden sm:inline">{label}</span>
                 </button>
               ))}
             </div>
-            <p className="sm:hidden text-[11px] font-bold text-gray-400 mt-1.5">Paso {step + 1} de 4</p>
+            <p className="sm:hidden text-[11px] font-bold text-gray-400 mt-2">
+              Paso {step + 1} de 4: {PASOS[step]}
+            </p>
           </nav>
         )}
 
         {/* PASO 1 */}
         {step === 0 && !enviado && (
           <div className={TARJETA}>
-            <h2 className="text-lg font-black text-gray-800">¿Qué quieres compartir con Rotary?</h2>
+            <h2 className="text-xl font-black text-gray-800">¿Qué quieres compartir con Rotary?</h2>
             <p className="text-sm text-gray-500 mt-1">Elegí una opción. El formulario se adapta a lo que elijas.</p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-4" role="radiogroup" aria-label="Tipo de contenido">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 mt-6" role="radiogroup" aria-label="Tipo de contenido">
               {tipos.map((t: any) => (
-                <button key={t.slug} role="radio" aria-checked={tipo === t.slug} onClick={() => setTipo(t.slug)}
-                  className={`rounded-2xl border-2 p-3 text-left transition-colors min-h-[88px] ${tipo === t.slug ? 'border-rotary-blue bg-blue-50' : 'border-gray-100 hover:border-gray-200'}`}>
-                  <div className="text-2xl" aria-hidden>{t.icon || '✨'}</div>
-                  <div className="text-xs font-bold text-gray-700 mt-1">{t.name}</div>
+                <button
+                  key={t.slug}
+                  role="radio"
+                  aria-checked={tipo === t.slug}
+                  onClick={() => setTipo(t.slug)}
+                  className={`rounded-2xl border-2 p-4 text-left transition-all min-h-[96px] sm:min-h-[104px] flex flex-col justify-between ${
+                    tipo === t.slug
+                      ? 'border-rotary-blue bg-blue-50/80 shadow-sm'
+                      : 'border-gray-100 bg-white hover:border-blue-200 hover:bg-slate-50/50'
+                  }`}
+                >
+                  <div className="text-2xl sm:text-3xl" aria-hidden>{t.icon || '✨'}</div>
+                  <div className="text-xs sm:text-sm font-bold text-gray-700 mt-2 leading-snug">{t.name}</div>
                 </button>
               ))}
             </div>
@@ -1326,7 +1349,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
             )}
           </div>
         )}
-        <p className="text-center text-[11px] text-gray-400 flex items-center justify-center gap-1"><Users className="w-3 h-3" /> Rotary en Acción · Distrito 4281 <MapPin className="w-3 h-3" /></p>
+        <p className="text-center text-[11px] text-gray-400 flex items-center justify-center gap-1"><Users className="w-3 h-3" /> Rotary en Acción · {cfg?.site?.name || 'Distrito 4281'} <MapPin className="w-3 h-3" /></p>
       </div>
     </Marco>
   );

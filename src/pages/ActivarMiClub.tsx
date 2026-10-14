@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
+import { PublicPageHeader } from '../components/common/PublicInstitutionalComponents';
 import { useSEO } from '../hooks/useSEO';
 import { COUNTRIES, DEFAULT_COUNTRY, findCountry, flagEmoji } from '../lib/countryPhones';
 import { toast } from 'sonner';
@@ -328,53 +329,22 @@ export const ActivarMiClub: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-gray-800">
+    <div className="min-h-screen bg-rotary-concrete flex flex-col font-sans text-gray-800">
       <Navbar />
 
       <main className="flex-1">
-        {/* ── HERO BANNER ─────────────────────────────────────────────────── */}
-        <section className="relative overflow-hidden bg-gradient-to-b from-[#01215b] via-[#013388] to-[#0c2340] text-white py-16 lg:py-24 px-4 sm:px-6">
-          <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:16px_16px] pointer-events-none" />
-
-          <div className="max-w-4xl mx-auto text-center relative z-10">
-            {site?.logo ? (
-              <div className="inline-flex items-center justify-center p-3 bg-white/10 backdrop-blur-md rounded-2xl mb-6 shadow-inner border border-white/20">
-                <img src={site.logo} alt={site.name} className="h-12 sm:h-14 w-auto object-contain" />
-              </div>
-            ) : (
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/15 backdrop-blur-md border border-white/20 text-xs font-black uppercase tracking-wider text-amber-300 mb-6">
-                <Sparkles className="w-4 h-4 text-amber-400" />
-                <span>{site?.name || 'Club Platform for Rotary'}</span>
-              </div>
-            )}
-
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight leading-tight mb-4">
-              ¡Activa el ecosistema digital de tu club!
-            </h1>
-            <p className="text-base sm:text-lg md:text-xl text-blue-100 max-w-2xl mx-auto leading-relaxed">
+        {/* ── CABECERA INSTITUCIONAL COMPARTIDA ───────────────────────────── */}
+        <PublicPageHeader
+          title="¡Activa el ecosistema digital de tu club!"
+          subtitle={
+            <>
               Conecta, comunica y potencia el impacto de tu club rotario con herramientas tecnológicas modernas, integradas oficialmente con <strong>Rotary en Acción</strong>.
-            </p>
+            </>
+          }
+        />
 
-            {/* Badges de pilares */}
-            <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 mt-8 text-xs font-semibold text-white/90">
-              <span className="flex items-center gap-1.5 bg-white/10 px-3 py-1.5 rounded-xl border border-white/10">
-                <Globe className="w-3.5 h-3.5 text-blue-300" /> Sitio Web Autogestionable
-              </span>
-              <span className="flex items-center gap-1.5 bg-white/10 px-3 py-1.5 rounded-xl border border-white/10">
-                <Users className="w-3.5 h-3.5 text-emerald-300" /> Directorio de Socios
-              </span>
-              <span className="flex items-center gap-1.5 bg-white/10 px-3 py-1.5 rounded-xl border border-white/10">
-                <Megaphone className="w-3.5 h-3.5 text-amber-300" /> Rotary en Acción
-              </span>
-              <span className="flex items-center gap-1.5 bg-white/10 px-3 py-1.5 rounded-xl border border-white/10">
-                <CreditCard className="w-3.5 h-3.5 text-purple-300" /> Donaciones Online
-              </span>
-            </div>
-          </div>
-        </section>
-
-        {/* ── CUERPO PRINCIPAL / FORMULARIO INTELIGENTE ─────────────────────── */}
-        <section className="py-12 px-4 sm:px-6 -mt-8 max-w-4xl mx-auto relative z-20">
+        {/* ── CUERPO PRINCIPAL / FORMULARIO INTELIGENTE (ANCHO UNIFICADO max-w-4xl) ── */}
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-10 md:py-12 pb-20 space-y-4 relative z-10">
           {submittedSuccess ? (
             /* PANTALLA DE ÉXITO */
             <div className="bg-white rounded-3xl p-8 sm:p-12 shadow-xl border border-gray-100 text-center animate-in fade-in zoom-in-95 duration-300">
@@ -437,23 +407,56 @@ export const ActivarMiClub: React.FC = () => {
               </div>
             </div>
           ) : (
-            /* TARJETA DEL FORMULARIO */
-            <div className="bg-white rounded-3xl p-6 sm:p-10 shadow-xl border border-gray-100">
+            <>
               {/* Pasos / Wizard Header */}
-              <div className="mb-8">
-                <div className="flex items-center justify-between text-xs font-bold text-gray-400 mb-2">
-                  <span className={step >= 1 ? 'text-rotary-blue font-black' : ''}>1. Tu Club</span>
-                  <span className={step >= 2 ? 'text-rotary-blue font-black' : ''}>2. Responsable</span>
-                  <span className={step >= 3 ? 'text-rotary-blue font-black' : ''}>3. Enfoque</span>
-                  <span className={step >= 4 ? 'text-rotary-blue font-black' : ''}>4. Confirmación</span>
+              <nav aria-label="Progreso de activación" className="bg-white rounded-2xl border border-gray-100 px-4 sm:px-6 py-3.5 shadow-sm">
+                <div className="flex items-center justify-between gap-2 overflow-x-auto">
+                  {[
+                    { num: 1, label: 'Tu Club' },
+                    { num: 2, label: 'Responsable' },
+                    { num: 3, label: 'Enfoque' },
+                    { num: 4, label: 'Confirmación' },
+                  ].map((s) => {
+                    const isActive = step === s.num;
+                    const isCompleted = step > s.num;
+                    return (
+                      <button
+                        key={s.num}
+                        type="button"
+                        onClick={() => { if (isCompleted) setStep(s.num); }}
+                        disabled={!isCompleted && !isActive}
+                        aria-current={isActive ? 'step' : undefined}
+                        className={`flex items-center gap-2 text-xs font-bold whitespace-nowrap px-3 py-1.5 rounded-full transition-all ${
+                          isActive
+                            ? 'bg-rotary-blue text-white shadow-sm'
+                            : isCompleted
+                            ? 'text-rotary-blue hover:bg-blue-50 cursor-pointer'
+                            : 'text-gray-400 disabled:opacity-60 cursor-default'
+                        }`}
+                      >
+                        <span
+                          className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${
+                            isActive
+                              ? 'bg-white/25 text-white'
+                              : isCompleted
+                              ? 'bg-rotary-blue text-white'
+                              : 'bg-gray-100 text-gray-500'
+                          }`}
+                        >
+                          {s.num}
+                        </span>
+                        <span className="hidden sm:inline">{s.label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
-                <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
-                  <div
-                    className="bg-gradient-to-r from-rotary-blue to-amber-500 h-full transition-all duration-300"
-                    style={{ width: `${(step / 4) * 100}%` }}
-                  />
-                </div>
-              </div>
+                <p className="sm:hidden text-[11px] font-bold text-gray-400 mt-2">
+                  Paso {step} de 4
+                </p>
+              </nav>
+
+              {/* TARJETA DEL FORMULARIO */}
+              <div className="bg-white rounded-3xl p-6 sm:p-8 md:p-10 shadow-sm border border-gray-100">
 
               <form onSubmit={handleSubmit} onFocus={triggerFormStarted}>
                 {/* ── PASO 1: SELECCIÓN DEL CLUB ─────────────────────────── */}
@@ -840,11 +843,12 @@ export const ActivarMiClub: React.FC = () => {
                 )}
               </form>
             </div>
+            </>
           )}
-        </section>
+        </div>
 
         {/* ── SECCIÓN DE BENEFICIOS DETALLADOS ────────────────────────────── */}
-        <section className="py-16 px-4 sm:px-6 max-w-5xl mx-auto border-t border-gray-200/60 mt-12">
+        <section className="py-12 px-4 sm:px-6 max-w-4xl mx-auto border-t border-gray-200/60 mt-4 pb-20">
           <div className="text-center max-w-2xl mx-auto mb-12">
             <h3 className="text-xs font-black text-rotary-blue uppercase tracking-widest mb-2">
               Impacto y Escalabilidad
