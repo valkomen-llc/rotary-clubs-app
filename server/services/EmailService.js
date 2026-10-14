@@ -275,7 +275,7 @@ export class EmailService {
      * Sends an email using the Club's own SMTP configuration, 
      * with fallback to Platform relay if club SMTP is not configured.
      */
-    static async sendEmail({ clubId, to, subject, html, userId, fromEmail, cc, bcc, attachments }) {
+    static async sendEmail({ clubId, to, subject, html, userId, fromEmail, fromName, replyTo, cc, bcc, attachments }) {
         try {
             const transporter = await this.getTransporter(clubId);
 
@@ -284,7 +284,7 @@ export class EmailService {
                 where: { id: clubId },
                 select: { name: true }
             });
-            const senderName = club?.name || 'Club Platform';
+            const senderName = fromName || club?.name || 'Club Platform';
 
             // ⚠️ EL REMITENTE SE RESUELVE POR PLAN, NO POR CASCADA SILENCIOSA
             // (v4.942). Se intenta la cuenta institucional y, si el proveedor la
@@ -322,7 +322,7 @@ export class EmailService {
 
                     const salida = await this.sendPlatformEmail({
                         to, subject, html,
-                        from: paso.from, replyTo: paso.replyTo || undefined,
+                        from: paso.from, replyTo: replyTo || paso.replyTo || undefined,
                         cc, bcc, attachments,
                     });
 
@@ -361,10 +361,13 @@ export class EmailService {
                 where: { type_clubId: { type: 'smtp', clubId } }
             });
 
-            const fromStr = config.fromName ? `"${config.fromName}" <${config.fromEmail}>` : config.fromEmail;
+            const fromStr = (fromName && fromEmail)
+                ? `"${fromName}" <${fromEmail}>`
+                : (config.fromName ? `"${config.fromName}" <${config.fromEmail}>` : config.fromEmail);
 
             const info = await transporter.sendMail({
                 from: fromStr, to: EmailService.parseRecipients(to), subject, html,
+                ...(replyTo ? { replyTo } : {}),
                 ...(cc ? { cc: EmailService.parseRecipients(cc) } : {}),
                 ...(bcc ? { bcc: EmailService.parseRecipients(bcc) } : {}),
                 ...(EmailService._nodemailerAttachments(attachments) ? { attachments: EmailService._nodemailerAttachments(attachments) } : {})

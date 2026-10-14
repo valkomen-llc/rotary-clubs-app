@@ -174,7 +174,7 @@ export const createCampaign = async (req, res) => {
     try {
         const clubId = await resolveClubId(req);
         if (!clubId) return res.status(400).json({ error: 'No hay un sitio asociado a esta campaña' });
-        const { name, subject, fromName, preheader, content, design, audience, listId, listIds, segmentTag,
+        const { name, subject, fromName, fromEmail, replyTo, senderIdentityId, preheader, content, design, audience, listId, listIds, segmentTag,
             abEnabled, variantSubject, variantPreheader, variantContent, abSamplePct, abWindowHours, abMetric } = req.body;
         if (!name || !subject || !content) {
             return res.status(400).json({ error: 'Nombre, asunto y contenido son obligatorios' });
@@ -190,6 +190,9 @@ export const createCampaign = async (req, res) => {
                 name,
                 subject,
                 fromName: fromName || null,
+                fromEmail: fromEmail || null,
+                replyTo: replyTo || null,
+                senderIdentityId: senderIdentityId || null,
                 preheader: preheader || null,
                 content,
                 design: design || null,
@@ -226,7 +229,7 @@ export const updateCampaign = async (req, res) => {
         if (!['draft', 'scheduled', 'failed'].includes(existing.status)) {
             return res.status(400).json({ error: 'Solo se pueden editar campañas en borrador o programadas' });
         }
-        const { name, subject, fromName, preheader, content, design, audience, listId, listIds, segmentTag,
+        const { name, subject, fromName, fromEmail, replyTo, senderIdentityId, preheader, content, design, audience, listId, listIds, segmentTag,
             abEnabled, variantSubject, variantPreheader, variantContent, abSamplePct, abWindowHours, abMetric } = req.body;
         const aud = audience !== undefined ? (['list', 'tag'].includes(audience) ? audience : 'all') : undefined;
         const listIdsClean = aud === 'list'
@@ -238,6 +241,9 @@ export const updateCampaign = async (req, res) => {
                 ...(name !== undefined && { name }),
                 ...(subject !== undefined && { subject }),
                 ...(fromName !== undefined && { fromName: fromName || null }),
+                ...(fromEmail !== undefined && { fromEmail: fromEmail || null }),
+                ...(replyTo !== undefined && { replyTo: replyTo || null }),
+                ...(senderIdentityId !== undefined && { senderIdentityId: senderIdentityId || null }),
                 ...(preheader !== undefined && { preheader: preheader || null }),
                 ...(content !== undefined && { content }),
                 ...(design !== undefined && { design: design || null }),
@@ -326,7 +332,14 @@ const sendToContacts = async ({ clubId, campaignId, contacts, subject, content, 
         );
         const html = buildEmailHtml(personal.content ?? content, personal.preheader ?? preheader, rid, contact, baseUrl);
         const result = await EmailService.sendEmail({
-            clubId, to: contact.email.trim(), subject: personal.subject ?? subject, html, userId: userId || null,
+            clubId,
+            to: contact.email.trim(),
+            subject: personal.subject ?? subject,
+            html,
+            userId: userId || null,
+            fromEmail: campaign?.fromEmail || undefined,
+            fromName: campaign?.fromName || undefined,
+            replyTo: campaign?.replyTo || undefined,
         });
         const ok = !!result?.success;
         if (ok) sent += 1; else failed += 1;
@@ -552,7 +565,7 @@ export const sendTest = async (req, res) => {
     try {
         const clubId = await resolveClubId(req);
         if (!clubId) return res.status(400).json({ error: 'No hay un sitio asociado a esta prueba' });
-        const { to, subject, content } = req.body;
+        const { to, subject, content, fromName, fromEmail, replyTo } = req.body;
         if (!isValidEmail(to)) return res.status(400).json({ error: 'La dirección de prueba no es válida' });
         if (!subject || !content) return res.status(400).json({ error: 'Asunto y contenido son obligatorios' });
         const personal = personalizeEmail(
@@ -571,6 +584,9 @@ export const sendTest = async (req, res) => {
             subject: `[PRUEBA] ${personal.subject ?? subject}`,
             html,
             userId: req.user?.id || null,
+            fromEmail: fromEmail || undefined,
+            fromName: fromName || undefined,
+            replyTo: replyTo || undefined,
         });
         if (!result?.success) {
             return res.status(502).json({ error: result?.error || 'El proveedor no pudo enviar la prueba' });
@@ -651,6 +667,9 @@ export const duplicateCampaign = async (req, res) => {
                 name: name.slice(0, 160),
                 subject: cur.subject,
                 fromName: cur.fromName,
+                fromEmail: cur.fromEmail,
+                replyTo: cur.replyTo,
+                senderIdentityId: cur.senderIdentityId,
                 preheader: cur.preheader,
                 content: cur.content,
                 design: cur.design ?? undefined,

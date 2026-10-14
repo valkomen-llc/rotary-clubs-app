@@ -9,7 +9,8 @@ import {
   CheckCircle2, RefreshCw, Send, ShieldCheck, Copy, ExternalLink,
   Eye, Mail, MessageSquare, TrendingUp, Award, Zap, Info, Filter,
   Search, Check, SlidersHorizontal, Share2, Play, Pause, ChevronRight,
-  FileText, Download, CheckCircle, Flame, Star, BookOpen, AlertTriangle
+  FileText, Download, CheckCircle, Flame, Star, BookOpen, AlertTriangle,
+  Plus, Trash2, Edit3, MailCheck
 } from 'lucide-react';
 import { toast } from 'sonner';
 import VisualTemplateEditor from '../email-marketing/VisualTemplateEditor';
@@ -22,7 +23,7 @@ import {
 const API = import.meta.env.VITE_API_URL || '/api';
 const getToken = () => localStorage.getItem('rotary_token');
 
-export type MarketingSubtab = 'panel' | 'planificador' | 'audiencias' | 'campanas' | 'agente' | 'resultados';
+export type MarketingSubtab = 'panel' | 'planificador' | 'audiencias' | 'campanas' | 'agente' | 'resultados' | 'remitentes';
 
 export const RotaryMarketingInteligente: React.FC = () => {
   let siteClub: any = null;
@@ -56,6 +57,23 @@ export const RotaryMarketingInteligente: React.FC = () => {
   const [districts, setDistricts] = useState<any[]>([]);
   const [governance, setGovernance] = useState<any>(null);
   const [stories, setStories] = useState<any[]>([]);
+
+  // Identidades y Remitentes Institucionales
+  const [senderIdentities, setSenderIdentities] = useState<any[]>([]);
+  const [defaultSenderIdentity, setDefaultSenderIdentity] = useState<any | null>(null);
+  const [availableAccounts, setAvailableAccounts] = useState<any[]>([]);
+  const [availableSiteContext, setAvailableSiteContext] = useState<any | null>(null);
+  const [loadingSenders, setLoadingSenders] = useState<boolean>(false);
+  const [editingIdentity, setEditingIdentity] = useState<{
+    id?: string;
+    name: string;
+    fromName: string;
+    fromEmail: string;
+    replyToEmail: string;
+    isDefault: boolean;
+  } | null>(null);
+  const [savingIdentity, setSavingIdentity] = useState<boolean>(false);
+  const [selectingSenderCampaignId, setSelectingSenderCampaignId] = useState<string | null>(null);
 
   // Filtros de audiencias y clubes
   const [selectedSegment, setSelectedSegment] = useState<'nuevos' | 'activos' | 'inactivos' | 'frecuentes' | 'pendientes'>('nuevos');
@@ -103,6 +121,36 @@ export const RotaryMarketingInteligente: React.FC = () => {
   const [horizonte, setHorizonte] = useState<'mensual' | 'trimestral' | 'semestral' | 'anual'>('mensual');
   const [visualEditorCampaign, setVisualEditorCampaign] = useState<any | null>(null);
 
+  // Carga de identidades de remitente y cuentas institucionales disponibles
+  const loadSenderIdentities = useCallback(async () => {
+    setLoadingSenders(true);
+    try {
+      const headers = { Authorization: `Bearer ${getToken()}` };
+      const [resIdentities, resAccounts] = await Promise.all([
+        fetch(`${API}/rotary-en-accion/marketing/sender-identities`, { headers }).then(r => r.json()).catch(() => null),
+        fetch(`${API}/rotary-en-accion/marketing/sender-identities/available-accounts`, { headers }).then(r => r.json()).catch(() => null)
+      ]);
+
+      if (resIdentities?.ok) {
+        setSenderIdentities(resIdentities.identities || []);
+        setDefaultSenderIdentity(resIdentities.defaultIdentity || null);
+      }
+      if (resAccounts?.ok) {
+        setAvailableAccounts(resAccounts.accounts || []);
+        setAvailableSiteContext({
+          siteName: resAccounts.siteName,
+          siteDomain: resAccounts.siteDomain,
+          hasAccounts: resAccounts.hasAccounts,
+          hasAuthorizedAccounts: resAccounts.hasAuthorizedAccounts
+        });
+      }
+    } catch (e) {
+      console.error('Error cargando remitentes institucionales:', e);
+    } finally {
+      setLoadingSenders(false);
+    }
+  }, []);
+
   // Carga de datos
   const loadData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -137,13 +185,15 @@ export const RotaryMarketingInteligente: React.FC = () => {
       if (resDist?.ok) setDistricts(resDist.distritos || []);
       if (resGov?.ok) setGovernance(resGov.governance || null);
       if (resStories?.ok) setStories(resStories.stories || []);
+
+      loadSenderIdentities();
     } catch {
       toast.error('Error al sincronizar datos de Marketing Inteligente');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [loadSenderIdentities]);
 
   useEffect(() => {
     loadData();
@@ -178,8 +228,9 @@ export const RotaryMarketingInteligente: React.FC = () => {
       });
       const data = await res.json();
       if (data.ok) {
-        toast.success('¡Campaña vinculada y creada como borrador en Email Marketing!', {
-          description: 'Aprovecha la infraestructura existente de envío y calendario.',
+        const fromInfo = data.fromName ? ` · De: ${data.fromName}` : '';
+        toast.success('¡Campaña vinculada y sincronizada con Email Marketing!', {
+          description: `Identidad institucional conservada${fromInfo} (${data.fromEmail || 'correo verificado'}).`,
           action: {
             label: 'Abrir Campaña',
             onClick: () => window.open(data.viewUrl, '_blank')
@@ -193,6 +244,117 @@ export const RotaryMarketingInteligente: React.FC = () => {
       toast.error('Error de red al sincronizar');
     } finally {
       setSyncingCampaignId(null);
+    }
+  };
+
+  // Guardar identidad institucional de remitente (crear o editar)
+  const handleSaveIdentity = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingIdentity) return;
+    if (!editingIdentity.name.trim() || !editingIdentity.fromName.trim() || !editingIdentity.fromEmail.trim()) {
+      toast.error('Por favor completa todos los campos obligatorios');
+      return;
+    }
+
+    setSavingIdentity(true);
+    try {
+      const isEdit = !!editingIdentity.id;
+      const url = isEdit
+        ? `${API}/rotary-en-accion/marketing/sender-identities/${editingIdentity.id}`
+        : `${API}/rotary-en-accion/marketing/sender-identities`;
+      const method = isEdit ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify(editingIdentity)
+      });
+      const data = await res.json();
+      if (data.ok) {
+        toast.success(data.message || (isEdit ? 'Identidad institucional actualizada' : 'Identidad creada exitosamente'));
+        setEditingIdentity(null);
+        loadSenderIdentities();
+        loadData(true);
+      } else {
+        toast.error(data.error || 'Error al guardar la identidad');
+      }
+    } catch {
+      toast.error('Error de red al guardar la identidad');
+    } finally {
+      setSavingIdentity(false);
+    }
+  };
+
+  // Establecer identidad como predeterminada
+  const handleSetDefaultIdentity = async (identityId: string) => {
+    try {
+      const res = await fetch(`${API}/rotary-en-accion/marketing/sender-identities/${identityId}/set-default`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getToken()}` }
+      });
+      const data = await res.json();
+      if (data.ok) {
+        toast.success(data.message || 'Identidad predeterminada actualizada');
+        loadSenderIdentities();
+        loadData(true);
+      } else {
+        toast.error(data.error || 'Error al actualizar');
+      }
+    } catch {
+      toast.error('Error de red');
+    }
+  };
+
+  // Eliminar identidad institucional
+  const handleDeleteIdentity = async (identityId: string) => {
+    if (!confirm('¿Estás seguro de eliminar esta identidad institucional de remitente?')) return;
+    try {
+      const res = await fetch(`${API}/rotary-en-accion/marketing/sender-identities/${identityId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${getToken()}` }
+      });
+      const data = await res.json();
+      if (data.ok) {
+        toast.success(data.message || 'Identidad eliminada');
+        loadSenderIdentities();
+        loadData(true);
+      } else {
+        toast.error(data.error || 'Error al eliminar');
+      }
+    } catch {
+      toast.error('Error de red');
+    }
+  };
+
+  // Asignar remitente institucional a una campaña
+  const handleAssignSenderToCampaign = async (campaignId: string, senderIdentityId: string) => {
+    try {
+      const res = await fetch(`${API}/rotary-en-accion/marketing/campaigns/${campaignId}/sender`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ senderIdentityId })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        toast.success('Identidad institucional asignada a la campaña');
+        setSelectingSenderCampaignId(null);
+        const matched = senderIdentities.find(s => s.id === senderIdentityId);
+        if (previewCampaign?.id === campaignId) {
+          setPreviewCampaign((prev: any) => ({
+            ...prev,
+            senderIdentityId,
+            senderName: matched?.fromName || prev.senderName,
+            fromEmail: matched?.fromEmail || prev.fromEmail,
+            replyToEmail: matched?.replyToEmail || prev.replyToEmail,
+            senderIdentity: matched || prev.senderIdentity
+          }));
+        }
+        loadData(true);
+      } else {
+        toast.error(data.error || 'Error al asignar remitente');
+      }
+    } catch {
+      toast.error('Error de red al asignar remitente');
     }
   };
 
@@ -514,6 +676,19 @@ export const RotaryMarketingInteligente: React.FC = () => {
           <TrendingUp className="w-4 h-4 text-emerald-600" />
           <span>Resultados & Distritos</span>
           <span className="text-[10px] px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded-full font-bold">D4271 · D4281</span>
+        </button>
+
+        <button
+          onClick={() => setSubtab('remitentes')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
+            subtab === 'remitentes'
+              ? 'bg-white text-gray-900 shadow-sm border border-gray-200/60'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+          }`}
+        >
+          <ShieldCheck className="w-4 h-4 text-sky-600" />
+          <span>Configuración de remitentes</span>
+          <span className="text-[10px] px-1.5 py-0.2 bg-sky-100 text-sky-800 rounded-full font-bold">Identidad Institucional</span>
         </button>
       </div>
 
@@ -1271,6 +1446,258 @@ export const RotaryMarketingInteligente: React.FC = () => {
         </div>
       )}
 
+      {/* ════════ SUBPESTAÑA 7: CONFIGURACIÓN DE REMITENTES INSTITUCIONALES ════════ */}
+      {subtab === 'remitentes' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          {/* Header y Contexto del Sitio */}
+          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-gray-100 shadow-xs">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-100 pb-6 mb-6">
+              <div>
+                <div className="flex items-center gap-2 text-xs font-black text-rotary-blue uppercase tracking-wider mb-1">
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>Identidad Oficial y Remitentes Multisitio</span>
+                </div>
+                <h3 className="text-xl sm:text-2xl font-bold text-gray-900">
+                  Configuración de Remitentes Institucionales
+                </h3>
+                <p className="text-xs sm:text-sm text-gray-500 mt-1 max-w-3xl leading-relaxed">
+                  Configura el nombre visible, buzón de envío autorizado y cuenta de respuesta para las campañas de Rotary en Acción.
+                  Las campañas se enviarán con la identidad oficial del sitio y se sincronizarán directamente con Email Marketing.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => loadSenderIdentities()}
+                  disabled={loadingSenders}
+                  className="px-3.5 py-2.5 rounded-xl border border-gray-200 text-gray-700 text-xs font-bold hover:bg-gray-50 flex items-center gap-1.5 transition"
+                  title="Refrescar cuentas e identidades"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingSenders ? 'animate-spin' : ''}`} />
+                  <span>Actualizar</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const defaultAcc = availableAccounts.find(a => a.isAuthorized)?.email || availableAccounts[0]?.email || '';
+                    setEditingIdentity({
+                      name: '',
+                      fromName: siteBranding.siteName ? `Comunicaciones | ${siteBranding.siteName}` : 'Comunicaciones Institucionales',
+                      fromEmail: defaultAcc,
+                      replyToEmail: defaultAcc,
+                      isDefault: senderIdentities.length === 0
+                    });
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-rotary-blue hover:bg-[#002868] text-white text-xs font-bold flex items-center gap-1.5 transition shadow-xs"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Nueva Identidad</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Contexto Multisitio */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+              <div className="p-4 rounded-2xl bg-gray-50/80 border border-gray-100 space-y-1">
+                <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider block">Sitio Activo</span>
+                <div className="font-bold text-gray-900 text-sm">{siteBranding.siteName}</div>
+                <div className="text-gray-500 text-[11px] font-mono">{availableSiteContext?.siteDomain || 'Dominio vinculado al sitio'}</div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-gray-50/80 border border-gray-100 space-y-1">
+                <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider block">Cuentas Institucionales</span>
+                <div className="font-bold text-gray-900 text-sm">
+                  {availableAccounts.length} cuenta(s) en este sitio
+                </div>
+                <div className="text-gray-500 text-[11px]">
+                  {availableAccounts.filter(a => a.isAuthorized).length} autorizada(s) para envío
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-gray-50/80 border border-gray-100 space-y-1">
+                <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider block">Protección SPF / DKIM</span>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  {availableSiteContext?.hasAuthorizedAccounts ? (
+                    <>
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <span className="font-bold text-emerald-700 text-sm">Dominio Autorizado</span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertTriangle className="w-4 h-4 text-amber-600" />
+                      <span className="font-bold text-amber-700 text-sm">Verificación Requerida</span>
+                    </>
+                  )}
+                </div>
+                <div className="text-gray-500 text-[11px]">Protege contra suplantación y filtros de spam</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Listado de Identidades Configuradas */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="font-bold text-gray-900 text-sm sm:text-base">
+                Identidades Configuradas ({senderIdentities.length})
+              </h4>
+              <span className="text-xs text-gray-400 font-medium">
+                La identidad predeterminada se utiliza automáticamente en campañas nuevas
+              </span>
+            </div>
+
+            {loadingSenders ? (
+              <div className="p-12 text-center text-gray-400 text-xs bg-white rounded-3xl border border-gray-100 flex items-center justify-center gap-2">
+                <RefreshCw className="w-4 h-4 animate-spin text-rotary-blue" />
+                <span>Cargando identidades institucionales...</span>
+              </div>
+            ) : senderIdentities.length === 0 ? (
+              <div className="p-8 sm:p-12 text-center bg-white rounded-3xl border border-gray-100 space-y-3">
+                <MailCheck className="w-10 h-10 text-gray-300 mx-auto" />
+                <h5 className="font-bold text-gray-800 text-sm">No hay identidades configuradas en este sitio</h5>
+                <p className="text-xs text-gray-500 max-w-md mx-auto leading-relaxed">
+                  Crea una identidad institucional para comenzar a enviar campañas con el nombre oficial del club o distrito.
+                </p>
+                {availableAccounts.length === 0 ? (
+                  <div className="pt-2">
+                    <a
+                      href="/admin/email-management?tab=accounts"
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-sky-50 text-sky-800 border border-sky-200 text-xs font-bold hover:bg-sky-100 transition"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Configurar Cuentas en Bandeja de Entrada</span>
+                    </a>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const defaultAcc = availableAccounts.find(a => a.isAuthorized)?.email || availableAccounts[0]?.email || '';
+                      setEditingIdentity({
+                        name: 'Comunicaciones Distritales',
+                        fromName: siteBranding.siteName ? `Comunicaciones | ${siteBranding.siteName}` : 'Comunicaciones Institucionales',
+                        fromEmail: defaultAcc,
+                        replyToEmail: defaultAcc,
+                        isDefault: true
+                      });
+                    }}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rotary-blue text-white text-xs font-bold hover:bg-[#002868] transition"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Crear Identidad Predeterminada</span>
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {senderIdentities.map((identity) => (
+                  <div
+                    key={identity.id}
+                    className={`bg-white rounded-3xl p-6 border transition shadow-xs flex flex-col justify-between ${
+                      identity.isDefault ? 'border-emerald-300 ring-2 ring-emerald-500/10' : 'border-gray-100 hover:border-gray-200'
+                    }`}
+                  >
+                    <div className="space-y-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h5 className="font-bold text-gray-900 text-base">{identity.name}</h5>
+                            {identity.isDefault && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                <Star className="w-3 h-3 fill-emerald-600 text-emerald-600" />
+                                <span>Predeterminado</span>
+                              </span>
+                            )}
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-100">
+                              Activo
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setEditingIdentity({
+                              id: identity.id,
+                              name: identity.name,
+                              fromName: identity.fromName,
+                              fromEmail: identity.fromEmail,
+                              replyToEmail: identity.replyToEmail,
+                              isDefault: identity.isDefault
+                            })}
+                            className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition"
+                            title="Editar identidad"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteIdentity(identity.id)}
+                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition"
+                            title="Eliminar identidad"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2.5 text-xs text-gray-600 pt-2 border-t border-gray-50">
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-gray-400 block tracking-wider">
+                            Nombre visible (De):
+                          </span>
+                          <span className="font-bold text-gray-900 text-sm">{identity.fromName}</span>
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-gray-400 block tracking-wider">
+                            Correo electrónico de envío:
+                          </span>
+                          <span className="font-mono text-gray-800 bg-gray-50 px-2.5 py-1 rounded-lg border border-gray-100 inline-block mt-0.5">
+                            {identity.fromEmail}
+                          </span>
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-gray-400 block tracking-wider">
+                            Correo de respuesta (Reply-To):
+                          </span>
+                          <span className="font-mono text-gray-800 bg-gray-50 px-2.5 py-1 rounded-lg border border-gray-100 inline-block mt-0.5">
+                            {identity.replyToEmail}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-5 mt-4 border-t border-gray-100 flex items-center justify-between">
+                      {!identity.isDefault ? (
+                        <button
+                          type="button"
+                          onClick={() => handleSetDefaultIdentity(identity.id)}
+                          className="text-xs font-bold text-rotary-blue hover:text-[#002868] flex items-center gap-1.5 transition"
+                        >
+                          <Star className="w-3.5 h-3.5" />
+                          <span>Hacer predeterminado</span>
+                        </button>
+                      ) : (
+                        <span className="text-xs text-emerald-700 font-bold flex items-center gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Predeterminado para este sitio</span>
+                        </span>
+                      )}
+
+                      <span className="text-[11px] text-gray-400">
+                        {new Date(identity.createdAt).toLocaleDateString('es-CO')}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ── MODAL DE PREVISUALIZACIÓN DE CAMPAÑA ────────────────────── */}
       {previewCampaign && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
@@ -1314,6 +1741,109 @@ export const RotaryMarketingInteligente: React.FC = () => {
             <div className="p-6 overflow-y-auto space-y-4 text-xs">
               {previewTab === 'email' ? (
                 <div className="space-y-3">
+                  {/* Sección compacta: Identidad del envío (Requerimiento 4) */}
+                  <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-50/90 to-slate-50 border border-blue-200/80 shadow-2xs space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs font-black text-rotary-blue uppercase tracking-wider">
+                        <ShieldCheck className="w-4 h-4 text-rotary-blue" />
+                        <span>Identidad del envío</span>
+                        {previewCampaign.senderIdentity?.isDefault && (
+                          <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
+                            Predeterminado
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSelectingSenderCampaignId(selectingSenderCampaignId === previewCampaign.id ? null : previewCampaign.id)}
+                        className="text-xs font-bold text-rotary-blue hover:text-[#002868] underline flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>Cambiar remitente</span>
+                      </button>
+                    </div>
+
+                    {/* Selector desplegable de remitente si está abierto */}
+                    {selectingSenderCampaignId === previewCampaign.id && (
+                      <div className="p-3 bg-white rounded-xl border border-blue-200 shadow-sm space-y-2 animate-in fade-in duration-150">
+                        <div className="flex items-center justify-between text-xs font-bold text-gray-800">
+                          <span>Selecciona una identidad autorizada para esta campaña:</span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectingSenderCampaignId(null)}
+                            className="text-gray-400 hover:text-gray-600 text-sm font-bold"
+                          >
+                            ×
+                          </button>
+                        </div>
+                        <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                          {senderIdentities.map((ident) => (
+                            <div
+                              key={ident.id}
+                              onClick={() => handleAssignSenderToCampaign(previewCampaign.id, ident.id)}
+                              className={`p-2 rounded-lg border text-xs cursor-pointer transition flex items-center justify-between ${
+                                (previewCampaign.senderIdentityId === ident.id || (!previewCampaign.senderIdentityId && ident.isDefault))
+                                  ? 'bg-blue-50/80 border-rotary-blue font-bold text-rotary-blue'
+                                  : 'border-gray-200 hover:bg-gray-50 text-gray-700'
+                              }`}
+                            >
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span>{ident.name}</span>
+                                  {ident.isDefault && <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded font-bold">Predeterminado</span>}
+                                </div>
+                                <div className="text-[11px] text-gray-500 font-normal">
+                                  De: <strong>{ident.fromName}</strong> · &lt;{ident.fromEmail}&gt;
+                                </div>
+                              </div>
+                              <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
+                            </div>
+                          ))}
+                        </div>
+                        <div className="pt-1.5 flex justify-between items-center text-[11px]">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPreviewCampaign(null);
+                              setSelectingSenderCampaignId(null);
+                              setSubtab('remitentes');
+                            }}
+                            className="text-rotary-blue font-bold hover:underline"
+                          >
+                            + Gestionar identidades en Configuración
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectingSenderCampaignId(null)}
+                            className="text-gray-500 hover:text-gray-700 font-medium"
+                          >
+                            Cerrar
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-gray-700 pt-1.5 border-t border-blue-100/80">
+                      <div>
+                        <span className="text-gray-400 font-bold block text-[10px] uppercase tracking-wider">De:</span>
+                        <span className="font-bold text-gray-900 truncate block">
+                          {previewCampaign.senderName || previewCampaign.senderIdentity?.fromName || defaultSenderIdentity?.fromName || `Comunicaciones | ${siteBranding.siteName}`}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 font-bold block text-[10px] uppercase tracking-wider">Correo:</span>
+                        <span className="font-mono text-gray-800 text-[11px] truncate block">
+                          {previewCampaign.fromEmail || previewCampaign.senderIdentity?.fromEmail || defaultSenderIdentity?.fromEmail || availableAccounts[0]?.email || 'comunicaciones@rotary4281.org'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 font-bold block text-[10px] uppercase tracking-wider">Responder a:</span>
+                        <span className="font-mono text-gray-800 text-[11px] truncate block">
+                          {previewCampaign.replyToEmail || previewCampaign.senderIdentity?.replyToEmail || defaultSenderIdentity?.replyToEmail || previewCampaign.fromEmail || availableAccounts[0]?.email || 'comunicaciones@rotary4281.org'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="p-3 rounded-xl bg-gray-50 border border-gray-200 space-y-1">
                     <div><strong>Asunto:</strong> {previewCampaign.subject}</div>
                     <div><strong>Preheader:</strong> {previewCampaign.preheader}</div>
@@ -1413,6 +1943,215 @@ export const RotaryMarketingInteligente: React.FC = () => {
         />
       )}
 
+      {/* ── MODAL DE CONFIGURACIÓN DE REMITENTE INSTITUCIONAL ───────── */}
+      {editingIdentity && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-xl w-full max-h-[92vh] overflow-hidden flex flex-col shadow-2xl border border-gray-100">
+            <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-gray-50/70">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-blue-50 text-rotary-blue flex items-center justify-center">
+                  <ShieldCheck className="w-5 h-5 text-rotary-blue" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-gray-900 text-base">
+                    {editingIdentity.id ? 'Editar Identidad Institucional' : 'Nueva Identidad Institucional de Envío'}
+                  </h4>
+                  <p className="text-xs text-gray-500">
+                    Configuración de remitente oficial para campañas de Rotary en Acción
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingIdentity(null)}
+                className="w-8 h-8 rounded-full bg-gray-200/70 hover:bg-gray-200 text-gray-700 flex items-center justify-center font-bold text-lg"
+              >
+                ×
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveIdentity} className="flex flex-col flex-1 overflow-hidden">
+              <div className="p-6 overflow-y-auto space-y-4 text-xs">
+                {/* Alerta si no hay cuentas institucionales */}
+                {availableAccounts.length === 0 && (
+                  <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 space-y-2">
+                    <div className="flex items-center gap-2 font-bold text-sm text-amber-800">
+                      <AlertTriangle className="w-4 h-4 text-amber-600" />
+                      <span>No hay cuentas de correo institucionales configuradas en este sitio</span>
+                    </div>
+                    <p className="text-xs text-amber-700 leading-relaxed">
+                      Para que los envíos provengan de un buzón institucional oficial, primero debes vincular y verificar una cuenta de correo en la configuración de Club Platform.
+                    </p>
+                  </div>
+                )}
+
+                {/* Nombre de Identificación Interna */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-800 mb-1">
+                    Nombre de identificación interna <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ej: Comunicaciones Distritales, Presidencia de Club..."
+                    value={editingIdentity.name}
+                    onChange={(e) => setEditingIdentity({ ...editingIdentity, name: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs focus:ring-2 focus:ring-rotary-blue/20 focus:border-rotary-blue outline-hidden transition"
+                  />
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    Nombre descriptivo para administrar y distinguir fácilmente esta identidad dentro de la plataforma.
+                  </p>
+                </div>
+
+                {/* Nombre Visible del Remitente */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-800 mb-1">
+                    Nombre visible del remitente (De / From Name) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder={`Ej: Comunicaciones | ${siteBranding.siteName}`}
+                    value={editingIdentity.fromName}
+                    onChange={(e) => setEditingIdentity({ ...editingIdentity, fromName: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs focus:ring-2 focus:ring-rotary-blue/20 focus:border-rotary-blue outline-hidden transition font-medium"
+                  />
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    Es el nombre institucional oficial que verán los socios y destinatarios en la bandeja de entrada de su correo.
+                  </p>
+                </div>
+
+                {/* Correo Electrónico del Remitente */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-800 mb-1">
+                    Correo electrónico del remitente <span className="text-red-500">*</span>
+                  </label>
+                  {availableAccounts.length > 0 ? (
+                    <select
+                      required
+                      value={editingIdentity.fromEmail}
+                      onChange={(e) => {
+                        const newFromEmail = e.target.value;
+                        const wasSame = !editingIdentity.replyToEmail || editingIdentity.replyToEmail === editingIdentity.fromEmail;
+                        setEditingIdentity({
+                          ...editingIdentity,
+                          fromEmail: newFromEmail,
+                          replyToEmail: wasSame ? newFromEmail : editingIdentity.replyToEmail
+                        });
+                      }}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs focus:ring-2 focus:ring-rotary-blue/20 focus:border-rotary-blue outline-hidden transition font-mono bg-white"
+                    >
+                      <option value="" disabled>Selecciona una cuenta institucional del sitio</option>
+                      {availableAccounts.map((acc) => (
+                        <option
+                          key={acc.id}
+                          value={acc.email}
+                          disabled={!acc.isAuthorized}
+                        >
+                          {acc.email} {acc.name ? `(${acc.name})` : ''} {acc.isAuthorized ? '✓ Autorizada' : '✗ No verificada'}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="email"
+                      required
+                      placeholder="comunicaciones@rotary4281.org"
+                      value={editingIdentity.fromEmail}
+                      onChange={(e) => setEditingIdentity({ ...editingIdentity, fromEmail: e.target.value })}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs focus:ring-2 focus:ring-rotary-blue/20 focus:border-rotary-blue outline-hidden transition font-mono"
+                    />
+                  )}
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    Buzón institucional autenticado en el servidor de correo del sitio activo ({availableSiteContext?.siteDomain || 'dominio oficial'}).
+                  </p>
+                </div>
+
+                {/* Correo de Respuesta (Reply-To) */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-800 mb-1">
+                    Correo electrónico de respuesta (Reply-To)
+                  </label>
+                  {availableAccounts.length > 0 ? (
+                    <select
+                      value={editingIdentity.replyToEmail}
+                      onChange={(e) => setEditingIdentity({ ...editingIdentity, replyToEmail: e.target.value })}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs focus:ring-2 focus:ring-rotary-blue/20 focus:border-rotary-blue outline-hidden transition font-mono bg-white"
+                    >
+                      <option value="">Mismo correo de envío ({editingIdentity.fromEmail || 'predeterminado'})</option>
+                      {availableAccounts.map((acc) => (
+                        <option key={acc.id} value={acc.email}>
+                          {acc.email} {acc.name ? `(${acc.name})` : ''} {acc.isAuthorized ? '✓' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="email"
+                      placeholder={editingIdentity.fromEmail || 'comunicaciones@rotary4281.org'}
+                      value={editingIdentity.replyToEmail}
+                      onChange={(e) => setEditingIdentity({ ...editingIdentity, replyToEmail: e.target.value })}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs focus:ring-2 focus:ring-rotary-blue/20 focus:border-rotary-blue outline-hidden transition font-mono"
+                    />
+                  )}
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    Cuenta institucional a la cual llegarán las respuestas que envíen los socios y destinatarios.
+                  </p>
+                </div>
+
+                {/* Opción Remitente Predeterminado */}
+                <div className="pt-2">
+                  <label className="flex items-start gap-3 p-3.5 rounded-2xl bg-gray-50 border border-gray-200/80 cursor-pointer hover:bg-gray-100/70 transition">
+                    <input
+                      type="checkbox"
+                      checked={editingIdentity.isDefault}
+                      onChange={(e) => setEditingIdentity({ ...editingIdentity, isDefault: e.target.checked })}
+                      className="mt-0.5 rounded text-rotary-blue focus:ring-rotary-blue"
+                    />
+                    <div>
+                      <span className="font-bold text-gray-900 block text-xs">
+                        Establecer como remitente predeterminado de este sitio
+                      </span>
+                      <span className="text-[11px] text-gray-500 block leading-normal mt-0.5">
+                        Las nuevas campañas y comunicaciones de Rotary en Acción utilizarán esta identidad institucional de forma automática.
+                      </span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Botones de Acción */}
+              <div className="p-4 border-t border-gray-100 bg-gray-50/70 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setEditingIdentity(null)}
+                  disabled={savingIdentity}
+                  className="px-4 py-2.5 rounded-xl border border-gray-200 text-gray-700 text-xs font-bold hover:bg-white transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingIdentity}
+                  className="px-5 py-2.5 rounded-xl bg-rotary-blue hover:bg-[#002868] text-white text-xs font-bold flex items-center gap-2 transition shadow-xs disabled:opacity-50"
+                >
+                  {savingIdentity ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Guardando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>{editingIdentity.id ? 'Guardar Cambios' : 'Crear Identidad'}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -158,11 +158,27 @@ export const getOverview = async (req, res) => {
 export const getCampaigns = async (req, res) => {
   try {
     await ensureRotaryMarketingSchema();
+    const clubId = await resolveClubId(req, false);
+
     const { rows: campaigns } = await db.query(
       `SELECT * FROM "RotaryMarketingCampaign" ORDER BY week ASC, "createdAt" ASC`
     );
 
+    // Identidades del club para vincular
+    const { rows: identities } = await db.query(
+      `SELECT * FROM "RotarySenderIdentity" WHERE "clubId"=$1`,
+      [clubId]
+    );
+    const defaultIdentity = identities.find(i => i.isDefault) || identities[0] || null;
+    const identityMap = new Map(identities.map(i => [i.id, i]));
+
     for (const c of campaigns) {
+      if (c.senderIdentityId && identityMap.has(c.senderIdentityId)) {
+        c.senderIdentity = identityMap.get(c.senderIdentityId);
+      } else if (defaultIdentity) {
+        c.senderIdentity = defaultIdentity;
+      }
+
       if (c.emailCampaignId) {
         try {
           const emailCamp = await prisma.emailCampaign.findUnique({
@@ -176,7 +192,7 @@ export const getCampaigns = async (req, res) => {
       }
     }
 
-    res.json({ ok: true, campaigns });
+    res.json({ ok: true, campaigns, defaultSenderIdentity: defaultIdentity });
   } catch (e) {
     return fail(res, e);
   }
@@ -246,6 +262,25 @@ export const syncWithEmailMarketing = async (req, res) => {
 
     const clubId = await resolveClubId(req, true);
 
+    // Resolver remitente institucional (asignado a la campaña o predeterminado del sitio)
+    let senderName = campaign.senderName;
+    let fromEmail = campaign.fromEmail;
+    let replyTo = campaign.replyToEmail;
+    let senderIdentityId = campaign.senderIdentityId;
+
+    if (!fromEmail) {
+      const { rows: defIdentRows } = await db.query(
+        `SELECT * FROM "RotarySenderIdentity" WHERE "clubId"=$1 AND "isDefault"=TRUE LIMIT 1`,
+        [clubId]
+      );
+      if (defIdentRows.length) {
+        senderName = defIdentRows[0].fromName;
+        fromEmail = defIdentRows[0].fromEmail;
+        replyTo = defIdentRows[0].replyToEmail;
+        senderIdentityId = defIdentRows[0].id;
+      }
+    }
+
     let emailCamp;
     if (campaign.emailCampaignId) {
       try {
@@ -256,6 +291,10 @@ export const syncWithEmailMarketing = async (req, res) => {
             subject: campaign.subject,
             preheader: campaign.preheader || '',
             content: campaign.contentHtml || '',
+            fromName: senderName || null,
+            fromEmail: fromEmail || null,
+            replyTo: replyTo || null,
+            senderIdentityId: senderIdentityId || null,
             status: 'draft'
           }
         });
@@ -271,6 +310,10 @@ export const syncWithEmailMarketing = async (req, res) => {
           subject: campaign.subject,
           preheader: campaign.preheader || '',
           content: campaign.contentHtml || '',
+          fromName: senderName || null,
+          fromEmail: fromEmail || null,
+          replyTo: replyTo || null,
+          senderIdentityId: senderIdentityId || null,
           audience: 'all',
           status: 'draft',
           clubId
@@ -287,9 +330,408 @@ export const syncWithEmailMarketing = async (req, res) => {
 
     res.json({
       ok: true,
-      message: 'Campaña sincronizada exitosamente con el módulo de Email Marketing.',
+      message: 'Campaña sincronizada exitosamente con el módulo de Email Marketing conservando la identidad del remitente institucional.',
       emailCampaignId: emailCamp.id,
+      fromName: senderName,
+      fromEmail,
+      replyTo,
       viewUrl: `/admin/email-marketing?tab=campanas&abrir=${emailCamp.id}`
+    });
+  } catch (e) {
+    return fail(res, e);
+  }
+};
+
+// ─── 3.1 Identidades y Remitentes Institucionales para Campañas ────────────
+export const getSenderIdentities = async (req, res) => {
+  try {
+    await ensureRotaryMarketingSchema();
+    const clubId = await resolveClubId(req, false);
+
+    const { rows: identities } = await db.query(
+      `SELECT * FROM "RotarySenderIdentity" WHERE "clubId"=$1 ORDER BY "isDefault" DESC, "createdAt" ASC`,
+      [clubId]
+    );
+
+    // Si no existen identidades aún pero hay cuentas institucionales registradas para este club,
+    // sintetizamos y creamos una identidad inicial institucional predeterminada.
+    if (identities.length === 0) {
+      const club = await prisma.club.findUnique({
+        where: { id: clubId },
+        select: { id: true, name: true, domain: true }
+      }).catch(() => null);
+
+      const accounts = await prisma.emailAccount.findMany({
+        where: { clubId },
+        orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+        take: 5
+      }).catch(() => []);
+
+      if (accounts.length > 0) {
+        const prefAcc = accounts.find(a => /comunicacion|prensa|info|contacto|secretaria/i.test(a.email)) || accounts[0];
+        const newId = randomUUID();
+        const initialName = 'Comunicaciones Institucionales';
+        const initialFromName = `Comunicaciones | ${club?.name || 'Rotary'}`.slice(0, 120);
+        const initialFromEmail = prefAcc.email;
+        const initialReplyTo = prefAcc.email;
+
+        await db.query(
+          `INSERT INTO "RotarySenderIdentity" (id, "clubId", name, "fromName", "fromEmail", "replyToEmail", "isDefault", status)
+           VALUES ($1, $2, $3, $4, $5, $6, TRUE, 'active')
+           ON CONFLICT (id) DO NOTHING`,
+          [newId, clubId, initialName, initialFromName, initialFromEmail, initialReplyTo]
+        );
+
+        const { rows: newRows } = await db.query(
+          `SELECT * FROM "RotarySenderIdentity" WHERE "clubId"=$1 ORDER BY "isDefault" DESC, "createdAt" ASC`,
+          [clubId]
+        );
+        return res.json({ ok: true, identities: newRows, defaultIdentity: newRows[0] || null });
+      }
+    }
+
+    const defaultIdentity = identities.find(i => i.isDefault) || identities[0] || null;
+    res.json({ ok: true, identities, defaultIdentity });
+  } catch (e) {
+    return fail(res, e);
+  }
+};
+
+export const getAvailableSenderAccounts = async (req, res) => {
+  try {
+    await ensureRotaryMarketingSchema();
+    const clubId = await resolveClubId(req, false);
+
+    const club = await prisma.club.findUnique({
+      where: { id: clubId },
+      select: { id: true, name: true, domain: true, district: true }
+    }).catch(() => null);
+
+    const accounts = await prisma.emailAccount.findMany({
+      where: { clubId },
+      select: {
+        id: true,
+        email: true,
+        label: true,
+        isPrimary: true,
+        provider: true,
+        verified: true,
+        verificationStatus: true,
+        createdAt: true
+      },
+      orderBy: [{ isPrimary: 'desc' }, { email: 'asc' }]
+    }).catch(() => []);
+
+    // Diagnóstico rápido de dominios en Resend si la API key está disponible
+    const readKey = process.env.RESEND_INBOUND_API_KEY || process.env.RESEND_API_KEY;
+    const verifiedDomains = new Set();
+    if (readKey) {
+      try {
+        const resp = await fetch('https://api.resend.com/domains', {
+          headers: { Authorization: `Bearer ${readKey}` }
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (Array.isArray(data?.data)) {
+          for (const d of data.data) {
+            if (d.status === 'verified') {
+              verifiedDomains.add(d.name?.toLowerCase().replace(/^www\./i, ''));
+            }
+          }
+        }
+      } catch { /* continuar con verificación local */ }
+    }
+
+    const smtpConfig = await prisma.notificationConfig.findUnique({
+      where: { type_clubId: { type: 'smtp', clubId } }
+    }).catch(() => null);
+    const hasSmtp = !!(smtpConfig && smtpConfig.enabled);
+
+    const accountsWithStatus = accounts.map(a => {
+      const dom = (a.email.includes('@') ? a.email.split('@')[1] : '').toLowerCase().replace(/^www\./i, '');
+      const domainVerifiedInResend = verifiedDomains.has(dom);
+      const isVerified = a.verified || a.verificationStatus === 'verified' || domainVerifiedInResend || hasSmtp;
+
+      let statusLabel = 'Dominio verificado para envíos institucionales';
+      let status = 'verified';
+      let isAuthorized = true;
+
+      if (!isVerified) {
+        status = 'pending';
+        statusLabel = 'Pendiente de verificación DNS (SPF / DKIM)';
+        isAuthorized = false;
+      }
+
+      return {
+        id: a.id,
+        email: a.email,
+        label: a.label || '',
+        isPrimary: a.isPrimary,
+        provider: a.provider || 'platform',
+        domain: dom,
+        status,
+        statusLabel,
+        isAuthorized,
+        domainVerifiedInResend,
+        smtpActive: hasSmtp
+      };
+    });
+
+    res.json({
+      ok: true,
+      clubId,
+      siteName: club?.name || 'Club Platform',
+      siteDomain: club?.domain || '',
+      accounts: accountsWithStatus,
+      hasAccounts: accountsWithStatus.length > 0,
+      hasAuthorizedAccounts: accountsWithStatus.some(a => a.isAuthorized)
+    });
+  } catch (e) {
+    return fail(res, e);
+  }
+};
+
+export const createSenderIdentity = async (req, res) => {
+  try {
+    await ensureRotaryMarketingSchema();
+    const clubId = await resolveClubId(req, false);
+
+    const { name, fromName, fromEmail, replyToEmail, isDefault } = req.body;
+
+    if (!name || typeof name !== 'string' || name.trim().length < 2) {
+      return res.status(400).json({ error: 'El nombre de identificación interna es obligatorio (mínimo 2 caracteres).' });
+    }
+    if (!fromName || typeof fromName !== 'string' || fromName.trim().length < 2) {
+      return res.status(400).json({ error: 'El nombre visible del remitente es obligatorio (ej. Comunicaciones | Rotary Distrito 4281).' });
+    }
+    if (!fromEmail || !fromEmail.includes('@')) {
+      return res.status(400).json({ error: 'El correo electrónico del remitente debe ser una dirección válida.' });
+    }
+    const cleanFromEmail = fromEmail.trim().toLowerCase();
+    const cleanReplyTo = (replyToEmail && replyToEmail.includes('@')) ? replyToEmail.trim().toLowerCase() : cleanFromEmail;
+
+    // Validación de seguridad multisitio: la cuenta remitente DEBE pertenecer a las cuentas del sitio activo
+    const validAccount = await prisma.emailAccount.findFirst({
+      where: {
+        clubId,
+        email: { equals: cleanFromEmail, mode: 'insensitive' }
+      }
+    });
+
+    if (!validAccount) {
+      return res.status(400).json({
+        error: `La cuenta "${cleanFromEmail}" no está registrada como cuenta institucional de este sitio. Por favor selecciona una cuenta disponible del sitio activo.`
+      });
+    }
+
+    const cleanName = name.trim().slice(0, 100);
+    const cleanFromName = fromName.trim().replace(/"/g, '').slice(0, 120);
+    const setAsDefault = isDefault === true;
+
+    if (setAsDefault) {
+      await db.query(
+        `UPDATE "RotarySenderIdentity" SET "isDefault" = FALSE WHERE "clubId" = $1`,
+        [clubId]
+      );
+    }
+
+    const newId = randomUUID();
+    const { rows } = await db.query(
+      `INSERT INTO "RotarySenderIdentity" (
+         id, "clubId", name, "fromName", "fromEmail", "replyToEmail", "isDefault", status
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')
+       RETURNING *`,
+      [newId, clubId, cleanName, cleanFromName, cleanFromEmail, cleanReplyTo, setAsDefault]
+    );
+
+    res.status(201).json({
+      ok: true,
+      message: 'Identidad institucional creada exitosamente.',
+      identity: rows[0]
+    });
+  } catch (e) {
+    return fail(res, e);
+  }
+};
+
+export const updateSenderIdentity = async (req, res) => {
+  try {
+    await ensureRotaryMarketingSchema();
+    const clubId = await resolveClubId(req, false);
+    const { id } = req.params;
+
+    const { rows: existingRows } = await db.query(
+      `SELECT * FROM "RotarySenderIdentity" WHERE id = $1 AND "clubId" = $2`,
+      [id, clubId]
+    );
+    if (!existingRows.length) {
+      return res.status(404).json({ error: 'Identidad de remitente no encontrada en este sitio.' });
+    }
+
+    const { name, fromName, fromEmail, replyToEmail, isDefault } = req.body;
+
+    const cleanName = name ? name.trim().slice(0, 100) : existingRows[0].name;
+    const cleanFromName = fromName ? fromName.trim().replace(/"/g, '').slice(0, 120) : existingRows[0].fromName;
+    const cleanFromEmail = fromEmail ? fromEmail.trim().toLowerCase() : existingRows[0].fromEmail;
+    const cleanReplyTo = replyToEmail ? replyToEmail.trim().toLowerCase() : (cleanFromEmail || existingRows[0].replyToEmail);
+
+    if (fromEmail) {
+      const validAccount = await prisma.emailAccount.findFirst({
+        where: {
+          clubId,
+          email: { equals: cleanFromEmail, mode: 'insensitive' }
+        }
+      });
+      if (!validAccount) {
+        return res.status(400).json({
+          error: `La cuenta "${cleanFromEmail}" no pertenece al sitio activo.`
+        });
+      }
+    }
+
+    if (isDefault === true) {
+      await db.query(
+        `UPDATE "RotarySenderIdentity" SET "isDefault" = FALSE WHERE "clubId" = $1`,
+        [clubId]
+      );
+    }
+
+    const { rows: updatedRows } = await db.query(
+      `UPDATE "RotarySenderIdentity"
+       SET name = $1, "fromName" = $2, "fromEmail" = $3, "replyToEmail" = $4,
+           "isDefault" = CASE WHEN $5::boolean IS NOT NULL THEN $5 ELSE "isDefault" END,
+           "updatedAt" = NOW()
+       WHERE id = $6 AND "clubId" = $7
+       RETURNING *`,
+      [cleanName, cleanFromName, cleanFromEmail, cleanReplyTo, isDefault !== undefined ? isDefault : null, id, clubId]
+    );
+
+    res.json({
+      ok: true,
+      message: 'Identidad institucional actualizada exitosamente.',
+      identity: updatedRows[0]
+    });
+  } catch (e) {
+    return fail(res, e);
+  }
+};
+
+export const deleteSenderIdentity = async (req, res) => {
+  try {
+    await ensureRotaryMarketingSchema();
+    const clubId = await resolveClubId(req, false);
+    const { id } = req.params;
+
+    const { rows: existing } = await db.query(
+      `SELECT * FROM "RotarySenderIdentity" WHERE id = $1 AND "clubId" = $2`,
+      [id, clubId]
+    );
+    if (!existing.length) {
+      return res.status(404).json({ error: 'Identidad no encontrada en este sitio.' });
+    }
+
+    const wasDefault = existing[0].isDefault;
+    await db.query(`DELETE FROM "RotarySenderIdentity" WHERE id = $1 AND "clubId" = $2`, [id, clubId]);
+
+    if (wasDefault) {
+      await db.query(
+        `UPDATE "RotarySenderIdentity"
+         SET "isDefault" = TRUE
+         WHERE id = (SELECT id FROM "RotarySenderIdentity" WHERE "clubId" = $1 ORDER BY "createdAt" ASC LIMIT 1)`,
+        [clubId]
+      );
+    }
+
+    res.json({ ok: true, message: 'Identidad eliminada exitosamente.' });
+  } catch (e) {
+    return fail(res, e);
+  }
+};
+
+export const setDefaultSenderIdentity = async (req, res) => {
+  try {
+    await ensureRotaryMarketingSchema();
+    const clubId = await resolveClubId(req, false);
+    const { id } = req.params;
+
+    await db.query(`UPDATE "RotarySenderIdentity" SET "isDefault" = FALSE WHERE "clubId" = $1`, [clubId]);
+    const { rows } = await db.query(
+      `UPDATE "RotarySenderIdentity" SET "isDefault" = TRUE, "updatedAt" = NOW()
+       WHERE id = $1 AND "clubId" = $2 RETURNING *`,
+      [id, clubId]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Identidad no encontrada en este sitio.' });
+    }
+
+    res.json({
+      ok: true,
+      message: 'Identidad establecida como predeterminada para las campañas del sitio.',
+      identity: rows[0]
+    });
+  } catch (e) {
+    return fail(res, e);
+  }
+};
+
+export const assignCampaignSender = async (req, res) => {
+  try {
+    await ensureRotaryMarketingSchema();
+    const clubId = await resolveClubId(req, false);
+    const { id } = req.params;
+    const { senderIdentityId } = req.body;
+
+    let senderName = null;
+    let fromEmail = null;
+    let replyToEmail = null;
+    let chosenId = null;
+
+    if (senderIdentityId) {
+      const { rows: identRows } = await db.query(
+        `SELECT * FROM "RotarySenderIdentity" WHERE id = $1 AND "clubId" = $2`,
+        [senderIdentityId, clubId]
+      );
+      if (identRows.length) {
+        chosenId = identRows[0].id;
+        senderName = identRows[0].fromName;
+        fromEmail = identRows[0].fromEmail;
+        replyToEmail = identRows[0].replyToEmail;
+      }
+    }
+
+    const { rows } = await db.query(
+      `UPDATE "RotaryMarketingCampaign"
+       SET "senderIdentityId" = $1, "senderName" = $2, "fromEmail" = $3, "replyToEmail" = $4, "updatedAt" = NOW()
+       WHERE id = $5 OR code = $5
+       RETURNING *`,
+      [chosenId, senderName, fromEmail, replyToEmail, id]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Campaña no encontrada' });
+    }
+
+    const campaign = rows[0];
+
+    // Si ya estaba sincronizada en EmailCampaign, actualizar también la campaña vinculada
+    if (campaign.emailCampaignId) {
+      try {
+        await prisma.emailCampaign.update({
+          where: { id: campaign.emailCampaignId },
+          data: {
+            fromName: senderName || undefined,
+            fromEmail: fromEmail || undefined,
+            replyTo: replyToEmail || undefined,
+            senderIdentityId: chosenId || undefined
+          }
+        });
+      } catch { /* noop */ }
+    }
+
+    res.json({
+      ok: true,
+      message: 'Identidad de remitente asignada a la campaña.',
+      campaign
     });
   } catch (e) {
     return fail(res, e);
@@ -1143,11 +1585,38 @@ export const saveMasterTemplate = async (req, res) => {
 
 export const sendTestEmail = async (req, res) => {
   try {
-    const { to, subject, html } = req.body;
+    const { to, subject, html, senderIdentityId } = req.body;
+    let { fromEmail, fromName, replyTo } = req.body;
+
     if (!to || !to.includes('@')) return res.status(400).json({ error: 'Dirección de correo no válida' });
     if (!html) return res.status(400).json({ error: 'El contenido del correo no puede estar vacío' });
 
     const clubId = await resolveClubId(req, true);
+
+    if (!fromEmail && senderIdentityId) {
+      const { rows: idRows } = await db.query(
+        `SELECT * FROM "RotarySenderIdentity" WHERE id = $1 AND "clubId" = $2`,
+        [senderIdentityId, clubId]
+      );
+      if (idRows.length) {
+        fromEmail = idRows[0].fromEmail;
+        fromName = idRows[0].fromName;
+        replyTo = idRows[0].replyToEmail;
+      }
+    }
+
+    if (!fromEmail) {
+      const { rows: defRows } = await db.query(
+        `SELECT * FROM "RotarySenderIdentity" WHERE "clubId" = $1 AND "isDefault" = TRUE LIMIT 1`,
+        [clubId]
+      );
+      if (defRows.length) {
+        fromEmail = defRows[0].fromEmail;
+        fromName = fromName || defRows[0].fromName;
+        replyTo = replyTo || defRows[0].replyToEmail;
+      }
+    }
+
     const emailSubject = `[PRUEBA] ${subject || 'Plantilla Institucional · Rotary en Acción'}`;
 
     const result = await EmailService.sendEmail({
@@ -1155,7 +1624,10 @@ export const sendTestEmail = async (req, res) => {
       to,
       subject: emailSubject,
       html,
-      userId: req.user?.id
+      userId: req.user?.id,
+      fromEmail,
+      fromName,
+      replyTo
     });
 
     if (!result || !result.success) {
@@ -1169,10 +1641,11 @@ export const sendTestEmail = async (req, res) => {
 
     res.json({
       ok: true,
-      message: `Correo de prueba aceptado por el proveedor y enviado a ${to}`,
+      message: `Correo de prueba aceptado por el proveedor y enviado a ${to} con identidad institucional.`,
       messageId: result.messageId || null,
       to,
       subject: emailSubject,
+      sender: { fromName, fromEmail, replyTo },
       timestamp: new Date().toISOString(),
       result
     });

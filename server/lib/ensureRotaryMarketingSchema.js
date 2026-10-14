@@ -287,9 +287,33 @@ export async function ensureRotaryMarketingSchema() {
     "updatedAt" TIMESTAMPTZ DEFAULT NOW()
   )`);
 
-  // Asegurar columnas de scheduledAt y design si no existieran
+  // Asegurar columnas de scheduledAt, design y remitente institucional si no existieran
   await db.query(`ALTER TABLE "RotaryMarketingCampaign" ADD COLUMN IF NOT EXISTS "scheduledAt" TIMESTAMPTZ`).catch(() => {});
   await db.query(`ALTER TABLE "RotaryMarketingCampaign" ADD COLUMN IF NOT EXISTS "design" JSONB`).catch(() => {});
+  await db.query(`ALTER TABLE "RotaryMarketingCampaign" ADD COLUMN IF NOT EXISTS "senderIdentityId" TEXT`).catch(() => {});
+  await db.query(`ALTER TABLE "RotaryMarketingCampaign" ADD COLUMN IF NOT EXISTS "senderName" TEXT`).catch(() => {});
+  await db.query(`ALTER TABLE "RotaryMarketingCampaign" ADD COLUMN IF NOT EXISTS "fromEmail" TEXT`).catch(() => {});
+  await db.query(`ALTER TABLE "RotaryMarketingCampaign" ADD COLUMN IF NOT EXISTS "replyToEmail" TEXT`).catch(() => {});
+
+  // Asegurar columnas en EmailCampaign para sincronización con Email Marketing
+  await db.query(`ALTER TABLE "EmailCampaign" ADD COLUMN IF NOT EXISTS "fromEmail" TEXT`).catch(() => {});
+  await db.query(`ALTER TABLE "EmailCampaign" ADD COLUMN IF NOT EXISTS "replyTo" TEXT`).catch(() => {});
+  await db.query(`ALTER TABLE "EmailCampaign" ADD COLUMN IF NOT EXISTS "senderIdentityId" TEXT`).catch(() => {});
+
+  // 1.1 Tabla de identidades de remitente institucional para campañas
+  await db.query(`CREATE TABLE IF NOT EXISTS "RotarySenderIdentity" (
+    id TEXT PRIMARY KEY,
+    "clubId" TEXT NOT NULL,
+    name TEXT NOT NULL,
+    "fromName" TEXT NOT NULL,
+    "fromEmail" TEXT NOT NULL,
+    "replyToEmail" TEXT NOT NULL,
+    "isDefault" BOOLEAN DEFAULT FALSE,
+    status TEXT NOT NULL DEFAULT 'active',
+    "createdAt" TIMESTAMPTZ DEFAULT NOW(),
+    "updatedAt" TIMESTAMPTZ DEFAULT NOW()
+  )`);
+  await db.query(`CREATE INDEX IF NOT EXISTS "idx_rotary_sender_identity_club" ON "RotarySenderIdentity" ("clubId")`).catch(() => {});
 
   // 2. Tabla de sugerencias y optimizaciones del agente de IA
   await db.query(`CREATE TABLE IF NOT EXISTS "RotaryMarketingInsight" (

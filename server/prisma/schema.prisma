@@ -773,6 +773,9 @@ model EmailCampaign {
   name            String
   subject         String
   fromName        String?
+  fromEmail       String?
+  replyTo         String?
+  senderIdentityId String?
   preheader       String?
   content         String    // HTML del cuerpo (renderizado, listo para enviar)
   design          String?   // JSON del diseño de bloques del editor visual (para re-edición). Opcional.
