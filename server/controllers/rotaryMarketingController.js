@@ -1653,3 +1653,224 @@ export const sendTestEmail = async (req, res) => {
     return fail(res, e);
   }
 };
+
+// ─── 4. Audiencias, Listas de Destinatarios y Validación en Vivo ───────────
+
+export const getAudienceLists = async (req, res) => {
+  try {
+    await ensureRotaryMarketingSchema();
+    const clubId = await resolveClubId(req, false);
+
+    // Consulta listas de contactos institucionales del sitio o de la plataforma compartidas
+    const { rows: lists } = await db.query(
+      `SELECT 
+         l.id,
+         l.name,
+         l.description,
+         l.color,
+         l."clubId",
+         l."siteIds",
+         l."createdAt",
+         COUNT(m."contactId")::int AS "totalMembers",
+         COUNT(CASE WHEN c.email IS NOT NULL AND LENGTH(TRIM(c.email)) > 3 AND c."optedOutAt" IS NULL THEN 1 END)::int AS "validEmailCount"
+       FROM "WhatsAppContactList" l
+       LEFT JOIN "WhatsAppListMember" m ON m."listId" = l.id
+       LEFT JOIN "WhatsAppContact" c ON c.id = m."contactId"
+       WHERE (l."clubId" = $1 OR $1 = ANY(l."siteIds") OR l."clubId" = '3c648ce7-3c47-41e2-9461-6e40a8615ae6')
+       GROUP BY l.id
+       ORDER BY l.name ASC`,
+      [clubId]
+    );
+
+    res.json({ ok: true, lists });
+  } catch (e) {
+    return fail(res, e);
+  }
+};
+
+export const validateAudienceSelection = async (req, res) => {
+  try {
+    await ensureRotaryMarketingSchema();
+    const { listIds = [] } = req.body;
+
+    if (!Array.isArray(listIds) || listIds.length === 0) {
+      return res.json({
+        ok: true,
+        stats: {
+          totalRaw: 0,
+          validContacts: 0,
+          missingEmailCount: 0,
+          duplicatesCount: 0,
+          optedOutCount: 0,
+          eligibleRecipients: 0,
+          sampleRecipients: []
+        }
+      });
+    }
+
+    const { rows } = await db.query(
+      `SELECT 
+         c.id,
+         c.name,
+         c."lastName",
+         c.email,
+         c.phone,
+         c.company,
+         c.title,
+         c.district,
+         c.status,
+         c."optedOutAt",
+         c."archivedAt",
+         m."listId",
+         l.name AS "listName"
+       FROM "WhatsAppListMember" m
+       JOIN "WhatsAppContact" c ON c.id = m."contactId"
+       JOIN "WhatsAppContactList" l ON l.id = m."listId"
+       WHERE m."listId" = ANY($1::text[])`,
+      [listIds]
+    );
+
+    let validCount = 0;
+    let missingEmailCount = 0;
+    let optedOutCount = 0;
+    let duplicatesCount = 0;
+    const seenEmails = new Set();
+    const eligibleRecipients = [];
+
+    for (const row of rows) {
+      const email = (row.email || '').trim().toLowerCase();
+      if (!email || !email.includes('@')) {
+        missingEmailCount++;
+        continue;
+      }
+
+      if (row.optedOutAt || row.archivedAt || row.status === 'unsubscribed') {
+        optedOutCount++;
+        continue;
+      }
+
+      validCount++;
+
+      if (seenEmails.has(email)) {
+        duplicatesCount++;
+        continue;
+      }
+
+      seenEmails.add(email);
+      eligibleRecipients.push({
+        id: row.id,
+        name: `${row.name || ''} ${row.lastName || ''}`.trim() || 'Líder Rotario',
+        email,
+        club: row.company || row.district || 'Distrito 4281',
+        role: row.title || 'Líder de Club'
+      });
+    }
+
+    res.json({
+      ok: true,
+      stats: {
+        totalRaw: rows.length,
+        validContacts: validCount,
+        missingEmailCount,
+        duplicatesCount,
+        optedOutCount,
+        eligibleRecipients: eligibleRecipients.length,
+        sampleRecipients: eligibleRecipients.slice(0, 5)
+      }
+    });
+  } catch (e) {
+    return fail(res, e);
+  }
+};
+
+export const sendCampaignPersonalizedTest = async (req, res) => {
+  try {
+    await ensureRotaryMarketingSchema();
+    const clubId = await resolveClubId(req, false);
+    const { id } = req.params;
+    const { testEmail, senderIdentityId } = req.body;
+
+    if (!testEmail || !testEmail.includes('@')) {
+      return res.status(400).json({ error: 'Dirección de correo electrónico no válida.' });
+    }
+
+    const { rows: campaigns } = await db.query(
+      `SELECT * FROM "RotaryMarketingCampaign" WHERE id = $1 OR code = $1`,
+      [id]
+    );
+    if (!campaigns.length) {
+      return res.status(404).json({ error: 'Campaña no encontrada' });
+    }
+    const campaign = campaigns[0];
+
+    // Resolver identidad institucional autorizada
+    let fromEmail = campaign.fromEmail;
+    let fromName = campaign.senderName;
+    let replyTo = campaign.replyToEmail;
+
+    if (senderIdentityId) {
+      const { rows: idRows } = await db.query(
+        `SELECT * FROM "RotarySenderIdentity" WHERE id = $1 AND "clubId" = $2`,
+        [senderIdentityId, clubId]
+      );
+      if (idRows.length) {
+        fromEmail = idRows[0].fromEmail;
+        fromName = idRows[0].fromName;
+        replyTo = idRows[0].replyToEmail;
+      }
+    }
+
+    if (!fromEmail) {
+      const { rows: defRows } = await db.query(
+        `SELECT * FROM "RotarySenderIdentity" WHERE "clubId" = $1 AND "isDefault" = TRUE LIMIT 1`,
+        [clubId]
+      );
+      if (defRows.length) {
+        fromEmail = defRows[0].fromEmail;
+        fromName = fromName || defRows[0].fromName;
+        replyTo = replyTo || defRows[0].replyToEmail;
+      }
+    }
+
+    // Resolver plantilla con variables de personalización de muestra
+    let personalizedHtml = campaign.contentHtml || '';
+    personalizedHtml = personalizedHtml
+      .replace(/\{\{\s*contact\.first_name\s*(\|\s*[^}]+)?\}\}/gi, 'Líder Rotario(a)')
+      .replace(/\{\{\s*contact\.name\s*(\|\s*[^}]+)?\}\}/gi, 'Líder Rotario(a)')
+      .replace(/\{\{\s*club\.name\s*(\|\s*[^}]+)?\}\}/gi, 'Club Rotario Distrito 4281')
+      .replace(/\{\{\s*campaign\.name\s*(\|\s*[^}]+)?\}\}/gi, campaign.name || 'Rotary en Acción');
+
+    const emailSubject = `[PRUEBA ROTARY EN ACCIÓN] ${campaign.subject}`;
+
+    const result = await EmailService.sendEmail({
+      clubId,
+      to: testEmail.trim(),
+      subject: emailSubject,
+      html: personalizedHtml,
+      userId: req.user?.id,
+      fromEmail,
+      fromName,
+      replyTo
+    });
+
+    if (!result || !result.success) {
+      return res.status(400).json({
+        ok: false,
+        error: result?.error || 'El proveedor de correo no aceptó el envío del correo de prueba',
+        result
+      });
+    }
+
+    res.json({
+      ok: true,
+      message: `Correo de prueba enviado exitosamente a ${testEmail}. Las variables fueron simuladas y no se registraron métricas de conversión.`,
+      to: testEmail,
+      subject: emailSubject,
+      sender: { fromName, fromEmail, replyTo },
+      timestamp: new Date().toISOString()
+    });
+  } catch (e) {
+    return fail(res, e);
+  }
+};
+

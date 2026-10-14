@@ -62,6 +62,10 @@ router.get('/marketing/reports/governance', requireSubmissionInboxAccess, mktCtr
 router.get('/marketing/reports/executive-summary', requireSubmissionInboxAccess, mktCtrl.getExecutiveReport);
 router.put('/marketing/config', requireSubmissionInboxAccess, mktCtrl.updateMarketingConfig);
 
+// Audiencias Institucionales, Selección de Listas y Validación de Destinatarios
+router.get('/marketing/audiences/lists', requireSubmissionInboxAccess, mktCtrl.getAudienceLists);
+router.post('/marketing/audiences/validate', requireSubmissionInboxAccess, mktCtrl.validateAudienceSelection);
+
 // Identidades y Remitentes Institucionales de Campañas
 router.get('/marketing/sender-identities', requireSubmissionInboxAccess, mktCtrl.getSenderIdentities);
 router.get('/marketing/sender-identities/available-accounts', requireSubmissionInboxAccess, mktCtrl.getAvailableSenderAccounts);
@@ -70,6 +74,7 @@ router.post('/marketing/sender-identities/:id/set-default', requireSubmissionInb
 router.put('/marketing/sender-identities/:id', requireSubmissionInboxAccess, mktCtrl.updateSenderIdentity);
 router.delete('/marketing/sender-identities/:id', requireSubmissionInboxAccess, mktCtrl.deleteSenderIdentity);
 router.put('/marketing/campaigns/:id/sender', requireSubmissionInboxAccess, mktCtrl.assignCampaignSender);
+router.post('/marketing/campaigns/:id/send-test', requireSubmissionInboxAccess, mktCtrl.sendCampaignPersonalizedTest);
 
 // Editor Visual de Plantillas Institucionales & Bloques Globales
 router.get('/marketing/templates/master', requireSubmissionInboxAccess, mktCtrl.getMasterTemplate);

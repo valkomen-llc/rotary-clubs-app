@@ -10,7 +10,7 @@ import {
   Eye, Mail, MessageSquare, TrendingUp, Award, Zap, Info, Filter,
   Search, Check, SlidersHorizontal, Share2, Play, Pause, ChevronRight,
   FileText, Download, CheckCircle, Flame, Star, BookOpen, AlertTriangle,
-  Plus, Trash2, Edit3, MailCheck
+  Plus, Trash2, Edit3, MailCheck, ArrowLeft, ArrowRight, Clock
 } from 'lucide-react';
 import { toast } from 'sonner';
 import VisualTemplateEditor from '../email-marketing/VisualTemplateEditor';
@@ -120,6 +120,206 @@ export const RotaryMarketingInteligente: React.FC = () => {
   // Horizontes del planificador
   const [horizonte, setHorizonte] = useState<'mensual' | 'trimestral' | 'semestral' | 'anual'>('mensual');
   const [visualEditorCampaign, setVisualEditorCampaign] = useState<any | null>(null);
+
+  // ── Flujo "Preparar Envío" de Campaña (Audiencias, Envío y Trazabilidad) ──
+  const [preparingCampaign, setPreparingCampaign] = useState<any | null>(null);
+  const [sendFlowStep, setSendFlowStep] = useState<1 | 2 | 3 | 4>(1);
+  const [audienceLists, setAudienceLists] = useState<any[]>([]);
+  const [loadingAudienceLists, setLoadingAudienceLists] = useState<boolean>(false);
+  const [selectedListIds, setSelectedListIds] = useState<string[]>([]);
+  const [audienceValidation, setAudienceValidation] = useState<{
+    totalRaw: number;
+    validContacts: number;
+    missingEmailCount: number;
+    duplicatesCount: number;
+    optedOutCount: number;
+    eligibleRecipients: number;
+    sampleRecipients: any[];
+  }>({
+    totalRaw: 0,
+    validContacts: 0,
+    missingEmailCount: 0,
+    duplicatesCount: 0,
+    optedOutCount: 0,
+    eligibleRecipients: 0,
+    sampleRecipients: []
+  });
+  const [isValidatingAudience, setIsValidatingAudience] = useState<boolean>(false);
+  const [testEmailAddress, setTestEmailAddress] = useState<string>('comunicaciones@rotary4281.org');
+  const [sendingTestEmail, setSendingTestEmail] = useState<boolean>(false);
+  const [testSentSuccess, setTestSentSuccess] = useState<string | null>(null);
+  const [sendMode, setSendMode] = useState<'now' | 'schedule'>('now');
+  const [scheduleDate, setScheduleDate] = useState<string>('');
+  const [scheduleTime, setScheduleTime] = useState<string>('09:00');
+  const [executingSend, setExecutingSend] = useState<boolean>(false);
+  const [sendExecutionSummary, setSendExecutionSummary] = useState<any | null>(null);
+
+  // Cargar listas de contactos institucionales al iniciar el flujo
+  const loadAudienceLists = useCallback(async () => {
+    setLoadingAudienceLists(true);
+    try {
+      const res = await fetch(`${API}/rotary-en-accion/marketing/audiences/lists`, {
+        headers: { Authorization: `Bearer ${getToken()}` }
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setAudienceLists(data.lists || []);
+      }
+    } catch {
+      toast.error('Error al consultar listas institucionales de destinatarios');
+    } finally {
+      setLoadingAudienceLists(false);
+    }
+  }, []);
+
+  // Validar destinatarios elegibles cuando cambie la selección de listas
+  useEffect(() => {
+    if (!preparingCampaign) return;
+    if (selectedListIds.length === 0) {
+      setAudienceValidation({
+        totalRaw: 0,
+        validContacts: 0,
+        missingEmailCount: 0,
+        duplicatesCount: 0,
+        optedOutCount: 0,
+        eligibleRecipients: 0,
+        sampleRecipients: []
+      });
+      return;
+    }
+
+    const validate = async () => {
+      setIsValidatingAudience(true);
+      try {
+        const res = await fetch(`${API}/rotary-en-accion/marketing/audiences/validate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${getToken()}`
+          },
+          body: JSON.stringify({ listIds: selectedListIds })
+        });
+        const data = await res.json();
+        if (data.ok && data.stats) {
+          setAudienceValidation(data.stats);
+        }
+      } catch {
+        toast.error('Error al validar la audiencia');
+      } finally {
+        setIsValidatingAudience(false);
+      }
+    };
+
+    validate();
+  }, [selectedListIds, preparingCampaign]);
+
+  // Enviar correo de prueba con variables simuladas
+  const handleSendTest = async () => {
+    if (!testEmailAddress || !testEmailAddress.includes('@')) {
+      toast.error('Ingresa una dirección de correo válida para el envío de prueba');
+      return;
+    }
+    setSendingTestEmail(true);
+    setTestSentSuccess(null);
+    try {
+      const res = await fetch(`${API}/rotary-en-accion/marketing/campaigns/${preparingCampaign.id}/send-test`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${getToken()}`
+        },
+        body: JSON.stringify({
+          testEmail: testEmailAddress,
+          senderIdentityId: preparingCampaign.senderIdentityId || defaultSenderIdentity?.id
+        })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        toast.success(`Prueba enviada a ${testEmailAddress}`);
+        setTestSentSuccess(data.message || `Prueba enviada con éxito a ${testEmailAddress}`);
+      } else {
+        toast.error(data.error || 'Error al enviar la prueba');
+      }
+    } catch {
+      toast.error('Error de red al enviar el correo de prueba');
+    } finally {
+      setSendingTestEmail(false);
+    }
+  };
+
+  // Confirmar y procesar envío / programación
+  const handleConfirmSendCampaign = async () => {
+    if (audienceValidation.eligibleRecipients === 0) {
+      toast.error('Debes seleccionar al menos una lista con destinatarios válidos.');
+      return;
+    }
+
+    setExecutingSend(true);
+    try {
+      // Sincronizar primero la campaña con Email Marketing para asegurar idempotencia y trazabilidad
+      const syncRes = await fetch(`${API}/rotary-en-accion/marketing/campaigns/${preparingCampaign.id}/sync-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${getToken()}`
+        }
+      });
+      const syncData = await syncRes.json();
+
+      if (sendMode === 'schedule') {
+        if (!scheduleDate) {
+          toast.error('Por favor selecciona una fecha para programar el envío');
+          setExecutingSend(false);
+          return;
+        }
+        const dateTimeStr = `${scheduleDate}T${scheduleTime || '09:00'}:00`;
+        const schedRes = await fetch(`${API}/rotary-en-accion/marketing/campaigns/${preparingCampaign.id}/schedule`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${getToken()}`
+          },
+          body: JSON.stringify({ scheduledAt: dateTimeStr })
+        });
+        const schedData = await schedRes.json();
+        if (schedData.ok) {
+          setSendExecutionSummary({
+            mode: 'schedule',
+            scheduledAt: dateTimeStr,
+            eligibleRecipients: audienceValidation.eligibleRecipients,
+            listsCount: selectedListIds.length,
+            sender: preparingCampaign.senderName || defaultSenderIdentity?.fromName,
+            fromEmail: preparingCampaign.fromEmail || defaultSenderIdentity?.fromEmail,
+            emailCampaignId: syncData.emailCampaignId
+          });
+          setSendFlowStep(4);
+          loadData(true);
+          toast.success(`Campaña programada exitosamente para ${new Date(dateTimeStr).toLocaleString('es-CO')}`);
+        } else {
+          toast.error(schedData.error || 'Error al programar el envío');
+        }
+      } else {
+        // Enviar ahora
+        setSendExecutionSummary({
+          mode: 'now',
+          sentAt: new Date().toISOString(),
+          eligibleRecipients: audienceValidation.eligibleRecipients,
+          listsCount: selectedListIds.length,
+          sender: preparingCampaign.senderName || defaultSenderIdentity?.fromName,
+          fromEmail: preparingCampaign.fromEmail || defaultSenderIdentity?.fromEmail,
+          emailCampaignId: syncData.emailCampaignId,
+          viewUrl: syncData.viewUrl
+        });
+        setSendFlowStep(4);
+        loadData(true);
+        toast.success(`¡Campaña procesada exitosamente para ${audienceValidation.eligibleRecipients} destinatarios!`);
+      }
+    } catch {
+      toast.error('Error al procesar el envío de la campaña');
+    } finally {
+      setExecutingSend(false);
+    }
+  };
 
   // Carga de identidades de remitente y cuentas institucionales disponibles
   const loadSenderIdentities = useCallback(async () => {
@@ -1885,8 +2085,24 @@ export const RotaryMarketingInteligente: React.FC = () => {
 
               <div className="flex items-center gap-2">
                 <button
+                  type="button"
+                  onClick={() => {
+                    const camp = previewCampaign;
+                    setPreviewCampaign(null);
+                    setPreparingCampaign(camp);
+                    setSendFlowStep(1);
+                    setSelectedListIds(camp.targetListIds || []);
+                    loadAudienceLists();
+                  }}
+                  className="px-4 py-2 rounded-xl bg-rotary-blue hover:bg-[#002868] text-white font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                >
+                  <Send className="w-3.5 h-3.5 text-sky-200" />
+                  <span>Preparar Envío</span>
+                </button>
+
+                <button
                   onClick={() => setVisualEditorCampaign(previewCampaign)}
-                  className="px-3.5 py-2 rounded-xl bg-violet-700 hover:bg-violet-600 text-white font-bold flex items-center gap-1.5 shadow-xs transition-all"
+                  className="px-3.5 py-2 rounded-xl bg-violet-700 hover:bg-violet-600 text-white font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-violet-200" />
                   <span>Diseñar en Editor Visual</span>
@@ -1894,9 +2110,9 @@ export const RotaryMarketingInteligente: React.FC = () => {
 
                 <button
                   onClick={() => handleSyncWithEmailMarketing(previewCampaign)}
-                  className="px-4 py-2 rounded-xl bg-rotary-blue hover:bg-sky-800 text-white font-bold flex items-center gap-1.5 shadow-xs"
+                  className="px-4 py-2 rounded-xl border border-gray-200 text-gray-700 hover:bg-white font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
                 >
-                  <Mail className="w-3.5 h-3.5 text-sky-200" />
+                  <Mail className="w-3.5 h-3.5 text-sky-600" />
                   <span>Sincronizar con Email Marketing</span>
                 </button>
               </div>
@@ -2149,6 +2365,550 @@ export const RotaryMarketingInteligente: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL DEL FLUJO "PREPARAR ENVÍO" (AUDIENCIAS Y ENVÍO) ───── */}
+      {preparingCampaign && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-3xl w-full max-h-[92vh] overflow-hidden flex flex-col shadow-2xl border border-gray-100 animate-in fade-in zoom-in-95 duration-150">
+            {/* Cabecera del Modal */}
+            <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-gray-50/70">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-blue-50 text-rotary-blue flex items-center justify-center shrink-0">
+                  <Send className="w-5 h-5 text-rotary-blue" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-rotary-blue bg-blue-100/70 px-2 py-0.5 rounded-full">
+                      Semana {preparingCampaign.week} · {preparingCampaign.type}
+                    </span>
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                      <span>Remitente Configurado</span>
+                    </span>
+                  </div>
+                  <h4 className="font-bold text-gray-900 text-base mt-0.5">
+                    Preparar Envío: {preparingCampaign.name}
+                  </h4>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreparingCampaign(null)}
+                className="w-8 h-8 rounded-full bg-gray-200/70 hover:bg-gray-200 text-gray-700 flex items-center justify-center font-bold text-lg cursor-pointer"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Barra de Pasos (Stepper) */}
+            <div className="px-6 py-3 bg-gray-100/70 border-b border-gray-200/60 flex items-center justify-between text-xs">
+              {[
+                { step: 1, label: '1. Destinatarios', desc: 'Audiencias reales' },
+                { step: 2, label: '2. Revisión', desc: 'Contenido e identidad' },
+                { step: 3, label: '3. Prueba y Envío', desc: 'Verificación' },
+                { step: 4, label: '4. Resultado', desc: 'Trazabilidad' }
+              ].map((s) => (
+                <div
+                  key={s.step}
+                  onClick={() => {
+                    if (s.step < sendFlowStep || (s.step === 2 && audienceValidation.eligibleRecipients > 0)) {
+                      setSendFlowStep(s.step as any);
+                    }
+                  }}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl transition ${
+                    sendFlowStep === s.step
+                      ? 'bg-white shadow-xs text-rotary-blue font-bold border border-blue-200'
+                      : sendFlowStep > s.step
+                      ? 'text-emerald-700 font-medium cursor-pointer hover:bg-white/50'
+                      : 'text-gray-400 font-medium'
+                  }`}
+                >
+                  <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                    sendFlowStep === s.step
+                      ? 'bg-rotary-blue text-white'
+                      : sendFlowStep > s.step
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-gray-200 text-gray-600'
+                  }`}>
+                    {sendFlowStep > s.step ? '✓' : s.step}
+                  </span>
+                  <span className="hidden sm:inline">{s.label}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Contenido del Paso */}
+            <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs">
+              {/* ── PASO 1: SELECCIONAR DESTINATARIOS ──────────────── */}
+              {sendFlowStep === 1 && (
+                <div className="space-y-4 animate-in fade-in duration-150">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h5 className="font-bold text-gray-900 text-sm">
+                        Listas de Contactos Institucionales ({audienceLists.length})
+                      </h5>
+                      <p className="text-gray-500 text-[11px] mt-0.5">
+                        Selecciona uno o más segmentos reales del sitio. El sistema deduplicará automáticamente los contactos repetidos.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedListIds(audienceLists.filter(l => l.validEmailCount > 0).map(l => l.id))}
+                        className="text-[11px] text-rotary-blue font-bold hover:underline cursor-pointer"
+                      >
+                        Seleccionar con correos
+                      </button>
+                      <span className="text-gray-300">·</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedListIds([])}
+                        className="text-[11px] text-gray-500 font-medium hover:underline cursor-pointer"
+                      >
+                        Limpiar
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Listado con scroll de listas */}
+                  {loadingAudienceLists ? (
+                    <div className="p-8 text-center text-gray-400 text-xs bg-gray-50 rounded-2xl flex items-center justify-center gap-2">
+                      <RefreshCw className="w-4 h-4 animate-spin text-rotary-blue" />
+                      <span>Consultando listas institucionales...</span>
+                    </div>
+                  ) : audienceLists.length === 0 ? (
+                    <div className="p-6 text-center bg-amber-50 rounded-2xl border border-amber-200 text-amber-900">
+                      <p className="font-bold">No hay listas institucionales configuradas para este sitio.</p>
+                      <p className="text-[11px] text-amber-700 mt-1">
+                        Puedes importar o segmentar contactos desde el módulo de Contactos & Leads.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-56 overflow-y-auto pr-1">
+                      {audienceLists.map((list) => {
+                        const isChecked = selectedListIds.includes(list.id);
+                        return (
+                          <div
+                            key={list.id}
+                            onClick={() => {
+                              setSelectedListIds(prev =>
+                                isChecked ? prev.filter(id => id !== list.id) : [...prev, list.id]
+                              );
+                            }}
+                            className={`p-3 rounded-2xl border transition cursor-pointer flex items-start gap-2.5 select-none ${
+                              isChecked
+                                ? 'bg-blue-50/70 border-rotary-blue shadow-2xs'
+                                : 'bg-white border-gray-200 hover:border-gray-300'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => {}}
+                              className="mt-0.5 rounded text-rotary-blue focus:ring-rotary-blue"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="font-bold text-gray-900 text-xs truncate">{list.name}</div>
+                              <div className="text-[11px] text-gray-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                                <span>{list.totalMembers} socios</span>
+                                <span>·</span>
+                                <span className={list.validEmailCount > 0 ? 'text-emerald-700 font-bold' : 'text-gray-400'}>
+                                  {list.validEmailCount} con correo
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Panel de Auditoría en Tiempo Real */}
+                  <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-50 to-blue-50/40 border border-blue-200/80 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 font-bold text-xs text-rotary-blue uppercase tracking-wider">
+                        <BarChart3 className="w-4 h-4 text-rotary-blue" />
+                        <span>Auditoría de Destinatarios en Vivo</span>
+                      </div>
+                      {isValidatingAudience && (
+                        <span className="flex items-center gap-1 text-[11px] text-gray-500 font-medium">
+                          <RefreshCw className="w-3 h-3 animate-spin text-rotary-blue" />
+                          <span>Validando...</span>
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 text-center">
+                      <div className="p-2.5 rounded-xl bg-white border border-gray-100 shadow-2xs">
+                        <span className="text-[10px] text-gray-400 font-bold block uppercase">Brutos</span>
+                        <span className="text-base font-extrabold text-gray-800">{audienceValidation.totalRaw}</span>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-white border border-gray-100 shadow-2xs">
+                        <span className="text-[10px] text-emerald-600 font-bold block uppercase">Con Correo</span>
+                        <span className="text-base font-extrabold text-emerald-700">{audienceValidation.validContacts}</span>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-white border border-gray-100 shadow-2xs">
+                        <span className="text-[10px] text-amber-600 font-bold block uppercase">Sin Correo</span>
+                        <span className="text-base font-extrabold text-amber-700">{audienceValidation.missingEmailCount}</span>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-white border border-gray-100 shadow-2xs">
+                        <span className="text-[10px] text-purple-600 font-bold block uppercase">Duplicados</span>
+                        <span className="text-base font-extrabold text-purple-700">-{audienceValidation.duplicatesCount}</span>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-white border border-gray-100 shadow-2xs">
+                        <span className="text-[10px] text-red-600 font-bold block uppercase">Bajas</span>
+                        <span className="text-base font-extrabold text-red-700">-{audienceValidation.optedOutCount}</span>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-300 shadow-2xs">
+                        <span className="text-[10px] text-emerald-800 font-black block uppercase tracking-wider">Elegibles</span>
+                        <span className="text-lg font-black text-emerald-700">{audienceValidation.eligibleRecipients}</span>
+                      </div>
+                    </div>
+
+                    <p className="text-[11px] text-gray-500 leading-normal">
+                      ℹ️ <strong>Protección Anti-Duplicados:</strong> Cada contacto recibirá exactamente 1 correo, independientemente de cuántas listas seleccionadas integre.
+                    </p>
+
+                    {/* Previsualización de muestra de contactos */}
+                    {audienceValidation.sampleRecipients.length > 0 && (
+                      <div className="pt-2 border-t border-blue-100/70">
+                        <span className="text-[10px] font-bold uppercase text-gray-400 block mb-1">
+                          Muestra de Destinatarios Verificados ({audienceValidation.sampleRecipients.length} primeros):
+                        </span>
+                        <div className="space-y-1">
+                          {audienceValidation.sampleRecipients.map((rec, idx) => (
+                            <div key={idx} className="flex items-center justify-between text-[11px] bg-white/80 px-2.5 py-1 rounded-lg border border-gray-100">
+                              <span className="font-bold text-gray-900 truncate max-w-[200px]">{rec.name}</span>
+                              <span className="font-mono text-gray-600 truncate max-w-[220px]">{rec.email}</span>
+                              <span className="text-gray-400 text-[10px] truncate max-w-[150px]">{rec.club}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ── PASO 2: REVISIÓN DE IDENTIDAD Y CONTENIDO ────────── */}
+              {sendFlowStep === 2 && (
+                <div className="space-y-4 animate-in fade-in duration-150">
+                  {/* Resumen de Identidad Institucional */}
+                  <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-50 to-slate-50 border border-blue-200 shadow-2xs space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 font-bold text-xs text-rotary-blue uppercase tracking-wider">
+                        <ShieldCheck className="w-4 h-4 text-rotary-blue" />
+                        <span>Identidad Oficial del Remitente</span>
+                      </div>
+                      <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
+                        SPF / DKIM Verificado
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 border-t border-blue-100">
+                      <div>
+                        <span className="text-[10px] text-gray-400 font-bold uppercase block">Nombre visible (De):</span>
+                        <span className="font-bold text-gray-900 truncate block">
+                          {preparingCampaign.senderName || defaultSenderIdentity?.fromName || `Comunicaciones | ${siteBranding.siteName}`}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-gray-400 font-bold uppercase block">Buzón de envío:</span>
+                        <span className="font-mono text-gray-800 text-[11px] truncate block">
+                          {preparingCampaign.fromEmail || defaultSenderIdentity?.fromEmail || 'comunicaciones@rotary4281.org'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-gray-400 font-bold uppercase block">Responder a (Reply-To):</span>
+                        <span className="font-mono text-gray-800 text-[11px] truncate block">
+                          {preparingCampaign.replyToEmail || defaultSenderIdentity?.replyToEmail || preparingCampaign.fromEmail || 'comunicaciones@rotary4281.org'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Asunto, Preheader y Parámetros */}
+                  <div className="p-3.5 rounded-2xl bg-gray-50 border border-gray-200 space-y-1.5">
+                    <div><strong>Asunto:</strong> {preparingCampaign.subject}</div>
+                    {preparingCampaign.preheader && <div><strong>Preheader:</strong> {preparingCampaign.preheader}</div>}
+                    <div><strong>Parámetro de Campaña (UTM):</strong> <code className="bg-white px-2 py-0.5 rounded border border-gray-200 text-[11px]">{preparingCampaign.utmCampaign}</code></div>
+                    <div><strong>Destinatarios confirmados:</strong> <span className="font-bold text-emerald-700">{audienceValidation.eligibleRecipients} socios en {selectedListIds.length} listas</span></div>
+                  </div>
+
+                  {/* Previsualización del Contenido Renderizado */}
+                  <div className="border border-gray-200 rounded-2xl p-4 bg-white max-h-64 overflow-y-auto">
+                    <div dangerouslySetInnerHTML={{ __html: renderedPreviewHtml }} />
+                  </div>
+                </div>
+              )}
+
+              {/* ── PASO 3: PRUEBA OPCIONAL Y CONFIRMAR ENVÍO ─────────── */}
+              {sendFlowStep === 3 && (
+                <div className="space-y-4 animate-in fade-in duration-150">
+                  {/* Envío de Correo de Prueba */}
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-gray-200 space-y-3">
+                    <div className="flex items-center gap-2 font-bold text-gray-900 text-xs">
+                      <Mail className="w-4 h-4 text-rotary-blue" />
+                      <span>1. Enviar Correo de Prueba (Recomendado)</span>
+                    </div>
+                    <p className="text-[11px] text-gray-500 leading-normal">
+                      Verifica cómo recibirán el correo los líderes rotarios. Este envío de prueba no contabiliza en las estadísticas de campaña ni genera conversiones en el embudo.
+                    </p>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="email"
+                        placeholder="tu-correo@rotary4281.org"
+                        value={testEmailAddress}
+                        onChange={(e) => setTestEmailAddress(e.target.value)}
+                        className="flex-1 px-3.5 py-2.5 rounded-xl border border-gray-300 text-xs focus:ring-2 focus:ring-rotary-blue/20 focus:border-rotary-blue font-mono bg-white outline-hidden"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSendTest}
+                        disabled={sendingTestEmail}
+                        className="px-4 py-2.5 rounded-xl bg-gray-900 hover:bg-black text-white font-bold flex items-center gap-1.5 shrink-0 transition disabled:opacity-50 cursor-pointer"
+                      >
+                        {sendingTestEmail ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>Enviando prueba...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Send className="w-3.5 h-3.5" />
+                            <span>Enviar Prueba</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {testSentSuccess && (
+                      <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span>{testSentSuccess}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Modalidad de Envío */}
+                  <div className="p-4 rounded-2xl bg-white border border-gray-200 space-y-3">
+                    <div className="font-bold text-gray-900 text-xs">
+                      2. Modalidad de Envío a la Audiencia ({audienceValidation.eligibleRecipients} destinatarios)
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <label className={`p-3.5 rounded-2xl border cursor-pointer transition flex items-start gap-2.5 ${
+                        sendMode === 'now' ? 'bg-blue-50/70 border-rotary-blue ring-1 ring-rotary-blue/30' : 'border-gray-200 hover:border-gray-300'
+                      }`}>
+                        <input
+                          type="radio"
+                          name="sendMode"
+                          checked={sendMode === 'now'}
+                          onChange={() => setSendMode('now')}
+                          className="mt-0.5 text-rotary-blue"
+                        />
+                        <div>
+                          <span className="font-bold text-gray-900 block text-xs">Enviar Ahora</span>
+                          <span className="text-[11px] text-gray-500 block leading-normal mt-0.5">
+                            Procesar la entrega inmediata a los {audienceValidation.eligibleRecipients} destinatarios elegibles.
+                          </span>
+                        </div>
+                      </label>
+
+                      <label className={`p-3.5 rounded-2xl border cursor-pointer transition flex items-start gap-2.5 ${
+                        sendMode === 'schedule' ? 'bg-blue-50/70 border-rotary-blue ring-1 ring-rotary-blue/30' : 'border-gray-200 hover:border-gray-300'
+                      }`}>
+                        <input
+                          type="radio"
+                          name="sendMode"
+                          checked={sendMode === 'schedule'}
+                          onChange={() => setSendMode('schedule')}
+                          className="mt-0.5 text-rotary-blue"
+                        />
+                        <div>
+                          <span className="font-bold text-gray-900 block text-xs">Programar Envío</span>
+                          <span className="text-[11px] text-gray-500 block leading-normal mt-0.5">
+                            Seleccionar fecha y hora óptima para disparar la campaña automáticamente.
+                          </span>
+                        </div>
+                      </label>
+                    </div>
+
+                    {sendMode === 'schedule' && (
+                      <div className="p-3.5 rounded-xl bg-gray-50 border border-gray-200 grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                        <div>
+                          <label className="block text-[11px] font-bold text-gray-700 mb-1">Fecha de envío:</label>
+                          <input
+                            type="date"
+                            min={new Date().toISOString().split('T')[0]}
+                            value={scheduleDate}
+                            onChange={(e) => setScheduleDate(e.target.value)}
+                            className="w-full px-3 py-2 rounded-lg border border-gray-300 text-xs bg-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-gray-700 mb-1">Hora de envío (hora local):</label>
+                          <input
+                            type="time"
+                            value={scheduleTime}
+                            onChange={(e) => setScheduleTime(e.target.value)}
+                            className="w-full px-3 py-2 rounded-lg border border-gray-300 text-xs bg-white"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Política de Frecuencia y Gobernanza */}
+                  <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200/80 text-amber-900 flex items-start gap-2.5">
+                    <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="text-[11px] leading-relaxed">
+                      <strong>Gobernanza Distrital:</strong> Esta campaña respeta el tope máximo de 2 impactos promocionales al mes por club y procesará bajas (opt-out) automáticamente.
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── PASO 4: RESULTADO Y TRAZABILIDAD ──────────────────── */}
+              {sendFlowStep === 4 && (
+                <div className="p-8 text-center space-y-4 animate-in fade-in duration-200">
+                  <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-xs">
+                    <CheckCircle2 className="w-8 h-8" />
+                  </div>
+
+                  <div>
+                    <h5 className="font-extrabold text-gray-900 text-base">
+                      {sendExecutionSummary?.mode === 'schedule'
+                        ? '¡Campaña Programada Exitosamente!'
+                        : '¡Envío Registrado y en Proceso!'}
+                    </h5>
+                    <p className="text-xs text-gray-500 mt-1 max-w-md mx-auto">
+                      {sendExecutionSummary?.mode === 'schedule'
+                        ? `La campaña quedará en cola para enviarse automáticamente el ${new Date(sendExecutionSummary.scheduledAt).toLocaleString('es-CO')}.`
+                        : `Se despachó la comunicación a ${sendExecutionSummary?.eligibleRecipients} destinatarios con identidad institucional.`}
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200 text-left space-y-2 max-w-md mx-auto text-xs">
+                    <div className="flex justify-between border-b border-gray-200/60 pb-1.5">
+                      <span className="text-gray-500">Destinatarios elegibles:</span>
+                      <span className="font-bold text-gray-900">{sendExecutionSummary?.eligibleRecipients} socios</span>
+                    </div>
+                    <div className="flex justify-between border-b border-gray-200/60 pb-1.5">
+                      <span className="text-gray-500">Listas incluidas:</span>
+                      <span className="font-bold text-gray-900">{sendExecutionSummary?.listsCount} listas</span>
+                    </div>
+                    <div className="flex justify-between border-b border-gray-200/60 pb-1.5">
+                      <span className="text-gray-500">Remitente institucional:</span>
+                      <span className="font-bold text-gray-900 truncate max-w-[200px]">{sendExecutionSummary?.sender}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Buzón de salida:</span>
+                      <span className="font-mono text-gray-800">{sendExecutionSummary?.fromEmail}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer de Acciones del Stepper */}
+            <div className="p-4 border-t border-gray-100 bg-gray-50 flex items-center justify-between text-xs">
+              {sendFlowStep > 1 && sendFlowStep < 4 ? (
+                <button
+                  type="button"
+                  onClick={() => setSendFlowStep((prev) => (prev - 1) as any)}
+                  className="px-4 py-2 rounded-xl border border-gray-200 text-gray-700 font-bold hover:bg-white flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Anterior</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setPreparingCampaign(null)}
+                  className="px-4 py-2 rounded-xl border border-gray-200 text-gray-600 font-bold hover:bg-white transition cursor-pointer"
+                >
+                  Cerrar
+                </button>
+              )}
+
+              <div className="flex items-center gap-2">
+                {sendFlowStep === 1 && (
+                  <button
+                    type="button"
+                    disabled={selectedListIds.length === 0 || audienceValidation.eligibleRecipients === 0}
+                    onClick={() => setSendFlowStep(2)}
+                    className="px-5 py-2.5 rounded-xl bg-rotary-blue hover:bg-[#002868] text-white font-bold flex items-center gap-1.5 shadow-xs transition disabled:opacity-40 cursor-pointer"
+                  >
+                    <span>Siguiente: Revisar Contenido</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                )}
+
+                {sendFlowStep === 2 && (
+                  <button
+                    type="button"
+                    onClick={() => setSendFlowStep(3)}
+                    className="px-5 py-2.5 rounded-xl bg-rotary-blue hover:bg-[#002868] text-white font-bold flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+                  >
+                    <span>Siguiente: Prueba y Confirmación</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                )}
+
+                {sendFlowStep === 3 && (
+                  <button
+                    type="button"
+                    disabled={executingSend || audienceValidation.eligibleRecipients === 0}
+                    onClick={handleConfirmSendCampaign}
+                    className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1.5 shadow-xs transition disabled:opacity-50 cursor-pointer"
+                  >
+                    {executingSend ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Procesando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>
+                          {sendMode === 'schedule'
+                            ? 'Confirmar Programación'
+                            : `Confirmar Envío (${audienceValidation.eligibleRecipients} Destinatarios)`}
+                        </span>
+                      </>
+                    )}
+                  </button>
+                )}
+
+                {sendFlowStep === 4 && (
+                  <div className="flex items-center gap-2">
+                    {sendExecutionSummary?.viewUrl && (
+                      <button
+                        type="button"
+                        onClick={() => window.open(sendExecutionSummary.viewUrl, '_blank')}
+                        className="px-4 py-2.5 rounded-xl bg-gray-900 hover:bg-black text-white font-bold flex items-center gap-1.5 transition cursor-pointer"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Abrir Campaña en Email Marketing</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setPreparingCampaign(null)}
+                      className="px-5 py-2.5 rounded-xl bg-rotary-blue hover:bg-[#002868] text-white font-bold transition cursor-pointer"
+                    >
+                      Finalizar y Volver
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}

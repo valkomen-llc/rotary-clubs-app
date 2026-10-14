@@ -294,6 +294,9 @@ export async function ensureRotaryMarketingSchema() {
   await db.query(`ALTER TABLE "RotaryMarketingCampaign" ADD COLUMN IF NOT EXISTS "senderName" TEXT`).catch(() => {});
   await db.query(`ALTER TABLE "RotaryMarketingCampaign" ADD COLUMN IF NOT EXISTS "fromEmail" TEXT`).catch(() => {});
   await db.query(`ALTER TABLE "RotaryMarketingCampaign" ADD COLUMN IF NOT EXISTS "replyToEmail" TEXT`).catch(() => {});
+  await db.query(`ALTER TABLE "RotaryMarketingCampaign" ADD COLUMN IF NOT EXISTS "targetListIds" TEXT[] DEFAULT '{}'::TEXT[]`).catch(() => {});
+  await db.query(`ALTER TABLE "RotaryMarketingCampaign" ADD COLUMN IF NOT EXISTS "lastSentAt" TIMESTAMPTZ`).catch(() => {});
+  await db.query(`ALTER TABLE "RotaryMarketingCampaign" ADD COLUMN IF NOT EXISTS "lastSendResult" JSONB`).catch(() => {});
 
   // Asegurar columnas en EmailCampaign para sincronización con Email Marketing
   await db.query(`ALTER TABLE "EmailCampaign" ADD COLUMN IF NOT EXISTS "fromEmail" TEXT`).catch(() => {});
