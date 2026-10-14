@@ -336,6 +336,7 @@ export const ActivarMiClub: React.FC = () => {
         {/* ── CABECERA INSTITUCIONAL COMPARTIDA ───────────────────────────── */}
         <PublicPageHeader
           title="¡Activa el ecosistema digital de tu club!"
+          titleClassName="text-2xl sm:text-3xl md:text-4xl lg:text-[36px] xl:text-[40px] leading-tight"
           subtitle={
             <>
               Conecta, comunica y potencia el impacto de tu club rotario con herramientas tecnológicas modernas, integradas oficialmente con <strong>Rotary en Acción</strong>.

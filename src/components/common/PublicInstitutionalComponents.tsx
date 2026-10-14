@@ -12,6 +12,8 @@ import Navbar from '../../sections/Navbar';
 import Footer from '../../sections/Footer';
 import { PAGE_HEADER_BACKGROUND } from '../../lib/pageHeader';
 
+import { cn } from '../../lib/utils';
+
 // ── 1. CABECERA INSTITUCIONAL DE PÁGINAS PÚBLICAS ────────────────────────────
 export interface PublicPageHeaderProps {
   /** Título principal de la página (H1) */
@@ -22,6 +24,12 @@ export interface PublicPageHeaderProps {
   badge?: string;
   /** Clases CSS adicionales para la sección */
   className?: string;
+  /** Clases CSS para el contenedor interno del contenido (por defecto max-w-4xl lg:max-w-5xl xl:max-w-6xl) */
+  contentClassName?: string;
+  /** Clases CSS adicionales o personalizadas para el título H1 */
+  titleClassName?: string;
+  /** Clases CSS adicionales para el subtítulo */
+  subtitleClassName?: string;
   /** Estilos en línea para sobreescritura dinámica de color o tema */
   style?: React.CSSProperties;
   /** Elementos opcionales dentro de la cabecera (debajo del subtítulo) */
@@ -33,31 +41,42 @@ export const PublicPageHeader: React.FC<PublicPageHeaderProps> = ({
   subtitle,
   badge,
   className = '',
+  contentClassName = '',
+  titleClassName = '',
+  subtitleClassName = '',
   style,
   children,
 }) => {
   return (
     <section
-      className={`relative overflow-hidden ${className}`}
+      className={cn('relative overflow-hidden', className)}
       style={{
         ...PAGE_HEADER_BACKGROUND,
         ...style,
       }}
     >
-      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
-        <div className="text-center max-w-3xl mx-auto">
+      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 sm:py-16 md:py-20 lg:py-24">
+        <div className={cn('text-center mx-auto max-w-4xl lg:max-w-5xl xl:max-w-6xl', contentClassName)}>
           {badge && (
             <span className="inline-block text-[11px] font-black tracking-[0.18em] uppercase px-3 py-1 rounded-full bg-white/15 text-white/90 mb-4 border border-white/20">
               {badge}
             </span>
           )}
-          <h1 className="text-3xl md:text-5xl text-white mb-6 font-bold tracking-tight leading-tight">
+          <h1
+            className={cn(
+              "text-3xl sm:text-4xl md:text-5xl text-white mb-5 sm:mb-6 font-normal tracking-tight leading-tight font-['Open_Sans',sans-serif]",
+              titleClassName
+            )}
+            style={{ fontWeight: 400 }}
+          >
             {title}
           </h1>
           {subtitle && (
-            <p className="text-white/80 text-lg md:text-xl font-normal leading-relaxed">
-              {subtitle}
-            </p>
+            <div className={cn('max-w-3xl mx-auto', subtitleClassName)}>
+              <p className="text-white/80 text-base sm:text-lg md:text-xl font-normal leading-relaxed">
+                {subtitle}
+              </p>
+            </div>
           )}
           {children}
         </div>
