@@ -50,6 +50,7 @@ router.post('/marketing/campaigns/:id/sync-email', requireSubmissionInboxAccess,
 router.post('/marketing/campaigns/:id/send', requireSubmissionInboxAccess, mktCtrl.sendCampaignNow);
 router.post('/marketing/campaigns/:id/retry', requireSubmissionInboxAccess, mktCtrl.retryFailedCampaignRecipients);
 router.get('/marketing/history', requireSubmissionInboxAccess, mktCtrl.getCampaignsHistory);
+router.post('/marketing/history/reconcile', requireSubmissionInboxAccess, mktCtrl.reconcileCampaignHistory);
 router.get('/marketing/history/:id', requireSubmissionInboxAccess, mktCtrl.getCampaignHistoryDetail);
 router.get('/marketing/deliverability/diagnostics', requireSubmissionInboxAccess, mktCtrl.getDeliverabilityDiagnostics);
 router.get('/marketing/automations', requireSubmissionInboxAccess, mktCtrl.getAutomations);

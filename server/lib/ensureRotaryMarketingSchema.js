@@ -318,6 +318,41 @@ export async function ensureRotaryMarketingSchema() {
   )`);
   await db.query(`CREATE INDEX IF NOT EXISTS "idx_rotary_sender_identity_club" ON "RotarySenderIdentity" ("clubId")`).catch(() => {});
 
+  // 1.2 Tabla de ejecuciones históricas e individuales de envíos (Centro de Envíos)
+  await db.query(`CREATE TABLE IF NOT EXISTS "RotaryCampaignExecution" (
+    id TEXT PRIMARY KEY,
+    "campaignId" TEXT NOT NULL,
+    "campaignCode" TEXT,
+    "campaignName" TEXT NOT NULL,
+    "week" INTEGER DEFAULT 1,
+    "stage" TEXT,
+    "subject" TEXT NOT NULL,
+    "preheader" TEXT,
+    "emailCampaignId" TEXT,
+    "clubId" TEXT,
+    "mode" TEXT DEFAULT 'manual',
+    "status" TEXT DEFAULT 'sent',
+    "targetListIds" TEXT[],
+    "totalRecipients" INTEGER DEFAULT 0,
+    "sentCount" INTEGER DEFAULT 0,
+    "failedCount" INTEGER DEFAULT 0,
+    "openCount" INTEGER DEFAULT 0,
+    "clickCount" INTEGER DEFAULT 0,
+    "senderName" TEXT,
+    "fromEmail" TEXT,
+    "replyToEmail" TEXT,
+    "sentAt" TIMESTAMPTZ,
+    "scheduledAt" TIMESTAMPTZ,
+    "executedAt" TIMESTAMPTZ DEFAULT NOW(),
+    "metadata" JSONB,
+    "createdAt" TIMESTAMPTZ DEFAULT NOW(),
+    "updatedAt" TIMESTAMPTZ DEFAULT NOW()
+  )`);
+  await db.query(`CREATE INDEX IF NOT EXISTS "idx_rotary_exec_camp" ON "RotaryCampaignExecution" ("campaignId")`).catch(() => {});
+  await db.query(`CREATE INDEX IF NOT EXISTS "idx_rotary_exec_club" ON "RotaryCampaignExecution" ("clubId")`).catch(() => {});
+  await db.query(`CREATE INDEX IF NOT EXISTS "idx_rotary_exec_email_camp" ON "RotaryCampaignExecution" ("emailCampaignId")`).catch(() => {});
+  await db.query(`CREATE INDEX IF NOT EXISTS "idx_rotary_exec_date" ON "RotaryCampaignExecution" ("executedAt" DESC)`).catch(() => {});
+
   // 2. Tabla de sugerencias y optimizaciones del agente de IA
   await db.query(`CREATE TABLE IF NOT EXISTS "RotaryMarketingInsight" (
     id TEXT PRIMARY KEY,

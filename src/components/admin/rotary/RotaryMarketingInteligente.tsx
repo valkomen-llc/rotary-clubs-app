@@ -12,7 +12,7 @@ import {
   FileText, Download, CheckCircle, Flame, Star, BookOpen, AlertTriangle,
   Plus, Trash2, Edit3, MailCheck, ArrowLeft, ArrowRight, Clock,
   SendHorizontal, XCircle, MousePointerClick, Globe, Server, Activity,
-  ArrowUpRight, Repeat, Layers
+  ArrowUpRight, Repeat, Layers, Database
 } from 'lucide-react';
 import { toast } from 'sonner';
 import VisualTemplateEditor from '../email-marketing/VisualTemplateEditor';
@@ -161,6 +161,7 @@ export const RotaryMarketingInteligente: React.FC = () => {
   const [enviosSubView, setEnviosSubView] = useState<'historial' | 'detalle' | 'diagnostico'>('historial');
   const [campaignsHistory, setCampaignsHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState<boolean>(false);
+  const [reconcilingHistory, setReconcilingHistory] = useState<boolean>(false);
   const [historySearch, setHistorySearch] = useState<string>('');
   const [historyStatusFilter, setHistoryStatusFilter] = useState<string>('todos');
   const [historyModeFilter, setHistoryModeFilter] = useState<string>('todos');
@@ -202,7 +203,7 @@ export const RotaryMarketingInteligente: React.FC = () => {
       if (historyRecipientSearch) {
         const q = historyRecipientSearch.toLowerCase();
         const matchEmail = (r.email || '').toLowerCase().includes(q);
-        const matchName = (r.contactName || '').toLowerCase().includes(q);
+        const matchName = (r.name || r.contactName || '').toLowerCase().includes(q);
         const matchClub = (r.clubName || '').toLowerCase().includes(q);
         const matchRole = (r.role || '').toLowerCase().includes(q);
         if (!matchEmail && !matchName && !matchClub && !matchRole) return false;
@@ -426,7 +427,7 @@ export const RotaryMarketingInteligente: React.FC = () => {
       });
       const data = await res.json();
       if (data.ok) {
-        setCampaignsHistory(data.campaigns || []);
+        setCampaignsHistory(data.campaigns || data.history || []);
       }
     } catch {
       toast.error('Error al cargar historial de campañas');
@@ -434,6 +435,30 @@ export const RotaryMarketingInteligente: React.FC = () => {
       setLoadingHistory(false);
     }
   }, []);
+
+  const handleReconcileHistory = async () => {
+    setReconcilingHistory(true);
+    try {
+      const res = await fetch(`${API}/rotary-en-accion/marketing/history/reconcile`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${getToken()}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      const data = await res.json();
+      if (data.ok) {
+        toast.success(data.message || 'Historial sincronizado y reconciliado con Email Marketing');
+        await loadCampaignsHistory();
+      } else {
+        toast.error(data.error || 'No se pudo sincronizar el historial');
+      }
+    } catch {
+      toast.error('Error de red al sincronizar con Email Marketing');
+    } finally {
+      setReconcilingHistory(false);
+    }
+  };
 
   const loadHistoryDetail = useCallback(async (campaignId: string) => {
     setLoadingHistoryDetail(true);
@@ -2167,6 +2192,17 @@ export const RotaryMarketingInteligente: React.FC = () => {
               <div className="flex flex-wrap items-center gap-2 shrink-0">
                 <button
                   type="button"
+                  onClick={handleReconcileHistory}
+                  disabled={reconcilingHistory || loadingHistory}
+                  className="px-3.5 py-2.5 rounded-xl border border-blue-200 text-rotary-blue bg-blue-50/70 hover:bg-blue-100/70 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                  title="Sincronizar y reconciliar registros con Email Marketing Central"
+                >
+                  <Database className={`w-3.5 h-3.5 ${reconcilingHistory ? 'animate-spin' : ''}`} />
+                  <span>{reconcilingHistory ? 'Sincronizando...' : 'Sincronizar Email Marketing'}</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => {
                     loadCampaignsHistory();
                     loadDeliverabilityDiagnostics();
@@ -2280,12 +2316,12 @@ export const RotaryMarketingInteligente: React.FC = () => {
                   </div>
                   <div className="flex items-baseline gap-2">
                     <span className="text-3xl font-bold text-emerald-700">
-                      {campaignsHistory.reduce((acc, c) => acc + (c.stats?.sentCount || 0), 0)}
+                      {campaignsHistory.reduce((acc, c) => acc + (c.stats?.sentCount ?? c.sentCount ?? 0), 0)}
                     </span>
                     <span className="text-xs text-gray-400 font-medium">por proveedor</span>
                   </div>
                   <div className="text-[11px] text-gray-500">
-                    {campaignsHistory.reduce((acc, c) => acc + (c.stats?.failedCount || 0), 0)} fallido(s) reportados
+                    {campaignsHistory.reduce((acc, c) => acc + (c.stats?.failedCount ?? c.failedCount ?? 0), 0)} fallido(s) reportados
                   </div>
                 </div>
 
@@ -2296,12 +2332,12 @@ export const RotaryMarketingInteligente: React.FC = () => {
                   </div>
                   <div className="flex items-baseline gap-2">
                     <span className="text-3xl font-bold text-indigo-700">
-                      {campaignsHistory.reduce((acc, c) => acc + (c.stats?.uniqueClicks || 0), 0)}
+                      {campaignsHistory.reduce((acc, c) => acc + (c.stats?.uniqueClicks ?? c.clickCount ?? 0), 0)}
                     </span>
                     <span className="text-xs text-gray-400 font-medium">clics únicos</span>
                   </div>
                   <div className="text-[11px] text-gray-500">
-                    {campaignsHistory.reduce((acc, c) => acc + (c.stats?.uniqueOpens || 0), 0)} aperturas estimadas
+                    {campaignsHistory.reduce((acc, c) => acc + (c.stats?.uniqueOpens ?? c.openCount ?? 0), 0)} aperturas estimadas
                   </div>
                 </div>
 
@@ -2312,7 +2348,7 @@ export const RotaryMarketingInteligente: React.FC = () => {
                   </div>
                   <div className="flex items-baseline gap-2">
                     <span className="text-3xl font-bold text-amber-600">
-                      {campaignsHistory.reduce((acc, c) => acc + (c.stats?.conversionsCount || 0), 0)}
+                      {campaignsHistory.reduce((acc, c) => acc + (c.stats?.conversionsCount ?? c.conversionsCount ?? 0), 0)}
                     </span>
                     <span className="text-xs text-gray-400 font-medium">activaciones</span>
                   </div>

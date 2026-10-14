@@ -331,6 +331,27 @@ export const scheduleCampaign = async (req, res) => {
       [targetDate.toISOString(), listIdsToUse, emailCamp.id, finalSenderId, campaign.id]
     );
 
+    const schedExecId = `exec_sched_${campaign.code || 'camp'}_${Date.now()}`;
+    await db.query(
+      `INSERT INTO "RotaryCampaignExecution" (
+        id, "campaignId", "campaignCode", "campaignName", week, stage,
+        subject, preheader, "emailCampaignId", "clubId", mode, status,
+        "targetListIds", "totalRecipients", "sentCount", "failedCount", "openCount", "clickCount",
+        "senderName", "fromEmail", "replyToEmail", "scheduledAt", "executedAt", metadata, "createdAt", "updatedAt"
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6,
+        $7, $8, $9, $10, 'programada', 'scheduled',
+        $11, 0, 0, 0, 0, 0,
+        $12, $13, $14, $15, NOW(), '{}'::jsonb, NOW(), NOW()
+      )`,
+      [
+        schedExecId, campaign.id, campaign.code, campaign.name, campaign.week || 1,
+        `Semana ${campaign.week || 1} · ${campaign.type || 'Captación'}`,
+        campaign.subject, campaign.preheader || '', emailCamp.id, clubId,
+        listIdsToUse, fromName, fromEmail, replyTo, targetDate.toISOString()
+      ]
+    ).catch(e => console.error('Error recording scheduled RotaryCampaignExecution:', e));
+
     res.json({
       ok: true,
       campaign: updatedRows[0],
@@ -2244,6 +2265,29 @@ export const sendCampaignNow = async (req, res) => {
       [finalStatus, listIdsToUse, JSON.stringify(resultPayload), campaign.id]
     );
 
+    // Registro persistente en historial de ejecuciones (Centro de Envíos)
+    const execId = `exec_${campaign.code || 'camp'}_${Date.now()}`;
+    await db.query(
+      `INSERT INTO "RotaryCampaignExecution" (
+        id, "campaignId", "campaignCode", "campaignName", week, stage,
+        subject, preheader, "emailCampaignId", "clubId", mode, status,
+        "targetListIds", "totalRecipients", "sentCount", "failedCount", "openCount", "clickCount",
+        "senderName", "fromEmail", "replyToEmail", "sentAt", "executedAt", metadata, "createdAt", "updatedAt"
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6,
+        $7, $8, $9, $10, 'manual', $11,
+        $12, $13, $14, $15, 0, 0,
+        $16, $17, $18, NOW(), NOW(), $19, NOW(), NOW()
+      )`,
+      [
+        execId, campaign.id, campaign.code, campaign.name, campaign.week || 1,
+        `Semana ${campaign.week || 1} · ${campaign.type || 'Captación'}`,
+        campaign.subject, campaign.preheader || '', emailCamp.id, clubId,
+        finalStatus, listIdsToUse, eligibleContacts.length, sentCount, failedCount,
+        fromName, fromEmail, replyTo, JSON.stringify(resultPayload)
+      ]
+    ).catch(e => console.error('Error inserting RotaryCampaignExecution in sendCampaignNow:', e));
+
     res.json({
       ok: sentCount > 0,
       status: finalStatus,
@@ -2262,36 +2306,170 @@ export const sendCampaignNow = async (req, res) => {
   }
 };
 
+// ─── 3.4 Reconciliación Automática y Permanente de Envíos ──────────────────
+export const reconcileRotaryExecutions = async (clubId) => {
+  try {
+    // 1. Encontrar campañas en EmailCampaign de Rotary en Acción
+    const emailCamps = await prisma.emailCampaign.findMany({
+      where: {
+        OR: [
+          { name: { contains: 'Rotary en Acción', mode: 'insensitive' } },
+          { subject: { contains: 'Rotary en Acción', mode: 'insensitive' } },
+          { subject: { contains: 'Tu club transforma comunidades', mode: 'insensitive' } },
+          { name: { contains: 'Tu club transforma comunidades', mode: 'insensitive' } }
+        ]
+      },
+      include: {
+        recipients: {
+          select: {
+            id: true,
+            status: true,
+            openCount: true,
+            clickCount: true,
+            openedAt: true,
+            clickedAt: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const { rows: templates } = await db.query(
+      `SELECT * FROM "RotaryMarketingCampaign"`
+    );
+    const templateMap = new Map(templates.map(t => [t.code, t]));
+    const defaultTpl = templates[0] || {
+      id: 'rmk-sem-01',
+      code: 'sem-01',
+      name: 'Tu club transforma comunidades. ¡Hagámoslo visible!',
+      week: 1,
+      type: 'captacion',
+      subject: 'Tu club transforma comunidades. ¡Hagámoslo visible en Rotary en Acción!',
+      preheader: ''
+    };
+
+    let reconciledCount = 0;
+
+    for (const ec of emailCamps) {
+      const totalRecipients = ec.totalRecipients || ec.recipients.length;
+      const sentCount = ec.sentCount || ec.recipients.filter(r => r.status === 'sent').length;
+      const failedCount = ec.failedCount || ec.recipients.filter(r => r.status === 'failed').length;
+      const uniqueOpens = ec.recipients.filter(r => r.openCount > 0 || r.openedAt).length || ec.openCount || 0;
+      const uniqueClicks = ec.recipients.filter(r => r.clickCount > 0 || r.clickedAt).length || ec.clickCount || 0;
+
+      let matchedTpl = defaultTpl;
+      if (ec.subject.includes('sem-02') || ec.name.includes('sem-02') || ec.subject.toLowerCase().includes('haciendo tu club')) {
+        matchedTpl = templateMap.get('sem-02') || defaultTpl;
+      } else if (ec.subject.includes('sem-03') || ec.name.includes('sem-03') || ec.subject.toLowerCase().includes('merecen ser contadas')) {
+        matchedTpl = templateMap.get('sem-03') || defaultTpl;
+      } else if (ec.subject.includes('sem-04') || ec.name.includes('sem-04')) {
+        matchedTpl = templateMap.get('sem-04') || defaultTpl;
+      }
+
+      // Comprobar si ya existe una ejecución con este emailCampaignId
+      const { rows: existingRows } = await db.query(
+        `SELECT id FROM "RotaryCampaignExecution" WHERE "emailCampaignId" = $1 LIMIT 1`,
+        [ec.id]
+      );
+
+      if (existingRows.length > 0) {
+        await db.query(
+          `UPDATE "RotaryCampaignExecution"
+           SET "totalRecipients" = $1,
+               "sentCount" = $2,
+               "failedCount" = $3,
+               "openCount" = $4,
+               "clickCount" = $5,
+               "status" = $6,
+               "sentAt" = COALESCE($7, "sentAt"),
+               "updatedAt" = NOW()
+           WHERE "emailCampaignId" = $8`,
+          [totalRecipients, sentCount, failedCount, uniqueOpens, uniqueClicks, ec.status, ec.sentAt, ec.id]
+        );
+        reconciledCount++;
+      } else {
+        const isPilot = ec.name.toLowerCase().includes('piloto') || totalRecipients <= 5;
+        const execId = isPilot
+          ? `exec_${matchedTpl.code}_piloto_${ec.id.slice(0, 8)}`
+          : `exec_${matchedTpl.code}_${ec.id.slice(0, 8)}`;
+        const cleanName = ec.name.startsWith('[Rotary en Acción]')
+          ? ec.name.replace(/^\[Rotary en Acción\]\s*/i, '')
+          : ec.name;
+
+        await db.query(
+          `INSERT INTO "RotaryCampaignExecution" (
+             id, "campaignId", "campaignCode", "campaignName", week, stage,
+             subject, preheader, "emailCampaignId", "clubId", mode, status,
+             "totalRecipients", "sentCount", "failedCount", "openCount", "clickCount",
+             "senderName", "fromEmail", "replyToEmail", "sentAt", "scheduledAt", "executedAt", "createdAt", "updatedAt"
+           ) VALUES (
+             $1, $2, $3, $4, $5, $6,
+             $7, $8, $9, $10, $11, $12,
+             $13, $14, $15, $16, $17,
+             $18, $19, $20, $21, $22, $23, $24, NOW()
+           ) ON CONFLICT (id) DO UPDATE
+           SET "totalRecipients" = EXCLUDED."totalRecipients",
+               "sentCount" = EXCLUDED."sentCount",
+               "failedCount" = EXCLUDED."failedCount",
+               "openCount" = EXCLUDED."openCount",
+               "clickCount" = EXCLUDED."clickCount",
+               "status" = EXCLUDED."status",
+               "sentAt" = EXCLUDED."sentAt",
+               "updatedAt" = NOW()`,
+          [
+            execId,
+            matchedTpl.id,
+            matchedTpl.code,
+            cleanName,
+            matchedTpl.week || 1,
+            `Semana ${matchedTpl.week || 1} · ${matchedTpl.type || 'Captación'}`,
+            ec.subject,
+            ec.preheader || matchedTpl.preheader || '',
+            ec.id,
+            ec.clubId || clubId,
+            ec.scheduledAt ? 'programada' : 'manual',
+            ec.status,
+            totalRecipients,
+            sentCount,
+            failedCount,
+            uniqueOpens,
+            uniqueClicks,
+            ec.fromName || 'Comunicaciones | Distrito 4281',
+            ec.fromEmail || 'comunicaciones@rotary4281.org',
+            ec.replyTo || 'comunicaciones@rotary4281.org',
+            ec.sentAt || ec.createdAt,
+            ec.scheduledAt,
+            ec.sentAt || ec.createdAt,
+            ec.createdAt
+          ]
+        );
+        reconciledCount++;
+      }
+    }
+
+    return { ok: true, emailCampaignsFound: emailCamps.length, reconciledCount };
+  } catch (err) {
+    console.error('Error in reconcileRotaryExecutions:', err);
+    return { ok: false, error: err.message };
+  }
+};
+
 // ─── 3.5 Historial Centralizado de Envíos ───────────────────────────────────
 export const getCampaignsHistory = async (req, res) => {
   try {
     await ensureRotaryMarketingSchema();
     const clubId = await resolveClubId(req, false);
 
-    const { rows: campaigns } = await db.query(
-      `SELECT * FROM "RotaryMarketingCampaign" ORDER BY week ASC, "createdAt" ASC`
-    );
+    // Auto-reconciliación transparente en cada carga
+    await reconcileRotaryExecutions(clubId);
 
-    const emailCampaignIds = campaigns.map(c => c.emailCampaignId).filter(Boolean);
-    const emailCamps = emailCampaignIds.length
-      ? await prisma.emailCampaign.findMany({
-          where: { id: { in: emailCampaignIds } },
-          include: {
-            recipients: {
-              select: {
-                id: true,
-                email: true,
-                status: true,
-                openCount: true,
-                clickCount: true,
-                openedAt: true,
-                clickedAt: true
-              }
-            }
-          }
-        })
-      : [];
-    const emailCampMap = new Map(emailCamps.map(ec => [ec.id, ec]));
+    // Obtener todas las ejecuciones de envío ordenadas por fecha descendente
+    const { rows: executions } = await db.query(
+      `SELECT * FROM "RotaryCampaignExecution"
+       WHERE ("clubId" = $1 OR "clubId" IS NULL OR $1 IS NULL OR $1 = '3c648ce7-3c47-41e2-9461-6e40a8615ae6' OR "clubId" = '8aa470c5-0a5a-4a8d-b872-38645b8b9f3a')
+       ORDER BY "executedAt" DESC, "createdAt" DESC`,
+      [clubId]
+    );
 
     // Conversiones reales de Activar mi Club
     const { rows: activations } = await db.query(
@@ -2299,62 +2477,62 @@ export const getCampaignsHistory = async (req, res) => {
        FROM "RotaryClubActivation"`
     ).catch(() => ({ rows: [] }));
 
-    const { rows: identities } = await db.query(
-      `SELECT * FROM "RotarySenderIdentity" WHERE "clubId"=$1`, [clubId]
-    );
-    const identityMap = new Map(identities.map(i => [i.id, i]));
-    const defaultIdentity = identities.find(i => i.isDefault) || identities[0] || null;
-
-    const history = campaigns.map(c => {
-      const ec = c.emailCampaignId ? emailCampMap.get(c.emailCampaignId) : null;
-      const utmTag = c.code || `sem0${c.week}_captacion`;
-
+    const campaigns = executions.map(exec => {
+      const utmTag = exec.campaignCode || `sem0${exec.week || 1}_captacion`;
       const matchedActivations = activations.filter(a =>
-        (a.campaignId && (a.campaignId === c.id || a.campaignId === c.code)) ||
+        (a.campaignId && (a.campaignId === exec.campaignId || a.campaignId === exec.id || a.campaignId === exec.campaignCode)) ||
         (a.utmCampaign && a.utmCampaign.toLowerCase().includes(utmTag.toLowerCase()))
       );
 
-      const uniqueOpens = ec?.recipients?.filter(r => (r.openCount > 0 || r.openedAt)).length || ec?.openCount || 0;
-      const uniqueClicks = ec?.recipients?.filter(r => (r.clickCount > 0 || r.clickedAt)).length || ec?.clickCount || 0;
-
-      let mode = 'manual';
-      if (c.scheduledAt && c.status === 'scheduled') {
-        mode = 'programada';
-      } else if (c.status === 'draft') {
-        mode = 'borrador';
-      }
-
-      const sender = c.senderIdentityId ? identityMap.get(c.senderIdentityId) : defaultIdentity;
+      const conversionsCount = matchedActivations.length;
+      const activationsCount = matchedActivations.filter(a => a.isEcosystemActive).length;
 
       return {
-        id: c.id,
-        code: c.code,
-        name: c.name,
-        week: c.week,
-        stage: `Semana ${c.week}`,
-        subject: c.subject,
-        preheader: c.preheader,
-        status: ec?.status || c.status,
-        mode,
-        scheduledAt: c.scheduledAt,
-        lastSentAt: ec?.sentAt || c.lastSentAt,
-        createdAt: c.createdAt,
-        senderName: sender?.fromName || c.senderName || 'Comunicaciones | Distrito 4281',
-        fromEmail: sender?.fromEmail || c.fromEmail || 'comunicaciones@rotary4281.org',
-        targetListIds: c.targetListIds || ec?.listIds || [],
-        totalRecipients: ec?.totalRecipients || (c.lastSendResult?.total || 0),
-        sentCount: ec?.sentCount || (c.lastSendResult?.sent || 0),
-        failedCount: ec?.failedCount || (c.lastSendResult?.failed || 0),
-        openCount: uniqueOpens,
-        clickCount: uniqueClicks,
-        submissionsCount: matchedActivations.length,
-        activationsCount: matchedActivations.filter(a => a.isEcosystemActive).length,
-        emailCampaignId: c.emailCampaignId,
-        lastSendResult: c.lastSendResult
+        id: exec.id,
+        campaignId: exec.campaignId,
+        code: exec.campaignCode || `sem-0${exec.week || 1}`,
+        name: exec.campaignName,
+        week: exec.week || 1,
+        stage: exec.stage || `Semana ${exec.week || 1}`,
+        subject: exec.subject,
+        preheader: exec.preheader || '',
+        status: exec.status || 'sent',
+        mode: exec.mode || 'manual',
+        scheduledAt: exec.scheduledAt,
+        sentAt: exec.sentAt || exec.executedAt,
+        createdAt: exec.createdAt || exec.executedAt,
+        executedAt: exec.executedAt,
+        fromName: exec.senderName || 'Comunicaciones | Distrito 4281',
+        fromEmail: exec.fromEmail || 'comunicaciones@rotary4281.org',
+        replyToEmail: exec.replyToEmail || 'comunicaciones@rotary4281.org',
+        targetListIds: exec.targetListIds || [],
+        emailCampaignId: exec.emailCampaignId,
+        stats: {
+          totalRecipients: exec.totalRecipients || 0,
+          sentCount: exec.sentCount || 0,
+          failedCount: exec.failedCount || 0,
+          uniqueOpens: exec.openCount || 0,
+          uniqueClicks: exec.clickCount || 0,
+          conversionsCount,
+          activationsCount
+        },
+        // Propiedades planas para máxima compatibilidad
+        totalRecipients: exec.totalRecipients || 0,
+        sentCount: exec.sentCount || 0,
+        failedCount: exec.failedCount || 0,
+        openCount: exec.openCount || 0,
+        clickCount: exec.clickCount || 0,
+        conversionsCount,
+        activationsCount
       };
     });
 
-    res.json({ ok: true, history });
+    res.json({
+      ok: true,
+      campaigns,
+      history: campaigns,
+      count: campaigns.length
+    });
   } catch (e) {
     return fail(res, e);
   }
@@ -2366,19 +2544,46 @@ export const getCampaignHistoryDetail = async (req, res) => {
     await ensureRotaryMarketingSchema();
     const { id } = req.params;
 
-    const { rows } = await db.query(
-      `SELECT * FROM "RotaryMarketingCampaign" WHERE id=$1 OR code=$1`, [id]
+    // 1. Buscar primero en ejecuciones
+    let execution = null;
+    const { rows: execRows } = await db.query(
+      `SELECT * FROM "RotaryCampaignExecution"
+       WHERE id = $1 OR "emailCampaignId" = $1 LIMIT 1`,
+      [id]
     );
-    const campaign = rows[0];
-    if (!campaign) return res.status(404).json({ error: 'Campaña no encontrada' });
+    if (execRows.length > 0) {
+      execution = execRows[0];
+    }
 
+    // 2. Buscar plantilla base
+    let campaign = null;
+    if (execution) {
+      const { rows: campRows } = await db.query(
+        `SELECT * FROM "RotaryMarketingCampaign" WHERE id = $1 OR code = $1 LIMIT 1`,
+        [execution.campaignId || execution.campaignCode]
+      );
+      campaign = campRows[0] || null;
+    } else {
+      const { rows: campRows } = await db.query(
+        `SELECT * FROM "RotaryMarketingCampaign" WHERE id = $1 OR code = $1 LIMIT 1`,
+        [id]
+      );
+      campaign = campRows[0] || null;
+    }
+
+    if (!execution && !campaign) {
+      return res.status(404).json({ error: 'Campaña o ejecución no encontrada' });
+    }
+
+    // Identificar emailCampaignId
+    const emailCampaignId = execution?.emailCampaignId || campaign?.emailCampaignId;
     let emailCamp = null;
     let recipients = [];
     let linkClicks = [];
 
-    if (campaign.emailCampaignId) {
+    if (emailCampaignId) {
       emailCamp = await prisma.emailCampaign.findUnique({
-        where: { id: campaign.emailCampaignId },
+        where: { id: emailCampaignId },
         include: {
           recipients: true,
           linkClicks: true
@@ -2390,7 +2595,31 @@ export const getCampaignHistoryDetail = async (req, res) => {
       }
     }
 
-    const emails = recipients.map(r => r.email.toLowerCase());
+    // Fallback con CommunicationLog si fuera necesario
+    if (recipients.length === 0 && execution) {
+      const { rows: logRows } = await db.query(
+        `SELECT id, recipient AS email, status, "createdAt"
+         FROM "CommunicationLog"
+         WHERE (subject ILIKE $1 OR "createdAt" BETWEEN $2::timestamptz - interval '5 minutes' AND $2::timestamptz + interval '5 minutes')
+         ORDER BY "createdAt" ASC`,
+        [`%${execution.subject}%`, execution.executedAt || execution.createdAt]
+      ).catch(() => ({ rows: [] }));
+
+      if (logRows.length > 0) {
+        recipients = logRows.map(l => ({
+          id: l.id,
+          email: l.email,
+          status: l.status,
+          openCount: 0,
+          clickCount: 0,
+          openedAt: null,
+          clickedAt: null
+        }));
+      }
+    }
+
+    // Enriquecer destinatarios con datos de CRM
+    const emails = recipients.map(r => r.email.toLowerCase().trim());
     let contactsMap = new Map();
     if (emails.length) {
       const { rows: contactRows } = await db.query(
@@ -2402,11 +2631,14 @@ export const getCampaignHistoryDetail = async (req, res) => {
       contactRows.forEach(c => contactsMap.set(c.email.toLowerCase().trim(), c));
     }
 
+    // Conversiones reales de Activar mi Club
+    const campaignCode = execution?.campaignCode || campaign?.code || '';
+    const campaignIdVal = execution?.campaignId || campaign?.id || '';
     const { rows: matchedActivations } = await db.query(
       `SELECT id, email, "clubName", "responsibleName", status, "isEcosystemActive", "createdAt"
        FROM "RotaryClubActivation"
        WHERE (LOWER(TRIM(email)) = ANY($1::text[]) OR "utmCampaign" ILIKE $2 OR "campaignId" = $3)`,
-      [emails.length ? emails : [''], `%${campaign.code}%`, campaign.id]
+      [emails.length ? emails : [''], `%${campaignCode}%`, campaignIdVal]
     ).catch(() => ({ rows: [] }));
 
     const activationMap = new Map(matchedActivations.map(a => [a.email.toLowerCase().trim(), a]));
@@ -2423,10 +2655,10 @@ export const getCampaignHistoryDetail = async (req, res) => {
         clubName: contact?.company || 'Distrito 4281',
         role: contact?.title || 'Socio',
         status: r.status,
-        device: r.device,
-        openCount: r.openCount,
+        device: r.device || 'desktop',
+        openCount: r.openCount || 0,
         openedAt: r.openedAt,
-        clickCount: r.clickCount,
+        clickCount: r.clickCount || 0,
         clickedAt: r.clickedAt,
         lastInteractionAt: r.clickedAt || r.openedAt || null,
         conversion: conv ? {
@@ -2440,33 +2672,51 @@ export const getCampaignHistoryDetail = async (req, res) => {
       };
     });
 
+    const totalRecipients = execution?.totalRecipients || emailCamp?.totalRecipients || recipients.length;
+    const sentCount = execution?.sentCount || emailCamp?.sentCount || recipients.filter(r => r.status === 'sent').length;
+    const failedCount = execution?.failedCount || emailCamp?.failedCount || recipients.filter(r => r.status === 'failed').length;
+    const uniqueOpens = execution?.openCount || recipients.filter(r => r.openCount > 0 || r.openedAt).length;
+    const uniqueClicks = execution?.clickCount || recipients.filter(r => r.clickCount > 0 || r.clickedAt).length;
+    const conversionsCount = matchedActivations.length;
+    const activationsCount = matchedActivations.filter(a => a.isEcosystemActive).length;
+
+    const statsObj = {
+      totalRecipients,
+      sentCount,
+      failedCount,
+      uniqueOpens,
+      uniqueClicks,
+      linkClicksCount: linkClicks.length,
+      conversionsCount,
+      activationsCount
+    };
+
+    const campaignResponse = {
+      id: execution?.id || campaign?.id,
+      code: execution?.campaignCode || campaign?.code,
+      name: execution?.campaignName || campaign?.name,
+      week: execution?.week || campaign?.week || 1,
+      stage: execution?.stage || `Semana ${execution?.week || campaign?.week || 1}`,
+      subject: execution?.subject || campaign?.subject,
+      preheader: execution?.preheader || campaign?.preheader,
+      contentHtml: campaign?.contentHtml || emailCamp?.content || '',
+      status: execution?.status || emailCamp?.status || campaign?.status,
+      scheduledAt: execution?.scheduledAt || campaign?.scheduledAt,
+      sentAt: execution?.sentAt || emailCamp?.sentAt || campaign?.lastSentAt,
+      fromName: execution?.senderName || emailCamp?.fromName || campaign?.senderName,
+      fromEmail: execution?.fromEmail || emailCamp?.fromEmail || campaign?.fromEmail,
+      replyTo: execution?.replyToEmail || emailCamp?.replyTo || campaign?.replyToEmail,
+      emailCampaignId,
+      topLinks: linkClicks.slice(0, 10),
+      conversions: matchedActivations,
+      stats: statsObj,
+      ...statsObj
+    };
+
     res.json({
       ok: true,
-      campaign: {
-        id: campaign.id,
-        code: campaign.code,
-        name: campaign.name,
-        week: campaign.week,
-        subject: campaign.subject,
-        preheader: campaign.preheader,
-        contentHtml: campaign.contentHtml,
-        status: emailCamp?.status || campaign.status,
-        scheduledAt: campaign.scheduledAt,
-        lastSentAt: emailCamp?.sentAt || campaign.lastSentAt,
-        senderName: emailCamp?.fromName || campaign.senderName,
-        fromEmail: emailCamp?.fromEmail || campaign.fromEmail,
-        replyTo: emailCamp?.replyTo || campaign.replyToEmail,
-        totalRecipients: emailCamp?.totalRecipients || recipients.length,
-        sentCount: emailCamp?.sentCount || recipients.filter(r => r.status === 'sent').length,
-        failedCount: emailCamp?.failedCount || recipients.filter(r => r.status === 'failed').length,
-        uniqueOpens: recipients.filter(r => r.openCount > 0 || r.openedAt).length,
-        uniqueClicks: recipients.filter(r => r.clickCount > 0 || r.clickedAt).length,
-        linkClicksCount: linkClicks.length,
-        topLinks: linkClicks.slice(0, 10),
-        conversionsCount: matchedActivations.length,
-        activationsCount: matchedActivations.filter(a => a.isEcosystemActive).length,
-        conversions: matchedActivations
-      },
+      campaign: campaignResponse,
+      stats: statsObj,
       recipients: enrichedRecipients
     });
   } catch (e) {
@@ -2559,32 +2809,51 @@ export const retryFailedCampaignRecipients = async (req, res) => {
     const { id } = req.params;
     const clubId = await resolveClubId(req, false);
 
-    const { rows } = await db.query(
-      `SELECT * FROM "RotaryMarketingCampaign" WHERE id=$1 OR code=$1`, [id]
+    // Buscar en ejecuciones o en campañas
+    const { rows: execRows } = await db.query(
+      `SELECT * FROM "RotaryCampaignExecution" WHERE id=$1 OR "emailCampaignId"=$1 LIMIT 1`, [id]
     );
-    const campaign = rows[0];
-    if (!campaign || !campaign.emailCampaignId) {
+    const execution = execRows[0];
+
+    let emailCampaignId = execution?.emailCampaignId;
+    let campaign = null;
+
+    if (!emailCampaignId) {
+      const { rows: campRows } = await db.query(
+        `SELECT * FROM "RotaryMarketingCampaign" WHERE id=$1 OR code=$1 LIMIT 1`, [id]
+      );
+      campaign = campRows[0];
+      emailCampaignId = campaign?.emailCampaignId;
+    }
+
+    if (!emailCampaignId) {
       return res.status(404).json({ error: 'Campaña no encontrada o no vinculada a Email Marketing' });
     }
 
     const failedRecipients = await prisma.emailCampaignRecipient.findMany({
-      where: { campaignId: campaign.emailCampaignId, status: 'failed' }
+      where: { campaignId: emailCampaignId, status: 'failed' }
     });
 
     if (!failedRecipients.length) {
       return res.json({ ok: true, message: 'No hay destinatarios fallidos para reintentar.' });
     }
 
+    const fromEmail = execution?.fromEmail || campaign?.fromEmail || 'comunicaciones@rotary4281.org';
+    const fromName = execution?.senderName || campaign?.senderName || 'Comunicaciones | Distrito 4281';
+    const replyTo = execution?.replyToEmail || campaign?.replyToEmail || 'comunicaciones@rotary4281.org';
+    const subject = execution?.subject || campaign?.subject || 'Rotary en Acción';
+    const contentHtml = campaign?.contentHtml || '';
+
     let sentCount = 0;
     for (const r of failedRecipients) {
       const sendRes = await EmailService.sendEmail({
         clubId,
         to: r.email,
-        subject: campaign.subject,
-        html: campaign.contentHtml,
-        fromEmail: campaign.fromEmail,
-        fromName: campaign.senderName,
-        replyTo: campaign.replyToEmail
+        subject,
+        html: contentHtml,
+        fromEmail,
+        fromName,
+        replyTo
       });
       if (sendRes?.success) {
         sentCount++;
@@ -2596,16 +2865,43 @@ export const retryFailedCampaignRecipients = async (req, res) => {
     }
 
     await prisma.emailCampaign.update({
-      where: { id: campaign.emailCampaignId },
+      where: { id: emailCampaignId },
       data: {
         sentCount: { increment: sentCount },
         failedCount: { decrement: sentCount }
       }
     });
 
+    if (execution) {
+      await db.query(
+        `UPDATE "RotaryCampaignExecution"
+         SET "sentCount" = "sentCount" + $1,
+             "failedCount" = GREATEST(0, "failedCount" - $1),
+             "updatedAt" = NOW()
+         WHERE id = $2`,
+        [sentCount, execution.id]
+      );
+    }
+
     res.json({
       ok: true,
       message: `Reintento completado: ${sentCount} de ${failedRecipients.length} recuperados exitosamente.`
+    });
+  } catch (e) {
+    return fail(res, e);
+  }
+};
+
+// ─── 3.9 Endpoint de Reconciliación Manual y Auditoría ──────────────────────
+export const reconcileCampaignHistory = async (req, res) => {
+  try {
+    await ensureRotaryMarketingSchema();
+    const clubId = await resolveClubId(req, false);
+    const result = await reconcileRotaryExecutions(clubId);
+    res.json({
+      ok: true,
+      message: 'Historial sincronizado y reconciliado con Email Marketing exitosamente.',
+      result
     });
   } catch (e) {
     return fail(res, e);
