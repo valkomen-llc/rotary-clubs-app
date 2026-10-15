@@ -367,8 +367,10 @@ export const DEFAULT_SITE_MODULES_CONFIG = SITE_MODULES_CATALOG.reduce((acc, mod
 }, {});
 
 /**
- * Excepciones fundacionales por club (como Rotary E-Club Origen que tiene inversión activa).
+ * Excepciones fundacionales por club (como Rotary E-Club Origen o Distrito 4281).
  */
+export const DISTRITO_4281_CLUB_ID = '8aa470c5-0a5a-4a8d-b872-38645b8b9f3a';
+
 export const FOUNDATIONAL_CLUB_EXCEPTIONS = {
     [ORIGEN_CLUB_ID]: {
         finance_investment: true,
@@ -380,6 +382,18 @@ export const FOUNDATIONAL_CLUB_EXCEPTIONS = {
     },
     'rotary-e-club-origen': {
         finance_investment: true,
+        finance_vault: true,
+    },
+    [DISTRITO_4281_CLUB_ID]: {
+        finance_vault: true,
+    },
+    'rotary4281': {
+        finance_vault: true,
+    },
+    'distrito-4281-de-rotary-international': {
+        finance_vault: true,
+    },
+    'rotary-distrito-4281': {
         finance_vault: true,
     },
 };

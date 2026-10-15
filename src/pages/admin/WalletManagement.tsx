@@ -17,6 +17,7 @@ import axios from 'axios';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
 import { useLang } from '../../contexts/LanguageContext';
+import { useSiteAccess } from '../../hooks/useSiteAccess';
 import { formatMoney, formatNumber } from '../../lib/locale';
 import { RANGOS, RANGO_DEFAULT, DESTINO_TODOS, isRango, hayFiltro, AVISO_SALDO, ESTADO_TODOS, ESTADO_LABEL, AVISO_ESTADO,
 } from '../../lib/walletFilters';
@@ -326,6 +327,8 @@ interface PeriodoResumen {
 export default function WalletManagement() {
     const { token, user } = useAuth();
     const { club } = useClub();
+    const acceso = useSiteAccess();
+    const puedeGestionar = !acceso.restricted || acceso.can('finance.manage');
 
     // v4.853 — DOS MODOS, y el scope de datos es lo que los separa.
     //
@@ -1272,50 +1275,42 @@ export default function WalletManagement() {
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between gap-3">
                                     <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Estado del dinero</h3>
-                                    <button
-                                        onClick={() => handleSyncStripe(false)}
-                                        disabled={isSyncing}
-                                        title="Consulta Stripe para actualizar fees reales y fechas de disponibilidad de los aportes existentes"
-                                        className="flex items-center gap-2 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-bold rounded-lg border border-purple-100 transition-all disabled:opacity-50 disabled:cursor-wait"
-                                    >
-                                        <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-                                        {isSyncing ? 'Sincronizando…' : 'Sincronizar con Stripe'}
-                                    </button>
-                                    {/* ── RECONCILIAR (v4.885) ────────────────
-                                        Corrige el ESTADO de los aportes
-                                        históricos contra Stripe. NO es lo mismo
-                                        que sincronizar: aquél enriquece datos,
-                                        éste arregla en qué cubeta está el
-                                        dinero y deja constancia de cada cambio.
-
-                                        De ENSAYO primero, siempre. */}
-                                    <button
-                                        onClick={() => handleReconcile(false)}
-                                        disabled={isReconciling}
-                                        title="Revisa los aportes históricos y dice cuáles tienen el estado desactualizado. No escribe nada."
-                                        className="flex items-center gap-2 px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-bold rounded-lg border border-sky-100 transition-all disabled:opacity-50 disabled:cursor-wait"
-                                    >
-                                        <Info className={`w-3.5 h-3.5 ${isReconciling ? 'animate-pulse' : ''}`} />
-                                        {isReconciling ? 'Revisando…' : 'Revisar estados'}
-                                    </button>
-                                    {/* ── RECONSTRUIR COBROS (v4.1025) ────────
-                                        Los cobros que se acreditaron cuando su
-                                        fuente todavía no estaba atada a ningún
-                                        sitio y por eso NO dejaron movimiento —
-                                        hoy, las inscripciones a la Feria de
-                                        Proyectos. No corrige ningún estado:
-                                        crea el movimiento que falta.
-
-                                        De ENSAYO primero, siempre. */}
-                                    <button
-                                        onClick={() => handleRebuild(false)}
-                                        disabled={isRebuilding}
-                                        title="Busca cobros de otras fuentes (inscripciones a la Feria de Proyectos) que se acreditaron sin dejar movimiento en la Bóveda. No escribe nada."
-                                        className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold rounded-lg border border-emerald-100 transition-all disabled:opacity-50 disabled:cursor-wait"
-                                    >
-                                        <Wallet className={`w-3.5 h-3.5 ${isRebuilding ? 'animate-pulse' : ''}`} />
-                                        {isRebuilding ? 'Buscando…' : 'Buscar cobros sin registrar'}
-                                    </button>
+                                    {puedeGestionar ? (
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <button
+                                                onClick={() => handleSyncStripe(false)}
+                                                disabled={isSyncing}
+                                                title="Consulta Stripe para actualizar fees reales y fechas de disponibilidad de los aportes existentes"
+                                                className="flex items-center gap-2 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-bold rounded-lg border border-purple-100 transition-all disabled:opacity-50 disabled:cursor-wait"
+                                            >
+                                                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                                                {isSyncing ? 'Sincronizando…' : 'Sincronizar con Stripe'}
+                                            </button>
+                                            <button
+                                                onClick={() => handleReconcile(false)}
+                                                disabled={isReconciling}
+                                                title="Revisa los aportes históricos y dice cuáles tienen el estado desactualizado. No escribe nada."
+                                                className="flex items-center gap-2 px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-bold rounded-lg border border-sky-100 transition-all disabled:opacity-50 disabled:cursor-wait"
+                                            >
+                                                <Info className={`w-3.5 h-3.5 ${isReconciling ? 'animate-pulse' : ''}`} />
+                                                {isReconciling ? 'Revisando…' : 'Revisar estados'}
+                                            </button>
+                                            <button
+                                                onClick={() => handleRebuild(false)}
+                                                disabled={isRebuilding}
+                                                title="Busca cobros de otras fuentes (inscripciones a la Feria de Proyectos) que se acreditaron sin dejar movimiento en la Bóveda. No escribe nada."
+                                                className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold rounded-lg border border-emerald-100 transition-all disabled:opacity-50 disabled:cursor-wait"
+                                            >
+                                                <Wallet className={`w-3.5 h-3.5 ${isRebuilding ? 'animate-pulse' : ''}`} />
+                                                {isRebuilding ? 'Buscando…' : 'Buscar cobros sin registrar'}
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-100">
+                                            <Info className="w-3.5 h-3.5" />
+                                            Auditoría y Supervisión Institucional
+                                        </span>
+                                    )}
                                 </div>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
                                     <WalletBucketCard
@@ -1726,7 +1721,7 @@ export default function WalletManagement() {
                                                 onResent={(d) => setNotificaciones(prev => ({ ...prev, [donation.id]: d }))}
                                                 clubId={clubIdActivo}
                                                 elegido={!!elegidos[donation.movement?.id || '']}
-                                                onElegir={cambiarEleccion}
+                                                onElegir={puedeGestionar ? cambiarEleccion : undefined}
                                                 desembolsos={desembolsos[donation.movement?.id || ''] || []}
                                                 onVerTraslado={setTrasladoAbierto} />
                                         ))}
@@ -1758,7 +1753,7 @@ export default function WalletManagement() {
                                                             holdingDays={wallet?.platformHoldingDays ?? 6}
                                                             clubId={clubIdActivo}
                                                             elegido={!!elegidos[m.id]}
-                                                            onElegir={cambiarEleccion}
+                                                            onElegir={puedeGestionar ? cambiarEleccion : undefined}
                                                             desembolsos={desembolsos[m.id] || []}
                                                             onVerTraslado={setTrasladoAbierto} />
                                                     ))}
@@ -1814,7 +1809,7 @@ export default function WalletManagement() {
                                             </div>
                                         )}
 
-                                        {!seleccion.mezclada && (
+                                        {puedeGestionar && !seleccion.mezclada && (
                                             <BulkDisbursementBar
                                                 elegidos={seleccion.disponibles}
                                                 clubId={clubIdActivo}
@@ -1844,7 +1839,7 @@ export default function WalletManagement() {
                                         {/* v4.1014 — Reenviar la conciliación de un traslado ya
                                             efectuado. No registra nada: compone el documento y
                                             manda el correo. */}
-                                        {!seleccion.mezclada && (
+                                        {puedeGestionar && !seleccion.mezclada && (
                                             <BulkReconciliationBar
                                                 elegidos={seleccion.trasladados}
                                                 clubId={clubIdActivo}
@@ -1862,18 +1857,16 @@ export default function WalletManagement() {
                         {tab === 'retiros' && (
                             <div role="tabpanel" aria-label="Retiros" className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                                 <div className="lg:col-span-1">
-                                    <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm sticky top-8">
-                                        <h3 className="text-xl font-bold text-gray-900 mb-1 flex items-center gap-2">
-                                            <ArrowUpRight className="w-5 h-5 text-rotary-blue" />
-                                            Solicitar Retiro
-                                        </h3>
-                                        {/* La moneda NO se elige acá: es la del selector de
-                                            arriba. Dos controles para la misma decisión se
-                                            contradicen en cuanto alguien cambia uno solo. */}
-                                        <p className="text-xs text-gray-500 mb-6">
-                                            En <b data-no-translate>{code}</b>, la moneda que estás viendo.
-                                            {balances.length > 1 && ' Para retirar en otra, cambiala arriba.'}
-                                        </p>
+                                    {puedeGestionar ? (
+                                        <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm sticky top-8">
+                                            <h3 className="text-xl font-bold text-gray-900 mb-1 flex items-center gap-2">
+                                                <ArrowUpRight className="w-5 h-5 text-rotary-blue" />
+                                                Solicitar Retiro
+                                            </h3>
+                                            <p className="text-xs text-gray-500 mb-6">
+                                                En <b data-no-translate>{code}</b>, la moneda que estás viendo.
+                                                {balances.length > 1 && ' Para retirar en otra, cambiala arriba.'}
+                                            </p>
 
                                         <form onSubmit={handleRequestPayout} className="space-y-5">
                                             <div>
@@ -1954,6 +1947,28 @@ export default function WalletManagement() {
                                             </button>
                                         </form>
                                     </div>
+                                    ) : (
+                                        <div className="bg-white rounded-3xl p-6 border border-sky-100 shadow-sm sticky top-8 bg-gradient-to-br from-white to-sky-50/40">
+                                            <div className="w-10 h-10 rounded-2xl bg-sky-100 text-sky-700 flex items-center justify-center mb-4">
+                                                <Info className="w-5 h-5" />
+                                            </div>
+                                            <h3 className="text-lg font-bold text-gray-900 mb-1.5">
+                                                Supervisión de Fondos
+                                            </h3>
+                                            <p className="text-xs text-gray-600 leading-relaxed mb-4">
+                                                Tu perfil institucional de la <b>Fundación Rotaria</b> cuenta con permisos para auditar aportes recibidos, consultar el saldo disponible y monitorear el histórico de transferencias.
+                                            </p>
+                                            <div className="p-3 bg-white/80 rounded-xl border border-sky-200/60 text-xs text-gray-600 space-y-1.5">
+                                                <p className="font-semibold text-gray-800">Capacidades asignadas:</p>
+                                                <p className="flex items-center gap-1.5">✓ Visualización de aportes y recaudación</p>
+                                                <p className="flex items-center gap-1.5">✓ Exportación a Excel, CSV y PDF</p>
+                                                <p className="flex items-center gap-1.5">✓ Historial de retiros y transferencias</p>
+                                            </div>
+                                            <p className="text-[11px] text-gray-400 mt-4 leading-normal">
+                                                La solicitud de nuevos retiros bancarios está reservada para los administradores del sitio.
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="lg:col-span-2">

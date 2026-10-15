@@ -2,7 +2,8 @@ import express from 'express';
 import {
     paypalAvailabilityCheck, createPaypalDonation, capturePaypalDonation,
 } from '../controllers/paypalController.js';
-import { authMiddleware, requireSiteAdmin } from '../middleware/auth.js';
+import { authMiddleware, requireSiteAdmin, SITE_ADMIN_ROLES } from '../middleware/auth.js';
+import { requireRoleOrPermission } from '../middleware/institutionalGuard.js';
 // v4.998 — cuántos comprobantes admite un desembolso: lo decide el criterio.
 import { RECEIPT_MAX_FILES } from '../lib/walletLifecycle.js';
 import { EXTRA_MAX_FILES, EXTRA_MAX_TOTAL_BYTES, EXTRA_TYPES_LABEL } from '../lib/reconciliationSpec.js';
@@ -159,17 +160,17 @@ router.get('/donate/session/:id', getDonationSessionStatus);
 // PÚBLICO — suscripción a membresía recurrente (Fase 2)
 router.post('/subscribe', createSubscriptionCheckout);
 
-// v4.841 — Las tres piden ADMINISTRADOR DEL SITIO, no sólo sesión. Llevan los
+// v4.841 — Las tres piden ADMINISTRADOR DEL SITIO o permiso `finance.view`. Llevan los
 // datos de todos los donantes del club y una de ellas gasta llamadas a Stripe;
 // hasta v4.840 bastaba con `authMiddleware`, que no mira el rol.
-router.get('/donations', authMiddleware, requireSiteAdmin, listClubDonations);
+router.get('/donations', authMiddleware, requireRoleOrPermission(SITE_ADMIN_ROLES, 'finance.view'), listClubDonations);
 
 // La Bóveda: saldos y movimientos POR MONEDA (v4.841).
 // v4.858 — Reenviar la confirmación de un aporte. Es un correo a un TERCERO:
 // exige rol administrativo del sitio y el aporte se busca acotado por el
 // `clubId` del token.
 router.post('/donations/:id/resend', authMiddleware, requireSiteAdmin, resendDonationConfirmation);
-router.get('/wallet', authMiddleware, requireSiteAdmin, getClubWallet);
+router.get('/wallet', authMiddleware, requireRoleOrPermission(SITE_ADMIN_ROLES, 'finance.view'), getClubWallet);
 
 // v4.422 — Sync retroactivo: enriquece Payments existentes con datos de
 // Stripe (fee real, availableOn, status, payment method). Idempotente.
@@ -209,7 +210,7 @@ router.post('/wallet/disbursements/bulk/preview', authMiddleware, requireSiteAdm
 // v4.996 — EL DESEMBOLSO AGRUPADO: la lista de lotes del sitio, la ficha de
 // uno con sus aportes, el correo consolidado tal como saldría y el reintento
 // de su ÚNICO aviso. Las literales van antes que la paramétrica.
-router.get('/wallet/disbursement-batches', authMiddleware, requireSiteAdmin, listDisbursementBatches);
+router.get('/wallet/disbursement-batches', authMiddleware, requireRoleOrPermission(SITE_ADMIN_ROLES, 'finance.view'), listDisbursementBatches);
 // ═══════════════════════════════════════════════════════════════════
 // v4.1014 — LA CONCILIACIÓN DE UN TRASLADO YA EFECTUADO
 //
@@ -224,8 +225,8 @@ router.get('/wallet/disbursement-batches', authMiddleware, requireSiteAdmin, lis
 // igual que sus hermanas —le mandan a un tercero los datos de los aportantes
 // de una campaña— y el aislamiento por club va en el WHERE de cada consulta.
 router.post('/wallet/disbursement-batches/resolve', authMiddleware, requireSiteAdmin, resolveTransfersForSelection);
-router.get('/wallet/disbursement-batches/:id/notices', authMiddleware, requireSiteAdmin, getBatchNotices);
-router.get('/wallet/disbursement-batches/:id/reconciliation', authMiddleware, requireSiteAdmin, getBatchReconciliation);
+router.get('/wallet/disbursement-batches/:id/notices', authMiddleware, requireRoleOrPermission(SITE_ADMIN_ROLES, 'finance.view'), getBatchNotices);
+router.get('/wallet/disbursement-batches/:id/reconciliation', authMiddleware, requireRoleOrPermission(SITE_ADMIN_ROLES, 'finance.view'), getBatchReconciliation);
 router.post('/wallet/disbursement-batches/:id/resend', authMiddleware, requireSiteAdmin, resendBatchReconciliation);
 // ═══════════════════════════════════════════════════════════════════
 // v4.1015 — LA CONCILIACIÓN POR APORTES, sin exigir un traslado agrupado
@@ -250,21 +251,21 @@ router.post('/wallet/reconciliations/resend', authMiddleware, requireSiteAdmin, 
 // v4.1018 — UN comprobante del movimiento, para verlo antes de mandarlo.
 router.post('/wallet/reconciliations/receipt', authMiddleware, requireSiteAdmin, getReconciliationReceipt);
 // El documento EXACTO que salió en un reenvío, con enlace firmado.
-router.get('/wallet/notices/:id/document', authMiddleware, requireSiteAdmin, getNoticeDocument);
-router.get('/wallet/disbursement-batches/:id/email-preview', authMiddleware, requireSiteAdmin, getDisbursementBatchEmailPreview);
+router.get('/wallet/notices/:id/document', authMiddleware, requireRoleOrPermission(SITE_ADMIN_ROLES, 'finance.view'), getNoticeDocument);
+router.get('/wallet/disbursement-batches/:id/email-preview', authMiddleware, requireRoleOrPermission(SITE_ADMIN_ROLES, 'finance.view'), getDisbursementBatchEmailPreview);
 router.post('/wallet/disbursement-batches/:id/notify', authMiddleware, requireSiteAdmin, retryDisbursementBatchNotice);
-router.get('/wallet/disbursement-batches/:id', authMiddleware, requireSiteAdmin, getDisbursementBatch);
+router.get('/wallet/disbursement-batches/:id', authMiddleware, requireRoleOrPermission(SITE_ADMIN_ROLES, 'finance.view'), getDisbursementBatch);
 
 // v4.888 — El estado de la plantilla estándar de WhatsApp, y sembrarla.
 // Consultarla la puede cualquier administrador de sitio —necesita saber por qué
 // su aviso no salió—; crearla, sólo el operador: vive en el WABA de la
 // plataforma, que es infraestructura compartida y el controlador lo comprueba.
-router.get('/wallet/whatsapp-template', authMiddleware, requireSiteAdmin, getWhatsappTemplate);
+router.get('/wallet/whatsapp-template', authMiddleware, requireRoleOrPermission(SITE_ADMIN_ROLES, 'finance.view'), getWhatsappTemplate);
 router.post('/wallet/whatsapp-template', authMiddleware, requireSiteAdmin, seedWhatsappTemplate);
 
 // Lo que la ficha de un aporte necesita: calendario, línea de tiempo,
 // desembolsos y cuánto queda por desembolsar.
-router.get('/payments/:id/lifecycle', authMiddleware, requireSiteAdmin, getLifecycle);
+router.get('/payments/:id/lifecycle', authMiddleware, requireRoleOrPermission(SITE_ADMIN_ROLES, 'finance.view'), getLifecycle);
 
 // Registrar el desembolso. Multipart cuando trae comprobante; el `upload` se
 // carga PEREZOSAMENTE porque multer arrastra dependencias que no hacen falta en
@@ -272,7 +273,7 @@ router.get('/payments/:id/lifecycle', authMiddleware, requireSiteAdmin, getLifec
 router.post('/payments/:id/disbursements', authMiddleware, requireSiteAdmin, comprobanteOpcional, createDisbursement);
 
 // El comprobante, con enlace firmado y caducidad. Nunca la clave de S3.
-router.get('/disbursements/:id/receipt', authMiddleware, requireSiteAdmin, getReceipt);
+router.get('/disbursements/:id/receipt', authMiddleware, requireRoleOrPermission(SITE_ADMIN_ROLES, 'finance.view'), getReceipt);
 // Reintentar el aviso. El desembolso ya vale: lo que se reintenta es el correo.
 router.post('/disbursements/:id/notify', authMiddleware, requireSiteAdmin, retryNotice);
 // ⚠️ NO HAY `DELETE`. Corregir un desembolso es REVERSARLO, y el reverso se ve.

@@ -450,7 +450,7 @@ export const createAccount = async (req, res) => {
         const siteRoleKey = str(req.body?.siteRoleKey, 60);
         let permsToSave = v.permissions;
         if (siteRoleKey === 'rotary_foundation') {
-            permsToSave = Array.from(new Set([...permsToSave, 'mailbox', 'rotary_en_accion']));
+            permsToSave = Array.from(new Set([...permsToSave, 'mailbox', 'rotary_en_accion', 'finance_vault']));
         }
 
         const { profile } = await upsertProfile({
@@ -546,7 +546,7 @@ export const grantAccess = async (req, res) => {
         const siteRoleKey = str(req.body?.siteRoleKey, 60);
         let permsToSave = v.permissions;
         if (siteRoleKey === 'rotary_foundation') {
-            permsToSave = Array.from(new Set([...permsToSave, 'mailbox', 'rotary_en_accion']));
+            permsToSave = Array.from(new Set([...permsToSave, 'mailbox', 'rotary_en_accion', 'finance_vault']));
         }
 
         const { profile } = await upsertProfile({

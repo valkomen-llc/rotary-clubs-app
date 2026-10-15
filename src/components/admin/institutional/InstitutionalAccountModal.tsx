@@ -92,8 +92,8 @@ const InstitutionalAccountModal: React.FC<Props> = ({ domain, blockedReason = nu
         setRolDeSitio(valor);
         const elegido = availableSiteRoles.find(r => (r.id || r.key) === valor);
         if (elegido?.key === 'rotary_foundation') {
-            // Asignación automática de permisos para Rotary en Acción y buzón institucional
-            setPermisos(prev => Array.from(new Set([...prev, 'mailbox', 'rotary_en_accion'])));
+            // Asignación automática de permisos para Rotary en Acción, buzón institucional y Bóveda de Fondos
+            setPermisos(prev => Array.from(new Set([...prev, 'mailbox', 'rotary_en_accion', 'finance_vault'])));
         }
     };
 

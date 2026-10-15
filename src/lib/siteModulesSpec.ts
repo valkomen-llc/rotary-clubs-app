@@ -371,6 +371,8 @@ export const DEFAULT_SITE_MODULES_CONFIG: SiteModulesMap = SITE_MODULES_CATALOG.
     return acc;
 }, {} as SiteModulesMap);
 
+export const DISTRITO_4281_CLUB_ID = '8aa470c5-0a5a-4a8d-b872-38645b8b9f3a';
+
 export const FOUNDATIONAL_CLUB_EXCEPTIONS: Record<string, Partial<SiteModulesMap>> = {
     [ORIGEN_CLUB_ID]: {
         finance_investment: true,
@@ -382,6 +384,18 @@ export const FOUNDATIONAL_CLUB_EXCEPTIONS: Record<string, Partial<SiteModulesMap
     },
     'rotary-e-club-origen': {
         finance_investment: true,
+        finance_vault: true,
+    },
+    [DISTRITO_4281_CLUB_ID]: {
+        finance_vault: true,
+    },
+    'rotary4281': {
+        finance_vault: true,
+    },
+    'distrito-4281-de-rotary-international': {
+        finance_vault: true,
+    },
+    'rotary-distrito-4281': {
         finance_vault: true,
     },
 };

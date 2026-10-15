@@ -42,6 +42,21 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1206.0',
+        title: 'Bóveda de Fondos y Campañas de Emergencia: Visualización y Auditoría Integral para la Fundación Rotaria Distrito 4281 🏛️💰',
+        description: 'Ampliación de capacidades y permisos para el rol institucional Fundación Rotaria en el Distrito 4281 (rotary4281.org): 1) Habilitación de la Bóveda de Fondos (/admin/boveda): inclusión de finance_vault en FOUNDATIONAL_CLUB_EXCEPTIONS para Distrito 4281 (8aa470c5-0a5a-4a8d-b872-38645b8b9f3a), permitiendo visualizar saldos multimoneda (USD y COP), cubetas de liberación de Stripe, recaudación de campañas de emergencia y aportes recibidos. 2) Integración en RBAC y Accesos Institucionales: asignación de permisos finance.view y finance.export en el preset rotary_foundation y registro de la herramienta finance_vault en el catálogo institucional. 3) Protección y Autorización de Endpoints en Backend: actualización de las rutas de lectura en server/routes/financial.js (/wallet, /donations, /payments/:id/lifecycle, lotes y comprobantes) mediante requireRoleOrPermission(SITE_ADMIN_ROLES, "finance.view"), manteniendo estrictamente resguardadas las acciones de dispersión y desembolso (finance.manage). 4) Experiencia Adaptada en Bóveda: panel en modo supervisión y auditoría institucional, tarjeta informativa de atribuciones y deshabilitación contextual de acciones transaccionales sin afectar la navegación ni la exportación de reportes.',
+        date: new Date().toISOString(),
+        tags: ['boveda-fondos', 'fundacion-rotaria', 'distrito-4281', 'campana-emergencia', 'terremoto', 'rbac', 'finanzas', 'auditoria', 'production-release'],
+        type: 'feature',
+        impact: 'Alta: La Fundación Rotaria del Distrito 4281 puede auditar en tiempo real los fondos recaudados por la campaña del terremoto/emergencias y donaciones del distrito con total transparencia.',
+        changes: [
+            { type: 'added', text: 'Acceso y navegación a la Bóveda de Fondos (/admin/boveda) para usuarios de Fundación Rotaria.' },
+            { type: 'added', text: 'Excepción fundacional de módulo finance_vault para Rotary Distrito 4281.' },
+            { type: 'improved', text: 'Endpoints de lectura financiera protegidos con permiso finance.view garantizando consulta sin riesgo de mutación.' },
+            { type: 'improved', text: 'Interfaz de la Bóveda adaptada con vista de auditoría y supervisión institucional.' }
+        ]
+    },
+    {
         version: '4.1205.0',
         title: 'Gestión de Identidades y RBAC: Rol Institucional Fundación Rotaria Distrito 4281 y Acceso Especializado a Rotary en Acción 🛡️🏛️',
         description: 'Implementación integral del nuevo rol institucional "Fundación Rotaria" para el Distrito 4281 (rotary4281.org) dentro del sistema de administración de identidades, cuentas y buzones institucionales: 1) Selector Institucional en Modal de Creación: incorporación de la opción "Fundación Rotaria" en el formulario de creación de cuenta institucional (InstitutionalAccountModal), visible exclusivamente para el sitio distrital Rotary Distrito 4281 (rotary4281.org), con preasignación automática del buzón institucional de correo y del acceso a herramientas de "Rotary en Acción". 2) Definición Canónica en Matriz RBAC: registro del rol rotary_foundation y del módulo rotary_en_accion en rbacSpec con preset de permisos focalizado (rotary_en_accion.view, rotary_en_accion.export, contribution_campaigns.view, email_inbox.use_own, dashboard.view y landing /admin/rotary-en-accion). 3) Catálogo y Protección de Rutas: inclusión en institutionalAccess e institutionalAccessController y protección granular de endpoints en server/routes/rotary-en-accion.js permitiendo a los líderes de la Fundación Rotaria consultar, supervisar, exportar métricas y dar seguimiento a campañas sin acceso administrativo a taxonomías críticas o configuraciones distritales. 4) Interfaz Personalizada: insignia de reconocimiento institucional en el encabezado de Rotary en Acción y adaptación contextual de navegación.',

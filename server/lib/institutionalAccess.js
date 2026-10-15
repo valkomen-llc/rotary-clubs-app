@@ -86,6 +86,12 @@ export const PERMISSIONS = [
         help: 'Herramientas de seguimiento, campañas y banco de contenidos de Rotary en Acción.',
         adminOnly: false,
     },
+    {
+        key: 'finance_vault',
+        label: 'Bóveda de Fondos',
+        help: 'Consulta saldo, recaudación de campañas y detalle de aportes recibidos.',
+        adminOnly: false,
+    },
     // ── De acá para abajo, administración del sitio ──────────────────
     {
         key: 'email_accounts',
@@ -573,6 +579,7 @@ export const TOOL_ROUTES = {
     events: ['/admin/eventos', '/admin/eventos-convenciones'],
     contacts: ['/admin/leads', '/admin/crm'],
     rotary_en_accion: ['/admin/rotary-en-accion'],
+    finance_vault: ['/admin/boveda'],
     email_accounts: ['/admin/email'],
     users: ['/admin/miembros'],
     site_settings: ['/admin/configuracion', '/admin/integraciones', '/admin/imagenes-sitio'],

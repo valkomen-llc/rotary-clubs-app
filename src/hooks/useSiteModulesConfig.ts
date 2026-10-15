@@ -4,6 +4,7 @@ import {
     DEFAULT_SITE_MODULES_CONFIG,
     resolveClubModulesConfig,
     ORIGEN_CLUB_ID,
+    DISTRITO_4281_CLUB_ID,
     type SiteModulesMap
 } from '../lib/siteModulesSpec';
 
@@ -27,6 +28,9 @@ const getInitialClubIdentifier = (club: any): string | null => {
         const host = window.location.hostname.toLowerCase();
         if (host.includes('rotaryecluborigen') || host.includes('rotary-e-club-origen')) {
             return ORIGEN_CLUB_ID;
+        }
+        if (host.includes('rotary4281') || host.includes('4281')) {
+            return DISTRITO_4281_CLUB_ID;
         }
     }
     return null;

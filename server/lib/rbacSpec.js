@@ -731,6 +731,8 @@ export const ROLE_PRESETS = [
             'rotary_en_accion.view',
             'rotary_en_accion.export',
             'contribution_campaigns.view',
+            'finance.view',
+            'finance.export',
             'email_inbox.use_own',
             'dashboard.view',
         ],
