@@ -13,8 +13,9 @@ import { getPublicSections } from '../controllers/cmsController.js';
 import { recordPublicArticleView } from '../controllers/submissionArticleController.js';
 import { canonicalDomain, domainCandidates, subdomainLabel } from '../lib/domains.js';
 import { DISTRICT_SITE_SQL, districtSiteParams, pickDistrictSite, districtBranding } from '../lib/districtSite.js';
-import { createSwrCache, serverTiming } from '../lib/resilience.js';
+import { serverTiming } from '../lib/resilience.js';
 import { SITE_CONFIG_BUDGET, siteConfigCacheKey } from '../lib/documentBudget.js';
+import { siteConfigCache } from '../lib/siteConfigCache.js';
 
 const router = express.Router();
 
@@ -33,11 +34,8 @@ const router = express.Router();
  *     ver su cambio en el acto (y sigue cayendo a lo viejo si la base falla).
  * Las visitas simultáneas al mismo dominio comparten un solo cálculo.
  */
-const siteConfigCache = createSwrCache({
-    ttlMs: SITE_CONFIG_BUDGET.cacheTtlMs,
-    staleMs: SITE_CONFIG_BUDGET.cacheStaleMs,
-    max: SITE_CONFIG_BUDGET.cacheMax,
-});
+// La caché vive en `server/lib/siteConfigCache.js` desde v4.1204: guardar un
+// sitio desde el panel la vacía (`invalidateSiteConfig`).
 
 router.get('/by-domain', async (req, res) => {
     const { domain, preview, fresh } = req.query;

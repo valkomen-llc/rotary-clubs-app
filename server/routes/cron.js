@@ -1,4 +1,5 @@
 import express from 'express';
+import { invalidateSiteConfig } from '../lib/siteConfigCache.js';
 import { PrismaClient } from '@prisma/client';
 import { routeToModel } from '../lib/ai-router.js';
 import WhatsAppService from '../services/WhatsAppService.js';
@@ -97,6 +98,8 @@ router.get('/process-expirations', async (req, res) => {
         ]);
 
         if (suspensionClubs.count > 0 || suspensionDistricts.count > 0) {
+            // v4.1204 — un sitio recién suspendido tiene que pintar su barra.
+            invalidateSiteConfig();
             console.log(`[CRON] 🚨 SUSPENSIÓN AUTOMÁTICA: ${suspensionClubs.count} clubes y ${suspensionDistricts.count} distritos pasados a inactivos.`);
         }
 

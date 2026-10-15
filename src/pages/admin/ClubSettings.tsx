@@ -43,6 +43,7 @@ import RichTextEditor from '../../components/admin/RichTextEditor';
 import NavHierarchyEditor from '../../components/admin/NavHierarchyEditor';
 import ErrorBoundary from '../../components/ErrorBoundary';
 import { normalizeNavItems, type NavOrderItem } from '../../lib/navigation';
+import { subscriptionHealth } from '../../lib/siteExpiration';
 
 // Secciones/páginas del sistema que se pueden añadir al menú principal.
 const SYSTEM_NAV_SECTIONS: { label: string; href: string }[] = [
@@ -2673,9 +2674,11 @@ const ClubSettings: React.FC = () => {
                                         Ir al Portal Seguro <ExternalLink className="w-5 h-5" />
                                     </button>
                                     <div className="flex items-center gap-4 px-6 py-4 bg-white/5 rounded-2xl border border-white/10">
-                                        <div className={`w-2 h-2 rounded-full ${(club.subscriptionStatus === 'active' && !club.expirationBannerActive) ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></div>
+                                        <div className={`w-2 h-2 rounded-full ${subscriptionHealth(club).tone === 'ok' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></div>
                                         <span className="text-sm font-bold text-gray-300 uppercase tracking-widest">
-                                            Suscripción {(club.subscriptionStatus === 'active' && !club.expirationBannerActive) ? 'Activa' : 'Vencida'}
+                                            {/* El MISMO veredicto que pinta la portada (v4.1204): antes decía
+                                            «Vencida» con sólo marcar la casilla, aunque el sitio estuviera pagado. */}
+                                            Suscripción: {subscriptionHealth(club).label}
                                         </span>
                                     </div>
                                     <button

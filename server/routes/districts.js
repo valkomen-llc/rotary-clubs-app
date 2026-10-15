@@ -5,6 +5,7 @@ import VercelService from '../services/VercelService.js';
 import bcrypt from 'bcryptjs';
 import { canonicalDomain } from '../lib/domains.js';
 import { DISTRICT_SITE_SQL, districtSiteParams, pickDistrictSite } from '../lib/districtSite.js';
+import { invalidateSiteConfig } from '../lib/siteConfigCache.js';
 
 const router = express.Router();
 
@@ -191,6 +192,11 @@ router.put('/:id', authMiddleware, superAdminOnly, async (req, res) => {
                 [id, req.body.adminUserId]
             );
         }
+
+        // El sitio público del distrito lee la suscripción de esta fila:
+        // sin vaciar la caché, un distrito recién renovado seguiría pintando
+        // la barra de vencimiento hasta que venciera el TTL (v4.1204).
+        invalidateSiteConfig();
 
         res.set('Cache-Control', 'no-store');
         res.json(result.rows[0]);

@@ -3,6 +3,7 @@ import AdminLayout from '../../components/admin/AdminLayout';
 import DistrictPicker from '../../components/admin/DistrictPicker';
 import RegistrarPoolPicker from '../../components/admin/RegistrarPoolPicker';
 import { bannerLockNotice } from '../../lib/siteExpiration';
+import SubscriptionHealthPanel from '../../components/admin/SubscriptionHealthPanel';
 import { 
     Plus, Edit2, Trash2, Globe, MapPin, X, LogIn, 
     MessageSquare, Mail, FileText, Download, RefreshCw, Send, AlertTriangle, 
@@ -625,6 +626,10 @@ const EventosManagement: React.FC = () => {
                                     🚨 Supervisión Administrativa
                                 </h3>
                                 <div className="space-y-4">
+                                    {/* El veredicto que la portada va a pintar, con su fecha, sus días
+                                        y su barra — del MISMO criterio (v4.1204). */}
+                                    <SubscriptionHealthPanel site={formData as any} updatedAt={(editingClub as any)?.updatedAt} />
+
                                     <label className="flex items-center gap-3 cursor-pointer p-3 border border-red-100 rounded-xl bg-white hover:bg-red-50 transition-colors">
                                         <input 
                                             type="checkbox" 

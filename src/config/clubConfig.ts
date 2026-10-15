@@ -73,6 +73,8 @@ export interface ClubConfig {
      * no mostraba nada. Ver `src/lib/siteExpiration.ts`.
      */
     subscriptionStatus?: string;
+    /** Fecha de expiración de la suscripción (ISO). Desde v4.1204 entra al criterio de la barra. */
+    expirationDate?: string | null;
     developmentBannerActive?: boolean;
     developmentBannerMessage?: string;
     /** Idioma por defecto del sitio (código: 'es', 'en', …). Va de primero en el selector. */

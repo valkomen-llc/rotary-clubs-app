@@ -4,6 +4,8 @@ import prisma from '../lib/prisma.js'; // CLIENTE CENTRALIZADO (EVITA ERROR 500 
 import { canonicalDomain } from '../lib/domains.js';
 
 import { normalizeFloatingButton } from '../lib/floatingButton.js';
+import { shouldClearManualBanner } from '../lib/subscriptionHealth.js';
+import { invalidateSiteConfig } from '../lib/siteConfigCache.js';
 import { normalizeAboutMenu, normalizeHeaderCtas } from '../lib/headerMenu.js';
 // v4.437.17 — Reclasificación explícita de tipo de entidad desde la Gestión Global de
 // Clubes: el selector ahora incluye 'Evento o Convención', así que un registro mal
@@ -324,7 +326,20 @@ export const updateClub = async (req, res) => {
             addField('expirationDate', expirationDate ? new Date(expirationDate) : undefined);
             addField('billingContactEmail', billingContactEmail);
             addField('billingContactPhone', billingContactPhone);
-            addField('expirationBannerActive', expirationBannerActive);
+            // ⚠️ La casilla de la barra manual se DESMARCA sola cuando lo que va a
+            // quedar escrito es una suscripción «Pagado / Activo» que vence más
+            // allá de la ventana de aviso (v4.1204). Hasta v4.1203 sólo la
+            // apagaba el webhook de Stripe: un sitio renovado a mano desde el
+            // panel quedaba con la barra roja encendida para siempre — el
+            // reporte del Club Rotario Bogotá Occidente. Sólo se apaga, nunca se
+            // enciende: encenderla es una decisión de una persona.
+            const bannerFlag = shouldClearManualBanner(entity, req.body || {})
+                ? false
+                : expirationBannerActive;
+            if (bannerFlag === false && expirationBannerActive !== false && entity.expirationBannerActive) {
+                console.log(`[updateClub] ${id}: suscripción al día — se desmarca la casilla de la barra de vencimiento.`);
+            }
+            addField('expirationBannerActive', bannerFlag);
             addField('expirationBannerMessage', expirationBannerMessage);
             addField('developmentBannerActive', developmentBannerActive);
             addField('developmentBannerMessage', developmentBannerMessage);
@@ -590,6 +605,11 @@ export const updateClub = async (req, res) => {
                 [id, req.body.adminUserId]
             );
         }
+
+        // La configuración pública del sitio se sirve cacheada (`by-domain`):
+        // sin vaciarla, un sitio recién renovado seguiría pintando la barra en
+        // la visita siguiente. Nunca lanza.
+        invalidateSiteConfig();
 
         res.json(result.rows[0]);
     } catch (error) {

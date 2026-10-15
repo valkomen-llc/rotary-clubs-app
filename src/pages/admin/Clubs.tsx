@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
 import { ENTITY_TYPES, organizationTypeFor } from '../../lib/entityTypes';
 import { bannerLockNotice } from '../../lib/siteExpiration';
+import SubscriptionHealthPanel from '../../components/admin/SubscriptionHealthPanel';
 import SiteStatusPicker from '../../components/admin/SiteStatusPicker';
 import ContentStudioToolsConfigModal from '../../components/admin/content-studio/ContentStudioToolsConfigModal';
 import { SiteModulesManagerModal } from '../../components/admin/SiteModulesManagerModal';
@@ -1026,6 +1027,10 @@ const ClubsManagement: React.FC = () => {
                                     🚨 Supervisión Administrativa
                                 </h3>
                                 <div className="space-y-4">
+                                    {/* El veredicto que la portada va a pintar, con su fecha, sus días
+                                        y su barra — del MISMO criterio (v4.1204). */}
+                                    <SubscriptionHealthPanel site={formData as any} updatedAt={(editingClub as any)?.updatedAt} />
+
                                     <label className="flex items-center gap-3 cursor-pointer p-3 border border-red-100 rounded-xl bg-white hover:bg-red-50 transition-colors">
                                         <input 
                                             type="checkbox" 
