@@ -3,6 +3,7 @@ import EmailService from '../services/EmailService.js';
 import DomainProvisioningService from '../services/DomainProvisioningService.js';
 
 import prisma from '../lib/prisma.js';
+import { invalidateSiteConfig } from '../lib/siteConfigCache.js';
 import { ensureWalletSchema } from '../lib/ensureWalletSchema.js';
 import { stripeFeeInChargeCurrency } from '../lib/paymentTrace.js';
 import { trmForDate } from '../lib/trm.js';
@@ -426,6 +427,9 @@ async function handleSaaSReactivation(id, customerId) {
         } else {
             await prisma.district.update({ where: { id: target.id }, data: updateData });
         }
+        // v4.1204 — el sitio público tiene que dejar de pintar la barra de
+        // vencimiento en la visita siguiente, no cuando venza la caché.
+        invalidateSiteConfig();
         
         console.log(`✅ Plataforma de ${target.name || target.number} reactivada mágicamente (${type}) hasta ${newExp.toISOString()}`);
     } else {

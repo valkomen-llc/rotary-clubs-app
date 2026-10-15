@@ -19987,7 +19987,7 @@ enlaces de un sitio — hoy se miran uno por uno.
 | `src/components/ExpirationBanner.tsx` | La barra roja de la portada |
 | `Navbar.tsx` (`showBannerOffset`) | El desplazamiento del menú, que tiene que coincidir |
 
-Pruebas: `npm run test:expiration` (51 casos; el bloque de navegador monta el
+Pruebas: `npm run test:expiration` (128 casos desde v4.1204; el bloque de navegador monta el
 componente REAL y pide `playwright`, y se salta solo si falta).
 
 **Reglas durables:**
@@ -20035,10 +20035,75 @@ componente REAL y pide `playwright`, y se salta solo si falta).
   'active'` y `expirationBannerActive: false` en la misma escritura, así que al
   renovar la barra desaparece sola. La derivación no cambia eso.
 
-**Pendiente conocido:** `expirationBannerMessage` se guarda desde el panel y la
-barra **no lo lee** — el texto está escrito en el componente. Cablearlo cambiaría
-lo que hoy se ve en los sitios que ya tienen un mensaje guardado, así que no se
-tocó en esta versión.
+**Pendiente conocido:** ~~`expirationBannerMessage` no lo lee la barra~~ —
+**RESUELTO en v4.1204** sólo para la barra MANUAL: los veredictos derivados del
+estado y de la fecha llevan su propio texto, que no puede contradecir al
+veredicto.
+
+### La fecha decide y la casilla no se queda vieja — v4.1204
+
+Reporte con la ficha delante: Club Rotario Bogotá Occidente en «Activo»,
+«Pagado / Activo», expiración 04/09/2027, y rotarybogotaoccidente.org con la
+barra roja «VENCIMIENTO — Sitio en periodo de renovación…».
+
+| Pieza | Qué es |
+|---|---|
+| `subscriptionHealth` (`src/lib/siteExpiration.ts`) | El CRITERIO. **Puro**: fase, barra, texto, días restantes y avisos. La consumen la barra, el menú y el panel |
+| `server/lib/subscriptionHealth.js` | Espejo MÍNIMO del servidor: `daysUntilExpiration`, `isComfortablyActive`, `shouldClearManualBanner` |
+| `server/lib/siteConfigCache.js` | La caché de `by-domain`, extraída para que el guardado la pueda vaciar |
+| `src/components/admin/SubscriptionHealthPanel.tsx` | La tarjeta de estado, en las SEIS pantallas de sitios |
+
+Pruebas: `npm run test:expiration` (128 casos, con el bloque de navegador que
+monta la barra REAL). Verificadas a la inversa: reintroduciendo «la casilla
+manda sobre la fecha» fallan 7, incluida la de navegador.
+
+- **⚠️ LA CAUSA ERA LA CASILLA MANUAL, QUE NADIE APAGABA.** El criterio de
+  v4.878 era `estado vencido` **O** `expirationBannerActive`, y esa casilla sólo
+  la desmarcaba el webhook de Stripe. Un sitio renovado A MANO desde el panel
+  —que es como se renueva casi siempre— quedaba con la casilla encendida para
+  siempre y la barra roja sobre un club al día. No fallaba nada: la barra
+  obedecía un dato viejo.
+- **⚠️ SUPERSEDE «NO SE DERIVA DE `expirationDate`» de v4.878, pero sólo a
+  medias y a propósito.** El estado SIGUE mandando cuando dice «vencido» —una
+  fecha futura con el estado vencido pinta la barra y AVISA de la
+  contradicción en el panel—. Lo que la fecha decide ahora es el caso
+  «Pagado / Activo»: más de `RENEWAL_WINDOW_DAYS` (15) por delante → **al día,
+  ninguna barra, aunque la casilla esté marcada** (`manualFlagIgnored`, y el
+  panel lo dice); dentro de la ventana → aviso PREVENTIVO ámbar, no la barra
+  roja; fecha pasada → vencimiento, y pasada la gracia del cron
+  (`GRACE_DAYS`, 5) → suspensión. La casilla manual sólo decide donde no hay
+  fecha que mirar. La consecuencia que v4.878 temía —barra roja de impago sobre
+  un club que pagó— queda imposible por construcción en vez de evitada por no
+  mirar la fecha.
+- **`pending` NUNCA dice «suspendido»**: es un cobro en curso. Avisa en ámbar
+  sólo si el vencimiento está cerca, y el sitio sigue en línea.
+- **LOS DÍAS SE CUENTAN EN BOGOTÁ, la fecha se lee por sus partes UTC.** La
+  función corre en UTC: con el día de hoy en UTC, la ventana se abriría cinco
+  horas antes; y `expirationDate` es medianoche UTC del día facturado, así que
+  leída en hora local se correría al día anterior.
+- **⚠️ GUARDAR UN SITIO LIMPIA LA CASILLA VIEJA** (`shouldClearManualBanner` en
+  `updateClub`). Se decide sobre el RESULTADO de mezclar la fila y la petición,
+  no sobre la petición sola: guardar el nombre del club también tiene que
+  limpiarla. **Sólo apaga, nunca enciende** — encenderla es una decisión de una
+  persona. No se migró ninguna fila: un despliegue no escribe en la base, y el
+  criterio ya oculta la barra en el acto; la casilla se limpia en el siguiente
+  guardado.
+- **⚠️ LA CACHÉ DE `by-domain` SE VACÍA AL GUARDAR** (`invalidateSiteConfig`):
+  la renovación desde el panel, el `PUT` de un distrito, la renovación por
+  Stripe y la suspensión del cron. Vivía como constante dentro de
+  `routes/clubs.js` y nadie podía vaciarla. Es EN MEMORIA por instancia: las
+  demás instancias la renuevan al vencer su TTL (20 s), y el panel además pide
+  con `fresh=1`.
+- **LOS DOS ESPEJOS SE COMPARAN POR SALIDAS.** Con dos cuentas de días, el panel
+  diría «al día» y el servidor dejaría la casilla encendida, o al revés.
+- **LA TARJETA DEL PANEL ES UNA SOLA, COMPARTIDA POR LAS SEIS PANTALLAS**, y
+  calcula sobre lo que hay EN PANTALLA, así que es también vista previa: estado
+  del sitio, estado de pago, fecha, días restantes, período de renovación, qué
+  barra se va a pintar, última actualización y avisos. Con la condición escrita
+  en cada pantalla, el panel diría una cosa y la portada otra — que es lo que se
+  reportó.
+- **No hay excepción por sitio ni se esconde nada con CSS.** El criterio es
+  global; la barra ni se monta cuando no corresponde.
 
 
 ## Recursos que cambian con el idioma — v4.699
