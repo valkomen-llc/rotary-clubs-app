@@ -80,6 +80,12 @@ export const PERMISSIONS = [
         help: 'Consulta la base de contactos del sitio. Son datos personales de terceros.',
         adminOnly: false,
     },
+    {
+        key: 'rotary_en_accion',
+        label: 'Rotary en Acción',
+        help: 'Herramientas de seguimiento, campañas y banco de contenidos de Rotary en Acción.',
+        adminOnly: false,
+    },
     // ── De acá para abajo, administración del sitio ──────────────────
     {
         key: 'email_accounts',
@@ -566,6 +572,7 @@ export const TOOL_ROUTES = {
     news: ['/admin/noticias', '/admin/publicaciones'],
     events: ['/admin/eventos', '/admin/eventos-convenciones'],
     contacts: ['/admin/leads', '/admin/crm'],
+    rotary_en_accion: ['/admin/rotary-en-accion'],
     email_accounts: ['/admin/email'],
     users: ['/admin/miembros'],
     site_settings: ['/admin/configuracion', '/admin/integraciones', '/admin/imagenes-sitio'],

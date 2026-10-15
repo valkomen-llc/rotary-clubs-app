@@ -210,6 +210,12 @@ export const MODULES = [
         actions: ['view', 'create', 'edit', 'delete', 'publish'], routes: ['/admin/faqs'], legacy: null,
         help: 'El listado de preguntas frecuentes de la página pública.',
     },
+    {
+        key: 'rotary_en_accion', label: 'Rotary en Acción', group: 'Contenido', scope: 'site',
+        actions: ['view', 'create', 'edit', 'publish', 'export', 'manage'],
+        routes: ['/admin/rotary-en-accion'], legacy: 'rotary_en_accion',
+        help: 'Herramientas de seguimiento, campañas, solicitudes de contenido y reportes de impacto de Rotary en Acción.',
+    },
 
     // ── Comunicación ─────────────────────────────────────────────────
     {
@@ -495,6 +501,7 @@ export const LEGACY_PERMISSION_MAP = {
     email_accounts: ['email_accounts.view', 'email_accounts.create', 'email_accounts.edit', 'email_accounts.delete'],
     users: ['users.manage', 'roles.manage', 'audit.view'],
     site_settings: ['settings.manage', 'integrations.manage'],
+    rotary_en_accion: ['rotary_en_accion.view', 'rotary_en_accion.export', 'contribution_campaigns.view'],
 };
 
 export const LEGACY_KEYS = Object.keys(LEGACY_PERMISSION_MAP);
@@ -714,6 +721,21 @@ export const ROLE_PRESETS = [
         protected: true,
         permissions: INSTITUTIONAL_BASE,
     },
+    {
+        key: 'rotary_foundation',
+        label: 'Fundación Rotaria',
+        description: 'Gestión, seguimiento y supervisión de actividades, solicitudes, iniciativas y reportes de Rotary en Acción para la Fundación Rotaria. Sin acceso a la administración general.',
+        scope: 'site',
+        protected: true,
+        permissions: [
+            'rotary_en_accion.view',
+            'rotary_en_accion.export',
+            'contribution_campaigns.view',
+            'email_inbox.use_own',
+            'dashboard.view',
+        ],
+        landing: '/admin/rotary-en-accion',
+    },
 ];
 
 export const ROLE_PRESET_KEYS = ROLE_PRESETS.map(r => r.key);
@@ -745,6 +767,7 @@ export const ROLE_FALLBACK = {
     // puede todo lo de su sitio. Se mapea a lo que YA tiene, no a más.
     crowdfunder: 'site_admin',
     institutional_user: 'institutional_user',
+    rotary_foundation: 'rotary_foundation',
 };
 
 /** Los roles de `User` que son operador de la plataforma. Espejo de `PLATFORM_ROLES`. */

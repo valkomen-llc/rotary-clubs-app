@@ -196,6 +196,13 @@ export const isContentSubmissionsAllowedSite = (ctx: ContentSubmissionsSiteConte
         return true;
     }
 
+    // Rol institucional Fundación Rotaria (Distrito 4281)
+    const userRole = String((user as any)?.role || '');
+    const userRoleKey = String((user as any)?.roleKey || (user as any)?.grant?.roleKey || '');
+    if (userRole === 'rotary_foundation' || userRoleKey === 'rotary_foundation') {
+        return true;
+    }
+
     // 2. Feria de Proyectos
     const isFeriaHost = rawHost.includes('feriadeproyectos') || rawHost.includes('feria-de-proyectos');
     const isFeriaClub = clubType === 'feria de proyectos' || clubType === 'project_fair' || clubCategory === 'project_fair' ||

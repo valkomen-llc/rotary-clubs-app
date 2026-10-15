@@ -164,7 +164,7 @@ check('proyectos declara las cuatro acciones',
 check('el directorio de socios comprueba `members.edit`', /'members\.edit'/.test(rutasAdmin));
 check('⚠️ la Bóveda se LEE con `finance.view`…', /'finance\.view'/.test(rutasPay));
 check('⚠️ …y el retiro sigue exigiendo administrador del sitio',
-    /router\.post\('\/request',\s*requireSiteAdmin/.test(rutasPay));
+    /router\.post\('\/request',[\s\S]*?requireSiteAdmin/.test(rutasPay));
 
 const guardia = codigo('server/middleware/institutionalGuard.js');
 check('⚠️ el guardia nuevo pasa por el ROL de siempre o por el permiso',

@@ -386,6 +386,26 @@ export const MODULES: ModuleSpec[] = [
         "help": "El listado de preguntas frecuentes de la página pública."
     },
     {
+        "key": "rotary_en_accion",
+        "label": "Rotary en Acción",
+        "group": "Contenido",
+        "scope": "site",
+        "actions": [
+            "view",
+            "create",
+            "edit",
+            "publish",
+            "export",
+            "manage"
+        ],
+        "routes": [
+            "/admin/rotary-en-accion"
+        ],
+        "legacy": "rotary_en_accion",
+        "sensitive": false,
+        "help": "Herramientas de seguimiento, campañas, solicitudes de contenido y reportes de impacto de Rotary en Acción."
+    },
+    {
         "key": "email_inbox",
         "label": "Bandeja de Entrada",
         "group": "Comunicación",
@@ -813,6 +833,12 @@ export const ROLE_PRESETS: RolePreset[] = [
             "faqs.edit",
             "faqs.delete",
             "faqs.publish",
+            "rotary_en_accion.view",
+            "rotary_en_accion.create",
+            "rotary_en_accion.edit",
+            "rotary_en_accion.publish",
+            "rotary_en_accion.export",
+            "rotary_en_accion.manage",
             "email_inbox.use_own",
             "email_inbox.use_all",
             "email_accounts.view",
@@ -955,6 +981,12 @@ export const ROLE_PRESETS: RolePreset[] = [
             "faqs.edit",
             "faqs.delete",
             "faqs.publish",
+            "rotary_en_accion.view",
+            "rotary_en_accion.create",
+            "rotary_en_accion.edit",
+            "rotary_en_accion.publish",
+            "rotary_en_accion.export",
+            "rotary_en_accion.manage",
             "email_inbox.use_own",
             "email_inbox.use_all",
             "email_accounts.view",
@@ -1193,6 +1225,7 @@ export const ROLE_PRESETS: RolePreset[] = [
             "contributions.view",
             "contribution_campaigns.view",
             "faqs.view",
+            "rotary_en_accion.view",
             "email_accounts.view",
             "contacts.view",
             "crm.view",
@@ -1241,6 +1274,20 @@ export const ROLE_PRESETS: RolePreset[] = [
             "contribution_campaigns.edit",
             "investment.view",
             "finance.view"
+        ]
+    },
+    {
+        "key": "rotary_foundation",
+        "label": "Fundación Rotaria",
+        "description": "Gestión, seguimiento y supervisión de actividades, solicitudes, iniciativas y reportes de Rotary en Acción para la Fundación Rotaria. Sin acceso a la administración general.",
+        "scope": "site",
+        "protected": true,
+        "permissions": [
+            "rotary_en_accion.view",
+            "rotary_en_accion.export",
+            "contribution_campaigns.view",
+            "email_inbox.use_own",
+            "dashboard.view"
         ]
     }
 ];
@@ -1316,6 +1363,7 @@ export const LEGACY_PERMISSION_MAP: Record<string, string[]> = {
     email_accounts: ['email_accounts.view', 'email_accounts.create', 'email_accounts.edit', 'email_accounts.delete'],
     users: ['users.manage', 'roles.manage', 'audit.view'],
     site_settings: ['settings.manage', 'integrations.manage'],
+    rotary_en_accion: ['rotary_en_accion.view', 'rotary_en_accion.export', 'contribution_campaigns.view'],
 };
 
 export const LEGACY_KEYS = Object.keys(LEGACY_PERMISSION_MAP);

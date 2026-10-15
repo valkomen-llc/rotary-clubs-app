@@ -69,6 +69,34 @@ const InstitutionalAccountModal: React.FC<Props> = ({ domain, blockedReason = nu
     const [enviando, setEnviando] = useState(false);
     const [errorServidor, setErrorServidor] = useState<string | null>(null);
 
+    const availableSiteRoles = useMemo(() => {
+        const isD4281 = domain === 'rotary4281.org' || domain.includes('rotary4281');
+        const hasFoundation = siteRoles.some(r => r.key === 'rotary_foundation');
+        if (isD4281 && !hasFoundation) {
+            return [
+                ...siteRoles,
+                {
+                    key: 'rotary_foundation',
+                    id: null,
+                    name: 'Fundación Rotaria',
+                    description: 'Gestión, seguimiento y supervisión de actividades, solicitudes, iniciativas y reportes de Rotary en Acción para la Fundación Rotaria. Sin acceso a la administración general.',
+                    custom: false,
+                    summary: 'Rotary en Acción: Ver, Exportar · Campañas de Contribución: Ver · Bandeja de Entrada: Propia · Panel general: Ver',
+                },
+            ];
+        }
+        return siteRoles;
+    }, [siteRoles, domain]);
+
+    const handleRolDeSitioChange = (valor: string) => {
+        setRolDeSitio(valor);
+        const elegido = availableSiteRoles.find(r => (r.id || r.key) === valor);
+        if (elegido?.key === 'rotary_foundation') {
+            // Asignación automática de permisos para Rotary en Acción y buzón institucional
+            setPermisos(prev => Array.from(new Set([...prev, 'mailbox', 'rotary_en_accion'])));
+        }
+    };
+
     const direccion = buildInstitutionalEmail(form.local, domain);
 
     const revision = useMemo(
@@ -95,7 +123,7 @@ const InstitutionalAccountModal: React.FC<Props> = ({ domain, blockedReason = nu
                     Authorization: `Bearer ${localStorage.getItem('rotary_token')}`,
                 },
                 body: JSON.stringify(((): Record<string, unknown> => {
-                    const elegido = siteRoles.find(r => (r.id || r.key) === rolDeSitio);
+                    const elegido = availableSiteRoles.find(r => (r.id || r.key) === rolDeSitio);
                     return {
                         ...form,
                         permissions: permisos,
@@ -301,23 +329,23 @@ const InstitutionalAccountModal: React.FC<Props> = ({ domain, blockedReason = nu
                                     escribe aparte: con dos fuentes diría una
                                     cosa y la matriz otra, y quien asigna el rol
                                     confiaría en la que se lee más fácil. */}
-                                {siteRoles.length > 0 && (
+                                {availableSiteRoles.length > 0 && (
                                     <div>
                                         <p className="text-[11px] font-black text-gray-400 uppercase tracking-wider">
                                             Rol del sitio
                                         </p>
                                         <select
                                             value={rolDeSitio}
-                                            onChange={e => setRolDeSitio(e.target.value)}
+                                            onChange={e => handleRolDeSitioChange(e.target.value)}
                                             className="mt-2 w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/30 focus:border-rotary-blue"
                                         >
                                             <option value="">Sin rol asignado — se decide después</option>
-                                            {siteRoles.map(r => (
+                                            {availableSiteRoles.map(r => (
                                                 <option key={r.id || r.key} value={r.id || r.key}>{r.name}</option>
                                             ))}
                                         </select>
                                         {(() => {
-                                            const elegido = siteRoles.find(r => (r.id || r.key) === rolDeSitio);
+                                            const elegido = availableSiteRoles.find(r => (r.id || r.key) === rolDeSitio);
                                             if (!elegido) {
                                                 return (
                                                     <p className="mt-2 text-[11px] text-gray-500 leading-relaxed">
@@ -327,11 +355,28 @@ const InstitutionalAccountModal: React.FC<Props> = ({ domain, blockedReason = nu
                                                     </p>
                                                 );
                                             }
+                                            const isFoundation = elegido.key === 'rotary_foundation';
                                             return (
-                                                <div className="mt-2 p-3 rounded-xl bg-sky-50 border border-sky-200">
-                                                    <p className="text-xs text-sky-900">{elegido.summary}</p>
+                                                <div className={`mt-2 p-3.5 rounded-xl border ${
+                                                    isFoundation
+                                                        ? 'bg-gradient-to-r from-sky-50 to-indigo-50/50 border-sky-200 text-sky-950 shadow-xs'
+                                                        : 'bg-sky-50 border-sky-200 text-sky-900'
+                                                }`}>
+                                                    {isFoundation && (
+                                                        <div className="flex items-center gap-2 mb-1.5">
+                                                            <span className="text-[10px] font-black uppercase tracking-wider bg-rotary-blue text-white px-2 py-0.5 rounded-full shadow-xs">
+                                                                Fundación Rotaria · D4281
+                                                            </span>
+                                                            <span className="text-xs font-bold text-gray-900">
+                                                                Acceso especializado a Rotary en Acción
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                    <p className="text-xs font-semibold">{elegido.summary}</p>
                                                     {!!elegido.description && (
-                                                        <p className="text-[11px] text-sky-700 mt-1">{elegido.description}</p>
+                                                        <p className={`text-[11px] mt-1 leading-relaxed ${isFoundation ? 'text-sky-800' : 'text-sky-700'}`}>
+                                                            {elegido.description}
+                                                        </p>
                                                     )}
                                                 </div>
                                             );

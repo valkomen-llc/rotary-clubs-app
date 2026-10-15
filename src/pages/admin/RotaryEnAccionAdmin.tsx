@@ -16,6 +16,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { useAuth } from '../../hooks/useAuth';
+import { useSiteAccess } from '../../hooks/useSiteAccess';
 import { useClub } from '../../contexts/ClubContext';
 import {
   HeartHandshake, Inbox, Zap, BarChart3, Sliders, Settings, TrendingUp,
@@ -103,6 +104,17 @@ const RotaryEnAccionAdmin: React.FC<RotaryEnAccionAdminProps> = ({
   const { club } = useClub();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
+  const siteAccess = useSiteAccess();
+
+  const isRotaryFoundation = (user as any)?.role === 'rotary_foundation' ||
+    siteAccess.grant?.roleKey === 'rotary_foundation';
+
+  const isPlatformOp = user?.role === 'administrator' || user?.role === 'superadmin';
+  const isSiteAdmin = isPlatformOp || user?.role === 'club_admin' || user?.role === 'district_admin';
+
+  const canManage = isSiteAdmin || siteAccess.has('rotary_en_accion.manage');
+  const canPublish = isSiteAdmin || siteAccess.has('rotary_en_accion.publish');
+  const canEdit = isSiteAdmin || siteAccess.has('rotary_en_accion.edit');
 
   const isAllowed = useMemo(() => isContentSubmissionsAllowedSite({
     user,
@@ -125,15 +137,15 @@ const RotaryEnAccionAdmin: React.FC<RotaryEnAccionAdminProps> = ({
     if (tabParam === 'control') return 'control';
     if (tabParam === 'marketing' || tabParam === 'marketing-inteligente') return 'marketing';
     if (tabParam === 'activacion' || tabParam === 'activaciones' || tabParam === 'activar-club') return 'activacion';
-    if (tabParam === 'tax' || tabParam === 'taxonomias') return 'tax';
-    if (tabParam === 'config' || tabParam === 'configuracion') return 'config';
+    if ((tabParam === 'tax' || tabParam === 'taxonomias') && canManage) return 'tax';
+    if ((tabParam === 'config' || tabParam === 'configuracion') && canManage) return 'config';
     if (tabParam === 'impacto') return 'impacto';
     // Si viene con parámetros específicos de búsqueda/solicitud, priorizar Solicitudes
     if (params.get('abrir') || params.get('q') || params.get('campana') || params.get('campaign') || params.get('estado') || params.get('status')) {
       return 'solicitudes';
     }
     return initialTab || 'resumen';
-  }, [tabParam, params, initialTab]);
+  }, [tabParam, params, initialTab, canManage]);
 
   const cambiarTab = (nueva: RotaryEnAccionTab) => {
     const next = new URLSearchParams(params);
@@ -423,12 +435,21 @@ const RotaryEnAccionAdmin: React.FC<RotaryEnAccionAdminProps> = ({
                 <h1 className="text-2xl sm:text-3xl font-light text-gray-900 tracking-tight">
                   Rotary en Acción
                 </h1>
-                <span className="text-[10px] font-black uppercase tracking-wider bg-rotary-blue/10 text-rotary-blue px-2.5 py-0.5 rounded-full border border-rotary-blue/20">
-                  Módulo Unificado
-                </span>
+                {isRotaryFoundation ? (
+                  <span className="text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-amber-500 to-amber-600 text-white px-2.5 py-0.5 rounded-full shadow-xs border border-amber-400 flex items-center gap-1">
+                    <ShieldCheck className="w-3 h-3 text-white" />
+                    Fundación Rotaria · D4281
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-black uppercase tracking-wider bg-rotary-blue/10 text-rotary-blue px-2.5 py-0.5 rounded-full border border-rotary-blue/20">
+                    Módulo Unificado
+                  </span>
+                )}
               </div>
               <p className="text-xs text-gray-500 mt-1 max-w-2xl">
-                Captación universal · Las campañas activan · Las solicitudes gestionan · El Centro de Control opera.
+                {isRotaryFoundation
+                  ? 'Seguimiento, supervisión y trazabilidad de campañas, solicitudes de contenido y reportes de impacto para la Fundación Rotaria.'
+                  : 'Captación universal · Las campañas activan · Las solicitudes gestionan · El Centro de Control opera.'}
                 {dataSubmissions?.siteScoped && ' Ves las solicitudes asociadas al alcance de tu sitio.'}
               </p>
             </div>
@@ -549,29 +570,33 @@ const RotaryEnAccionAdmin: React.FC<RotaryEnAccionAdminProps> = ({
           </span>
         </button>
 
-        <button
-          onClick={() => cambiarTab('tax')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
-            activeTab === 'tax'
-              ? 'bg-white text-gray-900 shadow-sm border border-gray-200/60'
-              : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
-          }`}
-        >
-          <Tag className="w-4 h-4 text-indigo-500" />
-          <span>Taxonomías</span>
-        </button>
+        {canManage && (
+          <button
+            onClick={() => cambiarTab('tax')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
+              activeTab === 'tax'
+                ? 'bg-white text-gray-900 shadow-sm border border-gray-200/60'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+            }`}
+          >
+            <Tag className="w-4 h-4 text-indigo-500" />
+            <span>Taxonomías</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => cambiarTab('config')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
-            activeTab === 'config'
-              ? 'bg-white text-gray-900 shadow-sm border border-gray-200/60'
-              : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
-          }`}
-        >
-          <Settings className="w-4 h-4 text-slate-600" />
-          <span>Configuración</span>
-        </button>
+        {canManage && (
+          <button
+            onClick={() => cambiarTab('config')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
+              activeTab === 'config'
+                ? 'bg-white text-gray-900 shadow-sm border border-gray-200/60'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+            }`}
+          >
+            <Settings className="w-4 h-4 text-slate-600" />
+            <span>Configuración</span>
+          </button>
+        )}
 
         <button
           onClick={() => cambiarTab('impacto')}

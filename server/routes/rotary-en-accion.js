@@ -1,7 +1,8 @@
 // Rutas Rotary en Acción: motor universal de captación. Lo público no lleva
 // auth; la administración sí.
 import express from 'express';
-import { authMiddleware } from '../middleware/auth.js';
+import { authMiddleware, SITE_ADMIN_ROLES } from '../middleware/auth.js';
+import { requireRoleOrPermission } from '../middleware/institutionalGuard.js';
 import * as ctrl from '../controllers/rotaryEnAccionController.js';
 import * as mktCtrl from '../controllers/rotaryMarketingController.js';
 import * as actCtrl from '../controllers/rotaryActivationController.js';
@@ -27,13 +28,13 @@ router.post('/activacion/submit', lightPublicLimit, actCtrl.submitActivationInte
 
 // ── Admin ────────────────────────────────────────────────────────────
 router.use(authMiddleware);
-router.get('/taxonomies', ctrl.adminList);
-router.post('/taxonomies', ctrl.adminUpsert);
-router.post('/taxonomies/:id/active', ctrl.adminActive);
-router.get('/config-admin', ctrl.adminConfigGet);
-router.put('/config-admin', ctrl.adminConfigPut);
-router.get('/stats', requireSubmissionInboxAccess, ctrl.stats);
-router.get('/dashboard', requireSubmissionInboxAccess, ctrl.board);
+router.get('/taxonomies', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.view'), ctrl.adminList);
+router.post('/taxonomies', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.manage'), ctrl.adminUpsert);
+router.post('/taxonomies/:id/active', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.manage'), ctrl.adminActive);
+router.get('/config-admin', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.view'), ctrl.adminConfigGet);
+router.put('/config-admin', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.manage'), ctrl.adminConfigPut);
+router.get('/stats', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.view'), ctrl.stats);
+router.get('/dashboard', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.view'), ctrl.board);
 
 // ── Admin: Activación de Clubes (CRM & KPIs) ─────────────────────────
 router.get('/activacion/leads', requireSubmissionInboxAccess, actCtrl.getActivationLeads);

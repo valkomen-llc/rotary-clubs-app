@@ -180,8 +180,15 @@ export const getCatalog = async (req, res) => {
         try {
             const actor = await resolveUserGrant(req.user, clubId);
             const esOperador = isPlatformOperator(req.user);
+            const isD4281 = esOperador ||
+                info.domain === 'rotary4281.org' ||
+                (info.domain && info.domain.includes('rotary4281')) ||
+                (info.name && info.name.includes('4281')) ||
+                (info.subdomain && (info.subdomain.includes('rotary4281') || info.subdomain === 'd4281' || info.subdomain === 'distrito-4281'));
+
             siteRoles = (await listRoles(clubId))
                 .filter(r => r.active !== false && canAssignRole(actor, r, { actorIsPlatform: esOperador }))
+                .filter(r => r.key !== 'rotary_foundation' || isD4281)
                 .map(r => ({
                     key: r.key, id: r.id, name: r.name, description: r.description,
                     custom: r.custom, summary: describeRole(r.permissions),
@@ -440,6 +447,12 @@ export const createAccount = async (req, res) => {
             user.role = v.role;
         }
 
+        const siteRoleKey = str(req.body?.siteRoleKey, 60);
+        let permsToSave = v.permissions;
+        if (siteRoleKey === 'rotary_foundation') {
+            permsToSave = Array.from(new Set([...permsToSave, 'mailbox', 'rotary_en_accion']));
+        }
+
         const { profile } = await upsertProfile({
             userId: user.id,
             clubId,
@@ -449,7 +462,7 @@ export const createAccount = async (req, res) => {
             lastName: v.lastName,
             position: v.position,
             avatarUrl: str(req.body?.avatarUrl, 1000) || undefined,
-            permissions: v.permissions,
+            permissions: permsToSave,
             status: 'active',
             mustChangePassword: passwordSet ? v.temporaryPassword : undefined,
             createdBy: req.user?.id || null,
@@ -530,10 +543,16 @@ export const grantAccess = async (req, res) => {
             user.role = v.role;
         }
 
+        const siteRoleKey = str(req.body?.siteRoleKey, 60);
+        let permsToSave = v.permissions;
+        if (siteRoleKey === 'rotary_foundation') {
+            permsToSave = Array.from(new Set([...permsToSave, 'mailbox', 'rotary_en_accion']));
+        }
+
         const { profile } = await upsertProfile({
             userId: user.id, clubId, emailAccountId: cuenta.id, mailbox: cuenta.email,
             firstName: v.firstName, lastName: v.lastName, position: v.position,
-            permissions: v.permissions, status: 'active',
+            permissions: permsToSave, status: 'active',
             mustChangePassword: passwordSet ? v.temporaryPassword : undefined,
             createdBy: req.user?.id || null,
         });
