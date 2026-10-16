@@ -43,6 +43,8 @@ import { canDisburse } from '../lib/walletLifecycle.js';
 import { balanceFor } from '../lib/disbursements.js';
 // Normalización del logo institucional (misma que Gestión de Eventos).
 import { embedLogoDataUrl } from '../lib/logoEmbed.js';
+import { hasPermission } from '../lib/rbacSpec.js';
+import { resolveUserGrant } from '../lib/rbacStore.js';
 
 console.log('[projectFairAdminController] v4.622.0 cargado — Gestión de Postulaciones y Pagos (dashboard, trazabilidad Stripe, etiquetas, alertas y reportes)');
 
@@ -138,9 +140,23 @@ const clubFromHost = async (req) => {
 
 export const isProjectFairSiteAdmin = async (req, cfg) => {
     const user = req?.user;
-    if (!['club_admin', 'district_admin', 'administrator', 'editor'].includes(user?.role)) return false;
-    if (!user?.clubId) return false;
+    if (!user) return false;
+    if (user.role === 'administrator') return true;
+    if (!user.clubId) return false;
     if (cfg?.clubId && user.clubId === cfg.clubId) return true;
+
+    // Reconocimiento explícito del rol institucional o permiso de la feria
+    if (user.role === 'project_fair_manager') return true;
+    try {
+        const grant = req.grant || await resolveUserGrant(user, user.clubId);
+        if (grant && (grant.roleKey === 'project_fair_manager' || hasPermission(grant, 'project_fair.manage') || hasPermission(grant, 'project_fair.view'))) {
+            return true;
+        }
+    } catch {
+        // Degrada a comprobación por rol y tipo
+    }
+
+    if (!['club_admin', 'district_admin', 'administrator', 'editor', 'institutional_user'].includes(user?.role)) return false;
 
     // 1) El sitio del que administra el usuario está marcado como Feria de
     //    Proyectos (mismo criterio con el que la barra lateral muestra el
@@ -166,7 +182,7 @@ export const resolveAccess = (user, cfg, { ownsFairSite = false } = {}) => {
     const access = cfg?.access || {};
 
     let role = 'viewer';
-    if (user?.role === 'administrator' || listHas(access.admins, email) || ownsFairSite) role = 'admin';
+    if (user?.role === 'administrator' || user?.role === 'project_fair_manager' || listHas(access.admins, email) || ownsFairSite) role = 'admin';
     else if (listHas(access.finance, email)) role = 'finance';
     else if (listHas(access.reviewers, email)) role = 'reviewer';
     else if (['district_admin', 'club_admin', 'editor'].includes(user?.role)) role = 'viewer';

@@ -38,7 +38,7 @@ import {
 // RBAC (v4.937): el alta puede además asignar un ROL DEL SITIO, que es lo que
 // convierte «permitir acceso al panel» en «con estos permisos». Se importa el
 // criterio y la I/O, nunca se reimplementa la decisión acá.
-import { canAssignRole, describeRole } from '../lib/rbacSpec.js';
+import { canAssignRole, describeRole, presetRole } from '../lib/rbacSpec.js';
 import { roleFor, listRoles, upsertMembership, resolveUserGrant } from '../lib/rbacStore.js';
 import { attachInstitutionalProfile } from '../middleware/institutionalGuard.js';
 import { validateNewPassword, canResetAccessPassword } from '../lib/accountActions.js';
@@ -186,9 +186,14 @@ export const getCatalog = async (req, res) => {
                 (info.name && info.name.includes('4281')) ||
                 (info.subdomain && (info.subdomain.includes('rotary4281') || info.subdomain === 'd4281' || info.subdomain === 'distrito-4281'));
 
+            const isProjectFair = esOperador ||
+                (info.domain && (info.domain.includes('rotaryprojectfair') || info.domain.includes('projectfair'))) ||
+                (info.name && /feria de proyectos|project fair/i.test(info.name));
+
             siteRoles = (await listRoles(clubId))
                 .filter(r => r.active !== false && canAssignRole(actor, r, { actorIsPlatform: esOperador }))
                 .filter(r => r.key !== 'rotary_foundation' || isD4281)
+                .filter(r => r.key !== 'project_fair_manager' || isProjectFair)
                 .map(r => ({
                     key: r.key, id: r.id, name: r.name, description: r.description,
                     custom: r.custom, summary: describeRole(r.permissions),
@@ -253,11 +258,30 @@ export const listAccounts = async (req, res) => {
         const porCuenta = new Map(perfiles.filter(p => p.emailAccountId).map(p => [p.emailAccountId, p]));
         const porBuzon = new Map(perfiles.filter(p => p.mailbox).map(p => [p.mailbox, p]));
 
+        const userIds = perfiles.map(p => p.userId).filter(Boolean);
+        let membresiasPorUser = new Map();
+        if (userIds.length) {
+            try {
+                const { rows: memRows } = await db.query(
+                    `SELECT * FROM "SiteMembership" WHERE "clubId" = $1 AND "userId" = ANY($2::text[])`,
+                    [clubId, userIds]
+                );
+                membresiasPorUser = new Map(memRows.map(m => [m.userId, m]));
+            } catch (err) {
+                console.warn('[ACCESOS] listAccounts membresias:', err?.message);
+            }
+        }
+
         const salida = cuentas.map(c => {
             // Se busca por id y, si no, por dirección: es lo que reconoce al
             // dueño de una cuenta creada ANTES de este módulo, cuando todavía
             // no había perfil que atar (la lección del puente de v4.713).
             const perfil = porCuenta.get(c.id) || porBuzon.get(lower(c.email)) || null;
+            const mem = perfil ? membresiasPorUser.get(perfil.userId) : null;
+            const roleKey = mem?.roleKey || null;
+            const rolePresetObj = roleKey ? presetRole(roleKey) : null;
+            const edition = mem?.resourceScopes?.edition || null;
+
             return {
                 ...c,
                 owner: perfil ? {
@@ -269,6 +293,10 @@ export const listAccounts = async (req, res) => {
                     position: perfil.position,
                     avatarUrl: perfil.avatarUrl,
                     role: perfil.role || INSTITUTIONAL_ROLE,
+                    roleKey,
+                    roleLabel: rolePresetObj?.label || (roleKey ? str(roleKey) : null),
+                    edition,
+                    membershipStatus: mem?.status || null,
                     permissions: perfil.permissions,
                     status: perfil.status,
                     mustChangePassword: perfil.mustChangePassword,
@@ -358,11 +386,20 @@ const asignarRolDeSitio = async (req, { clubId, userId }) => {
             return { assigned: false, warnings: [`No puedes asignar el rol «${rol.name}»: tiene permisos que tú no tienes. La cuenta se creó sin rol asignado.`] };
         }
 
+        const statusToSet = str(req.body?.status, 20) || (req.body?.password ? 'active' : 'invited');
+        const edition = str(req.body?.edition, 80) || (rol.key === 'project_fair_manager' ? '12-valledupar' : null);
+        const resourceScopes = {
+            ...(edition ? { edition } : {}),
+            ...(rol.key === 'project_fair_manager' ? { events: { mode: 'all' } } : {}),
+            ...(typeof req.body?.resourceScopes === 'object' && req.body?.resourceScopes ? req.body.resourceScopes : {}),
+        };
+
         const hecho = await upsertMembership({
             userId, clubId,
             roleKey: rol.custom ? null : rol.key,
             roleId: rol.custom ? rol.id : null,
-            status: 'invited',
+            status: statusToSet,
+            resourceScopes,
             invitedBy: req.user?.id || null,
             createdBy: req.user?.id || null,
         });
@@ -451,6 +488,9 @@ export const createAccount = async (req, res) => {
         let permsToSave = v.permissions;
         if (siteRoleKey === 'rotary_foundation') {
             permsToSave = Array.from(new Set([...permsToSave, 'mailbox', 'rotary_en_accion', 'finance_vault']));
+        }
+        if (siteRoleKey === 'project_fair_manager') {
+            permsToSave = Array.from(new Set([...permsToSave, 'mailbox', 'contacts', 'project_fair', 'projects', 'events', 'media_library']));
         }
 
         const { profile } = await upsertProfile({
@@ -547,6 +587,9 @@ export const grantAccess = async (req, res) => {
         let permsToSave = v.permissions;
         if (siteRoleKey === 'rotary_foundation') {
             permsToSave = Array.from(new Set([...permsToSave, 'mailbox', 'rotary_en_accion', 'finance_vault']));
+        }
+        if (siteRoleKey === 'project_fair_manager') {
+            permsToSave = Array.from(new Set([...permsToSave, 'mailbox', 'contacts', 'project_fair', 'projects', 'events', 'media_library']));
         }
 
         const { profile } = await upsertProfile({

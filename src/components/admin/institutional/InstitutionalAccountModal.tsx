@@ -71,21 +71,32 @@ const InstitutionalAccountModal: React.FC<Props> = ({ domain, blockedReason = nu
 
     const availableSiteRoles = useMemo(() => {
         const isD4281 = domain === 'rotary4281.org' || domain.includes('rotary4281');
-        const hasFoundation = siteRoles.some(r => r.key === 'rotary_foundation');
-        if (isD4281 && !hasFoundation) {
-            return [
-                ...siteRoles,
-                {
-                    key: 'rotary_foundation',
-                    id: null,
-                    name: 'Fundación Rotaria',
-                    description: 'Gestión, seguimiento y supervisión de actividades, solicitudes, iniciativas y reportes de Rotary en Acción para la Fundación Rotaria. Sin acceso a la administración general.',
-                    custom: false,
-                    summary: 'Rotary en Acción: Ver, Exportar · Campañas de Contribución: Ver · Bandeja de Entrada: Propia · Panel general: Ver',
-                },
-            ];
+        const isProjectFair = domain === 'rotaryprojectfaircolombia.org' || domain.includes('projectfair');
+        let roles = [...siteRoles];
+
+        if (isD4281 && !roles.some(r => r.key === 'rotary_foundation')) {
+            roles.push({
+                key: 'rotary_foundation',
+                id: null,
+                name: 'Fundación Rotaria',
+                description: 'Gestión, seguimiento y supervisión de actividades, solicitudes, iniciativas y reportes de Rotary en Acción para la Fundación Rotaria. Sin acceso a la administración general.',
+                custom: false,
+                summary: 'Rotary en Acción: Ver, Exportar · Campañas de Contribución: Ver · Bandeja de Entrada: Propia · Panel general: Ver',
+            });
         }
-        return siteRoles;
+
+        if (isProjectFair && !roles.some(r => r.key === 'project_fair_manager')) {
+            roles.push({
+                key: 'project_fair_manager',
+                id: null,
+                name: 'Administrador Institucional de Feria de Proyectos',
+                description: 'Administración de los módulos operativos de la Feria de Proyectos Rotarios: analíticas, contactos, bandeja de entrada institucional, proyectos, eventos, multimedia y postulaciones.',
+                custom: false,
+                summary: 'Analíticas · Contactos & Leads · Correo Institucional · Postulación de Proyectos · Proyectos · Eventos · Multimedia',
+            });
+        }
+
+        return roles;
     }, [siteRoles, domain]);
 
     const handleRolDeSitioChange = (valor: string) => {
@@ -94,6 +105,9 @@ const InstitutionalAccountModal: React.FC<Props> = ({ domain, blockedReason = nu
         if (elegido?.key === 'rotary_foundation') {
             // Asignación automática de permisos para Rotary en Acción, buzón institucional y Bóveda de Fondos
             setPermisos(prev => Array.from(new Set([...prev, 'mailbox', 'rotary_en_accion', 'finance_vault'])));
+        } else if (elegido?.key === 'project_fair_manager') {
+            // Asignación automática de permisos para los 7 módulos operativos de la Feria de Proyectos
+            setPermisos(prev => Array.from(new Set([...prev, 'mailbox', 'contacts', 'project_fair', 'projects', 'events', 'media_library'])));
         }
     };
 

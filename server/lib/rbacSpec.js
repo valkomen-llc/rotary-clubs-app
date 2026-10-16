@@ -738,6 +738,43 @@ export const ROLE_PRESETS = [
         ],
         landing: '/admin/rotary-en-accion',
     },
+    {
+        key: 'project_fair_manager',
+        label: 'Administrador Institucional de Feria de Proyectos',
+        description: 'Administración de los módulos operativos de la Feria de Proyectos Rotarios: analíticas, contactos, bandeja de entrada institucional, proyectos, eventos, multimedia y postulaciones.',
+        scope: 'site',
+        protected: true,
+        permissions: [
+            'dashboard.view',
+            'analytics.view',
+            'analytics.export',
+            'contacts.view',
+            'contacts.create',
+            'contacts.edit',
+            'contacts.export',
+            'email_inbox.use_own',
+            'project_fair.view',
+            'project_fair.edit',
+            'project_fair.manage',
+            'projects.view',
+            'projects.create',
+            'projects.edit',
+            'projects.publish',
+            'projects.manage',
+            'events.view',
+            'events.create',
+            'events.edit',
+            'events.publish',
+            'media.view',
+            'media.create',
+            'media.edit',
+            'media.delete',
+            'downloads.view',
+            'downloads.create',
+            'downloads.edit',
+        ],
+        landing: '/admin/dashboard',
+    },
 ];
 
 export const ROLE_PRESET_KEYS = ROLE_PRESETS.map(r => r.key);
@@ -770,6 +807,8 @@ export const ROLE_FALLBACK = {
     crowdfunder: 'site_admin',
     institutional_user: 'institutional_user',
     rotary_foundation: 'rotary_foundation',
+    project_fair_manager: 'project_fair_manager',
+    PROJECT_FAIR_MANAGER: 'project_fair_manager',
 };
 
 /** Los roles de `User` que son operador de la plataforma. Espejo de `PLATFORM_ROLES`. */
@@ -1091,7 +1130,7 @@ export const isRestrictedGrant = (grant) => {
     const fuente = str(grant.source, 40);
     const acotada = fuente === 'membership'
         || fuente === 'legacy_permissions'
-        || (fuente === 'legacy_role' && str(grant.roleKey, 40) === 'institutional_user');
+        || (fuente === 'legacy_role' && ['institutional_user', 'rotary_foundation', 'project_fair_manager', 'PROJECT_FAIR_MANAGER'].includes(str(grant.roleKey, 40)));
     if (!acotada) return false;
     return !isFullSiteAdmin(grant);
 };
@@ -1428,6 +1467,11 @@ export const normalizeResourceScopes = (input) => {
     const out = {};
     if (!input || typeof input !== 'object' || Array.isArray(input)) return out;
     for (const [moduleKey, raw] of Object.entries(input)) {
+        if (moduleKey === 'edition') {
+            const ed = str(raw, 80);
+            if (ed) out.edition = ed;
+            continue;
+        }
         const reg = resourceModuleOf(moduleKey);
         if (!reg || !raw || typeof raw !== 'object') continue;
         const mode = str(raw.mode, 20) === 'specific' ? 'specific' : 'all';

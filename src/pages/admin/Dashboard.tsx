@@ -197,28 +197,43 @@ const ClubAdminDashboard: React.FC = () => {
     );
 };
 
+import ProjectFairDashboard from './ProjectFairDashboard';
+import { useSiteAccess } from '../../hooks/useSiteAccess';
+
 const Dashboard: React.FC = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
     const { club, isProduction } = useClub();
+    const { grant, loading: accessLoading } = useSiteAccess();
     const isSuperAdmin = user?.role === 'administrator';
+    const isProjectFairManager = grant?.roleKey === 'project_fair_manager' || user?.role === 'project_fair_manager';
     const urlParams = new URLSearchParams(window.location.search);
     const isViewingWizard = urlParams.get('view') === 'wizard';
 
     useEffect(() => {
+        if (accessLoading) return;
+        if (isProjectFairManager) return; // Dedicated Project Fair management dashboard
         if (user?.role === 'editor') {
             navigate('/admin/analytics', { replace: true });
         } else if (isProduction && !isSuperAdmin && !isViewingWizard) {
             navigate('/admin/analytics', { replace: true });
         }
-    }, [user, navigate, isProduction, isSuperAdmin, isViewingWizard]);
+    }, [user, navigate, isProduction, isSuperAdmin, isViewingWizard, isProjectFairManager, accessLoading]);
 
-    if (user?.role === 'editor') return null;
-    if (isProduction && !isSuperAdmin && !isViewingWizard) return null;
+    if (!isProjectFairManager) {
+        if (user?.role === 'editor') return null;
+        if (isProduction && !isSuperAdmin && !isViewingWizard) return null;
+    }
 
     return (
         <AdminLayout>
-            {isSuperAdmin ? <DashboardOverview /> : <ClubAdminDashboard />}
+            {isSuperAdmin ? (
+                <DashboardOverview />
+            ) : isProjectFairManager ? (
+                <ProjectFairDashboard />
+            ) : (
+                <ClubAdminDashboard />
+            )}
         </AdminLayout>
     );
 };

@@ -506,8 +506,11 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
             });
         }
 
+        const isProjectFairManager = acceso.grant?.roleKey === 'project_fair_manager' || user?.role === 'project_fair_manager';
         if (isUIAdmin) {
             items.push({ icon: LayoutDashboard, label: 'Overview', path: '/admin/dashboard', category: 'General', keywords: ['inicio', 'panel', 'dashboard', 'resumen'] });
+        } else if (isProjectFairManager) {
+            items.push({ icon: LayoutDashboard, label: 'Panel de Gestión', path: '/admin/dashboard', category: 'General', keywords: ['inicio', 'panel', 'dashboard', 'resumen', 'feria'] });
         }
         
         // Analíticas centraliza estadísticas de Sitio Web y Redes Sociales en un único módulo con pestañas

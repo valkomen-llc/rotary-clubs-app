@@ -1291,6 +1291,42 @@ export const ROLE_PRESETS: RolePreset[] = [
             "email_inbox.use_own",
             "dashboard.view"
         ]
+    },
+    {
+        "key": "project_fair_manager",
+        "label": "Administrador Institucional de Feria de Proyectos",
+        "description": "Administración de los módulos operativos de la Feria de Proyectos Rotarios: analíticas, contactos, bandeja de entrada institucional, proyectos, eventos, multimedia y postulaciones.",
+        "scope": "site",
+        "protected": true,
+        "permissions": [
+            "dashboard.view",
+            "analytics.view",
+            "analytics.export",
+            "contacts.view",
+            "contacts.create",
+            "contacts.edit",
+            "contacts.export",
+            "email_inbox.use_own",
+            "project_fair.view",
+            "project_fair.edit",
+            "project_fair.manage",
+            "projects.view",
+            "projects.create",
+            "projects.edit",
+            "projects.publish",
+            "projects.manage",
+            "events.view",
+            "events.create",
+            "events.edit",
+            "events.publish",
+            "media.view",
+            "media.create",
+            "media.edit",
+            "media.delete",
+            "downloads.view",
+            "downloads.create",
+            "downloads.edit"
+        ]
     }
 ];
 
@@ -1472,7 +1508,7 @@ export interface ResourceModuleSpec {
 
 export interface ResourceScopeEntry { id: string; label?: string | null; capabilities: string[]; }
 export interface ResourceScope { mode: 'all' | 'specific'; capabilities?: string[] | null; resources?: ResourceScopeEntry[]; }
-export type ResourceScopes = Record<string, ResourceScope>;
+export type ResourceScopes = Record<string, ResourceScope | any> & { edition?: string };
 
 export const RESOURCE_MODULES: ResourceModuleSpec[] = [
     {
@@ -1524,6 +1560,11 @@ export const normalizeResourceScopes = (input: unknown): ResourceScopes => {
     const out: ResourceScopes = {};
     if (!input || typeof input !== 'object' || Array.isArray(input)) return out;
     for (const [moduleKey, raw] of Object.entries(input as Record<string, unknown>)) {
+        if (moduleKey === 'edition') {
+            const ed = str(raw, 80);
+            if (ed) out.edition = ed;
+            continue;
+        }
         const reg = resourceModuleOf(moduleKey);
         if (!reg || !raw || typeof raw !== 'object') continue;
         const r = raw as { mode?: unknown; capabilities?: unknown; resources?: unknown };

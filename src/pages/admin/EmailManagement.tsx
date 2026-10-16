@@ -1286,19 +1286,48 @@ const EmailManagement: React.FC = () => {
                                                 <td className="px-6 py-5">
                                                     {!dueno ? (
                                                         <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">Sólo buzón</span>
-                                                    ) : dueno.status === 'suspended' ? (
-                                                        <span className="text-[10px] font-black uppercase tracking-wider text-red-600">Suspendido</span>
+                                                    ) : dueno.status === 'suspended' || dueno.membershipStatus === 'suspended' ? (
+                                                        <div className="space-y-1">
+                                                            <span className="text-[10px] font-black uppercase tracking-wider text-red-600 bg-red-50 px-2 py-0.5 rounded border border-red-100 inline-block">Suspendido</span>
+                                                            {dueno.roleLabel && <p className="text-[10px] text-gray-500 font-medium">{dueno.roleLabel}</p>}
+                                                        </div>
+                                                    ) : dueno.membershipStatus === 'invited' ? (
+                                                        <div className="space-y-1">
+                                                            <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 inline-block">Pendiente de activación</span>
+                                                            {dueno.roleLabel && <p className="text-[10px] text-gray-500 font-medium">{dueno.roleLabel}</p>}
+                                                        </div>
                                                     ) : (
-                                                        <div>
-                                                            <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600">Con acceso</span>
-                                                            <p className="text-[10px] text-gray-400 mt-0.5">
-                                                                {(dueno.permissions || []).length} herramienta(s)
-                                                                {dueno.mustChangePassword ? ' · contraseña temporal' : ''}
-                                                            </p>
+                                                        <div className="space-y-1">
+                                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                                <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 inline-block">Con acceso</span>
+                                                                {dueno.edition && (
+                                                                    <span className="text-[9px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
+                                                                        {dueno.edition === '12-valledupar' ? 'XII Valledupar' : dueno.edition}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            {dueno.roleLabel ? (
+                                                                <p className="text-[10px] text-gray-700 font-semibold">{dueno.roleLabel}</p>
+                                                            ) : (
+                                                                <p className="text-[10px] text-gray-400 mt-0.5">
+                                                                    {(dueno.permissions || []).length} herramienta(s)
+                                                                    {dueno.mustChangePassword ? ' · contraseña temporal' : ''}
+                                                                </p>
+                                                            )}
                                                         </div>
                                                     )}
                                                 </td>
                                                 <td className="px-6 py-5 text-right whitespace-nowrap">
+                                                    {!dueno && (
+                                                        <button
+                                                            onClick={() => setCuentaEnEdicion({ account: acc, owner: null, startGrantAccess: true })}
+                                                            title="Habilitar acceso institucional al panel"
+                                                            className="px-3 py-1.5 mr-2 text-[10px] font-black uppercase tracking-wider text-rotary-blue bg-blue-50 border border-blue-200 rounded-xl hover:bg-blue-100 transition-all inline-flex items-center gap-1"
+                                                        >
+                                                            <ShieldCheck className="w-3.5 h-3.5" />
+                                                            Dar acceso
+                                                        </button>
+                                                    )}
                                                     <button
                                                         onClick={() => setCuentaEnEdicion({ account: acc, owner: dueno })}
                                                         title="Editar el rótulo y las contraseñas"
@@ -1350,6 +1379,7 @@ const EmailManagement: React.FC = () => {
                         account={cuentaEnEdicion.account}
                         owner={cuentaEnEdicion.owner}
                         token={token}
+                        startGrantAccess={cuentaEnEdicion.startGrantAccess}
                         onClose={() => setCuentaEnEdicion(null)}
                         onSaved={() => {
                             // Se recarga el listado: el rótulo pudo cambiar y la
