@@ -42,6 +42,22 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1207.0',
+        title: 'Widget de Imagen Personalizada y Contenido Complementario en Detalles de Eventos 🖼️🧩',
+        description: 'Nuevo componente administrable y reutilizable para la columna lateral derecha de la página pública de eventos (ubicado inmediatamente debajo de la tarjeta de la sede y el mapa): 1) Arquitectura e Integración de Widgets: modelo de datos modular y sanitizado en CalendarEvent.metadata.widgets.sidebarImage con soporte retrocompatible, preservando total independencia por evento sin modificar esquemas de base de datos. 2) Administración Integral en Panel de Eventos: nueva pestaña "🧩 Widgets" con la sección "Widgets y contenido complementario" y la opción "Imagen lateral del evento", permitiendo subir archivos locales (JPG, PNG, WebP) o seleccionar de la Biblioteca Multimedia (MediaPicker), vista previa antes de guardar, interruptor de activación/desactivación, texto alternativo para accesibilidad (alt) y enlace opcional de destino con apertura configurable (misma pestaña o _blank). 3) Renderizado Adaptable y Responsive: ajuste automático al 100% del contenedor lateral, altura proporcional sin recortes (object-contain) para formatos verticales como 1080×1350 (4:5), bordes redondeados consistentes (rounded-2xl) y lazy loading. 4) Título Opcional Configurable: encabezado institucional superior con tipografía del sitio (ej. "Código de vestuario"), activable o desactivable desde el panel.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'widgets', 'imagen-lateral', 'codigo-vestuario', 'distrito-4281', 'villavicencio2027', 'media-picker', 'responsive', 'production-release'],
+        type: 'feature',
+        impact: 'Alta: Cualquier evento de Club Platform (como la XIII Conferencia de Villavicencio 2027) puede exhibir afiches oficiales o código de vestuario en la barra lateral sin tocar código.',
+        changes: [
+            { type: 'added', text: 'Widget de imagen promocional lateral adaptable (1080×1350 vertical u horizontal) inmediatamente debajo del mapa de la sede.' },
+            { type: 'added', text: 'Pestaña "🧩 Widgets" en el editor de eventos con sección "Widgets y contenido complementario" e "Imagen lateral del evento".' },
+            { type: 'added', text: 'Soporte dual de medios: subida desde el computador (JPG, PNG, WebP) y selección desde la Biblioteca Multimedia.' },
+            { type: 'added', text: 'Controles de visibilidad, título superior configurable, texto alternativo (alt) y enlace interactivo de destino.' },
+            { type: 'improved', text: 'Normalización robusta en metadata.widgets preservando aislamiento estricto entre clubes y distritos.' }
+        ]
+    },
+    {
         version: '4.1206.0',
         title: 'Bóveda de Fondos y Campañas de Emergencia: Visualización y Auditoría Integral para la Fundación Rotaria Distrito 4281 🏛️💰',
         description: 'Ampliación de capacidades y permisos para el rol institucional Fundación Rotaria en el Distrito 4281 (rotary4281.org): 1) Habilitación de la Bóveda de Fondos (/admin/boveda): inclusión de finance_vault en FOUNDATIONAL_CLUB_EXCEPTIONS para Distrito 4281 (8aa470c5-0a5a-4a8d-b872-38645b8b9f3a), permitiendo visualizar saldos multimoneda (USD y COP), cubetas de liberación de Stripe, recaudación de campañas de emergencia y aportes recibidos. 2) Integración en RBAC y Accesos Institucionales: asignación de permisos finance.view y finance.export en el preset rotary_foundation y registro de la herramienta finance_vault en el catálogo institucional. 3) Protección y Autorización de Endpoints en Backend: actualización de las rutas de lectura en server/routes/financial.js (/wallet, /donations, /payments/:id/lifecycle, lotes y comprobantes) mediante requireRoleOrPermission(SITE_ADMIN_ROLES, "finance.view"), manteniendo estrictamente resguardadas las acciones de dispersión y desembolso (finance.manage). 4) Experiencia Adaptada en Bóveda: panel en modo supervisión y auditoría institucional, tarjeta informativa de atribuciones y deshabilitación contextual de acciones transaccionales sin afectar la navegación ni la exportación de reportes.',

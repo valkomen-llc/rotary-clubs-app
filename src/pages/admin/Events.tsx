@@ -13,6 +13,7 @@ import AdminLayout from '../../components/admin/AdminLayout';
 import EventRegistrationTab from '../../components/admin/events/EventRegistrationTab';
 import EventVenueEditor from '../../components/admin/events/EventVenueEditor';
 import EventVideoEditor from '../../components/admin/events/EventVideoEditor';
+import EventWidgetsEditor from '../../components/admin/events/EventWidgetsEditor';
 import EcosystemPicker from '../../components/admin/events/EcosystemPicker';
 import { useAuth } from '../../hooks/useAuth';
 import { useSiteAccess } from '../../hooks/useSiteAccess';
@@ -58,7 +59,7 @@ export const slugify = (value: string) =>
 // Registro: son las dos primeras pestañas del evento y la vista con la que
 // se abre. El contenido sigue siendo el MISMO componente (`EventRegistrationTab`
 // con su prop `view`): cero duplicación, una sola fuente de verdad.
-type EventTab = 'inscripciones' | 'completadas' | 'info' | 'media' | 'html' | 'social' | 'sede' | 'metadata' | 'registro';
+type EventTab = 'inscripciones' | 'completadas' | 'info' | 'media' | 'html' | 'social' | 'sede' | 'metadata' | 'registro' | 'widgets';
 
 // v4.1090 — Qué CAPACIDAD del alcance de acceso gobierna cada pestaña. Es el
 // mismo catálogo que `RESOURCE_MODULES.events` en `rbacSpec.js`; acá sólo se
@@ -73,6 +74,7 @@ const TAB_CAPABILITY: Record<EventTab, string> = {
     sede: 'venue',
     metadata: 'registration_panel',
     registro: 'registration',
+    widgets: 'media',
 };
 const EDITABLE_CAPABILITIES = ['info', 'media', 'html', 'venue', 'registration_panel'];
 
@@ -915,7 +917,7 @@ const EventsManagement = () => {
     };
     const hasCap = (id: string, cap: string) => { const c = capsOf(id); return c === null || c.includes(cap); };
     const tabsFor = (id: string): EventTab[] =>
-        (['inscripciones', 'completadas', 'info', 'media', 'html', 'social', 'sede', 'metadata', 'registro'] as EventTab[])
+        (['inscripciones', 'completadas', 'info', 'media', 'html', 'social', 'sede', 'widgets', 'metadata', 'registro'] as EventTab[])
             .filter(tab => hasCap(id, TAB_CAPABILITY[tab]));
     const canEdit = (id: string) => EDITABLE_CAPABILITIES.some(cap => hasCap(id, cap));
     const getTab = (id: string): EventTab => {
@@ -1348,7 +1350,8 @@ const EventsManagement = () => {
                                                             media: '🖼️ Multimedia',
                                                             html: '</> HTML',
                                                             social: '🚀 Social',
-                                                            sede: '🏨 Sede',
+                                                            sede: '🏨 Sede y Mapa',
+                                                            widgets: '🧩 Widgets / Imagen lateral',
                                                             metadata: '🎟️ Panel de inscripción',
                                                             registro: '💳 Registro',
                                                         }[tab as string]}
@@ -1454,6 +1457,23 @@ const EventsManagement = () => {
                                                             images={event.images || []}
                                                             onChange={imgs => updateEventField(event.id, 'images', imgs)}
                                                         />
+                                                        <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                                            <div>
+                                                                <h4 className="text-sm font-bold text-blue-950 flex items-center gap-1.5">
+                                                                    🧩 Imagen lateral / Widgets del evento
+                                                                </h4>
+                                                                <p className="text-xs text-blue-800/80 mt-0.5">
+                                                                    Configura la imagen promocional o afiche (ej. código de vestuario) que se muestra debajo del mapa en la columna derecha.
+                                                                </p>
+                                                            </div>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setTab(event.id, 'widgets')}
+                                                                className="shrink-0 px-3.5 py-1.5 bg-white text-rotary-blue text-xs font-bold rounded-xl border border-blue-200 shadow-xs hover:bg-blue-50 transition-colors"
+                                                            >
+                                                                Configurar imagen lateral →
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                 )}
 
@@ -1470,13 +1490,34 @@ const EventsManagement = () => {
                                                     </div>
                                                 )}
 
-                                                {/* ── Tab: Panel de inscripción (barra lateral del evento) ── */}
+                                                {/* ── Tab: Sede y Ubicación (incluye Imagen lateral debajo del mapa) ── */}
                                                 {getTab(event.id) === 'sede' && (
-                                                    <div className="p-6">
+                                                    <div className="space-y-8">
                                                         <EventVenueEditor
                                                             venue={event.metadata?.venue}
                                                             onChange={venue => updateEventField(
                                                                 event.id, 'metadata', { ...event.metadata, venue })}
+                                                        />
+                                                        <hr className="border-gray-200" />
+                                                        <div className="pt-2">
+                                                            <EventWidgetsEditor
+                                                                widgets={event.metadata?.widgets}
+                                                                eventTitle={event.title}
+                                                                onChange={widgets => updateEventField(
+                                                                    event.id, 'metadata', { ...event.metadata, widgets })}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* ── Tab: Widgets y contenido complementario (v4.1207.0) ── */}
+                                                {getTab(event.id) === 'widgets' && (
+                                                    <div className="space-y-6">
+                                                        <EventWidgetsEditor
+                                                            widgets={event.metadata?.widgets}
+                                                            eventTitle={event.title}
+                                                            onChange={widgets => updateEventField(
+                                                                event.id, 'metadata', { ...event.metadata, widgets })}
                                                         />
                                                     </div>
                                                 )}

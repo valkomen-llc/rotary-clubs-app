@@ -225,7 +225,7 @@ const mergeEventUpdate = (actual, cuerpo, caps) => {
             if (!puede(cap)) continue;
             for (const k of claves) { if (k in entrante) base[k] = entrante[k]; else delete base[k]; }
         }
-        if (puede('info')) {
+        if (puede('info') || puede('media')) {
             for (const k of Object.keys(entrante)) { if (!clavesPropias.has(k)) base[k] = entrante[k]; }
         }
         next.metadata = base;

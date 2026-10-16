@@ -9,6 +9,7 @@ import MediaGallery from '../components/MediaGallery';
 import EventVideoPlayer from '../components/EventVideoPlayer';
 import { hasEventVideo } from '../lib/eventVideo';
 import EventVenueCard from '../components/EventVenueCard';
+import EventSidebarImageWidget from '../components/EventSidebarImageWidget';
 import { normalizeVenue } from '../lib/eventVenue';
 import { sourceTraceOf } from '../lib/districtEcosystem';
 import { useClub } from '../contexts/ClubContext';
@@ -403,6 +404,12 @@ const EventoDetalle = () => {
                                 </a>
                             </div>
                         )}
+
+                        {/* Widget de imagen promocional lateral (código de vestuario, afiche, etc.) */}
+                        <EventSidebarImageWidget
+                            widget={(event as any)?.metadata?.widgets?.sidebarImage || (event as any)?.metadata?.sidebarImage}
+                            eventTitle={event.title}
+                        />
 
                     </div>
                 </div>
