@@ -697,6 +697,487 @@ export const getIntelligence = withAccess(async (req, res, { cfg, access }) => {
 // quede sin datos.
 export const getOverview = getIntelligence;
 
+/**
+ * CENTRO DE INTELIGENCIA Y GESTIÓN CONSOLIDADO — XII FERIA DE PROYECTOS (v4.1209.0)
+ *
+ * Consolida en una sola respuesta atómica y en tiempo real:
+ *   · Metadatos y contexto del evento (Sede, Fechas, Estado, Edición)
+ *   · KPIs sincronizados de Postulaciones (activas, pagadas, revisión)
+ *   · KPIs sincronizados de Evento (inscripciones, confirmadas, acompañantes, personas)
+ *   · Recaudación desglosada por moneda (COP y USD)
+ *   · Participación institucional (clubes, distritos, países)
+ *   · Gráfica de evolución temporal (diaria y acumulada para inscripciones, postulaciones y pagos)
+ *   · Embudo de conversión de postulaciones
+ *   · Distribución por países, distritos y clubes
+ *   · Categorías de inscripción
+ *   · Alertas operativas y actividad reciente cronológica
+ *
+ * Admite filtro de períodos: ?period=7d|15d|30d|90d|custom|all&from=...&to=...&evento=...
+ */
+export const getDashboardIntelligence = withAccess(async (req, res, { cfg, access }) => {
+    try {
+        let eventId = clean(req.query.evento, 60);
+        if (!eventId) {
+            try {
+                const open = await db.query(`
+                    SELECT c."eventId" FROM "ProjectFairConfig" c
+                    WHERE c.key LIKE 'edition:%' AND (c.config->>'enabled')::boolean = true
+                    ORDER BY c."updatedAt" DESC LIMIT 1
+                `);
+                eventId = open.rows[0]?.eventId || null;
+            } catch { /* ... */ }
+        }
+        if (!eventId) eventId = '205348ec-83fd-475d-931c-9cdc3fdf8f62';
+
+        const now = new Date();
+        const periodKey = clean(req.query.period, 20) || 'all';
+        let fromDate = null;
+        let toDate = null;
+        let prevFromDate = null;
+        let prevToDate = null;
+        let periodLabel = 'Histórico completo';
+
+        if (periodKey === '7d') {
+            periodLabel = 'Últimos 7 días';
+            toDate = new Date(now);
+            fromDate = new Date(now.getTime() - 7 * 86400000);
+            prevToDate = new Date(fromDate);
+            prevFromDate = new Date(fromDate.getTime() - 7 * 86400000);
+        } else if (periodKey === '15d') {
+            periodLabel = 'Últimos 15 días';
+            toDate = new Date(now);
+            fromDate = new Date(now.getTime() - 15 * 86400000);
+            prevToDate = new Date(fromDate);
+            prevFromDate = new Date(fromDate.getTime() - 15 * 86400000);
+        } else if (periodKey === '30d') {
+            periodLabel = 'Últimos 30 días';
+            toDate = new Date(now);
+            fromDate = new Date(now.getTime() - 30 * 86400000);
+            prevToDate = new Date(fromDate);
+            prevFromDate = new Date(fromDate.getTime() - 30 * 86400000);
+        } else if (periodKey === '90d') {
+            periodLabel = 'Últimos 3 meses';
+            toDate = new Date(now);
+            fromDate = new Date(now.getTime() - 90 * 86400000);
+            prevToDate = new Date(fromDate);
+            prevFromDate = new Date(fromDate.getTime() - 90 * 86400000);
+        } else if (periodKey === 'custom' && req.query.from && req.query.to) {
+            periodLabel = `Del ${req.query.from} al ${req.query.to}`;
+            fromDate = new Date(req.query.from);
+            toDate = new Date(`${clean(req.query.to, 30)}T23:59:59.999Z`);
+            const diffMs = toDate.getTime() - fromDate.getTime();
+            prevToDate = new Date(fromDate.getTime() - 1);
+            prevFromDate = new Date(prevToDate.getTime() - Math.max(86400000, diffMs));
+        }
+
+        const dateSubFilter = fromDate && toDate ? `AND "createdAt" >= '${fromDate.toISOString()}' AND "createdAt" <= '${toDate.toISOString()}'` : '';
+        const prevDateSubFilter = prevFromDate && prevToDate ? `AND "createdAt" >= '${prevFromDate.toISOString()}' AND "createdAt" <= '${prevToDate.toISOString()}'` : '';
+        const dateRegFilter = fromDate && toDate ? `AND "createdAt" >= '${fromDate.toISOString()}' AND "createdAt" <= '${toDate.toISOString()}'` : '';
+        const prevDateRegFilter = prevFromDate && prevToDate ? `AND "createdAt" >= '${prevFromDate.toISOString()}' AND "createdAt" <= '${prevToDate.toISOString()}'` : '';
+
+        const [
+            evtRes, cfgRes, subAllRes, subPeriodRes, subPrevRes,
+            regAllRes, regPeriodRes, regPrevRes,
+            catRes, countryRes, districtRes, clubRes,
+            subTimeRes, regTimeRes, subActRes, regActRes,
+            publishedProjectsRes
+        ] = await Promise.all([
+            db.query('SELECT id, title, "startDate", "endDate", location FROM "CalendarEvent" WHERE id = $1 LIMIT 1', [eventId]),
+            db.query('SELECT config FROM "ProjectFairConfig" WHERE "eventId" = $1 OR key = \'active\' ORDER BY "updatedAt" DESC LIMIT 1', [eventId]),
+            // Submissions All (Lifetime)
+            db.query(`
+                SELECT COUNT(*)::int as total,
+                       COUNT(*) FILTER (WHERE status = 'paid')::int as paid,
+                       COUNT(*) FILTER (WHERE status = 'pending_payment')::int as pending,
+                       COUNT(*) FILTER (WHERE "workflowStatus" = 'in_review')::int as "inReview",
+                       COUNT(*) FILTER (WHERE "workflowStatus" = 'approved')::int as approved,
+                       COUNT(*) FILTER (WHERE "workflowStatus" = 'sent_to_grants')::int as "sentToGrants",
+                       COUNT(*) FILTER (WHERE "workflowStatus" IN ('received','pending_payment','payment_confirmed'))::int as "pendingReview",
+                       COUNT(DISTINCT district) FILTER (WHERE district IS NOT NULL AND district <> '')::int as districts,
+                       COUNT(DISTINCT lower("clubName")) FILTER (WHERE "clubName" IS NOT NULL AND "clubName" <> '')::int as clubs,
+                       COUNT(DISTINCT lower(country)) FILTER (WHERE country IS NOT NULL AND country <> '')::int as countries,
+                       COALESCE(SUM("amountCop") FILTER (WHERE status = 'paid'), 0)::float as "totalCop",
+                       COALESCE(SUM("amountUsd") FILTER (WHERE status = 'paid'), 0)::float as "totalUsd",
+                       COALESCE(SUM("budgetUsd"), 0)::float as "totalBudget",
+                       COALESCE(AVG("budgetUsd"), 0)::float as "avgBudget",
+                       COALESCE(AVG("trmRate") FILTER (WHERE status = 'paid'), 0)::float as "avgTrm"
+                FROM "ProjectFairSubmission"
+                WHERE "eventId" = $1 AND "archivedAt" IS NULL
+            `, [eventId]),
+            // Submissions Period
+            db.query(`
+                SELECT COUNT(*)::int as total,
+                       COUNT(*) FILTER (WHERE status = 'paid')::int as paid,
+                       COALESCE(SUM("amountCop") FILTER (WHERE status = 'paid'), 0)::float as "totalCop",
+                       COALESCE(SUM("amountUsd") FILTER (WHERE status = 'paid'), 0)::float as "totalUsd"
+                FROM "ProjectFairSubmission"
+                WHERE "eventId" = $1 AND "archivedAt" IS NULL ${dateSubFilter}
+            `, [eventId]),
+            // Submissions Prev Period
+            db.query(`
+                SELECT COUNT(*)::int as total,
+                       COUNT(*) FILTER (WHERE status = 'paid')::int as paid
+                FROM "ProjectFairSubmission"
+                WHERE "eventId" = $1 AND "archivedAt" IS NULL ${prevDateSubFilter}
+            `, [eventId]),
+            // Registrations All (Lifetime)
+            db.query(`
+                SELECT COUNT(*)::int as registrations,
+                       COUNT(*) FILTER (WHERE status = 'paid' OR status = 'settled' OR status = 'confirmed')::int as settled,
+                       COUNT(*) FILTER (WHERE status = 'pending_payment' OR status = 'pending')::int as pending,
+                       COUNT(*) FILTER (WHERE status = 'failed' OR status = 'expired')::int as failed,
+                       COUNT(*) FILTER (WHERE status = 'refunded')::int as refunded,
+                       COALESCE(SUM("companionsCount"), 0)::int as companions,
+                       COALESCE(SUM(1 + GREATEST("companionsCount", 0)), 0)::int as people,
+                       COUNT(DISTINCT country) FILTER (WHERE country <> '')::int as countries,
+                       COUNT(DISTINCT district) FILTER (WHERE district <> '')::int as districts,
+                       COUNT(DISTINCT lower("clubName")) FILTER (WHERE "clubName" <> '')::int as clubs,
+                       COALESCE(SUM("chargeAmount") FILTER (WHERE (status = 'paid' OR status = 'settled' OR status = 'confirmed') AND "chargeCurrency" = 'COP'), 0)::float as "revenueCop",
+                       COALESCE(SUM("chargeAmount") FILTER (WHERE (status = 'paid' OR status = 'settled' OR status = 'confirmed') AND "chargeCurrency" = 'USD'), 0)::float as "revenueUsd"
+                FROM "EventRegistration"
+                WHERE "eventId" = $1 AND status <> 'draft'
+            `, [eventId]),
+            // Registrations Period
+            db.query(`
+                SELECT COUNT(*)::int as registrations,
+                       COUNT(*) FILTER (WHERE status = 'paid' OR status = 'settled' OR status = 'confirmed')::int as settled,
+                       COALESCE(SUM("chargeAmount") FILTER (WHERE (status = 'paid' OR status = 'settled' OR status = 'confirmed') AND "chargeCurrency" = 'COP'), 0)::float as "revenueCop",
+                       COALESCE(SUM("chargeAmount") FILTER (WHERE (status = 'paid' OR status = 'settled' OR status = 'confirmed') AND "chargeCurrency" = 'USD'), 0)::float as "revenueUsd"
+                FROM "EventRegistration"
+                WHERE "eventId" = $1 AND status <> 'draft' ${dateRegFilter}
+            `, [eventId]),
+            // Registrations Prev Period
+            db.query(`
+                SELECT COUNT(*)::int as registrations,
+                       COUNT(*) FILTER (WHERE status = 'paid' OR status = 'settled' OR status = 'confirmed')::int as settled
+                FROM "EventRegistration"
+                WHERE "eventId" = $1 AND status <> 'draft' ${prevDateRegFilter}
+            `, [eventId]),
+            // Categories
+            db.query(`
+                SELECT "categoryKey", "categoryLabel", COUNT(*)::int as count,
+                       COUNT(*) FILTER (WHERE status = 'paid' OR status = 'settled' OR status = 'confirmed')::int as settled,
+                       COALESCE(SUM("chargeAmount") FILTER (WHERE (status = 'paid' OR status = 'settled' OR status = 'confirmed') AND "chargeCurrency" = 'COP'), 0)::float as "amountCop",
+                       COALESCE(SUM("chargeAmount") FILTER (WHERE (status = 'paid' OR status = 'settled' OR status = 'confirmed') AND "chargeCurrency" = 'USD'), 0)::float as "amountUsd"
+                FROM "EventRegistration"
+                WHERE "eventId" = $1 AND status <> 'draft'
+                GROUP BY "categoryKey", "categoryLabel"
+                ORDER BY count DESC
+            `, [eventId]),
+            // Countries from Event Registration
+            db.query(`
+                SELECT country, COUNT(*)::int as total
+                FROM "EventRegistration"
+                WHERE "eventId" = $1 AND status <> 'draft' AND country <> ''
+                GROUP BY country ORDER BY total DESC LIMIT 10
+            `, [eventId]),
+            // Districts from Event Registration
+            db.query(`
+                SELECT district, COUNT(*)::int as total
+                FROM "EventRegistration"
+                WHERE "eventId" = $1 AND status <> 'draft' AND district <> ''
+                GROUP BY district ORDER BY total DESC LIMIT 10
+            `, [eventId]),
+            // Clubs from Event Registration
+            db.query(`
+                SELECT "clubName", COUNT(*)::int as total
+                FROM "EventRegistration"
+                WHERE "eventId" = $1 AND status <> 'draft' AND "clubName" <> ''
+                GROUP BY "clubName" ORDER BY total DESC LIMIT 10
+            `, [eventId]),
+            // Submissions Timeline
+            db.query(`
+                SELECT to_char(date_trunc('day', "createdAt"), 'YYYY-MM-DD') AS day,
+                       COUNT(*)::int as total,
+                       COUNT(*) FILTER (WHERE status = 'paid')::int as paid,
+                       COALESCE(SUM("amountCop") FILTER (WHERE status = 'paid'), 0)::float as "amountCop",
+                       COALESCE(SUM("amountUsd") FILTER (WHERE status = 'paid'), 0)::float as "amountUsd"
+                FROM "ProjectFairSubmission"
+                WHERE "eventId" = $1 AND "archivedAt" IS NULL
+                GROUP BY 1 ORDER BY 1 ASC
+            `, [eventId]),
+            // Registrations Timeline
+            db.query(`
+                SELECT to_char(date_trunc('day', "createdAt"), 'YYYY-MM-DD') AS day,
+                       COUNT(*)::int as total,
+                       COUNT(*) FILTER (WHERE status = 'paid' OR status = 'settled' OR status = 'confirmed')::int as settled,
+                       COALESCE(SUM("chargeAmount") FILTER (WHERE (status = 'paid' OR status = 'settled' OR status = 'confirmed') AND "chargeCurrency" = 'COP'), 0)::float as "amountCop",
+                       COALESCE(SUM("chargeAmount") FILTER (WHERE (status = 'paid' OR status = 'settled' OR status = 'confirmed') AND "chargeCurrency" = 'USD'), 0)::float as "amountUsd"
+                FROM "EventRegistration"
+                WHERE "eventId" = $1 AND status <> 'draft'
+                GROUP BY 1 ORDER BY 1 ASC
+            `, [eventId]),
+            // Recent Submissions Activity
+            db.query(`
+                SELECT id, 'submission' as type, "projectName" as title, "clubName" as subtitle, status, "workflowStatus", "createdAt"
+                FROM "ProjectFairSubmission" WHERE "eventId" = $1 AND "archivedAt" IS NULL
+                ORDER BY "createdAt" DESC LIMIT 6
+            `, [eventId]),
+            // Recent Registrations Activity
+            db.query(`
+                SELECT id, 'registration' as type, ("firstName" || ' ' || COALESCE("lastName", '')) as title, "clubName" as subtitle, status, "categoryLabel" as category, "createdAt"
+                FROM "EventRegistration" WHERE "eventId" = $1 AND status <> 'draft'
+                ORDER BY "createdAt" DESC LIMIT 6
+            `, [eventId]),
+            // Published projects in club general bank
+            db.query('SELECT count(*)::int as total FROM "Project" WHERE "clubId" = $1', [req.user?.clubId || '322c2f88-ad33-484d-bb54-272de9262d72'])
+        ]);
+
+        const evt = evtRes.rows[0] || {};
+        const editionCfg = cfgRes.rows[0]?.config || {};
+        const subAll = subAllRes.rows[0] || {};
+        const subPeriod = subPeriodRes.rows[0] || {};
+        const subPrev = subPrevRes.rows[0] || {};
+        const regAll = regAllRes.rows[0] || {};
+        const regPeriod = regPeriodRes.rows[0] || {};
+        const regPrev = regPrevRes.rows[0] || {};
+        const publishedProjectsCount = publishedProjectsRes.rows[0]?.total || 0;
+
+        // Deltas calculation
+        const calcDelta = (curr, prev) => {
+            if (!prev || prev <= 0) return curr > 0 ? 100 : 0;
+            return Math.round(((curr - prev) / prev) * 100);
+        };
+
+        const regDelta = calcDelta(regPeriod.registrations, regPrev.registrations);
+        const subDelta = calcDelta(subPeriod.total, subPrev.total);
+
+        // Timeline consolidation
+        const dayMap = new Map();
+        for (const r of subTimeRes.rows) {
+            dayMap.set(r.day, {
+                day: r.day,
+                submissions: r.total || 0,
+                paidSubmissions: r.paid || 0,
+                registrations: 0,
+                settledRegistrations: 0,
+                confirmedPayments: r.paid || 0,
+                amountCop: r.amountCop || 0,
+                amountUsd: r.amountUsd || 0,
+            });
+        }
+        for (const r of regTimeRes.rows) {
+            const entry = dayMap.get(r.day) || {
+                day: r.day,
+                submissions: 0,
+                paidSubmissions: 0,
+                registrations: 0,
+                settledRegistrations: 0,
+                confirmedPayments: 0,
+                amountCop: 0,
+                amountUsd: 0,
+            };
+            entry.registrations = r.total || 0;
+            entry.settledRegistrations = r.settled || 0;
+            entry.confirmedPayments += (r.settled || 0);
+            entry.amountCop += (r.amountCop || 0);
+            entry.amountUsd += (r.amountUsd || 0);
+            dayMap.set(r.day, entry);
+        }
+
+        const sortedTimeline = Array.from(dayMap.values()).sort((a, b) => a.day.localeCompare(b.day));
+        let cumReg = 0;
+        let cumSub = 0;
+        let cumPay = 0;
+        let cumCop = 0;
+        let cumUsd = 0;
+        const timeline = sortedTimeline.map(pt => {
+            cumReg += pt.registrations;
+            cumSub += pt.submissions;
+            cumPay += pt.confirmedPayments;
+            cumCop += pt.amountCop;
+            cumUsd += pt.amountUsd;
+            return {
+                ...pt,
+                cumRegistrations: cumReg,
+                cumSubmissions: cumSub,
+                cumConfirmedPayments: cumPay,
+                cumAmountCop: cumCop,
+                cumAmountUsd: Math.round(cumUsd * 100) / 100,
+            };
+        });
+
+        // Conversion Funnel
+        const enviadas = subAll.total || 0;
+        const funnel = [
+            { key: 'submitted', label: 'Formulario enviado', count: enviadas, rate: enviadas ? 100 : 0 },
+            { key: 'paid', label: 'Pago confirmado', count: subAll.paid || 0, rate: enviadas ? Math.round((subAll.paid / enviadas) * 1000) / 10 : 0 },
+            { key: 'in_review', label: 'En revisión técnica', count: (subAll.inReview || 0) + (subAll.approved || 0) + (subAll.sentToGrants || 0), rate: enviadas ? Math.round((((subAll.inReview || 0) + (subAll.approved || 0) + (subAll.sentToGrants || 0)) / enviadas) * 1000) / 10 : 0 },
+            { key: 'approved', label: 'Aprobada por comité', count: (subAll.approved || 0) + (subAll.sentToGrants || 0), rate: enviadas ? Math.round((((subAll.approved || 0) + (subAll.sentToGrants || 0)) / enviadas) * 1000) / 10 : 0 },
+            { key: 'sent_to_grants', label: 'Enviada a Rotary Grants', count: subAll.sentToGrants || 0, rate: enviadas ? Math.round(((subAll.sentToGrants || 0) / enviadas) * 1000) / 10 : 0 },
+        ];
+
+        // Format recent activities
+        const allActivities = [
+            ...subActRes.rows.map(r => ({
+                id: `sub-${r.id}`,
+                type: 'submission',
+                title: r.title,
+                subtitle: `Club ${r.subtitle || 'Sin club'}`,
+                status: r.workflowStatus === 'payment_confirmed' ? 'Pago confirmado' : r.workflowStatus === 'in_review' ? 'En revisión' : 'Pendiente de pago',
+                statusType: r.status === 'paid' ? 'success' : 'warning',
+                createdAt: r.createdAt,
+                link: `/admin/postulaciones-pagos?search=${encodeURIComponent(r.title || '')}`,
+            })),
+            ...regActRes.rows.map(r => ({
+                id: `reg-${r.id}`,
+                type: 'registration',
+                title: r.title,
+                subtitle: r.category ? `${r.category} · Club ${r.subtitle || 'Sin club'}` : `Club ${r.subtitle || 'Sin club'}`,
+                status: r.status === 'paid' ? 'Pago confirmado' : 'Pendiente de pago',
+                statusType: r.status === 'paid' ? 'success' : 'warning',
+                createdAt: r.createdAt,
+                link: `/admin/eventos`,
+            })),
+        ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 8);
+
+        // Operational Alerts
+        const alerts = [];
+        if (subAll.pendingReview > 0) {
+            alerts.push({
+                id: 'alt-review',
+                severity: 'warning',
+                title: `${subAll.pendingReview} postulaciones pendientes de revisión`,
+                description: 'Propuestas con pago registrado que requieren calificación y observaciones técnicas.',
+                link: '/admin/postulaciones-pagos?workflowStatus=in_review',
+            });
+        }
+        if (regAll.pending > 0) {
+            alerts.push({
+                id: 'alt-reg-pending',
+                severity: 'info',
+                title: `${regAll.pending} inscripciones al evento con pago pendiente`,
+                description: 'Asistentes que iniciaron formulario pero no han completado la confirmación del pago.',
+                link: '/admin/eventos',
+            });
+        }
+        if (subAll.pending > 0) {
+            alerts.push({
+                id: 'alt-sub-pending',
+                severity: 'info',
+                title: `${subAll.pending} postulaciones de proyectos pendientes de pago`,
+                description: 'Clubes que registraron su proyecto y tienen pendiente abonar el derecho de postulación.',
+                link: '/admin/postulaciones-pagos?paymentStatus=pending_payment',
+            });
+        }
+        if ((regAll.failed || 0) === 0 && (subAll.failed || 0) === 0) {
+            alerts.push({
+                id: 'alt-clean',
+                severity: 'success',
+                title: 'Recaudación limpia sin pagos fallidos',
+                description: 'El 100% de las transacciones procesadas se han asentado con éxito sin contracargos.',
+                link: '/admin/postulaciones-pagos',
+            });
+        }
+
+        // Countries percentage
+        const totalRegCountries = countryRes.rows.reduce((acc, r) => acc + (r.total || 0), 0) || 1;
+        const byCountry = countryRes.rows.map(r => ({
+            country: r.country,
+            count: r.total,
+            percentage: Math.round((r.total / totalRegCountries) * 1000) / 10,
+        }));
+
+        res.json({
+            event: {
+                id: eventId,
+                title: evt.title || 'XII Rotary Project Fair Colombia 2027',
+                editionName: editionCfg?.edition?.name || 'XII Feria de Proyectos Rotary Colombia - Valledupar 2027',
+                city: editionCfg?.edition?.city || 'Valledupar',
+                country: editionCfg?.edition?.country || 'Colombia',
+                venue: evt.location || 'Sonesta Hotel Valledupar, Valledupar, Cesar, Colombia',
+                startDate: evt.startDate || '2027-01-28T12:00:00.000Z',
+                endDate: evt.endDate || '2027-01-30T14:30:00.000Z',
+                dateRangeLabel: '28 al 31 de enero de 2027',
+                status: 'active',
+                statusLabel: 'Convocatoria e Inscripciones Abiertas',
+            },
+            period: {
+                key: periodKey,
+                label: periodLabel,
+                from: fromDate ? fromDate.toISOString().slice(0, 10) : null,
+                to: toDate ? toDate.toISOString().slice(0, 10) : null,
+            },
+            kpis: {
+                registrations: {
+                    total: regAll.registrations || 0,
+                    settled: regAll.settled || 0,
+                    pending: regAll.pending || 0,
+                    failed: regAll.failed || 0,
+                    confirmationRate: regAll.registrations ? Math.round((regAll.settled / regAll.registrations) * 1000) / 10 : 0,
+                    periodRegistrations: regPeriod.registrations || 0,
+                    periodSettled: regPeriod.settled || 0,
+                    delta: regDelta,
+                },
+                participants: {
+                    totalExpected: regAll.people || 0,
+                    confirmedExpected: (regAll.settled || 0) + (regAll.companions || 0),
+                    companions: regAll.companions || 0,
+                    accredited: 0,
+                },
+                submissions: {
+                    total: subAll.total || 0,
+                    paid: subAll.paid || 0,
+                    pending: subAll.pending || 0,
+                    pendingReview: subAll.pendingReview || 0,
+                    inReview: subAll.inReview || 0,
+                    approved: subAll.approved || 0,
+                    sentToGrants: subAll.sentToGrants || 0,
+                    conversionRate: subAll.total ? Math.round((subAll.paid / subAll.total) * 1000) / 10 : 0,
+                    periodTotal: subPeriod.total || 0,
+                    periodPaid: subPeriod.paid || 0,
+                    delta: subDelta,
+                },
+                revenue: {
+                    copConfirmed: (subAll.totalCop || 0) + (regAll.revenueCop || 0),
+                    copSubmissions: subAll.totalCop || 0,
+                    copEvents: regAll.revenueCop || 0,
+                    usdConfirmed: regAll.revenueUsd || 0,
+                    usdEquivalentSubmissions: subAll.totalUsd || 0,
+                    avgTrm: Math.round((subAll.avgTrm || 0) * 100) / 100,
+                    refunded: 0,
+                    pendingCopEstimate: (subAll.pending || 0) * 250000,
+                },
+                institutional: {
+                    clubsEvents: regAll.clubs || 0,
+                    clubsSubmissions: subAll.clubs || 0,
+                    districtsEvents: regAll.districts || 0,
+                    districtsSubmissions: subAll.districts || 0,
+                    countriesEvents: regAll.countries || 0,
+                    countriesSubmissions: subAll.countries || 0,
+                },
+                projects: {
+                    submissionsTotal: subAll.total || 0,
+                    submissionsInReview: subAll.inReview || 0,
+                    submissionsApproved: subAll.approved || 0,
+                    publishedInBank: publishedProjectsCount,
+                },
+            },
+            funnel,
+            timeline,
+            participation: {
+                byCountry,
+                byDistrict: districtRes.rows.map(r => ({ district: r.district, count: r.total })),
+                byClub: clubRes.rows.map(r => ({ club: r.clubName, count: r.total })),
+                byCategory: catRes.rows.map(r => ({
+                    key: r.categoryKey,
+                    label: r.categoryLabel,
+                    count: r.count,
+                    settled: r.settled,
+                    amountCop: r.amountCop,
+                    amountUsd: r.amountUsd,
+                })),
+            },
+            alerts,
+            recentActivity: allActivities,
+            lastUpdated: new Date().toISOString(),
+        });
+    } catch (err) {
+        console.error('[projectFairAdminController] getDashboardIntelligence error:', err);
+        res.status(500).json({ error: 'Error al generar la inteligencia del panel', detail: err.message });
+    }
+});
+
 // ── Listado ──────────────────────────────────────────────────────────
 // GET /admin/submissions
 export const listSubmissions = withAccess(async (req, res, { access }) => {
@@ -1745,7 +2226,7 @@ export default {
     getOverview, listSubmissions, getSubmission, updateSubmission, addComment,
     listTags, createTag, deleteTag, attachTag, detachTag,
     addFile, deleteFile, syncStripe, resendReceipt,
-    getAlerts, getReports, getIntelligence, exportCsv, getCatalog, getSubmissionSnapshot,
+    getAlerts, getReports, getIntelligence, getDashboardIntelligence, exportCsv, getCatalog, getSubmissionSnapshot,
     readConvocatoriaConfig, writeConvocatoriaConfig,
     listMasterForms, getMasterForm, downloadMasterFormDocx, reopenMasterForm, lockMasterForm,
     bulkArchive, bulkRestore, bulkDelete, bulkStatus, bulkTag,

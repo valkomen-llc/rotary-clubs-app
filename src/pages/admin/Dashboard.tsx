@@ -209,28 +209,33 @@ const Dashboard: React.FC = () => {
     const isProjectFairManager = grant?.roleKey === 'project_fair_manager' || user?.role === 'project_fair_manager';
     const urlParams = new URLSearchParams(window.location.search);
     const isViewingWizard = urlParams.get('view') === 'wizard';
+    const isFairSite = typeof window !== 'undefined' && (
+        window.location.hostname.includes('rotaryprojectfaircolombia') ||
+        /feria de proyectos|project[ _-]?fair/i.test(club?.siteType || '')
+    );
+    const isProjectFair = isProjectFairManager || isFairSite;
 
     useEffect(() => {
         if (accessLoading) return;
-        if (isProjectFairManager) return; // Dedicated Project Fair management dashboard
+        if (isProjectFair) return; // Dedicated Project Fair management dashboard
         if (user?.role === 'editor') {
             navigate('/admin/analytics', { replace: true });
         } else if (isProduction && !isSuperAdmin && !isViewingWizard) {
             navigate('/admin/analytics', { replace: true });
         }
-    }, [user, navigate, isProduction, isSuperAdmin, isViewingWizard, isProjectFairManager, accessLoading]);
+    }, [user, navigate, isProduction, isSuperAdmin, isViewingWizard, isProjectFair, accessLoading]);
 
-    if (!isProjectFairManager) {
+    if (!isProjectFair) {
         if (user?.role === 'editor') return null;
         if (isProduction && !isSuperAdmin && !isViewingWizard) return null;
     }
 
     return (
         <AdminLayout>
-            {isSuperAdmin ? (
-                <DashboardOverview />
-            ) : isProjectFairManager ? (
+            {isProjectFair ? (
                 <ProjectFairDashboard />
+            ) : isSuperAdmin ? (
+                <DashboardOverview />
             ) : (
                 <ClubAdminDashboard />
             )}
