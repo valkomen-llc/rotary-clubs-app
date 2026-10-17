@@ -886,7 +886,12 @@ router.get('/', authMiddleware, async (req, res) => {
 
         // Role-based visibility (kept identical to previous behaviour).
         if (role === 'administrator') {
-            // System Admin sees EVERYTHING across all clubs — no clause.
+            // System Admin sees EVERYTHING across all clubs — unless explicitly filtering by clubId in query
+            if (req.query.clubId) {
+                where.push(`"clubId" = $${p}`);
+                params.push(req.query.clubId);
+                p += 1;
+            }
         } else if (role === 'district_admin') {
             const dId = districtId || userClubId;
             where.push(`("clubId" = $${p} OR "clubId" IN (SELECT id FROM "Club" WHERE "districtId" = $${p + 1}) OR "clubId" IS NULL)`);

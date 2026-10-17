@@ -43,7 +43,10 @@ export const updateSection = async (req, res) => {
 export const createSection = async (req, res) => {
     const { page, section, content, clubId } = req.body;
     try {
-        const targetClubId = req.user.role === 'administrator' ? clubId : req.user.clubId;
+        const targetClubId = req.user.role === 'administrator' ? (clubId || null) : req.user.clubId;
+        if (req.user.role !== 'administrator' && !targetClubId) {
+            return res.status(403).json({ error: 'No autorizado: se requiere contexto de club o distrito' });
+        }
         const contentStr = typeof content === 'string' ? content : JSON.stringify(content);
         const result = await db.query(
             `INSERT INTO "ContentSection" (id, page, section, content, "clubId", "updatedAt")
@@ -104,9 +107,15 @@ export const getPublicSections = async (req, res) => {
 
 export const batchUpsertSections = async (req, res) => {
     const { sections } = req.body;
-    const clubId = req.user.role === 'administrator'
-        ? (req.body.clubId || null)   // super admin: explicit null for global, or specific clubId
-        : (req.user.clubId || req.body.clubId);
+    let clubId;
+    if (req.user.role === 'administrator') {
+        clubId = req.body.clubId !== undefined ? req.body.clubId : null;
+    } else {
+        clubId = req.user.clubId;
+        if (!clubId) {
+            return res.status(403).json({ error: 'No autorizado: se requiere contexto de club o distrito' });
+        }
+    }
     if (!Array.isArray(sections)) return res.status(400).json({ error: 'Sections must be an array' });
     try {
         const results = [];

@@ -805,4 +805,42 @@ router.get('/content-activation-tick', async (req, res) => {
     }
 });
 
+// ─── Curaduría Visual IA: barrido de rotación programada (v4.1210) ─────────
+router.get('/curation-rotation-tick', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        console.warn('[CRON curation-rotation] Unauthorized');
+        return res.status(401).json({ error: 'Unauthorized cron trigger' });
+    }
+    try {
+        const { ensureVisualCurationSchema } = await import('../lib/ensureVisualCurationSchema.js');
+        const { runCurationCycleForTenant } = await import('../lib/visualCurationEngine.js');
+        await ensureVisualCurationSchema();
+        const db = (await import('../lib/db.js')).default;
+
+        // Seleccionar tenants con curaduría habilitada cuya fecha de próxima ejecución haya llegado
+        const { rows: dueTenants } = await db.query(`
+            SELECT "clubId", mode FROM "SiteImageCurationConfig"
+             WHERE enabled = TRUE
+               AND ("nextRunAt" IS NULL OR "nextRunAt" <= NOW())
+             LIMIT 10
+        `);
+
+        const results = [];
+        for (const t of dueTenants) {
+            try {
+                const r = await runCurationCycleForTenant(t.clubId);
+                results.push({ clubId: t.clubId, status: 'ok', ...r });
+            } catch (err) {
+                results.push({ clubId: t.clubId, status: 'error', error: err.message });
+            }
+        }
+
+        res.json({ ok: true, processedTenants: results.length, details: results });
+    } catch (e) {
+        console.error('[CRON curation-rotation] error:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 export default router;

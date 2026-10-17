@@ -3,13 +3,17 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/admin/AdminLayout';
 import {
     Image as ImageIcon, Save, Loader2, Trash2, Upload, Plus,
-    Monitor, ChevronDown, ChevronUp, CheckCircle, X, Search, AlertCircle, XCircle
+    Monitor, ChevronDown, ChevronUp, CheckCircle, X, Search, AlertCircle, XCircle, Sparkles
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
 import { toast } from 'sonner';
 import Cropper from 'react-easy-crop';
 import { getCroppedImg } from '../../utils/cropImage';
+import { isPlatformSuperAdmin, isOnPlatformDomain } from '../../lib/platformAdmin';
+import { invalidateSiteImages } from '../../hooks/useSiteImages';
+import { useSiteModulesConfig } from '../../hooks/useSiteModulesConfig';
+import { VisualCurationPanel } from '../../components/admin/curation/VisualCurationPanel';
 
 const PROXY_URL = (url: string) => {
     if (!url || url.startsWith('data:')) return url;
@@ -180,14 +184,35 @@ const BASE_CONTAINERS: Container[] = [
 const ImageDistribution: React.FC = () => {
     const { user } = useAuth();
     const { club } = useClub();
-    
-    // Compute dynamic containers based on club modules
+    const { modules: siteModules } = useSiteModulesConfig();
+
+    const isPlatformAdmin = isPlatformSuperAdmin(user);
+    const onPlatformHost = isOnPlatformDomain();
+
+    const location = useLocation();
+    const navigate = useNavigate();
+    const params = new URLSearchParams(location.search);
+    const urlClubId = params.get('clubId');
+
+    // Determinación precisa del tenant:
+    // Solo se edita la plantilla global de plataforma si el operador es superadministrador,
+    // está en un dominio de plataforma (o localhost) y NO está contextualizado en un club/distrito.
+    const isGlobal = isPlatformAdmin && onPlatformHost && !urlClubId && !(club as any)?.id;
+    const viewClubId = isGlobal ? null : (urlClubId || (club as any)?.id || user?.clubId || null);
+    const clubId = viewClubId;
+
+    // Compute dynamic containers based on club/district modules
     const activeContainers = React.useMemo(() => {
         const active: Container[] = [...BASE_CONTAINERS];
         const c = club as any;
-        if (c?.modules?.rotaract) active.push({ key: 'rotaract', label: 'Club Rotaract', desc: 'Imagen de portada para la sección Rotaract.', count: 1, aspect: '16/7' });
-        if (c?.modules?.interact) active.push({ key: 'interact', label: 'Club Interact', desc: 'Imagen de portada para la sección Interact.', count: 1, aspect: '16/7' });
-        if (c?.modules?.youthExchange) {
+        const isModEnabled = (key: string) => {
+            if (siteModules && siteModules[key] !== undefined) return siteModules[key];
+            return !!c?.modules?.[key];
+        };
+
+        if (isModEnabled('rotaract')) active.push({ key: 'rotaract', label: 'Club Rotaract', desc: 'Imagen de portada para la sección Rotaract.', count: 1, aspect: '16/7' });
+        if (isModEnabled('interact')) active.push({ key: 'interact', label: 'Club Interact', desc: 'Imagen de portada para la sección Interact.', count: 1, aspect: '16/7' });
+        if (isModEnabled('youthExchange') || isModEnabled('yep')) {
             active.push({
                 key: 'yep',
                 label: 'Intercambio de Jóvenes (YEP)',
@@ -201,8 +226,8 @@ const ImageDistribution: React.FC = () => {
                 ]
             });
         }
-        if (c?.modules?.ngse) active.push({ key: 'ngse', label: 'Intercambios NGSE', desc: 'Imagen de portada para la directiva de NGSE.', count: 1, aspect: '16/8' });
-        if (c?.modules?.rotex || c?.name?.toLowerCase().includes('latir') || c?.subdomain?.toLowerCase().includes('latir')) {
+        if (isModEnabled('ngse')) active.push({ key: 'ngse', label: 'Intercambios NGSE', desc: 'Imagen de portada para la directiva de NGSE.', count: 1, aspect: '16/8' });
+        if (isModEnabled('rotex') || c?.name?.toLowerCase().includes('latir') || c?.subdomain?.toLowerCase().includes('latir')) {
             active.push({
                 key: 'rotex',
                 label: 'Red ROTEX',
@@ -216,15 +241,15 @@ const ImageDistribution: React.FC = () => {
             });
         }
         
-        if (c?.modules?.ecommerce) {
+        if (isModEnabled('ecommerce') || isModEnabled('shop')) {
             active.push({ key: 'ecommerceBanner', label: 'Tienda Virtual (E-commerce)', desc: 'Banner superior para la página de la tienda.', count: 1, aspect: '16/5' });
         }
-        if (c?.modules?.dian) {
+        if (isModEnabled('dian')) {
             active.push({ key: 'dianBanner', label: 'Estados Financieros (DIAN)', desc: 'Imagen de cabecera para la página de transparencia.', count: 1, aspect: '16/5' });
         }
         
-        // Superadmin feature
-        if (user?.role === 'administrator') {
+        // Superadmin feature (exclusivo para plantilla global de plataforma)
+        if (isPlatformAdmin && isGlobal) {
             active.push({ key: 'missionControl', label: 'Mission Control VIP', desc: 'Logotipo para el header del panel avanzado (Solo Global).', count: 1, aspect: 'auto' });
         }
         // ChatBot images (hidden for editors)
@@ -239,13 +264,16 @@ const ImageDistribution: React.FC = () => {
         }
 
         return active;
-    }, [club, user]);
+    }, [club, user, siteModules, isPlatformAdmin, isGlobal]);
 
     const [images, setImages] = useState<SiteImages | null>(null);
     const [baseImages, setBaseImages] = useState<SiteImages | null>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [dirty, setDirty] = useState(false);
+    const [mainTab, setMainTab] = useState<'manual' | 'curation'>(
+        params.get('tab') === 'curacion' || params.get('tab') === 'curation' ? 'curation' : 'manual'
+    );
     const [expanded, setExpanded] = useState<Record<string, boolean>>({ hero: true, causes: false, foundation: false, join: false, donateHero: true, 'trf-credibility': true });
 
     // Media picker
@@ -264,17 +292,6 @@ const ImageDistribution: React.FC = () => {
     const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
 
     const token = () => localStorage.getItem('rotary_token');
-    const isSuperAdmin = user?.role === 'administrator';
-    
-    const location = useLocation();
-    const navigate = useNavigate();
-    const params = new URLSearchParams(location.search);
-    const urlClubId = params.get('clubId');
-    
-    // If we are in the main /admin/imagenes-sitio without a ?clubId, we assume it's _global for superadmin
-    const isGlobal = isSuperAdmin && !urlClubId;
-    const viewClubId = isGlobal ? null : (isSuperAdmin ? urlClubId : (user?.clubId || (club as any)?.id));
-    const clubId = viewClubId;
 
     // Build complete images object overlaying over DEFAULTS
     const buildImages = React.useCallback((src: any) => {
@@ -311,39 +328,40 @@ const ImageDistribution: React.FC = () => {
     }, []);
 
     // ── Load current site images ──────────────────────────────────────────
-    useEffect(() => {
-        if (!viewClubId && !isSuperAdmin) { setLoading(false); return; }
-        (async () => {
-            try {
-                if (isSuperAdmin && !viewClubId) {
-                    // Editing global templates
-                    const res = await fetch(`${API}/clubs/_global/site-images?_t=${Date.now()}`);
-                    const data = res.ok ? await res.json() : {};
-                    setImages(buildImages(data));
-                    setBaseImages(buildImages({}));
-                } else {
-                    // Editing specific club (whether Super Admin or Club Admin)
-                    const res = await fetch(`${API}/clubs/${viewClubId}/site-images?_t=${Date.now()}`);
-                    const data = res.ok ? await res.json() : {};
-                    setImages(buildImages(data));
+    const loadSiteImages = React.useCallback(async () => {
+        if (!viewClubId && !isGlobal) { setLoading(false); return; }
+        try {
+            if (isGlobal) {
+                // Editing global templates
+                const res = await fetch(`${API}/clubs/_global/site-images?_t=${Date.now()}`);
+                const data = res.ok ? await res.json() : {};
+                setImages(buildImages(data));
+                setBaseImages(buildImages({}));
+            } else {
+                // Editing specific club or district
+                const res = await fetch(`${API}/clubs/${viewClubId}/site-images?_t=${Date.now()}`);
+                const data = res.ok ? await res.json() : {};
+                setImages(buildImages(data));
 
-                    const gRes = await fetch(`${API}/clubs/_global/site-images?_t=${Date.now()}`);
-                    const gData = gRes.ok ? await gRes.json() : {};
-                    setBaseImages(buildImages(gData));
-                }
-            } catch { 
-                const fallback = buildImages({});
-                setImages(fallback);
-                setBaseImages(fallback);
+                const gRes = await fetch(`${API}/clubs/_global/site-images?_t=${Date.now()}`);
+                const gData = gRes.ok ? await gRes.json() : {};
+                setBaseImages(buildImages(gData));
             }
-            finally { setLoading(false); }
-        })();
-    }, [viewClubId, isSuperAdmin, buildImages]);
+        } catch { 
+            const fallback = buildImages({});
+            setImages(fallback);
+            setBaseImages(fallback);
+        } finally { setLoading(false); }
+    }, [viewClubId, isGlobal, buildImages]);
+
+    useEffect(() => {
+        loadSiteImages();
+    }, [loadSiteImages]);
 
     // ── Save ──────────────────────────────────────────────────────────────
     const handleSave = async () => {
         if (!images) return;
-        if (!isSuperAdmin && !clubId) return;
+        if (!isGlobal && !clubId) return;
         setSaving(true);
         try {
             const res = await fetch(`${API}/admin/sections/batch-upsert`, {
@@ -354,8 +372,14 @@ const ImageDistribution: React.FC = () => {
                     sections: [{ page: 'home', section: 'images', content: images }]
                 })
             });
-            if (res.ok) { toast.success('✅ Imágenes guardadas exitosamente'); setDirty(false); }
-            else toast.error('Error al guardar');
+            if (res.ok) {
+                invalidateSiteImages(clubId || undefined);
+                toast.success('✅ Imágenes guardadas exitosamente');
+                setDirty(false);
+            } else {
+                const errData = await res.json().catch(() => ({}));
+                toast.error(errData.error || 'Error al guardar');
+            }
         } catch { toast.error('Error de conexión'); }
         finally { setSaving(false); }
     };
@@ -678,27 +702,79 @@ const ImageDistribution: React.FC = () => {
                             <ImageIcon className="w-6 h-6 text-rotary-blue" />
                         </div>
                         <div>
-                            <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">Imágenes del Sitio</h1>
+                            <div className="flex items-center gap-3">
+                                <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">Imágenes del Sitio</h1>
+                                {isGlobal ? (
+                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-800 border border-purple-200">
+                                        Plantilla Global de Plataforma
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-100 text-sky-800 border border-sky-200">
+                                        {(club as any)?.name || 'Sitio Institucional'}
+                                    </span>
+                                )}
+                            </div>
                             <p className="text-sm text-gray-500 mt-1">
                                 Personaliza la identidad visual de cada sección · {activeContainers.length} módulos configurables
                             </p>
                         </div>
                     </div>
-                    <button onClick={handleSave} disabled={saving || !dirty}
-                        className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all shadow-xl active:scale-95 ${dirty ? 'bg-rotary-blue text-white shadow-blue-900/20 hover:bg-sky-800' : 'bg-gray-100 text-gray-400 cursor-not-allowed shadow-none'}`}>
-                        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                        {saving ? 'Guardando...' : 'Guardar Cambios'}
+                    {mainTab === 'manual' && (
+                        <button onClick={handleSave} disabled={saving || !dirty}
+                            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all shadow-xl active:scale-95 ${dirty ? 'bg-rotary-blue text-white shadow-blue-900/20 hover:bg-sky-800' : 'bg-gray-100 text-gray-400 cursor-not-allowed shadow-none'}`}>
+                            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                            {saving ? 'Guardando...' : 'Guardar Cambios'}
+                        </button>
+                    )}
+                </div>
+
+                {/* ─── Selector Principal de Modalidad: Manual vs Curaduría IA ─── */}
+                <div className="flex items-center gap-2 border-b border-gray-200 pb-2">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setMainTab('manual');
+                            navigate({ search: urlClubId ? `?clubId=${urlClubId}` : '' });
+                        }}
+                        className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${mainTab === 'manual' ? 'bg-white text-gray-900 shadow-sm border border-gray-200' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'}`}
+                    >
+                        <ImageIcon className="w-4 h-4 text-sky-600" />
+                        <span>Personalización Manual ({activeContainers.length} módulos)</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setMainTab('curation');
+                            navigate({ search: urlClubId ? `?clubId=${urlClubId}&tab=curation` : '?tab=curation' });
+                        }}
+                        className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all relative ${mainTab === 'curation' ? 'bg-gradient-to-r from-sky-600 to-indigo-600 text-white shadow-md shadow-sky-500/20' : 'text-gray-700 bg-sky-50/70 border border-sky-200 hover:bg-sky-100'}`}
+                    >
+                        <Sparkles className="w-4 h-4 text-amber-300" />
+                        <span>Curaduría Inteligente IA</span>
+                        <span className="ml-1 px-1.5 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider bg-white/20 text-white">
+                            Distrito 4281
+                        </span>
                     </button>
                 </div>
 
-                {dirty && (
-                    <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800 flex items-center gap-2 font-medium">
-                        <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                        Tienes cambios sin guardar. Haz clic en "Guardar Cambios" para aplicarlos.
-                    </div>
-                )}
+                {mainTab === 'curation' ? (
+                    <VisualCurationPanel
+                        clubId={clubId}
+                        clubName={(club as any)?.name}
+                        siteImages={images}
+                        containers={activeContainers}
+                        onRefreshSiteImages={loadSiteImages}
+                    />
+                ) : (
+                    <>
+                        {dirty && (
+                            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800 flex items-center gap-2 font-medium">
+                                <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                                Tienes cambios sin guardar. Haz clic en "Guardar Cambios" para aplicarlos.
+                            </div>
+                        )}
 
-                {activeContainers.map((container: Container) => {
+                        {activeContainers.map((container: Container) => {
                     // For grouped containers, calculate totals across groups
                     const subGroups = container.groups || [{ key: container.key, subLabel: '', count: container.count, aspect: container.aspect }];
                     const totalCount = subGroups.reduce((sum: number, g: SubGroup) => sum + g.count, 0);
@@ -831,6 +907,8 @@ const ImageDistribution: React.FC = () => {
                         </div>
                     );
                 })}
+                    </>
+                )}
             </div>
 
             {/* ── Media Picker Modal ── */}

@@ -7,6 +7,20 @@ import { authMiddleware, roleMiddleware } from '../middleware/auth.js';
 // Y se declara POR ACCIÓN: leer no puede abrir la puerta de borrar.
 import { requireRoleOrPermission } from '../middleware/institutionalGuard.js';
 import { getSections, updateSection, createSection, batchUpsertSections } from '../controllers/cmsController.js';
+import {
+    getCurationConfig,
+    updateCurationConfig,
+    getRecommendations,
+    postApproveRecommendation,
+    postRejectRecommendation,
+    postReassignRecommendation,
+    getCandidates,
+    postRunAnalysis,
+    getHistory,
+    postRollback,
+    getLocks,
+    postToggleLock,
+} from '../controllers/visualCurationController.js';
 import { getAllClubs, getClubById, createClub, updateClub, deleteClub, batchUpsertMembers } from '../controllers/clubController.js';
 import {
     getClubPosts, getPostById, getPostStats, createPost, updatePost, deletePost, bulkDeletePosts, reconcilePosts,
@@ -240,10 +254,24 @@ router.post('/users', roleMiddleware(adminRoles), createUser);
 router.put('/users/:id', roleMiddleware(adminRoles), updateUser);
 router.delete('/users/:id', roleMiddleware(adminRoles), deleteUser);
 
-router.get('/sections', roleMiddleware(contentRoles), getSections);
-router.post('/sections', roleMiddleware(contentRoles), createSection);
-router.post('/sections/batch-upsert', roleMiddleware(contentRoles), batchUpsertSections);
-router.put('/sections/:id', roleMiddleware(contentRoles), updateSection);
+router.get('/sections', requireRoleOrPermission(contentRoles, 'media.view'), getSections);
+router.post('/sections', requireRoleOrPermission(contentRoles, 'media.create'), createSection);
+router.post('/sections/batch-upsert', requireRoleOrPermission(contentRoles, 'media.edit'), batchUpsertSections);
+router.put('/sections/:id', requireRoleOrPermission(contentRoles, 'media.edit'), updateSection);
+
+// ─── CURADURÍA VISUAL INTELIGENTE IA (v4.1210.0) ───
+router.get('/curation/config', requireRoleOrPermission(contentRoles, 'media.view'), getCurationConfig);
+router.post('/curation/config', requireRoleOrPermission(contentRoles, 'media.edit'), updateCurationConfig);
+router.get('/curation/recommendations', requireRoleOrPermission(contentRoles, 'media.view'), getRecommendations);
+router.post('/curation/recommendations/:id/approve', requireRoleOrPermission(contentRoles, 'media.edit'), postApproveRecommendation);
+router.post('/curation/recommendations/:id/reject', requireRoleOrPermission(contentRoles, 'media.edit'), postRejectRecommendation);
+router.post('/curation/recommendations/:id/reassign', requireRoleOrPermission(contentRoles, 'media.edit'), postReassignRecommendation);
+router.get('/curation/candidates', requireRoleOrPermission(contentRoles, 'media.view'), getCandidates);
+router.post('/curation/run-analysis', requireRoleOrPermission(contentRoles, 'media.edit'), postRunAnalysis);
+router.get('/curation/history', requireRoleOrPermission(contentRoles, 'media.view'), getHistory);
+router.post('/curation/history/:id/rollback', requireRoleOrPermission(contentRoles, 'media.edit'), postRollback);
+router.get('/curation/locks', requireRoleOrPermission(contentRoles, 'media.view'), getLocks);
+router.post('/curation/locks', requireRoleOrPermission(contentRoles, 'media.edit'), postToggleLock);
 
 // ⚠️ La literal ANTES que cualquier paramétrica del mismo grupo: Express casa
 // por orden y una literal debajo de su `:id` es inalcanzable, con un fallo

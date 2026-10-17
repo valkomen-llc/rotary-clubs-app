@@ -740,7 +740,13 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
             items.push({ icon: ImageIcon, label: 'Multimedia', path: '/admin/media', category: 'Contenido', keywords: ['foto', 'video', 'imagen', 'galeria', 'archivo'] });
         }
         if (siteModules.site_images !== false) {
-            items.push({ icon: Palette, label: 'Imágenes del Sitio', path: '/admin/imagenes-sitio', category: 'Contenido', keywords: ['hero', 'banner', 'portada', 'diseno'] });
+            items.push({
+                icon: Palette,
+                label: 'Imágenes del Sitio',
+                path: '/admin/imagenes-sitio',
+                category: 'Contenido',
+                keywords: ['imagen', 'imagenes', 'foto', 'fotos', 'hero', 'banner', 'portada', 'diseno', 'sitio', 'graficos', 'carrusel']
+            });
         }
         if (siteModules.payment_blocks !== false) {
             items.push({ icon: HeartHandshake, label: 'Bloques de Pago', path: '/admin/bloques-pago', category: 'Contenido', keywords: ['aportes', 'donaciones', 'membresia', 'cuota', 'pago', 'stripe', 'bloques'] });
@@ -1139,10 +1145,12 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                                 onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter' && searchQuery.trim()) {
-                                        const q = searchQuery.toLowerCase();
+                                        const norm = (s: string) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+                                        const q = norm(searchQuery);
                                         const match = menuItems.find(item =>
-                                            item.label.toLowerCase().includes(q) ||
-                                            (item.keywords && item.keywords.some((k: string) => k.includes(q)))
+                                            norm(item.label).includes(q) ||
+                                            norm(item.category).includes(q) ||
+                                            (item.keywords && item.keywords.some((k: string) => norm(k).includes(q)))
                                         );
                                         if (match) {
                                             navigate(match.path);
@@ -1171,11 +1179,12 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
 
                             {/* Search Results Dropdown */}
                             {searchQuery.trim() && searchFocused && (() => {
-                                const q = searchQuery.toLowerCase();
+                                const norm = (s: string) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+                                const q = norm(searchQuery);
                                 const results = menuItems.filter(item =>
-                                    item.label.toLowerCase().includes(q) ||
-                                    item.category.toLowerCase().includes(q) ||
-                                    (item.keywords && item.keywords.some((k: string) => k.includes(q)))
+                                    norm(item.label).includes(q) ||
+                                    norm(item.category).includes(q) ||
+                                    (item.keywords && item.keywords.some((k: string) => norm(k).includes(q)))
                                 );
                                 return results.length > 0 ? (
                                     <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-50 py-1 max-h-64 overflow-y-auto">

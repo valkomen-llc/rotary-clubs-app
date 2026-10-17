@@ -66,7 +66,9 @@
 // (v4.1053): SocialDailyMetric, SocialContentItem, SocialContentMetric y
 // SocialSyncRun, y las cuatro del Video Informe IA (v4.1100):
 // VideoReportProject, VideoReportVersion, VideoReportScene y VideoReportRender,
-// y la del Editor de Video Profesional (v4.1141): VideoEditorProject.
+// y la del Editor de Video Profesional (v4.1141): VideoEditorProject, y las cinco
+// de Curaduría Visual Inteligente IA (v4.1210): SiteImageCurationConfig, SiteImageCandidate,
+// SiteImageRecommendation, SiteImageLock y SiteImageHistory.
 //
 // ⚠️ SocialDailyMetric es el HISTÓRICO PROPIO de Facebook e Instagram, y es lo
 // que un `db push` no puede borrar sin consecuencia: Meta guarda 30 días de
