@@ -20,7 +20,7 @@ interface FramingEditorModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSaveFraming: (recId: string, framing: FramingConfig) => Promise<void>;
-    onConfirmAndApprove: (recId: string, framing: FramingConfig) => Promise<void>;
+    onConfirmAndApprove: (recId: string, framing: FramingConfig, exceptionData?: { isException?: boolean; exceptionReason?: string }) => Promise<void>;
 }
 
 export const FramingEditorModal: React.FC<FramingEditorModalProps> = ({
@@ -40,6 +40,8 @@ export const FramingEditorModal: React.FC<FramingEditorModalProps> = ({
     const [showComparison, setShowComparison] = useState<boolean>(false);
     const [saving, setSaving] = useState<boolean>(false);
     const [approving, setApproving] = useState<boolean>(false);
+    const [isExceptionAuthorized, setIsExceptionAuthorized] = useState<boolean>(false);
+    const [exceptionReason, setExceptionReason] = useState<string>('');
 
     // Drag-to-pan state
     const [isDragging, setIsDragging] = useState(false);
@@ -54,9 +56,15 @@ export const FramingEditorModal: React.FC<FramingEditorModalProps> = ({
         setPosY(c.y ?? 50);
         setZoom(c.zoom ?? 100);
         setMode(c.mode || 'cover');
+        setIsExceptionAuthorized(false);
+        setExceptionReason('');
     }, [isOpen, rec?.id]);
 
     if (!isOpen || !rec) return null;
+
+    const cropSuggested = rec.cropSuggested || {};
+    const conflictInfo = rec.conflictInfo;
+    const hasConflict = Boolean(conflictInfo?.hasConflict && rec.containerKey === 'hero');
 
     const candidate = rec.candidate || {
         url: rec.candidateUrl,
@@ -177,9 +185,16 @@ export const FramingEditorModal: React.FC<FramingEditorModalProps> = ({
     };
 
     const handleConfirmAndApprove = async () => {
+        if (hasConflict && !isExceptionAuthorized) {
+            toast.error('Debes autorizar explícitamente la excepción editorial para publicar esta imagen en el Hero.');
+            return;
+        }
         setApproving(true);
         try {
-            await onConfirmAndApprove(rec.id, buildCurrentFraming());
+            await onConfirmAndApprove(rec.id, buildCurrentFraming(), {
+                isException: hasConflict ? isExceptionAuthorized : undefined,
+                exceptionReason: hasConflict ? (exceptionReason.trim() || 'Excepción editorial autorizada por administrador') : undefined,
+            });
             toast.success('¡Imagen encuadrada y publicada con éxito en producción!');
             onClose();
         } catch (err: any) {
@@ -267,6 +282,54 @@ export const FramingEditorModal: React.FC<FramingEditorModalProps> = ({
 
                 {/* Main Body */}
                 <div className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1">
+                    {/* Exclusivity Conflict & Exception Authorization Alert */}
+                    {hasConflict && (
+                        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 space-y-3 shadow-sm">
+                            <div className="flex items-start gap-3">
+                                <AlertTriangle className="w-5 h-5 text-amber-700 flex-shrink-0 mt-0.5" />
+                                <div className="space-y-1">
+                                    <h4 className="font-bold text-xs text-amber-900 uppercase tracking-wide">
+                                        Conflicto Editorial: Portada de Noticia Publicada
+                                    </h4>
+                                    <p className="text-xs text-amber-900 leading-relaxed">
+                                        Esta fotografía ya está publicada como portada en el artículo: <strong className="font-bold text-amber-950">«{conflictInfo?.newsTitle || 'Noticia publicada'}»</strong> ({conflictInfo?.matchType === 'exact' ? 'coincidencia exacta' : 'similitud visual detectada'}).
+                                    </p>
+                                    <p className="text-[11px] text-amber-800">
+                                        Por directriz editorial del Distrito 4281, las portadas de noticias no deben repetirse en el Hero principal para evitar duplicaciones visuales. Para publicarla en el Hero se requiere autorización explícita de excepción.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="bg-white/90 rounded-xl p-3 border border-amber-200/90 space-y-2">
+                                <label className="flex items-center gap-2 cursor-pointer select-none">
+                                    <input
+                                        type="checkbox"
+                                        checked={isExceptionAuthorized}
+                                        onChange={(e) => setIsExceptionAuthorized(e.target.checked)}
+                                        className="w-4 h-4 rounded text-amber-600 accent-amber-600 cursor-pointer"
+                                    />
+                                    <span className="text-xs font-bold text-gray-900">
+                                        Autorizar como excepción editorial justificada
+                                    </span>
+                                </label>
+                                {isExceptionAuthorized && (
+                                    <div className="space-y-1 pt-1">
+                                        <label className="block text-[11px] font-semibold text-gray-700">
+                                            Justificación de la excepción (quedará registrada en el historial y auditoría):
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={exceptionReason}
+                                            onChange={(e) => setExceptionReason(e.target.value)}
+                                            placeholder="Ej: Cobertura principal de campaña distrital autorizada por Gobernación"
+                                            className="w-full px-3 py-1.5 rounded-lg border border-gray-300 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Advice / Crop risk alert */}
                     {cropSuggested.requiresCropAdjustment && (
                         <div className="flex items-start gap-3 p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs">
@@ -599,11 +662,11 @@ export const FramingEditorModal: React.FC<FramingEditorModalProps> = ({
 
                         <button
                             onClick={handleConfirmAndApprove}
-                            disabled={saving || approving}
-                            className="px-6 py-2.5 rounded-xl bg-rotary-blue hover:bg-sky-800 text-white font-bold text-xs shadow-lg shadow-blue-900/20 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50"
+                            disabled={saving || approving || (hasConflict && !isExceptionAuthorized)}
+                            className={`px-6 py-2.5 rounded-xl text-white font-bold text-xs shadow-lg active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50 ${hasConflict ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-900/20' : 'bg-rotary-blue hover:bg-sky-800 shadow-blue-900/20'}`}
                         >
                             <CheckCircle className="w-4 h-4" />
-                            {approving ? 'Publicando en Sitio...' : 'Confirmar y Publicar en Sitio'}
+                            {approving ? 'Publicando en Sitio...' : hasConflict ? 'Autorizar Excepción y Publicar' : 'Confirmar y Publicar en Sitio'}
                         </button>
                     </div>
                 </div>

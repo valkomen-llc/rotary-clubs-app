@@ -17,11 +17,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
     DEFAULT_CURATION_WEIGHTS,
+    DEFAULT_EXCLUSIVITY_RULES,
     CONTAINER_SPECS,
     ROTARY_CAUSES,
     scoreCandidateForContainer,
     evaluateCandidateEligibility,
     planContainerRecommendations,
+    detectNewsCoverConflict,
+    normalizeImageUrl,
     hammingDistance,
     areImagesNearDuplicates,
 } from '../server/lib/visualCurationSpec.js';
@@ -276,7 +279,148 @@ assert.ok(heroSectionContent.includes("slide.mode === 'contain'"), 'HeroSection 
 assert.ok(heroSectionContent.includes('blur-2xl'), 'HeroSection debe pintar fondo difuminado complementario en modo contain');
 console.log('  ✓ Sincronización del sitio público: HeroSection consume parámetros de encuadre y fondo ambiental');
 
+// ── 6. Curaduría Visual V2.2: Exclusividad Hero vs Noticias y Ancho de Pestañas ─────────
+console.log('\n6 · Curaduría Visual V2.2: Exclusividad Hero vs Noticias y Ancho de Pestañas');
+
+// A. Verificación de Reglas por Omisión
+assert.equal(DEFAULT_EXCLUSIVITY_RULES.avoidHeroNewsDuplicates, true, 'avoidHeroNewsDuplicates debe ser true por defecto');
+assert.equal(DEFAULT_EXCLUSIVITY_RULES.detectResizedOrCropped, true, 'detectResizedOrCropped debe ser true por defecto');
+assert.equal(DEFAULT_EXCLUSIVITY_RULES.avoidHeroSlideDuplicates, true, 'avoidHeroSlideDuplicates debe ser true por defecto');
+assert.equal(DEFAULT_EXCLUSIVITY_RULES.prioritizeClubDiversity, true, 'prioritizeClubDiversity debe ser true por defecto');
+assert.equal(DEFAULT_EXCLUSIVITY_RULES.checkNewsCoversOnCuration, true, 'checkNewsCoversOnCuration debe ser true por defecto');
+console.log('  ✓ 5 reglas de exclusividad y diversidad visual activas por omisión');
+
+// B. Detección Inteligente de Duplicados (Exacta y Perceptual)
+const publishedNewsCovers = [
+    {
+        postId: 'post-101',
+        title: 'Entrega de kits escolares en Santa Rosa de Cabal',
+        image: 'https://cdn.rotary4281.org/uploads/kits-escolares-portada.jpg?w=1200&q=80',
+        fileId: 'file-kits-1',
+        submissionId: 'sub-kits',
+        hash: 'a1b2c3d4e5f60000',
+        publishedAt: '2026-10-15',
+    },
+    {
+        postId: 'post-102',
+        title: 'Jornada de salud visual en Pereira',
+        image: 'https://cdn.rotary4281.org/uploads/salud-visual-pereira.jpg',
+        fileId: 'file-salud-1',
+        submissionId: 'sub-salud',
+        hash: '1122334455667788',
+        publishedAt: '2026-10-14',
+    }
+];
+
+// Caso B1: Coincidencia exacta por URL normalizada
+const candExact = {
+    url: 'https://cdn.rotary4281.org/uploads/kits-escolares-portada.jpg?w=800&q=70',
+    title: 'Kits escolares foto principal',
+    club: 'Club Rotario Santa Rosa de Cabal',
+    submissionId: 'sub-other',
+};
+const conflictExact = detectNewsCoverConflict(candExact, publishedNewsCovers);
+assert.equal(conflictExact.hasConflict, true, 'Debe detectar conflicto por URL normalizada');
+assert.equal(conflictExact.matchType, 'exact_url', 'El tipo de match debe ser exact_url');
+assert.equal(conflictExact.postId, 'post-101');
+
+// Caso B2: Coincidencia perceptual por dHash (recortada o redimensionada)
+const candPerceptual = {
+    url: 'https://cdn.rotary4281.org/uploads/kits-crop-hero.jpg',
+    title: 'Kits escolares recorte horizontal',
+    club: 'Club Rotario Santa Rosa de Cabal',
+    hash: 'a1b2c3d4e5f60001', // Distancia Hamming 1 con hash de post-101
+};
+const conflictPerceptual = detectNewsCoverConflict(candPerceptual, publishedNewsCovers);
+assert.equal(conflictPerceptual.hasConflict, true, 'Debe detectar conflicto perceptual por dHash <= 8');
+assert.equal(conflictPerceptual.matchType, 'perceptual_hash', 'El tipo de match debe ser perceptual_hash');
+console.log('  ✓ Detección de duplicados: URL normalizada y hash perceptual (dHash) validados');
+
+// C. Calidad Visual no penalizada artificialmente pero marcada inelegible para Hero
+const candConflictingForHero = {
+    title: 'Entrega de kits escolares — Club Rotario Santa Rosa de Cabal',
+    url: 'https://cdn.rotary4281.org/uploads/kits-escolares-portada.jpg',
+    club: 'Club Rotario Santa Rosa de Cabal',
+    consentVerified: true,
+    technicalMetrics: { width: 1920, height: 1080, sharpness: 18, brightness: 125 },
+    semanticAnalysis: {
+        showsServiceAction: true,
+        peopleCount: 5,
+        hasPeople: true,
+        isRotaryBranded: true,
+        relevantCause: 'Educación básica y alfabetización',
+    },
+};
+const evalHeroWithConflict = scoreCandidateForContainer(candConflictingForHero, 'hero', 0, {}, publishedNewsCovers);
+const evalHeroWithoutConflict = scoreCandidateForContainer(candConflictingForHero, 'hero', 0, {}, []);
+assert.equal(evalHeroWithConflict.score, evalHeroWithoutConflict.score, 'El puntaje visual debe ser idéntico sin penalización artificial');
+assert.equal(evalHeroWithConflict.isEligibleForHero, false, 'isEligibleForHero debe ser false por conflicto con noticia');
+assert.equal(evalHeroWithConflict.conflictInfo?.hasConflict, true, 'Debe adjuntar conflictInfo');
+console.log('  ✓ Puntuación visual íntegra (score idéntico sin penalización) con inelegibilidad editorial explícita para Hero');
+
+// D. Búsqueda y Sugerencia Inteligente de Alternativa desde la Misma Solicitud
+const candidatesWithAlternative = [
+    {
+        id: 'cand-cover',
+        submissionId: 'sub-kits',
+        url: 'https://cdn.rotary4281.org/uploads/kits-escolares-portada.jpg',
+        title: 'Foto 1 - Portada de Noticia',
+        club: 'Club Rotario Santa Rosa de Cabal',
+        consentVerified: true,
+        technicalMetrics: { width: 1920, height: 1080, sharpness: 18, brightness: 125 },
+        semanticAnalysis: { showsServiceAction: true, peopleCount: 5, hasPeople: true, isRotaryBranded: true },
+    },
+    {
+        id: 'cand-alternative',
+        submissionId: 'sub-kits',
+        url: 'https://cdn.rotary4281.org/uploads/kits-escolares-toma-amplia.jpg',
+        title: 'Foto 2 - Entrega a beneficiarios toma panorámica',
+        club: 'Club Rotario Santa Rosa de Cabal',
+        consentVerified: true,
+        technicalMetrics: { width: 1920, height: 1080, sharpness: 16, brightness: 120 },
+        semanticAnalysis: { showsServiceAction: true, peopleCount: 6, hasPeople: true, isRotaryBranded: true },
+    },
+    {
+        id: 'cand-cali',
+        submissionId: 'sub-cali',
+        url: 'https://cdn.rotary4281.org/uploads/cali-salud.jpg',
+        title: 'Jornada médica',
+        club: 'Club Rotario Cali',
+        consentVerified: true,
+        technicalMetrics: { width: 1920, height: 1080, sharpness: 15, brightness: 120 },
+        semanticAnalysis: { showsServiceAction: true, peopleCount: 3, hasPeople: true },
+    }
+];
+
+const planWithNews = planContainerRecommendations({
+    candidates: candidatesWithAlternative,
+    containerKey: 'hero',
+    slotsCount: 3,
+    lockedSlots: {},
+    publishedNewsCovers,
+    exclusivityRules: DEFAULT_EXCLUSIVITY_RULES,
+});
+
+assert.ok(planWithNews.length >= 2, 'Debe planificar recomendaciones');
+const alternativeRec = planWithNews.find(p => p.selected?.id === 'cand-alternative');
+assert.ok(alternativeRec, 'Debe haber seleccionado cand-alternative al estar cand-cover en conflicto con noticia');
+assert.equal(alternativeRec.isAlternative, true, 'isAlternative debe ser true');
+assert.ok(alternativeRec.alternativeReason.includes('alternativa'), 'alternativeReason debe explicar la sustitución');
+console.log('  ✓ Sustitución inteligente: IA localiza toma alternativa de la misma actividad sin duplicar noticia');
+
+// E. Verificación de Ancho 100% y Distribución Responsive en Pestañas Internas
+const containersTabContent = fs.readFileSync(path.join(root, 'src/components/admin/curation/ContainersTab.tsx'), 'utf8');
+assert.ok(!containersTabContent.includes('max-w-4xl'), 'ContainersTab no debe tener max-w-4xl');
+assert.ok(containersTabContent.includes('w-full space-y-6'), 'ContainersTab debe usar w-full space-y-6');
+assert.ok(containersTabContent.includes('2xl:grid-cols-5'), 'ContainersTab debe contar con cuadrícula adaptable de hasta 5 columnas');
+
+const schedTabContent = fs.readFileSync(path.join(root, 'src/components/admin/curation/SchedulingTab.tsx'), 'utf8');
+assert.ok(!schedTabContent.includes('max-w-4xl'), 'SchedulingTab no debe tener max-w-4xl');
+assert.ok(schedTabContent.includes('w-full space-y-6'), 'SchedulingTab debe usar w-full space-y-6');
+assert.ok(schedTabContent.includes('Reglas de Exclusividad y Diversidad Visual'), 'SchedulingTab debe incluir sección de reglas de exclusividad');
+console.log('  ✓ Distribución UI de pestañas: ContainersTab y SchedulingTab usan 100% del ancho útil sin espacios vacíos');
+
 console.log('\n════════════════════════════════════════════════════════════');
-console.log('🎉 TODAS LAS VERIFICACIONES DE CURADURÍA VISUAL V2.1 PASARON OK');
+console.log('🎉 TODAS LAS VERIFICACIONES DE CURADURÍA VISUAL V2.2 PASARON OK');
 console.log('════════════════════════════════════════════════════════════\n');
 

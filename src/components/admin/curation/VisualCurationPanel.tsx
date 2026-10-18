@@ -103,12 +103,17 @@ export const VisualCurationPanel: React.FC<VisualCurationPanelProps> = ({
     };
 
     // Aprobar recomendación (estándar)
-    const handleApprove = async (recId: string, framingConfig?: any) => {
+    const handleApprove = async (recId: string, framingConfig?: any, exceptionData?: { isException?: boolean; exceptionReason?: string }) => {
         try {
             const res = await fetch(`${API}/admin/curation/recommendations/${recId}/approve`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
-                body: JSON.stringify({ clubId, framingConfig }),
+                body: JSON.stringify({
+                    clubId,
+                    framingConfig,
+                    isException: exceptionData?.isException,
+                    exceptionReason: exceptionData?.exceptionReason,
+                }),
             });
             const data = await res.json();
             if (res.ok) {
@@ -138,11 +143,20 @@ export const VisualCurationPanel: React.FC<VisualCurationPanelProps> = ({
     };
 
     // Confirmar encuadre y publicar en el sitio
-    const handleConfirmAndApproveWithFraming = async (recId: string, framing: FramingConfig) => {
+    const handleConfirmAndApproveWithFraming = async (
+        recId: string,
+        framing: FramingConfig,
+        exceptionData?: { isException?: boolean; exceptionReason?: string }
+    ) => {
         const res = await fetch(`${API}/admin/curation/recommendations/${recId}/approve`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
-            body: JSON.stringify({ clubId, framingConfig: framing }),
+            body: JSON.stringify({
+                clubId,
+                framingConfig: framing,
+                isException: exceptionData?.isException,
+                exceptionReason: exceptionData?.exceptionReason,
+            }),
         });
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));

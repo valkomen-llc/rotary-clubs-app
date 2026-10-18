@@ -21,6 +21,107 @@ export const DEFAULT_CURATION_WEIGHTS = {
     narrative: 0.10,     // 10% Impacto narrativo (acción, emociones auténticas, colaboración)
 };
 
+// ─── Reglas de Exclusividad y Diversidad Visual ────────────────────────────
+export const DEFAULT_EXCLUSIVITY_RULES = {
+    avoidHeroNewsDuplicates: true,      // Excluye automáticamente portadas de noticias del Hero
+    detectResizedOrCropped: true,       // Identifica duplicados por dHash perceptual
+    avoidHeroSlideDuplicates: true,     // No permite imágenes repetidas en el mismo slider Hero
+    prioritizeClubDiversity: true,      // Distribuye equitativamente la presencia de clubes
+    checkNewsCoversOnCuration: true,    // Consulta portadas vigentes de noticias antes de curar
+};
+
+/** Normaliza una URL eliminando query parameters volátiles para comparación confiable */
+export function normalizeImageUrl(rawUrl = '') {
+    if (!rawUrl) return '';
+    try {
+        const u = new URL(rawUrl);
+        return `${u.origin}${u.pathname}`.toLowerCase();
+    } catch {
+        return String(rawUrl).split('?')[0].toLowerCase().trim();
+    }
+}
+
+/**
+ * Detecta si una imagen candidata coincide o colisiona con alguna portada de noticia publicada.
+ * Compara por: URL exacta, URL normalizada, fileId, submissionId con mismo archivo, y hash perceptual.
+ */
+export function detectNewsCoverConflict(candidate = {}, publishedNewsCovers = [], exclusivityRules = DEFAULT_EXCLUSIVITY_RULES) {
+    if (!publishedNewsCovers || !publishedNewsCovers.length) {
+        return { hasConflict: false };
+    }
+
+    const candUrlNorm = normalizeImageUrl(candidate.url);
+    const candFileId = candidate.fileId;
+    const candSubId = candidate.submissionId;
+    const candHash = candidate.hash || candidate.technicalMetrics?.hash;
+
+    for (const cover of publishedNewsCovers) {
+        const coverUrl = cover.image || cover.imageUrl;
+        const coverUrlNorm = normalizeImageUrl(coverUrl);
+        const coverPostId = cover.postId || cover.id;
+        const postTitle = cover.title || 'Noticia publicada';
+        const postSlug = cover.slug || '';
+
+        // 1. Coincidencia directa o normalizada de URL
+        if (candUrlNorm && coverUrlNorm && (candUrlNorm === coverUrlNorm || candidate.url === coverUrl)) {
+            return {
+                hasConflict: true,
+                postId: coverPostId,
+                postTitle,
+                postSlug,
+                newsCoverUrl: coverUrl,
+                matchType: 'exact_url',
+                reason: `Esta fotografía ya se utiliza como portada de la noticia «${postTitle}».`,
+            };
+        }
+
+        // 2. Coincidencia por fileId o mediaId
+        if (candFileId && cover.fileId && String(candFileId) === String(cover.fileId)) {
+            return {
+                hasConflict: true,
+                postId: coverPostId,
+                postTitle,
+                postSlug,
+                newsCoverUrl: coverUrl,
+                matchType: 'file_id',
+                reason: `Esta fotografía (archivo ${candFileId}) ya es la portada oficial de la noticia «${postTitle}».`,
+            };
+        }
+
+        // 3. Coincidencia por submissionId + filename
+        if (candSubId && cover.submissionId && String(candSubId) === String(cover.submissionId)) {
+            if (candidate.filename && cover.filename && candidate.filename.toLowerCase() === cover.filename.toLowerCase()) {
+                return {
+                    hasConflict: true,
+                    postId: coverPostId,
+                    postTitle,
+                    postSlug,
+                    newsCoverUrl: coverUrl,
+                    matchType: 'submission_file',
+                    reason: `Esta fotografía de Rotary en Acción ya se publicó como portada en la noticia «${postTitle}».`,
+                };
+            }
+        }
+
+        // 4. Coincidencia por Hash Perceptual (dHash <= 8 bits de distancia Hamming)
+        if (exclusivityRules?.detectResizedOrCropped && candHash && cover.hash) {
+            if (areImagesNearDuplicates(candHash, cover.hash, 8)) {
+                return {
+                    hasConflict: true,
+                    postId: coverPostId,
+                    postTitle,
+                    postSlug,
+                    newsCoverUrl: coverUrl,
+                    matchType: 'perceptual_hash',
+                    reason: `La composición visual coincide perceptiblemente con la portada de la noticia «${postTitle}».`,
+                };
+            }
+        }
+    }
+
+    return { hasConflict: false };
+}
+
 // ─── Catálogo de Contenedores Visuales de Club Platform ─────────────────────
 export const CONTAINER_SPECS = {
     hero: {
@@ -229,7 +330,14 @@ export function evaluateCandidateEligibility(candidate = {}) {
  *  D. Compatibilidad con el Contenedor (20%)
  *  E. Impacto Narrativo (10%)
  */
-export function scoreCandidateForContainer(candidate = {}, containerKey = 'hero', slotIndex = 0, customWeights = {}) {
+export function scoreCandidateForContainer(
+    candidate = {},
+    containerKey = 'hero',
+    slotIndex = 0,
+    customWeights = {},
+    publishedNewsCovers = [],
+    exclusivityRules = DEFAULT_EXCLUSIVITY_RULES
+) {
     const weights = { ...DEFAULT_CURATION_WEIGHTS, ...customWeights };
     const spec = CONTAINER_SPECS[containerKey] || CONTAINER_SPECS.hero;
     const eligibility = evaluateCandidateEligibility(candidate);
@@ -245,6 +353,9 @@ export function scoreCandidateForContainer(candidate = {}, containerKey = 'hero'
             facts: ['La imagen no superó los filtros de elegibilidad y seguridad editorial.'],
             interpretation: 'Requiere revisión o autorización antes de considerarse elegible.',
             warnings: eligibility.warnings,
+            isEligibleForHero: false,
+            conflictInfo: null,
+            heroExclusionReason: null,
         };
     }
 
@@ -430,11 +541,24 @@ export function scoreCandidateForContainer(candidate = {}, containerKey = 'hero'
         allWarnings.push(cropAdvice);
     }
 
+    // Detección de conflicto con portadas de noticias
+    const newsConflict = detectNewsCoverConflict(candidate, publishedNewsCovers, exclusivityRules);
+    const isEligibleForHero = containerKey === 'hero' ? !newsConflict.hasConflict : true;
+
+    if (containerKey === 'hero' && newsConflict.hasConflict) {
+        allWarnings.push(
+            `⚠️ Conflicto editorial: Esta fotografía ya se utiliza como portada de la noticia «${newsConflict.postTitle}». Se excluye del Hero para evitar duplicación visual.`
+        );
+    }
+
     return {
         containerKey,
         slotIndex,
         score,
         eligible: true,
+        isEligibleForHero,
+        conflictInfo: newsConflict.hasConflict ? newsConflict : null,
+        heroExclusionReason: newsConflict.hasConflict ? newsConflict.reason : null,
         breakdown: {
             institutional: Math.round(instScore),
             technical: Math.round(techScore),
@@ -479,18 +603,28 @@ export function planContainerRecommendations({
     slotsCount = 5,
     lockedSlots = {},
     weights = DEFAULT_CURATION_WEIGHTS,
+    publishedNewsCovers = [],
+    exclusivityRules = DEFAULT_EXCLUSIVITY_RULES,
 } = {}) {
     const scoredList = [];
 
     for (const c of candidates) {
-        const evaluation = scoreCandidateForContainer(c, containerKey, 0, weights);
+        const evaluation = scoreCandidateForContainer(
+            c,
+            containerKey,
+            0,
+            weights,
+            publishedNewsCovers,
+            exclusivityRules
+        );
         if (evaluation.eligible && evaluation.score >= 40) {
             scoredList.push({
                 candidate: c,
                 evaluation,
                 score: evaluation.score,
                 clubName: c.club || c.clubName || 'Distrito 4281',
-                hash: c.hash || c.dhash || '',
+                hash: c.hash || c.technicalMetrics?.hash || '',
+                conflict: evaluation.conflictInfo,
             });
         }
     }
@@ -500,6 +634,7 @@ export function planContainerRecommendations({
 
     const recommendations = [];
     const usedHashes = new Set();
+    const pickedSlideHashes = [];
     const clubOccurrences = new Map();
 
     for (let slot = 0; slot < slotsCount; slot++) {
@@ -517,27 +652,62 @@ export function planContainerRecommendations({
             continue;
         }
 
-        // Buscar el mejor candidato que mantenga la diversidad
         let picked = null;
 
         for (const item of scoredList) {
             // No repetir la misma imagen exacta
             if (usedHashes.has(item.candidate.id) || usedHashes.has(item.candidate.url)) continue;
 
-            // Evitar saturar el Hero con un solo club (máximo 2 slots por club si hay más opciones)
-            const countForClub = clubOccurrences.get(item.clubName) || 0;
-            if (countForClub >= 2 && scoredList.length > slotsCount) {
+            // 1. REGLA HERO vs NOTICIAS: Excluir portadas de noticias publicadas del Hero
+            if (containerKey === 'hero' && exclusivityRules?.avoidHeroNewsDuplicates && item.conflict?.hasConflict) {
+                // Si la fotografía colisiona con portada de noticia, buscar alternativa inteligente de la misma actividad
+                const alternative = scoredList.find((alt) =>
+                    alt.candidate.submissionId &&
+                    alt.candidate.submissionId === item.candidate.submissionId &&
+                    alt.candidate.id !== item.candidate.id &&
+                    !alt.conflict?.hasConflict &&
+                    !usedHashes.has(alt.candidate.id) &&
+                    !usedHashes.has(alt.candidate.url)
+                );
+
+                if (alternative) {
+                    picked = {
+                        ...alternative,
+                        isAlternative: true,
+                        alternativeOf: item.candidate.title,
+                        alternativeReason: `Fotografía seleccionada como alternativa de la misma actividad («${item.candidate.title}») con diferente composición para evitar duplicar la portada de la noticia «${item.conflict.postTitle}».`,
+                    };
+                    break;
+                }
+                // Si no hay alternativa en la misma solicitud, omitir este candidato conflictivo para el Hero
                 continue;
+            }
+
+            // 2. REGLA HERO SLIDE DUPLICATES: Evitar fotos repetidas o casi idénticas entre diapositivas del mismo Hero
+            if (containerKey === 'hero' && exclusivityRules?.avoidHeroSlideDuplicates && item.hash) {
+                const isNearDupe = pickedSlideHashes.some((h) => areImagesNearDuplicates(h, item.hash, 8));
+                if (isNearDupe) continue;
+            }
+
+            // 3. REGLA DE DIVERSIDAD DE CLUBES
+            if (exclusivityRules?.prioritizeClubDiversity) {
+                const countForClub = clubOccurrences.get(item.clubName) || 0;
+                if (countForClub >= 2 && scoredList.length > slotsCount) {
+                    continue;
+                }
             }
 
             picked = item;
             break;
         }
 
-        // Si todos los candidatos superaron el límite de diversidad, tomamos el siguiente con mayor puntaje
+        // Si todos los candidatos superaron el límite de diversidad, tomamos el siguiente con mayor puntaje no conflictivo
         if (!picked) {
             for (const item of scoredList) {
                 if (!usedHashes.has(item.candidate.id) && !usedHashes.has(item.candidate.url)) {
+                    if (containerKey === 'hero' && exclusivityRules?.avoidHeroNewsDuplicates && item.conflict?.hasConflict) {
+                        continue;
+                    }
                     picked = item;
                     break;
                 }
@@ -547,13 +717,17 @@ export function planContainerRecommendations({
         if (picked) {
             usedHashes.add(picked.candidate.id);
             usedHashes.add(picked.candidate.url);
+            if (picked.hash) pickedSlideHashes.push(picked.hash);
             clubOccurrences.set(picked.clubName, (clubOccurrences.get(picked.clubName) || 0) + 1);
 
             recommendations.push({
                 slotIndex: slot,
                 slotKey,
                 isLocked: false,
+                isAlternative: Boolean(picked.isAlternative),
+                alternativeReason: picked.alternativeReason || null,
                 selected: {
+                    id: picked.candidate.id,
                     candidateId: picked.candidate.id,
                     url: picked.candidate.url,
                     filename: picked.candidate.filename,
@@ -565,9 +739,16 @@ export function planContainerRecommendations({
                     breakdown: picked.evaluation.breakdown,
                     reasons: picked.evaluation.reasons,
                     facts: picked.evaluation.facts,
-                    interpretation: picked.evaluation.interpretation,
+                    interpretation: picked.isAlternative
+                        ? `${picked.evaluation.interpretation} [${picked.alternativeReason}]`
+                        : picked.evaluation.interpretation,
                     cropSuggested: picked.evaluation.cropSuggested,
                     warnings: picked.evaluation.warnings,
+                    isEligibleForHero: picked.evaluation.isEligibleForHero,
+                    conflictInfo: picked.conflict || null,
+                    isAlternative: Boolean(picked.isAlternative),
+                    alternativeOf: picked.alternativeOf || null,
+                    alternativeReason: picked.alternativeReason || null,
                 },
             });
         } else {
@@ -576,7 +757,7 @@ export function planContainerRecommendations({
                 slotKey,
                 isLocked: false,
                 selected: null,
-                note: 'No se encontraron más candidatas elegibles para este espacio.',
+                note: 'No se encontraron más candidatas elegibles no duplicadas para este espacio.',
             });
         }
     }

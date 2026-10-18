@@ -21,6 +21,7 @@ import {
     postRollback,
     getLocks,
     postToggleLock,
+    getImageUsage,
 } from '../controllers/visualCurationController.js';
 import { getAllClubs, getClubById, createClub, updateClub, deleteClub, batchUpsertMembers } from '../controllers/clubController.js';
 import {
@@ -274,6 +275,7 @@ router.get('/curation/history', requireRoleOrPermission(contentRoles, 'media.vie
 router.post('/curation/history/:id/rollback', requireRoleOrPermission(contentRoles, 'media.edit'), postRollback);
 router.get('/curation/locks', requireRoleOrPermission(contentRoles, 'media.view'), getLocks);
 router.post('/curation/locks', requireRoleOrPermission(contentRoles, 'media.edit'), postToggleLock);
+router.get('/curation/image-usage', requireRoleOrPermission(contentRoles, 'media.view'), getImageUsage);
 
 // ⚠️ La literal ANTES que cualquier paramétrica del mismo grupo: Express casa
 // por orden y una literal debajo de su `:id` es inalcanzable, con un fallo

@@ -10,11 +10,13 @@ import db from './db.js';
 import { ensureVisualCurationSchema } from './ensureVisualCurationSchema.js';
 import {
     DEFAULT_CURATION_WEIGHTS,
+    DEFAULT_EXCLUSIVITY_RULES,
     CONTAINER_SPECS,
     ROTARY_CAUSES,
     scoreCandidateForContainer,
     planContainerRecommendations,
     evaluateCandidateEligibility,
+    detectNewsCoverConflict,
 } from './visualCurationSpec.js';
 import { routeToModel } from './ai-router.js';
 
@@ -339,6 +341,115 @@ export async function processAndCacheCandidate({ clubId, item }) {
     };
 }
 
+// ─── Portadas de Noticias Publicadas (Regla Hero vs Noticias) ──────────────
+export async function getPublishedNewsCovers(clubId) {
+    const query = `
+        SELECT p.id AS "postId", p.title, p.slug, p.image, p.images, p."clubId", p."sourceDistrictId",
+               a."submissionId", a."fileId", a."publicUrl"
+          FROM "Post" p
+          LEFT JOIN "SubmissionArticle" a ON a."postId" = p.id
+         WHERE p.published = TRUE
+           AND (p.image IS NOT NULL AND p.image <> '')
+           AND (
+               p."clubId" = $1 
+               OR p."sourceDistrictId" = $1
+               OR p."publishToDistrict" = TRUE
+               OR $1 IS NULL
+           )
+         ORDER BY p."createdAt" DESC
+         LIMIT 100
+    `;
+    const { rows } = await db.query(query, [clubId]).catch((err) => {
+        console.warn('[visual-curation] Error consultando portadas de noticias:', err.message);
+        return { rows: [] };
+    });
+    return rows;
+}
+
+// ─── Registro Centralizado de Utilización de Imágenes (Objetivo 2.3) ────────
+export async function getImageUsageRegistry(clubId) {
+    await ensureVisualCurationSchema();
+
+    // 1. Contenedores del sitio público
+    const secRes = await db.query(
+        `SELECT content FROM "ContentSection" WHERE page = 'home' AND section = 'images' AND "clubId" = $1 LIMIT 1`,
+        [clubId]
+    );
+    let siteImages = {};
+    if (secRes.rows[0]?.content) {
+        const c = secRes.rows[0].content;
+        siteImages = typeof c === 'string' ? JSON.parse(c) : c;
+    }
+
+    const usages = [];
+
+    // Hero slides
+    if (Array.isArray(siteImages.hero)) {
+        siteImages.hero.forEach((slide, idx) => {
+            if (slide?.url) {
+                usages.push({
+                    url: slide.url,
+                    containerKey: 'hero',
+                    slotIndex: idx,
+                    containerLabel: `Hero — Slide ${idx + 1}`,
+                    usageType: 'hero',
+                    status: 'published',
+                    title: slide.alt || `Hero Slide ${idx + 1}`,
+                });
+            }
+        });
+    }
+
+    // Otras secciones
+    ['foundation', 'join', 'homeBanner', 'spotlight', 'causes'].forEach((key) => {
+        const item = siteImages[key];
+        if (Array.isArray(item)) {
+            item.forEach((slot, idx) => {
+                if (slot?.url) {
+                    usages.push({
+                        url: slot.url,
+                        containerKey: key,
+                        slotIndex: idx,
+                        containerLabel: `${CONTAINER_SPECS[key]?.label || key} — Espacio ${idx + 1}`,
+                        usageType: 'section',
+                        status: 'published',
+                        title: slot.alt || key,
+                    });
+                }
+            });
+        } else if (item?.url) {
+            usages.push({
+                url: item.url,
+                containerKey: key,
+                slotIndex: 0,
+                containerLabel: CONTAINER_SPECS[key]?.label || key,
+                usageType: 'section',
+                status: 'published',
+                title: item.alt || key,
+            });
+        }
+    });
+
+    // 2. Portadas de Noticias
+    const news = await getPublishedNewsCovers(clubId);
+    news.forEach((post) => {
+        usages.push({
+            id: post.postId,
+            url: post.image,
+            containerKey: 'news_cover',
+            containerLabel: 'Noticias — Portada de Artículo',
+            usageType: 'news_cover',
+            status: 'published',
+            title: post.title,
+            slug: post.slug,
+            submissionId: post.submissionId,
+            fileId: post.fileId,
+        });
+    });
+
+    return usages;
+}
+
 // ─── Generación de Recomendaciones para el Sitio ────────────────────────────
 export async function runCurationCycleForTenant(clubId, options = {}) {
     await ensureVisualCurationSchema();
@@ -355,7 +466,15 @@ export async function runCurationCycleForTenant(clubId, options = {}) {
         intervalDays: 15,
         targetContainers: ['hero', 'foundation', 'join'],
         weights: DEFAULT_CURATION_WEIGHTS,
+        exclusivityRules: DEFAULT_EXCLUSIVITY_RULES,
     };
+    const exclusivityRules = config.exclusivityRules || DEFAULT_EXCLUSIVITY_RULES;
+
+    // Consultar portadas de noticias publicadas si la regla está activa
+    let publishedNewsCovers = [];
+    if (exclusivityRules?.checkNewsCoversOnCuration !== false) {
+        publishedNewsCovers = await getPublishedNewsCovers(clubId);
+    }
 
     // 2. Ingestar y analizar candidatas
     const rawCandidates = await ingestCandidatesForTenant(clubId);
@@ -394,6 +513,8 @@ export async function runCurationCycleForTenant(clubId, options = {}) {
             slotsCount: spec.slots,
             lockedSlots: lockedMap,
             weights: config.weights || DEFAULT_CURATION_WEIGHTS,
+            publishedNewsCovers,
+            exclusivityRules,
         });
 
         for (const plan of containerPlans) {
@@ -402,8 +523,8 @@ export async function runCurationCycleForTenant(clubId, options = {}) {
             // Guardar recomendación en la BD
             const { rows: recRows } = await db.query(
                 `INSERT INTO "SiteImageRecommendation"
-                    ("clubId", "candidateId", "containerKey", "slotIndex", score, breakdown, reasons, facts, interpretation, "cropSuggested", status)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending')
+                    ("clubId", "candidateId", "containerKey", "slotIndex", score, breakdown, reasons, facts, interpretation, "cropSuggested", status, "isEligibleForHero", "conflictInfo")
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending', $11, $12)
                  RETURNING *`,
                 [
                     clubId,
@@ -416,6 +537,8 @@ export async function runCurationCycleForTenant(clubId, options = {}) {
                     JSON.stringify(plan.selected.facts),
                     plan.selected.interpretation,
                     JSON.stringify(plan.selected.cropSuggested),
+                    plan.selected.isEligibleForHero !== false,
+                    plan.selected.conflictInfo ? JSON.stringify(plan.selected.conflictInfo) : null,
                 ]
             );
 
@@ -460,6 +583,16 @@ export async function approveRecommendation({ recommendationId, framingConfig, a
 
     if (!rows[0]) throw new Error('Recomendación no encontrada');
     const rec = rows[0];
+
+    // Verificar si existe conflicto con portadas de noticias al publicar en Hero
+    const isException = Boolean(framingConfig?.isException);
+    const exceptionReason = framingConfig?.exceptionReason || (isException ? 'Excepción editorial autorizada por el administrador' : null);
+
+    if (rec.containerKey === 'hero' && rec.conflictInfo?.hasConflict && !isException) {
+        throw new Error(
+            `Esta fotografía ya se utiliza como portada de la noticia «${rec.conflictInfo.postTitle}». Para publicarla en el Hero se requiere autorización explícita como excepción editorial justificada.`
+        );
+    }
 
     // 2. Resolver parámetros de encuadre
     const currentCrop = rec.cropSuggested || {};
@@ -530,6 +663,8 @@ export async function approveRecommendation({ recommendationId, framingConfig, a
         ...framing,
         approvedFraming: framing,
         approvedAt: new Date().toISOString(),
+        isException,
+        exceptionReason,
     };
 
     await db.query(
@@ -544,11 +679,11 @@ export async function approveRecommendation({ recommendationId, framingConfig, a
         [recommendationId, actorName || 'Administrador', JSON.stringify(updatedCropSuggested)]
     );
 
-    // 7. Registrar en el Historial de Auditoría
+    // 7. Registrar en el Historial de Auditoría (con excepción si aplica)
     const { rows: historyRows } = await db.query(
         `INSERT INTO "SiteImageHistory"
-            (id, "clubId", "containerKey", "slotIndex", "previousUrl", "newUrl", "candidateId", "submissionId", "clubName", action, reason, "actorId", "actorName", "createdAt")
-         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, 'curation_approved', $9, $10, $11, NOW())
+            (id, "clubId", "containerKey", "slotIndex", "previousUrl", "newUrl", "candidateId", "submissionId", "clubName", action, reason, "isException", "exceptionReason", "actorId", "actorName", "createdAt")
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
          RETURNING *`,
         [
             clubId,
@@ -559,7 +694,12 @@ export async function approveRecommendation({ recommendationId, framingConfig, a
             rec.candidateId,
             rec.candidateSubmissionId,
             rec.candidateClub,
-            `Aprobación editorial para ${CONTAINER_SPECS[targetKey]?.label || targetKey}`,
+            isException ? 'approved_with_exception' : 'curation_approved',
+            isException
+                ? `Excepción editorial aprobada: ${exceptionReason}`
+                : `Aprobación editorial para ${CONTAINER_SPECS[targetKey]?.label || targetKey}`,
+            isException,
+            exceptionReason,
             actorId,
             actorName,
         ]

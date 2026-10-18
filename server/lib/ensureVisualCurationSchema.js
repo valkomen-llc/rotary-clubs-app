@@ -30,6 +30,21 @@ export async function ensureVisualCurationSchema() {
         `);
 
         if (rows[0]?.c1 && rows[0]?.c2 && rows[0]?.c3 && rows[0]?.c4 && rows[0]?.c5) {
+            // Migraciones aditivas para columnas de V2.2 (Reglas de exclusividad y conflictos)
+            await db.query(`
+                ALTER TABLE "SiteImageCurationConfig" 
+                ADD COLUMN IF NOT EXISTS "exclusivityRules" JSONB NOT NULL DEFAULT '{"avoidHeroNewsDuplicates": true, "detectResizedOrCropped": true, "avoidHeroSlideDuplicates": true, "prioritizeClubDiversity": true, "checkNewsCoversOnCuration": true}'::jsonb;
+
+                ALTER TABLE "SiteImageRecommendation"
+                ADD COLUMN IF NOT EXISTS "isEligibleForHero" BOOLEAN NOT NULL DEFAULT TRUE,
+                ADD COLUMN IF NOT EXISTS "conflictInfo" JSONB DEFAULT NULL,
+                ADD COLUMN IF NOT EXISTS "alternativeCandidateId" TEXT DEFAULT NULL;
+
+                ALTER TABLE "SiteImageHistory"
+                ADD COLUMN IF NOT EXISTS "isException" BOOLEAN NOT NULL DEFAULT FALSE,
+                ADD COLUMN IF NOT EXISTS "exceptionReason" TEXT DEFAULT NULL;
+            `).catch(e => console.warn('[visual-curation] Migraciones de columnas omitidas o ya existentes:', e.message));
+
             _schemaReady = true;
             return;
         }
@@ -43,6 +58,7 @@ export async function ensureVisualCurationSchema() {
                 "intervalDays" INTEGER NOT NULL DEFAULT 15,
                 "targetContainers" JSONB NOT NULL DEFAULT '["hero", "foundation", "join"]'::jsonb,
                 weights JSONB NOT NULL DEFAULT '{"institutional":0.3,"technical":0.2,"composition":0.2,"containerFit":0.2,"narrative":0.1}'::jsonb,
+                "exclusivityRules" JSONB NOT NULL DEFAULT '{"avoidHeroNewsDuplicates": true, "detectResizedOrCropped": true, "avoidHeroSlideDuplicates": true, "prioritizeClubDiversity": true, "checkNewsCoversOnCuration": true}'::jsonb,
                 "lastRunAt" TIMESTAMPTZ,
                 "nextRunAt" TIMESTAMPTZ,
                 "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -92,6 +108,9 @@ export async function ensureVisualCurationSchema() {
                 interpretation TEXT,
                 "cropSuggested" JSONB NOT NULL DEFAULT '{}'::jsonb,
                 status TEXT NOT NULL DEFAULT 'pending',
+                "isEligibleForHero" BOOLEAN NOT NULL DEFAULT TRUE,
+                "conflictInfo" JSONB DEFAULT NULL,
+                "alternativeCandidateId" TEXT DEFAULT NULL,
                 "rejectionReason" TEXT,
                 "approvedBy" TEXT,
                 "approvedAt" TIMESTAMPTZ,
@@ -131,6 +150,8 @@ export async function ensureVisualCurationSchema() {
                 "clubName" TEXT,
                 action TEXT NOT NULL,
                 reason TEXT,
+                "isException" BOOLEAN NOT NULL DEFAULT FALSE,
+                "exceptionReason" TEXT,
                 "actorId" TEXT,
                 "actorName" TEXT,
                 "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()

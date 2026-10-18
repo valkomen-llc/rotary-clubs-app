@@ -93,6 +93,14 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
                                                 <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
                                                     Activa
                                                 </span>
+                                                {item.isException && (
+                                                    <span
+                                                        className="text-[10px] text-amber-700 font-bold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200"
+                                                        title={`Excepción autorizada: ${item.exceptionReason || 'Sin detalle registrado'}`}
+                                                    >
+                                                        Excepción
+                                                    </span>
+                                                )}
                                             </div>
                                         </td>
                                         <td className="py-3.5 px-4">

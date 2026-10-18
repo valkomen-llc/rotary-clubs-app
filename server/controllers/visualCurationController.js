@@ -13,11 +13,13 @@ import {
     rejectRecommendation,
     rollbackHistoryVersion,
     saveRecommendationFraming,
+    getImageUsageRegistry,
 } from '../lib/visualCurationEngine.js';
 import {
     scoreCandidateForContainer,
     CONTAINER_SPECS,
     DEFAULT_CURATION_WEIGHTS,
+    DEFAULT_EXCLUSIVITY_RULES,
 } from '../lib/visualCurationSpec.js';
 
 const resolveClubId = (req) => {
@@ -44,10 +46,15 @@ export async function getCurationConfig(req, res) {
             const isD4281 = clubId === '8aa470c5-0a5a-4a8d-b872-38645b8b9f3a';
             const { rows: inserted } = await db.query(
                 `INSERT INTO "SiteImageCurationConfig"
-                    ("clubId", enabled, mode, "intervalDays", "targetContainers", weights)
-                 VALUES ($1, $2, 'recommendation', 15, '["hero", "foundation", "join"]'::jsonb, $3)
+                    ("clubId", enabled, mode, "intervalDays", "targetContainers", weights, "exclusivityRules")
+                 VALUES ($1, $2, 'recommendation', 15, '["hero", "foundation", "join"]'::jsonb, $3, $4)
                  RETURNING *`,
-                [clubId, isD4281, JSON.stringify(DEFAULT_CURATION_WEIGHTS)]
+                [
+                    clubId,
+                    isD4281,
+                    JSON.stringify(DEFAULT_CURATION_WEIGHTS),
+                    JSON.stringify(DEFAULT_EXCLUSIVITY_RULES),
+                ]
             );
             return res.json(inserted[0]);
         }
@@ -66,18 +73,19 @@ export async function updateCurationConfig(req, res) {
         const clubId = resolveClubId(req);
         if (!clubId) return res.status(403).json({ error: 'Contexto de tenant requerido' });
 
-        const { enabled, mode, intervalDays, targetContainers, weights } = req.body;
+        const { enabled, mode, intervalDays, targetContainers, weights, exclusivityRules } = req.body;
 
         const { rows } = await db.query(
             `INSERT INTO "SiteImageCurationConfig"
-                ("clubId", enabled, mode, "intervalDays", "targetContainers", weights, "updatedAt")
-             VALUES ($1, $2, $3, $4, $5, $6, NOW())
+                ("clubId", enabled, mode, "intervalDays", "targetContainers", weights, "exclusivityRules", "updatedAt")
+             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
              ON CONFLICT ("clubId") DO UPDATE
              SET enabled = COALESCE($2, "SiteImageCurationConfig".enabled),
                  mode = COALESCE($3, "SiteImageCurationConfig".mode),
                  "intervalDays" = COALESCE($4, "SiteImageCurationConfig"."intervalDays"),
                  "targetContainers" = COALESCE($5, "SiteImageCurationConfig"."targetContainers"),
                  weights = COALESCE($6, "SiteImageCurationConfig".weights),
+                 "exclusivityRules" = COALESCE($7, "SiteImageCurationConfig"."exclusivityRules"),
                  "updatedAt" = NOW()
              RETURNING *`,
             [
@@ -87,6 +95,7 @@ export async function updateCurationConfig(req, res) {
                 Number(intervalDays) || 15,
                 targetContainers ? JSON.stringify(targetContainers) : JSON.stringify(['hero', 'foundation', 'join']),
                 weights ? JSON.stringify(weights) : JSON.stringify(DEFAULT_CURATION_WEIGHTS),
+                exclusivityRules ? JSON.stringify(exclusivityRules) : JSON.stringify(DEFAULT_EXCLUSIVITY_RULES),
             ]
         );
 
@@ -395,3 +404,17 @@ export async function postToggleLock(req, res) {
         res.status(500).json({ error: err.message || 'Error al actualizar bloqueo de contenedor' });
     }
 }
+
+// ─── GET /api/admin/curation/image-usage ───────────────────────────────────
+export async function getImageUsage(req, res) {
+    try {
+        await ensureVisualCurationSchema();
+        const clubId = resolveClubId(req);
+        const usages = await getImageUsageRegistry(clubId);
+        res.json(usages);
+    } catch (err) {
+        console.error('[curation-controller] Error getImageUsage:', err);
+        res.status(500).json({ error: err.message || 'Error al obtener registro de utilización de imágenes' });
+    }
+}
+
