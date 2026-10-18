@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1210.0",
-  "cache_bust": "4.1210.0",
+  "version": "4.1211.0",
+  "cache_bust": "4.1211.0",
   "type": "module",
-  "//": "UI V4.1210.0 | 2026-10-17 (Curaduría Visual Inteligente y Distribución Automatizada de Imágenes con IA)",
+  "//": "UI V4.1211.0 | 2026-10-18 (Curaduría Inteligente IA V2.1: Ancho Completo del Administrador y Editor Visual de Encuadre Inteligente)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs && node scripts/check-version-parity.mjs && node scripts/check-syntax.mjs && node scripts/check-hooks.mjs && node scripts/check-routes.mjs && node scripts/check-imports.mjs && node scripts/check-server-undef.mjs && node scripts/check-route-handlers.mjs",

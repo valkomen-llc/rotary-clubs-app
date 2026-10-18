@@ -445,7 +445,7 @@ export async function runCurationCycleForTenant(clubId, options = {}) {
 }
 
 // ─── Aprobación Editorial y Publicación ─────────────────────────────────────
-export async function approveRecommendation({ recommendationId, actorId, actorName, clubId }) {
+export async function approveRecommendation({ recommendationId, framingConfig, actorId, actorName, clubId }) {
     await ensureVisualCurationSchema();
 
     // 1. Obtener la recomendación con los datos de la candidata
@@ -461,7 +461,36 @@ export async function approveRecommendation({ recommendationId, actorId, actorNa
     if (!rows[0]) throw new Error('Recomendación no encontrada');
     const rec = rows[0];
 
-    // 2. Obtener el estado actual de las secciones del sitio
+    // 2. Resolver parámetros de encuadre
+    const currentCrop = rec.cropSuggested || {};
+    const framing = {
+        x: framingConfig?.x ?? currentCrop.x ?? 50,
+        y: framingConfig?.y ?? currentCrop.y ?? 50,
+        zoom: framingConfig?.zoom ?? currentCrop.zoom ?? 100,
+        mode: framingConfig?.mode ?? currentCrop.mode ?? 'cover',
+        focalPoint: framingConfig?.focalPoint || currentCrop.focalPoint || { x: framingConfig?.x ?? currentCrop.x ?? 50, y: framingConfig?.y ?? currentCrop.y ?? 50 },
+        mobile: framingConfig?.mobile ?? currentCrop.mobile ?? null,
+        tablet: framingConfig?.tablet ?? currentCrop.tablet ?? null,
+    };
+
+    const slotPayload = {
+        url: rec.candidateUrl,
+        alt: rec.candidateTitle || 'Imagen seleccionada por IA',
+        position: { x: framing.x, y: framing.y },
+        zoom: framing.zoom,
+        mode: framing.mode,
+        focalPoint: framing.focalPoint,
+        framing: {
+            x: framing.x,
+            y: framing.y,
+            zoom: framing.zoom,
+            mode: framing.mode,
+            mobile: framing.mobile,
+            tablet: framing.tablet,
+        },
+    };
+
+    // 3. Obtener el estado actual de las secciones del sitio
     const secRes = await db.query(
         `SELECT content FROM "ContentSection" WHERE page = 'home' AND section = 'images' AND "clubId" = $1 LIMIT 1`,
         [clubId]
@@ -473,26 +502,20 @@ export async function approveRecommendation({ recommendationId, actorId, actorNa
         siteImages = typeof c === 'string' ? JSON.parse(c) : c;
     }
 
-    // 3. Obtener la imagen anterior para trazabilidad y rollback
+    // 4. Obtener la imagen anterior para trazabilidad y rollback
     let previousUrl = null;
     const targetKey = rec.containerKey;
     const slotIdx = rec.slotIndex;
 
     if (Array.isArray(siteImages[targetKey])) {
         previousUrl = siteImages[targetKey][slotIdx]?.url || null;
-        siteImages[targetKey][slotIdx] = {
-            url: rec.candidateUrl,
-            alt: rec.candidateTitle || 'Imagen seleccionada por IA',
-        };
+        siteImages[targetKey][slotIdx] = slotPayload;
     } else {
         previousUrl = siteImages[targetKey]?.url || null;
-        siteImages[targetKey] = {
-            url: rec.candidateUrl,
-            alt: rec.candidateTitle || 'Imagen seleccionada por IA',
-        };
+        siteImages[targetKey] = slotPayload;
     }
 
-    // 4. Guardar sección actualizada en ContentSection
+    // 5. Guardar sección actualizada en ContentSection
     await db.query(
         `INSERT INTO "ContentSection" (id, page, section, content, "clubId", "updatedAt")
          VALUES (gen_random_uuid(), 'home', 'images', $1, $2, NOW())
@@ -501,19 +524,27 @@ export async function approveRecommendation({ recommendationId, actorId, actorNa
         [JSON.stringify(siteImages), clubId]
     );
 
-    // 5. Actualizar recomendación a 'approved' y 'publishedAt' = NOW()
+    // 6. Actualizar recomendación a 'approved' con el encuadre final
+    const updatedCropSuggested = {
+        ...currentCrop,
+        ...framing,
+        approvedFraming: framing,
+        approvedAt: new Date().toISOString(),
+    };
+
     await db.query(
         `UPDATE "SiteImageRecommendation"
             SET status = 'approved',
                 "approvedBy" = $2,
                 "approvedAt" = NOW(),
                 "publishedAt" = NOW(),
+                "cropSuggested" = $3,
                 "updatedAt" = NOW()
           WHERE id = $1`,
-        [recommendationId, actorName || 'Administrador']
+        [recommendationId, actorName || 'Administrador', JSON.stringify(updatedCropSuggested)]
     );
 
-    // 6. Registrar en el Historial de Auditoría
+    // 7. Registrar en el Historial de Auditoría
     const { rows: historyRows } = await db.query(
         `INSERT INTO "SiteImageHistory"
             (id, "clubId", "containerKey", "slotIndex", "previousUrl", "newUrl", "candidateId", "submissionId", "clubName", action, reason, "actorId", "actorName", "createdAt")
@@ -631,3 +662,30 @@ export async function rollbackHistoryVersion({ historyId, actorId, actorName, cl
 
     return { ok: true, restoredUrl: entry.previousUrl };
 }
+
+// ─── Guardar Ajuste de Encuadre Sin Publicar Todavía ─────────────────────────
+export async function saveRecommendationFraming({ recommendationId, framingConfig, clubId }) {
+    await ensureVisualCurationSchema();
+    const { rows } = await db.query(
+        `SELECT id, "cropSuggested" FROM "SiteImageRecommendation" WHERE id = $1 AND "clubId" = $2`,
+        [recommendationId, clubId]
+    );
+    if (!rows[0]) throw new Error('Recomendación no encontrada');
+
+    const currentCrop = rows[0].cropSuggested || {};
+    const updated = {
+        ...currentCrop,
+        ...framingConfig,
+        userAdjusted: true,
+        updatedAt: new Date().toISOString(),
+    };
+
+    await db.query(
+        `UPDATE "SiteImageRecommendation"
+            SET "cropSuggested" = $2, "updatedAt" = NOW()
+          WHERE id = $1`,
+        [recommendationId, JSON.stringify(updated)]
+    );
+    return updated;
+}
+

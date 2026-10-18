@@ -21,10 +21,27 @@ const HeroSection = () => {
   const eventHero = (club as any)?.eventHeroImages as { url: string; alt?: string }[] | undefined;
   const useEventHero = hasCustomTheme((club as any)?.type) && !!eventHero && eventHero.length > 0;
 
-  // Build slides from siteImages or defaults
+  // Build slides from siteImages or defaults with framing parameters (v4.1211.0)
   const slides = (siteImages.hero && siteImages.hero.length > 0)
-    ? siteImages.hero.map((img, i) => ({ id: i + 1, image: img.url, alt: img.alt }))
-    : (siteImages._loading ? [] : defaultSlides);
+    ? siteImages.hero.map((img: any, i) => {
+        const framing = img.framing || {};
+        const posX = framing.x ?? img.position?.x ?? 50;
+        const posY = framing.y ?? img.position?.y ?? 50;
+        const zoom = (framing.zoom ?? img.zoom ?? 100) / 100;
+        const mode = framing.mode ?? img.mode ?? 'cover';
+        const mobile = framing.mobile || null;
+        return {
+          id: i + 1,
+          image: img.url,
+          alt: img.alt,
+          posX,
+          posY,
+          zoom,
+          mode,
+          mobile,
+        };
+      })
+    : (siteImages._loading ? [] : defaultSlides.map((s) => ({ ...s, posX: 50, posY: 50, zoom: 1, mode: 'cover', mobile: null })));
 
   useEffect(() => {
     if (useEventHero || siteImages._loading) return; // Wait for initial images
@@ -61,21 +78,38 @@ const HeroSection = () => {
           escrito dos veces una de las dos se queda atrás al ajustarlo. */}
       <section className="relative w-full h-[440px] md:h-[540px] overflow-hidden bg-rotary-dark">
         <div className="absolute inset-0">
-          {slides.map((slide, index) => (
-            <div
-              key={slide.id}
-              className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${
-                index === currentSlide ? 'opacity-100 z-10' : 'opacity-0 z-0'
-              }`}
-            >
-              <img 
-                src={slide.image} 
-                alt={slide.alt} 
-                className={`w-full h-full object-cover object-top ${index === currentSlide ? 'animate-hero-zoom' : ''}`}
-              />
-            </div>
-          ))}
-          <div className="absolute inset-0 bg-gradient-to-r from-black/40 to-transparent z-20" />
+          {slides.map((slide, index) => {
+            const isContain = slide.mode === 'contain';
+            return (
+              <div
+                key={slide.id}
+                className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${
+                  index === currentSlide ? 'opacity-100 z-10' : 'opacity-0 z-0'
+                }`}
+              >
+                {/* Si el modo es 'contain' (mostrar imagen completa), fondo ambiental difuminado */}
+                {isContain && (
+                  <div
+                    aria-hidden="true"
+                    className="absolute inset-0 bg-cover bg-center blur-2xl scale-110 opacity-60"
+                    style={{ backgroundImage: `url(${slide.image})` }}
+                  />
+                )}
+                <img 
+                  src={slide.image} 
+                  alt={slide.alt} 
+                  className={`w-full h-full ${
+                    isContain ? 'relative z-10 object-contain' : 'object-cover'
+                  } ${index === currentSlide ? 'animate-hero-zoom' : ''}`}
+                  style={!isContain ? {
+                    objectPosition: `${slide.posX}% ${slide.posY}%`,
+                    transform: slide.zoom > 1 ? `scale(${slide.zoom})` : undefined,
+                  } : undefined}
+                />
+              </div>
+            );
+          })}
+          <div className="absolute inset-0 bg-gradient-to-r from-black/40 to-transparent z-20 pointer-events-none" />
         </div>
         
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex gap-2">

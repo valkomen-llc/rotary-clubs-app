@@ -6,6 +6,7 @@ import {
 import { toast } from 'sonner';
 import { RecommendationCard } from './RecommendationCard';
 import { PreviewModal } from './PreviewModal';
+import { FramingEditorModal, FramingConfig } from './FramingEditorModal';
 import { HistoryTab } from './HistoryTab';
 import { SchedulingTab } from './SchedulingTab';
 import { ContainersTab } from './ContainersTab';
@@ -45,6 +46,7 @@ export const VisualCurationPanel: React.FC<VisualCurationPanelProps> = ({
 
     // Modals
     const [selectedRecForPreview, setSelectedRecForPreview] = useState<any>(null);
+    const [selectedRecForFraming, setSelectedRecForFraming] = useState<any>(null);
     const [rejectingRecId, setRejectingRecId] = useState<string | null>(null);
     const [rejectReason, setRejectReason] = useState<string>('');
 
@@ -100,13 +102,13 @@ export const VisualCurationPanel: React.FC<VisualCurationPanelProps> = ({
         }
     };
 
-    // Aprobar recomendación
-    const handleApprove = async (recId: string) => {
+    // Aprobar recomendación (estándar)
+    const handleApprove = async (recId: string, framingConfig?: any) => {
         try {
             const res = await fetch(`${API}/admin/curation/recommendations/${recId}/approve`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
-                body: JSON.stringify({ clubId }),
+                body: JSON.stringify({ clubId, framingConfig }),
             });
             const data = await res.json();
             if (res.ok) {
@@ -119,6 +121,35 @@ export const VisualCurationPanel: React.FC<VisualCurationPanelProps> = ({
         } catch {
             toast.error('Error de conexión al aprobar');
         }
+    };
+
+    // Guardar encuadre sin publicar todavía
+    const handleSaveFraming = async (recId: string, framing: FramingConfig) => {
+        const res = await fetch(`${API}/admin/curation/recommendations/${recId}/framing`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+            body: JSON.stringify({ clubId, framingConfig: framing }),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Error al guardar encuadre');
+        }
+        await loadData();
+    };
+
+    // Confirmar encuadre y publicar en el sitio
+    const handleConfirmAndApproveWithFraming = async (recId: string, framing: FramingConfig) => {
+        const res = await fetch(`${API}/admin/curation/recommendations/${recId}/approve`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+            body: JSON.stringify({ clubId, framingConfig: framing }),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Error al aprobar y publicar');
+        }
+        await loadData();
+        onRefreshSiteImages();
     };
 
     // Rechazar recomendación
@@ -357,7 +388,7 @@ export const VisualCurationPanel: React.FC<VisualCurationPanelProps> = ({
 
                     {/* Recommendations Grid */}
                     {filteredRecs.length > 0 ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4 gap-6 w-full">
                             {filteredRecs.map((rec) => {
                                 const isLocked = locks.some(
                                     (l) => l.containerKey === rec.containerKey && Number(l.slotIndex) === Number(rec.slotIndex)
@@ -369,6 +400,7 @@ export const VisualCurationPanel: React.FC<VisualCurationPanelProps> = ({
                                         onApprove={handleApprove}
                                         onReject={(id) => setRejectingRecId(id)}
                                         onPreview={(r) => setSelectedRecForPreview(r)}
+                                        onAdjustFraming={(r) => setSelectedRecForFraming(r)}
                                         onReassign={handleReassign}
                                         onToggleLock={handleToggleLock}
                                         isLocked={isLocked}
@@ -430,6 +462,17 @@ export const VisualCurationPanel: React.FC<VisualCurationPanelProps> = ({
                     recommendation={selectedRecForPreview}
                     onApprove={handleApprove}
                     onReject={(id) => setRejectingRecId(id)}
+                />
+            )}
+
+            {/* Framing Editor Modal */}
+            {selectedRecForFraming && (
+                <FramingEditorModal
+                    isOpen={Boolean(selectedRecForFraming)}
+                    rec={selectedRecForFraming}
+                    onClose={() => setSelectedRecForFraming(null)}
+                    onSaveFraming={handleSaveFraming}
+                    onConfirmAndApprove={handleConfirmAndApproveWithFraming}
                 />
             )}
 

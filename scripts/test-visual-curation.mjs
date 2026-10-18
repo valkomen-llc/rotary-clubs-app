@@ -12,6 +12,9 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
     DEFAULT_CURATION_WEIGHTS,
     CONTAINER_SPECS,
@@ -22,6 +25,10 @@ import {
     hammingDistance,
     areImagesNearDuplicates,
 } from '../server/lib/visualCurationSpec.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const root = path.resolve(__dirname, '..');
 
 console.log('🧪 Iniciando suite de pruebas: Curaduría Visual Inteligente IA\n');
 
@@ -216,6 +223,60 @@ assert.ok(recommendedClubs.includes('Club Rotario Cali'), 'Debe incluir a Club R
 assert.ok(recommendedClubs.includes('Club Rotario Bucaramanga'), 'Debe incluir a Club Rotario Bucaramanga');
 console.log('  ✓ Planificador de Hero: respeto estricto de slot bloqueado y balance de clubes');
 
+// ── 5. Curaduría Visual V2.1: Encuadre Inteligente y Ancho Completo ─────────
+console.log('\n5 · Curaduría Visual V2.1: Encuadre Inteligente y Ancho Completo');
+
+// A. Riesgo de recorte en foto vertical para Hero
+const verticalPhoto = {
+    title: 'Voluntariado juvenil',
+    club: 'Club Rotario Cali San Fernando',
+    consentVerified: true,
+    technicalMetrics: { width: 1080, height: 1920, sharpness: 14, brightness: 120 },
+    semanticAnalysis: {
+        showsServiceAction: true,
+        peopleCount: 4,
+        hasPeople: true,
+        isRotaryBranded: true,
+    },
+};
+const evalVertical = scoreCandidateForContainer(verticalPhoto, 'hero', 0);
+assert.equal(evalVertical.cropRisk, 'high', 'Foto vertical en Hero panorámico debe tener cropRisk alto');
+assert.equal(evalVertical.requiresCropAdjustment, true, 'Debe requerir ajuste de encuadre');
+assert.equal(evalVertical.cropSuggested.mode, 'contain', 'Foto vertical extrema en Hero debe sugerir modo contain');
+
+// B. Foto 4:3 convencional con personas en Hero -> cálculo de punto focal inteligente
+const photo43 = {
+    title: 'Entrega de filtros de agua en escuela rural',
+    club: 'Club Rotario Armenia',
+    consentVerified: true,
+    technicalMetrics: { width: 1600, height: 1200, sharpness: 12, brightness: 125 }, // 4:3
+    semanticAnalysis: {
+        showsServiceAction: true,
+        peopleCount: 3,
+        hasPeople: true,
+    },
+};
+const eval43 = scoreCandidateForContainer(photo43, 'hero', 0);
+assert.equal(eval43.cropRisk, 'high', 'Foto 4:3 en Hero 16:7 debe marcar cropRisk alto por recorte vertical');
+assert.equal(eval43.requiresCropAdjustment, true, 'Debe requerir ajuste de encuadre');
+assert.equal(eval43.cropSuggested.y, 65, 'Punto focal sugerido debe ser 65% para no cortar rostros/personas abajo');
+console.log('  ✓ Detección de riesgo de recorte y punto focal inteligente (65% Y para fotos 4:3 en Hero)');
+
+// C. Verificación de Ancho Completo en ImageDistribution.tsx
+const imgDistContent = fs.readFileSync(path.join(root, 'src/pages/admin/ImageDistribution.tsx'), 'utf8');
+assert.ok(!imgDistContent.includes('space-y-6 max-w-5xl'), 'ImageDistribution no debe estar limitado a max-w-5xl');
+assert.ok(imgDistContent.includes('space-y-6 w-full'), 'ImageDistribution debe usar w-full');
+console.log('  ✓ Layout del Administrador: ancho útil disponible corregido a 100% (w-full sin tope 5xl)');
+
+// D. Verificación del Renderizador de Hero en Sitio Público (HeroSection.tsx)
+const heroSectionContent = fs.readFileSync(path.join(root, 'src/sections/HeroSection.tsx'), 'utf8');
+assert.ok(!heroSectionContent.includes('object-cover object-top'), 'HeroSection no debe tener object-top estático hardcodeado');
+assert.ok(heroSectionContent.includes('objectPosition: `${slide.posX}% ${slide.posY}%`'), 'HeroSection debe sincronizar objectPosition');
+assert.ok(heroSectionContent.includes("slide.mode === 'contain'"), 'HeroSection debe soportar modo contain');
+assert.ok(heroSectionContent.includes('blur-2xl'), 'HeroSection debe pintar fondo difuminado complementario en modo contain');
+console.log('  ✓ Sincronización del sitio público: HeroSection consume parámetros de encuadre y fondo ambiental');
+
 console.log('\n════════════════════════════════════════════════════════════');
-console.log('🎉 TODAS LAS VERIFICACIONES DE CURADURÍA VISUAL PASARON OK');
+console.log('🎉 TODAS LAS VERIFICACIONES DE CURADURÍA VISUAL V2.1 PASARON OK');
 console.log('════════════════════════════════════════════════════════════\n');
+

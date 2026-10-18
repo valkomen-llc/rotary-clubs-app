@@ -53,17 +53,35 @@ const FoundationSection = () => {
     </>
   );
 
+  const fFraming = (siteImages.foundation as any)?.framing || {};
+  const fPosX = fFraming.x ?? (siteImages.foundation as any)?.position?.x ?? 50;
+  const fPosY = fFraming.y ?? (siteImages.foundation as any)?.position?.y ?? 50;
+  const fZoom = (fFraming.zoom ?? (siteImages.foundation as any)?.zoom ?? 100) / 100;
+  const fMode = fFraming.mode ?? (siteImages.foundation as any)?.mode ?? 'cover';
+  const fIsContain = fMode === 'contain';
+
   return (
     <section className="relative w-full min-h-[500px] md:min-h-[600px] overflow-hidden">
       {/* Imagen de fondo */}
       <div className="absolute inset-0">
+        {fIsContain && (
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 bg-cover bg-center blur-2xl scale-110 opacity-60"
+            style={{ backgroundImage: `url(${imgUrl})` }}
+          />
+        )}
         <img
           src={imgUrl}
           alt={imgAlt}
-          className="w-full h-full object-cover"
+          className={`w-full h-full ${fIsContain ? 'relative z-10 object-contain' : 'object-cover'}`}
+          style={!fIsContain ? {
+            objectPosition: `${fPosX}% ${fPosY}%`,
+            transform: fZoom > 1 ? `scale(${fZoom})` : undefined,
+          } : undefined}
         />
         {/* Overlay sutil */}
-        <div className="absolute inset-0 bg-black/20" />
+        <div className="absolute inset-0 bg-black/20 z-20 pointer-events-none" />
       </div>
 
       {/* Contenido - Caja de texto */}

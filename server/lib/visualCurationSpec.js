@@ -388,6 +388,48 @@ export function scoreCandidateForContainer(candidate = {}, containerKey = 'hero'
         ? `Opción viable para ${spec.label}, recomendada con aprobación editorial.`
         : `Compatibilidad moderada para ${spec.label}. Se recomienda evaluar alternativas con mejor encuadre o resolución.`;
 
+    // Evaluación específica de riesgo de recorte y encuadre inteligente
+    let cropRisk = 'low';
+    let requiresCropAdjustment = false;
+    let elementsToPreserve = 'Sujeto principal y acción central';
+    if (sem.peopleCount > 0 || sem.hasPeople) {
+        elementsToPreserve = (sem.peopleCount === 1)
+            ? 'Rostro y expresión del protagonista'
+            : 'Rostros y personas de la actividad comunitaria';
+    }
+
+    if (spec.preferredOrientation === 'landscape' && h > w) {
+        cropRisk = 'high';
+        requiresCropAdjustment = true;
+    } else if (aspectDiff > 0.28) {
+        cropRisk = 'high';
+        requiresCropAdjustment = true;
+    } else if (aspectDiff > 0.15) {
+        cropRisk = 'moderate';
+    }
+
+    // Punto focal inteligente sugerido (e.g. preservar rostros sin cortar torsos)
+    let suggestedY = 50;
+    let suggestedX = 50;
+    if (sem.focalPointY !== undefined && sem.focalPointY !== null) {
+        suggestedY = clamp(Math.round(sem.focalPointY), 10, 90);
+    } else if (sem.peopleCount > 0) {
+        // En fotos 4:3 o estándar en contenedores ultra-panorámicos (Hero), evitar object-top que solo muestra techos
+        suggestedY = currentAspect < 1.6 && spec.targetAspect >= 2.0 ? 65 : 45;
+    }
+    if (sem.focalPointX !== undefined && sem.focalPointX !== null) {
+        suggestedX = clamp(Math.round(sem.focalPointX), 10, 90);
+    }
+
+    const cropAdvice = requiresCropAdjustment
+        ? 'Esta imagen requiere ajuste de encuadre antes de su publicación para evitar recortar personas o elementos clave.'
+        : 'Encuadre compatible con el contenedor.';
+
+    const allWarnings = [...(eligibility.warnings || [])];
+    if (requiresCropAdjustment) {
+        allWarnings.push(cropAdvice);
+    }
+
     return {
         containerKey,
         slotIndex,
@@ -403,12 +445,24 @@ export function scoreCandidateForContainer(candidate = {}, containerKey = 'hero'
         reasons: facts.concat(reasons),
         facts,
         interpretation,
-        warnings: eligibility.warnings,
+        warnings: allWarnings,
+        cropRisk,
+        requiresCropAdjustment,
         cropSuggested: {
             targetAspect: spec.targetAspect,
-            zoom: aspectDiff > 0.3 ? 1.1 : 1.0,
-            x: 0,
-            y: 0,
+            zoom: 100,
+            x: suggestedX,
+            y: suggestedY,
+            mode: (cropRisk === 'high' && h > w) ? 'contain' : 'cover',
+            cropRisk,
+            requiresCropAdjustment,
+            advice: cropAdvice,
+            elementsToPreserve,
+            mobile: {
+                x: suggestedX,
+                y: Math.max(30, suggestedY - 10),
+                zoom: 100,
+            },
         },
     };
 }

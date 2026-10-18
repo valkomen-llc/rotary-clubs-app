@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import {
     CheckCircle, XCircle, Eye, MoreHorizontal, Lock, Unlock,
-    ArrowRightLeft, Sparkles, AlertTriangle, ShieldCheck, MapPin
+    ArrowRightLeft, Sparkles, AlertTriangle, ShieldCheck, MapPin, Sliders
 } from 'lucide-react';
 
 interface RecommendationCardProps {
     rec: any;
-    onApprove: (id: string) => void;
+    onApprove: (id: string, framingConfig?: any) => void;
     onReject: (id: string) => void;
     onPreview: (rec: any) => void;
+    onAdjustFraming: (rec: any) => void;
     onReassign: (id: string, newContainer: string) => void;
     onToggleLock?: (containerKey: string, slotIndex: number, locked: boolean) => void;
     isLocked?: boolean;
@@ -19,6 +20,7 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
     onApprove,
     onReject,
     onPreview,
+    onAdjustFraming,
     onReassign,
     onToggleLock,
     isLocked = false,
@@ -58,6 +60,13 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
     const isApproved = rec.status === 'approved';
     const isRejected = rec.status === 'rejected';
 
+    const cropSuggested = rec.cropSuggested || {};
+    const requiresAdjustment = rec.requiresCropAdjustment || cropSuggested.requiresCropAdjustment || rec.cropRisk === 'high';
+    const posX = cropSuggested.x ?? 50;
+    const posY = cropSuggested.y ?? 50;
+    const zoom = (cropSuggested.zoom ?? 100) / 100;
+    const isContain = cropSuggested.mode === 'contain';
+
     return (
         <div className={`relative bg-white rounded-2xl border transition-all duration-200 overflow-hidden shadow-sm hover:shadow-md flex flex-col ${isApproved ? 'border-emerald-300 ring-2 ring-emerald-100' : isRejected ? 'border-gray-200 opacity-60' : 'border-gray-200/80 hover:border-sky-300'}`}>
             {/* Top Bar with Container & Score */}
@@ -85,7 +94,16 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
                             <MoreHorizontal className="w-4 h-4" />
                         </button>
                         {menuOpen && (
-                            <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 z-30 text-xs font-semibold text-gray-700 animate-fade-in">
+                            <div className="absolute right-0 top-full mt-1 w-52 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 z-30 text-xs font-semibold text-gray-700 animate-fade-in">
+                                <button
+                                    onClick={() => {
+                                        setMenuOpen(false);
+                                        onAdjustFraming(rec);
+                                    }}
+                                    className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2 text-sky-700 font-bold"
+                                >
+                                    <Sliders className="w-3.5 h-3.5 text-sky-600" /> Ajustar imagen y previsualizar
+                                </button>
                                 <button
                                     onClick={() => {
                                         setMenuOpen(false);
@@ -93,7 +111,7 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
                                     }}
                                     className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2"
                                 >
-                                    <Eye className="w-3.5 h-3.5 text-sky-600" /> Ver vista previa completa
+                                    <Eye className="w-3.5 h-3.5 text-gray-500" /> Ver mockup general
                                 </button>
                                 <button
                                     onClick={() => {
@@ -131,19 +149,37 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
                 </div>
             </div>
 
-            {/* Thumbnail Preview Area */}
-            <div className="relative aspect-[16/9] w-full bg-gray-100 overflow-hidden group cursor-pointer" onClick={() => onPreview(rec)}>
+            {/* Thumbnail Preview Area with custom crop representation */}
+            <div
+                className="relative aspect-[16/9] w-full bg-gray-900 overflow-hidden group cursor-pointer"
+                onClick={() => onAdjustFraming(rec)}
+            >
+                {isContain && (
+                    <div
+                        className="absolute inset-0 bg-cover bg-center blur-lg opacity-50 scale-110"
+                        style={{ backgroundImage: `url(${candidate.url})` }}
+                    />
+                )}
                 <img
                     src={candidate.url}
                     alt={candidate.title || 'Recomendación IA'}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    className={`w-full h-full ${isContain ? 'relative z-10 object-contain' : 'object-cover'} group-hover:scale-105 transition-transform duration-300`}
+                    style={!isContain ? {
+                        objectPosition: `${posX}% ${posY}%`,
+                        transform: zoom > 1 ? `scale(${zoom})` : undefined,
+                    } : undefined}
                 />
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white font-bold text-xs">
-                    <Eye className="w-4 h-4" /> Vista Previa
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white font-bold text-xs z-20">
+                    <Sliders className="w-4 h-4 text-sky-400" /> Ajustar imagen y previsualizar
                 </div>
-                <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur text-[10px] text-white font-mono">
+                <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur text-[10px] text-white font-mono z-20">
                     Destino: {targetDimension}
                 </div>
+                {cropSuggested.userAdjusted && (
+                    <div className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-emerald-600/90 text-white text-[10px] font-bold z-20">
+                        ✓ Encuadre calibrado
+                    </div>
+                )}
             </div>
 
             {/* Card Content & Reasons */}
@@ -159,6 +195,14 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
                     <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed">
                         {candidate.interpretation || (candidate.facts?.[0] ? candidate.facts.join('. ') : 'Alineada con las prioridades visuales del sitio.')}
                     </p>
+
+                    {/* Warning if crop risk is high */}
+                    {requiresAdjustment && (
+                        <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200/80 px-2.5 py-1.5 rounded-xl">
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                            <span className="truncate">Requiere ajuste de encuadre antes de publicar</span>
+                        </div>
+                    )}
                 </div>
 
                 {/* Consent & Ethics Indicator */}
@@ -182,29 +226,32 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
                             <XCircle className="w-4 h-4" /> Descartada
                         </div>
                     ) : (
-                        <div className="grid grid-cols-3 gap-2">
+                        <div className="space-y-2">
+                            {/* Primary action: Ajustar imagen y previsualizar */}
                             <button
-                                onClick={() => onPreview(rec)}
-                                className="py-2 px-2 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-700 font-bold text-xs transition-colors flex items-center justify-center gap-1"
-                                title="Ver en diseño real"
+                                onClick={() => onAdjustFraming(rec)}
+                                className="w-full py-2 px-3 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-800 font-bold text-xs transition-colors flex items-center justify-center gap-1.5 border border-sky-200"
                             >
-                                <Eye className="w-3.5 h-3.5" />
-                                <span className="hidden sm:inline">Vista previa</span>
+                                <Sliders className="w-3.5 h-3.5 text-sky-600" />
+                                <span>Ajustar imagen y previsualizar</span>
                             </button>
-                            <button
-                                onClick={() => onReject(rec.id)}
-                                className="py-2 px-2 rounded-xl border border-red-200 hover:bg-red-50 text-red-600 font-bold text-xs transition-colors flex items-center justify-center gap-1"
-                            >
-                                <XCircle className="w-3.5 h-3.5" />
-                                <span>Rechazar</span>
-                            </button>
-                            <button
-                                onClick={() => onApprove(rec.id)}
-                                className="py-2 px-2 rounded-xl bg-rotary-blue hover:bg-sky-800 text-white font-bold text-xs shadow-md shadow-blue-900/10 active:scale-95 transition-all flex items-center justify-center gap-1"
-                            >
-                                <CheckCircle className="w-3.5 h-3.5" />
-                                <span>Aprobar</span>
-                            </button>
+
+                            <div className="grid grid-cols-2 gap-2">
+                                <button
+                                    onClick={() => onReject(rec.id)}
+                                    className="py-2 px-2 rounded-xl border border-red-200 hover:bg-red-50 text-red-600 font-bold text-xs transition-colors flex items-center justify-center gap-1"
+                                >
+                                    <XCircle className="w-3.5 h-3.5" />
+                                    <span>Rechazar</span>
+                                </button>
+                                <button
+                                    onClick={() => onAdjustFraming(rec)}
+                                    className="py-2 px-2 rounded-xl bg-rotary-blue hover:bg-sky-800 text-white font-bold text-xs shadow-md shadow-blue-900/10 active:scale-95 transition-all flex items-center justify-center gap-1"
+                                >
+                                    <CheckCircle className="w-3.5 h-3.5" />
+                                    <span>Aprobar</span>
+                                </button>
+                            </div>
                         </div>
                     )}
                 </div>

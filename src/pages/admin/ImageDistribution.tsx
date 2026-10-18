@@ -694,7 +694,7 @@ const ImageDistribution: React.FC = () => {
 
     return (
         <AdminLayout>
-            <div className="space-y-6 max-w-5xl">
+            <div className="space-y-6 w-full">
                 {/* Header */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                     <div className="flex items-center gap-4">
@@ -766,7 +766,7 @@ const ImageDistribution: React.FC = () => {
                         onRefreshSiteImages={loadSiteImages}
                     />
                 ) : (
-                    <>
+                    <div className="max-w-6xl space-y-6">
                         {dirty && (
                             <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800 flex items-center gap-2 font-medium">
                                 <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
@@ -907,7 +907,7 @@ const ImageDistribution: React.FC = () => {
                         </div>
                     );
                 })}
-                    </>
+                    </div>
                 )}
             </div>
 

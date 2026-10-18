@@ -1,7 +1,24 @@
 import { useState, useEffect } from 'react';
 import { useClub } from '../contexts/ClubContext';
+export interface ImageFraming {
+    x?: number;
+    y?: number;
+    zoom?: number;
+    mode?: 'cover' | 'contain' | 'smart';
+    focalPoint?: { x: number; y: number };
+    mobile?: { x?: number; y?: number; zoom?: number };
+    tablet?: { x?: number; y?: number; zoom?: number };
+}
 
-interface ImgSlot { url: string; alt: string; }
+export interface ImgSlot {
+    url: string;
+    alt: string;
+    position?: { x: number; y: number };
+    zoom?: number;
+    mode?: 'cover' | 'contain' | 'smart';
+    focalPoint?: { x: number; y: number };
+    framing?: ImageFraming;
+}
 export interface SiteImages {
     hero?: ImgSlot[];
     causes?: ImgSlot[];

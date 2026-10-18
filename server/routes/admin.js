@@ -12,6 +12,7 @@ import {
     updateCurationConfig,
     getRecommendations,
     postApproveRecommendation,
+    postSaveRecommendationFraming,
     postRejectRecommendation,
     postReassignRecommendation,
     getCandidates,
@@ -264,6 +265,7 @@ router.get('/curation/config', requireRoleOrPermission(contentRoles, 'media.view
 router.post('/curation/config', requireRoleOrPermission(contentRoles, 'media.edit'), updateCurationConfig);
 router.get('/curation/recommendations', requireRoleOrPermission(contentRoles, 'media.view'), getRecommendations);
 router.post('/curation/recommendations/:id/approve', requireRoleOrPermission(contentRoles, 'media.edit'), postApproveRecommendation);
+router.post('/curation/recommendations/:id/framing', requireRoleOrPermission(contentRoles, 'media.edit'), postSaveRecommendationFraming);
 router.post('/curation/recommendations/:id/reject', requireRoleOrPermission(contentRoles, 'media.edit'), postRejectRecommendation);
 router.post('/curation/recommendations/:id/reassign', requireRoleOrPermission(contentRoles, 'media.edit'), postReassignRecommendation);
 router.get('/curation/candidates', requireRoleOrPermission(contentRoles, 'media.view'), getCandidates);

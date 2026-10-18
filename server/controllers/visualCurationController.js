@@ -12,6 +12,7 @@ import {
     approveRecommendation,
     rejectRecommendation,
     rollbackHistoryVersion,
+    saveRecommendationFraming,
 } from '../lib/visualCurationEngine.js';
 import {
     scoreCandidateForContainer,
@@ -145,10 +146,12 @@ export async function postApproveRecommendation(req, res) {
     try {
         const clubId = resolveClubId(req);
         const { id } = req.params;
+        const { framingConfig } = req.body || {};
         const actorName = req.user.name || req.user.email || 'Administrador';
 
         const result = await approveRecommendation({
             recommendationId: id,
+            framingConfig,
             actorId: req.user.id,
             actorName,
             clubId,
@@ -158,6 +161,26 @@ export async function postApproveRecommendation(req, res) {
     } catch (err) {
         console.error('[curation-controller] Error approveRecommendation:', err);
         res.status(500).json({ error: err.message || 'Error al aprobar recomendación' });
+    }
+}
+
+// ─── POST /api/admin/curation/recommendations/:id/framing ──────────────────
+export async function postSaveRecommendationFraming(req, res) {
+    try {
+        const clubId = resolveClubId(req);
+        const { id } = req.params;
+        const { framingConfig } = req.body || {};
+
+        const updated = await saveRecommendationFraming({
+            recommendationId: id,
+            framingConfig,
+            clubId,
+        });
+
+        res.json({ ok: true, message: 'Encuadre guardado exitosamente', framing: updated });
+    } catch (err) {
+        console.error('[curation-controller] Error postSaveRecommendationFraming:', err);
+        res.status(500).json({ error: err.message || 'Error al guardar encuadre' });
     }
 }
 
