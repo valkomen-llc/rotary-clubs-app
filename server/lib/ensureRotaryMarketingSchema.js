@@ -258,6 +258,205 @@ const SEED_AUTOMATIONS = [
   }
 ];
 
+const DIRECTORIO_CAMPAIGNS = [
+  {
+    code: 'dir-sem-01',
+    week: 1,
+    name: 'Tu club merece estar presente. ¡Actualiza su perfil institucional!',
+    type: 'activacion_directorio',
+    horizon: 'mensual',
+    targetSegment: 'sin_iniciar',
+    channels: ['email', 'whatsapp'],
+    subject: 'Tu club merece estar presente. ¡Actualiza su perfil institucional en el Directorio del Distrito 4281!',
+    preheader: 'Cada club Rotary, Rotaract e Interact tiene una historia, una identidad y un impacto que merece ser visible.',
+    messageCentral: 'El Directorio de Clubes del Distrito 4281 es el espacio oficial para mostrar quiénes somos, dónde estamos y cómo contribuimos a nuestras comunidades.',
+    utmCampaign: 'dir_sem01_activacion',
+    status: 'draft',
+    initiative: 'directorio_clubes',
+    contentHtml: `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0;">
+  <div style="background: linear-gradient(135deg, #013388 0%, #0c2340 100%); padding: 36px 32px; text-align: center; color: #ffffff;">
+    <span style="display: inline-block; background-color: rgba(255,255,255,0.18); color: #ffffff; font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; padding: 4px 14px; border-radius: 9999px; margin-bottom: 12px;">Directorio Institucional · Distrito 4281</span>
+    <h1 style="font-size: 26px; font-weight: 700; margin: 0 0 10px 0; line-height: 1.25;">Tu club merece estar presente.<br/>¡Actualiza su perfil institucional!</h1>
+    <p style="font-size: 14px; opacity: 0.9; margin: 0; line-height: 1.5;">El espacio oficial donde la identidad, directiva y labor de cada club se visibiliza.</p>
+  </div>
+  <div style="padding: 32px; color: #334155; font-size: 15px; line-height: 1.6;">
+    <p style="margin-top: 0;">Hola <strong>{{contact.first_name|Líder Rotario(a)}}</strong>,</p>
+    <p>Cada club <strong>{{club.type|Rotary, Rotaract o Interact}}</strong> de nuestro Distrito 4281 tiene una historia, un liderazgo y un compromiso comunitario que merece ser reconocido.</p>
+    <div style="background-color: #f8fafc; border-left: 4px solid #013388; padding: 16px 20px; border-radius: 0 12px 12px 0; margin: 24px 0;">
+      <p style="margin: 0; font-weight: 700; color: #0f172a;">Directorio Oficial de Clubes Distrito 4281:</p>
+      <p style="margin: 6px 0 0 0; font-size: 14px; color: #64748b;">Centraliza la ficha pública de <strong>{{club.name|su Club}}</strong> en <strong>{{club.city|su localidad}}</strong>, facilitando que nuevos miembros, aliados estratégicos y la comunidad general puedan contactarlos y conocer sus programas de servicio.</p>
+    </div>
+    <div style="background-color: #f1f5f9; padding: 18px; border-radius: 12px; margin: 20px 0;">
+      <div style="display: flex; justify-content: space-between; font-size: 13px; font-weight: 700; color: #0f172a; margin-bottom: 8px;">
+        <span>Estado del perfil institucional</span>
+        <span style="color: #013388;">{{club.completion_percentage|0%}}</span>
+      </div>
+      <div style="width: 100%; height: 8px; background: #e2e8f0; border-radius: 9999px; overflow: hidden;">
+        <div style="width: {{club.completion_percentage|15%}}; height: 100%; background: #013388; border-radius: 9999px;"></div>
+      </div>
+      <p style="margin: 8px 0 0 0; font-size: 12px; color: #64748b;">Iniciar la ficha toma menos de 5 minutos y no requiere contraseñas complejas.</p>
+    </div>
+    <div style="text-align: center; margin: 32px 0;">
+      <a href="{{club.update_form_url|https://app.clubplatform.org/clubes/registro}}" style="display: inline-block; background-color: #013388; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 15px; padding: 14px 34px; border-radius: 12px; box-shadow: 0 4px 14px rgba(1,51,136,0.25);">Actualizar el perfil de mi club</a>
+    </div>
+    <p style="font-size: 13px; color: #64748b; margin-bottom: 0;">Juntos construimos un distrito más conectado y transparente.<br/><strong>Gobernación del Distrito 4281 · Comité de Directorio e Imagen Pública</strong></p>
+  </div>
+</div>`,
+    whatsappTemplate: '🏛️ *¡Tu club merece estar presente en el Directorio del Distrito 4281!*\n\nEstimado(a) {{contact.first_name|Líder Rotario(a)}}:\n\nCada club Rotary, Rotaract e Interact tiene una historia, una identidad y un impacto que merece ser visible. Te invitamos a actualizar la ficha oficial de *{{club.name|tu club}}* en menos de 5 minutos.\n\n📌 *Actualiza tu perfil aquí:* {{club.update_form_url|https://app.clubplatform.org/clubes/registro}}\n\n_Rotary Distrito 4281 · Unidos para servir y visibilizar nuestro impacto_'
+  },
+  {
+    code: 'dir-sem-02',
+    week: 2,
+    name: 'Haz que tu club sea reconocido en todo el Distrito 4281',
+    type: 'identidad_directorio',
+    horizon: 'mensual',
+    targetSegment: 'en_proceso',
+    channels: ['email', 'whatsapp'],
+    subject: 'Haz que tu club sea reconocido en todo el Distrito 4281: Completa tu información institucional',
+    preheader: 'Logotipo, fotos representativas, datos de contacto y descripción: consolida la identidad de tu club.',
+    messageCentral: 'Motivar la actualización de la información institucional y los recursos multimedia del club.',
+    utmCampaign: 'dir_sem02_identidad',
+    status: 'draft',
+    initiative: 'directorio_clubes',
+    contentHtml: `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0;">
+  <div style="background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); padding: 36px 32px; text-align: center; color: #ffffff;">
+    <span style="display: inline-block; background-color: rgba(255,255,255,0.2); color: #ffffff; font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; padding: 4px 14px; border-radius: 9999px; margin-bottom: 12px;">Identidad & Visibilidad · Distrito 4281</span>
+    <h1 style="font-size: 26px; font-weight: 700; margin: 0 0 10px 0; line-height: 1.25;">Haz que tu club sea reconocido<br/>en todo el Distrito 4281</h1>
+    <p style="font-size: 14px; opacity: 0.9; margin: 0; line-height: 1.5;">Una ficha visualmente completa multiplica el alcance y credibilidad de tu club.</p>
+  </div>
+  <div style="padding: 32px; color: #334155; font-size: 15px; line-height: 1.6;">
+    <p style="margin-top: 0;">Estimados líderes de <strong>{{club.name|su Club Rotario}}</strong>,</p>
+    <p>Para que la red distrital y la ciudadanía reconozcan la fuerza de su club, es fundamental contar con sus activos institucionales actualizados.</p>
+    <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; padding: 20px; border-radius: 12px; margin: 24px 0;">
+      <h4 style="margin: 0 0 10px 0; color: #166534; font-size: 15px;">Elementos recomendados para completar la ficha:</h4>
+      <ul style="margin: 0; padding-left: 20px; color: #15803d; font-size: 13.5px; line-height: 1.7;">
+        <li><strong>Nombre oficial y ciudad:</strong> Datos de sede y reuniones habituales.</li>
+        <li><strong>Logotipo o emblema oficial:</strong> En alta resolución con fondo transparente o blanco.</li>
+        <li><strong>Galería multimedia:</strong> 3 a 5 fotografías de sus actividades más destacadas.</li>
+        <li><strong>Junta Directiva y Responsable:</strong> Presidente, secretario y canales de contacto directo.</li>
+        <li><strong>Descripción y proyectos insignia:</strong> Breve resumen del impacto local del club.</li>
+      </ul>
+    </div>
+    <div style="text-align: center; margin: 32px 0;">
+      <a href="{{club.update_form_url|https://app.clubplatform.org/clubes/registro}}" style="display: inline-block; background-color: #0284c7; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 15px; padding: 14px 34px; border-radius: 12px; box-shadow: 0 4px 14px rgba(2,132,199,0.25);">Completar información institucional</a>
+    </div>
+    <p style="font-size: 13px; color: #64748b; margin-bottom: 0;">Comité Distrital de Imagen Pública y Directorio Oficial · Distrito 4281</p>
+  </div>
+</div>`,
+    whatsappTemplate: '🌟 *Haz que tu club sea reconocido en todo el Distrito 4281*\n\nHola {{contact.first_name|amigos rotarios}} de *{{club.name|tu club}}*.\n\nPara que la comunidad y líderes conozcan su labor, es fundamental contar con información completa: logotipo oficial, fotos representativas, datos de contacto, junta directiva y descripción institucional.\n\n📸 *Completa tus datos multimedia aquí:* {{club.update_form_url|https://app.clubplatform.org/clubes/registro}}\n\n_Comité Distrital de Imagen Pública y Directorio Institucional · D4281_'
+  },
+  {
+    code: 'dir-sem-03',
+    week: 3,
+    name: 'Tu club ya tiene un espacio. Ayúdanos a completarlo',
+    type: 'seguimiento_directorio',
+    horizon: 'mensual',
+    targetSegment: 'en_proceso',
+    channels: ['email', 'whatsapp'],
+    subject: 'Tu club ya tiene un espacio en el Directorio. Ayúdanos a completarlo',
+    preheader: 'Sabemos el compromiso de su equipo. Acompañamos a su club a culminar su ficha institucional.',
+    messageCentral: 'Acompañar a los clubes que comenzaron su actualización pero todavía no finalizaron.',
+    utmCampaign: 'dir_sem03_seguimiento',
+    status: 'draft',
+    initiative: 'directorio_clubes',
+    contentHtml: `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0;">
+  <div style="background: linear-gradient(135deg, #7c3aed 0%, #4c1d95 100%); padding: 36px 32px; text-align: center; color: #ffffff;">
+    <span style="display: inline-block; background-color: rgba(255,255,255,0.2); color: #ffffff; font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; padding: 4px 14px; border-radius: 9999px; margin-bottom: 12px;">Acompañamiento Distrital · Distrito 4281</span>
+    <h1 style="font-size: 26px; font-weight: 700; margin: 0 0 10px 0; line-height: 1.25;">Tu club ya tiene un espacio.<br/>Ayúdanos a completarlo</h1>
+    <p style="font-size: 14px; opacity: 0.9; margin: 0; line-height: 1.5;">Detrás de cada club hay personas dedicadas a transformar comunidades.</p>
+  </div>
+  <div style="padding: 32px; color: #334155; font-size: 15px; line-height: 1.6;">
+    <p style="margin-top: 0;">Estimado(a) <strong>{{contact.first_name|Líder Rotario(a)}}</strong>,</p>
+    <p>Sabemos el tiempo y esfuerzo que requiere la labor rotaria semanal. Notamos que <strong>{{club.name|su club}}</strong> ya inició el diligenciamiento institucional (avance actual: <strong>{{club.completion_percentage|35%}}</strong>).</p>
+    <div style="background-color: #faf5ff; border: 1px solid #e9d5ff; padding: 20px; border-radius: 12px; margin: 24px 0;">
+      <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #7c3aed; letter-spacing: 0.05em;">Acompañamiento Personalizado</span>
+      <p style="margin: 6px 0 0 0; font-size: 14px; color: #581c87;">Faltan muy pocos datos para certificar el perfil y certificar su Índice de Gestión Institucional (IGI). Si tienen dudas con fotografías o directiva, nuestro equipo distrital está a su entera disposición para asistirles paso a paso.</p>
+    </div>
+    <div style="text-align: center; margin: 32px 0;">
+      <a href="{{club.update_form_url|https://app.clubplatform.org/clubes/registro}}" style="display: inline-block; background-color: #7c3aed; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 15px; padding: 14px 34px; border-radius: 12px; box-shadow: 0 4px 14px rgba(124,58,237,0.25);">Continuar mi actualización</a>
+    </div>
+    <p style="font-size: 13px; color: #64748b; margin-bottom: 0;">Comité de Acompañamiento a Clubes · Distrito 4281</p>
+  </div>
+</div>`,
+    whatsappTemplate: '🤝 *Tu club ya tiene un espacio en el Directorio. Ayúdanos a completarlo*\n\nEstimado(a) {{contact.first_name|Líder}}:\n\nNotamos que iniciaron la actualización de *{{club.name|su club}}* (avance actual: {{club.completion_percentage|35%}}). Queremos acompañarlos a culminar los pasos pendientes para que su perfil quede 100% verificado y publicado.\n\n👉 *Continúa tu actualización aquí:* {{club.update_form_url|https://app.clubplatform.org/clubes/registro}}\n\n_Si requieres asistencia técnica, responde directamente a este mensaje._'
+  },
+  {
+    code: 'dir-sem-04',
+    week: 4,
+    name: 'Un directorio más completo, un distrito más conectado',
+    type: 'cierre_directorio',
+    horizon: 'mensual',
+    targetSegment: 'cierre_y_reconocimiento',
+    channels: ['email', 'whatsapp'],
+    subject: 'Un directorio más completo, un distrito más conectado: Cierre de ciclo y reconocimiento',
+    preheader: 'Cada perfil actualizado fortalece la identidad colectiva del Distrito 4281 y su visibilidad.',
+    messageCentral: 'Impulsar la finalización del proceso y reconocer a los clubes que participaron.',
+    utmCampaign: 'dir_sem04_cierre',
+    status: 'draft',
+    initiative: 'directorio_clubes',
+    contentHtml: `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0;">
+  <div style="background: linear-gradient(135deg, #059669 0%, #064e3b 100%); padding: 36px 32px; text-align: center; color: #ffffff;">
+    <span style="display: inline-block; background-color: rgba(255,255,255,0.2); color: #ffffff; font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; padding: 4px 14px; border-radius: 9999px; margin-bottom: 12px;">Cierre & Reconocimiento · Distrito 4281</span>
+    <h1 style="font-size: 26px; font-weight: 700; margin: 0 0 10px 0; line-height: 1.25;">Un directorio más completo,<br/>un distrito más conectado</h1>
+    <p style="font-size: 14px; opacity: 0.9; margin: 0; line-height: 1.5;">El balance de nuestra red institucional en el Distrito 4281.</p>
+  </div>
+  <div style="padding: 32px; color: #334155; font-size: 15px; line-height: 1.6;">
+    <p style="margin-top: 0;">Estimados rotarios y líderes comunitarios,</p>
+    <p>Cada perfil institucional actualizado fortalece la identidad colectiva de nuestros 74 clubes y permite que la ciudadanía encuentre puntos de contacto claros para sumarse al servicio.</p>
+    <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; padding: 20px; border-radius: 12px; margin: 24px 0; text-align: center;">
+      <h3 style="margin: 0 0 8px 0; color: #166534; font-size: 18px;">¡Gracias por su contribución y compromiso!</h3>
+      <p style="margin: 0; font-size: 14px; color: #15803d;">El Directorio Institucional ya cuenta con la mayoría de clubes con perfiles verificados y clasificados en niveles óptimos de gobernanza (IGI).</p>
+    </div>
+    <div style="text-align: center; margin: 32px 0;">
+      <a href="{{club.profile_url|https://app.clubplatform.org/clubes/directorio}}" style="display: inline-block; background-color: #059669; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 15px; padding: 14px 34px; border-radius: 12px; box-shadow: 0 4px 14px rgba(5,150,105,0.25);">Revisar el perfil de mi club</a>
+    </div>
+    <p style="font-size: 13px; color: #64748b; margin-bottom: 0;">Gobernación del Distrito 4281 · Rotary International</p>
+  </div>
+</div>`,
+    whatsappTemplate: '🏆 *Un directorio más completo, un distrito más conectado*\n\nEstimados líderes de *{{club.name|su club}}*:\n\nCada perfil institucional verificado fortalece la gobernanza y presencia colectiva del Distrito 4281. Gracias por su compromiso con la excelencia rotaria.\n\n🔍 *Revisa el perfil institucional de tu club aquí:* {{club.profile_url|https://app.clubplatform.org/clubes/directorio}}\n\n_Distrito 4281 de Rotary International · Unidos hacemos el bien en el mundo_'
+  },
+  {
+    code: 'dir-ciclo-mantenimiento',
+    week: 5,
+    name: 'Ciclo Permanente: Mantén vigente la información y gobernanza de tu club',
+    type: 'mantenimiento_directorio',
+    horizon: 'permanente',
+    targetSegment: 'todos',
+    channels: ['email', 'whatsapp'],
+    subject: 'Mantenimiento institucional: Verifica los datos y junta directiva de tu club en el Distrito 4281',
+    preheader: 'Garantiza que el cambio de junta directiva y nuevos datos de contacto queden registrados oficialmente.',
+    messageCentral: 'Ciclo permanente para que el Directorio no dependa de campañas aisladas sino que preserve vigencia institucional durante todo el año rotario.',
+    utmCampaign: 'dir_ciclo_mantenimiento',
+    status: 'draft',
+    initiative: 'directorio_clubes',
+    contentHtml: `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0;">
+  <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 36px 32px; text-align: center; color: #ffffff;">
+    <span style="display: inline-block; background-color: rgba(255,255,255,0.15); color: #ffffff; font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; padding: 4px 14px; border-radius: 9999px; margin-bottom: 12px;">Ciclo Permanente · Gobernanza Continua</span>
+    <h1 style="font-size: 26px; font-weight: 700; margin: 0 0 10px 0; line-height: 1.25;">Mantén vigente la información<br/>y directiva de tu club</h1>
+    <p style="font-size: 14px; opacity: 0.9; margin: 0; line-height: 1.5;">El Directorio vive y evoluciona con cada período rotario.</p>
+  </div>
+  <div style="padding: 32px; color: #334155; font-size: 15px; line-height: 1.6;">
+    <p style="margin-top: 0;">Estimado(a) <strong>{{contact.first_name|Presidente o Secretario}}</strong> de <strong>{{club.name|su club}}</strong>,</p>
+    <p>Con el relevo de autoridades, cambio de sede o actualización de dignatarios para el período rotario vigente, es indispensable mantener al día la ficha oficial de su club en el Directorio Distrital.</p>
+    <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 20px; border-radius: 12px; margin: 24px 0;">
+      <h4 style="margin: 0 0 10px 0; color: #0f172a; font-size: 15px;">Puntos clave de verificación periódica:</h4>
+      <ul style="margin: 0; padding-left: 20px; color: #475569; font-size: 13.5px; line-height: 1.7;">
+        <li>Nombres y contactos del Presidente, Secretario y Comité de Imagen Pública.</li>
+        <li>Horario y modalidad de reuniones (presencial, híbrida o virtual).</li>
+        <li>Teléfonos y correos oficiales vigentes para contacto institucional.</li>
+        <li>Galería de proyectos prioritarios del período en curso.</li>
+      </ul>
+    </div>
+    <div style="text-align: center; margin: 32px 0;">
+      <a href="{{club.update_form_url|https://app.clubplatform.org/clubes/registro}}" style="display: inline-block; background-color: #0f172a; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 15px; padding: 14px 34px; border-radius: 12px; box-shadow: 0 4px 14px rgba(15,23,42,0.25);">Verificar y actualizar directiva</a>
+    </div>
+    <p style="font-size: 13px; color: #64748b; margin-bottom: 0;">Gobernación del Distrito 4281 · Coordinación de Gobernanza y Directorio</p>
+  </div>
+</div>`,
+    whatsappTemplate: '🔄 *Ciclo Permanente de Mantenimiento Institucional · Distrito 4281*\n\nEstimado(a) {{contact.first_name|Presidente o Secretario}} de *{{club.name|tu club}}*:\n\nCon el inicio de un nuevo año rotario o cambios en la Junta Directiva, los invitamos a verificar que los datos de contacto, sede y dignatarios de su club se encuentren actualizados en el Directorio Oficial.\n\n⚙️ *Verifica y actualiza tu junta directiva:* {{club.update_form_url|https://app.clubplatform.org/clubes/registro}}\n\n_Gobernación del Distrito 4281 · Gobernanza y Transparencia_'
+  }
+];
+
 export async function ensureRotaryMarketingSchema() {
   if (_ready) return;
 
@@ -297,6 +496,9 @@ export async function ensureRotaryMarketingSchema() {
   await db.query(`ALTER TABLE "RotaryMarketingCampaign" ADD COLUMN IF NOT EXISTS "targetListIds" TEXT[] DEFAULT '{}'::TEXT[]`).catch(() => {});
   await db.query(`ALTER TABLE "RotaryMarketingCampaign" ADD COLUMN IF NOT EXISTS "lastSentAt" TIMESTAMPTZ`).catch(() => {});
   await db.query(`ALTER TABLE "RotaryMarketingCampaign" ADD COLUMN IF NOT EXISTS "lastSendResult" JSONB`).catch(() => {});
+  await db.query(`ALTER TABLE "RotaryMarketingCampaign" ADD COLUMN IF NOT EXISTS "initiative" TEXT NOT NULL DEFAULT 'rotary_en_accion'`).catch(() => {});
+  await db.query(`ALTER TABLE "RotaryCampaignExecution" ADD COLUMN IF NOT EXISTS "initiative" TEXT NOT NULL DEFAULT 'rotary_en_accion'`).catch(() => {});
+  await db.query(`UPDATE "RotaryMarketingCampaign" SET "initiative" = 'rotary_en_accion' WHERE "initiative" IS NULL`).catch(() => {});
 
   // Asegurar columnas en EmailCampaign para sincronización con Email Marketing
   await db.query(`ALTER TABLE "EmailCampaign" ADD COLUMN IF NOT EXISTS "fromEmail" TEXT`).catch(() => {});
@@ -447,16 +649,44 @@ export async function ensureRotaryMarketingSchema() {
     "updatedAt" TIMESTAMPTZ DEFAULT NOW()
   )`);
 
-  // Semillas de campañas piloto (idempotente por code)
+  // Semillas de campañas piloto (Rotary en Acción)
   for (const c of PILOT_CAMPAIGNS) {
     await db.query(`INSERT INTO "RotaryMarketingCampaign"
-      (id, code, week, name, type, horizon, "targetSegment", channels, subject, preheader, "messageCentral", "utmCampaign", status, "contentHtml", "whatsappTemplate")
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-      ON CONFLICT (code) DO NOTHING`,
+      (id, code, week, name, type, horizon, "targetSegment", channels, subject, preheader, "messageCentral", "utmCampaign", status, "contentHtml", "whatsappTemplate", "initiative")
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      ON CONFLICT (code) DO UPDATE SET
+        "initiative" = COALESCE("RotaryMarketingCampaign"."initiative", 'rotary_en_accion')`,
       [
         `rmk-${c.code}`, c.code, c.week, c.name, c.type, c.horizon,
         c.targetSegment, c.channels, c.subject, c.preheader, c.messageCentral,
-        c.utmCampaign, c.status, c.contentHtml, c.whatsappTemplate
+        c.utmCampaign, c.status, c.contentHtml, c.whatsappTemplate, 'rotary_en_accion'
+      ]
+    ).catch(() => {});
+  }
+
+  // Semillas de campañas para Directorio de Clubes (Distrito 4281)
+  for (const c of DIRECTORIO_CAMPAIGNS) {
+    await db.query(`INSERT INTO "RotaryMarketingCampaign"
+      (id, code, week, name, type, horizon, "targetSegment", channels, subject, preheader, "messageCentral", "utmCampaign", status, "contentHtml", "whatsappTemplate", "initiative")
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      ON CONFLICT (code) DO UPDATE SET
+        name = EXCLUDED.name,
+        week = EXCLUDED.week,
+        type = EXCLUDED.type,
+        horizon = EXCLUDED.horizon,
+        "targetSegment" = EXCLUDED."targetSegment",
+        channels = EXCLUDED.channels,
+        subject = EXCLUDED.subject,
+        preheader = EXCLUDED.preheader,
+        "messageCentral" = EXCLUDED."messageCentral",
+        "utmCampaign" = EXCLUDED."utmCampaign",
+        "contentHtml" = EXCLUDED."contentHtml",
+        "whatsappTemplate" = EXCLUDED."whatsappTemplate",
+        "initiative" = EXCLUDED."initiative"`,
+      [
+        `rmk-${c.code}`, c.code, c.week, c.name, c.type, c.horizon,
+        c.targetSegment, c.channels, c.subject, c.preheader, c.messageCentral,
+        c.utmCampaign, c.status, c.contentHtml, c.whatsappTemplate, c.initiative || 'directorio_clubes'
       ]
     ).catch(() => {});
   }
@@ -583,6 +813,47 @@ export async function ensureRotaryMarketingSchema() {
         'Tu club transforma comunidades. ¡Hagámoslo visible en Rotary en Acción!',
         'Comparte tus proyectos y actividades comunitarias en Rotary en Acción.',
         true,
+        'activa',
+        1,
+        'sistema'
+      ]
+    ).catch(() => {});
+
+    // Plantilla Maestra Institucional · Directorio de Clubes Distrito 4281
+    const dirMasterDesign = {
+      version: 1,
+      settings: {
+        bg: '#0f172a',
+        contentBg: '#ffffff',
+        font: "'Open Sans', Helvetica, Arial, sans-serif",
+        textColor: '#334155',
+        linkColor: '#013388',
+        width: 600
+      },
+      blocks: [
+        { id: 'b_dir_hdr', type: 'global', globalKey: 'rotary_header', label: 'Cabecera Institucional Adaptable', isProtected: true, isLocked: true, logoUrl: '', logoMaxWidth: 240, logoMaxHeight: 60, align: 'center', bgColor: '#ffffff', padding: '24px 20px' },
+        { id: 'b_dir_titulo', type: 'heading', text: 'Tu club merece estar presente.\n¡Actualiza su perfil institucional!', level: 1, align: 'center', color: '#013388', weight: '800', label: 'Título de Campaña Directorio', isProtected: false },
+        { id: 'b_dir_saludo', type: 'heading', text: 'Hola {{contact.first_name|Líder Rotario(a)}},', level: 2, align: 'left', color: '#0f172a', weight: '800', label: 'Saludo Personalizado', isProtected: false },
+        { id: 'b_dir_intro', type: 'text', text: 'Estimadas rotarias y estimados rotarios:\n\nCada club Rotary, Rotaract e Interact de nuestro Distrito 4281 tiene una identidad, liderazgo y labor comunitaria que merece ser visible ante la sociedad en el Directorio Oficial.', align: 'left', color: '#334155', size: 15, label: 'Cuerpo de Campaña (Editable / IA)', isProtected: false },
+        { id: 'b_dir_cta', type: 'button', text: 'ACTUALIZAR EL PERFIL DE MI CLUB', href: '{{club.update_form_url|https://app.clubplatform.org/clubes/registro}}', bg: '#013388', color: '#ffffff', align: 'center', radius: 12, label: 'Botón CTA Oficial Directorio', isProtected: false },
+        { id: 'b_dir_firma', type: 'global', globalKey: 'rotary_signature', label: 'Firma Oficial Distrital', isProtected: true, isLocked: true },
+        { id: 'b_dir_footer', type: 'global', globalKey: 'rotary_footer', label: 'Pie de Página Institucional Protegido', isProtected: true, isLocked: true }
+      ]
+    };
+    await db.query(`INSERT INTO "ContentActivationTemplate"
+      (id, scope, name, channel, design, html, subject, preheader, "isDefault", status, version, "createdBy")
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      ON CONFLICT (id) DO NOTHING`,
+      [
+        'tpl-directorio-clubes-master',
+        'global',
+        'Plantilla Maestra Institucional · Directorio de Clubes',
+        'email',
+        JSON.stringify(dirMasterDesign),
+        '<div style="text-align:center">Plantilla Maestra Directorio de Clubes</div>',
+        'Tu club merece estar presente. ¡Actualiza su perfil institucional en el Directorio del Distrito 4281!',
+        'Cada club Rotary, Rotaract e Interact tiene una historia y un impacto que merece ser visible.',
+        false,
         'activa',
         1,
         'sistema'

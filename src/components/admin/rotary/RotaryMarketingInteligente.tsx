@@ -12,7 +12,7 @@ import {
   FileText, Download, CheckCircle, Flame, Star, BookOpen, AlertTriangle,
   Plus, Trash2, Edit3, MailCheck, ArrowLeft, ArrowRight, Clock,
   SendHorizontal, XCircle, MousePointerClick, Globe, Server, Activity,
-  ArrowUpRight, Repeat, Layers, Database
+  ArrowUpRight, Repeat, Layers, Database, Building2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import VisualTemplateEditor from '../email-marketing/VisualTemplateEditor';
@@ -28,7 +28,13 @@ const getToken = () => localStorage.getItem('rotary_token');
 
 export type MarketingSubtab = 'panel' | 'planificador' | 'audiencias' | 'campanas' | 'agente' | 'resultados' | 'remitentes' | 'envios';
 
-export const RotaryMarketingInteligente: React.FC = () => {
+export interface RotaryMarketingInteligenteProps {
+  initialInitiative?: 'rotary_en_accion' | 'directorio_clubes';
+}
+
+export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProps> = ({
+  initialInitiative = 'rotary_en_accion'
+}) => {
   let siteClub: any = null;
   try {
     const clubCtx = useClub();
@@ -45,6 +51,14 @@ export const RotaryMarketingInteligente: React.FC = () => {
       platformLogo: ctx.platformLogo
     };
   }, [siteClub]);
+
+  const [initiative, setInitiative] = useState<'rotary_en_accion' | 'directorio_clubes'>(initialInitiative);
+
+  useEffect(() => {
+    if (initialInitiative) {
+      setInitiative(initialInitiative);
+    }
+  }, [initialInitiative]);
 
   const [subtab, setSubtab] = useState<MarketingSubtab>('panel');
   const [loading, setLoading] = useState(true);
@@ -216,7 +230,7 @@ export const RotaryMarketingInteligente: React.FC = () => {
   const loadAudienceLists = useCallback(async () => {
     setLoadingAudienceLists(true);
     try {
-      const res = await fetch(`${API}/rotary-en-accion/marketing/audiences/lists`, {
+      const res = await fetch(`${API}/rotary-en-accion/marketing/audiences/lists?initiative=${initiative}`, {
         headers: { Authorization: `Bearer ${getToken()}` }
       });
       const data = await res.json();
@@ -228,7 +242,7 @@ export const RotaryMarketingInteligente: React.FC = () => {
     } finally {
       setLoadingAudienceLists(false);
     }
-  }, []);
+  }, [initiative]);
 
   // Validar destinatarios elegibles cuando cambie la selección de listas
   useEffect(() => {
@@ -422,7 +436,7 @@ export const RotaryMarketingInteligente: React.FC = () => {
   const loadCampaignsHistory = useCallback(async () => {
     setLoadingHistory(true);
     try {
-      const res = await fetch(`${API}/rotary-en-accion/marketing/history`, {
+      const res = await fetch(`${API}/rotary-en-accion/marketing/history?initiative=${initiative}`, {
         headers: { Authorization: `Bearer ${getToken()}` }
       });
       const data = await res.json();
@@ -434,7 +448,7 @@ export const RotaryMarketingInteligente: React.FC = () => {
     } finally {
       setLoadingHistory(false);
     }
-  }, []);
+  }, [initiative]);
 
   const handleReconcileHistory = async () => {
     setReconcilingHistory(true);
@@ -609,15 +623,15 @@ export const RotaryMarketingInteligente: React.FC = () => {
       const headers = { Authorization: `Bearer ${getToken()}` };
 
       const [resOverview, resCampaigns, resAuto, resAb, resAi, resAttr, resDist, resGov, resStories] = await Promise.all([
-        fetch(`${API}/rotary-en-accion/marketing/overview`, { headers }).then((r) => r.json()).catch(() => null),
-        fetch(`${API}/rotary-en-accion/marketing/campaigns`, { headers }).then((r) => r.json()).catch(() => null),
-        fetch(`${API}/rotary-en-accion/marketing/automations`, { headers }).then((r) => r.json()).catch(() => null),
+        fetch(`${API}/rotary-en-accion/marketing/overview?initiative=${initiative}`, { headers }).then((r) => r.json()).catch(() => null),
+        fetch(`${API}/rotary-en-accion/marketing/campaigns?initiative=${initiative}`, { headers }).then((r) => r.json()).catch(() => null),
+        fetch(`${API}/rotary-en-accion/marketing/automations?initiative=${initiative}`, { headers }).then((r) => r.json()).catch(() => null),
         fetch(`${API}/rotary-en-accion/marketing/ab-tests`, { headers }).then((r) => r.json()).catch(() => null),
-        fetch(`${API}/rotary-en-accion/marketing/ai-insights`, { headers }).then((r) => r.json()).catch(() => null),
-        fetch(`${API}/rotary-en-accion/marketing/attribution`, { headers }).then((r) => r.json()).catch(() => null),
-        fetch(`${API}/rotary-en-accion/marketing/reports/district`, { headers }).then((r) => r.json()).catch(() => null),
-        fetch(`${API}/rotary-en-accion/marketing/reports/governance`, { headers }).then((r) => r.json()).catch(() => null),
-        fetch(`${API}/rotary-en-accion/marketing/success-stories`, { headers }).then((r) => r.json()).catch(() => null),
+        fetch(`${API}/rotary-en-accion/marketing/ai-insights?initiative=${initiative}`, { headers }).then((r) => r.json()).catch(() => null),
+        fetch(`${API}/rotary-en-accion/marketing/attribution?initiative=${initiative}`, { headers }).then((r) => r.json()).catch(() => null),
+        fetch(`${API}/rotary-en-accion/marketing/reports/district?initiative=${initiative}`, { headers }).then((r) => r.json()).catch(() => null),
+        fetch(`${API}/rotary-en-accion/marketing/reports/governance?initiative=${initiative}`, { headers }).then((r) => r.json()).catch(() => null),
+        fetch(`${API}/rotary-en-accion/marketing/success-stories?initiative=${initiative}`, { headers }).then((r) => r.json()).catch(() => null),
       ]);
 
       if (resOverview?.ok) {
@@ -642,11 +656,17 @@ export const RotaryMarketingInteligente: React.FC = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [loadSenderIdentities]);
+  }, [initiative, loadSenderIdentities]);
 
   useEffect(() => {
     loadData();
-  }, [loadData]);
+    if (subtab === 'audiencias') {
+      loadAudienceLists();
+    }
+    if (subtab === 'envios') {
+      loadCampaignsHistory();
+    }
+  }, [loadData, initiative, subtab, loadAudienceLists, loadCampaignsHistory]);
 
   // Actualizar umbral de inactividad
   const handleUpdateInactivityDays = async (days: number) => {
@@ -861,7 +881,7 @@ export const RotaryMarketingInteligente: React.FC = () => {
       const res = await fetch(`${API}/rotary-en-accion/marketing/generate-smart-link`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-        body: JSON.stringify({ clubName: linkClubName, campaignCode: linkCampaignCode, channel: linkChannel })
+        body: JSON.stringify({ clubName: linkClubName, campaignCode: linkCampaignCode, channel: linkChannel, initiative })
       });
       const data = await res.json();
       if (data.ok) {
@@ -882,7 +902,7 @@ export const RotaryMarketingInteligente: React.FC = () => {
       const res = await fetch(`${API}/rotary-en-accion/marketing/ai/generate-copy`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-        body: JSON.stringify({ topic: copyTopic, areaFocus: copyArea, audience: copyAudience, tone: copyTone })
+        body: JSON.stringify({ topic: copyTopic, areaFocus: copyArea, audience: copyAudience, tone: copyTone, initiative })
       });
       const data = await res.json();
       if (data.ok) {
@@ -917,7 +937,7 @@ export const RotaryMarketingInteligente: React.FC = () => {
   // Descargar Informe Ejecutivo para Gobernación
   const handleDownloadExecutiveReport = async () => {
     try {
-      const res = await fetch(`${API}/rotary-en-accion/marketing/reports/executive-summary`, {
+      const res = await fetch(`${API}/rotary-en-accion/marketing/reports/executive-summary?initiative=${initiative}`, {
         headers: { Authorization: `Bearer ${getToken()}` }
       });
       const data = await res.json();
@@ -926,7 +946,8 @@ export const RotaryMarketingInteligente: React.FC = () => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `Informe_Ejecutivo_Rotary_en_Accion_${new Date().toISOString().slice(0, 10)}.md`;
+        const prefix = initiative === 'directorio_clubes' ? 'Informe_Ejecutivo_Directorio_Clubes_D4281' : 'Informe_Ejecutivo_Rotary_en_Accion';
+        a.download = `${prefix}_${new Date().toISOString().slice(0, 10)}.md`;
         a.click();
         URL.revokeObjectURL(url);
         toast.success('Informe ejecutivo descargado correctamente');
@@ -975,25 +996,53 @@ export const RotaryMarketingInteligente: React.FC = () => {
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-[#013388] to-slate-900 text-white p-6 sm:p-8 shadow-sm">
         <div className="absolute top-0 right-0 -mt-10 -mr-10 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-2 max-w-3xl">
+          <div className="space-y-3 max-w-3xl">
+            {/* Switcher de Iniciativas y Badges */}
             <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-purple-500/20 text-purple-200 border border-purple-400/30">
-                <Sparkles className="w-3.5 h-3.5 text-purple-300" />
-                Marketing Inteligente
+              <div className="inline-flex p-1 bg-black/40 backdrop-blur-md rounded-2xl border border-white/10 shadow-inner">
+                <button
+                  type="button"
+                  onClick={() => setInitiative('rotary_en_accion')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all ${
+                    initiative === 'rotary_en_accion'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-slate-300 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                  <span>Rotary en Acción</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInitiative('directorio_clubes')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all ${
+                    initiative === 'directorio_clubes'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-slate-300 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  <Building2 className="w-3.5 h-3.5 text-rotary-blue" />
+                  <span>Directorio de Clubes (D4281)</span>
+                </button>
+              </div>
+
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-200 border border-emerald-400/30">
+                {initiative === 'directorio_clubes' ? 'Distrito 4281 · 74 Clubes' : 'Fases 1, 2, 3 y 4 · Ecosistema Integral'}
               </span>
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-200 border border-emerald-400/30">
-                Fases 1, 2, 3 y 4 · Ecosistema Integral
-              </span>
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-sky-500/20 text-sky-200 border border-sky-400/30 tracking-wide">
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-sky-500/20 text-sky-200 border border-sky-400/30 tracking-wide">
                 v{APP_VERSION}
               </span>
             </div>
+
             <h2 className="text-2xl sm:text-3xl font-light tracking-tight text-white">
-              Ecosistema de Captación, Automatización y Gobernanza de Clubes
+              {initiative === 'directorio_clubes'
+                ? 'Ecosistema de Activación y Gobernanza del Directorio de Clubes'
+                : 'Ecosistema de Captación, Automatización y Gobernanza de Clubes'}
             </h2>
             <p className="text-sm text-slate-300 leading-relaxed">
-              Sistema integral para motivar el reporte continuo en los 133 clubes de nuestros distritos, midiendo la participación real,
-              ejecutando flujos omnicanal, optimizando campañas mediante IA y garantizando el cumplimiento normativo institucional.
+              {initiative === 'directorio_clubes'
+                ? 'Estrategia integral de comunicación para motivar y acompañar a los 74 clubes del Rotary Distrito 4281 a completar, publicar y mantener vigentes sus perfiles institucionales en el Directorio oficial.'
+                : 'Sistema integral para motivar el reporte continuo en los 133 clubes de nuestros distritos, midiendo la participación real, ejecutando flujos omnicanal, optimizando campañas mediante IA y garantizando el cumplimiento normativo institucional.'}
             </p>
           </div>
 
@@ -1015,43 +1064,101 @@ export const RotaryMarketingInteligente: React.FC = () => {
               <Download className="w-3.5 h-3.5 text-amber-300" />
               <span>Informe Gobernación</span>
             </button>
-            <a
-              href="/rotary-en-accion?utm_source=marketing_inteligente&utm_medium=panel&utm_campaign=prueba_piloto"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white text-xs font-bold flex items-center gap-1.5 transition shadow-sm"
-              title="Probar formulario con trazabilidad UTM"
-            >
-              <Send className="w-3.5 h-3.5" />
-              <span>Abrir Formulario (UTM)</span>
-            </a>
+
+            {initiative === 'directorio_clubes' ? (
+              <>
+                <a
+                  href="/clubes"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-bold flex items-center gap-1.5 transition border border-white/10"
+                  title="Abrir Directorio Público de Clubes"
+                >
+                  <Globe className="w-3.5 h-3.5 text-sky-300" />
+                  <span>Ver Directorio</span>
+                </a>
+                <a
+                  href="/clubes/registro?utm_source=marketing_inteligente&utm_medium=panel&utm_campaign=directorio_d4281"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white text-xs font-bold flex items-center gap-1.5 transition shadow-sm"
+                  title="Probar formulario de registro y actualización con trazabilidad UTM"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Formulario Directorio (UTM)</span>
+                </a>
+              </>
+            ) : (
+              <a
+                href="/rotary-en-accion?utm_source=marketing_inteligente&utm_medium=panel&utm_campaign=prueba_piloto"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white text-xs font-bold flex items-center gap-1.5 transition shadow-sm"
+                title="Probar formulario con trazabilidad UTM"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>Abrir Formulario (UTM)</span>
+              </a>
+            )}
           </div>
         </div>
 
         {/* Mini banner de diagnóstico inicial de participación */}
         <div className="mt-6 pt-5 border-t border-white/10 grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
           <div>
-            <div className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">Universo de Clubes</div>
-            <div className="text-xl font-bold text-white mt-0.5">{kpis.universoTotal} <span className="text-xs font-normal text-slate-400">clubes</span></div>
-          </div>
-          <div>
-            <div className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">Participación Actual</div>
-            <div className="text-xl font-bold text-emerald-400 mt-0.5">
-              {kpis.participacionPct}% <span className="text-xs font-normal text-slate-300">({kpis.participantesTotal} activos)</span>
+            <div className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">
+              {initiative === 'directorio_clubes' ? 'Clubes D4281' : 'Universo de Clubes'}
+            </div>
+            <div className="text-xl font-bold text-white mt-0.5">
+              {kpis.universoTotal} <span className="text-xs font-normal text-slate-400">clubes</span>
             </div>
           </div>
           <div>
-            <div className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">Flujos Automáticos</div>
-            <div className="text-xl font-bold text-sky-400 mt-0.5">{automations.filter((a) => a.active).length} <span className="text-xs font-normal text-slate-400">activos</span></div>
+            <div className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">
+              {initiative === 'directorio_clubes' ? 'Perfiles Completos (>80%)' : 'Participación Actual'}
+            </div>
+            <div className="text-xl font-bold text-emerald-400 mt-0.5">
+              {kpis.participacionPct}%{' '}
+              <span className="text-xs font-normal text-slate-300">({kpis.participantesTotal} activos)</span>
+            </div>
           </div>
           <div>
-            <div className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">Política de Contacto</div>
-            <div className="text-xl font-bold text-purple-300 mt-0.5">Máx 2 <span className="text-xs font-normal text-slate-400">mensajes/mes</span></div>
+            <div className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">
+              {initiative === 'directorio_clubes' ? 'En Proceso / Sin Iniciar' : 'Flujos Automáticos'}
+            </div>
+            <div className="text-xl font-bold text-sky-400 mt-0.5">
+              {initiative === 'directorio_clubes' ? (
+                <span>
+                  {kpis.sinReportesTotal} <span className="text-xs font-normal text-slate-400">pendientes</span>
+                </span>
+              ) : (
+                <span>
+                  {automations.filter((a) => a.active).length}{' '}
+                  <span className="text-xs font-normal text-slate-400">activos</span>
+                </span>
+              )}
+            </div>
+          </div>
+          <div>
+            <div className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">
+              {initiative === 'directorio_clubes' ? 'Estrategia Directorio' : 'Política de Contacto'}
+            </div>
+            <div className="text-xl font-bold text-purple-300 mt-0.5">
+              {initiative === 'directorio_clubes' ? (
+                <span>
+                  5 <span className="text-xs font-normal text-slate-400">campañas</span>
+                </span>
+              ) : (
+                <span>
+                  Máx 2 <span className="text-xs font-normal text-slate-400">mensajes/mes</span>
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* ── 2. NAVEGACIÓN INTERNA DE SUBPESTAÑAS (6 PESTAÑAS) ─────────── */}
+      {/* ── 2. NAVEGACIÓN INTERNA DE SUBPESTAÑAS ─────────── */}
       <div className="flex gap-1.5 p-1.5 bg-gray-100 rounded-2xl overflow-x-auto text-xs font-black">
         <button
           onClick={() => setSubtab('panel')}
@@ -1075,7 +1182,9 @@ export const RotaryMarketingInteligente: React.FC = () => {
         >
           <Calendar className="w-4 h-4 text-sky-600" />
           <span>Planificador</span>
-          <span className="text-[10px] px-1.5 py-0.2 bg-sky-100 text-sky-800 rounded-full font-bold">4 Horizontes</span>
+          <span className="text-[10px] px-1.5 py-0.2 bg-sky-100 text-sky-800 rounded-full font-bold">
+            {initiative === 'directorio_clubes' ? '5 Campañas' : '4 Horizontes'}
+          </span>
         </button>
 
         <button
@@ -1088,7 +1197,9 @@ export const RotaryMarketingInteligente: React.FC = () => {
         >
           <Users className="w-4 h-4 text-indigo-600" />
           <span>Audiencias & Triggers</span>
-          <span className="text-[10px] px-1.5 py-0.2 bg-indigo-100 text-indigo-800 rounded-full font-bold">5 Segmentos</span>
+          <span className="text-[10px] px-1.5 py-0.2 bg-indigo-100 text-indigo-800 rounded-full font-bold">
+            {initiative === 'directorio_clubes' ? '74 Clubes D4281' : '5 Segmentos'}
+          </span>
         </button>
 
         <button
@@ -1101,7 +1212,9 @@ export const RotaryMarketingInteligente: React.FC = () => {
         >
           <Megaphone className="w-4 h-4 text-amber-500" />
           <span>Campañas & Programación</span>
-          <span className="text-[10px] px-1.5 py-0.2 bg-amber-100 text-amber-800 rounded-full font-bold">4 Semanas</span>
+          <span className="text-[10px] px-1.5 py-0.2 bg-amber-100 text-amber-800 rounded-full font-bold">
+            {initiative === 'directorio_clubes' ? '5 Estratégicas' : '4 Semanas'}
+          </span>
         </button>
 
         <button
@@ -1143,7 +1256,9 @@ export const RotaryMarketingInteligente: React.FC = () => {
         >
           <TrendingUp className="w-4 h-4 text-emerald-600" />
           <span>Resultados & Distritos</span>
-          <span className="text-[10px] px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded-full font-bold">D4271 · D4281</span>
+          <span className="text-[10px] px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded-full font-bold">
+            {initiative === 'directorio_clubes' ? 'Distrito 4281' : 'D4271 · D4281'}
+          </span>
         </button>
 
         <button
@@ -1373,13 +1488,13 @@ export const RotaryMarketingInteligente: React.FC = () => {
               </a>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
+            <div className={`grid grid-cols-1 md:grid-cols-2 ${campaigns.length >= 5 ? 'lg:grid-cols-3 xl:grid-cols-5' : 'lg:grid-cols-4'} gap-4 pt-2`}>
               {campaigns.map((c) => (
                 <div key={c.id || c.code} className="p-4 rounded-2xl border border-gray-100 bg-gray-50/50 hover:bg-white hover:border-rotary-blue/30 transition shadow-xs flex flex-col justify-between space-y-3">
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-xs">
                       <span className="font-black text-rotary-blue uppercase tracking-wider text-[10px]">
-                        Semana {c.week} · SEM 0{c.week}
+                        {c.week === 0 ? 'Ciclo Permanente' : `Semana ${c.week} · SEM 0${c.week}`}
                       </span>
                       <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
                         c.status === 'approved' ? 'bg-emerald-100 text-emerald-800' : c.status === 'scheduled' ? 'bg-sky-100 text-sky-800' : 'bg-amber-100 text-amber-800'
@@ -1478,10 +1593,22 @@ export const RotaryMarketingInteligente: React.FC = () => {
                   onChange={(e) => setLinkCampaignCode(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-gray-200 text-xs font-medium outline-none bg-white focus:border-rotary-blue"
                 >
-                  <option value="sem01_captacion">SEM 01 · Captación</option>
-                  <option value="sem02_activacion">SEM 02 · Activación</option>
-                  <option value="sem03_inspiracion">SEM 03 · Inspiración</option>
-                  <option value="sem04_resultados">SEM 04 · Resultados</option>
+                  {initiative === 'directorio_clubes' ? (
+                    <>
+                      <option value="dir-sem-01">SEM 01 · Bienvenida & Activación</option>
+                      <option value="dir-sem-02">SEM 02 · Relevancia Pública & Beneficios</option>
+                      <option value="dir-sem-03">SEM 03 · Acompañamiento VIP & Aceleración</option>
+                      <option value="dir-sem-04">SEM 04 · Publicación Oficial & Certificación</option>
+                      <option value="dir-ciclo-mantenimiento">Ciclo Permanente · Mantenimiento Institucional</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="sem01_captacion">SEM 01 · Captación</option>
+                      <option value="sem02_activacion">SEM 02 · Activación</option>
+                      <option value="sem03_inspiracion">SEM 03 · Inspiración</option>
+                      <option value="sem04_resultados">SEM 04 · Resultados</option>
+                    </>
+                  )}
                 </select>
               </div>
 
@@ -1587,7 +1714,7 @@ export const RotaryMarketingInteligente: React.FC = () => {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-rotary-blue/10 text-rotary-blue">
-                      Semana {c.week} · {c.type}
+                      {c.week === 0 ? 'Ciclo Permanente' : `Semana ${c.week}`} · {c.type}
                     </span>
                     <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
                       c.status === 'approved' ? 'bg-emerald-100 text-emerald-800' : c.status === 'scheduled' ? 'bg-sky-100 text-sky-800' : 'bg-amber-100 text-amber-800'
@@ -2460,7 +2587,7 @@ export const RotaryMarketingInteligente: React.FC = () => {
                               <td className="py-3.5 px-4">
                                 <div className="flex items-center gap-2 mb-1">
                                   <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-blue-50 text-rotary-blue">
-                                    Semana {c.week} · {c.stage || 'Captación'}
+                                    {c.week === 0 ? 'Ciclo Permanente' : `Semana ${c.week}`} · {c.stage || 'Captación'}
                                   </span>
                                   <code className="text-[10px] bg-gray-100 px-1.5 py-0.2 rounded font-mono text-gray-600">
                                     {c.code}
@@ -2650,7 +2777,7 @@ export const RotaryMarketingInteligente: React.FC = () => {
                       <div>
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-blue-50 text-rotary-blue">
-                            Semana {historyDetail.campaign.week} · {historyDetail.campaign.stage || 'Captación'}
+                            {historyDetail.campaign.week === 0 ? 'Ciclo Permanente' : `Semana ${historyDetail.campaign.week}`} · {historyDetail.campaign.stage || 'Captación'}
                           </span>
                           <span className="text-[10px] font-mono bg-gray-100 px-1.5 py-0.2 rounded text-gray-600">
                             {historyDetail.campaign.code}
@@ -3071,7 +3198,7 @@ export const RotaryMarketingInteligente: React.FC = () => {
             <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-gray-50/70">
               <div>
                 <span className="text-[10px] font-black uppercase text-rotary-blue tracking-wider">
-                  Semana {previewCampaign.week} · {previewCampaign.type}
+                  {previewCampaign.week === 0 ? 'Ciclo Permanente' : `Semana ${previewCampaign.week}`} · {previewCampaign.type}
                 </span>
                 <h4 className="font-bold text-gray-900 text-base">{previewCampaign.name}</h4>
               </div>
@@ -3548,7 +3675,7 @@ export const RotaryMarketingInteligente: React.FC = () => {
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-black uppercase tracking-wider text-rotary-blue bg-blue-100/70 px-2 py-0.5 rounded-full">
-                      Semana {preparingCampaign.week} · {preparingCampaign.type}
+                      {preparingCampaign.week === 0 ? 'Ciclo Permanente' : `Semana ${preparingCampaign.week}`} · {preparingCampaign.type}
                     </span>
                     <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
                       <ShieldCheck className="w-3 h-3 text-emerald-600" />

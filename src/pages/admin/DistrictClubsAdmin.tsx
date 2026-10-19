@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
+import { RotaryMarketingInteligente } from '../../components/admin/rotary/RotaryMarketingInteligente';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const getAuthToken = () => localStorage.getItem('rotary_token') || localStorage.getItem('token') || '';
@@ -100,7 +101,7 @@ export const DistrictClubsAdmin: React.FC = () => {
   const { user, token } = useAuth();
   const [params, setParams] = useSearchParams();
 
-  const [activeTab, setActiveTab] = useState<'directorio' | 'solicitudes'>('directorio');
+  const [activeTab, setActiveTab] = useState<'directorio' | 'solicitudes' | 'marketing'>('directorio');
   const [clubs, setClubs] = useState<AdminClubProfile[]>([]);
   const [submissions, setSubmissions] = useState<AdminSubmission[]>([]);
   const [stats, setStats] = useState({
@@ -232,6 +233,8 @@ export const DistrictClubsAdmin: React.FC = () => {
     const tabParam = params.get('tab');
     if (tabParam === 'solicitudes') {
       setActiveTab('solicitudes');
+    } else if (tabParam === 'marketing') {
+      setActiveTab('marketing');
     }
   }, [params, clubs]);
 
@@ -703,10 +706,10 @@ export const DistrictClubsAdmin: React.FC = () => {
         </div>
 
         {/* ── 3. PESTAÑAS PRINCIPALES DEL MÓDULO ─────────────────────────── */}
-        <div className="flex border-b border-gray-200">
+        <div className="flex border-b border-gray-200 overflow-x-auto">
           <button
             onClick={() => setActiveTab('directorio')}
-            className={`px-6 py-3 text-xs font-black uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 ${
+            className={`px-6 py-3 text-xs font-black uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
               activeTab === 'directorio'
                 ? 'border-rotary-blue text-rotary-blue'
                 : 'border-transparent text-gray-500 hover:text-gray-900'
@@ -718,7 +721,7 @@ export const DistrictClubsAdmin: React.FC = () => {
 
           <button
             onClick={() => setActiveTab('solicitudes')}
-            className={`px-6 py-3 text-xs font-black uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 ${
+            className={`px-6 py-3 text-xs font-black uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
               activeTab === 'solicitudes'
                 ? 'border-rotary-blue text-rotary-blue'
                 : 'border-transparent text-gray-500 hover:text-gray-900'
@@ -729,6 +732,21 @@ export const DistrictClubsAdmin: React.FC = () => {
             {submissions.filter(s => s.status === 'recibida').length > 0 && (
               <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
             )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('marketing')}
+            className={`px-6 py-3 text-xs font-black uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'marketing'
+                ? 'border-purple-600 text-purple-700'
+                : 'border-transparent text-gray-500 hover:text-gray-900'
+            }`}
+          >
+            <Sparkles className="w-4 h-4 text-purple-600" />
+            <span>Marketing Inteligente IA</span>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 font-extrabold uppercase">
+              Directorio
+            </span>
           </button>
         </div>
 
@@ -1197,6 +1215,15 @@ export const DistrictClubsAdmin: React.FC = () => {
                 })}
               </div>
             )}
+          </div>
+        )}
+
+        {/* ════════════════════════════════════════════════════════════════
+            PESTAÑA 3: MARKETING INTELIGENTE IA · DIRECTORIO DE CLUBES
+           ════════════════════════════════════════════════════════════════ */}
+        {activeTab === 'marketing' && (
+          <div className="space-y-4">
+            <RotaryMarketingInteligente initialInitiative="directorio_clubes" />
           </div>
         )}
 
