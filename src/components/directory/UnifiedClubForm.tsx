@@ -3,7 +3,7 @@ import { useSearchParams, Link } from 'react-router-dom';
 import {
   Upload, Image as ImageIcon,
   CheckCircle2, ArrowLeft, ArrowRight, Save, Plus, Trash2,
-  Camera, Heart, Check, Loader2, Info
+  Camera, Heart, Check, Loader2, Info, Building2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PublicStepNav, PublicFormCard } from '../common/PublicInstitutionalComponents';
@@ -109,6 +109,12 @@ export interface ClubFormData {
   applicantRole: string;
   dataConsent: boolean;
   draftToken?: string;
+  password?: string;
+  confirmPassword?: string;
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
+  utmContent?: string;
 }
 
 const INITIAL_FORM: ClubFormData = {
@@ -148,7 +154,13 @@ const INITIAL_FORM: ClubFormData = {
   applicantEmail: '',
   applicantPhone: '',
   applicantRole: '',
-  dataConsent: true
+  dataConsent: true,
+  password: '',
+  confirmPassword: '',
+  utmSource: '',
+  utmMedium: '',
+  utmCampaign: '',
+  utmContent: ''
 };
 
 export const UnifiedClubForm: React.FC = () => {
@@ -159,7 +171,7 @@ export const UnifiedClubForm: React.FC = () => {
   const [existingProfiles, setExistingProfiles] = useState<any[]>([]);
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitResult, setSubmitResult] = useState<{ trackingNumber: string; submissionId: string } | null>(null);
+  const [submitResult, setSubmitResult] = useState<{ trackingNumber: string; submissionId: string; hasPortalAccess?: boolean } | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
   const [uploadingGallery, setUploadingGallery] = useState(false);
@@ -194,8 +206,22 @@ export const UnifiedClubForm: React.FC = () => {
     return () => { active = false; };
   }, []);
 
-  // Pre-cargar desde borrador si existe en URL o LocalStorage
+  // Pre-cargar desde borrador si existe en URL o LocalStorage y capturar UTMs
   useEffect(() => {
+    const utmSource = params.get('utm_source') || '';
+    const utmMedium = params.get('utm_medium') || '';
+    const utmCampaign = params.get('utm_campaign') || '';
+    const utmContent = params.get('utm_content') || '';
+    if (utmSource || utmCampaign) {
+      setFormData(prev => ({
+        ...prev,
+        utmSource: utmSource || prev.utmSource,
+        utmMedium: utmMedium || prev.utmMedium,
+        utmCampaign: utmCampaign || prev.utmCampaign,
+        utmContent: utmContent || prev.utmContent
+      }));
+    }
+
     const draftToken = params.get('draft') || localStorage.getItem('district_club_form_draft_token');
     if (draftToken) {
       fetch(`${API}/district-clubs/draft/${draftToken}`)
@@ -209,6 +235,18 @@ export const UnifiedClubForm: React.FC = () => {
         .catch(() => {});
     }
   }, [params]);
+
+  // Pre-seleccionar club si viene en parámetro de URL (?club=slug-o-nombre)
+  useEffect(() => {
+    const preClub = params.get('club') || params.get('clubSlug');
+    if (preClub && (catalogClubs.length > 0 || existingProfiles.length > 0)) {
+      const match = catalogClubs.find(c => c.slug === preClub || c.name.toLowerCase().includes(preClub.toLowerCase())) ||
+                    existingProfiles.find(p => p.slug === preClub || p.officialName.toLowerCase().includes(preClub.toLowerCase()));
+      if (match) {
+        handleSelectOfficialClub(match.name || match.officialName);
+      }
+    }
+  }, [params, catalogClubs, existingProfiles]);
 
   // Si seleccionan un club del catálogo que ya tiene perfil en Distrito 4281
   const handleSelectOfficialClub = (selectedName: string) => {
@@ -254,14 +292,22 @@ export const UnifiedClubForm: React.FC = () => {
     }
   };
 
-  // Guardar borrador manual
+  // Guardar borrador manual con trazabilidad de Rotary en Acción
   const handleSaveDraft = async () => {
     try {
       const token = formData.draftToken || `draft_${Date.now()}`;
       const res = await fetch(`${API}/district-clubs/draft`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ draftToken: token, payload: formData })
+        body: JSON.stringify({
+          draftToken: token,
+          payload: formData,
+          stepReached: currentStep + 1,
+          utmSource: formData.utmSource || params.get('utm_source'),
+          utmMedium: formData.utmMedium || params.get('utm_medium'),
+          utmCampaign: formData.utmCampaign || params.get('utm_campaign'),
+          utmContent: formData.utmContent || params.get('utm_content')
+        })
       });
       const data = await res.json();
       if (data.ok) {
@@ -363,6 +409,16 @@ export const UnifiedClubForm: React.FC = () => {
         toast.error('Por favor ingresa tu nombre y correo como persona responsable de la solicitud.');
         return false;
       }
+      if (formData.password) {
+        if (formData.password.length < 8) {
+          toast.error('La contraseña del portal de autogestión debe tener mínimo 8 caracteres.');
+          return false;
+        }
+        if (formData.password !== formData.confirmPassword) {
+          toast.error('Las contraseñas no coinciden. Por favor verifícalas.');
+          return false;
+        }
+      }
       if (!formData.dataConsent) {
         toast.error('Debes confirmar la autorización para publicar la información institucional.');
         return false;
@@ -400,9 +456,14 @@ export const UnifiedClubForm: React.FC = () => {
         throw new Error(data.error || 'Error al enviar la solicitud');
       }
 
+      if (data.portalToken) {
+        localStorage.setItem('rotary_club_portal_token', data.portalToken);
+      }
+
       setSubmitResult({
         trackingNumber: data.trackingNumber,
-        submissionId: data.submissionId
+        submissionId: data.submissionId,
+        hasPortalAccess: !!data.portalToken
       });
       localStorage.removeItem('district_club_form_draft_token');
       toast.success('¡Solicitud enviada exitosamente!');
@@ -452,22 +513,28 @@ export const UnifiedClubForm: React.FC = () => {
         </div>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+          {submitResult.hasPortalAccess ? (
+            <Link
+              to="/clubes/portal"
+              className="w-full sm:w-auto px-6 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-md transition-all text-sm inline-flex items-center justify-center gap-2"
+            >
+              <Building2 className="w-4 h-4" />
+              Acceder al Portal de Autogestión
+            </Link>
+          ) : (
+            <Link
+              to="/clubes"
+              className="w-full sm:w-auto px-6 py-3.5 bg-rotary-blue hover:bg-blue-900 text-white font-bold rounded-xl shadow-md transition-all text-sm"
+            >
+              Ir al Directorio de Clubes
+            </Link>
+          )}
           <Link
             to="/clubes"
-            className="w-full sm:w-auto px-6 py-3 bg-rotary-blue hover:bg-blue-900 text-white font-bold rounded-xl shadow-md transition-all text-sm"
+            className="w-full sm:w-auto px-6 py-3.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-all text-sm text-center"
           >
-            Ir al Directorio de Clubes
+            Ver Directorio Público
           </Link>
-          <button
-            onClick={() => {
-              setSubmitResult(null);
-              setFormData(INITIAL_FORM);
-              setCurrentStep(0);
-            }}
-            className="w-full sm:w-auto px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-all text-sm"
-          >
-            Registrar Otro Club
-          </button>
         </div>
       </PublicFormCard>
     );
@@ -1388,6 +1455,50 @@ export const UnifiedClubForm: React.FC = () => {
                       value={formData.applicantRole}
                       onChange={(e) => setFormData({ ...formData, applicantRole: e.target.value })}
                       className="w-full p-3.5 rounded-xl border-2 border-gray-100 bg-gray-50/60 text-sm font-semibold outline-none focus:border-rotary-blue"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Creación de Cuenta para Portal de Autogestión */}
+              <div className="border border-blue-100 bg-blue-50/50 p-5 rounded-2xl space-y-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-rotary-blue text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <Building2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-gray-900 uppercase tracking-wider">
+                      Portal de Autogestión del Club (Recomendado)
+                    </h4>
+                    <p className="text-[11px] text-gray-500 leading-tight">
+                      Establece una contraseña segura para administrar tu club en cualquier momento sin depender de un administrador.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                  <div>
+                    <label className="block text-[11px] font-black text-gray-700 uppercase tracking-wider mb-1.5">
+                      Contraseña de Acceso (mínimo 8 caracteres)
+                    </label>
+                    <input
+                      type="password"
+                      placeholder="••••••••"
+                      value={formData.password || ''}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                      className="w-full p-3 rounded-xl border border-gray-200 bg-white text-sm font-semibold outline-none focus:border-rotary-blue shadow-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-black text-gray-700 uppercase tracking-wider mb-1.5">
+                      Confirmar Contraseña
+                    </label>
+                    <input
+                      type="password"
+                      placeholder="••••••••"
+                      value={formData.confirmPassword || ''}
+                      onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                      className="w-full p-3 rounded-xl border border-gray-200 bg-white text-sm font-semibold outline-none focus:border-rotary-blue shadow-xs"
                     />
                   </div>
                 </div>

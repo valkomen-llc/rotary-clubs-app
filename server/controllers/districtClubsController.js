@@ -4,6 +4,8 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import { randomUUID } from 'crypto';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import db from '../lib/db.js';
 import {
   ensureDistrictClubDirectorySchema,
@@ -13,7 +15,37 @@ import {
 import { CLUBS_4281, CLUBS_BY_DISTRICT_NUMBER, districtNumberOf } from '../lib/rotaryClubs.js';
 import { norm, clubDisplayName } from '../lib/publicClubs.js';
 
-console.log('[districtClubsController] v4.1213.0 cargado — Directorio Distrital Inteligente de Clubes');
+console.log('[districtClubsController] v4.1214.0 cargado — Integración Rotary en Acción y Portal de Autogestión');
+
+const JWT_SECRET = process.env.JWT_SECRET || 'rotary_secret_key_2026';
+const PORTAL_AUDIENCE = 'rotary-club-portal';
+const TOKEN_TTL = '30d';
+
+export const signPortalToken = (account, profile, { remember = true } = {}) => jwt.sign(
+  {
+    sub: account.id,
+    email: account.email,
+    profileId: account.clubProfileId || profile?.id,
+    clubName: account.clubName || profile?.officialName,
+    role: account.role || 'club_manager',
+    aud: PORTAL_AUDIENCE
+  },
+  JWT_SECRET,
+  { expiresIn: remember ? TOKEN_TTL : '24h' }
+);
+
+/** Middleware para rutas del portal de autogestión de club */
+export const portalAuth = async (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'Inicia sesión para continuar en el portal del club.' });
+  try {
+    const payload = jwt.verify(token, JWT_SECRET, { audience: PORTAL_AUDIENCE });
+    req.portalUser = payload;
+    next();
+  } catch (err) {
+    res.status(401).json({ error: 'Tu sesión en el portal expiró. Vuelve a ingresar.' });
+  }
+};
 
 /** Manejador genérico de errores */
 const fail = (res, e, status = 500) => {
@@ -242,13 +274,18 @@ export const submitClubDirectoryRequest = async (req, res) => {
     }
 
     const applicantName = String(data.applicantName || '').trim();
-    const applicantEmail = String(data.applicantEmail || '').trim();
+    const applicantEmail = String(data.applicantEmail || '').trim().toLowerCase();
     const applicantPhone = String(data.applicantPhone || '').trim();
     const applicantRole = String(data.applicantRole || 'Socio / Representante').trim();
 
     if (!applicantName || !applicantEmail) {
       return res.status(400).json({ error: 'El nombre y correo del solicitante son obligatorios.' });
     }
+
+    const utmSource = data.utmSource || data.utm_source || null;
+    const utmMedium = data.utmMedium || data.utm_medium || null;
+    const utmCampaign = data.utmCampaign || data.utm_campaign || null;
+    const utmContent = data.utmContent || data.utm_content || null;
 
     const trackingNumber = generateTrackingNumber(distNum, clubName);
     const submissionId = randomUUID();
@@ -265,11 +302,63 @@ export const submitClubDirectoryRequest = async (req, res) => {
       if (match.length > 0) targetProfileId = match[0].id;
     }
 
+    // Vincular manager en el perfil si no tiene asignado
+    if (targetProfileId) {
+      await db.query(
+        `UPDATE "DistrictClubProfile" SET
+          "primaryManagerEmail" = COALESCE("primaryManagerEmail", $1),
+          "primaryManagerName" = COALESCE("primaryManagerName", $2),
+          "primaryManagerPhone" = COALESCE("primaryManagerPhone", $3)
+         WHERE id = $4`,
+        [applicantEmail, applicantName, applicantPhone || null, targetProfileId]
+      );
+    }
+
+    // Creación opcional de cuenta de autogestión durante el envío
+    let portalToken = null;
+    if (data.password && String(data.password).length >= 8) {
+      try {
+        const passwordHash = await bcrypt.hash(String(data.password), 10);
+        const { rows: existingAcc } = await db.query(
+          `SELECT id FROM "DistrictClubAccount" WHERE lower(email) = lower($1) LIMIT 1`,
+          [applicantEmail]
+        );
+        let accountObj;
+        if (existingAcc.length > 0) {
+          const { rows: upRows } = await db.query(
+            `UPDATE "DistrictClubAccount" SET
+              "passwordHash" = $1,
+              "clubProfileId" = COALESCE($2, "clubProfileId"),
+              "clubName" = COALESCE($3, "clubName"),
+              "updatedAt" = NOW()
+             WHERE id = $4 RETURNING *`,
+            [passwordHash, targetProfileId, clubName, existingAcc[0].id]
+          );
+          accountObj = upRows[0];
+        } else {
+          const { rows: inRows } = await db.query(
+            `INSERT INTO "DistrictClubAccount" (
+              id, email, "passwordHash", "fullName", phone, "clubProfileId", "clubName", role, "isVerified"
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'club_manager', TRUE)
+            RETURNING *`,
+            [randomUUID(), applicantEmail, passwordHash, applicantName, applicantPhone || null, targetProfileId, clubName]
+          );
+          accountObj = inRows[0];
+        }
+        if (accountObj) {
+          portalToken = signPortalToken(accountObj, { id: targetProfileId, officialName: clubName });
+        }
+      } catch (accErr) {
+        console.warn('[districtClubsController] No se pudo crear cuenta automática:', accErr.message);
+      }
+    }
+
     const initialHistory = [{
       event: 'solicitud_recibida',
       date: new Date().toISOString(),
       by: `${applicantName} (${applicantEmail})`,
       role: applicantRole,
+      utmCampaign: utmCampaign || 'organico',
       note: data.submissionType === 'update' ? 'Solicitud de actualización de perfil' : 'Solicitud de registro inicial de club'
     }];
 
@@ -277,8 +366,10 @@ export const submitClubDirectoryRequest = async (req, res) => {
       `INSERT INTO "DistrictClubSubmission" (
         id, "trackingNumber", "profileId", "districtNumber", "organizationType",
         "clubName", "submissionType", "applicantName", "applicantEmail", "applicantPhone",
-        "applicantRole", "dataConsent", payload, status, history, "draftToken"
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+        "applicantRole", "dataConsent", payload, status, history, "draftToken",
+        "utmSource", "utmMedium", "utmCampaign", "utmContent", "stepReached",
+        "formStartedAt", "lastActiveAt"
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 7, NOW(), NOW())`,
       [
         submissionId,
         trackingNumber,
@@ -295,7 +386,11 @@ export const submitClubDirectoryRequest = async (req, res) => {
         JSON.stringify(data),
         'recibida',
         JSON.stringify(initialHistory),
-        data.draftToken || null
+        data.draftToken || null,
+        utmSource,
+        utmMedium,
+        utmCampaign,
+        utmContent
       ]
     );
 
@@ -303,6 +398,8 @@ export const submitClubDirectoryRequest = async (req, res) => {
       ok: true,
       trackingNumber,
       submissionId,
+      portalToken,
+      portalPath: portalToken ? '/clubes/portal' : null,
       message: 'Solicitud recibida exitosamente. Nuestro equipo distrital la revisará pronto.'
     });
   } catch (e) {
@@ -314,8 +411,14 @@ export const submitClubDirectoryRequest = async (req, res) => {
 export const saveFormDraft = async (req, res) => {
   try {
     await ensureDistrictClubDirectorySchema();
-    const { draftToken, payload } = req.body;
+    const { draftToken, payload, stepReached, utmSource, utmMedium, utmCampaign, utmContent } = req.body || {};
     const token = draftToken || `draft_${randomUUID()}`;
+
+    const applicantName = payload?.applicantName || null;
+    const applicantEmail = payload?.applicantEmail || null;
+    const applicantPhone = payload?.applicantPhone || null;
+    const clubName = payload?.officialName || 'Borrador sin nombre';
+    const step = Number(stepReached) || Number(payload?.currentStep) || 1;
 
     // Upsert borrador en submission con status 'borrador'
     const { rows: existing } = await db.query(
@@ -325,29 +428,56 @@ export const saveFormDraft = async (req, res) => {
 
     if (existing.length > 0) {
       await db.query(
-        `UPDATE "DistrictClubSubmission"
-         SET payload = $1, "updatedAt" = NOW()
-         WHERE "draftToken" = $2`,
-        [JSON.stringify(payload), token]
+        `UPDATE "DistrictClubSubmission" SET
+          payload = $1,
+          "clubName" = COALESCE($2, "clubName"),
+          "applicantName" = COALESCE($3, "applicantName"),
+          "applicantEmail" = COALESCE($4, "applicantEmail"),
+          "applicantPhone" = COALESCE($5, "applicantPhone"),
+          "stepReached" = GREATEST("stepReached", $6),
+          "utmSource" = COALESCE($7, "utmSource"),
+          "utmCampaign" = COALESCE($8, "utmCampaign"),
+          "lastActiveAt" = NOW(),
+          "updatedAt" = NOW()
+         WHERE "draftToken" = $9`,
+        [
+          JSON.stringify(payload),
+          clubName,
+          applicantName,
+          applicantEmail,
+          applicantPhone,
+          step,
+          utmSource || null,
+          utmCampaign || null,
+          token
+        ]
       );
     } else {
       const trackingNumber = `BORR-${Date.now().toString(36).toUpperCase()}`;
       await db.query(
         `INSERT INTO "DistrictClubSubmission" (
           id, "trackingNumber", "districtNumber", "organizationType", "clubName",
-          "applicantName", "applicantEmail", payload, status, "draftToken"
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+          "applicantName", "applicantEmail", "applicantPhone", payload, status, "draftToken",
+          "utmSource", "utmMedium", "utmCampaign", "utmContent", "stepReached",
+          "formStartedAt", "lastActiveAt"
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW())`,
         [
           randomUUID(),
           trackingNumber,
           Number(payload?.districtNumber) || 4281,
           payload?.organizationType || 'rotary',
-          payload?.officialName || 'Borrador sin nombre',
-          payload?.applicantName || 'Borrador',
-          payload?.applicantEmail || 'borrador@clubplatform.org',
+          clubName,
+          applicantName || 'Borrador en curso',
+          applicantEmail || 'borrador@clubplatform.org',
+          applicantPhone || null,
           JSON.stringify(payload),
           'borrador',
-          token
+          token,
+          utmSource || null,
+          utmMedium || null,
+          utmCampaign || null,
+          utmContent || null,
+          step
         ]
       );
     }
@@ -403,7 +533,8 @@ export const getAdminClubList = async (req, res) => {
         id, "clubId", "districtNumber", "organizationType", "officialName", "shortName",
         slug, city, state, country, "foundationYear", "currentPresident", "rotaryPeriod",
         "completionPercentage", status, "lastUpdatedPeriod", "logoUrl", "coverImageUrl",
-        "contactEmail", "contactPhone", "websiteUrl", "publishedAt", "updatedAt"
+        "contactEmail", "contactPhone", "websiteUrl", "primaryManagerEmail", "primaryManagerName",
+        "pendingProtectedChanges", "publishedAt", "updatedAt"
        FROM "DistrictClubProfile"
        ${where}
        ORDER BY "officialName" ASC`,
@@ -771,6 +902,575 @@ export const toggleProfileStatus = async (req, res) => {
     );
 
     res.json({ ok: true, status });
+  } catch (e) {
+    fail(res, e);
+  }
+};
+
+// ─── 11. PORTAL DE AUTOGESTIÓN DEL CLUB ──────────────────────────────────────
+
+/** POST /api/district-clubs/portal/register */
+export const portalRegister = async (req, res) => {
+  try {
+    await ensureDistrictClubDirectorySchema();
+    const { email, password, fullName, phone, profileId, clubName } = req.body || {};
+    const mail = String(email || '').trim().toLowerCase();
+    if (!mail || !password || String(password).length < 8) {
+      return res.status(400).json({ error: 'Correo válido y contraseña de al menos 8 caracteres son obligatorios.' });
+    }
+
+    const { rows: existing } = await db.query(
+      `SELECT * FROM "DistrictClubAccount" WHERE lower(email) = lower($1) LIMIT 1`,
+      [mail]
+    );
+
+    let account;
+    const passwordHash = await bcrypt.hash(String(password), 10);
+
+    if (existing.length > 0) {
+      const matches = await bcrypt.compare(String(password), existing[0].passwordHash).catch(() => false);
+      if (!matches) {
+        return res.status(400).json({ error: 'Este correo ya tiene una cuenta registrada con otra contraseña. Por favor inicia sesión.' });
+      }
+      account = existing[0];
+      if (profileId && !account.clubProfileId) {
+        await db.query(`UPDATE "DistrictClubAccount" SET "clubProfileId" = $1, "clubName" = COALESCE($2, "clubName"), "updatedAt" = NOW() WHERE id = $3`, [profileId, clubName || null, account.id]);
+        account.clubProfileId = profileId;
+      }
+    } else {
+      const newId = randomUUID();
+      const { rows: created } = await db.query(
+        `INSERT INTO "DistrictClubAccount" (
+          id, email, "passwordHash", "fullName", phone, "clubProfileId", "clubName", role, "isVerified"
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'club_manager', TRUE)
+        RETURNING *`,
+        [newId, mail, passwordHash, fullName || null, phone || null, profileId || null, clubName || null]
+      );
+      account = created[0];
+    }
+
+    let profile = null;
+    if (account.clubProfileId) {
+      const { rows: profRows } = await db.query(`SELECT * FROM "DistrictClubProfile" WHERE id = $1 LIMIT 1`, [account.clubProfileId]);
+      profile = profRows[0] || null;
+      if (profile && !profile.primaryManagerEmail) {
+        await db.query(`UPDATE "DistrictClubProfile" SET "primaryManagerEmail" = $1, "primaryManagerName" = $2, "primaryManagerPhone" = $3 WHERE id = $4`, [mail, fullName || null, phone || null, profile.id]);
+      }
+    }
+
+    const token = signPortalToken(account, profile);
+    res.json({
+      ok: true,
+      token,
+      account: { id: account.id, email: account.email, fullName: account.fullName, role: account.role },
+      profile,
+      message: 'Cuenta creada exitosamente para autogestión de club.'
+    });
+  } catch (e) {
+    fail(res, e);
+  }
+};
+
+/** POST /api/district-clubs/portal/login */
+export const portalLogin = async (req, res) => {
+  try {
+    await ensureDistrictClubDirectorySchema();
+    const { email, password, remember } = req.body || {};
+    const mail = String(email || '').trim().toLowerCase();
+
+    if (!mail || !password) {
+      return res.status(400).json({ error: 'Ingresa correo y contraseña.' });
+    }
+
+    const { rows: accRows } = await db.query(
+      `SELECT * FROM "DistrictClubAccount" WHERE lower(email) = lower($1) LIMIT 1`,
+      [mail]
+    );
+
+    let account = accRows[0];
+    let isPlatformUser = false;
+
+    // Si no está en DistrictClubAccount, verificar si es usuario de la plataforma principal (User)
+    if (!account) {
+      const { rows: userRows } = await db.query(
+        `SELECT id, email, password, name, phone, "clubId", role FROM "User" WHERE lower(email) = lower($1) LIMIT 1`,
+        [mail]
+      );
+      if (userRows.length > 0) {
+        const u = userRows[0];
+        const match = await bcrypt.compare(String(password), u.password).catch(() => false);
+        if (match) {
+          isPlatformUser = true;
+          let clubProfileId = null;
+          let clubName = null;
+          if (u.clubId) {
+            const { rows: pRows } = await db.query(`SELECT id, "officialName" FROM "DistrictClubProfile" WHERE "clubId" = $1 LIMIT 1`, [u.clubId]);
+            if (pRows[0]) {
+              clubProfileId = pRows[0].id;
+              clubName = pRows[0].officialName;
+            }
+          }
+          if (!clubProfileId) {
+            const { rows: pRows } = await db.query(`SELECT id, "officialName" FROM "DistrictClubProfile" WHERE lower("primaryManagerEmail") = lower($1) LIMIT 1`, [mail]);
+            if (pRows[0]) {
+              clubProfileId = pRows[0].id;
+              clubName = pRows[0].officialName;
+            }
+          }
+          const newId = randomUUID();
+          const { rows: bridgeRows } = await db.query(
+            `INSERT INTO "DistrictClubAccount" (id, email, "passwordHash", "fullName", phone, "clubProfileId", "clubName", role)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, 'club_manager')
+             RETURNING *`,
+            [newId, mail, u.password, u.name, u.phone, clubProfileId, clubName]
+          );
+          account = bridgeRows[0];
+        }
+      }
+    }
+
+    if (!account) {
+      return res.status(401).json({ error: 'Credenciales inválidas. Verifica tu correo y contraseña.' });
+    }
+
+    if (!isPlatformUser) {
+      const match = await bcrypt.compare(String(password), account.passwordHash).catch(() => false);
+      if (!match) {
+        return res.status(401).json({ error: 'Credenciales inválidas. Verifica tu correo y contraseña.' });
+      }
+    }
+
+    await db.query(`UPDATE "DistrictClubAccount" SET "lastLoginAt" = NOW() WHERE id = $1`, [account.id]);
+
+    let profile = null;
+    if (account.clubProfileId) {
+      const { rows: pRows } = await db.query(`SELECT * FROM "DistrictClubProfile" WHERE id = $1 LIMIT 1`, [account.clubProfileId]);
+      profile = pRows[0] || null;
+    } else {
+      const { rows: pRows } = await db.query(`SELECT * FROM "DistrictClubProfile" WHERE lower("primaryManagerEmail") = lower($1) LIMIT 1`, [mail]);
+      if (pRows[0]) {
+        profile = pRows[0];
+        await db.query(`UPDATE "DistrictClubAccount" SET "clubProfileId" = $1, "clubName" = $2 WHERE id = $3`, [profile.id, profile.officialName, account.id]);
+      }
+    }
+
+    const token = signPortalToken(account, profile, { remember });
+    res.json({
+      ok: true,
+      token,
+      account: { id: account.id, email: account.email, fullName: account.fullName, role: account.role },
+      profile
+    });
+  } catch (e) {
+    fail(res, e);
+  }
+};
+
+/** GET /api/district-clubs/portal/link (Requiere token de sesión Club Platform) */
+export const linkPlatformUser = async (req, res) => {
+  try {
+    await ensureDistrictClubDirectorySchema();
+    const mail = String(req.user?.email || '').trim().toLowerCase();
+    if (!mail) return res.json({ hasClub: false, email: null });
+
+    let profile = null;
+    const { rows: pByEmail } = await db.query(
+      `SELECT * FROM "DistrictClubProfile" WHERE lower("primaryManagerEmail") = lower($1) LIMIT 1`,
+      [mail]
+    );
+    if (pByEmail[0]) profile = pByEmail[0];
+
+    if (!profile && req.user?.clubId) {
+      const { rows: pByClub } = await db.query(
+        `SELECT * FROM "DistrictClubProfile" WHERE "clubId" = $1 LIMIT 1`,
+        [req.user.clubId]
+      );
+      if (pByClub[0]) profile = pByClub[0];
+    }
+
+    const { rows: accRows } = await db.query(
+      `SELECT * FROM "DistrictClubAccount" WHERE lower(email) = lower($1) LIMIT 1`,
+      [mail]
+    );
+    let account = accRows[0];
+
+    if (!account && profile) {
+      const newId = randomUUID();
+      const dummyHash = await bcrypt.hash(randomUUID(), 10);
+      const { rows: created } = await db.query(
+        `INSERT INTO "DistrictClubAccount" (id, email, "passwordHash", "fullName", "clubProfileId", "clubName", role)
+         VALUES ($1, $2, $3, $4, $5, $6, 'club_manager')
+         RETURNING *`,
+        [newId, mail, dummyHash, req.user?.name || null, profile.id, profile.officialName]
+      );
+      account = created[0];
+    }
+
+    if (!profile && !account) {
+      return res.json({ hasClub: false, email: mail });
+    }
+
+    const token = signPortalToken(account || { id: req.user.id, email: mail, role: 'club_manager' }, profile);
+    res.json({
+      hasClub: true,
+      token,
+      portalPath: '/clubes/portal',
+      profile: profile ? {
+        id: profile.id,
+        officialName: profile.officialName,
+        shortName: profile.shortName,
+        organizationType: profile.organizationType,
+        slug: profile.slug,
+        completionPercentage: profile.completionPercentage,
+        status: profile.status
+      } : null
+    });
+  } catch (e) {
+    console.error('[districtClubsController] linkPlatformUser:', e);
+    res.json({ hasClub: false });
+  }
+};
+
+/** GET /api/district-clubs/portal/me (Requiere token portal) */
+export const getPortalMe = async (req, res) => {
+  try {
+    await ensureDistrictClubDirectorySchema();
+    const portalUser = req.portalUser;
+    if (!portalUser) return res.status(401).json({ error: 'No autenticado' });
+
+    const { rows: accRows } = await db.query(
+      `SELECT id, email, "fullName", phone, "clubProfileId", "clubName", role FROM "DistrictClubAccount" WHERE id = $1 LIMIT 1`,
+      [portalUser.sub]
+    );
+    const account = accRows[0] || portalUser;
+
+    let profile = null;
+    const targetProfileId = account.clubProfileId || portalUser.profileId;
+    if (targetProfileId) {
+      const { rows: pRows } = await db.query(
+        `SELECT * FROM "DistrictClubProfile" WHERE id = $1 LIMIT 1`,
+        [targetProfileId]
+      );
+      profile = pRows[0] || null;
+    }
+
+    res.json({
+      ok: true,
+      account,
+      profile,
+      completionPercentage: profile?.completionPercentage || 0
+    });
+  } catch (e) {
+    fail(res, e);
+  }
+};
+
+/** PUT /api/district-clubs/portal/profile (Requiere token portal) */
+export const updatePortalProfile = async (req, res) => {
+  try {
+    await ensureDistrictClubDirectorySchema();
+    const portalUser = req.portalUser;
+    const profileId = portalUser.profileId;
+    if (!profileId) return res.status(400).json({ error: 'No tienes un club asignado para gestionar.' });
+
+    const { rows: currentRows } = await db.query(
+      `SELECT * FROM "DistrictClubProfile" WHERE id = $1 LIMIT 1`,
+      [profileId]
+    );
+    if (currentRows.length === 0) return res.status(404).json({ error: 'Club no encontrado' });
+    const current = currentRows[0];
+
+    const body = req.body || {};
+    const auditLog = Array.isArray(current.auditLog) ? current.auditLog : [];
+
+    // Validar si intentó cambiar campos institucionales protegidos
+    let hasProtectedChanges = false;
+    const protectedRequested = {};
+
+    if (body.officialName && body.officialName.trim() !== current.officialName) {
+      hasProtectedChanges = true;
+      protectedRequested.officialName = body.officialName.trim();
+    }
+    if (body.districtNumber && Number(body.districtNumber) !== Number(current.districtNumber)) {
+      hasProtectedChanges = true;
+      protectedRequested.districtNumber = Number(body.districtNumber);
+    }
+    if (body.organizationType && body.organizationType !== current.organizationType) {
+      hasProtectedChanges = true;
+      protectedRequested.organizationType = body.organizationType;
+    }
+
+    let pendingProtectedObj = current.pendingProtectedChanges;
+    if (hasProtectedChanges) {
+      pendingProtectedObj = {
+        requestedAt: new Date().toISOString(),
+        requestedBy: portalUser.email,
+        changes: protectedRequested
+      };
+      auditLog.push({
+        date: new Date().toISOString(),
+        by: portalUser.email,
+        event: 'solicitud_cambios_protegidos',
+        details: protectedRequested
+      });
+    }
+
+    // Campos ordinarios que se actualizan automáticamente en tiempo real
+    const mergedData = {
+      ...current,
+      ...body,
+      officialName: current.officialName,
+      districtNumber: current.districtNumber,
+      organizationType: current.organizationType
+    };
+
+    const completion = calculateProfileCompletion(mergedData);
+    const rotaryPeriod = body.rotaryPeriod || current.rotaryPeriod || '2026–2027';
+
+    auditLog.push({
+      date: new Date().toISOString(),
+      by: portalUser.email,
+      event: 'actualizacion_portal_autogestion',
+      completion
+    });
+
+    const { rows: updatedRows } = await db.query(
+      `UPDATE "DistrictClubProfile" SET
+        "shortName" = COALESCE($1, "shortName"),
+        city = COALESCE($2, city),
+        state = COALESCE($3, state),
+        "foundationYear" = COALESCE($4, "foundationYear"),
+        motto = COALESCE($5, motto),
+        description = COALESCE($6, description),
+        history = COALESCE($7, history),
+        mission = COALESCE($8, mission),
+        vision = COALESCE($9, vision),
+        "serviceAreas" = COALESCE($10, "serviceAreas"),
+        "currentPresident" = COALESCE($11, "currentPresident"),
+        "rotaryPeriod" = $12,
+        "boardMembers" = COALESCE($13, "boardMembers"),
+        "memberCount" = COALESCE($14, "memberCount"),
+        "joinInfo" = COALESCE($15, "joinInfo"),
+        "featuredProjects" = COALESCE($16, "featuredProjects"),
+        "logoUrl" = COALESCE($17, "logoUrl"),
+        "coverImageUrl" = COALESCE($18, "coverImageUrl"),
+        gallery = COALESCE($19, gallery),
+        "meetingAddress" = COALESCE($20, "meetingAddress"),
+        "meetingSchedule" = COALESCE($21, "meetingSchedule"),
+        "meetingCity" = COALESCE($22, "meetingCity"),
+        "contactEmail" = COALESCE($23, "contactEmail"),
+        "contactPhone" = COALESCE($24, "contactPhone"),
+        "websiteUrl" = COALESCE($25, "websiteUrl"),
+        "socialMedia" = COALESCE($26, "socialMedia"),
+        "completionPercentage" = $27,
+        "lastUpdatedPeriod" = $12,
+        "pendingProtectedChanges" = $28,
+        "auditLog" = $29,
+        "updatedAt" = NOW()
+       WHERE id = $30
+       RETURNING *`,
+      [
+        body.shortName || null,
+        body.city || null,
+        body.state || null,
+        body.foundationYear ? Number(body.foundationYear) : null,
+        body.motto || null,
+        body.description || null,
+        body.history || null,
+        body.mission || null,
+        body.vision || null,
+        body.serviceAreas ? JSON.stringify(body.serviceAreas) : null,
+        body.currentPresident || null,
+        rotaryPeriod,
+        body.boardMembers ? JSON.stringify(body.boardMembers) : null,
+        body.memberCount ? Number(body.memberCount) : null,
+        body.joinInfo || null,
+        body.featuredProjects ? JSON.stringify(body.featuredProjects) : null,
+        body.logoUrl || null,
+        body.coverImageUrl || null,
+        body.gallery ? JSON.stringify(body.gallery) : null,
+        body.meetingAddress || null,
+        body.meetingSchedule || null,
+        body.meetingCity || body.city || null,
+        body.contactEmail || null,
+        body.contactPhone || null,
+        body.websiteUrl || null,
+        body.socialMedia ? JSON.stringify(body.socialMedia) : null,
+        completion,
+        pendingProtectedObj ? JSON.stringify(pendingProtectedObj) : null,
+        JSON.stringify(auditLog),
+        profileId
+      ]
+    );
+
+    res.json({
+      ok: true,
+      profile: updatedRows[0],
+      hasProtectedChanges,
+      message: hasProtectedChanges
+        ? 'Información institucional actualizada en tiempo real. Los cambios protegidos (nombre oficial, distrito o tipo de club) están pendientes de validación por la gobernación distrital.'
+        : '¡Perfil institucional actualizado y publicado en el directorio distrital con éxito!'
+    });
+  } catch (e) {
+    fail(res, e);
+  }
+};
+
+/** POST /api/district-clubs/admin/profile/:id/approve-protected (ADMIN) */
+export const approveProtectedChanges = async (req, res) => {
+  try {
+    await ensureDistrictClubDirectorySchema();
+    const { id } = req.params;
+    const reviewerName = req.user?.name || req.user?.email || 'Administrador Distrital';
+
+    const { rows } = await db.query(`SELECT * FROM "DistrictClubProfile" WHERE id = $1 LIMIT 1`, [id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Club no encontrado' });
+    const profile = rows[0];
+
+    if (!profile.pendingProtectedChanges) {
+      return res.status(400).json({ error: 'No hay cambios protegidos pendientes para este club.' });
+    }
+
+    const pending = typeof profile.pendingProtectedChanges === 'string'
+      ? JSON.parse(profile.pendingProtectedChanges)
+      : profile.pendingProtectedChanges;
+    const changes = pending.changes || {};
+
+    const auditLog = Array.isArray(profile.auditLog) ? profile.auditLog : [];
+    auditLog.push({
+      date: new Date().toISOString(),
+      by: reviewerName,
+      event: 'aprobacion_cambios_protegidos',
+      approvedChanges: changes
+    });
+
+    let newSlug = profile.slug;
+    if (changes.officialName) {
+      newSlug = slugifyClub(changes.officialName);
+    }
+
+    await db.query(
+      `UPDATE "DistrictClubProfile" SET
+        "officialName" = COALESCE($1, "officialName"),
+        "districtNumber" = COALESCE($2, "districtNumber"),
+        "organizationType" = COALESCE($3, "organizationType"),
+        slug = $4,
+        "pendingProtectedChanges" = NULL,
+        "auditLog" = $5,
+        "updatedAt" = NOW()
+       WHERE id = $6`,
+      [
+        changes.officialName || null,
+        changes.districtNumber ? Number(changes.districtNumber) : null,
+        changes.organizationType || null,
+        newSlug,
+        JSON.stringify(auditLog),
+        id
+      ]
+    );
+
+    res.json({ ok: true, message: 'Cambios institucionales protegidos aprobados exitosamente.' });
+  } catch (e) {
+    fail(res, e);
+  }
+};
+
+/** POST /api/district-clubs/admin/profile/:id/reject-protected (ADMIN) */
+export const rejectProtectedChanges = async (req, res) => {
+  try {
+    await ensureDistrictClubDirectorySchema();
+    const { id } = req.params;
+    const { reason } = req.body || {};
+    const reviewerName = req.user?.name || req.user?.email || 'Administrador Distrital';
+
+    const { rows } = await db.query(`SELECT * FROM "DistrictClubProfile" WHERE id = $1 LIMIT 1`, [id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Club no encontrado' });
+    const profile = rows[0];
+
+    const auditLog = Array.isArray(profile.auditLog) ? profile.auditLog : [];
+    auditLog.push({
+      date: new Date().toISOString(),
+      by: reviewerName,
+      event: 'rechazo_cambios_protegidos',
+      reason: reason || 'No cumple requisitos institucionales'
+    });
+
+    await db.query(
+      `UPDATE "DistrictClubProfile" SET
+        "pendingProtectedChanges" = NULL,
+        "auditLog" = $1,
+        "updatedAt" = NOW()
+       WHERE id = $2`,
+      [JSON.stringify(auditLog), id]
+    );
+
+    res.json({ ok: true, message: 'Cambios protegidos rechazados.' });
+  } catch (e) {
+    fail(res, e);
+  }
+};
+
+/** POST /api/district-clubs/portal/forgot-password */
+export const portalForgotPassword = async (req, res) => {
+  try {
+    await ensureDistrictClubDirectorySchema();
+    const { email } = req.body || {};
+    const mail = String(email || '').trim().toLowerCase();
+    if (!mail) return res.status(400).json({ error: 'Ingresa tu correo electrónico.' });
+
+    const token = randomUUID();
+    const expires = new Date(Date.now() + 3600000 * 24); // 24 horas
+
+    await db.query(
+      `UPDATE "DistrictClubAccount" SET
+        "resetPasswordToken" = $1,
+        "resetPasswordExpires" = $2
+       WHERE lower(email) = lower($3)`,
+      [token, expires, mail]
+    );
+
+    res.json({
+      ok: true,
+      message: 'Si el correo está registrado, recibirás un enlace para restablecer tu contraseña.',
+      resetToken: token // Útil para entornos de prueba
+    });
+  } catch (e) {
+    fail(res, e);
+  }
+};
+
+/** POST /api/district-clubs/portal/reset-password */
+export const portalResetPassword = async (req, res) => {
+  try {
+    await ensureDistrictClubDirectorySchema();
+    const { token, newPassword } = req.body || {};
+    if (!token || !newPassword || String(newPassword).length < 8) {
+      return res.status(400).json({ error: 'Token válido y contraseña de mínimo 8 caracteres requeridos.' });
+    }
+
+    const { rows } = await db.query(
+      `SELECT id FROM "DistrictClubAccount"
+       WHERE "resetPasswordToken" = $1 AND "resetPasswordExpires" > NOW()
+       LIMIT 1`,
+      [token]
+    );
+
+    if (rows.length === 0) {
+      return res.status(400).json({ error: 'El enlace de recuperación es inválido o ha expirado.' });
+    }
+
+    const passwordHash = await bcrypt.hash(String(newPassword), 10);
+    await db.query(
+      `UPDATE "DistrictClubAccount" SET
+        "passwordHash" = $1,
+        "resetPasswordToken" = NULL,
+        "resetPasswordExpires" = NULL,
+        "updatedAt" = NOW()
+       WHERE id = $2`,
+      [passwordHash, rows[0].id]
+    );
+
+    res.json({ ok: true, message: 'Contraseña restablecida exitosamente. Ya puedes iniciar sesión.' });
   } catch (e) {
     fail(res, e);
   }

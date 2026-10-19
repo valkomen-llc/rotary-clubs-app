@@ -36,6 +36,9 @@ interface AdminClubProfile {
   coverImageUrl?: string;
   contactEmail?: string;
   contactPhone?: string;
+  primaryManagerEmail?: string;
+  primaryManagerName?: string;
+  pendingProtectedChanges?: any;
   publishedAt?: string;
   updatedAt?: string;
 }
@@ -80,6 +83,7 @@ export const DistrictClubsAdmin: React.FC = () => {
   // Modales
   const [selectedSubmission, setSelectedSubmission] = useState<AdminSubmission | null>(null);
   const [editingProfile, setEditingProfile] = useState<AdminClubProfile | null>(null);
+  const [reviewingProtectedClub, setReviewingProtectedClub] = useState<AdminClubProfile | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editFormData, setEditFormData] = useState<any>({});
   const [reviewFeedback, setReviewFeedback] = useState('');
@@ -89,10 +93,16 @@ export const DistrictClubsAdmin: React.FC = () => {
   const loadData = async () => {
     setLoading(true);
     try {
+      const authToken = token || localStorage.getItem('token') || '';
+      const authHeaders: Record<string, string> = {};
+      if (authToken) {
+        authHeaders['Authorization'] = `Bearer ${authToken}`;
+      }
+
       const [configRes, listRes, subsRes] = await Promise.all([
         fetch(`${API}/district-clubs/config?district=4281`),
-        fetch(`${API}/district-clubs/admin/list?district=4281`),
-        fetch(`${API}/district-clubs/admin/submissions?district=4281`)
+        fetch(`${API}/district-clubs/admin/list?district=4281`, { headers: authHeaders }),
+        fetch(`${API}/district-clubs/admin/submissions?district=4281`, { headers: authHeaders })
       ]);
 
       if (configRes.ok) {
@@ -223,6 +233,51 @@ export const DistrictClubsAdmin: React.FC = () => {
       loadData();
     } catch (err: any) {
       toast.error(err.message || 'Error al guardar cambios');
+    }
+  };
+
+  const handleApproveProtected = async (clubId: string) => {
+    try {
+      const res = await fetch(`${API}/district-clubs/admin/profile/${clubId}/approve-protected`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token') || ''}`
+        }
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        toast.success('Cambios institucionales protegidos aprobados exitosamente');
+        setReviewingProtectedClub(null);
+        loadData();
+      } else {
+        toast.error(data.error || 'Error al aprobar cambios');
+      }
+    } catch {
+      toast.error('Error de conexión');
+    }
+  };
+
+  const handleRejectProtected = async (clubId: string) => {
+    try {
+      const res = await fetch(`${API}/district-clubs/admin/profile/${clubId}/reject-protected`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token') || ''}`
+        },
+        body: JSON.stringify({ reason: 'Rechazado por administración distrital' })
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        toast.success('Cambios protegidos rechazados');
+        setReviewingProtectedClub(null);
+        loadData();
+      } else {
+        toast.error(data.error || 'Error al rechazar');
+      }
+    } catch {
+      toast.error('Error de conexión');
     }
   };
 
@@ -465,6 +520,29 @@ export const DistrictClubsAdmin: React.FC = () => {
                         <div className="text-xs text-gray-400 flex items-center gap-1.5 pt-2 border-t border-zinc-800">
                           <Users className="w-3.5 h-3.5 text-zinc-500" />
                           <span>Presidente: <strong className="text-gray-200">{club.currentPresident}</strong></span>
+                        </div>
+                      )}
+
+                      {/* Responsable Institucional */}
+                      {club.primaryManagerEmail && (
+                        <div className="text-xs text-gray-400 flex items-center justify-between gap-1.5 pt-1.5 border-t border-zinc-800">
+                          <span className="text-zinc-500">Responsable:</span>
+                          <span className="text-zinc-300 font-semibold truncate">{club.primaryManagerName || club.primaryManagerEmail}</span>
+                        </div>
+                      )}
+
+                      {/* Alerta de Cambios Protegidos Pendientes */}
+                      {club.pendingProtectedChanges && (
+                        <div className="p-3 bg-amber-950/40 border border-amber-800/80 rounded-2xl flex items-center justify-between gap-2 mt-2">
+                          <div className="text-[11px] text-amber-300">
+                            <strong>Cambios protegidos pendientes:</strong> Solicitud de identidad distrital.
+                          </div>
+                          <button
+                            onClick={() => setReviewingProtectedClub(club)}
+                            className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-black text-xs font-black rounded-lg shrink-0"
+                          >
+                            Revisar
+                          </button>
                         </div>
                       )}
                     </div>
@@ -786,6 +864,58 @@ export const DistrictClubsAdmin: React.FC = () => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Validación de Cambios Protegidos */}
+        {reviewingProtectedClub && (
+          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-gray-100 space-y-4">
+              <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+                <div>
+                  <span className="text-[10px] font-black uppercase text-amber-700 bg-amber-100 px-2.5 py-0.5 rounded-full">
+                    Gobernación Distrital · Validación
+                  </span>
+                  <h3 className="text-lg font-black text-gray-900 mt-1">
+                    Cambios Protegidos: {reviewingProtectedClub.officialName}
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setReviewingProtectedClub(null)}
+                  className="text-gray-400 hover:text-gray-600 p-1"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="bg-gray-50 p-4 rounded-2xl text-xs space-y-2 border border-gray-200">
+                <p><strong>Solicitado por:</strong> {reviewingProtectedClub.pendingProtectedChanges?.requestedBy || 'Responsable de Club'}</p>
+                <p><strong>Fecha de solicitud:</strong> {reviewingProtectedClub.pendingProtectedChanges?.requestedAt ? new Date(reviewingProtectedClub.pendingProtectedChanges.requestedAt).toLocaleString() : 'Reciente'}</p>
+                <div className="pt-2 border-t border-gray-200">
+                  <p className="font-bold text-gray-700 mb-1">Modificaciones institucionales propuestas:</p>
+                  <pre className="p-3 bg-white rounded-xl border border-gray-200 font-mono text-[11px] text-gray-800 overflow-x-auto whitespace-pre-wrap">
+                    {JSON.stringify(reviewingProtectedClub.pendingProtectedChanges?.changes, null, 2)}
+                  </pre>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => handleRejectProtected(reviewingProtectedClub.id)}
+                  className="px-4 py-2.5 rounded-xl border border-gray-300 text-gray-700 text-xs font-bold hover:bg-gray-50 transition-all"
+                >
+                  Rechazar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleApproveProtected(reviewingProtectedClub.id)}
+                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-md transition-all"
+                >
+                  Aprobar y Aplicar al Directorio
+                </button>
+              </div>
             </div>
           </div>
         )}

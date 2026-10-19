@@ -116,6 +116,11 @@ export async function ensureDistrictClubDirectorySchema() {
   await db.query(`ALTER TABLE "DistrictClubProfile" ADD COLUMN IF NOT EXISTS "featuredProjects" JSONB DEFAULT '[]'::jsonb`).catch(() => {});
   await db.query(`ALTER TABLE "DistrictClubProfile" ADD COLUMN IF NOT EXISTS gallery JSONB DEFAULT '[]'::jsonb`).catch(() => {});
   await db.query(`ALTER TABLE "DistrictClubProfile" ADD COLUMN IF NOT EXISTS "socialMedia" JSONB DEFAULT '{}'::jsonb`).catch(() => {});
+  await db.query(`ALTER TABLE "DistrictClubProfile" ADD COLUMN IF NOT EXISTS "primaryManagerEmail" TEXT`).catch(() => {});
+  await db.query(`ALTER TABLE "DistrictClubProfile" ADD COLUMN IF NOT EXISTS "primaryManagerName" TEXT`).catch(() => {});
+  await db.query(`ALTER TABLE "DistrictClubProfile" ADD COLUMN IF NOT EXISTS "primaryManagerPhone" TEXT`).catch(() => {});
+  await db.query(`ALTER TABLE "DistrictClubProfile" ADD COLUMN IF NOT EXISTS "pendingProtectedChanges" JSONB DEFAULT NULL`).catch(() => {});
+  await db.query(`ALTER TABLE "DistrictClubProfile" ADD COLUMN IF NOT EXISTS "auditLog" JSONB DEFAULT '[]'::jsonb`).catch(() => {});
 
   // Índices
   await db.query(`CREATE INDEX IF NOT EXISTS idx_dcp_dist_org_stat ON "DistrictClubProfile"("districtNumber", "organizationType", status)`).catch(() => {});
@@ -144,13 +149,50 @@ export async function ensureDistrictClubDirectorySchema() {
     "reviewedAt" TIMESTAMPTZ,
     "draftToken" TEXT,
     history JSONB DEFAULT '[]'::jsonb,
+    "utmSource" TEXT,
+    "utmMedium" TEXT,
+    "utmCampaign" TEXT,
+    "utmContent" TEXT,
+    "stepReached" INT DEFAULT 1,
+    "formStartedAt" TIMESTAMPTZ DEFAULT NOW(),
+    "lastActiveAt" TIMESTAMPTZ DEFAULT NOW(),
     "createdAt" TIMESTAMPTZ DEFAULT NOW(),
     "updatedAt" TIMESTAMPTZ DEFAULT NOW()
   )`);
 
+  await db.query(`ALTER TABLE "DistrictClubSubmission" ADD COLUMN IF NOT EXISTS "utmSource" TEXT`).catch(() => {});
+  await db.query(`ALTER TABLE "DistrictClubSubmission" ADD COLUMN IF NOT EXISTS "utmMedium" TEXT`).catch(() => {});
+  await db.query(`ALTER TABLE "DistrictClubSubmission" ADD COLUMN IF NOT EXISTS "utmCampaign" TEXT`).catch(() => {});
+  await db.query(`ALTER TABLE "DistrictClubSubmission" ADD COLUMN IF NOT EXISTS "utmContent" TEXT`).catch(() => {});
+  await db.query(`ALTER TABLE "DistrictClubSubmission" ADD COLUMN IF NOT EXISTS "stepReached" INT DEFAULT 1`).catch(() => {});
+  await db.query(`ALTER TABLE "DistrictClubSubmission" ADD COLUMN IF NOT EXISTS "formStartedAt" TIMESTAMPTZ DEFAULT NOW()`).catch(() => {});
+  await db.query(`ALTER TABLE "DistrictClubSubmission" ADD COLUMN IF NOT EXISTS "lastActiveAt" TIMESTAMPTZ DEFAULT NOW()`).catch(() => {});
+
   await db.query(`CREATE INDEX IF NOT EXISTS idx_dcs_tracking ON "DistrictClubSubmission"("trackingNumber")`).catch(() => {});
   await db.query(`CREATE INDEX IF NOT EXISTS idx_dcs_status ON "DistrictClubSubmission"("districtNumber", status)`).catch(() => {});
   await db.query(`CREATE INDEX IF NOT EXISTS idx_dcs_draft ON "DistrictClubSubmission"("draftToken")`).catch(() => {});
+
+  // 3. Tabla de Cuentas de Autogestión del Club (Portal de Responsables)
+  await db.query(`CREATE TABLE IF NOT EXISTS "DistrictClubAccount" (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    email TEXT NOT NULL,
+    "passwordHash" TEXT NOT NULL,
+    "fullName" TEXT,
+    phone TEXT,
+    "clubProfileId" TEXT,
+    "clubName" TEXT,
+    role TEXT DEFAULT 'club_manager',
+    "isVerified" BOOLEAN DEFAULT TRUE,
+    "verificationToken" TEXT,
+    "resetPasswordToken" TEXT,
+    "resetPasswordExpires" TIMESTAMPTZ,
+    "lastLoginAt" TIMESTAMPTZ,
+    "createdAt" TIMESTAMPTZ DEFAULT NOW(),
+    "updatedAt" TIMESTAMPTZ DEFAULT NOW()
+  )`);
+
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_dca_email ON "DistrictClubAccount"(lower(email))`).catch(() => {});
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_dca_profile ON "DistrictClubAccount"("clubProfileId")`).catch(() => {});
 
   // 3. Semilla inicial inteligente para Distrito 4281 (idempotente)
   // Si no hay perfiles creados para el Distrito 4281, sembramos los clubes oficiales de CLUBS_4281

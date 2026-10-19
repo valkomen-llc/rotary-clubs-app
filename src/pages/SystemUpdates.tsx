@@ -42,6 +42,22 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1214.0',
+        title: 'Integración Directorio Distrital de Clubes con Rotary en Acción y Portal de Autogestión 🚀🏛️',
+        description: 'Evolución e integración profunda del ecosistema de Directorio de Clubes con Rotary en Acción: 1) Solución del error de autorización en /admin/directorio-clubes mediante cabeceras Bearer token seguras para la visualización inmediata de los 74 clubes oficiales y solicitudes recibidas. 2) Portal de Autogestión de Clubes (/clubes/portal) con autenticación dedicada para representantes de clubes, encriptación bcrypt, sesiones JWT (audiencia rotary-club-portal) y auto-vinculación con usuarios activos de la plataforma. 3) Aislamiento de gobernanza institucional: cambios regulares se reflejan al instante mientras que cambios estructurales protegidos (nombre oficial, distrito, tipo de organización) requieren aprobación distrital. 4) Nueva pestaña "Directorio de Clubes" dentro de Rotary en Acción (/admin/rotary-en-accion?tab=directorio) con embudo de conversión, gestión de borradores y abandono con parámetros UTM, y centro de comunicaciones con plantillas para Email y WhatsApp. 5) Formulario de 7 pasos enriquecido con trazabilidad de campañas, selección automática por URL (?club=slug), seguimiento de pasos alcanzados y creación directa de credenciales para representantes.',
+        date: new Date().toISOString(),
+        tags: ['directorio-clubes', 'rotary-en-accion', 'portal-autogestion', 'crm-clubes', 'utm-tracking', 'seguridad-jwt'],
+        type: 'feature',
+        impact: 'Crítica: Conecta la captación y marketing de Rotary en Acción con la administración distrital y la autogestión de cada club rotario, cerrando el ciclo de actualización de datos institucionales de manera autónoma y segura.',
+        changes: [
+            { type: 'fixed', text: 'Corrección de cabeceras de autorización en DistrictClubsAdmin.tsx permitiendo cargar inmediatamente el catálogo de 74 clubes y sus solicitudes.' },
+            { type: 'added', text: 'Portal de Autogestión de Clubes (/clubes/portal) con login, creación de cuenta, recuperación de clave, vinculación automática de sesión y edición por pestañas.' },
+            { type: 'added', text: 'Nueva tabla DistrictClubAccount y ampliación de DistrictClubProfile con auditoría y aislamiento de cambios institucionales protegidos.' },
+            { type: 'added', text: 'Pestaña integrada "Directorio de Clubes" en Rotary en Acción con embudo de conversión, control de abandono y comunicaciones multicanal (Email/WhatsApp).' },
+            { type: 'improved', text: 'Formulario de 7 pasos con captura UTM, enlace directo a clubes por slug, métricas de abandono y creación opcional de acceso al portal.' }
+        ]
+    },
+    {
         version: '4.1213.0',
         title: 'Directorio Distrital Inteligente de Clubes: Rotary, Rotaract e Interact — Formulario Unificado, Perfil Dinámico y Gestión Distrital 🏛️🌐',
         description: 'Lanzamiento del módulo Directorio Distrital de Clubes en Club Platform, inicialmente para Rotary Distrito 4281 y con arquitectura multi-distrital: 1) Formulario Unificado Guiado de 7 Pasos (/clubes/registro y /clubes/actualizar) para clubes Rotary, Rotaract e Interact con autocompletado del catálogo oficial de 74 clubes, lema e historia, directiva, proyectos de impacto, carga multimedia directa a S3 y soporte de guardado/recuperación de borradores. 2) Plantilla Maestra Dinámica de Perfil Público (/clubes/:type/:slug) con paleta institucional adaptativa por programa (Azul Real Rotary, Cranberry Rotaract, Azul Océano Interact), estadísticas, módulos condicionales, lightbox multimedia y metadatos SEO. 3) Directorio Público Distrital (/clubes) con buscador interactivo en tiempo real, filtros por categoría de programa y selector de municipios. 4) Panel de Administración Distrital (/admin/directorio-clubes) con indicador de porcentaje de completado de perfil, período rotario 2026-2027, gestión de publicación, edición rápida in-situ y cajón de revisión y aprobación con 1 clic de postulaciones.',

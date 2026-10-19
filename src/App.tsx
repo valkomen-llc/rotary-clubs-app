@@ -231,6 +231,7 @@ const SharedReport = lazyWithRetry(() => import('./pages/SharedReport'), 'Shared
 const DistrictDirectoryPage = lazyWithRetry(() => import('./pages/DistrictDirectoryPage'), 'DistrictDirectoryPage');
 const RegistroClubDirectorio = lazyWithRetry(() => import('./pages/RegistroClubDirectorio'), 'RegistroClubDirectorio');
 const ClubPublicProfile = lazyWithRetry(() => import('./pages/ClubPublicProfile'), 'ClubPublicProfile');
+const ClubPortalPage = lazyWithRetry(() => import('./pages/ClubPortalPage'), 'ClubPortalPage');
 const DistrictClubsAdmin = lazyWithRetry(() => import('./pages/admin/DistrictClubsAdmin'), 'DistrictClubsAdmin');
 
 import ChatBot from './components/ChatBot';
@@ -770,6 +771,7 @@ function App() {
                 <Route path="/directorio-clubes" element={<Navigate to="/clubes" replace />} />
                 <Route path="/clubes/registro" element={<RegistroClubDirectorio />} />
                 <Route path="/clubes/actualizar" element={<RegistroClubDirectorio />} />
+                <Route path="/clubes/portal" element={<ClubPortalPage />} />
                 <Route path="/clubes/:type/:slug" element={<ClubPublicProfile />} />
 
                 {/* Herramienta pública de capacitaciones (sin login), como el generador de pendones */}
