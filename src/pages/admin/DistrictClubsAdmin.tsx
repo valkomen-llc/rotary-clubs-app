@@ -6,11 +6,11 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import AdminLayout from '../../components/admin/AdminLayout';
 import {
-  Building2, Users, Search, CheckCircle2, Clock, AlertTriangle, ExternalLink,
-  Edit2, Globe, Eye, EyeOff, Check, X, MessageSquare, ArrowUpRight, Filter,
-  Sparkles, RefreshCw, ChevronRight, MapPin, Award, Calendar, Layers, Sliders
+  Building2, Users, Search, CheckCircle2, Clock, ExternalLink,
+  Edit2, Eye, X, Sparkles
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
@@ -155,7 +155,8 @@ export const DistrictClubsAdmin: React.FC = () => {
         },
         body: JSON.stringify({
           action,
-          feedback: reviewFeedback
+          feedback: reviewFeedback,
+          reviewedBy: user?.name || user?.email || 'Comité Distrital 4281'
         })
       });
 
@@ -330,29 +331,50 @@ export const DistrictClubsAdmin: React.FC = () => {
         {activeTab === 'directorio' && (
           <div className="space-y-6">
             {/* Barra de Filtros */}
-            <div className="bg-white p-4 rounded-2xl border border-gray-100 flex flex-col sm:flex-row gap-3 items-center justify-between">
-              {/* Filtro de Tipo */}
-              <div className="flex items-center gap-1.5 p-1 bg-gray-100 rounded-xl w-full sm:w-auto overflow-x-auto">
-                {[
-                  { id: 'all', label: 'Todos' },
-                  { id: 'rotary', label: 'Rotary' },
-                  { id: 'rotaract', label: 'Rotaract' },
-                  { id: 'interact', label: 'Interact' }
-                ].map(t => (
-                  <button
-                    key={t.id}
-                    onClick={() => setTypeFilter(t.id as any)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                      typeFilter === t.id ? 'bg-white text-rotary-blue shadow-xs' : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    {t.label}
-                  </button>
-                ))}
+            <div className="bg-white p-4 rounded-2xl border border-gray-100 flex flex-col lg:flex-row gap-3 items-center justify-between">
+              {/* Filtro de Tipo y Estado */}
+              <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+                <div className="flex items-center gap-1.5 p-1 bg-gray-100 rounded-xl overflow-x-auto">
+                  {[
+                    { id: 'all', label: 'Todos' },
+                    { id: 'rotary', label: 'Rotary' },
+                    { id: 'rotaract', label: 'Rotaract' },
+                    { id: 'interact', label: 'Interact' }
+                  ].map(t => (
+                    <button
+                      key={t.id}
+                      onClick={() => setTypeFilter(t.id as any)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                        typeFilter === t.id ? 'bg-white text-rotary-blue shadow-xs' : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex items-center gap-1.5 p-1 bg-gray-100 rounded-xl overflow-x-auto">
+                  {[
+                    { id: 'all', label: 'Cualquier Estado' },
+                    { id: 'published', label: 'Publicados' },
+                    { id: 'draft', label: 'Borradores' },
+                    { id: 'needs_update', label: '< 60% Avance' }
+                  ].map(st => (
+                    <button
+                      key={st.id}
+                      onClick={() => setStatusFilter(st.id as any)}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                        statusFilter === st.id ? 'bg-white text-gray-900 shadow-xs' : 'text-gray-500 hover:text-gray-900'
+                      }`}
+                    >
+                      {st.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Buscador */}
-              <div className="relative w-full sm:w-72">
+              <div className="relative w-full lg:w-72">
                 <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
@@ -365,8 +387,21 @@ export const DistrictClubsAdmin: React.FC = () => {
             </div>
 
             {/* Listado de Fichas Administrativas (Diseño exacto de la Imagen 2) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredClubs.map(club => {
+            {loading ? (
+              <div className="bg-white rounded-3xl p-16 text-center border border-gray-100">
+                <Clock className="w-8 h-8 text-rotary-blue animate-spin mx-auto mb-3" />
+                <p className="text-sm font-bold text-gray-700">Cargando directorio de clubes...</p>
+                <p className="text-xs text-gray-400 mt-1">Consultando información oficial del Distrito 4281</p>
+              </div>
+            ) : filteredClubs.length === 0 ? (
+              <div className="bg-white rounded-3xl p-16 text-center border border-gray-100">
+                <Building2 className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                <p className="text-sm font-bold text-gray-700">No se encontraron clubes</p>
+                <p className="text-xs text-gray-400 mt-1">Intenta ajustando los filtros o el término de búsqueda.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {filteredClubs.map(club => {
                 const pct = club.completionPercentage || 0;
                 const isPublished = club.status === 'published';
                 const profileUrl = `/clubes/${club.organizationType}/${club.slug}`;
@@ -478,7 +513,8 @@ export const DistrictClubsAdmin: React.FC = () => {
                   </div>
                 );
               })}
-            </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -521,8 +557,6 @@ export const DistrictClubsAdmin: React.FC = () => {
               <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
                 <div className="divide-y divide-gray-100">
                   {filteredSubmissions.map(sub => {
-                    const payload = typeof sub.payload === 'string' ? JSON.parse(sub.payload) : sub.payload;
-
                     return (
                       <div key={sub.id} className="p-5 sm:p-6 hover:bg-gray-50/50 transition-colors flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                         <div className="space-y-1">
@@ -596,19 +630,27 @@ export const DistrictClubsAdmin: React.FC = () => {
               </div>
 
               {/* Resumen del Payload */}
-              {selectedSubmission.payload && (
-                <div className="space-y-3 text-xs">
-                  <h4 className="font-bold text-gray-800 uppercase tracking-wider text-[11px]">Datos Suministrados por el Club:</h4>
-                  <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 space-y-2">
-                    <p><strong>Presidente:</strong> {selectedSubmission.payload.currentPresident} ({selectedSubmission.payload.rotaryPeriod || '2026–2027'})</p>
-                    <p><strong>Ciudad:</strong> {selectedSubmission.payload.city}, {selectedSubmission.payload.state}</p>
-                    <p><strong>Descripción:</strong> {selectedSubmission.payload.description}</p>
-                    {selectedSubmission.payload.history && <p><strong>Historia:</strong> {selectedSubmission.payload.history}</p>}
-                    {selectedSubmission.payload.meetingSchedule && <p><strong>Reunión:</strong> {selectedSubmission.payload.meetingSchedule} ({selectedSubmission.payload.meetingAddress})</p>}
-                    {selectedSubmission.payload.contactEmail && <p><strong>Email contacto:</strong> {selectedSubmission.payload.contactEmail}</p>}
+              {(() => {
+                let payloadData = selectedSubmission.payload;
+                if (typeof payloadData === 'string') {
+                  try { payloadData = JSON.parse(payloadData); } catch { payloadData = {}; }
+                }
+                if (!payloadData || typeof payloadData !== 'object') return null;
+
+                return (
+                  <div className="space-y-3 text-xs">
+                    <h4 className="font-bold text-gray-800 uppercase tracking-wider text-[11px]">Datos Suministrados por el Club:</h4>
+                    <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 space-y-2">
+                      {payloadData.currentPresident && <p><strong>Presidente:</strong> {payloadData.currentPresident} ({payloadData.rotaryPeriod || '2026–2027'})</p>}
+                      <p><strong>Ubicación:</strong> {payloadData.city || 'No indicada'}{payloadData.state ? `, ${payloadData.state}` : ''}</p>
+                      {payloadData.description && <p><strong>Descripción:</strong> {payloadData.description}</p>}
+                      {payloadData.history && <p><strong>Historia:</strong> {payloadData.history}</p>}
+                      {payloadData.meetingSchedule && <p><strong>Reunión:</strong> {payloadData.meetingSchedule} {payloadData.meetingAddress ? `(${payloadData.meetingAddress})` : ''}</p>}
+                      {payloadData.contactEmail && <p><strong>Email contacto:</strong> {payloadData.contactEmail}</p>}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Mensaje de retroalimentación / feedback administrativo */}
               <div>

@@ -3,15 +3,14 @@
 // Rotary, Rotaract e Interact · Buscador, Filtros y Perfiles Oficiales
 // ════════════════════════════════════════════════════════════════════════════
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { PublicPageHeader } from '../components/common/PublicInstitutionalComponents';
 import { useSEO } from '../hooks/useSEO';
 import {
-  Search, MapPin, Building2, Users, ArrowRight, Sparkles, Filter,
-  Calendar, CheckCircle2, ChevronRight, Compass, Shield
+  Search, MapPin, Building2, Users, ArrowRight, Sparkles
 } from 'lucide-react';
 
 const API = import.meta.env.VITE_API_URL || '/api';

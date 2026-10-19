@@ -1,13 +1,13 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useSearchParams, useNavigate, Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useSearchParams, Link } from 'react-router-dom';
 import {
-  Building2, Users, MapPin, Calendar, Globe, Mail, Phone, Upload, Image as ImageIcon,
-  CheckCircle2, AlertCircle, ArrowLeft, ArrowRight, Save, Sparkles, Plus, Trash2,
-  ExternalLink, ShieldCheck, HelpCircle, Film, Camera, Heart, Eye, Check, Loader2, Info
+  Upload, Image as ImageIcon,
+  CheckCircle2, ArrowLeft, ArrowRight, Save, Plus, Trash2,
+  Camera, Heart, Check, Loader2, Info
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PublicStepNav, PublicFormCard } from '../common/PublicInstitutionalComponents';
-import { COUNTRIES, findCountry, flagEmoji } from '../../lib/countryPhones';
+import { flagEmoji } from '../../lib/countryPhones';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -153,7 +153,6 @@ const INITIAL_FORM: ClubFormData = {
 
 export const UnifiedClubForm: React.FC = () => {
   const [params] = useSearchParams();
-  const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState<ClubFormData>(INITIAL_FORM);
   const [catalogClubs, setCatalogClubs] = useState<Array<{ name: string; display: string; slug: string }>>([]);
@@ -413,6 +412,17 @@ export const UnifiedClubForm: React.FC = () => {
       setIsSubmitting(false);
     }
   };
+
+  // PANTALLA DE CARGA INICIAL
+  if (loadingConfig) {
+    return (
+      <PublicFormCard className="text-center py-20 px-6">
+        <Loader2 className="w-10 h-10 text-rotary-blue animate-spin mx-auto mb-4" />
+        <h3 className="text-base font-bold text-gray-700">Cargando catálogo oficial de clubes...</h3>
+        <p className="text-xs text-gray-400 mt-1">Conectando con el Distrito 4281</p>
+      </PublicFormCard>
+    );
+  }
 
   // PANTALLA DE ÉXITO
   if (submitResult) {

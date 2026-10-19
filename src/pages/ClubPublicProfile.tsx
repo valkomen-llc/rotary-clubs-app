@@ -5,14 +5,13 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import React, { useEffect, useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useSEO } from '../hooks/useSEO';
 import {
   Users, MapPin, Calendar, Globe, Mail, Phone, Clock, Sparkles, ChevronLeft,
-  ChevronRight, ExternalLink, Heart, Shield, Award, CheckCircle2, Share2,
-  ArrowRight, MessageSquare
+  ChevronRight, ExternalLink, Heart, Award, Building2
 } from 'lucide-react';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -64,9 +63,7 @@ interface ClubProfileData {
 
 export const ClubPublicProfile: React.FC = () => {
   const { type = 'rotary', slug = '' } = useParams<{ type: string; slug: string }>();
-  const navigate = useNavigate();
   const [club, setClub] = useState<ClubProfileData | null>(null);
-  const [relatedClubs, setRelatedClubs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentGalleryIdx, setCurrentGalleryIdx] = useState(0);
 
@@ -80,7 +77,6 @@ export const ClubPublicProfile: React.FC = () => {
         const data = await res.json();
         if (active && data.ok) {
           setClub(data.club);
-          setRelatedClubs(data.related || []);
         }
       } catch (err) {
         console.warn('Error fetching club profile:', err);
