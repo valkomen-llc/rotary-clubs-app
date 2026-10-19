@@ -700,6 +700,7 @@ export const MODULES: ModuleSpec[] = [
         "routes": [
             "/admin/distritos",
             "/admin/clubes",
+            "/admin/directorio-clubes",
             "/admin/asociaciones",
             "/admin/zonas",
             "/admin/programas-intercambio",

@@ -42,6 +42,23 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1213.0',
+        title: 'Directorio Distrital Inteligente de Clubes: Rotary, Rotaract e Interact — Formulario Unificado, Perfil Dinámico y Gestión Distrital 🏛️🌐',
+        description: 'Lanzamiento del módulo Directorio Distrital de Clubes en Club Platform, inicialmente para Rotary Distrito 4281 y con arquitectura multi-distrital: 1) Formulario Unificado Guiado de 7 Pasos (/clubes/registro y /clubes/actualizar) para clubes Rotary, Rotaract e Interact con autocompletado del catálogo oficial de 74 clubes, lema e historia, directiva, proyectos de impacto, carga multimedia directa a S3 y soporte de guardado/recuperación de borradores. 2) Plantilla Maestra Dinámica de Perfil Público (/clubes/:type/:slug) con paleta institucional adaptativa por programa (Azul Real Rotary, Cranberry Rotaract, Azul Océano Interact), estadísticas, módulos condicionales, lightbox multimedia y metadatos SEO. 3) Directorio Público Distrital (/clubes) con buscador interactivo en tiempo real, filtros por categoría de programa y selector de municipios. 4) Panel de Administración Distrital (/admin/directorio-clubes) con indicador de porcentaje de completado de perfil, período rotario 2026-2027, gestión de publicación, edición rápida in-situ y cajón de revisión y aprobación con 1 clic de postulaciones.',
+        date: new Date().toISOString(),
+        tags: ['directorio-clubes', 'rotary4281', 'rotaract', 'interact', 'perfil-dinamico', 'formulario-unificado', 'admin-distrital'],
+        type: 'feature',
+        impact: 'Alta: Brinda identidad digital centralizada a todos los clubes del Distrito 4281 y unifica la administración, captura de información institucional y consulta pública en un único ecosistema.',
+        changes: [
+            { type: 'added', text: 'Módulo de Directorio Distrital en panel administrativo con cálculo de porcentaje de completitud, período 2026-2027 y aprobación de solicitudes.' },
+            { type: 'added', text: 'Formulario unificado de 7 pasos con subida directa de archivos a S3, selector de clubes oficiales y guardado de borradores.' },
+            { type: 'added', text: 'Plantilla maestra pública dinámica con identidad visual propia para Rotary, Rotaract e Interact.' },
+            { type: 'added', text: 'Directorio público distrital en /clubes con búsqueda instantánea y filtros por programa y ciudad.' },
+            { type: 'added', text: 'Tablas de base de datos DistrictClubProfile y DistrictClubSubmission con sembrado de los 74 clubes oficiales del Distrito 4281.' },
+            { type: 'improved', text: 'Menús de navegación institucional y panel administrativo actualizados con control de acceso por roles (RBAC).' }
+        ]
+    },
+    {
         version: '4.1212.0',
         title: 'Curaduría Inteligente IA V2.2: Unificación de Ancho de Pestañas, Reglas de Exclusividad Hero vs Noticias y Detección de Duplicados 🛡️✨',
         description: 'Actualización integral de Curaduría Inteligente IA enfocada en consistencia visual de pestañas administrativas y prevención rigurosa de duplicaciones: 1) Corrección de Ancho en Todas las Pestañas Internas: Reemplazo de max-w-4xl en «Contenedores y Bloqueos» y «Programación y Reglas» por w-full al 100% del área disponible sin espacios vacíos a la derecha, con cuadrícula responsive de 1 a 5 columnas para slots de contenedores y distribución equilibrada de dos columnas para configuración. 2) Regla Editorial de Exclusividad — Hero vs Noticias: Las fotografías utilizadas como portada de artículos publicados en Noticias (incluyendo sincronizaciones de Rotary en Acción y cargas manuales) se excluyen automáticamente de las recomendaciones del carrusel Hero principal para no duplicar visualmente el slider superior con las tarjetas de noticias. 3) Detección Inteligente Multimodal de Duplicados: Validación por ID de recurso multimedia, relación con archivo original, URL normalizada y hash perceptual (dHash) para detectar imágenes redimensionadas o con recortes similares. 4) Puntuación Íntegra y Alternativas de la Misma Actividad: La puntuación visual de una fotografía no se penaliza artificialmente por duplicación; en su lugar, la IA explica transparentemente el conflicto editorial y busca de inmediato una toma alternativa con diferente encuadre de la misma solicitud. 5) Sección de Reglas de Exclusividad y Diversidad Visual en el panel de Programación: 5 configuraciones activas por omisión con protocolo obligatorio para Distrito 4281 y soporte de autorización explícita de excepción justificada con registro en historial y auditoría.',

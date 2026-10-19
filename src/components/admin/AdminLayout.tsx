@@ -563,10 +563,11 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
             );
         }
 
-        // Management items for District/Super Admins
-        if (isSuperAdmin || user?.role === 'district_admin') {
+        // Management items for District/Super Admins and District Sites
+        if (isSuperAdmin || user?.role === 'district_admin' || (club as any)?.type === 'district') {
             items.push(
-                { icon: Activity, label: 'District Health IQ', path: '/admin/district-iq', category: 'Management', keywords: ['salud', 'distrito', 'analitica', 'prediccion', 'iq'], badge: 'ia' },
+                { icon: Activity, label: 'District Health IQ', path: '/admin/district-iq', category: isSuperAdmin ? 'Management' : 'General', keywords: ['salud', 'distrito', 'analitica', 'prediccion', 'iq'], badge: 'ia' },
+                { icon: Building2, label: 'Directorio de Clubes', path: '/admin/directorio-clubes', category: isSuperAdmin ? 'Management' : 'General', keywords: ['directorio', 'clubes', 'rotary', 'rotaract', 'interact', '4281'] },
             );
         }
 

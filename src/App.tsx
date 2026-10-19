@@ -228,6 +228,10 @@ const Capacitaciones = lazyWithRetry(() => import('./pages/Capacitaciones'), 'Ca
 const CapacitacionDetalle = lazyWithRetry(() => import('./pages/CapacitacionDetalle'), 'CapacitacionDetalle');
 const MiCapacitacion = lazyWithRetry(() => import('./pages/MiCapacitacion'), 'MiCapacitacion');
 const SharedReport = lazyWithRetry(() => import('./pages/SharedReport'), 'SharedReport');
+const DistrictDirectoryPage = lazyWithRetry(() => import('./pages/DistrictDirectoryPage'), 'DistrictDirectoryPage');
+const RegistroClubDirectorio = lazyWithRetry(() => import('./pages/RegistroClubDirectorio'), 'RegistroClubDirectorio');
+const ClubPublicProfile = lazyWithRetry(() => import('./pages/ClubPublicProfile'), 'ClubPublicProfile');
+const DistrictClubsAdmin = lazyWithRetry(() => import('./pages/admin/DistrictClubsAdmin'), 'DistrictClubsAdmin');
 
 import ChatBot from './components/ChatBot';
 import FloatingSiteButton from './components/FloatingSiteButton';
@@ -760,6 +764,14 @@ function App() {
                 <Route path="/activar-mi-club" element={<ActivarMiClub />} />
                 <Route path="/activar-club" element={<Navigate to="/activar-mi-club" replace />} />
                 <Route path="/aportar-contenido/:ref" element={<LegacyAportarRedirect />} />
+
+                {/* Directorio Distrital de Clubes — Rotary Distrito 4281 (v4.1212) */}
+                <Route path="/clubes" element={<DistrictDirectoryPage />} />
+                <Route path="/directorio-clubes" element={<Navigate to="/clubes" replace />} />
+                <Route path="/clubes/registro" element={<RegistroClubDirectorio />} />
+                <Route path="/clubes/actualizar" element={<RegistroClubDirectorio />} />
+                <Route path="/clubes/:type/:slug" element={<ClubPublicProfile />} />
+
                 {/* Herramienta pública de capacitaciones (sin login), como el generador de pendones */}
                 <Route path="/agendar-capacitacion" element={<AgendarCapacitacion />} />
                 <Route path="/mi-capacitacion/:token" element={<MiCapacitacion />} />
@@ -908,6 +920,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <ClubsManagement />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/directorio-clubes"
+                  element={
+                    <PrivateRoute>
+                      <DistrictClubsAdmin />
                     </PrivateRoute>
                   }
                 />

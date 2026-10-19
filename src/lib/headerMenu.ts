@@ -89,6 +89,7 @@ export const ABOUT_MENU_ITEMS: AboutMenuItemDef[] = [
     { key: 'intercambios', label: 'Programa de Intercambios', href: '/intercambio-jovenes' },
     { key: 'rotaract', label: 'Rotaract', href: '/rotaract' },
     { key: 'interact', label: 'Interact', href: '/interact' },
+    { key: 'directorioClubes', label: 'Directorio de Clubes', href: '/clubes' },
     { key: 'fundacion', label: 'La Fundación Rotaria', href: '/la-fundacion-rotaria' },
     { key: 'estadosFinancieros', label: 'Estados Financieros', href: '/estados-financieros' },
 ];

@@ -341,7 +341,7 @@ export const MODULES = [
         key: 'platform_sites', label: 'Sitios del ecosistema', group: 'Plataforma', scope: 'platform',
         actions: ['view', 'create', 'edit', 'delete', 'manage'],
         routes: [
-            '/admin/distritos', '/admin/clubes', '/admin/asociaciones', '/admin/zonas',
+            '/admin/distritos', '/admin/clubes', '/admin/directorio-clubes', '/admin/asociaciones', '/admin/zonas',
             '/admin/programas-intercambio', '/admin/ferias-proyectos', '/admin/eventos-convenciones',
         ],
         legacy: null, sensitive: true,

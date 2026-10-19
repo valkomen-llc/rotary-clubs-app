@@ -182,6 +182,7 @@ import contentStudioRoutes from './routes/contentStudio.js';
 import videoEditorRoutes from './routes/videoEditor.js';
 import siteModulesRoutes from './routes/siteModules.js';
 import emailMarketingRoutes from './routes/email-marketing.js';
+import districtClubsRoutes from './routes/district-clubs.js';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
@@ -236,6 +237,7 @@ app.use('/api/rotary-en-accion', rotaryEnAccionRoutes);
 app.use('/api/content-studio', contentStudioRoutes);
 app.use('/api/video-editor', videoEditorRoutes);
 app.use('/api/site-modules', siteModulesRoutes);
+app.use('/api/district-clubs', districtClubsRoutes);
 
 // DIAGNOSTIC PING - Direct route to bypass potential file-loading/middleware issues
 app.post('/api/ping-footer', (req, res) => {
