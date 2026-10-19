@@ -42,6 +42,22 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1215.0',
+        title: 'Reingeniería de Arquitectura: Separación de Catálogo Maestro Institucional y Bandeja Operativa Rotary en Acción 🏛️⚙️',
+        description: 'Reorganización arquitectónica integral para la descentralización funcional y trazabilidad bidireccional entre el Directorio de Clubes y Rotary en Acción: 1) Centralización en Directorio de Clubes (/admin/directorio-clubes): Catálogo oficial validado de los 74 clubes del Distrito 4281 (Rotary, Rotaract e Interact), tabla corporativa limpia con visualización de ciudad, responsables institucionales asignados, barra porcentual de completitud, estado de publicación y estado de actividad en Rotary en Acción (Sin iniciar, Borrador en curso, Solicitud pendiente, Actualizado). 2) Trazabilidad Institucional 360°: Nuevo Drawer interactivo por club con desglose de identidad, directiva y cuentas de autogestión, auditoría de 6 bloques de requisitos, historial de solicitudes y registro de cambios protegidos. 3) Herramientas de CRM y Comunicaciones Directas: Modal integrado para contacto multicanal (Email y WhatsApp) con 4 plantillas oficiales para acompañar a los clubes en el diligenciamiento de su información. 4) Rotary en Acción como Bandeja Operativa (/admin/rotary-en-accion?tab=directorio): Reorganización estricta en 4 pestañas operativas (Solicitudes y Actualizaciones, Gestión en Curso de Borradores, Historial de Solicitudes y Automatización) eliminando la duplicidad del catálogo inactivo y mostrando exclusivamente clubes con procesos activos. 5) Indicadores y KPIs basados en datos reales: 6 KPIs institucionales en el Directorio y 6 KPIs operativos en Rotary en Acción con navegación cruzada bidireccional.',
+        date: new Date().toISOString(),
+        tags: ['directorio-clubes', 'rotary-en-accion', 'arquitectura-saas', 'crm-multicanal', 'trazabilidad-360', 'kpis-reales'],
+        type: 'feature',
+        impact: 'Alta: Resuelve la inconsistencia de datos, separa el registro maestro de la operativa de solicitudes, y proporciona herramientas de trazabilidad 360° y reactivación multicanal para el Distrito 4281.',
+        changes: [
+            { type: 'improved', text: 'Directorio de Clubes consolidado como fuente maestra con los 74 clubes oficiales del Distrito 4281 y 6 KPIs calculados en tiempo real.' },
+            { type: 'added', text: 'Expediente 360° por club con desglose de requisitos, directiva, cuentas del portal, solicitudes asociadas y auditoría de cambios.' },
+            { type: 'improved', text: 'Rotary en Acción reorganizado en 4 pestañas operativas (Solicitudes, Borradores en Curso, Historial y Automatización) sin duplicar clubes inactivos.' },
+            { type: 'added', text: 'Trazabilidad bidireccional entre solicitudes operativas y fichas institucionales con enlaces directos cruzados.' },
+            { type: 'added', text: 'Centro de contacto CRM multicanal (WhatsApp y Email) integrado en ambos módulos con plantillas institucionales preconfiguradas.' }
+        ]
+    },
+    {
         version: '4.1214.0',
         title: 'Integración Directorio Distrital de Clubes con Rotary en Acción y Portal de Autogestión 🚀🏛️',
         description: 'Evolución e integración profunda del ecosistema de Directorio de Clubes con Rotary en Acción: 1) Solución del error de autorización en /admin/directorio-clubes mediante cabeceras Bearer token seguras para la visualización inmediata de los 74 clubes oficiales y solicitudes recibidas. 2) Portal de Autogestión de Clubes (/clubes/portal) con autenticación dedicada para representantes de clubes, encriptación bcrypt, sesiones JWT (audiencia rotary-club-portal) y auto-vinculación con usuarios activos de la plataforma. 3) Aislamiento de gobernanza institucional: cambios regulares se reflejan al instante mientras que cambios estructurales protegidos (nombre oficial, distrito, tipo de organización) requieren aprobación distrital. 4) Nueva pestaña "Directorio de Clubes" dentro de Rotary en Acción (/admin/rotary-en-accion?tab=directorio) con embudo de conversión, gestión de borradores y abandono con parámetros UTM, y centro de comunicaciones con plantillas para Email y WhatsApp. 5) Formulario de 7 pasos enriquecido con trazabilidad de campañas, selección automática por URL (?club=slug), seguimiento de pasos alcanzados y creación directa de credenciales para representantes.',

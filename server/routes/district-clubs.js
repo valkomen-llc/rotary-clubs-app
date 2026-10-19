@@ -30,6 +30,7 @@ router.post('/portal/reset-password', lightPublicLimit, ctrl.portalResetPassword
 // Orden estricto: literales antes que paramétricas para pasar check-routes
 router.get('/admin/list', authMiddleware, requireRoleOrPermission(SITE_ADMIN_ROLES, 'clubs.view'), ctrl.getAdminClubList);
 router.get('/admin/submissions', authMiddleware, requireRoleOrPermission(SITE_ADMIN_ROLES, 'clubs.view'), ctrl.getAdminSubmissions);
+router.get('/admin/club/:id', authMiddleware, requireRoleOrPermission(SITE_ADMIN_ROLES, 'clubs.view'), ctrl.getAdminClubDetail);
 router.post('/admin/submissions/:id/review', authMiddleware, requireRoleOrPermission(SITE_ADMIN_ROLES, 'clubs.manage'), ctrl.reviewSubmission);
 router.post('/admin/profile/:id/toggle-status', authMiddleware, requireRoleOrPermission(SITE_ADMIN_ROLES, 'clubs.manage'), ctrl.toggleProfileStatus);
 router.post('/admin/profile/:id/approve-protected', authMiddleware, requireRoleOrPermission(SITE_ADMIN_ROLES, 'clubs.manage'), ctrl.approveProtectedChanges);

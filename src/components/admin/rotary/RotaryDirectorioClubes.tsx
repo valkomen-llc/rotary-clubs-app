@@ -1,414 +1,481 @@
 // ════════════════════════════════════════════════════════════════════════════
-// Módulo: Directorio de Clubes en Rotary en Acción
-// Integración de captación, seguimiento, borradores, campañas y CRM
-// para el Directorio Distrital de Clubes (Distrito 4281 & Multidistrito)
+// Módulo: Rotary en Acción — Gestión Operativa de Solicitudes de Clubes
+// Rotary, Rotaract e Interact — Distrito 4281 & Multidistrito
+//
+// MÓDULO B — GESTIÓN OPERATIVA Y ACTIVIDAD REAL:
+// 1. Pestaña 1: Solicitudes y Actualizaciones recibidas por revisar.
+// 2. Pestaña 2: Gestión en Curso (Borradores iniciados y seguimiento de abandono).
+// 3. Pestaña 3: Historial de Solicitudes (Aprobadas, rechazadas y finalizadas).
+// 4. Pestaña 4: Automatización y Plantillas CRM multicanal (Email & WhatsApp).
+// 5. Trazabilidad bidireccional vinculada al Catálogo Maestro en /admin/directorio-clubes.
 // ════════════════════════════════════════════════════════════════════════════
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Building2, Users, Search, Sparkles, Filter, ExternalLink,
   Mail, MessageSquare, ArrowRight, CheckCircle2, AlertCircle,
   Clock, TrendingUp, Send, Copy, Eye, Edit2, ShieldAlert,
-  ChevronRight, RefreshCw, X, Check
+  ChevronRight, RefreshCw, X, Check, Layers, AlertTriangle,
+  Compass, ArrowUpRight, ShieldCheck, History
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../../hooks/useAuth';
 
 const API = import.meta.env.VITE_API_URL || '/api';
-
-interface ClubItem {
-  id: string;
-  officialName: string;
-  shortName: string;
-  slug: string;
-  organizationType: 'rotary' | 'rotaract' | 'interact';
-  districtNumber: number;
-  city?: string;
-  currentPresident?: string;
-  rotaryPeriod?: string;
-  completionPercentage: number;
-  status: 'published' | 'draft' | 'archived';
-  primaryManagerEmail?: string;
-  primaryManagerName?: string;
-  contactEmail?: string;
-  contactPhone?: string;
-  pendingProtectedChanges?: any;
-  updatedAt?: string;
-}
+const getAuthToken = () => localStorage.getItem('rotary_token') || localStorage.getItem('token') || '';
 
 interface SubmissionItem {
   id: string;
   trackingNumber: string;
-  clubName: string;
+  profileId?: string;
+  districtNumber: number;
   organizationType: string;
+  clubName: string;
   submissionType: string;
   applicantName: string;
   applicantEmail: string;
   applicantPhone?: string;
   applicantRole?: string;
-  status: string;
+  status: 'recibida' | 'en_revision' | 'correcciones_solicitadas' | 'aprobada' | 'rechazada' | 'borrador';
   stepReached?: number;
+  payload: any;
+  adminFeedback?: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  history?: any[];
   utmSource?: string;
   utmCampaign?: string;
+  utmMedium?: string;
+  formStartedAt?: string;
   lastActiveAt?: string;
   createdAt: string;
+  updatedAt?: string;
+  profileSlug?: string;
+  profileCity?: string;
+  profileCompletionPercentage?: number;
+  profileStatus?: string;
+  primaryManagerEmail?: string;
+  primaryManagerName?: string;
 }
 
 export const RotaryDirectorioClubes: React.FC = () => {
-  const { token } = useAuth();
+  const { user, token } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [clubs, setClubs] = useState<ClubItem[]>([]);
   const [submissions, setSubmissions] = useState<SubmissionItem[]>([]);
-  const [activeSubtab, setActiveSubtab] = useState<'catalogo' | 'solicitudes' | 'borradores' | 'comunicaciones'>('catalogo');
+  const [activeSubtab, setActiveSubtab] = useState<'solicitudes' | 'gestion_en_curso' | 'historial' | 'automatizacion'>('solicitudes');
 
   // Filtros
   const [searchQuery, setSearchQuery] = useState('');
-  const [typeFilter, setTypeFilter] = useState<'all' | 'rotary' | 'rotaract' | 'interact'>('all');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'in_progress' | 'incomplete' | 'with_manager' | 'without_manager'>('all');
+  const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  // Modal de Comunicaciones
+  // Modales
+  const [selectedSubmission, setSelectedSubmission] = useState<SubmissionItem | null>(null);
+  const [reviewFeedback, setReviewFeedback] = useState('');
+  const [isReviewing, setIsReviewing] = useState(false);
+
+  // Modal de Comunicaciones CRM
   const [commModalOpen, setCommModalOpen] = useState(false);
-  const [selectedClubForComm, setSelectedClubForComm] = useState<ClubItem | null>(null);
+  const [commRecipientName, setCommRecipientName] = useState('');
+  const [commRecipientClub, setCommRecipientClub] = useState('');
+  const [commRecipientSlug, setCommRecipientSlug] = useState('');
+  const [commRecipientPhone, setCommRecipientPhone] = useState('');
+  const [commRecipientEmail, setCommRecipientEmail] = useState('');
   const [commChannel, setCommChannel] = useState<'email' | 'whatsapp'>('whatsapp');
-  const [commTemplateId, setCommTemplateId] = useState<string>('invitacion');
-  const [recipientPhone, setRecipientPhone] = useState('');
-  const [recipientEmail, setRecipientEmail] = useState('');
+  const [commTemplateId, setCommTemplateId] = useState<string>('recordatorio');
 
   // Cargar datos consolidados
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const authToken = token || localStorage.getItem('token') || '';
+      const authToken = token || getAuthToken();
       const headers = authToken ? { Authorization: `Bearer ${authToken}` } : {};
 
-      const [listRes, subsRes] = await Promise.all([
-        fetch(`${API}/district-clubs/admin/list?district=4281`, { headers }),
-        fetch(`${API}/district-clubs/admin/submissions?district=4281`, { headers })
-      ]);
-
-      if (listRes.ok) {
-        const d = await listRes.json();
-        setClubs(d.clubs || []);
-      }
+      const subsRes = await fetch(`${API}/district-clubs/admin/submissions?district=4281&includeDrafts=true`, { headers });
       if (subsRes.ok) {
         const d = await subsRes.json();
         setSubmissions(d.submissions || []);
       }
     } catch (err) {
-      console.warn('Error al cargar datos de directorio en Rotary en Acción:', err);
+      console.warn('Error loading rotary submissions data:', err);
+      toast.error('No se pudo conectar con el servidor de solicitudes.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [token]);
 
   useEffect(() => {
     loadData();
-  }, [token]);
+  }, [loadData]);
 
-  // Métricas y KPIs de Embudo
+  // Métricas y KPIs de Gestión Operativa (Objetivo 5)
   const metrics = useMemo(() => {
-    const total = clubs.length || 74;
-    const completed = clubs.filter(c => (c.completionPercentage || 0) >= 80).length;
-    const inProgress = clubs.filter(c => (c.completionPercentage || 0) >= 30 && (c.completionPercentage || 0) < 80).length;
-    const incomplete = clubs.filter(c => (c.completionPercentage || 0) < 30).length;
-    const withManager = clubs.filter(c => !!c.primaryManagerEmail).length;
-    const pendingSubs = submissions.filter(s => ['recibida', 'en_revision'].includes(s.status)).length;
+    // Clubes únicos con actividad
+    const uniqueClubs = new Set(submissions.map(s => s.clubName.toLowerCase().trim()));
+    const totalActiveClubs = uniqueClubs.size;
+
+    const pending = submissions.filter(s => ['recibida', 'en_revision'].includes(s.status)).length;
+    const corrections = submissions.filter(s => s.status === 'correcciones_solicitadas').length;
     const drafts = submissions.filter(s => s.status === 'borrador').length;
+    const approved = submissions.filter(s => s.status === 'aprobada').length;
+    const rejected = submissions.filter(s => s.status === 'rechazada').length;
+    const totalSubmissions = submissions.filter(s => s.status !== 'borrador').length;
+
+    const conversionRate = (drafts + totalSubmissions) > 0
+      ? Math.round((totalSubmissions / (drafts + totalSubmissions)) * 100)
+      : 0;
 
     return {
-      total,
-      completed,
-      inProgress,
-      incomplete,
-      withManager,
-      pendingSubs,
+      totalActiveClubs,
+      pending,
+      corrections,
       drafts,
-      pctCompleted: Math.round((completed / (total || 1)) * 100),
-      pctStarted: Math.round(((completed + inProgress) / (total || 1)) * 100)
+      approved,
+      rejected,
+      totalSubmissions,
+      conversionRate
     };
-  }, [clubs, submissions]);
+  }, [submissions]);
 
-  // Filtrado de clubes
-  const filteredClubs = useMemo(() => {
-    return clubs.filter(c => {
-      if (typeFilter !== 'all' && c.organizationType !== typeFilter) return false;
-      const pct = c.completionPercentage || 0;
-      if (statusFilter === 'completed' && pct < 80) return false;
-      if (statusFilter === 'in_progress' && (pct < 30 || pct >= 80)) return false;
-      if (statusFilter === 'incomplete' && pct >= 30) return false;
-      if (statusFilter === 'with_manager' && !c.primaryManagerEmail) return false;
-      if (statusFilter === 'without_manager' && c.primaryManagerEmail) return false;
+  // Pestaña 1: Solicitudes Recibidas y En Revisión
+  const pendingSubmissionsList = useMemo(() => {
+    return submissions.filter(s => {
+      if (s.status === 'borrador') return false;
+      if (!['recibida', 'en_revision', 'correcciones_solicitadas'].includes(s.status)) return false;
+      if (typeFilter !== 'all' && s.organizationType !== typeFilter) return false;
+      if (statusFilter !== 'all' && s.status !== statusFilter) return false;
 
       if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const text = `${c.officialName} ${c.shortName} ${c.city || ''} ${c.currentPresident || ''} ${c.primaryManagerEmail || ''}`.toLowerCase();
+        const q = searchQuery.toLowerCase().trim();
+        const text = `${s.clubName} ${s.applicantName} ${s.applicantEmail} ${s.trackingNumber}`.toLowerCase();
         if (!text.includes(q)) return false;
       }
       return true;
     });
-  }, [clubs, typeFilter, statusFilter, searchQuery]);
+  }, [submissions, typeFilter, statusFilter, searchQuery]);
 
-  // Borradores pendientes
-  const draftsList = useMemo(() => {
-    return submissions.filter(s => s.status === 'borrador');
-  }, [submissions]);
+  // Pestaña 2: Gestión en Curso (Borradores y Procesos Activos)
+  const draftsAndActiveList = useMemo(() => {
+    return submissions.filter(s => {
+      if (s.status !== 'borrador') return false;
+      if (typeFilter !== 'all' && s.organizationType !== typeFilter) return false;
 
-  // Plantillas de Comunicación
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const text = `${s.clubName} ${s.applicantName} ${s.applicantEmail} ${s.trackingNumber}`.toLowerCase();
+        if (!text.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [submissions, typeFilter, searchQuery]);
+
+  // Pestaña 3: Historial de Solicitudes (Aprobadas, Rechazadas, Finalizadas)
+  const historyList = useMemo(() => {
+    return submissions.filter(s => {
+      if (s.status === 'borrador') return false;
+      if (!['aprobada', 'rechazada'].includes(s.status)) return false;
+      if (typeFilter !== 'all' && s.organizationType !== typeFilter) return false;
+      if (statusFilter !== 'all' && s.status !== statusFilter) return false;
+
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const text = `${s.clubName} ${s.applicantName} ${s.applicantEmail} ${s.trackingNumber}`.toLowerCase();
+        if (!text.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [submissions, typeFilter, statusFilter, searchQuery]);
+
+  // Acción de Aprobación / Rechazo
+  const handleReview = async (id: string, action: 'approve' | 'request_changes' | 'reject') => {
+    setIsReviewing(true);
+    try {
+      const authToken = token || getAuthToken();
+      const res = await fetch(`${API}/district-clubs/admin/submissions/${id}/review`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`
+        },
+        body: JSON.stringify({
+          action,
+          feedback: reviewFeedback,
+          reviewedBy: user?.name || user?.email || 'Comité Rotary en Acción D4281'
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || 'Error al procesar solicitud');
+
+      toast.success(
+        action === 'approve'
+          ? '¡Solicitud aprobada e integrada al Directorio de Clubes!'
+          : action === 'request_changes'
+          ? 'Se han solicitado correcciones al responsable.'
+          : 'Solicitud rechazada.'
+      );
+      setSelectedSubmission(null);
+      setReviewFeedback('');
+      loadData();
+    } catch (err: any) {
+      toast.error(err.message || 'Error al revisar solicitud');
+    } finally {
+      setIsReviewing(false);
+    }
+  };
+
+  // Plantillas de Comunicación CRM
   const plantillas = [
     {
-      id: 'invitacion',
-      titulo: 'Invitación Oficial al Directorio Distrital 2026–2027',
-      asunto: 'Actualiza el perfil oficial de tu club en el Directorio Distrital 4281',
-      texto: (club: ClubItem | null) =>
-        `Estimado(a) líder de ${club?.officialName || 'su club rotario'},\n\nLe invitamos cordialmente a registrar o actualizar el perfil institucional de su club en el Directorio Distrital Oficial de Rotary Distrito 4281 para el período 2026–2027.\n\nPuede acceder directamente al formulario institucional aquí:\nhttps://rotary4281.org/clubes/registro?club=${club?.slug || ''}&utm_source=rotary_en_accion&utm_campaign=directorio_invitacion\n\nEl proceso toma solo unos minutos y asegura que la comunidad conozca sus proyectos, junta directiva y canales de contacto.\n\nAtentamente,\nComité Distrital de Imagen Pública · Rotary Distrito 4281`
+      id: 'recordatorio',
+      titulo: 'Recordatorio de Borrador en Curso (Reactivación)',
+      asunto: 'Continúa la postulación de tu Club en Rotary en Acción',
+      mensaje: (clubName: string, slug: string) =>
+        `Estimados socios de ${clubName}:\n\n` +
+        `Notamos que comenzaron el registro de su club en la plataforma distrital pero no han finalizado el envío.\n\n` +
+        `Completar la ficha oficial permitirá visibilizar sus proyectos de servicio ante todo el Distrito 4281 y la comunidad internacional.\n\n` +
+        `Puedes retomar directamente aquí:\n` +
+        `https://app.clubplatform.org/clubes/registro?club=${slug}&utm_source=rotary_en_accion&utm_campaign=reactivacion_borrador\n\n` +
+        `¡Quedamos atentos a apoyarlos en lo que necesiten!\nComité Rotary en Acción · Distrito 4281`
     },
     {
-      id: 'borrador_recordatorio',
-      titulo: 'Recordatorio: Formulario Incompleto / Borrador Pendiente',
-      asunto: 'Continúa el registro de tu club en el Directorio Distrital',
-      texto: (club: ClubItem | null) =>
-        `Hola, te recordamos que tienes un borrador pendiente de registro para ${club?.officialName || 'tu club'}.\n\nPuedes continuar exactamente donde lo dejaste ingresando al formulario distrital:\nhttps://rotary4281.org/clubes/registro?club=${club?.slug || ''}&utm_source=rotary_en_accion&utm_campaign=borrador_recordatorio\n\n¡Falta muy poco para publicar el perfil oficial de tu club!\n\nRotary en Acción · Distrito 4281`
+      id: 'aprobado',
+      titulo: 'Notificación de Solicitud Aprobada',
+      asunto: '¡Felicitaciones! La Ficha Institucional de su Club ha sido Aprobada',
+      mensaje: (clubName: string, slug: string) =>
+        `Estimados amigos de ${clubName}:\n\n` +
+        `Nos alegra comunicarles que la solicitud de su club ha sido revisada y APROBADA satisfactoriamente por la Gobernación Distrital.\n\n` +
+        `Su perfil oficial ya se encuentra publicado y visible para toda la comunidad en:\n` +
+        `https://app.clubplatform.org/clubes/rotary/${slug}\n\n` +
+        `Además, pueden autogestionar su contenido en el Portal del Club:\n` +
+        `https://app.clubplatform.org/clubes/portal\n\n` +
+        `¡Gracias por su liderazgo e impacto!\nRotary en Acción · Distrito 4281`
     },
     {
-      id: 'informacion_faltante',
-      titulo: 'Completar Información Institucional (< 60% avance)',
-      asunto: 'Mejora la visibilidad del perfil de tu club en Rotary Distrito 4281',
-      texto: (club: ClubItem | null) =>
-        `Apreciado(a) presidente y directiva de ${club?.officialName || 'su club'},\n\nEl perfil de su club cuenta actualmente con un ${club?.completionPercentage || 0}% de completitud. Le invitamos a ingresar al Portal de Autogestión para incorporar sus proyectos destacados, fotografías de obras y junta directiva completa:\n\nAcceso al portal:\nhttps://rotary4281.org/clubes/portal\n\nLos perfiles completos reciben mayor exposición ante la comunidad rotaria internacional.\n\nDistrito 4281 de Rotary International`
-    },
-    {
-      id: 'felicitacion_publicacion',
-      titulo: 'Confirmación y Publicación de Perfil Institucional',
-      asunto: '¡Tu club ya está publicado en el Directorio Distrital 4281!',
-      texto: (club: ClubItem | null) =>
-        `¡Felicitaciones! El perfil institucional de ${club?.officialName || 'su club'} ha sido verificado y ya se encuentra publicado en el Directorio Distrital de Rotary.\n\nPueden compartir el enlace público oficial con su comunidad:\nhttps://rotary4281.org/clubes/${club?.organizationType || 'rotary'}/${club?.slug || ''}\n\nPodrán actualizar información en cualquier momento desde el Portal de Autogestión:\nhttps://rotary4281.org/clubes/portal\n\n¡Personas de Acción transformando comunidades!`
-    },
-    {
-      id: 'actualizacion_periodo',
-      titulo: 'Renovación de Junta Directiva (Período Rotario)',
-      asunto: 'Actualización de Junta Directiva para el nuevo período rotario',
-      texto: (club: ClubItem | null) =>
-        `Estimados socios de ${club?.officialName || 'su club'},\n\nCon motivo del inicio del nuevo período rotario 2026–2027, les solicitamos actualizar los datos de la junta directiva entrante y presidente electo en el portal de autogestión:\nhttps://rotary4281.org/clubes/portal\n\nEsto permitirá mantener la continuidad institucional y la comunicación directa con la gobernación distrital.\n\nGobernación Rotary Distrito 4281`
+      id: 'correcciones',
+      titulo: 'Solicitud de Ajustes en Información',
+      asunto: 'Observaciones para la publicación de su Ficha en el Directorio',
+      mensaje: (clubName: string, slug: string) =>
+        `Estimado(a) representante de ${clubName}:\n\n` +
+        `Hemos revisado la información enviada para su ficha institucional en Rotary en Acción. Para proceder con la aprobación, requerimos un breve ajuste en los datos ingresados.\n\n` +
+        `Por favor ingresa al formulario para actualizar la solicitud:\n` +
+        `https://app.clubplatform.org/clubes/registro?club=${slug}&utm_source=rotary_en_accion&utm_campaign=ajuste_solicitud\n\n` +
+        `Comité Distrital de Certificación · Distrito 4281`
     }
   ];
 
   const currentTemplate = plantillas.find(p => p.id === commTemplateId) || plantillas[0];
+  const renderedMessage = currentTemplate.mensaje(commRecipientClub || 'su club', commRecipientSlug || '');
 
-  const handleOpenComm = (club: ClubItem) => {
-    setSelectedClubForComm(club);
-    setRecipientPhone(club.contactPhone || '');
-    setRecipientEmail(club.primaryManagerEmail || club.contactEmail || '');
+  const openCommModalForSub = (sub: SubmissionItem) => {
+    setCommRecipientName(sub.applicantName);
+    setCommRecipientClub(sub.clubName);
+    setCommRecipientSlug(sub.profileSlug || sub.payload?.slug || '');
+    setCommRecipientEmail(sub.applicantEmail);
+    setCommRecipientPhone(sub.applicantPhone || '');
+    setCommTemplateId(sub.status === 'borrador' ? 'recordatorio' : sub.status === 'aprobada' ? 'aprobado' : 'correcciones');
     setCommModalOpen(true);
   };
 
   const handleSendWhatsApp = () => {
-    if (!recipientPhone) {
-      toast.error('Por favor ingresa un número de teléfono de destino.');
+    if (!commRecipientPhone) {
+      toast.error('Ingresa un número telefónico válido');
       return;
     }
-    const cleanPhone = recipientPhone.replace(/\D/g, '');
-    const message = currentTemplate.texto(selectedClubForComm);
-    const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+    const cleanPhone = commRecipientPhone.replace(/[^\d+]/g, '');
+    const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(renderedMessage)}`;
     window.open(url, '_blank');
     toast.success('Abriendo WhatsApp...');
-    setCommModalOpen(false);
   };
 
   const handleSendEmail = () => {
-    if (!recipientEmail) {
-      toast.error('Por favor ingresa un correo electrónico de destino.');
+    if (!commRecipientEmail) {
+      toast.error('Ingresa un correo destinatario');
       return;
     }
-    const subject = encodeURIComponent(currentTemplate.asunto);
-    const body = encodeURIComponent(currentTemplate.texto(selectedClubForComm));
-    window.location.href = `mailto:${recipientEmail}?subject=${subject}&body=${body}`;
+    const mailto = `mailto:${commRecipientEmail}?subject=${encodeURIComponent(currentTemplate.asunto)}&body=${encodeURIComponent(renderedMessage)}`;
+    window.open(mailto, '_blank');
     toast.success('Abriendo cliente de correo...');
-    setCommModalOpen(false);
-  };
-
-  const handleCopyMessage = () => {
-    const text = currentTemplate.texto(selectedClubForComm);
-    navigator.clipboard.writeText(text);
-    toast.success('Mensaje copiado al portapapeles');
-  };
-
-  const handleCopyRegistrationLink = (club: ClubItem) => {
-    const url = `https://rotary4281.org/clubes/registro?club=${club.slug}&utm_source=rotary_en_accion&utm_campaign=directorio_clubes`;
-    navigator.clipboard.writeText(url);
-    toast.success(`Enlace con UTM copiado para ${club.shortName}`);
   };
 
   return (
     <div className="space-y-6">
 
-      {/* ── 1. CABECERA Y ACCIONES RÁPIDAS ──────────────────────────── */}
+      {/* ── 1. CABECERA OPERATIVA CON ENLACE AL DIRECTORIO MAESTRO ──────── */}
       <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-rotary-blue/10 text-rotary-blue rounded-full text-[11px] font-black uppercase tracking-wider mb-2">
-            <Building2 className="w-3.5 h-3.5" /> Ecosistema Distrital de Clubes
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-50 text-purple-700 rounded-full text-[11px] font-black uppercase tracking-wider mb-2">
+            <Layers className="w-3.5 h-3.5" /> Rotary en Acción · Gestión Operativa de Solicitudes
           </div>
           <h2 className="text-2xl font-black text-gray-900 tracking-tight">
-            Directorio de Clubes · Rotary en Acción
+            Bandeja de Solicitudes y Participación Activa
           </h2>
           <p className="text-xs text-gray-500 mt-1 max-w-2xl leading-relaxed">
-            Captación, automatización de recordatorios, embudo de completitud y trazabilidad de los 74 clubes del Distrito 4281.
+            Recepción, validación, seguimiento de borradores y trazabilidad de los clubes que están realizando gestiones activas de actualización.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
           <Link
             to="/admin/directorio-clubes"
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gray-50 border border-gray-200 text-gray-700 hover:bg-gray-100 text-xs font-bold transition-all"
-          >
-            <Eye className="w-3.5 h-3.5 text-rotary-blue" />
-            Panel Directorio Distrital
-          </Link>
-          <Link
-            to="/clubes/registro?utm_source=rotary_en_accion&utm_campaign=admin_button"
-            target="_blank"
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rotary-blue hover:bg-blue-900 text-white text-xs font-black shadow-sm transition-all"
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-rotary-blue hover:bg-blue-900 text-white text-xs font-black shadow-sm transition-all"
           >
             <Building2 className="w-3.5 h-3.5" />
+            Catálogo Maestro (74 Clubes) ↗
+          </Link>
+          <Link
+            to="/clubes/registro?utm_source=rotary_en_accion&utm_campaign=boton_operativo"
+            target="_blank"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 text-xs font-bold transition-all"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
             Abrir Formulario Oficial
           </Link>
         </div>
       </div>
 
-      {/* ── 2. EMBUDO DE CONVERSIÓN Y KPIS ───────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
-        <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs">
-          <p className="text-[10px] font-black uppercase tracking-wider text-gray-400">Total Oficial</p>
-          <h3 className="text-2xl font-black text-gray-900 mt-0.5">{metrics.total}</h3>
-          <p className="text-[10px] text-gray-400 mt-0.5">Catálogo Distrito 4281</p>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs">
-          <p className="text-[10px] font-black uppercase tracking-wider text-emerald-600">Completos (&gt;80%)</p>
-          <h3 className="text-2xl font-black text-emerald-600 mt-0.5">{metrics.completed}</h3>
-          <p className="text-[10px] text-gray-400 mt-0.5">{metrics.pctCompleted}% del distrito</p>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs">
-          <p className="text-[10px] font-black uppercase tracking-wider text-amber-600">En Progreso (30-80%)</p>
-          <h3 className="text-2xl font-black text-amber-600 mt-0.5">{metrics.inProgress}</h3>
-          <p className="text-[10px] text-gray-400 mt-0.5">Faltan proyectos o fotos</p>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs">
-          <p className="text-[10px] font-black uppercase tracking-wider text-rose-600">Incompletos (&lt;30%)</p>
-          <h3 className="text-2xl font-black text-rose-600 mt-0.5">{metrics.incomplete}</h3>
-          <p className="text-[10px] text-gray-400 mt-0.5">Requieren contacto</p>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs">
-          <p className="text-[10px] font-black uppercase tracking-wider text-purple-600">Con Responsable</p>
-          <h3 className="text-2xl font-black text-purple-600 mt-0.5">{metrics.withManager}</h3>
-          <p className="text-[10px] text-gray-400 mt-0.5">Cuenta de autogestión</p>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs">
-          <p className="text-[10px] font-black uppercase tracking-wider text-sky-600">Borradores en Curso</p>
-          <h3 className="text-2xl font-black text-sky-600 mt-0.5">{metrics.drafts}</h3>
-          <p className="text-[10px] text-gray-400 mt-0.5">Iniciaron y no enviaron</p>
+      {/* ── BANNER EXPLICATIVO DE SEPARACIÓN ARQUITECTÓNICA ───────────── */}
+      <div className="p-4 bg-gradient-to-r from-blue-50/70 via-indigo-50/50 to-purple-50/50 rounded-2xl border border-blue-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2.5 text-blue-900">
+          <Compass className="w-4 h-4 text-rotary-blue shrink-0" />
+          <span>
+            <strong>Separación Arquitectónica:</strong> El catálogo oficial de los 74 clubes se administra en el{' '}
+            <Link to="/admin/directorio-clubes" className="font-extrabold underline hover:text-rotary-blue">Directorio de Clubes</Link>.
+            Aquí se gestionan exclusivamente las solicitudes activas, procesos en curso y herramientas de comunicación.
+          </span>
         </div>
       </div>
 
-      {/* ── 3. SUB-PESTAÑAS DE NAVEGACIÓN ─────────────────────────────── */}
+      {/* ── 2. KPIS DE GESTIÓN OPERATIVA REAL (OBJETIVO 5) ────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs">
+          <p className="text-[10px] font-black uppercase tracking-wider text-gray-400">Clubes con Actividad</p>
+          <h3 className="text-2xl font-black text-gray-900 mt-0.5">{metrics.totalActiveClubs}</h3>
+          <p className="text-[10px] text-gray-400 mt-0.5">Con solicitud o borrador</p>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs">
+          <p className="text-[10px] font-black uppercase tracking-wider text-amber-600">Por Revisar</p>
+          <h3 className="text-2xl font-black text-amber-600 mt-0.5">{metrics.pending}</h3>
+          <p className="text-[10px] text-gray-400 mt-0.5">Recibidas / En revisión</p>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs">
+          <p className="text-[10px] font-black uppercase tracking-wider text-indigo-600">Borradores en Curso</p>
+          <h3 className="text-2xl font-black text-indigo-600 mt-0.5">{metrics.drafts}</h3>
+          <p className="text-[10px] text-gray-400 mt-0.5">Formularios sin enviar</p>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs">
+          <p className="text-[10px] font-black uppercase tracking-wider text-emerald-600">Aprobadas</p>
+          <h3 className="text-2xl font-black text-emerald-600 mt-0.5">{metrics.approved}</h3>
+          <p className="text-[10px] text-gray-400 mt-0.5">Publicadas en directorio</p>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs">
+          <p className="text-[10px] font-black uppercase tracking-wider text-orange-600">Correcciones</p>
+          <h3 className="text-2xl font-black text-orange-600 mt-0.5">{metrics.corrections}</h3>
+          <p className="text-[10px] text-gray-400 mt-0.5">Ajustes requeridos</p>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs">
+          <p className="text-[10px] font-black uppercase tracking-wider text-purple-600">Conversión</p>
+          <h3 className="text-2xl font-black text-purple-600 mt-0.5">{metrics.conversionRate}%</h3>
+          <p className="text-[10px] text-gray-400 mt-0.5">Envío vs Borradores</p>
+        </div>
+      </div>
+
+      {/* ── 3. CUATRO SUB-PESTAÑAS OPERATIVAS (OBJETIVO 3) ─────────────── */}
       <div className="flex border-b border-gray-200 gap-2 text-xs font-black overflow-x-auto pb-1">
         <button
-          onClick={() => setActiveSubtab('catalogo')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
-            activeSubtab === 'catalogo'
-              ? 'bg-rotary-blue text-white shadow-xs'
-              : 'bg-white text-gray-600 hover:text-gray-900 border border-gray-200'
-          }`}
-        >
-          <Building2 className="w-4 h-4" />
-          <span>Fichas Institucionales ({filteredClubs.length})</span>
-        </button>
-
-        <button
           onClick={() => setActiveSubtab('solicitudes')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
+          className={`pb-3 px-3.5 border-b-2 uppercase tracking-wider transition-all flex items-center gap-1.5 whitespace-nowrap ${
             activeSubtab === 'solicitudes'
-              ? 'bg-rotary-blue text-white shadow-xs'
-              : 'bg-white text-gray-600 hover:text-gray-900 border border-gray-200'
-          }`}
-        >
-          <CheckCircle2 className="w-4 h-4" />
-          <span>Solicitudes y Actualizaciones ({submissions.length})</span>
-        </button>
-
-        <button
-          onClick={() => setActiveSubtab('borradores')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
-            activeSubtab === 'borradores'
-              ? 'bg-rotary-blue text-white shadow-xs'
-              : 'bg-white text-gray-600 hover:text-gray-900 border border-gray-200'
+              ? 'border-rotary-blue text-rotary-blue'
+              : 'border-transparent text-gray-500 hover:text-gray-900'
           }`}
         >
           <Clock className="w-4 h-4" />
-          <span>Borradores y Abandono ({draftsList.length})</span>
+          <span>Solicitudes y Actualizaciones ({pendingSubmissionsList.length})</span>
+          {metrics.pending > 0 && (
+            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+          )}
         </button>
 
         <button
-          onClick={() => setActiveSubtab('comunicaciones')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
-            activeSubtab === 'comunicaciones'
-              ? 'bg-rotary-blue text-white shadow-xs'
-              : 'bg-white text-gray-600 hover:text-gray-900 border border-gray-200'
+          onClick={() => setActiveSubtab('gestion_en_curso')}
+          className={`pb-3 px-3.5 border-b-2 uppercase tracking-wider transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            activeSubtab === 'gestion_en_curso'
+              ? 'border-rotary-blue text-rotary-blue'
+              : 'border-transparent text-gray-500 hover:text-gray-900'
           }`}
         >
-          <Send className="w-4 h-4" />
+          <Edit2 className="w-4 h-4 text-indigo-500" />
+          <span>Gestión en Curso ({draftsAndActiveList.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubtab('historial')}
+          className={`pb-3 px-3.5 border-b-2 uppercase tracking-wider transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            activeSubtab === 'historial'
+              ? 'border-rotary-blue text-rotary-blue'
+              : 'border-transparent text-gray-500 hover:text-gray-900'
+          }`}
+        >
+          <History className="w-4 h-4 text-emerald-600" />
+          <span>Historial de Solicitudes ({historyList.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubtab('automatizacion')}
+          className={`pb-3 px-3.5 border-b-2 uppercase tracking-wider transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            activeSubtab === 'automatizacion'
+              ? 'border-rotary-blue text-rotary-blue'
+              : 'border-transparent text-gray-500 hover:text-gray-900'
+          }`}
+        >
+          <MessageSquare className="w-4 h-4 text-emerald-600" />
           <span>Automatización y Plantillas</span>
         </button>
       </div>
 
-      {/* ── 4. SUB-TAB 1: CATÁLOGO DE CLUBES ──────────────────────────── */}
-      {activeSubtab === 'catalogo' && (
-        <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm space-y-4">
-          {/* Barra de Filtros y Búsqueda */}
-          <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex p-1 bg-gray-100 rounded-xl">
-                {[
-                  { id: 'all', label: 'Todos' },
-                  { id: 'rotary', label: 'Rotary' },
-                  { id: 'rotaract', label: 'Rotaract' },
-                  { id: 'interact', label: 'Interact' }
-                ].map(t => (
-                  <button
-                    key={t.id}
-                    onClick={() => setTypeFilter(t.id as any)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                      typeFilter === t.id ? 'bg-white text-rotary-blue shadow-xs' : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
+      {/* ════════════════════════════════════════════════════════════════
+          PESTAÑA 1: SOLICITUDES Y ACTUALIZACIONES PENDIENTES
+         ════════════════════════════════════════════════════════════════ */}
+      {activeSubtab === 'solicitudes' && (
+        <div className="space-y-4">
+          {/* Barra de Filtro y Búsqueda */}
+          <div className="bg-white p-4 rounded-3xl border border-gray-100 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <select
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
+                className="px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-bold text-gray-700 bg-white outline-none focus:border-rotary-blue"
+              >
+                <option value="all">Todos los Programas</option>
+                <option value="rotary">Rotary</option>
+                <option value="rotaract">Rotaract</option>
+                <option value="interact">Interact</option>
+              </select>
 
               <select
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as any)}
-                className="px-3 py-2 rounded-xl border border-gray-200 text-xs font-bold bg-white text-gray-700 outline-none"
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-bold text-gray-700 bg-white outline-none focus:border-rotary-blue"
               >
                 <option value="all">Todos los Estados</option>
-                <option value="completed">Completos (&gt;80%)</option>
-                <option value="in_progress">En Progreso (30–80%)</option>
-                <option value="incomplete">Incompletos (&lt;30%)</option>
-                <option value="with_manager">Con Responsable Asignado</option>
-                <option value="without_manager">Sin Responsable</option>
+                <option value="recibida">Recibida</option>
+                <option value="en_revision">En Revisión</option>
+                <option value="correcciones_solicitadas">Correcciones Solicitadas</option>
               </select>
             </div>
 
-            <div className="relative w-full lg:w-72">
+            <div className="relative w-full sm:w-72">
               <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Buscar por club, ciudad o responsable..."
+                placeholder="Buscar por club, solicitante o código..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-9 pr-3 py-2 rounded-xl border border-gray-200 text-xs font-semibold outline-none focus:border-rotary-blue bg-gray-50/50"
@@ -416,364 +483,444 @@ export const RotaryDirectorioClubes: React.FC = () => {
             </div>
           </div>
 
-          {/* Tabla de Clubes */}
           {loading ? (
-            <div className="py-16 text-center text-gray-400 text-xs">
-              <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-rotary-blue" />
-              Cargando directorio de clubes...
+            <div className="bg-white rounded-3xl p-16 text-center border border-gray-100 shadow-sm">
+              <RefreshCw className="w-8 h-8 text-rotary-blue animate-spin mx-auto mb-3" />
+              <p className="text-sm font-bold text-gray-800">Cargando solicitudes activas...</p>
             </div>
-          ) : filteredClubs.length === 0 ? (
-            <div className="py-12 text-center text-gray-400 text-xs">
-              No se encontraron clubes con los filtros seleccionados.
+          ) : pendingSubmissionsList.length === 0 ? (
+            <div className="bg-white rounded-3xl p-16 text-center border border-gray-100 shadow-sm">
+              <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-3" />
+              <h3 className="text-base font-extrabold text-gray-900">Bandeja al día: No hay solicitudes pendientes</h3>
+              <p className="text-xs text-gray-400 mt-1 max-w-md mx-auto">
+                Todos los formularios y solicitudes enviadas por los clubes han sido procesados o no hay solicitudes nuevas en este estado.
+              </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="border-b border-gray-100 text-[10px] font-black uppercase text-gray-400 tracking-wider">
-                    <th className="py-3 px-3">Club y Tipo</th>
-                    <th className="py-3 px-3">Ciudad Sede</th>
-                    <th className="py-3 px-3">Responsable Institucional</th>
-                    <th className="py-3 px-3 text-center">Avance</th>
-                    <th className="py-3 px-3 text-right">Acciones de Captación / CRM</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {filteredClubs.map(club => {
-                    const pct = club.completionPercentage || 0;
-                    const isCompleted = pct >= 80;
-                    return (
-                      <tr key={club.id} className="hover:bg-gray-50/70 transition-colors">
-                        <td className="py-3 px-3">
-                          <div className="font-extrabold text-gray-900 text-sm">
-                            {club.officialName}
-                          </div>
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-gray-100 text-gray-600">
-                              {club.organizationType}
-                            </span>
-                            {club.currentPresident && (
-                              <span className="text-[11px] text-gray-400">
-                                Pres: <strong className="text-gray-700">{club.currentPresident}</strong>
+            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50/60 text-[10px] font-black uppercase tracking-wider text-gray-400">
+                      <th className="py-3.5 px-4">Club Solicitante</th>
+                      <th className="py-3.5 px-4">Responsable / Solicitante</th>
+                      <th className="py-3.5 px-4">Tipo</th>
+                      <th className="py-3.5 px-4">Fecha de Recepción</th>
+                      <th className="py-3.5 px-4">Estado</th>
+                      <th className="py-3.5 px-4 text-right">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 text-xs">
+                    {pendingSubmissionsList.map(sub => (
+                      <tr key={sub.id} className="hover:bg-gray-50/60 transition-colors">
+                        <td className="py-3.5 px-4">
+                          <div>
+                            <span className="font-extrabold text-gray-900 block">{sub.clubName}</span>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span className="font-mono text-[10px] text-rotary-blue bg-blue-50 px-1.5 py-0.5 rounded">
+                                {sub.trackingNumber}
                               </span>
-                            )}
-                          </div>
-                        </td>
-
-                        <td className="py-3 px-3 text-gray-600 font-medium">
-                          {club.city || 'Distrito 4281'}
-                        </td>
-
-                        <td className="py-3 px-3">
-                          {club.primaryManagerEmail ? (
-                            <div>
-                              <div className="font-bold text-gray-800">{club.primaryManagerName || 'Responsable'}</div>
-                              <div className="text-[11px] text-rotary-blue font-mono">{club.primaryManagerEmail}</div>
-                              {club.contactPhone && (
-                                <div className="text-[10px] text-gray-400">{club.contactPhone}</div>
+                              <span className="text-[10px] font-bold text-gray-400 uppercase">
+                                {sub.organizationType}
+                              </span>
+                              {sub.profileId && (
+                                <Link
+                                  to={`/admin/directorio-clubes?clubId=${sub.profileId}`}
+                                  className="text-[10px] font-bold text-purple-600 hover:underline inline-flex items-center gap-0.5"
+                                >
+                                  Ver en Directorio <ArrowUpRight className="w-3 h-3" />
+                                </Link>
                               )}
                             </div>
-                          ) : (
-                            <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                              Sin asignar
-                            </span>
-                          )}
-                        </td>
-
-                        <td className="py-3 px-3 text-center">
-                          <div className="inline-flex flex-col items-center gap-1">
-                            <span className={`font-mono font-black text-xs ${isCompleted ? 'text-emerald-600' : pct >= 40 ? 'text-amber-600' : 'text-rose-600'}`}>
-                              {pct}%
-                            </span>
-                            <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                              <div
-                                className={`h-full ${isCompleted ? 'bg-emerald-500' : pct >= 40 ? 'bg-amber-500' : 'bg-rose-500'}`}
-                                style={{ width: `${pct}%` }}
-                              />
-                            </div>
                           </div>
                         </td>
 
-                        <td className="py-3 px-3 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              onClick={() => handleCopyRegistrationLink(club)}
-                              title="Copiar enlace con UTM para el club"
-                              className="p-1.5 rounded-lg text-gray-400 hover:text-rotary-blue hover:bg-gray-100 transition-colors"
-                            >
-                              <Copy className="w-3.5 h-3.5" />
-                            </button>
+                        <td className="py-3.5 px-4">
+                          <p className="font-bold text-gray-900">{sub.applicantName}</p>
+                          <p className="text-[11px] text-gray-500 font-mono">{sub.applicantEmail}</p>
+                          {sub.applicantPhone && <p className="text-[10px] text-gray-400">{sub.applicantPhone}</p>}
+                        </td>
 
-                            <button
-                              onClick={() => handleOpenComm(club)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rotary-blue/10 hover:bg-rotary-blue hover:text-white text-rotary-blue text-[11px] font-black transition-all"
-                            >
-                              <Send className="w-3 h-3" />
-                              Contactar
-                            </button>
+                        <td className="py-3.5 px-4 text-gray-700 font-medium">
+                          {sub.submissionType === 'create' ? 'Registro inicial' : 'Actualización de datos'}
+                        </td>
 
-                            <Link
-                              to={`/clubes/${club.organizationType}/${club.slug}`}
-                              target="_blank"
-                              title="Ver ficha pública"
-                              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+                        <td className="py-3.5 px-4 text-gray-500 text-[11px]">
+                          {new Date(sub.createdAt).toLocaleDateString()}
+                          <div className="text-[10px] text-gray-400">{new Date(sub.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                        </td>
+
+                        <td className="py-3.5 px-4">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${
+                            sub.status === 'recibida' ? 'bg-amber-100 text-amber-900 border border-amber-200' :
+                            sub.status === 'en_revision' ? 'bg-blue-100 text-blue-900 border border-blue-200' :
+                            'bg-orange-100 text-orange-900 border border-orange-200'
+                          }`}>
+                            <Clock className="w-3 h-3" /> {sub.status.replace('_', ' ')}
+                          </span>
+                        </td>
+
+                        <td className="py-3.5 px-4 text-right">
+                          <div className="inline-flex items-center gap-2">
+                            <button
+                              onClick={() => openCommModalForSub(sub)}
+                              title="Contactar al Solicitante"
+                              className="p-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-all"
                             >
-                              <ExternalLink className="w-3.5 h-3.5" />
-                            </Link>
+                              <Send className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => setSelectedSubmission(sub)}
+                              className="px-3.5 py-1.5 bg-rotary-blue hover:bg-blue-900 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+                            >
+                              Revisar y Validar
+                            </button>
                           </div>
                         </td>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
       )}
 
-      {/* ── 5. SUB-TAB 2: BANDEJA DE SOLICITUDES ───────────────────────── */}
-      {activeSubtab === 'solicitudes' && (
-        <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm space-y-4">
-          <div className="border-b border-gray-100 pb-3">
-            <h3 className="text-base font-extrabold text-gray-900">Solicitudes Institucionales Recibidas</h3>
-            <p className="text-xs text-gray-500">Registros y actualizaciones de perfil remitidos por los clubes.</p>
+      {/* ════════════════════════════════════════════════════════════════
+          PESTAÑA 2: GESTIÓN EN CURSO (BORRADORES ACTIVOS Y ABANDONO)
+         ════════════════════════════════════════════════════════════════ */}
+      {activeSubtab === 'gestion_en_curso' && (
+        <div className="space-y-4">
+          <div className="bg-indigo-50/60 p-4 rounded-2xl border border-indigo-100 flex items-center justify-between text-xs text-indigo-900">
+            <div>
+              <strong>Clubes con Proceso en Curso:</strong> Responsables que iniciaron el formulario unificado de 7 pasos y tienen un borrador activo pendiente de envío.
+            </div>
           </div>
 
-          {submissions.length === 0 ? (
-            <div className="py-12 text-center text-gray-400 text-xs">
-              No hay solicitudes registradas aún.
+          {draftsAndActiveList.length === 0 ? (
+            <div className="bg-white rounded-3xl p-16 text-center border border-gray-100 shadow-sm">
+              <CheckCircle2 className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+              <h3 className="text-base font-extrabold text-gray-900">No hay borradores en curso</h3>
+              <p className="text-xs text-gray-400 mt-1 max-w-md mx-auto">
+                No hay formularios abandonados en este momento. Todos los procesos iniciados fueron enviados o completados.
+              </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="border-b border-gray-100 text-[10px] font-black uppercase text-gray-400 tracking-wider">
-                    <th className="py-3 px-3">Radicado / Club</th>
-                    <th className="py-3 px-3">Tipo Solicitud</th>
-                    <th className="py-3 px-3">Responsable Solicitante</th>
-                    <th className="py-3 px-3">Campaña / UTM</th>
-                    <th className="py-3 px-3 text-center">Estado</th>
-                    <th className="py-3 px-3 text-right">Fecha</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {submissions.map(s => (
-                    <tr key={s.id} className="hover:bg-gray-50/70">
-                      <td className="py-3 px-3">
-                        <span className="font-mono font-bold text-rotary-blue">{s.trackingNumber}</span>
-                        <div className="font-bold text-gray-900 mt-0.5">{s.clubName}</div>
-                      </td>
-                      <td className="py-3 px-3">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-gray-100 text-gray-700">
-                          {s.submissionType === 'update' ? 'Actualización' : 'Registro Inicial'}
-                        </span>
-                      </td>
-                      <td className="py-3 px-3">
-                        <div className="font-bold text-gray-800">{s.applicantName}</div>
-                        <div className="text-[11px] text-gray-500 font-mono">{s.applicantEmail}</div>
-                      </td>
-                      <td className="py-3 px-3 text-[11px] text-gray-500">
-                        {s.utmCampaign || s.utmSource ? (
-                          <span className="px-2 py-0.5 rounded bg-purple-50 text-purple-700 font-bold border border-purple-200">
-                            {s.utmCampaign || s.utmSource}
+            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50/60 text-[10px] font-black uppercase tracking-wider text-gray-400">
+                      <th className="py-3.5 px-4">Club</th>
+                      <th className="py-3.5 px-4">Responsable</th>
+                      <th className="py-3.5 px-4">Paso Alcanzado</th>
+                      <th className="py-3.5 px-4">Última Actividad</th>
+                      <th className="py-3.5 px-4">Campaña / Origen</th>
+                      <th className="py-3.5 px-4 text-right">Acción de Reactivación</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 text-xs">
+                    {draftsAndActiveList.map(draft => {
+                      const step = draft.stepReached || 1;
+                      const stepPct = Math.round((step / 7) * 100);
+
+                      return (
+                        <tr key={draft.id} className="hover:bg-gray-50/60 transition-colors">
+                          <td className="py-3.5 px-4">
+                            <span className="font-extrabold text-gray-900 block">{draft.clubName}</span>
+                            <span className="text-[10px] font-mono text-gray-400">{draft.trackingNumber}</span>
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            <p className="font-bold text-gray-900">{draft.applicantName || 'Responsable en proceso'}</p>
+                            <p className="text-[11px] text-gray-500 font-mono">{draft.applicantEmail}</p>
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            <div className="w-32 space-y-1">
+                              <div className="flex justify-between items-center text-[10px] font-bold">
+                                <span className="text-gray-500">Paso {step} de 7</span>
+                                <span className="text-indigo-600">{stepPct}%</span>
+                              </div>
+                              <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${stepPct}%` }} />
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="py-3.5 px-4 text-gray-500 text-[11px]">
+                            {draft.lastActiveAt ? new Date(draft.lastActiveAt).toLocaleString() : new Date(draft.createdAt).toLocaleDateString()}
+                          </td>
+
+                          <td className="py-3.5 px-4 text-gray-600">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-gray-100 text-gray-700">
+                              {draft.utmSource || 'directo'}
+                            </span>
+                          </td>
+
+                          <td className="py-3.5 px-4 text-right">
+                            <button
+                              onClick={() => openCommModalForSub(draft)}
+                              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs inline-flex items-center gap-1.5"
+                            >
+                              <Send className="w-3.5 h-3.5" /> Enviar Recordatorio
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════
+          PESTAÑA 3: HISTORIAL DE SOLICITUDES (APROBADAS / RECHAZADAS)
+         ════════════════════════════════════════════════════════════════ */}
+      {activeSubtab === 'historial' && (
+        <div className="space-y-4">
+          {historyList.length === 0 ? (
+            <div className="bg-white rounded-3xl p-16 text-center border border-gray-100 shadow-sm">
+              <History className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+              <h3 className="text-base font-extrabold text-gray-900">No hay solicitudes en el historial</h3>
+              <p className="text-xs text-gray-400 mt-1 max-w-md mx-auto">
+                Las solicitudes que hayan sido aprobadas o rechazadas se archivan aquí con trazabilidad completa.
+              </p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50/60 text-[10px] font-black uppercase tracking-wider text-gray-400">
+                      <th className="py-3.5 px-4">Club</th>
+                      <th className="py-3.5 px-4">Solicitante</th>
+                      <th className="py-3.5 px-4">Fecha Resolución</th>
+                      <th className="py-3.5 px-4">Revisor</th>
+                      <th className="py-3.5 px-4">Estado Final</th>
+                      <th className="py-3.5 px-4 text-right">Detalle</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 text-xs">
+                    {historyList.map(item => (
+                      <tr key={item.id} className="hover:bg-gray-50/60 transition-colors">
+                        <td className="py-3.5 px-4">
+                          <span className="font-extrabold text-gray-900 block">{item.clubName}</span>
+                          <span className="text-[10px] font-mono text-gray-400">{item.trackingNumber}</span>
+                        </td>
+
+                        <td className="py-3.5 px-4">
+                          <p className="font-bold text-gray-900">{item.applicantName}</p>
+                          <p className="text-[11px] text-gray-500 font-mono">{item.applicantEmail}</p>
+                        </td>
+
+                        <td className="py-3.5 px-4 text-gray-500 text-[11px]">
+                          {item.reviewedAt ? new Date(item.reviewedAt).toLocaleString() : new Date(item.createdAt).toLocaleDateString()}
+                        </td>
+
+                        <td className="py-3.5 px-4 text-gray-700">
+                          {item.reviewedBy || 'Comité Distrital'}
+                        </td>
+
+                        <td className="py-3.5 px-4">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${
+                            item.status === 'aprobada' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                          }`}>
+                            {item.status === 'aprobada' ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                            {item.status}
                           </span>
-                        ) : (
-                          'Directo / Orgánico'
-                        )}
-                      </td>
-                      <td className="py-3 px-3 text-center">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
-                          s.status === 'aprobada'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : s.status === 'borrador'
-                            ? 'bg-zinc-100 text-zinc-600'
-                            : 'bg-amber-100 text-amber-800'
-                        }`}>
-                          {s.status}
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 text-right text-gray-400 text-[11px]">
-                        {new Date(s.createdAt).toLocaleDateString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                        </td>
+
+                        <td className="py-3.5 px-4 text-right">
+                          <button
+                            onClick={() => setSelectedSubmission(item)}
+                            className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold transition-all"
+                          >
+                            Ver Datos
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
       )}
 
-      {/* ── 6. SUB-TAB 3: BORRADORES Y ABANDONO ───────────────────────── */}
-      {activeSubtab === 'borradores' && (
-        <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm space-y-4">
-          <div className="border-b border-gray-100 pb-3">
-            <h3 className="text-base font-extrabold text-gray-900">Borradores en Curso y Trazabilidad de Abandono</h3>
-            <p className="text-xs text-gray-500">
-              Identifica los clubes que iniciaron el formulario y en qué paso se detuvieron para re-engancharlos con recordatorios automáticos.
-            </p>
-          </div>
-
-          {draftsList.length === 0 ? (
-            <div className="py-12 text-center text-gray-400 text-xs">
-              No hay borradores incompletos pendientes de envío en este momento.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="border-b border-gray-100 text-[10px] font-black uppercase text-gray-400 tracking-wider">
-                    <th className="py-3 px-3">Club</th>
-                    <th className="py-3 px-3">Contacto / Solicitante</th>
-                    <th className="py-3 px-3 text-center">Paso Alcanzado</th>
-                    <th className="py-3 px-3">Última Actividad</th>
-                    <th className="py-3 px-3 text-right">Acción de Recuperación</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {draftsList.map(draft => (
-                    <tr key={draft.id} className="hover:bg-gray-50/70">
-                      <td className="py-3 px-3">
-                        <div className="font-extrabold text-gray-900">{draft.clubName}</div>
-                        <div className="text-[10px] font-mono text-gray-400">{draft.trackingNumber}</div>
-                      </td>
-
-                      <td className="py-3 px-3">
-                        <div className="font-bold text-gray-800">{draft.applicantName || 'Sin registrar'}</div>
-                        <div className="text-[11px] text-gray-500 font-mono">{draft.applicantEmail}</div>
-                      </td>
-
-                      <td className="py-3 px-3 text-center">
-                        <span className="inline-block px-2.5 py-1 rounded-full text-xs font-black bg-sky-50 text-sky-700 border border-sky-200">
-                          Paso {draft.stepReached || 1} de 7
-                        </span>
-                      </td>
-
-                      <td className="py-3 px-3 text-gray-500 text-[11px]">
-                        {draft.lastActiveAt ? new Date(draft.lastActiveAt).toLocaleString() : 'Reciente'}
-                      </td>
-
-                      <td className="py-3 px-3 text-right">
-                        <button
-                          onClick={() => {
-                            const clubMatch = clubs.find(c => c.officialName.toLowerCase().includes(draft.clubName.toLowerCase()));
-                            if (clubMatch) {
-                              setSelectedClubForComm(clubMatch);
-                              setCommTemplateId('borrador_recordatorio');
-                              setCommModalOpen(true);
-                            } else {
-                              toast.info('Iniciando recordatorio...');
-                            }
-                          }}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-black text-[11px] font-black shadow-xs transition-all"
-                        >
-                          <Send className="w-3 h-3" />
-                          Enviar Recordatorio
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── 7. SUB-TAB 4: COMUNICACIONES Y PLANTILLAS ─────────────────── */}
-      {activeSubtab === 'comunicaciones' && (
-        <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm space-y-6">
-          <div className="border-b border-gray-100 pb-3">
-            <h3 className="text-base font-extrabold text-gray-900">Plantillas y Automatizaciones del Directorio</h3>
-            <p className="text-xs text-gray-500">
-              Comunicaciones institucionales prediseñadas para captación, recordatorios y seguimiento con WhatsApp y Email CRM.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* ════════════════════════════════════════════════════════════════
+          PESTAÑA 4: AUTOMATIZACIÓN Y PLANTILLAS
+         ════════════════════════════════════════════════════════════════ */}
+      {activeSubtab === 'automatizacion' && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {plantillas.map(p => (
-              <div key={p.id} className="p-5 rounded-2xl border border-gray-200 bg-gray-50/60 hover:border-rotary-blue transition-all space-y-3 flex flex-col justify-between">
+              <div key={p.id} className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between space-y-4">
                 <div>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-rotary-blue/10 text-rotary-blue">
-                    Plantilla Oficial
+                  <span className="text-[10px] font-black uppercase text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full">
+                    Plantilla Multicanal
                   </span>
-                  <h4 className="text-sm font-extrabold text-gray-900 mt-1">{p.titulo}</h4>
-                  <p className="text-[11px] font-semibold text-gray-600 mt-1">Asunto: "{p.asunto}"</p>
-                  <p className="text-xs text-gray-500 mt-2 line-clamp-3 italic">
-                    "{p.texto(clubs[0] || null)}"
-                  </p>
+                  <h4 className="text-base font-extrabold text-gray-900 mt-2">{p.titulo}</h4>
+                  <p className="text-xs text-gray-500 mt-1">{p.asunto}</p>
                 </div>
 
-                <div className="pt-3 border-t border-gray-200 flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-gray-400">Canal: WhatsApp & Email</span>
-                  <button
-                    onClick={() => {
-                      setCommTemplateId(p.id);
-                      setSelectedClubForComm(clubs[0] || null);
-                      setCommModalOpen(true);
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rotary-blue hover:bg-blue-900 text-white text-xs font-bold shadow-xs transition-all"
-                  >
-                    <Send className="w-3.5 h-3.5" /> Probar / Enviar
-                  </button>
+                <div className="p-3 bg-gray-50 rounded-2xl border border-gray-100 text-xs text-gray-600 line-clamp-4 leading-relaxed font-mono text-[11px]">
+                  {p.mensaje('Club Rotario Ejemplo', 'club-rotario-ejemplo')}
                 </div>
+
+                <button
+                  onClick={() => {
+                    setCommRecipientClub('Club Rotario');
+                    setCommRecipientSlug('club-rotario');
+                    setCommTemplateId(p.id);
+                    setCommModalOpen(true);
+                  }}
+                  className="w-full py-2 bg-rotary-blue hover:bg-blue-900 text-white font-bold rounded-xl text-xs shadow-xs transition-all flex items-center justify-center gap-1.5"
+                >
+                  <Send className="w-3.5 h-3.5" /> Usar esta Plantilla
+                </button>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* ── MODAL DE ENVÍO DE COMUNICACIONES (EMAIL / WHATSAPP) ────────── */}
-      {commModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-gray-100 space-y-4">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+      {/* ════════════════════════════════════════════════════════════════
+          MODAL DE REVISIÓN Y APROBACIÓN DE SOLICITUD
+         ════════════════════════════════════════════════════════════════ */}
+      {selectedSubmission && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-100 p-6 sm:p-8 space-y-6">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-4">
               <div>
-                <span className="text-[10px] font-black uppercase text-rotary-blue bg-blue-50 px-2 py-0.5 rounded-full">
-                  Rotary en Acción · CRM
-                </span>
-                <h3 className="text-lg font-black text-gray-900 mt-1">
-                  Enviar Comunicación: {selectedClubForComm?.shortName || 'Club'}
-                </h3>
+                <span className="text-xs font-mono font-bold text-rotary-blue">{selectedSubmission.trackingNumber}</span>
+                <h3 className="text-xl font-extrabold text-gray-900">{selectedSubmission.clubName}</h3>
               </div>
-              <button
-                onClick={() => setCommModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600 p-1"
-              >
+              <button onClick={() => setSelectedSubmission(null)} className="p-2 text-gray-400 hover:text-gray-700 rounded-full">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Selector de Canal: WhatsApp vs Email */}
-            <div className="flex border-b border-gray-100 pb-2 gap-2">
+            <div className="space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                <div>
+                  <span className="text-gray-400 uppercase font-black text-[10px]">Solicitante</span>
+                  <p className="font-bold text-gray-900 mt-0.5">{selectedSubmission.applicantName}</p>
+                  <p className="text-gray-500">{selectedSubmission.applicantEmail}</p>
+                </div>
+                <div>
+                  <span className="text-gray-400 uppercase font-black text-[10px]">Teléfono / Rol</span>
+                  <p className="font-bold text-gray-900 mt-0.5">{selectedSubmission.applicantRole || 'Representante'}</p>
+                  <p className="text-gray-500">{selectedSubmission.applicantPhone || 'Sin teléfono'}</p>
+                </div>
+              </div>
+
+              <div>
+                <span className="text-gray-400 uppercase font-black text-[10px] block mb-2">Datos Enviados en la Solicitud</span>
+                <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 max-h-56 overflow-y-auto font-mono text-[11px] text-gray-700">
+                  <pre className="whitespace-pre-wrap">{JSON.stringify(selectedSubmission.payload, null, 2)}</pre>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-gray-700 font-bold mb-1">Comentarios / Observaciones para el Club</label>
+                <textarea
+                  rows={3}
+                  value={reviewFeedback}
+                  onChange={(e) => setReviewFeedback(e.target.value)}
+                  placeholder="Instrucciones o motivos de la aprobación / corrección..."
+                  className="w-full p-3 rounded-2xl border border-gray-200 text-xs outline-none focus:border-rotary-blue"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
               <button
-                onClick={() => setCommChannel('whatsapp')}
-                className={`flex-1 py-2 text-xs font-black uppercase rounded-xl transition-all ${
-                  commChannel === 'whatsapp' ? 'bg-emerald-600 text-white shadow-xs' : 'text-gray-500 hover:bg-gray-100'
-                }`}
+                onClick={() => setSelectedSubmission(null)}
+                className="px-4 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-xs font-bold hover:bg-gray-50 transition-all"
               >
-                WhatsApp CRM
+                Cerrar
               </button>
-              <button
-                onClick={() => setCommChannel('email')}
-                className={`flex-1 py-2 text-xs font-black uppercase rounded-xl transition-all ${
-                  commChannel === 'email' ? 'bg-rotary-blue text-white shadow-xs' : 'text-gray-500 hover:bg-gray-100'
-                }`}
-              >
-                Correo Electrónico
+              {selectedSubmission.status !== 'rechazada' && (
+                <button
+                  disabled={isReviewing}
+                  onClick={() => handleReview(selectedSubmission.id, 'reject')}
+                  className="px-4 py-2.5 rounded-xl bg-rose-50 text-rose-700 hover:bg-rose-100 text-xs font-bold transition-all disabled:opacity-50"
+                >
+                  Rechazar
+                </button>
+              )}
+              {selectedSubmission.status !== 'correcciones_solicitadas' && (
+                <button
+                  disabled={isReviewing}
+                  onClick={() => handleReview(selectedSubmission.id, 'request_changes')}
+                  className="px-4 py-2.5 rounded-xl bg-amber-50 text-amber-800 hover:bg-amber-100 text-xs font-bold transition-all disabled:opacity-50"
+                >
+                  Solicitar Correcciones
+                </button>
+              )}
+              {selectedSubmission.status !== 'aprobada' && (
+                <button
+                  disabled={isReviewing}
+                  onClick={() => handleReview(selectedSubmission.id, 'approve')}
+                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-md transition-all disabled:opacity-50"
+                >
+                  {isReviewing ? 'Aprobando...' : 'Aprobar y Publicar'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════
+          MODAL DE COMUNICACIONES CRM
+         ════════════════════════════════════════════════════════════════ */}
+      {commModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-gray-100 space-y-4">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <div>
+                <span className="text-[10px] font-black uppercase text-purple-700">Rotary en Acción · CRM</span>
+                <h3 className="text-lg font-black text-gray-900 mt-0.5">Contactar a: {commRecipientClub}</h3>
+              </div>
+              <button onClick={() => setCommModalOpen(false)} className="text-gray-400 hover:text-gray-600 p-1">
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Selector de Plantilla */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setCommChannel('whatsapp')}
+                className={`py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                  commChannel === 'whatsapp' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-gray-100 text-gray-600'
+                }`}
+              >
+                WhatsApp Directo
+              </button>
+              <button
+                type="button"
+                onClick={() => setCommChannel('email')}
+                className={`py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                  commChannel === 'email' ? 'bg-rotary-blue text-white shadow-xs' : 'bg-gray-100 text-gray-600'
+                }`}
+              >
+                Correo Institucional
+              </button>
+            </div>
+
             <div>
-              <label className="block text-[11px] font-bold text-gray-700 uppercase mb-1">
-                Plantilla Seleccionada
-              </label>
+              <label className="block text-[10px] font-black uppercase text-gray-400 mb-1">Plantilla de Mensaje</label>
               <select
                 value={commTemplateId}
                 onChange={(e) => setCommTemplateId(e.target.value)}
-                className="w-full p-2.5 rounded-xl border border-gray-200 text-xs font-bold outline-none bg-white"
+                className="w-full p-2.5 rounded-xl border border-gray-200 text-xs font-bold text-gray-800 outline-none focus:border-rotary-blue"
               >
                 {plantillas.map(p => (
                   <option key={p.id} value={p.id}>{p.titulo}</option>
@@ -781,78 +928,64 @@ export const RotaryDirectorioClubes: React.FC = () => {
               </select>
             </div>
 
-            {/* Destinatario */}
             {commChannel === 'whatsapp' ? (
               <div>
-                <label className="block text-[11px] font-bold text-gray-700 uppercase mb-1">
-                  Número de Teléfono / WhatsApp Destino
-                </label>
+                <label className="block text-[10px] font-black uppercase text-gray-400 mb-1">Teléfono WhatsApp</label>
                 <input
-                  type="tel"
-                  placeholder="+57 312 456 7890"
-                  value={recipientPhone}
-                  onChange={(e) => setRecipientPhone(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-gray-200 text-xs font-bold outline-none"
+                  type="text"
+                  value={commRecipientPhone}
+                  onChange={(e) => setCommRecipientPhone(e.target.value)}
+                  placeholder="+57300..."
+                  className="w-full p-2.5 rounded-xl border border-gray-200 text-xs font-semibold outline-none focus:border-rotary-blue"
                 />
               </div>
             ) : (
               <div>
-                <label className="block text-[11px] font-bold text-gray-700 uppercase mb-1">
-                  Correo Electrónico Destino
-                </label>
+                <label className="block text-[10px] font-black uppercase text-gray-400 mb-1">Correo Electrónico</label>
                 <input
                   type="email"
-                  placeholder="presidente@club.org"
-                  value={recipientEmail}
-                  onChange={(e) => setRecipientEmail(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-gray-200 text-xs font-bold outline-none"
+                  value={commRecipientEmail}
+                  onChange={(e) => setCommRecipientEmail(e.target.value)}
+                  placeholder="socio@rotary4281.org"
+                  className="w-full p-2.5 rounded-xl border border-gray-200 text-xs font-semibold outline-none focus:border-rotary-blue"
                 />
               </div>
             )}
 
-            {/* Vista Previa del Mensaje */}
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-[11px] font-bold text-gray-700 uppercase">
-                  Vista Previa con Variables
-                </label>
-                <button
-                  type="button"
-                  onClick={handleCopyMessage}
-                  className="text-[10px] text-rotary-blue font-bold hover:underline inline-flex items-center gap-1"
-                >
-                  <Copy className="w-3 h-3" /> Copiar Texto
-                </button>
+              <label className="block text-[10px] font-black uppercase text-gray-400 mb-1">Vista Previa</label>
+              <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 text-xs text-gray-700 whitespace-pre-line max-h-48 overflow-y-auto leading-relaxed">
+                {renderedMessage}
               </div>
-              <textarea
-                readOnly
-                rows={5}
-                value={currentTemplate.texto(selectedClubForComm)}
-                className="w-full p-3 rounded-xl border border-gray-200 bg-gray-50 text-xs font-mono text-gray-700 outline-none"
-              />
             </div>
 
-            {/* Botonera de Envío */}
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
               <button
-                onClick={() => setCommModalOpen(false)}
-                className="px-4 py-2 rounded-xl text-gray-600 hover:bg-gray-100 text-xs font-bold"
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(renderedMessage);
+                  toast.success('Mensaje copiado al portapapeles');
+                }}
+                className="px-3.5 py-2 rounded-xl border border-gray-200 text-gray-600 text-xs font-bold hover:bg-gray-50 transition-all flex items-center gap-1.5"
               >
-                Cancelar
+                <Copy className="w-3.5 h-3.5" /> Copiar Texto
               </button>
+
               {commChannel === 'whatsapp' ? (
                 <button
+                  type="button"
                   onClick={handleSendWhatsApp}
-                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-md inline-flex items-center gap-1.5"
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-md transition-all flex items-center gap-1.5"
                 >
-                  <MessageSquare className="w-4 h-4" /> Enviar por WhatsApp
+                  <Send className="w-3.5 h-3.5" /> Abrir WhatsApp
                 </button>
               ) : (
                 <button
+                  type="button"
                   onClick={handleSendEmail}
-                  className="px-5 py-2.5 rounded-xl bg-rotary-blue hover:bg-blue-900 text-white text-xs font-black shadow-md inline-flex items-center gap-1.5"
+                  className="px-5 py-2 rounded-xl bg-rotary-blue hover:bg-blue-900 text-white text-xs font-black shadow-md transition-all flex items-center gap-1.5"
                 >
-                  <Mail className="w-4 h-4" /> Enviar por Correo
+                  <Mail className="w-3.5 h-3.5" /> Abrir Correo
                 </button>
               )}
             </div>

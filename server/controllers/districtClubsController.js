@@ -510,49 +510,94 @@ export const getAdminClubList = async (req, res) => {
     const distNum = Number(req.query.district) || 4281;
     const type = req.query.type || 'all';
     const status = req.query.status || 'all';
+    const activity = req.query.activity || 'all';
     const q = req.query.q ? norm(req.query.q) : '';
 
-    let where = `WHERE "districtNumber" = $1`;
+    let where = `WHERE p."districtNumber" = $1`;
     const params = [distNum];
     let pIdx = 2;
 
     if (type !== 'all') {
-      where += ` AND "organizationType" = $${pIdx}`;
+      where += ` AND p."organizationType" = $${pIdx}`;
       params.push(type);
       pIdx++;
     }
 
     if (status !== 'all') {
-      where += ` AND status = $${pIdx}`;
+      where += ` AND p.status = $${pIdx}`;
       params.push(status);
       pIdx++;
     }
 
     const { rows: clubs } = await db.query(
       `SELECT 
-        id, "clubId", "districtNumber", "organizationType", "officialName", "shortName",
-        slug, city, state, country, "foundationYear", "currentPresident", "rotaryPeriod",
-        "completionPercentage", status, "lastUpdatedPeriod", "logoUrl", "coverImageUrl",
-        "contactEmail", "contactPhone", "websiteUrl", "primaryManagerEmail", "primaryManagerName",
-        "pendingProtectedChanges", "publishedAt", "updatedAt"
-       FROM "DistrictClubProfile"
+        p.id, p."clubId", p."districtNumber", p."organizationType", p."officialName", p."shortName",
+        p.slug, p.city, p.state, p.country, p."foundationYear", p."currentPresident", p."rotaryPeriod",
+        p."completionPercentage", p.status, p."lastUpdatedPeriod", p."logoUrl", p."coverImageUrl",
+        p."contactEmail", p."contactPhone", p."websiteUrl", p."primaryManagerEmail", p."primaryManagerName",
+        p."primaryManagerPhone", p."pendingProtectedChanges", p."publishedAt", p."updatedAt",
+        COALESCE(SUM(CASE WHEN s.status != 'borrador' THEN 1 ELSE 0 END), 0)::int as "submissionsCount",
+        COALESCE(SUM(CASE WHEN s.status IN ('recibida', 'en_revision', 'correcciones_solicitadas') THEN 1 ELSE 0 END), 0)::int as "pendingSubmissionsCount",
+        COALESCE(SUM(CASE WHEN s.status = 'borrador' THEN 1 ELSE 0 END), 0)::int as "draftsCount",
+        MAX(s."lastActiveAt") as "lastSubmissionActivity"
+       FROM "DistrictClubProfile" p
+       LEFT JOIN "DistrictClubSubmission" s ON s."profileId" = p.id OR lower(s."clubName") = lower(p."officialName")
        ${where}
-       ORDER BY "officialName" ASC`,
+       GROUP BY p.id
+       ORDER BY p."officialName" ASC`,
       params
     );
 
-    let filtered = clubs;
+    const enriched = clubs.map(c => {
+      let rotaryActivityStatus = 'sin_iniciar';
+      if (c.pendingSubmissionsCount > 0) rotaryActivityStatus = 'solicitud_pendiente';
+      else if (c.draftsCount > 0) rotaryActivityStatus = 'borrador_en_curso';
+      else if (c.submissionsCount > 0) rotaryActivityStatus = 'actualizado';
+
+      return {
+        ...c,
+        rotaryActivityStatus
+      };
+    });
+
+    let filtered = enriched;
+    if (activity !== 'all') {
+      filtered = filtered.filter(c => c.rotaryActivityStatus === activity);
+    }
     if (q) {
-      filtered = clubs.filter(c => {
-        const text = `${norm(c.officialName)} ${norm(c.shortName)} ${norm(c.city)} ${norm(c.state)} ${norm(c.currentPresident)}`;
+      filtered = filtered.filter(c => {
+        const text = `${norm(c.officialName)} ${norm(c.shortName)} ${norm(c.city)} ${norm(c.state)} ${norm(c.currentPresident)} ${norm(c.primaryManagerName || '')}`;
         return text.includes(q);
       });
     }
 
+    const total = enriched.length;
+    const published = enriched.filter(c => c.status === 'published').length;
+    const drafts = enriched.filter(c => c.status === 'draft').length;
+    const incomplete = enriched.filter(c => (c.completionPercentage || 0) < 30).length;
+    const completed = enriched.filter(c => (c.completionPercentage || 0) >= 80).length;
+    const inProgress = enriched.filter(c => (c.completionPercentage || 0) >= 30 && (c.completionPercentage || 0) < 80).length;
+    const withManager = enriched.filter(c => !!c.primaryManagerEmail).length;
+    const pendingUpdates = enriched.filter(c => c.pendingSubmissionsCount > 0 || !!c.pendingProtectedChanges).length;
+    const activeInRotary = enriched.filter(c => c.rotaryActivityStatus !== 'sin_iniciar').length;
+    const avgCompletion = total > 0 ? Math.round(enriched.reduce((acc, c) => acc + (c.completionPercentage || 0), 0) / total) : 0;
+
     res.json({
       ok: true,
       clubs: filtered,
-      total: filtered.length
+      total: filtered.length,
+      stats: {
+        total,
+        published,
+        drafts,
+        incomplete,
+        completed,
+        inProgress,
+        withManager,
+        pendingUpdates,
+        activeInRotary,
+        avgCompletion
+      }
     });
   } catch (e) {
     fail(res, e);
@@ -565,21 +610,34 @@ export const getAdminSubmissions = async (req, res) => {
     await ensureDistrictClubDirectorySchema();
     const distNum = Number(req.query.district) || 4281;
     const status = req.query.status || 'all';
+    const includeDrafts = req.query.includeDrafts === 'true';
 
-    let where = `WHERE "districtNumber" = $1 AND status != 'borrador'`;
+    let where = `WHERE s."districtNumber" = $1`;
     const params = [distNum];
     let pIdx = 2;
 
-    if (status !== 'all') {
-      where += ` AND status = $${pIdx}`;
+    if (status === 'borrador') {
+      where += ` AND s.status = 'borrador'`;
+    } else if (status !== 'all') {
+      where += ` AND s.status = $${pIdx}`;
       params.push(status);
       pIdx++;
+    } else if (!includeDrafts) {
+      where += ` AND s.status != 'borrador'`;
     }
 
     const { rows: submissions } = await db.query(
-      `SELECT * FROM "DistrictClubSubmission"
+      `SELECT s.*, 
+              p.slug as "profileSlug", 
+              p.city as "profileCity", 
+              p."completionPercentage" as "profileCompletionPercentage",
+              p.status as "profileStatus",
+              p."primaryManagerEmail",
+              p."primaryManagerName"
+       FROM "DistrictClubSubmission" s
+       LEFT JOIN "DistrictClubProfile" p ON p.id = s."profileId" OR lower(p."officialName") = lower(s."clubName")
        ${where}
-       ORDER BY "createdAt" DESC`,
+       ORDER BY s."updatedAt" DESC, s."createdAt" DESC`,
       params
     );
 
@@ -587,6 +645,49 @@ export const getAdminSubmissions = async (req, res) => {
       ok: true,
       submissions,
       total: submissions.length
+    });
+  } catch (e) {
+    fail(res, e);
+  }
+};
+
+// ─── 7b. GET /api/district-clubs/admin/club/:id (ADMIN) ──────────────────────
+export const getAdminClubDetail = async (req, res) => {
+  try {
+    await ensureDistrictClubDirectorySchema();
+    const { id } = req.params;
+
+    const { rows: profiles } = await db.query(
+      `SELECT * FROM "DistrictClubProfile" WHERE id = $1 LIMIT 1`,
+      [id]
+    );
+
+    if (profiles.length === 0) {
+      return res.status(404).json({ error: 'Club no encontrado' });
+    }
+
+    const club = profiles[0];
+
+    const { rows: submissions } = await db.query(
+      `SELECT * FROM "DistrictClubSubmission" 
+       WHERE "profileId" = $1 OR lower("clubName") = lower($2)
+       ORDER BY "updatedAt" DESC`,
+      [club.id, club.officialName]
+    );
+
+    const { rows: accounts } = await db.query(
+      `SELECT id, email, "fullName", phone, role, "isVerified", "lastLoginAt", "createdAt" 
+       FROM "DistrictClubAccount" 
+       WHERE "clubProfileId" = $1 OR lower(email) = lower($2)
+       ORDER BY "createdAt" DESC`,
+      [club.id, club.primaryManagerEmail || '']
+    );
+
+    res.json({
+      ok: true,
+      club,
+      submissions,
+      accounts
     });
   } catch (e) {
     fail(res, e);
