@@ -57,6 +57,10 @@ interface SubmissionItem {
   profileStatus?: string;
   primaryManagerEmail?: string;
   primaryManagerName?: string;
+  clubIgi?: number;
+  clubIgiLevel?: string;
+  clubIgiLabel?: string;
+  clubIgiBadgeColor?: string;
 }
 
 export const RotaryDirectorioClubes: React.FC = () => {
@@ -523,6 +527,19 @@ export const RotaryDirectorioClubes: React.FC = () => {
                               <span className="text-[10px] font-bold text-gray-400 uppercase">
                                 {sub.organizationType}
                               </span>
+                              {sub.clubIgi !== undefined && (
+                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase border ${
+                                  sub.clubIgiLevel === 'lider'
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                    : sub.clubIgiLevel === 'activo'
+                                    ? 'bg-blue-50 text-blue-800 border-blue-200'
+                                    : sub.clubIgiLevel === 'en_seguimiento'
+                                    ? 'bg-amber-50 text-amber-900 border-amber-200'
+                                    : 'bg-rose-50 text-rose-800 border-rose-200'
+                                }`}>
+                                  IGI {sub.clubIgi} · {sub.clubIgiLabel || 'En seguimiento'}
+                                </span>
+                              )}
                               {sub.profileId && (
                                 <Link
                                   to={`/admin/directorio-clubes?clubId=${sub.profileId}`}
@@ -629,7 +646,22 @@ export const RotaryDirectorioClubes: React.FC = () => {
                         <tr key={draft.id} className="hover:bg-gray-50/60 transition-colors">
                           <td className="py-3.5 px-4">
                             <span className="font-extrabold text-gray-900 block">{draft.clubName}</span>
-                            <span className="text-[10px] font-mono text-gray-400">{draft.trackingNumber}</span>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span className="text-[10px] font-mono text-gray-400">{draft.trackingNumber}</span>
+                              {draft.clubIgi !== undefined && (
+                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase border ${
+                                  draft.clubIgiLevel === 'lider'
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                    : draft.clubIgiLevel === 'activo'
+                                    ? 'bg-blue-50 text-blue-800 border-blue-200'
+                                    : draft.clubIgiLevel === 'en_seguimiento'
+                                    ? 'bg-amber-50 text-amber-900 border-amber-200'
+                                    : 'bg-rose-50 text-rose-800 border-rose-200'
+                                }`}>
+                                  IGI {draft.clubIgi}
+                                </span>
+                              )}
+                            </div>
                           </td>
 
                           <td className="py-3.5 px-4">

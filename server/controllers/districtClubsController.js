@@ -10,7 +10,8 @@ import db from '../lib/db.js';
 import {
   ensureDistrictClubDirectorySchema,
   slugifyClub,
-  calculateProfileCompletion
+  calculateProfileCompletion,
+  calculateIGI
 } from '../lib/ensureDistrictClubDirectorySchema.js';
 import { CLUBS_4281, CLUBS_BY_DISTRICT_NUMBER, districtNumberOf } from '../lib/rotaryClubs.js';
 import { norm, clubDisplayName } from '../lib/publicClubs.js';
@@ -554,9 +555,16 @@ export const getAdminClubList = async (req, res) => {
       else if (c.draftsCount > 0) rotaryActivityStatus = 'borrador_en_curso';
       else if (c.submissionsCount > 0) rotaryActivityStatus = 'actualizado';
 
+      const igi = calculateIGI(c);
+
       return {
         ...c,
-        rotaryActivityStatus
+        rotaryActivityStatus,
+        igi: igi.score,
+        igiLevel: igi.level,
+        igiLevelLabel: igi.levelLabel,
+        igiBadgeColor: igi.badgeColor,
+        igiData: igi
       };
     });
 
@@ -581,6 +589,11 @@ export const getAdminClubList = async (req, res) => {
     const pendingUpdates = enriched.filter(c => c.pendingSubmissionsCount > 0 || !!c.pendingProtectedChanges).length;
     const activeInRotary = enriched.filter(c => c.rotaryActivityStatus !== 'sin_iniciar').length;
     const avgCompletion = total > 0 ? Math.round(enriched.reduce((acc, c) => acc + (c.completionPercentage || 0), 0) / total) : 0;
+    const avgIGI = total > 0 ? Math.round(enriched.reduce((acc, c) => acc + (c.igi || 0), 0) / total) : 0;
+    const igiLideres = enriched.filter(c => (c.igi || 0) >= 80).length;
+    const igiActivos = enriched.filter(c => (c.igi || 0) >= 60 && (c.igi || 0) < 80).length;
+    const igiSeguimiento = enriched.filter(c => (c.igi || 0) >= 40 && (c.igi || 0) < 60).length;
+    const igiCriticos = enriched.filter(c => (c.igi || 0) < 40).length;
 
     res.json({
       ok: true,
@@ -596,7 +609,12 @@ export const getAdminClubList = async (req, res) => {
         withManager,
         pendingUpdates,
         activeInRotary,
-        avgCompletion
+        avgCompletion,
+        avgIGI,
+        igiLideres,
+        igiActivos,
+        igiSeguimiento,
+        igiCriticos
       }
     });
   } catch (e) {
@@ -633,7 +651,13 @@ export const getAdminSubmissions = async (req, res) => {
               p."completionPercentage" as "profileCompletionPercentage",
               p.status as "profileStatus",
               p."primaryManagerEmail",
-              p."primaryManagerName"
+              p."primaryManagerName",
+              p."primaryManagerPhone",
+              p."contactPhone",
+              p."rotaryPeriod" as "profileRotaryPeriod",
+              p."lastUpdatedPeriod" as "profileLastUpdatedPeriod",
+              p."updatedAt" as "profileUpdatedAt",
+              p."pendingProtectedChanges" as "profilePendingProtectedChanges"
        FROM "DistrictClubSubmission" s
        LEFT JOIN "DistrictClubProfile" p ON p.id = s."profileId" OR lower(p."officialName") = lower(s."clubName")
        ${where}
@@ -641,10 +665,33 @@ export const getAdminSubmissions = async (req, res) => {
       params
     );
 
+    const enriched = submissions.map(s => {
+      const pseudoClub = {
+        completionPercentage: s.profileCompletionPercentage,
+        rotaryPeriod: s.profileRotaryPeriod,
+        lastUpdatedPeriod: s.profileLastUpdatedPeriod,
+        updatedAt: s.profileUpdatedAt,
+        primaryManagerEmail: s.primaryManagerEmail,
+        primaryManagerName: s.primaryManagerName,
+        primaryManagerPhone: s.primaryManagerPhone,
+        contactPhone: s.contactPhone,
+        submissionsCount: 1,
+        pendingProtectedChanges: s.profilePendingProtectedChanges
+      };
+      const igi = calculateIGI(pseudoClub);
+      return {
+        ...s,
+        clubIgi: igi.score,
+        clubIgiLevel: igi.level,
+        clubIgiLabel: igi.levelLabel,
+        clubIgiBadgeColor: igi.badgeColor
+      };
+    });
+
     res.json({
       ok: true,
-      submissions,
-      total: submissions.length
+      submissions: enriched,
+      total: enriched.length
     });
   } catch (e) {
     fail(res, e);
@@ -683,9 +730,18 @@ export const getAdminClubDetail = async (req, res) => {
       [club.id, club.primaryManagerEmail || '']
     );
 
+    const igi = calculateIGI(club, submissions);
+
     res.json({
       ok: true,
-      club,
+      club: {
+        ...club,
+        igi: igi.score,
+        igiLevel: igi.level,
+        igiLevelLabel: igi.levelLabel,
+        igiBadgeColor: igi.badgeColor,
+        igiData: igi
+      },
       submissions,
       accounts
     });

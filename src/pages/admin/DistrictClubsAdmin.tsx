@@ -60,6 +60,11 @@ export interface AdminClubProfile {
   auditLog?: any[];
   publishedAt?: string;
   updatedAt?: string;
+  igi?: number;
+  igiLevel?: 'lider' | 'activo' | 'en_seguimiento' | 'critico';
+  igiLevelLabel?: string;
+  igiBadgeColor?: string;
+  igiData?: any;
 }
 
 export interface AdminSubmission {
@@ -85,6 +90,10 @@ export interface AdminSubmission {
   utmCampaign?: string;
   lastActiveAt?: string;
   createdAt: string;
+  clubIgi?: number;
+  clubIgiLevel?: string;
+  clubIgiLabel?: string;
+  clubIgiBadgeColor?: string;
 }
 
 export const DistrictClubsAdmin: React.FC = () => {
@@ -104,7 +113,12 @@ export const DistrictClubsAdmin: React.FC = () => {
     withManager: 0,
     pendingUpdates: 0,
     activeInRotary: 0,
-    avgCompletion: 0
+    avgCompletion: 0,
+    avgIGI: 0,
+    igiLideres: 0,
+    igiActivos: 0,
+    igiSeguimiento: 0,
+    igiCriticos: 0
   });
   const [loading, setLoading] = useState(true);
 
@@ -114,6 +128,7 @@ export const DistrictClubsAdmin: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'all' | 'published' | 'draft' | 'incomplete' | 'completed' | 'in_progress'>('all');
   const [activityFilter, setActivityFilter] = useState<'all' | 'sin_iniciar' | 'borrador_en_curso' | 'solicitud_pendiente' | 'actualizado'>('all');
   const [managerFilter, setManagerFilter] = useState<'all' | 'with_manager' | 'without_manager'>('all');
+  const [igiFilter, setIgiFilter] = useState<'all' | 'lider' | 'activo' | 'en_seguimiento' | 'critico'>('all');
 
   // Filtros de Solicitudes
   const [submissionStatusFilter, setSubmissionStatusFilter] = useState<string>('all');
@@ -122,7 +137,7 @@ export const DistrictClubsAdmin: React.FC = () => {
   const [detailClub, setDetailClub] = useState<AdminClubProfile | null>(null);
   const [detailFullData, setDetailFullData] = useState<any | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
-  const [detailTab, setDetailTab] = useState<'identidad' | 'liderazgo' | 'completitud' | 'rotary_accion' | 'auditoria'>('identidad');
+  const [detailTab, setDetailTab] = useState<'identidad' | 'liderazgo' | 'completitud' | 'igi' | 'rotary_accion' | 'auditoria'>('identidad');
 
   const [selectedSubmission, setSelectedSubmission] = useState<AdminSubmission | null>(null);
   const [editingProfile, setEditingProfile] = useState<AdminClubProfile | null>(null);
@@ -259,6 +274,8 @@ export const DistrictClubsAdmin: React.FC = () => {
       if (managerFilter === 'with_manager' && !c.primaryManagerEmail) return false;
       if (managerFilter === 'without_manager' && c.primaryManagerEmail) return false;
 
+      if (igiFilter !== 'all' && c.igiLevel !== igiFilter) return false;
+
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         const text = `${c.officialName} ${c.shortName} ${c.city || ''} ${c.state || ''} ${c.currentPresident || ''} ${c.primaryManagerName || ''} ${c.primaryManagerEmail || ''}`.toLowerCase();
@@ -266,7 +283,7 @@ export const DistrictClubsAdmin: React.FC = () => {
       }
       return true;
     });
-  }, [clubs, typeFilter, statusFilter, activityFilter, managerFilter, searchQuery]);
+  }, [clubs, typeFilter, statusFilter, activityFilter, managerFilter, igiFilter, searchQuery]);
 
   // Filtrado de Solicitudes
   const filteredSubmissions = useMemo(() => {
@@ -544,6 +561,108 @@ export const DistrictClubsAdmin: React.FC = () => {
           </div>
         </div>
 
+        {/* ── 1b. CENTRO DE INTELIGENCIA INSTITUCIONAL DEL DISTRITO 4281 (IGI) ── */}
+        <div className="bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 text-white rounded-3xl p-5 sm:p-6 shadow-lg border border-blue-900/40 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+            <div className="space-y-1.5 max-w-xl">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 text-blue-300 text-[10px] font-black uppercase tracking-wider border border-blue-400/30">
+                <Sparkles className="w-3 h-3 text-amber-400" />
+                Centro de Inteligencia Institucional · Distrito 4281
+              </div>
+              <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                Índice de Gestión Institucional (IGI)
+              </h2>
+              <p className="text-xs text-blue-200/80 leading-relaxed">
+                Diferencia la completitud estática de la participación activa y gobernanza periódica. El Directorio es la fuente de verdad institucional y Rotary en Acción el motor de seguimiento.
+              </p>
+            </div>
+
+            {/* Score Promedio Distrital */}
+            <div className="flex items-center gap-4 bg-white/5 backdrop-blur-md px-5 py-3.5 rounded-2xl border border-white/10 shrink-0">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-blue-300 block">IGI Promedio Distrital</span>
+                <div className="flex items-baseline gap-1 mt-0.5">
+                  <span className="text-3xl font-black text-white">{stats.avgIGI || 0}</span>
+                  <span className="text-xs text-blue-300 font-bold">/ 100 pts</span>
+                </div>
+                <p className="text-[10px] text-blue-200/70">{stats.total || clubs.length} Clubes Evaluados</p>
+              </div>
+              <div className="w-14 h-14 rounded-2xl bg-blue-600/20 border border-blue-400/30 flex items-center justify-center">
+                <Award className="w-7 h-7 text-amber-400" />
+              </div>
+            </div>
+          </div>
+
+          {/* Pilares y Filtros rápidos de Nivel IGI */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mt-5 pt-5 border-t border-white/10 relative z-10">
+            <button
+              onClick={() => setIgiFilter(igiFilter === 'lider' ? 'all' : 'lider')}
+              className={`p-3 rounded-2xl border text-left transition-all ${
+                igiFilter === 'lider'
+                  ? 'bg-emerald-500/20 border-emerald-400 shadow-md ring-1 ring-emerald-400'
+                  : 'bg-white/5 border-white/10 hover:bg-white/10'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400">Líder Institucional</span>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/30 text-emerald-300 text-[10px] font-black">&ge;80 pts</span>
+              </div>
+              <p className="text-xl font-black text-white mt-1">{stats.igiLideres || 0} <span className="text-xs font-normal text-emerald-300">clubes</span></p>
+              <p className="text-[10px] text-emerald-200/60 mt-0.5">Perfil completo y al día</p>
+            </button>
+
+            <button
+              onClick={() => setIgiFilter(igiFilter === 'activo' ? 'all' : 'activo')}
+              className={`p-3 rounded-2xl border text-left transition-all ${
+                igiFilter === 'activo'
+                  ? 'bg-blue-500/20 border-blue-400 shadow-md ring-1 ring-blue-400'
+                  : 'bg-white/5 border-white/10 hover:bg-white/10'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase tracking-wider text-blue-400">Gestión Activa</span>
+                <span className="px-2 py-0.5 rounded-full bg-blue-500/30 text-blue-300 text-[10px] font-black">60–79 pts</span>
+              </div>
+              <p className="text-xl font-black text-white mt-1">{stats.igiActivos || 0} <span className="text-xs font-normal text-blue-300">clubes</span></p>
+              <p className="text-[10px] text-blue-200/60 mt-0.5">Participación recurrente</p>
+            </button>
+
+            <button
+              onClick={() => setIgiFilter(igiFilter === 'en_seguimiento' ? 'all' : 'en_seguimiento')}
+              className={`p-3 rounded-2xl border text-left transition-all ${
+                igiFilter === 'en_seguimiento'
+                  ? 'bg-amber-500/20 border-amber-400 shadow-md ring-1 ring-amber-400'
+                  : 'bg-white/5 border-white/10 hover:bg-white/10'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase tracking-wider text-amber-400">En Seguimiento</span>
+                <span className="px-2 py-0.5 rounded-full bg-amber-500/30 text-amber-300 text-[10px] font-black">40–59 pts</span>
+              </div>
+              <p className="text-xl font-black text-white mt-1">{stats.igiSeguimiento || 0} <span className="text-xs font-normal text-amber-300">clubes</span></p>
+              <p className="text-[10px] text-amber-200/60 mt-0.5">Requiere recordatorios</p>
+            </button>
+
+            <button
+              onClick={() => setIgiFilter(igiFilter === 'critico' ? 'all' : 'critico')}
+              className={`p-3 rounded-2xl border text-left transition-all ${
+                igiFilter === 'critico'
+                  ? 'bg-rose-500/20 border-rose-400 shadow-md ring-1 ring-rose-400'
+                  : 'bg-white/5 border-white/10 hover:bg-white/10'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase tracking-wider text-rose-400">Requiere Acompañamiento</span>
+                <span className="px-2 py-0.5 rounded-full bg-rose-500/30 text-rose-300 text-[10px] font-black">&lt;40 pts</span>
+              </div>
+              <p className="text-xl font-black text-white mt-1">{stats.igiCriticos || 0} <span className="text-xs font-normal text-rose-300">clubes</span></p>
+              <p className="text-[10px] text-rose-200/60 mt-0.5">Sin responsable o inactivo</p>
+            </button>
+          </div>
+        </div>
+
         {/* ── 2. SEIS TARJETAS KPIS CON DATOS REALES (OBJETIVO 1) ────────── */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs">
@@ -679,6 +798,19 @@ export const DistrictClubsAdmin: React.FC = () => {
                   <option value="with_manager">Con responsable asignado</option>
                   <option value="without_manager">Sin asignar</option>
                 </select>
+
+                {/* Filtro IGI */}
+                <select
+                  value={igiFilter}
+                  onChange={(e) => setIgiFilter(e.target.value as any)}
+                  className="px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-bold text-gray-700 bg-white outline-none focus:border-rotary-blue"
+                >
+                  <option value="all">Índice IGI: Todos</option>
+                  <option value="lider">Líder Institucional (&ge;80)</option>
+                  <option value="activo">Gestión Activa (60–79)</option>
+                  <option value="en_seguimiento">En Seguimiento (40–59)</option>
+                  <option value="critico">Requiere Acompañamiento (&lt;40)</option>
+                </select>
               </div>
 
               {/* Buscador en Vivo */}
@@ -712,6 +844,7 @@ export const DistrictClubsAdmin: React.FC = () => {
                     setStatusFilter('all');
                     setActivityFilter('all');
                     setManagerFilter('all');
+                    setIgiFilter('all');
                     setSearchQuery('');
                   }}
                   className="mt-4 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-xl text-xs font-bold transition-all"
@@ -729,6 +862,7 @@ export const DistrictClubsAdmin: React.FC = () => {
                         <th className="py-3.5 px-4">Ciudad Sede</th>
                         <th className="py-3.5 px-4">Responsable Institucional</th>
                         <th className="py-3.5 px-4">Completitud</th>
+                        <th className="py-3.5 px-4">Índice IGI</th>
                         <th className="py-3.5 px-4">Estado</th>
                         <th className="py-3.5 px-4">Rotary en Acción</th>
                         <th className="py-3.5 px-4 text-right">Acciones</th>
@@ -820,6 +954,50 @@ export const DistrictClubsAdmin: React.FC = () => {
                                   />
                                 </div>
                               </div>
+                            </td>
+
+                            {/* Índice IGI */}
+                            <td className="py-3.5 px-4">
+                              <button
+                                onClick={() => {
+                                  handleOpenClubDetail(club);
+                                  setDetailTab('igi');
+                                }}
+                                title="Clic para ver desglose de puntos IGI"
+                                className="group text-left"
+                              >
+                                <div className="flex items-center gap-1.5 mb-1">
+                                  <span className="font-black text-xs text-gray-950 group-hover:text-rotary-blue transition-colors">
+                                    {club.igi ?? 0}
+                                  </span>
+                                  <span className="text-[10px] text-gray-400">/ 100</span>
+                                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${
+                                    club.igiLevel === 'lider'
+                                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                      : club.igiLevel === 'activo'
+                                      ? 'bg-blue-50 text-blue-800 border-blue-200'
+                                      : club.igiLevel === 'en_seguimiento'
+                                      ? 'bg-amber-50 text-amber-900 border-amber-200'
+                                      : 'bg-rose-50 text-rose-800 border-rose-200'
+                                  }`}>
+                                    {club.igiLevelLabel || ((club.igi || 0) >= 80 ? 'Líder Institucional' : (club.igi || 0) >= 60 ? 'Gestión Activa' : (club.igi || 0) >= 40 ? 'En Seguimiento' : 'Requiere Acompañamiento')}
+                                  </span>
+                                </div>
+                                <div className="w-24 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full transition-all duration-300 ${
+                                      (club.igi || 0) >= 80
+                                        ? 'bg-emerald-500'
+                                        : (club.igi || 0) >= 60
+                                        ? 'bg-blue-500'
+                                        : (club.igi || 0) >= 40
+                                        ? 'bg-amber-500'
+                                        : 'bg-rose-500'
+                                    }`}
+                                    style={{ width: `${Math.min(100, club.igi || 0)}%` }}
+                                  />
+                                </div>
+                              </button>
                             </td>
 
                             {/* Estado Institucional */}
@@ -1046,6 +1224,17 @@ export const DistrictClubsAdmin: React.FC = () => {
                       <span className="text-xs font-semibold text-gray-500">
                         Distrito {detailClub.districtNumber} · {detailClub.city}
                       </span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase border ${
+                        detailClub.igiLevel === 'lider'
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                          : detailClub.igiLevel === 'activo'
+                          ? 'bg-blue-50 text-blue-800 border-blue-200'
+                          : detailClub.igiLevel === 'en_seguimiento'
+                          ? 'bg-amber-50 text-amber-900 border-amber-200'
+                          : 'bg-rose-50 text-rose-800 border-rose-200'
+                      }`}>
+                        IGI: {detailClub.igi || 0} pts · {detailClub.igiLevelLabel || 'En seguimiento'}
+                      </span>
                     </div>
                     <h2 className="text-xl font-black text-gray-900 mt-1">{detailClub.officialName}</h2>
                     <p className="text-xs text-gray-400">
@@ -1091,6 +1280,15 @@ export const DistrictClubsAdmin: React.FC = () => {
                   }`}
                 >
                   Completitud ({detailClub.completionPercentage || 0}%)
+                </button>
+                <button
+                  onClick={() => setDetailTab('igi')}
+                  className={`py-3 border-b-2 uppercase tracking-wider transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                    detailTab === 'igi' ? 'border-amber-500 text-amber-600' : 'border-transparent text-gray-400 hover:text-gray-700'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Índice IGI ({detailClub.igi || 0} pts)</span>
                 </button>
                 <button
                   onClick={() => setDetailTab('rotary_accion')}
@@ -1252,6 +1450,139 @@ export const DistrictClubsAdmin: React.FC = () => {
                               </div>
                             </div>
                           ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* PESTAÑA: ÍNDICE DE GESTIÓN INSTITUCIONAL (IGI) */}
+                    {detailTab === 'igi' && (
+                      <div className="space-y-5">
+                        {/* ── CARD CONCEPTUAL DE SEGUIMIENTO POR CLUB (DISEÑO OFICIAL) ── */}
+                        <div className="bg-gray-950 text-white p-6 rounded-3xl border border-gray-800 shadow-xl space-y-4">
+                          <div className="flex items-center justify-between pb-3 border-b border-gray-800/80">
+                            <div>
+                              <h3 className="text-sm font-extrabold text-white tracking-tight">
+                                Ejemplo conceptual de seguimiento por club
+                              </h3>
+                              <p className="text-[11px] text-gray-400 mt-0.5">
+                                Índice de Gestión Institucional (IGI) · Gobernanza Distrital 4281
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-2xl font-black text-amber-400">
+                                {detailFullData?.club?.igi ?? detailClub.igi ?? 0}
+                              </span>
+                              <span className="text-xs text-gray-400 font-medium"> / 100 pts</span>
+                            </div>
+                          </div>
+
+                          <div className="space-y-3.5 text-xs">
+                            <div className="flex items-center justify-between py-1.5 border-b border-gray-800/60">
+                              <span className="text-gray-300 font-medium">Completitud institucional</span>
+                              <span className="font-extrabold text-white text-sm">
+                                {detailClub.completionPercentage || 0}%
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between py-1.5 border-b border-gray-800/60">
+                              <span className="text-gray-300 font-medium">Actualización reciente</span>
+                              <span className={`font-extrabold text-sm ${
+                                (detailFullData?.club?.igiData?.breakdown?.recency?.isRecent ?? true)
+                                  ? 'text-emerald-400'
+                                  : 'text-gray-400'
+                              }`}>
+                                {(detailFullData?.club?.igiData?.breakdown?.recency?.isRecent ?? true) ? 'Sí' : 'No'}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between py-1.5 border-b border-gray-800/60">
+                              <span className="text-gray-300 font-medium">Responsable identificado</span>
+                              <span className={`font-extrabold text-sm ${
+                                detailClub.primaryManagerEmail ? 'text-emerald-400' : 'text-rose-400'
+                              }`}>
+                                {detailClub.primaryManagerEmail ? 'Sí' : 'No'}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between py-1.5 border-b border-gray-800/60">
+                              <span className="text-gray-300 font-medium">Solicitudes pendientes</span>
+                              <span className="font-extrabold text-white text-sm">
+                                {detailClub.pendingSubmissionsCount || 0}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between pt-1">
+                              <span className="text-gray-300 font-medium">Estado de gestión</span>
+                              <span className={`px-3 py-1 rounded-full text-xs font-black uppercase border ${
+                                (detailClub.igiLevel || 'critico') === 'lider'
+                                  ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40'
+                                  : (detailClub.igiLevel || 'critico') === 'activo'
+                                  ? 'bg-blue-950/80 text-blue-300 border-blue-500/40'
+                                  : (detailClub.igiLevel || 'critico') === 'en_seguimiento'
+                                  ? 'bg-amber-950/80 text-amber-300 border-amber-500/40'
+                                  : 'bg-rose-950/80 text-rose-300 border-rose-500/40'
+                              }`}>
+                                {detailClub.igiLevelLabel || ((detailClub.igi || 0) >= 80 ? 'Líder Institucional' : (detailClub.igi || 0) >= 60 ? 'Gestión Activa' : (detailClub.igi || 0) >= 40 ? 'En Seguimiento' : 'Requiere Acompañamiento')}
+                              </span>
+                            </div>
+                          </div>
+
+                          <p className="text-[10px] text-gray-500 italic pt-2 border-t border-gray-800/40">
+                            Cálculo dinámico basado en la fuente maestra del Directorio y la actividad de Rotary en Acción.
+                          </p>
+                        </div>
+
+                        {/* ── DESGLOSE METODOLÓGICO DE LOS 4 PILARES ── */}
+                        <div className="space-y-3">
+                          <h4 className="text-xs font-black uppercase tracking-wider text-gray-500">
+                            Desglose de Puntos por Pilar Institucional (Máx 100 pts)
+                          </h4>
+
+                          <div className="space-y-2 text-xs">
+                            {/* Pilar 1 */}
+                            <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-between">
+                              <div>
+                                <p className="font-bold text-gray-900">1. Completitud de la Ficha Institucional (40%)</p>
+                                <p className="text-[11px] text-gray-500">Información básica, directiva, sedes y causas ({detailClub.completionPercentage || 0}%)</p>
+                              </div>
+                              <span className="font-black text-sm text-rotary-blue">
+                                {detailFullData?.club?.igiData?.breakdown?.completion?.points ?? Math.round(((detailClub.completionPercentage || 0) / 100) * 40)} / 40 pts
+                              </span>
+                            </div>
+
+                            {/* Pilar 2 */}
+                            <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-between">
+                              <div>
+                                <p className="font-bold text-gray-900">2. Vigencia y Actualización Reciente (25%)</p>
+                                <p className="text-[11px] text-gray-500">Período 2026–2027 y fecha reciente de sincronización</p>
+                              </div>
+                              <span className="font-black text-sm text-rotary-blue">
+                                {detailFullData?.club?.igiData?.breakdown?.recency?.points ?? (detailClub.rotaryPeriod?.includes('2026') ? 15 : 0)} / 25 pts
+                              </span>
+                            </div>
+
+                            {/* Pilar 3 */}
+                            <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-between">
+                              <div>
+                                <p className="font-bold text-gray-900">3. Responsable Identificado y Canales (20%)</p>
+                                <p className="text-[11px] text-gray-500">Gestor registrado con correo verificado y teléfono activo</p>
+                              </div>
+                              <span className="font-black text-sm text-rotary-blue">
+                                {detailFullData?.club?.igiData?.breakdown?.manager?.points ?? (detailClub.primaryManagerEmail ? 16 : 0)} / 20 pts
+                              </span>
+                            </div>
+
+                            {/* Pilar 4 */}
+                            <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-between">
+                              <div>
+                                <p className="font-bold text-gray-900">4. Participación Operativa en Rotary en Acción (15%)</p>
+                                <p className="text-[11px] text-gray-500">Solicitudes enviadas, borradores en curso y cambios protegidos</p>
+                              </div>
+                              <span className="font-black text-sm text-rotary-blue">
+                                {detailFullData?.club?.igiData?.breakdown?.participation?.points ?? ((detailClub.submissionsCount || 0) > 0 ? 10 : (detailClub.draftsCount || 0) > 0 ? 7 : 0)} / 15 pts
+                              </span>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     )}

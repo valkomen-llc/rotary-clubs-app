@@ -56,6 +56,85 @@ export function calculateProfileCompletion(data) {
   return Math.min(100, Math.max(0, score));
 }
 
+/**
+ * Calcula el Índice de Gestión Institucional (IGI) de un club (0 a 100 puntos)
+ * Ponderación:
+ * 1. Completitud institucional (40% máx 40 pts)
+ * 2. Vigencia y Actualización Reciente (25% máx 25 pts)
+ * 3. Responsable Identificado y Canal de Contacto (20% máx 20 pts)
+ * 4. Participación Operativa en Rotary en Acción (15% máx 15 pts)
+ */
+export function calculateIGI(club, submissions = []) {
+  const completion = Number(club.completionPercentage) || 0;
+  
+  // 1. Componente Completitud (máx 40 pts)
+  const completionPts = Math.round((completion / 100) * 40);
+
+  // 2. Componente Actualización Reciente (máx 25 pts)
+  let recencyPts = 0;
+  const isCurrentPeriod = (club.rotaryPeriod && club.rotaryPeriod.includes('2026')) ||
+                          (club.lastUpdatedPeriod && club.lastUpdatedPeriod.includes('2026'));
+  if (isCurrentPeriod) recencyPts += 15;
+  
+  const lastDate = club.updatedAt ? new Date(club.updatedAt).getTime() : 0;
+  const daysAgo = lastDate ? (Date.now() - lastDate) / (1000 * 60 * 60 * 24) : 999;
+  if (daysAgo <= 30) recencyPts += 10;
+  else if (daysAgo <= 90) recencyPts += 7;
+  else if (daysAgo <= 180) recencyPts += 4;
+  recencyPts = Math.min(25, recencyPts);
+
+  // 3. Componente Responsable Identificado (máx 20 pts)
+  let managerPts = 0;
+  if (club.primaryManagerEmail) managerPts += 12;
+  if (club.primaryManagerName) managerPts += 4;
+  if (club.primaryManagerPhone || club.contactPhone) managerPts += 4;
+  managerPts = Math.min(20, managerPts);
+
+  // 4. Componente Participación en Rotary en Acción (máx 15 pts)
+  let participationPts = 0;
+  const subsCount = Number(club.submissionsCount) || submissions.filter(s => s.status !== 'borrador').length || 0;
+  const draftsCount = Number(club.draftsCount) || submissions.filter(s => s.status === 'borrador').length || 0;
+  
+  if (subsCount > 0) participationPts += 10;
+  if (subsCount > 1) participationPts += 3;
+  if (draftsCount > 0 && subsCount === 0) participationPts += 7;
+  if (club.pendingProtectedChanges) participationPts += 2;
+  participationPts = Math.min(15, participationPts);
+
+  const totalScore = Math.min(100, Math.max(0, completionPts + recencyPts + managerPts + participationPts));
+
+  let level = 'critico';
+  let levelLabel = 'Requiere Acompañamiento';
+  let badgeColor = 'rose';
+
+  if (totalScore >= 80) {
+    level = 'lider';
+    levelLabel = 'Líder Institucional';
+    badgeColor = 'emerald';
+  } else if (totalScore >= 60) {
+    level = 'activo';
+    levelLabel = 'Gestión Activa';
+    badgeColor = 'blue';
+  } else if (totalScore >= 40) {
+    level = 'en_seguimiento';
+    levelLabel = 'En Seguimiento';
+    badgeColor = 'amber';
+  }
+
+  return {
+    score: totalScore,
+    level,
+    levelLabel,
+    badgeColor,
+    breakdown: {
+      completion: { score: completion, points: completionPts, max: 40 },
+      recency: { isRecent: isCurrentPeriod && daysAgo <= 90, daysAgo: Math.round(daysAgo), points: recencyPts, max: 25 },
+      manager: { hasManager: !!club.primaryManagerEmail, email: club.primaryManagerEmail, points: managerPts, max: 20 },
+      participation: { subsCount, draftsCount, points: participationPts, max: 15 }
+    }
+  };
+}
+
 export async function ensureDistrictClubDirectorySchema() {
   if (_ready) return;
 
@@ -121,6 +200,7 @@ export async function ensureDistrictClubDirectorySchema() {
   await db.query(`ALTER TABLE "DistrictClubProfile" ADD COLUMN IF NOT EXISTS "primaryManagerPhone" TEXT`).catch(() => {});
   await db.query(`ALTER TABLE "DistrictClubProfile" ADD COLUMN IF NOT EXISTS "pendingProtectedChanges" JSONB DEFAULT NULL`).catch(() => {});
   await db.query(`ALTER TABLE "DistrictClubProfile" ADD COLUMN IF NOT EXISTS "auditLog" JSONB DEFAULT '[]'::jsonb`).catch(() => {});
+  await db.query(`ALTER TABLE "DistrictClubProfile" ADD COLUMN IF NOT EXISTS "igiScore" INT DEFAULT 0`).catch(() => {});
 
   // Índices
   await db.query(`CREATE INDEX IF NOT EXISTS idx_dcp_dist_org_stat ON "DistrictClubProfile"("districtNumber", "organizationType", status)`).catch(() => {});
