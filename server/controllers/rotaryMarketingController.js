@@ -17,7 +17,7 @@ import {
   createFeriaMasterDesign,
   renderDesignToHtml,
   cleanUnresolvedVariables
-} from '../../src/lib/emailBlocks.ts';
+} from '../lib/emailBlocks.js';
 
 const fail = (res, e) => {
   console.error('[rotaryMarketingController]', e);
@@ -464,7 +464,7 @@ export const getCampaigns = async (req, res) => {
 
     let query = `SELECT * FROM "RotaryMarketingCampaign"`;
     const params = [];
-    if (initiative) {
+    if (initiative && initiative !== 'todos') {
       query += ` WHERE "initiative" = $1`;
       params.push(initiative);
     }
@@ -2981,6 +2981,10 @@ export const reconcileRotaryExecutions = async (clubId) => {
         matchedTpl = templateMap.get('sem-04') || defaultTpl;
       }
 
+      const isDirectorio = (ec.name || '').toLowerCase().includes('directorio') || (ec.subject || '').toLowerCase().includes('directorio');
+      const isFeria = (ec.name || '').toLowerCase().includes('feria') || (ec.subject || '').toLowerCase().includes('feria');
+      const matchedInitiative = isDirectorio ? 'directorio_clubes' : isFeria ? 'feria_proyectos' : (matchedTpl.initiative || 'rotary_en_accion');
+
       // Comprobar si ya existe una ejecución con este emailCampaignId
       const { rows: existingRows } = await db.query(
         `SELECT id FROM "RotaryCampaignExecution" WHERE "emailCampaignId" = $1 LIMIT 1`,
@@ -2997,9 +3001,10 @@ export const reconcileRotaryExecutions = async (clubId) => {
                "clickCount" = $5,
                "status" = $6,
                "sentAt" = COALESCE($7, "sentAt"),
+               "initiative" = COALESCE("initiative", $8),
                "updatedAt" = NOW()
-           WHERE "emailCampaignId" = $8`,
-          [totalRecipients, sentCount, failedCount, uniqueOpens, uniqueClicks, ec.status, ec.sentAt, ec.id]
+           WHERE "emailCampaignId" = $9`,
+          [totalRecipients, sentCount, failedCount, uniqueOpens, uniqueClicks, ec.status, ec.sentAt, matchedInitiative, ec.id]
         );
         reconciledCount++;
       } else {
@@ -3016,12 +3021,12 @@ export const reconcileRotaryExecutions = async (clubId) => {
              id, "campaignId", "campaignCode", "campaignName", week, stage,
              subject, preheader, "emailCampaignId", "clubId", mode, status,
              "totalRecipients", "sentCount", "failedCount", "openCount", "clickCount",
-             "senderName", "fromEmail", "replyToEmail", "sentAt", "scheduledAt", "executedAt", "createdAt", "updatedAt"
+             "senderName", "fromEmail", "replyToEmail", "sentAt", "scheduledAt", "executedAt", "createdAt", "updatedAt", "initiative"
            ) VALUES (
              $1, $2, $3, $4, $5, $6,
              $7, $8, $9, $10, $11, $12,
              $13, $14, $15, $16, $17,
-             $18, $19, $20, $21, $22, $23, $24, NOW()
+             $18, $19, $20, $21, $22, $23, $24, NOW(), $25
            ) ON CONFLICT (id) DO UPDATE
            SET "totalRecipients" = EXCLUDED."totalRecipients",
                "sentCount" = EXCLUDED."sentCount",
@@ -3030,6 +3035,7 @@ export const reconcileRotaryExecutions = async (clubId) => {
                "clickCount" = EXCLUDED."clickCount",
                "status" = EXCLUDED."status",
                "sentAt" = EXCLUDED."sentAt",
+               "initiative" = EXCLUDED."initiative",
                "updatedAt" = NOW()`,
           [
             execId,
@@ -3055,7 +3061,8 @@ export const reconcileRotaryExecutions = async (clubId) => {
             ec.sentAt || ec.createdAt,
             ec.scheduledAt,
             ec.sentAt || ec.createdAt,
-            ec.createdAt
+            ec.createdAt,
+            matchedInitiative
           ]
         );
         reconciledCount++;
@@ -3080,10 +3087,9 @@ export const getCampaignsHistory = async (req, res) => {
     await reconcileRotaryExecutions(clubId);
 
     // Obtener todas las ejecuciones de envío ordenadas por fecha descendente
-    let query = `SELECT * FROM "RotaryCampaignExecution"
-       WHERE ("clubId" = $1 OR "clubId" IS NULL OR $1 IS NULL OR $1 = '3c648ce7-3c47-41e2-9461-6e40a8615ae6' OR "clubId" = '8aa470c5-0a5a-4a8d-b872-38645b8b9f3a')`;
-    const params = [clubId];
-    if (initiative) {
+    let query = `SELECT * FROM "RotaryCampaignExecution" WHERE 1=1`;
+    const params = [];
+    if (initiative && initiative !== 'todos') {
       params.push(initiative);
       query += ` AND ("initiative" = $${params.length} OR ($${params.length} = 'rotary_en_accion' AND "initiative" IS NULL))`;
     }

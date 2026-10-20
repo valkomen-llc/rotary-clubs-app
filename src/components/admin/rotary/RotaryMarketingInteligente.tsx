@@ -107,11 +107,13 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
   const renderedPreviewHtml = useMemo(() => {
     if (!previewCampaign) return '';
     let rawHtml = '';
-    if (previewCampaign.design) {
+    const ch = (previewCampaign.initiative || 'rotary_en_accion') as 'rotary_en_accion' | 'directorio_clubes' | 'feria_proyectos';
+    const effectiveDesign = previewCampaign.design || createChannelCampaignDesign(ch, previewCampaign);
+    if (effectiveDesign) {
       try {
-        const parsed = typeof previewCampaign.design === 'string'
-          ? parseDesign(previewCampaign.design)
-          : previewCampaign.design;
+        const parsed = typeof effectiveDesign === 'string'
+          ? parseDesign(effectiveDesign)
+          : effectiveDesign;
         rawHtml = renderDesignToHtml(parsed, { interactive: false, siteContext: siteBranding });
       } catch (e) {
         console.warn('Error rendering previewCampaign.design:', e);
@@ -123,7 +125,7 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
     return cleanUnresolvedVariables(rawHtml, {
       'contact.first_name': 'Líder Rotario(a)',
       'contact.name': 'Líder Rotario(a)',
-      'club.name': initiative === 'directorio_clubes' ? 'Club Rotary Bogotá Chicó' : 'Club Rotary Bogotá',
+      'club.name': ch === 'directorio_clubes' ? 'Club Rotary Bogotá Chicó' : ch === 'feria_proyectos' ? 'Club Rotary Colombia' : 'Club Rotary Bogotá',
       'club.type': 'Rotary Club',
       'club.city': 'Bogotá',
       'club.completion_percentage': '15%'
@@ -148,7 +150,19 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
 
   // Horizontes del planificador
   const [horizonte, setHorizonte] = useState<'mensual' | 'trimestral' | 'semestral' | 'anual'>('mensual');
+  const [planificadorChannel, setPlanificadorChannel] = useState<'todos' | 'rotary_en_accion' | 'directorio_clubes' | 'feria_proyectos'>('todos');
   const [visualEditorCampaign, setVisualEditorCampaign] = useState<any | null>(null);
+
+  const activeChannelCampaigns = useMemo(() => {
+    return campaigns.filter(c => c.initiative === initiative || (!c.initiative && initiative === 'rotary_en_accion'));
+  }, [campaigns, initiative]);
+
+  const planificadorCampaigns = useMemo(() => {
+    if (planificadorChannel === 'todos') {
+      return campaigns.filter(c => c.week >= 1 && c.week <= 4);
+    }
+    return campaigns.filter(c => c.initiative === planificadorChannel || (!c.initiative && planificadorChannel === 'rotary_en_accion'));
+  }, [campaigns, planificadorChannel]);
 
   // ── Flujo "Preparar Envío" de Campaña (Audiencias, Envío y Trazabilidad) ──
   const [preparingCampaign, setPreparingCampaign] = useState<any | null>(null);
@@ -191,6 +205,7 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
   const [historySearch, setHistorySearch] = useState<string>('');
   const [historyStatusFilter, setHistoryStatusFilter] = useState<string>('todos');
   const [historyModeFilter, setHistoryModeFilter] = useState<string>('todos');
+  const [historyChannelFilter, setHistoryChannelFilter] = useState<string>('todos');
   const [selectedHistoryCampaignId, setSelectedHistoryCampaignId] = useState<string | null>(null);
   const [historyDetail, setHistoryDetail] = useState<any | null>(null);
   const [loadingHistoryDetail, setLoadingHistoryDetail] = useState<boolean>(false);
@@ -206,6 +221,10 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
     return campaignsHistory.filter((c) => {
       if (historyStatusFilter !== 'todos' && c.status !== historyStatusFilter) return false;
       if (historyModeFilter !== 'todos' && c.mode !== historyModeFilter) return false;
+      if (historyChannelFilter !== 'todos') {
+        const ch = c.initiative || 'rotary_en_accion';
+        if (ch !== historyChannelFilter) return false;
+      }
       if (historySearch) {
         const q = historySearch.toLowerCase();
         const matchName = (c.name || '').toLowerCase().includes(q);
@@ -216,7 +235,7 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
       }
       return true;
     });
-  }, [campaignsHistory, historyStatusFilter, historyModeFilter, historySearch]);
+  }, [campaignsHistory, historyStatusFilter, historyModeFilter, historyChannelFilter, historySearch]);
 
   const filteredHistoryRecipients = useMemo(() => {
     const list = historyDetail?.recipients || [];
@@ -445,10 +464,11 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
   };
 
   // ── Data loaders y acciones para Centro de Envíos ──
-  const loadCampaignsHistory = useCallback(async () => {
+  const loadCampaignsHistory = useCallback(async (channel?: string) => {
     setLoadingHistory(true);
+    const targetChannel = channel !== undefined ? channel : historyChannelFilter;
     try {
-      const res = await fetch(`${API}/rotary-en-accion/marketing/history?initiative=${initiative}`, {
+      const res = await fetch(`${API}/rotary-en-accion/marketing/history?initiative=${targetChannel}`, {
         headers: { Authorization: `Bearer ${getToken()}` }
       });
       const data = await res.json();
@@ -460,7 +480,7 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
     } finally {
       setLoadingHistory(false);
     }
-  }, [initiative]);
+  }, [historyChannelFilter]);
 
   const handleReconcileHistory = async () => {
     setReconcilingHistory(true);
@@ -636,7 +656,7 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
 
       const [resOverview, resCampaigns, resAuto, resAb, resAi, resAttr, resDist, resGov, resStories] = await Promise.all([
         fetch(`${API}/rotary-en-accion/marketing/overview?initiative=${initiative}`, { headers }).then((r) => r.json()).catch(() => null),
-        fetch(`${API}/rotary-en-accion/marketing/campaigns?initiative=${initiative}`, { headers }).then((r) => r.json()).catch(() => null),
+        fetch(`${API}/rotary-en-accion/marketing/campaigns?initiative=todos`, { headers }).then((r) => r.json()).catch(() => null),
         fetch(`${API}/rotary-en-accion/marketing/automations?initiative=${initiative}`, { headers }).then((r) => r.json()).catch(() => null),
         fetch(`${API}/rotary-en-accion/marketing/ab-tests`, { headers }).then((r) => r.json()).catch(() => null),
         fetch(`${API}/rotary-en-accion/marketing/ai-insights?initiative=${initiative}`, { headers }).then((r) => r.json()).catch(() => null),
@@ -1553,18 +1573,18 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
             </div>
           </div>
 
-          {/* Calendario Editorial de las 4 Semanas */}
-          <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm space-y-4">
+          {/* Calendario Editorial de Campañas Multicanal */}
+          <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm space-y-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h3 className="text-base font-bold text-gray-900">Calendario Editorial · Campaña Piloto de 4 Semanas</h3>
-                <p className="text-xs text-gray-500">Distribución semanal con política de frecuencia máxima de 2 contactos promocionales por club.</p>
+                <h3 className="text-base font-bold text-gray-900">Calendario Editorial · Matriz Multicanal (12 Campañas)</h3>
+                <p className="text-xs text-gray-500">Distribución mensual de 4 semanas por canal con política estricta de máxima frecuencia (2 contactos/mes).</p>
               </div>
               <a
                 href="/admin/email-marketing?tab=calendario"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-3.5 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center gap-1.5 transition"
+                className="px-3.5 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
               >
                 <Calendar className="w-3.5 h-3.5 text-rotary-blue" />
                 <span>Ver en Calendario General de Email Marketing</span>
@@ -1572,46 +1592,176 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
               </a>
             </div>
 
-            <div className={`grid grid-cols-1 md:grid-cols-2 ${campaigns.length >= 5 ? 'lg:grid-cols-3 xl:grid-cols-5' : 'lg:grid-cols-4'} gap-4 pt-2`}>
-              {campaigns.map((c) => (
-                <div key={c.id || c.code} className="p-4 rounded-2xl border border-gray-100 bg-gray-50/50 hover:bg-white hover:border-rotary-blue/30 transition shadow-xs flex flex-col justify-between space-y-3">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-black text-rotary-blue uppercase tracking-wider text-[10px]">
-                        {c.week === 0 ? 'Ciclo Permanente' : `Semana ${c.week} · SEM 0${c.week}`}
-                      </span>
-                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
-                        c.status === 'approved' ? 'bg-emerald-100 text-emerald-800' : c.status === 'scheduled' ? 'bg-sky-100 text-sky-800' : 'bg-amber-100 text-amber-800'
-                      }`}>
-                        {c.status === 'approved' ? 'Aprobada' : c.status === 'scheduled' ? 'Programada' : 'Borrador'}
-                      </span>
-                    </div>
-                    <h4 className="font-bold text-gray-900 text-sm leading-snug">{c.name}</h4>
-                    <p className="text-xs text-gray-500 line-clamp-2">{c.messageCentral || c.subject}</p>
-                  </div>
+            {/* Selector de Canales del Ecosistema */}
+            <div className="flex flex-wrap items-center gap-2 p-1.5 bg-gray-100 rounded-2xl">
+              <button
+                type="button"
+                onClick={() => setPlanificadorChannel('todos')}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  planificadorChannel === 'todos'
+                    ? 'bg-white text-gray-900 shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5 text-rotary-blue" />
+                <span>Vista Consolidada (12 Campañas)</span>
+                <span className="text-[10px] px-1.5 py-0.2 bg-blue-100 text-rotary-blue rounded-full font-mono">
+                  {campaigns.filter(c => c.week >= 1 && c.week <= 4).length || 12}
+                </span>
+              </button>
 
-                  <div className="pt-2 border-t border-gray-100 space-y-2 text-[11px]">
-                    <div className="flex items-center justify-between text-gray-500">
-                      <span>Audiencia:</span>
-                      <span className="font-bold text-gray-700 capitalize">{c.targetSegment?.replace(/_/g, ' ')}</span>
-                    </div>
-                    {c.scheduledAt && (
-                      <div className="flex items-center justify-between text-sky-700 font-bold">
-                        <span>Envío:</span>
-                        <span>{new Date(c.scheduledAt).toLocaleDateString('es-CO')}</span>
-                      </div>
-                    )}
-                    <button
-                      onClick={() => { setPreviewCampaign(c); setPreviewTab('email'); }}
-                      className="w-full mt-2 py-2 px-3 rounded-xl bg-white border border-gray-200 text-gray-700 font-bold hover:bg-gray-50 transition flex items-center justify-center gap-1.5 shadow-2xs"
-                    >
-                      <Eye className="w-3.5 h-3.5 text-rotary-blue" />
-                      <span>Ver Mensaje y Opciones</span>
-                    </button>
-                  </div>
-                </div>
-              ))}
+              <button
+                type="button"
+                onClick={() => setPlanificadorChannel('rotary_en_accion')}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  planificadorChannel === 'rotary_en_accion'
+                    ? 'bg-white text-gray-900 shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                <span>Canal 1: Rotary en Acción</span>
+                <span className="text-[10px] px-1.5 py-0.2 bg-purple-100 text-purple-800 rounded-full font-mono">
+                  {campaigns.filter(c => c.initiative === 'rotary_en_accion' || (!c.initiative && (c.code?.startsWith('sem-') || !c.code?.includes('-')))).length || 4}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPlanificadorChannel('directorio_clubes')}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  planificadorChannel === 'directorio_clubes'
+                    ? 'bg-white text-gray-900 shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <Building2 className="w-3.5 h-3.5 text-blue-600" />
+                <span>Canal 2: Directorio de Clubes</span>
+                <span className="text-[10px] px-1.5 py-0.2 bg-blue-100 text-blue-800 rounded-full font-mono">
+                  {campaigns.filter(c => c.initiative === 'directorio_clubes').length || 4}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPlanificadorChannel('feria_proyectos')}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  planificadorChannel === 'feria_proyectos'
+                    ? 'bg-white text-gray-900 shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <Award className="w-3.5 h-3.5 text-amber-500" />
+                <span>Canal 3: Feria de Proyectos</span>
+                <span className="text-[10px] px-1.5 py-0.2 bg-amber-100 text-amber-800 rounded-full font-mono">
+                  {campaigns.filter(c => c.initiative === 'feria_proyectos').length || 4}
+                </span>
+              </button>
             </div>
+
+            {planificadorCampaigns.length === 0 ? (
+              <div className="p-12 text-center text-gray-400 bg-gray-50/50 rounded-2xl border border-dashed border-gray-200">
+                <Calendar className="w-8 h-8 mx-auto mb-2 opacity-30 text-rotary-blue" />
+                <p className="font-bold text-gray-600">No hay campañas registradas para este canal</p>
+                <p className="text-xs text-gray-400 mt-1">Selecciona otro canal o la vista consolidada de 12 campañas.</p>
+              </div>
+            ) : (
+              <div className={`grid grid-cols-1 md:grid-cols-2 ${planificadorCampaigns.length >= 5 ? 'lg:grid-cols-3 xl:grid-cols-4' : 'lg:grid-cols-4'} gap-4 pt-2`}>
+                {planificadorCampaigns.map((c) => {
+                  const isCanal3 = c.initiative === 'feria_proyectos';
+                  const isCanal2 = c.initiative === 'directorio_clubes';
+                  const channelLabel = isCanal3
+                    ? 'Canal 3 · Feria de Proyectos'
+                    : isCanal2
+                    ? 'Canal 2 · Directorio de Clubes'
+                    : 'Canal 1 · Rotary en Acción';
+                  const channelBadgeClass = isCanal3
+                    ? 'bg-amber-100 text-amber-900 border border-amber-200'
+                    : isCanal2
+                    ? 'bg-sky-100 text-sky-900 border border-sky-200'
+                    : 'bg-purple-100 text-purple-900 border border-purple-200';
+
+                  return (
+                    <div key={c.id || c.code} className="p-4 rounded-2xl border border-gray-100 bg-gray-50/50 hover:bg-white hover:border-rotary-blue/30 transition shadow-xs flex flex-col justify-between space-y-3">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-xs gap-1">
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${channelBadgeClass}`}>
+                            {channelLabel}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                            c.status === 'sent' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
+                            c.status === 'approved' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                            c.status === 'scheduled' ? 'bg-sky-100 text-sky-800 border border-sky-200' :
+                            'bg-amber-100 text-amber-800 border border-amber-200'
+                          }`}>
+                            {c.status === 'sent' ? 'Despachada' : c.status === 'approved' ? 'Aprobada' : c.status === 'scheduled' ? 'Programada' : 'Borrador'}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between text-xs pt-1">
+                          <span className="font-black text-rotary-blue uppercase tracking-wider text-[10px]">
+                            {c.week === 0 ? 'Ciclo Permanente' : `Semana ${c.week} · SEM 0${c.week}`}
+                          </span>
+                          <code className="text-[10px] bg-gray-100 px-1.5 py-0.5 rounded font-mono text-gray-600">
+                            {c.code}
+                          </code>
+                        </div>
+
+                        <h4 className="font-bold text-gray-900 text-sm leading-snug">{c.name}</h4>
+                        <p className="text-xs text-gray-500 line-clamp-2">{c.messageCentral || c.subject}</p>
+                      </div>
+
+                      <div className="pt-2 border-t border-gray-100 space-y-2 text-[11px]">
+                        <div className="flex items-center justify-between text-gray-500">
+                          <span>Audiencia:</span>
+                          <span className="font-bold text-gray-700 capitalize">{c.targetSegment?.replace(/_/g, ' ')}</span>
+                        </div>
+                        {c.scheduledAt && (
+                          <div className="flex items-center justify-between text-sky-700 font-bold">
+                            <span>Envío:</span>
+                            <span>{new Date(c.scheduledAt).toLocaleDateString('es-CO')}</span>
+                          </div>
+                        )}
+
+                        <div className="pt-2 border-t border-gray-100 space-y-1.5">
+                          <div className="grid grid-cols-2 gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => { setPreviewCampaign(c); setPreviewTab('email'); }}
+                              className="py-1.5 px-2 rounded-xl bg-white border border-gray-200 text-gray-700 font-bold hover:bg-gray-50 text-[11px] transition flex items-center justify-center gap-1 shadow-2xs cursor-pointer"
+                              title="Previsualizar correo electrónico institucional"
+                            >
+                              <Mail className="w-3 h-3 text-rotary-blue" />
+                              <span>Email</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => { setPreviewCampaign(c); setPreviewTab('whatsapp'); }}
+                              className="py-1.5 px-2 rounded-xl bg-white border border-gray-200 text-gray-700 font-bold hover:bg-gray-50 text-[11px] transition flex items-center justify-center gap-1 shadow-2xs cursor-pointer"
+                              title="Previsualizar plantilla WhatsApp"
+                            >
+                              <MessageSquare className="w-3 h-3 text-emerald-600" />
+                              <span>WhatsApp</span>
+                            </button>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setVisualEditorCampaign(c)}
+                            className="w-full py-1.5 px-2 rounded-xl bg-gray-50 hover:bg-blue-50 text-rotary-blue border border-gray-200 hover:border-blue-200 font-bold text-[11px] transition flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+                            title="Personalizar diseño visual con bloques institucionales"
+                          >
+                            <Edit3 className="w-3 h-3 text-rotary-blue" />
+                            <span>Editar Diseño & Bloques</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1799,7 +1949,7 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {campaigns.map((c) => (
+            {activeChannelCampaigns.map((c) => (
               <div
                 key={c.id || c.code}
                 className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 space-y-4 flex flex-col justify-between"
@@ -1937,23 +2087,45 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
               <div className="pt-4 mt-3 border-t border-gray-100 flex gap-2">
                 <button
                   onClick={() => {
-                    const c = campaigns.find(x => !x.initiative || x.initiative === 'rotary_en_accion') || campaigns[0];
-                    if (c) {
-                      setPreviewCampaign(c);
-                      setPreviewTab('email');
-                    }
+                    const found = campaigns.find(x => x.initiative === 'rotary_en_accion' || (!x.initiative && (x.code?.startsWith('sem-') || !x.code?.includes('-'))));
+                    const c = found ? {
+                      ...found,
+                      design: found.design || createChannelCampaignDesign('rotary_en_accion', found)
+                    } : {
+                      id: 'sample-rotary',
+                      code: 'sem-01',
+                      name: 'Tu club transforma comunidades. ¡Hagámoslo visible!',
+                      subject: 'Tu club transforma comunidades. ¡Hagámoslo visible en Rotary en Acción!',
+                      preheader: 'Comparte tus proyectos y actividades comunitarias en menos de 3 minutos con el formulario unificado.',
+                      initiative: 'rotary_en_accion',
+                      design: createChannelCampaignDesign('rotary_en_accion')
+                    };
+                    setPreviewCampaign(c);
+                    setPreviewTab('email');
                   }}
-                  className="flex-1 py-2 px-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold transition flex items-center justify-center gap-1.5"
+                  className="flex-1 py-2 px-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <Eye className="w-3.5 h-3.5 text-gray-600" />
                   <span>Previsualizar</span>
                 </button>
                 <button
                   onClick={() => {
-                    const c = campaigns.find(x => !x.initiative || x.initiative === 'rotary_en_accion') || campaigns[0];
-                    if (c) setVisualEditorCampaign(c);
+                    const found = campaigns.find(x => x.initiative === 'rotary_en_accion' || (!x.initiative && (x.code?.startsWith('sem-') || !x.code?.includes('-'))));
+                    const c = found ? {
+                      ...found,
+                      design: found.design || createChannelCampaignDesign('rotary_en_accion', found)
+                    } : {
+                      id: 'sample-rotary',
+                      code: 'sem-01',
+                      name: 'Tu club transforma comunidades. ¡Hagámoslo visible!',
+                      subject: 'Tu club transforma comunidades. ¡Hagámoslo visible en Rotary en Acción!',
+                      preheader: 'Comparte tus proyectos y actividades comunitarias en menos de 3 minutos con el formulario unificado.',
+                      initiative: 'rotary_en_accion',
+                      design: createChannelCampaignDesign('rotary_en_accion')
+                    };
+                    setVisualEditorCampaign(c);
                   }}
-                  className="py-2 px-3 rounded-xl bg-rotary-blue hover:bg-[#002868] text-white text-xs font-bold transition flex items-center justify-center gap-1.5"
+                  className="py-2 px-3 rounded-xl bg-rotary-blue hover:bg-[#002868] text-white text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-sky-200" />
                   <span>Diseñar</span>
@@ -2890,6 +3062,21 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
                   </div>
 
                   <select
+                    value={historyChannelFilter}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setHistoryChannelFilter(val);
+                      loadCampaignsHistory(val);
+                    }}
+                    className="px-3 py-2 rounded-xl border border-gray-200 text-xs bg-gray-50 font-medium"
+                  >
+                    <option value="todos">Todos los canales (Ecosistema)</option>
+                    <option value="rotary_en_accion">Canal 1: Rotary en Acción</option>
+                    <option value="directorio_clubes">Canal 2: Directorio de Clubes</option>
+                    <option value="feria_proyectos">Canal 3: Feria de Proyectos</option>
+                  </select>
+
+                  <select
                     value={historyStatusFilter}
                     onChange={(e) => setHistoryStatusFilter(e.target.value)}
                     className="px-3 py-2 rounded-xl border border-gray-200 text-xs bg-gray-50 font-medium"
@@ -2913,13 +3100,15 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
                     <option value="test">Prueba</option>
                   </select>
 
-                  {(historySearch || historyStatusFilter !== 'todos' || historyModeFilter !== 'todos') && (
+                  {(historySearch || historyStatusFilter !== 'todos' || historyModeFilter !== 'todos' || historyChannelFilter !== 'todos') && (
                     <button
                       type="button"
                       onClick={() => {
                         setHistorySearch('');
                         setHistoryStatusFilter('todos');
                         setHistoryModeFilter('todos');
+                        setHistoryChannelFilter('todos');
+                        loadCampaignsHistory('todos');
                       }}
                       className="text-xs text-gray-400 hover:text-gray-700 underline"
                     >
@@ -2975,7 +3164,16 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
                           return (
                             <tr key={c.id} className="hover:bg-gray-50/70 transition">
                               <td className="py-3.5 px-4">
-                                <div className="flex items-center gap-2 mb-1">
+                                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                  <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                    c.initiative === 'feria_proyectos'
+                                      ? 'bg-amber-100 text-amber-900 border border-amber-200'
+                                      : c.initiative === 'directorio_clubes'
+                                      ? 'bg-sky-100 text-sky-900 border border-sky-200'
+                                      : 'bg-purple-100 text-purple-900 border border-purple-200'
+                                  }`}>
+                                    {c.initiative === 'feria_proyectos' ? 'Canal 3 · Feria' : c.initiative === 'directorio_clubes' ? 'Canal 2 · Directorio' : 'Canal 1 · Rotary en Acción'}
+                                  </span>
                                   <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-blue-50 text-rotary-blue">
                                     {c.week === 0 ? 'Ciclo Permanente' : `Semana ${c.week}`} · {c.stage || 'Captación'}
                                   </span>

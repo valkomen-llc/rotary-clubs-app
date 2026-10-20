@@ -42,6 +42,22 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1222.0',
+        title: 'Auditoría, Reparación y Sincronización del Ecosistema Rotary en Acción · Previsualización, Planificador 12 Campañas y Centro de Envíos 🛠️📊',
+        description: 'Auditoría exhaustiva, reparación técnica y sincronización de datos del módulo Rotary en Acción → Marketing Inteligente en el Distrito 4281: 1) Corrección de error de carga en producción (500) resolviendo el empaquetado ESM de emailBlocks para Node.js en Vercel. 2) Reparación de Previsualización en Canal 1 con renderizado modular infalible y fallback institucional. 3) Planificador Editorial Multicanal: sincronización de la matriz completa de 12 campañas mensuales (4 por canal: Rotary en Acción, Directorio de Clubes y Feria de Proyectos) con selector consolidado, estados visuales, previsualización de Email/WhatsApp y acceso al editor de diseño. 4) Centro de Envíos: recuperación y visualización en tiempo real de los envíos históricos verificados (Despacho General: 354 destinatarios, 154 aperturas, 7 clics; Envío Piloto: 2 destinatarios) con filtro dinámico por canal e inmutabilidad de métricas reales.',
+        date: new Date().toISOString(),
+        tags: ['rotary-en-accion', 'marketing-inteligente', 'planificador', 'centro-de-envios', 'trazabilidad', 'auditoria', 'sincronizacion'],
+        type: 'fix',
+        impact: 'Crítica: Restaura la disponibilidad y funcionalidad completa del módulo en producción, habilita la visualización de las 12 campañas mensuales y recupera el historial verificado de despachos.',
+        changes: [
+            { type: 'fixed', text: 'Resolución de importación ESM en servidor Node.js/Vercel mediante empaquetado automatizado de emailBlocks.js.' },
+            { type: 'fixed', text: 'Reparación de la previsualización del Canal 1 en Layouts Institucionales con fallback a createChannelCampaignDesign.' },
+            { type: 'improved', text: 'Planificador Editorial con vista consolidada de 12 campañas y selector por canales (Rotary en Acción, Directorio y Feria).' },
+            { type: 'fixed', text: 'Reconciliación y visualización de ejecuciones históricas en Centro de Envíos con soporte multicanal y métricas reales.' },
+            { type: 'added', text: 'Script automatizado bundle:server-blocks integrado en prebuild y build para sincronización continua de bloques.' }
+        ]
+    },
+    {
         version: '4.1221.0',
         title: 'Estandarización Institucional de Plantillas de Email Marketing · Rotary en Acción, Directorio de Clubes y Feria de Proyectos ✉️🏛️',
         description: 'Estandarización arquitectónica y visual completa de los layouts de correo electrónico en los tres canales de comunicación del ecosistema Rotary en Acción, tomando como referencia oficial la plantilla validada de la Semana 1 · Captación: 1) Arquitectura modular de 4 bloques (A: Cabecera institucional adaptable por sitio/distrito con dimensiones seguras 240x60 máx; Central: Contenido dinámico, saludo personalizado, card de canal, CTA oficial #0C3C7C y firma institucional; B: Activación del ecosistema digital navy #0C3C7C con botón amarillo #f7a81b "ACTIVAR MI CLUB" toggleable; C: Footer institucional protegido Gente de Acción con redes sociales, asistencia por WhatsApp y copyright). 2) Canal Directorio de Clubes: Estandarización de las 5 campañas editoriales integrando barra de progreso reactiva y variables dinámicas de club. 3) Canal Feria de Proyectos Colombia: Estandarización de las 6 campañas con identidad oficial de Feria, 7 áreas de interés y propósitos de evolución. 4) Nueva Subpestaña "Layouts Institucionales": Administración centralizada de componentes y accesos rápidos de previsualización y edición visual. 5) Seguridad de Email: Función cleanUnresolvedVariables para sanitización estricta de variables antes de cualquier envío o previsualización. 6) Compatibilidad 100% con clientes de correo (Gmail, Outlook, Apple Mail) e inmutabilidad de registros históricos.',

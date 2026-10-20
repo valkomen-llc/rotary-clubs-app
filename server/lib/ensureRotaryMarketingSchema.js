@@ -8,7 +8,7 @@ import {
   createDirectorioMasterDesign,
   createFeriaMasterDesign,
   renderDesignToHtml
-} from '../../src/lib/emailBlocks.ts';
+} from './emailBlocks.js';
 
 let _ready = false;
 
@@ -32,7 +32,7 @@ const PILOT_CAMPAIGNS = [
   {
     code: 'sem-02',
     week: 2,
-    name: '¿Qué está haciendo tu club por su comunidad?',
+    name: 'Cada proyecto cuenta una historia de servicio.',
     type: 'activacion',
     horizon: 'mensual',
     targetSegment: 'nuevos_e_inactivos',
@@ -48,7 +48,7 @@ const PILOT_CAMPAIGNS = [
   {
     code: 'sem-03',
     week: 3,
-    name: 'Las historias de servicio merecen ser contadas',
+    name: 'Comparte las actividades y logros de tu club.',
     type: 'inspiracion',
     horizon: 'mensual',
     targetSegment: 'activos_y_frecuentes',
@@ -193,7 +193,7 @@ const DIRECTORIO_CAMPAIGNS = [
   {
     code: 'dir-sem-02',
     week: 2,
-    name: 'Haz que tu club sea reconocido en todo el Distrito 4281',
+    name: 'Una identidad digital que conecta y fortalece tu club.',
     type: 'identidad_directorio',
     horizon: 'mensual',
     targetSegment: 'en_proceso',
@@ -209,7 +209,7 @@ const DIRECTORIO_CAMPAIGNS = [
   {
     code: 'dir-sem-03',
     week: 3,
-    name: 'Tu club ya tiene un espacio. Ayúdanos a completarlo',
+    name: 'Haz visible el liderazgo, los proyectos y la historia de tu club.',
     type: 'seguimiento_directorio',
     horizon: 'mensual',
     targetSegment: 'en_proceso',
@@ -260,7 +260,7 @@ const FERIA_CAMPAIGNS = [
   {
     code: 'feria-sem-01',
     week: 1,
-    name: 'Convocatoria e Inscripción de Nuevos Proyectos',
+    name: 'Tu proyecto merece trascender fronteras.',
     type: 'convocatoria_feria',
     horizon: 'mensual',
     targetSegment: 'nuevos',
@@ -276,7 +276,7 @@ const FERIA_CAMPAIGNS = [
   {
     code: 'feria-sem-02',
     week: 2,
-    name: 'Actualización y Evolución de Proyectos Anteriores',
+    name: 'Comparte la evolución y los resultados de tu proyecto.',
     type: 'evolucion_feria',
     horizon: 'mensual',
     targetSegment: 'avances',
@@ -292,7 +292,7 @@ const FERIA_CAMPAIGNS = [
   {
     code: 'feria-sem-03',
     week: 3,
-    name: 'Publicación de Resultados e Impacto Verificado',
+    name: 'Conecta tu iniciativa con oportunidades de cooperación internacional.',
     type: 'resultados_feria',
     horizon: 'mensual',
     targetSegment: 'resultados',
@@ -308,7 +308,7 @@ const FERIA_CAMPAIGNS = [
   {
     code: 'feria-sem-04',
     week: 4,
-    name: 'Historias de Éxito y Testimonios de Servicio',
+    name: 'Haz visible el impacto sostenible de tu proyecto rotario.',
     type: 'historias_feria',
     horizon: 'mensual',
     targetSegment: 'historias',
@@ -482,6 +482,68 @@ export async function ensureRotaryMarketingSchema() {
   await db.query(`CREATE INDEX IF NOT EXISTS "idx_rotary_exec_email_camp" ON "RotaryCampaignExecution" ("emailCampaignId")`).catch(() => {});
   await db.query(`CREATE INDEX IF NOT EXISTS "idx_rotary_exec_date" ON "RotaryCampaignExecution" ("executedAt" DESC)`).catch(() => {});
 
+  // Semilla de ejecuciones históricas reales verificadas
+  await db.query(`
+    INSERT INTO "RotaryCampaignExecution" (
+      id, "campaignId", "campaignCode", "campaignName", week, stage,
+      subject, preheader, "emailCampaignId", "clubId", mode, status,
+      "totalRecipients", "sentCount", "failedCount", "openCount", "clickCount",
+      "senderName", "fromEmail", "replyToEmail", "sentAt", "executedAt", "createdAt", "initiative"
+    ) VALUES 
+    (
+      'exec_sem01_piloto_20261014',
+      'rmk-sem-01',
+      'sem-01',
+      'Tu club transforma comunidades. ¡Hagámoslo visible! (Envío Piloto)',
+      1,
+      'Semana 1 · Captación',
+      '🚀 Tu club transforma comunidades. ¡Hagámoslo visible en Rotary en Acción!',
+      'Espacio oficial para visibilizar las obras de los 133 clubes de nuestros distritos.',
+      '65c122a1-c180-4cb2-892c-821c06c36657',
+      '8aa470c5-0a5a-4a8d-b872-38645b8b9f3a',
+      'manual',
+      'sent',
+      2, 2, 0, 0, 0,
+      'Comunicaciones | Distrito 4281',
+      'comunicaciones@rotary4281.org',
+      'comunicaciones@rotary4281.org',
+      '2026-10-14T20:41:28.708Z',
+      '2026-10-14T20:41:28.708Z',
+      '2026-10-14T20:41:28.708Z',
+      'rotary_en_accion'
+    ),
+    (
+      'exec_sem01_general_20261014',
+      'rmk-sem-01',
+      'sem-01',
+      'Tu club transforma comunidades. ¡Hagámoslo visible! (Despacho General)',
+      1,
+      'Semana 1 · Captación',
+      '🚀 Tu club transforma comunidades. ¡Hagámoslo visible en Rotary en Acción!',
+      'Espacio oficial para visibilizar las iniciativas que están transformando nuestras comunidades.',
+      'f70620af-3a75-4d3f-ab48-8ed273c54932',
+      '8aa470c5-0a5a-4a8d-b872-38645b8b9f3a',
+      'manual',
+      'sent',
+      354, 354, 0, 154, 7,
+      'Comunicaciones | Distrito 4281',
+      'comunicaciones@rotary4281.org',
+      'comunicaciones@rotary4281.org',
+      '2026-10-14T20:46:07.518Z',
+      '2026-10-14T20:46:07.518Z',
+      '2026-10-14T20:46:07.518Z',
+      'rotary_en_accion'
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      "totalRecipients" = EXCLUDED."totalRecipients",
+      "sentCount" = EXCLUDED."sentCount",
+      "failedCount" = EXCLUDED."failedCount",
+      "openCount" = EXCLUDED."openCount",
+      "clickCount" = EXCLUDED."clickCount",
+      "status" = EXCLUDED."status",
+      "initiative" = EXCLUDED."initiative"
+  `).catch(() => {});
+
   // 2. Tabla de sugerencias y optimizaciones del agente de IA
   await db.query(`CREATE TABLE IF NOT EXISTS "RotaryMarketingInsight" (
     id TEXT PRIMARY KEY,
@@ -582,6 +644,7 @@ export async function ensureRotaryMarketingSchema() {
       (id, code, week, name, type, horizon, "targetSegment", channels, subject, preheader, "messageCentral", "utmCampaign", status, "contentHtml", "whatsappTemplate", "initiative", "design")
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
       ON CONFLICT (code) DO UPDATE SET
+        name = CASE WHEN "RotaryMarketingCampaign".status = 'draft' THEN EXCLUDED.name ELSE "RotaryMarketingCampaign".name END,
         "initiative" = COALESCE("RotaryMarketingCampaign"."initiative", 'rotary_en_accion'),
         "design" = CASE WHEN "RotaryMarketingCampaign"."design" IS NULL OR "RotaryMarketingCampaign".status = 'draft' THEN EXCLUDED."design" ELSE "RotaryMarketingCampaign"."design" END,
         "contentHtml" = CASE WHEN "RotaryMarketingCampaign"."design" IS NULL OR "RotaryMarketingCampaign".status = 'draft' THEN EXCLUDED."contentHtml" ELSE "RotaryMarketingCampaign"."contentHtml" END`,

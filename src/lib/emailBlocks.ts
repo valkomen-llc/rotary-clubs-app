@@ -452,8 +452,9 @@ export const resolveSiteActivarClubUrl = (siteContext?: SiteBrandingContext, que
     }
 
     if (!baseUrl) {
-        if (typeof window !== 'undefined' && window.location?.origin && !window.location.origin.includes('localhost')) {
-            baseUrl = `${window.location.origin}/activar-mi-club`;
+        const win = typeof globalThis !== 'undefined' && 'window' in globalThis ? (globalThis as any).window : null;
+        if (win && win.location?.origin && !win.location.origin.includes('localhost')) {
+            baseUrl = `${win.location.origin}/activar-mi-club`;
         } else {
             baseUrl = 'https://rotary4281.org/activar-mi-club';
         }
@@ -476,12 +477,13 @@ export const resolveSiteActivarClubUrl = (siteContext?: SiteBrandingContext, que
  * cuando no se pasa un siteContext explícito. Reutiliza la arquitectura multitenant del sistema.
  */
 export const getActiveSiteBrandingContext = (): SiteBrandingContext => {
-    if (typeof window === 'undefined') {
+    const win = typeof globalThis !== 'undefined' && 'window' in globalThis ? (globalThis as any).window : null;
+    if (!win) {
         return { isMainPlatform: false, siteName: 'Rotary', rotaryEnAccionUrl: 'https://app.clubplatform.org/rotary-en-accion' };
     }
     try {
-        const host = window.location.hostname;
-        const isMainPlatform = host === 'clubplatform.org' || host === 'www.clubplatform.org' || host === 'app.clubplatform.org' || (host === 'localhost' && window.location.port !== '5173');
+        const host = win.location?.hostname || '';
+        const isMainPlatform = host === 'clubplatform.org' || host === 'www.clubplatform.org' || host === 'app.clubplatform.org' || (host === 'localhost' && win.location?.port !== '5173');
 
         let siteLogo: string | null = null;
         let siteName: string | null = null;
@@ -489,9 +491,11 @@ export const getActiveSiteBrandingContext = (): SiteBrandingContext => {
         let domain: string | null = null;
         let publicUrl: string | null = null;
 
+        const storage = typeof globalThis !== 'undefined' && 'localStorage' in globalThis ? (globalThis as any).localStorage : null;
+
         // 1. Datos del club / sitio en almacenamiento local (persistencia de sesión multitenant)
         try {
-            const rawClub = localStorage.getItem('rotary_club');
+            const rawClub = storage?.getItem('rotary_club');
             if (rawClub) {
                 const c = JSON.parse(rawClub);
                 if (c && typeof c === 'object') {
@@ -515,7 +519,7 @@ export const getActiveSiteBrandingContext = (): SiteBrandingContext => {
         // 2. Si no hay logo del club en rotary_club, consultar sesión del usuario logueado
         if (!siteLogo || !domain) {
             try {
-                const rawUser = localStorage.getItem('rotary_user');
+                const rawUser = storage?.getItem('rotary_user');
                 if (rawUser) {
                     const u = JSON.parse(rawUser);
                     if (!siteLogo && u?.club?.logo && typeof u.club.logo === 'string') siteLogo = u.club.logo.trim();
@@ -539,7 +543,7 @@ export const getActiveSiteBrandingContext = (): SiteBrandingContext => {
         // 4. Logo de plataforma central
         let platformLogo: string | null = null;
         try {
-            const cpLogo = localStorage.getItem('cp_platform_logo');
+            const cpLogo = storage?.getItem('cp_platform_logo');
             if (cpLogo) {
                 const cp = JSON.parse(cpLogo);
                 if (cp?.url) platformLogo = cp.url;
