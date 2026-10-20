@@ -16,6 +16,7 @@ import {
   fieldsForTipo, IMPACT_META, EXTRA_LABELS, photoAdvice,
   DEFAULT_TIPOS, DEFAULT_AREAS, DEFAULT_PROGRAMAS, DEFAULT_TEMAS,
 } from '../../lib/rotaryEnAccionSpec';
+import { useLang } from '../../contexts/LanguageContext';
 import {
   ROTARY_AREAS_INTEREST,
   PROJECT_GOAL_OPTIONS,
@@ -24,6 +25,11 @@ import {
   type ProjectEvolution,
   goalLabel,
   goalBadgeClass,
+  getRotaryAreaName,
+  getRotaryAreaDescription,
+  getProjectGoalLabel,
+  getProjectGoalDescription,
+  getProjectStageLabel,
 } from '../../lib/rotaryFeriaSpec';
 
 // ════════════════════════════════════════════════════════════════════
@@ -47,6 +53,7 @@ const TARJETA = 'bg-white rounded-3xl p-6 sm:p-8 md:p-10 shadow-sm border border
 const nuevoId = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 
 const PASOS = ['Qué quieres compartir', 'Cuéntanos', 'Evidencias y contacto', 'Revisar y enviar'];
+const PASOS_EN = ['What you want to share', 'Tell us your story', 'Evidence and contact', 'Review and submit'];
 
 const leerJson = async (r: Response) => {
   const texto = await r.text();
@@ -116,13 +123,49 @@ const TIPS: Record<string, string> = {
   enlaces: 'Videos, notas o publicaciones donde ya se mostró la actividad.',
 };
 
-const InfoTip: React.FC<{ tipKey: string }> = ({ tipKey }) => {  const [abierto, setAbierto] = useState(false);
-  const texto = TIPS[tipKey] || 'Solo si aplica a tu historia. Puedes dejarlo vacío.';
+const TIPS_EN: Record<string, string> = {
+  titulo: 'A short title identifying the activity or project.',
+  historia: 'Summarize what your club did, why, who participated, and the results achieved.',
+  fecha: 'When the activity took place or the project started.',
+  ciudad: 'Beneficiary municipality, town, or region.',
+  beneficiarios: 'Approximate number of people or families benefited.',
+  voluntarios: 'Rotarians, family members, or friends who assisted.',
+  horas: 'Approximate total service hours dedicated.',
+  recursos: 'Funds or resources mobilized, if applicable.',
+  impacto: 'Beneficiaries, volunteers, service hours, and funds mobilized. All optional.',
+  fondosRecaudados: 'Total funds raised during the activity.',
+  capacitados: 'Approximate number of people trained.',
+  tipoEmergencia: 'E.g.: flood, earthquake, fire, landslide.',
+  zonaAfectada: 'Affected neighborhoods, rural areas, or municipalities.',
+  ayudaEntregada: 'What the club delivered: food packages, clean water, blankets, kits…',
+  necesidades: 'What is still needed in the affected area.',
+  area: 'The Rotary area of focus closest to your story.',
+  programa: 'The program or community that led the initiative, if applicable.',
+  tema: 'The specific theme, if applicable.',
+  tags: 'Keywords to help find and categorize your story.',
+  fotos: '1 photo is enough to submit. 5 or more enables automated AI Reel creation.',
+  distrito: 'District to which the organizing club belongs.',
+  club: 'The club leading the story. If multiple participated, add them below.',
+  clubes: 'Other participating clubs in addition to the main one.',
+  aliados: 'Organizations, companies, or entities that supported the activity.',
+  nombre: 'Contact person if more details are needed.',
+  cargo: 'Your role in the club, if any.',
+  email: 'We will notify you here when your story is published.',
+  telefono: 'Optional, for quicker coordination via WhatsApp.',
+  enlaces: 'Videos, news articles, or posts where the activity was already featured.',
+};
+
+const InfoTip: React.FC<{ tipKey: string }> = ({ tipKey }) => {
+  const { lang } = useLang();
+  const isEn = lang === 'en';
+  const [abierto, setAbierto] = useState(false);
+  const tipsMap = isEn ? TIPS_EN : TIPS;
+  const texto = tipsMap[tipKey] || (isEn ? 'Only if applicable to your story. You may leave it empty.' : 'Solo si aplica a tu historia. Puedes dejarlo vacío.');
   const id = `tip-${tipKey}`;
   return (
     <span className="relative inline-flex ml-1.5 align-middle">
       <button
-        type="button" aria-label="Más información" aria-describedby={id} aria-expanded={abierto}
+        type="button" aria-label={isEn ? 'More information' : 'Más información'} aria-describedby={id} aria-expanded={abierto}
         onClick={() => setAbierto((v) => !v)}
         onMouseEnter={() => setAbierto(true)} onMouseLeave={() => setAbierto(false)}
         onFocus={() => setAbierto(true)} onBlur={() => setAbierto(false)}
@@ -203,20 +246,51 @@ const Marco: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   </div>
 );
 
-const Cabecera: React.FC<{ siteName?: string; isFeria?: boolean }> = ({ siteName, isFeria }) => (
-  <PublicPageHeader
-    title={isFeria ? 'Rotary en Acción · Feria de Proyectos' : 'Rotary en Acción'}
-    subtitle={
-      isFeria
-        ? 'Comparte las actividades, proyectos, obras y eventos de tu club y ayúdanos a mostrar el impacto de Rotary a través de los canales de Rotary Project Fair Colombia.'
-        : siteName
-        ? `Comparte las actividades, proyectos, obras y eventos de tu club y ayúdanos a mostrar el impacto de Rotary a través de los canales de ${siteName}.`
-        : 'Comparte las actividades, proyectos, obras y eventos de tu club y ayúdanos a mostrar el impacto de Rotary a través de los canales del Distrito 4281.'
-    }
-  />
+const Cabecera: React.FC<{ siteName?: string; isFeria?: boolean }> = ({ siteName, isFeria }) => {
+  const { lang } = useLang();
+  const isEn = lang === 'en';
+
+  const feriaSubtitle = isEn
+    ? "Share the projects, progress, and results of your Rotary club. Let's make its impact visible, strengthen international partnerships, and show how together we transform communities."
+    : 'Comparte los proyectos, avances y resultados de tu club rotario. Hagamos visible su impacto, fortalezcamos las alianzas internacionales y mostremos cómo juntos transformamos comunidades.';
+
+  const defaultSubtitle = isEn
+    ? `Share the activities, projects, works, and events of your club and help us showcase the impact of Rotary through ${siteName || 'District 4281'} channels.`
+    : siteName
+    ? `Comparte las actividades, proyectos, obras y eventos de tu club y ayúdanos a mostrar el impacto de Rotary a través de los canales de ${siteName}.`
+    : 'Comparte las actividades, proyectos, obras y eventos de tu club y ayúdanos a mostrar el impacto de Rotary a través de los canales del Distrito 4281.';
+
+  return (
+    <PublicPageHeader
+      title={isFeria ? 'Rotary en Acción · Feria de Proyectos' : (isEn ? 'Rotary in Action' : 'Rotary en Acción')}
+      subtitle={isFeria ? feriaSubtitle : defaultSubtitle}
+    />
+  );
+};
+
+const Bloque: React.FC<{
+  titulo: string;
+  paso: number;
+  onEdit: (paso: number) => void;
+  editLabel?: string;
+  children: React.ReactNode;
+}> = ({ titulo, paso, onEdit, editLabel = 'Editar', children }) => (
+  <div className="border-b border-gray-100 last:border-0 py-4 first:pt-0 last:pb-0">
+    <div className="flex items-center justify-between mb-2">
+      <h3 className="text-[11px] font-black uppercase tracking-[0.15em] text-gray-400">{titulo}</h3>
+      <button type="button" onClick={() => onEdit(paso)} className="flex items-center gap-1 text-xs font-bold text-rotary-blue">
+        <Pencil className="w-3.5 h-3.5" /> {editLabel}
+      </button>
+    </div>
+    {children}
+  </div>
 );
 
 export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: string }) {
+  const { lang } = useLang();
+  const isEn = lang === 'en';
+  const pasos = isEn ? PASOS_EN : PASOS;
+
   const params = useParams<{ ref: string }>();
   const [search] = useSearchParams();
   const ref = campaignRef || params.ref || '';
@@ -357,11 +431,15 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
 
   useSEO({
     title: isFeriaMode
-      ? 'Rotary en Acción — Feria de Proyectos Colombia'
-      : 'Rotary en Acción — Comparte lo que hace tu club',
+      ? (isEn ? 'Rotary in Action — Rotary Project Fair Colombia' : 'Rotary en Acción — Feria de Proyectos Colombia')
+      : (isEn ? 'Rotary in Action — Share what your club does' : 'Rotary en Acción — Comparte lo que hace tu club'),
     description: isFeriaMode
-      ? 'Comparte los proyectos, obras, avances y resultados de tu club y ayúdanos a mostrar el impacto de Rotary a través de los canales de Rotary Project Fair Colombia.'
-      : 'Tu club hace cosas extraordinarias. Cuéntanos qué está haciendo y nosotros te ayudamos a comunicarlo.'
+      ? (isEn
+        ? "Share your club's projects, works, progress, and results and help us showcase Rotary's impact through Rotary Project Fair Colombia channels."
+        : 'Comparte los proyectos, obras, avances y resultados de tu club y ayúdanos a mostrar el impacto de Rotary a través de los canales de Rotary Project Fair Colombia.')
+      : (isEn
+        ? 'Your club does extraordinary things. Tell us what you are doing and we will help you communicate it.'
+        : 'Tu club hace cosas extraordinarias. Cuéntanos qué está haciendo y nosotros te ayudamos a comunicarlo.'),
   });
 
   // Búsqueda en vivo con debounce de proyectos de la Feria
@@ -1067,7 +1145,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
   };
 
   if (cargando) return (<Marco><div className="flex items-center justify-center py-32"><Loader2 className="w-8 h-8 animate-spin text-rotary-blue" /></div></Marco>);
-  if (errorCarga || !cfg) return (<Marco><div className="flex items-center justify-center px-4 py-20"><div className="bg-white rounded-3xl p-8 max-w-md w-full text-center shadow-sm border border-gray-100"><AlertTriangle className="w-10 h-10 text-amber-500 mx-auto" /><h1 className="text-lg font-bold text-gray-800 mt-4">No se pudo abrir Rotary en Acción</h1><p className="text-sm text-gray-500 mt-2">{errorCarga}</p><button onClick={cargar} className="mt-5 px-5 py-3 rounded-xl bg-rotary-blue text-white text-sm font-bold">Reintentar</button></div></div></Marco>);
+  if (errorCarga || !cfg) return (<Marco><div className="flex items-center justify-center px-4 py-20"><div className="bg-white rounded-3xl p-8 max-w-md w-full text-center shadow-sm border border-gray-100"><AlertTriangle className="w-10 h-10 text-amber-500 mx-auto" /><h1 className="text-lg font-bold text-gray-800 mt-4">{isEn ? 'Could not open Rotary in Action' : 'No se pudo abrir Rotary en Acción'}</h1><p className="text-sm text-gray-500 mt-2">{errorCarga}</p><button onClick={cargar} className="mt-5 px-5 py-3 rounded-xl bg-rotary-blue text-white text-sm font-bold">{isEn ? 'Retry' : 'Reintentar'}</button></div></div></Marco>);
 
   const tipos: any[] = (cfg.taxonomies?.tipo && cfg.taxonomies.tipo.length > 0) ? cfg.taxonomies.tipo : DEFAULT_TIPOS;
   const areas: any[] = (cfg.taxonomies?.area && cfg.taxonomies.area.length > 0) ? cfg.taxonomies.area : DEFAULT_AREAS;
@@ -1075,24 +1153,14 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
   const temas: any[] = (cfg.taxonomies?.tema && cfg.taxonomies.tema.length > 0) ? cfg.taxonomies.tema : DEFAULT_TEMAS;
   const impactoCargado = Object.entries(impact).filter(([, v]) => String(v).trim());
 
-  const Bloque: React.FC<{ titulo: string; paso: number; children: React.ReactNode }> = ({ titulo, paso, children }) => (
-    <div className="border-b border-gray-100 last:border-0 py-4 first:pt-0 last:pb-0">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-[11px] font-black uppercase tracking-[0.15em] text-gray-400">{titulo}</h3>
-        <button onClick={() => irA(paso)} className="flex items-center gap-1 text-xs font-bold text-rotary-blue"><Pencil className="w-3.5 h-3.5" /> Editar</button>
-      </div>
-      {children}
-    </div>
-  );
-
   return (
     <Marco>
       <Cabecera siteName={cfg?.site?.name} isFeria={isFeriaMode} />
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-10 md:py-12 pb-20 space-y-4">
         {!enviado && (
-          <nav aria-label="Progreso" className="bg-white rounded-2xl border border-gray-100 px-4 sm:px-6 py-3.5 shadow-sm">
+          <nav aria-label={isEn ? 'Progress' : 'Progreso'} className="bg-white rounded-2xl border border-gray-100 px-4 sm:px-6 py-3.5 shadow-sm">
             <div className="flex items-center justify-between gap-2 overflow-x-auto">
-              {PASOS.map((label, i) => (
+              {pasos.map((label, i) => (
                 <button
                   key={label}
                   type="button"
@@ -1123,7 +1191,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
               ))}
             </div>
             <p className="sm:hidden text-[11px] font-bold text-gray-400 mt-2">
-              Paso {step + 1} de 4: {PASOS[step]}
+              {isEn ? `Step ${step + 1} of 4: ${pasos[step]}` : `Paso ${step + 1} de 4: ${pasos[step]}`}
             </p>
           </nav>
         )}
@@ -1138,18 +1206,20 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                     <Award className="w-5 h-5" />
                   </span>
                   <h2 className="text-xl font-black text-gray-800">
-                    Área de Interés de Rotary
+                    {isEn ? 'Rotary Area of Focus' : 'Área de Interés de Rotary'}
                   </h2>
                 </div>
                 <p className="text-sm text-gray-500 mt-1">
-                  El formulario está enfocado en proyectos rotarios y organizado según las siete áreas de interés de Rotary International.
+                  {isEn
+                    ? 'The form is focused on Rotary projects and organized according to the seven areas of focus of Rotary International.'
+                    : 'El formulario está enfocado en proyectos rotarios y organizado según las siete áreas de interés de Rotary International.'}
                 </p>
 
                 {/* Grid de 3 columnas con 8 tarjetas (7 oficiales + Otros) */}
                 <div
                   className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 mt-6"
                   role="radiogroup"
-                  aria-label="Área de interés de Rotary"
+                  aria-label={isEn ? 'Rotary Area of Focus' : 'Área de interés de Rotary'}
                 >
                   {ROTARY_AREAS_INTEREST.map((a) => {
                     const isSelected = areaPrincipal === a.id;
@@ -1175,17 +1245,17 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                           <span className="text-2xl sm:text-3xl" aria-hidden>{a.icon}</span>
                           {a.isOfficialArea ? (
                             <span className="text-[10px] font-bold text-gray-400 bg-gray-50 border border-gray-100 px-2 py-0.5 rounded-full">
-                              Área Oficial
+                              {isEn ? 'Official Area' : 'Área Oficial'}
                             </span>
                           ) : (
                             <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
-                              Complementaria
+                              {isEn ? 'Complementary' : 'Complementaria'}
                             </span>
                           )}
                         </div>
                         <div className="mt-2">
-                          <div className="text-xs sm:text-sm font-bold text-gray-800 leading-snug">{a.name}</div>
-                          <div className="text-[11px] text-gray-500 mt-0.5 line-clamp-2">{a.description}</div>
+                          <div className="text-xs sm:text-sm font-bold text-gray-800 leading-snug">{getRotaryAreaName(a.id, lang)}</div>
+                          <div className="text-[11px] text-gray-500 mt-0.5 line-clamp-2">{getRotaryAreaDescription(a.id, lang)}</div>
                         </div>
                       </button>
                     );
@@ -1196,26 +1266,30 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                 {areaPrincipal === 'otros' && (
                   <div className="mt-4 p-4 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-2">
                     <label htmlFor="rea-otros-esp" className="block text-xs font-bold text-amber-900">
-                      Especifica el tipo de proyecto o iniciativa complementaria *
+                      {isEn ? 'Specify the type of complementary project or initiative *' : 'Especifica el tipo de proyecto o iniciativa complementaria *'}
                     </label>
                     <input
                       id="rea-otros-esp"
                       className={CAMPO}
-                      placeholder="Ej: Ayuda humanitaria en desastres, robótica educativa comunitaria, patrimonio cultural…"
+                      placeholder={isEn ? 'E.g.: Humanitarian disaster relief, community robotics, cultural heritage…' : 'Ej: Ayuda humanitaria en desastres, robótica educativa comunitaria, patrimonio cultural…'}
                       value={otrosEspecificacion}
                       onChange={(e) => setOtrosEspecificacion(e.target.value)}
                     />
                     <p className="text-[11px] text-amber-800">
-                      Esta opción complementaria clasifica iniciativas especiales sin modificar la taxonomía oficial de las siete áreas de Rotary International.
+                      {isEn
+                        ? 'This complementary option classifies special initiatives without altering the official taxonomy of Rotary International’s seven areas of focus.'
+                        : 'Esta opción complementaria clasifica iniciativas especiales sin modificar la taxonomía oficial de las siete áreas de Rotary International.'}
                     </p>
                   </div>
                 )}
 
                 {/* Áreas secundarias */}
                 <div className="mt-6 pt-5 border-t border-gray-100">
-                  <span className={ROTULO}>Áreas secundarias de impacto (opcional)</span>
+                  <span className={ROTULO}>{isEn ? 'Secondary areas of impact (optional)' : 'Áreas secundarias de impacto (opcional)'}</span>
                   <p className="text-xs text-gray-500 mb-2.5">
-                    Si el proyecto impacta más de una de las siete áreas oficiales, selecciona las áreas complementarias:
+                    {isEn
+                      ? 'If the project impacts more than one of the seven official areas, select complementary areas:'
+                      : 'Si el proyecto impacta más de una de las siete áreas oficiales, selecciona las áreas complementarias:'}
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {ROTARY_AREAS_INTEREST.filter((a) => a.isOfficialArea && a.id !== areaPrincipal).map((a) => {
@@ -1238,7 +1312,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                           }`}
                         >
                           <span>{a.icon}</span>
-                          <span>{a.name}</span>
+                          <span>{getRotaryAreaName(a.id, lang)}</span>
                         </button>
                       );
                     })}
@@ -1248,15 +1322,17 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                 {/* Propósito del proyecto */}
                 <div className="mt-8 pt-6 border-t border-gray-100">
                   <h3 className="text-lg font-black text-gray-800">
-                    ¿Qué deseas compartir sobre tu proyecto?
+                    {isEn ? 'What do you want to share about your project?' : '¿Qué deseas compartir sobre tu proyecto?'}
                   </h3>
                   <p className="text-sm text-gray-500 mt-1">
-                    Selecciona el propósito de tu reporte para adaptar los campos en los siguientes pasos:
+                    {isEn
+                      ? 'Select the purpose of your report to customize the fields in subsequent steps:'
+                      : 'Selecciona el propósito de tu reporte para adaptar los campos en los siguientes pasos:'}
                   </p>
                   <div
                     className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 mt-4"
                     role="radiogroup"
-                    aria-label="Propósito del reporte"
+                    aria-label={isEn ? 'Report purpose' : 'Propósito del reporte'}
                   >
                     {PROJECT_GOAL_OPTIONS.map((g) => {
                       const isGoalSelected = projectGoalType === g.id;
@@ -1275,8 +1351,8 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                         >
                           <div className="text-2xl sm:text-3xl" aria-hidden>{g.icon}</div>
                           <div className="mt-2">
-                            <div className="text-xs sm:text-sm font-bold text-gray-800 leading-snug">{g.label}</div>
-                            <div className="text-[11px] text-gray-500 mt-0.5 line-clamp-2">{g.description}</div>
+                            <div className="text-xs sm:text-sm font-bold text-gray-800 leading-snug">{getProjectGoalLabel(g.id, lang)}</div>
+                            <div className="text-[11px] text-gray-500 mt-0.5 line-clamp-2">{getProjectGoalDescription(g.id, lang)}</div>
                           </div>
                         </button>
                       );
@@ -1286,9 +1362,9 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
               </div>
             ) : (
               <>
-                <h2 className="text-xl font-black text-gray-800">¿Qué quieres compartir con Rotary?</h2>
-                <p className="text-sm text-gray-500 mt-1">Elegí una opción. El formulario se adapta a lo que elijas.</p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 mt-6" role="radiogroup" aria-label="Tipo de contenido">
+                <h2 className="text-xl font-black text-gray-800">{isEn ? 'What do you want to share with Rotary?' : '¿Qué quieres compartir con Rotary?'}</h2>
+                <p className="text-sm text-gray-500 mt-1">{isEn ? 'Choose an option. The form adapts to your choice.' : 'Elegí una opción. El formulario se adapta a lo que elijas.'}</p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 mt-6" role="radiogroup" aria-label={isEn ? 'Content type' : 'Tipo de contenido'}>
                   {tipos.map((t: any) => (
                     <button
                       key={t.slug}
@@ -1322,11 +1398,13 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                       <Target className="w-5 h-5" />
                     </span>
                     <h2 className="text-lg font-black text-gray-800">
-                      Identificación y Evolución del Proyecto
+                      {isEn ? 'Project Identification and Evolution' : 'Identificación y Evolución del Proyecto'}
                     </h2>
                   </div>
                   <p className="text-sm text-gray-500 mt-1">
-                    Documenta la trayectoria, objetivos y resultados alcanzados para construir la memoria histórica de tu iniciativa en la Feria de Proyectos Colombia.
+                    {isEn
+                      ? 'Document the trajectory, objectives, and achieved results to build the historical memory of your initiative at Rotary Project Fair Colombia.'
+                      : 'Documenta la trayectoria, objetivos y resultados alcanzados para construir la memoria histórica de tu iniciativa en la Feria de Proyectos Colombia.'}
                   </p>
                 </div>
 
@@ -1335,10 +1413,10 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <span className="block text-xs font-black text-gray-800 uppercase tracking-wide">
-                        ¿Participó en una edición anterior de la Feria de Proyectos Colombia?
+                        {isEn ? 'Did it participate in a previous edition of Rotary Project Fair Colombia?' : '¿Participó en una edición anterior de la Feria de Proyectos Colombia?'}
                       </span>
                       <span className="block text-[11px] text-gray-500 mt-0.5">
-                        Si ya fue postulado previamente, puedes vincularlo a su historial sin crear duplicados.
+                        {isEn ? 'If it was previously submitted, you can link it to its history without creating duplicates.' : 'Si ya fue postulado previamente, puedes vincularlo a su historial sin crear duplicados.'}
                       </span>
                     </div>
                     <div className="inline-flex rounded-xl bg-gray-200/70 p-1 shrink-0">
@@ -1352,7 +1430,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                           !wasInPreviousFair ? 'bg-white text-gray-900 shadow-xs' : 'text-gray-500 hover:text-gray-900'
                         }`}
                       >
-                        No
+                        {isEn ? 'No' : 'No'}
                       </button>
                       <button
                         type="button"
@@ -1361,7 +1439,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                           wasInPreviousFair ? 'bg-rotary-blue text-white shadow-xs' : 'text-gray-500 hover:text-gray-900'
                         }`}
                       >
-                        Sí
+                        {isEn ? 'Yes' : 'Sí'}
                       </button>
                     </div>
                   </div>
@@ -1370,7 +1448,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                     <div className="pt-3 border-t border-slate-200 space-y-3">
                       <div className="grid sm:grid-cols-2 gap-3">
                         <div>
-                          <label className={ROTULO}>Edición de la Feria</label>
+                          <label className={ROTULO}>{isEn ? 'Fair Edition' : 'Edición de la Feria'}</label>
                           <select
                             className={CAMPO}
                             value={projectFairEdition}
@@ -1382,11 +1460,11 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                           </select>
                         </div>
                         <div>
-                          <label className={ROTULO}>Buscar Proyecto Previo para Vincular</label>
+                          <label className={ROTULO}>{isEn ? 'Search Previous Project to Link' : 'Buscar Proyecto Previo para Vincular'}</label>
                           <div className="relative">
                             <input
                               className={CAMPO}
-                              placeholder="Escribe el nombre del proyecto o club..."
+                              placeholder={isEn ? 'Type the project name or club...' : 'Escribe el nombre del proyecto o club...'}
                               value={fairSearchQuery}
                               onChange={(e) => setFairSearchQuery(e.target.value)}
                             />
@@ -1401,7 +1479,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                       {fairSearchResults.length > 0 && !linkedProject && (
                         <div className="bg-white border border-gray-200 rounded-2xl shadow-md p-2 space-y-1 max-h-48 overflow-y-auto">
                           <p className="text-[10px] font-bold text-gray-400 px-2 py-1 uppercase tracking-wider">
-                            Selecciona para vincular:
+                            {isEn ? 'Select to link:' : 'Selecciona para vincular:'}
                           </p>
                           {fairSearchResults.map((res: any) => (
                             <button
@@ -1413,7 +1491,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                                 if (!club && res.club) setClub(res.club);
                                 setFairSearchResults([]);
                                 setFairSearchQuery('');
-                                toast.success(`Proyecto vinculado: ${res.title}`);
+                                toast.success(isEn ? `Project linked: ${res.title}` : `Proyecto vinculado: ${res.title}`);
                               }}
                               className="w-full text-left p-2 rounded-xl hover:bg-blue-50/70 transition flex items-center justify-between text-xs"
                             >
@@ -1422,7 +1500,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                                 <div className="text-[11px] text-gray-500">{res.club} {res.edition ? `· ${res.edition}` : ''}</div>
                               </div>
                               <span className="text-[10px] font-bold text-rotary-blue bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
-                                Vincular
+                                {isEn ? 'Link' : 'Vincular'}
                               </span>
                             </button>
                           ))}
@@ -1435,8 +1513,8 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                           <div className="flex items-center gap-2">
                             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                             <div>
-                              <span className="font-bold">Vinculado a proyecto oficial: </span>
-                              <span>{linkedProject.title} ({linkedProject.club || 'Club Registrado'})</span>
+                              <span className="font-bold">{isEn ? 'Linked to official project: ' : 'Vinculado a proyecto oficial: '}</span>
+                              <span>{linkedProject.title} ({linkedProject.club || (isEn ? 'Registered Club' : 'Club Registrado')})</span>
                               {linkedProject.edition && (
                                 <span className="ml-1 text-[11px] text-emerald-700 font-semibold">· {linkedProject.edition}</span>
                               )}
@@ -1447,13 +1525,15 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                             onClick={() => setLinkedProject(null)}
                             className="text-emerald-700 hover:text-emerald-900 font-bold underline ml-2"
                           >
-                            Desvincular
+                            {isEn ? 'Unlink' : 'Desvincular'}
                           </button>
                         </div>
                       )}
 
                       <p className="text-[11px] text-slate-500">
-                        La vinculación conserva el historial y la memoria evolutiva sin modificar los datos oficiales de la postulación original.
+                        {isEn
+                          ? 'Linking preserves history and evolutionary memory without altering the official data of the original submission.'
+                          : 'La vinculación conserva el historial y la memoria evolutiva sin modificar los datos oficiales de la postulación original.'}
                       </p>
                     </div>
                   )}
@@ -1462,41 +1542,41 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                 {/* 2. Identificación Fundamental */}
                 <div className="space-y-4">
                   <h3 className="text-xs font-black text-gray-400 uppercase tracking-[0.15em]">
-                    Identificación Fundamental del Proyecto
+                    {isEn ? 'Fundamental Project Identification' : 'Identificación Fundamental del Proyecto'}
                   </h3>
 
                   <div>
-                    <Etiqueta htmlFor="rea-titulo" tip="titulo">Nombre oficial del proyecto *</Etiqueta>
+                    <Etiqueta htmlFor="rea-titulo" tip="titulo">{isEn ? 'Official project name *' : 'Nombre oficial del proyecto *'}</Etiqueta>
                     <input
                       id="rea-titulo"
                       className={CAMPO}
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}
-                      placeholder="Ej: Banco de Semillas y Huertas Comunitarias en el Valle"
+                      placeholder={isEn ? 'E.g.: Seed Bank and Community Gardens in the Valley' : 'Ej: Banco de Semillas y Huertas Comunitarias en el Valle'}
                     />
                   </div>
 
                   <div className="grid sm:grid-cols-2 gap-3">
                     <div>
-                      <Etiqueta htmlFor="rea-club" tip="club">Club Rotario Responsable *</Etiqueta>
+                      <Etiqueta htmlFor="rea-club" tip="club">{isEn ? 'Responsible Rotary Club *' : 'Club Rotario Responsable *'}</Etiqueta>
                       <input
                         id="rea-club"
                         className={CAMPO}
                         list="clubes-distrito"
                         value={club}
                         onChange={(e) => setClub(e.target.value)}
-                        placeholder="Nombre del club rotario"
+                        placeholder={isEn ? 'Rotary club name' : 'Nombre del club rotario'}
                       />
                       <datalist id="clubes-distrito">{clubesDistrito.map((c) => <option key={c} value={c} />)}</datalist>
                     </div>
                     <div>
-                      <Etiqueta tip="distrito">Distrito Rotario</Etiqueta>
+                      <Etiqueta tip="distrito">{isEn ? 'Rotary District' : 'Distrito Rotario'}</Etiqueta>
                       <select
                         className={CAMPO}
                         value={district}
                         onChange={(e) => setDistrict(e.target.value)}
                       >
-                        <option value="">Seleccionar Distrito…</option>
+                        <option value="">{isEn ? 'Select District…' : 'Seleccionar Distrito…'}</option>
                         {distritos.map((d: any) => (
                           <option key={d.value} value={d.value}>{d.label}</option>
                         ))}
@@ -1506,28 +1586,28 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
 
                   <div className="grid sm:grid-cols-2 gap-3">
                     <div>
-                      <label className={ROTULO}>País del Proyecto</label>
+                      <label className={ROTULO}>{isEn ? 'Project Country' : 'País del Proyecto'}</label>
                       <input
                         className={CAMPO}
                         value={projectCountry}
                         onChange={(e) => setProjectCountry(e.target.value)}
-                        placeholder="Colombia, México, etc."
+                        placeholder={isEn ? 'Colombia, Mexico, USA, etc.' : 'Colombia, México, etc.'}
                       />
                     </div>
                     <div>
-                      <Etiqueta tip="ciudad">Ciudad o Región Beneficiaria</Etiqueta>
+                      <Etiqueta tip="ciudad">{isEn ? 'Beneficiary City or Region' : 'Ciudad o Región Beneficiaria'}</Etiqueta>
                       <input
                         className={CAMPO}
                         value={city}
                         onChange={(e) => setCity(e.target.value)}
-                        placeholder="Municipio, vereda o departamento"
+                        placeholder={isEn ? 'Municipality, town, or department' : 'Municipio, vereda o departamento'}
                       />
                     </div>
                   </div>
 
                   <div className="grid sm:grid-cols-2 gap-3">
                     <div>
-                      <label className={ROTULO}>Año de Inicio</label>
+                      <label className={ROTULO}>{isEn ? 'Start Year' : 'Año de Inicio'}</label>
                       <input
                         type="number"
                         min="1980"
@@ -1539,47 +1619,47 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                       />
                     </div>
                     <div>
-                      <label className={ROTULO}>Estado Actual del Proyecto</label>
+                      <label className={ROTULO}>{isEn ? 'Current Project Stage' : 'Estado Actual del Proyecto'}</label>
                       <select
                         className={CAMPO}
                         value={projectStage}
                         onChange={(e) => setProjectStage(e.target.value)}
                       >
                         {PROJECT_STAGES.map((s) => (
-                          <option key={s.id} value={s.id}>{s.label}</option>
+                          <option key={s.id} value={s.id}>{getProjectStageLabel(s.id, lang)}</option>
                         ))}
                       </select>
                     </div>
                   </div>
 
                   <div>
-                    <Etiqueta htmlFor="rea-historia" tip="historia">Descripción general del proyecto *</Etiqueta>
+                    <Etiqueta htmlFor="rea-historia" tip="historia">{isEn ? 'General project description *' : 'Descripción general del proyecto *'}</Etiqueta>
                     <textarea
                       id="rea-historia"
                       className={`${CAMPO} min-h-[120px]`}
                       value={story}
                       onChange={(e) => setStory(e.target.value)}
-                      placeholder="Resume qué hace el proyecto, qué problemática atiende, antecedentes y contexto comunitario…"
+                      placeholder={isEn ? 'Summarize what the project does, what issue it addresses, background, and community context…' : 'Resume qué hace el proyecto, qué problemática atiende, antecedentes y contexto comunitario…'}
                     />
                   </div>
 
                   <div>
-                    <label className={ROTULO}>Objetivos del Proyecto</label>
+                    <label className={ROTULO}>{isEn ? 'Project Objectives' : 'Objetivos del Proyecto'}</label>
                     <textarea
                       className={`${CAMPO} min-h-[90px]`}
                       value={projectObjectives}
                       onChange={(e) => setProjectObjectives(e.target.value)}
-                      placeholder="Describe los objetivos generales y específicos que persigue la iniciativa…"
+                      placeholder={isEn ? 'Describe the general and specific objectives pursued by the initiative…' : 'Describe los objetivos generales y específicos que persigue la iniciativa…'}
                     />
                   </div>
 
                   <div>
-                    <label className={ROTULO}>Comunidad o Población Beneficiaria</label>
+                    <label className={ROTULO}>{isEn ? 'Beneficiary Community or Population' : 'Comunidad o Población Beneficiaria'}</label>
                     <input
                       className={CAMPO}
                       value={projectTargetCommunity}
                       onChange={(e) => setProjectTargetCommunity(e.target.value)}
-                      placeholder="Ej: Familias campesinas de la cuenca alta, comunidad estudiantil rural, niños y niñas…"
+                      placeholder={isEn ? 'E.g.: Rural farming families in the upper basin, rural student community, children…' : 'Ej: Familias campesinas de la cuenca alta, comunidad estudiantil rural, niños y niñas…'}
                     />
                   </div>
                 </div>
@@ -1588,7 +1668,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                 <div className="space-y-4 pt-4 border-t border-gray-100">
                   <div className="flex items-center justify-between">
                     <h3 className="text-xs font-black text-gray-400 uppercase tracking-[0.15em]">
-                      Evolución, Resultados e Impacto
+                      {isEn ? 'Evolution, Results and Impact' : 'Evolución, Resultados e Impacto'}
                     </h3>
                     <button
                       type="button"
@@ -1597,7 +1677,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                       className="flex items-center gap-1.5 text-xs font-bold text-rotary-blue border border-blue-100 rounded-xl px-2.5 py-1.5 hover:bg-blue-50"
                     >
                       {assistLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                      <span>Asistente IA</span>
+                      <span>{isEn ? 'AI Assistant' : 'Asistente IA'}</span>
                     </button>
                   </div>
 
@@ -1609,78 +1689,78 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
 
                   <div className="grid sm:grid-cols-2 gap-3">
                     <div>
-                      <label className={ROTULO}>Resultados Comprobados (Evidencias y Hechos)</label>
+                      <label className={ROTULO}>{isEn ? 'Verified Results (Evidence & Facts)' : 'Resultados Comprobados (Evidencias y Hechos)'}</label>
                       <textarea
                         className={`${CAMPO} min-h-[100px]`}
                         value={verifiedResults}
                         onChange={(e) => setVerifiedResults(e.target.value)}
-                        placeholder="Logros comprobados con mediciones reales o certificadas…"
+                        placeholder={isEn ? 'Verified achievements with real or certified measurements…' : 'Logros comprobados con mediciones reales o certificadas…'}
                       />
                     </div>
                     <div>
-                      <label className={ROTULO}>Estimaciones o Proyecciones Actuales</label>
+                      <label className={ROTULO}>{isEn ? 'Current Estimates or Projections' : 'Estimaciones o Proyecciones Actuales'}</label>
                       <textarea
                         className={`${CAMPO} min-h-[100px]`}
                         value={estimatedResults}
                         onChange={(e) => setEstimatedResults(e.target.value)}
-                        placeholder="Impacto proyectado o estimación actual en desarrollo…"
+                        placeholder={isEn ? 'Projected impact or current estimate in progress…' : 'Impacto proyectado o estimación actual en desarrollo…'}
                       />
                     </div>
                   </div>
 
                   <div className="grid sm:grid-cols-2 gap-3">
                     <div>
-                      <label className={ROTULO}>Beneficiarios Directos (Aprox.)</label>
+                      <label className={ROTULO}>{isEn ? 'Direct Beneficiaries (Approx.)' : 'Beneficiarios Directos (Aprox.)'}</label>
                       <input
                         type="number"
                         className={CAMPO}
                         value={beneficiariesDirect}
                         onChange={(e) => setBeneficiariesDirect(e.target.value)}
-                        placeholder="Ej: 450"
+                        placeholder={isEn ? 'E.g.: 450' : 'Ej: 450'}
                       />
                     </div>
                     <div>
-                      <label className={ROTULO}>Beneficiarios Indirectos (Aprox.)</label>
+                      <label className={ROTULO}>{isEn ? 'Indirect Beneficiaries (Approx.)' : 'Beneficiarios Indirectos (Aprox.)'}</label>
                       <input
                         type="number"
                         className={CAMPO}
                         value={beneficiariesIndirect}
                         onChange={(e) => setBeneficiariesIndirect(e.target.value)}
-                        placeholder="Ej: 1800"
+                        placeholder={isEn ? 'E.g.: 1800' : 'Ej: 1800'}
                       />
                     </div>
                   </div>
 
                   <div className="grid sm:grid-cols-3 gap-3">
                     <div>
-                      <label className={ROTULO}>Moneda</label>
+                      <label className={ROTULO}>{isEn ? 'Currency' : 'Moneda'}</label>
                       <select
                         className={CAMPO}
                         value={fundsCurrency}
                         onChange={(e) => setFundsCurrency(e.target.value as any)}
                       >
-                        <option value="USD">USD (Dólares)</option>
-                        <option value="COP">COP (Pesos Col)</option>
-                        <option value="EUR">EUR (Euros)</option>
+                        <option value="USD">{isEn ? 'USD (US Dollars)' : 'USD (Dólares)'}</option>
+                        <option value="COP">{isEn ? 'COP (Col. Pesos)' : 'COP (Pesos Col)'}</option>
+                        <option value="EUR">{isEn ? 'EUR (Euros)' : 'EUR (Euros)'}</option>
                       </select>
                     </div>
                     <div>
-                      <label className={ROTULO}>Recursos Gestionados</label>
+                      <label className={ROTULO}>{isEn ? 'Managed Resources' : 'Recursos Gestionados'}</label>
                       <input
                         type="number"
                         className={CAMPO}
                         value={fundsManaged}
                         onChange={(e) => setFundsManaged(e.target.value)}
-                        placeholder="Monto total movilizado"
+                        placeholder={isEn ? 'Total mobilized amount' : 'Monto total movilizado'}
                       />
                     </div>
                     <div>
-                      <label className={ROTULO}>Financiación Recibida</label>
+                      <label className={ROTULO}>{isEn ? 'Funding Received' : 'Financiación Recibida'}</label>
                       <input
                         className={CAMPO}
                         value={fundsReceived}
                         onChange={(e) => setFundsReceived(e.target.value)}
-                        placeholder="Subvenciones, donaciones…"
+                        placeholder={isEn ? 'Grants, donations…' : 'Subvenciones, donaciones…'}
                       />
                     </div>
                   </div>
@@ -1689,47 +1769,49 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                   {(projectGoalType === 'buscar_aliados_financiacion' || projectStage === 'busqueda_fondos') && (
                     <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-2">
                       <label className="block text-xs font-bold text-amber-900">
-                        Necesidades Actuales de Financiación o Cooperación *
+                        {isEn ? 'Current Funding or Cooperation Needs *' : 'Necesidades Actuales de Financiación o Cooperación *'}
                       </label>
                       <textarea
                         className={`${CAMPO} min-h-[90px]`}
                         value={currentNeeds}
                         onChange={(e) => setCurrentNeeds(e.target.value)}
-                        placeholder="Detalla qué fondos, equipamiento o contrapartidas internacionales necesita el proyecto para ejecutarse o completarse…"
+                        placeholder={isEn
+                          ? 'Detail what funds, equipment, or international counterpart the project needs to be executed or completed…'
+                          : 'Detalla qué fondos, equipamiento o contrapartidas internacionales necesita el proyecto para ejecutarse o completarse…'}
                       />
                     </div>
                   )}
 
                   {/* Alianzas y Cooperación */}
                   <div className="space-y-3 pt-3 border-t border-gray-100">
-                    <span className={ROTULO}>Red de Alianzas y Participación Internacional</span>
+                    <span className={ROTULO}>{isEn ? 'Partnership Network and International Participation' : 'Red de Alianzas y Participación Internacional'}</span>
                     <div className="grid sm:grid-cols-2 gap-3">
                       <div>
-                        <label className={ROTULO}>Organizaciones Participantes</label>
+                        <label className={ROTULO}>{isEn ? 'Participating Organizations' : 'Organizaciones Participantes'}</label>
                         <input
                           className={CAMPO}
                           value={participatingOrgs}
                           onChange={(e) => setParticipatingOrgs(e.target.value)}
-                          placeholder="ONGs, empresas, universidades, entes locales"
+                          placeholder={isEn ? 'NGOs, companies, universities, local agencies' : 'ONGs, empresas, universidades, entes locales'}
                         />
                       </div>
                       <div>
-                        <label className={ROTULO}>Clubes Rotarios Aliados</label>
+                        <label className={ROTULO}>{isEn ? 'Partner Rotary Clubs' : 'Clubes Rotarios Aliados'}</label>
                         <input
                           className={CAMPO}
                           value={partnerClubs}
                           onChange={(e) => setPartnerClubs(e.target.value)}
-                          placeholder="Otros clubes del país colaboradores"
+                          placeholder={isEn ? 'Other collaborating clubs' : 'Otros clubes del país colaboradores'}
                         />
                       </div>
                     </div>
                     <div>
-                      <label className={ROTULO}>Participación Internacional</label>
+                      <label className={ROTULO}>{isEn ? 'International Participation' : 'Participación Internacional'}</label>
                       <input
                         className={CAMPO}
                         value={internationalParticipation}
                         onChange={(e) => setInternationalParticipation(e.target.value)}
-                        placeholder="Clubes extranjeros aliados, distritos internacionales, países colaboradores (Ej: Club Rotario de Austin, D5870 EE.UU.)"
+                        placeholder={isEn ? 'Foreign partner clubs, international districts, contributing countries (e.g. Austin Rotary Club, D5870 USA)' : 'Clubes extranjeros aliados, distritos internacionales, países colaboradores (Ej: Club Rotario de Austin, D5870 EE.UU.)'}
                       />
                     </div>
                   </div>
@@ -1737,44 +1819,46 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                   {/* Etapas completadas y actividades ejecutadas */}
                   <div className="grid sm:grid-cols-2 gap-3">
                     <div>
-                      <label className={ROTULO}>Etapas Completadas</label>
+                      <label className={ROTULO}>{isEn ? 'Completed Stages' : 'Etapas Completadas'}</label>
                       <textarea
                         className={`${CAMPO} min-h-[80px]`}
                         value={completedStages}
                         onChange={(e) => setCompletedStages(e.target.value)}
-                        placeholder="Fases ya ejecutadas satisfactoriamente…"
+                        placeholder={isEn ? 'Phases already completed successfully…' : 'Fases ya ejecutadas satisfactoriamente…'}
                       />
                     </div>
                     <div>
-                      <label className={ROTULO}>Actividades Ejecutadas</label>
+                      <label className={ROTULO}>{isEn ? 'Executed Activities' : 'Actividades Ejecutadas'}</label>
                       <textarea
                         className={`${CAMPO} min-h-[80px]`}
                         value={executedActivities}
                         onChange={(e) => setExecutedActivities(e.target.value)}
-                        placeholder="Jornadas, capacitaciones, entregas, talleres…"
+                        placeholder={isEn ? 'Field days, trainings, deliveries, workshops…' : 'Jornadas, capacitaciones, entregas, talleres…'}
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className={ROTULO}>Nuevos Objetivos / Próximos Hitos</label>
+                    <label className={ROTULO}>{isEn ? 'New Goals / Next Milestones' : 'Nuevos Objetivos / Próximos Hitos'}</label>
                     <input
                       className={CAMPO}
                       value={futureTargets}
                       onChange={(e) => setFutureTargets(e.target.value)}
-                      placeholder="Próxima meta o fase de expansión planeada"
+                      placeholder={isEn ? 'Next planned goal or expansion phase' : 'Próxima meta o fase de expansión planeada'}
                     />
                   </div>
 
                   {/* Historia de éxito / testimonios */}
                   {(projectGoalType === 'historia_exito' || projectStage === 'completado') && (
                     <div>
-                      <label className={ROTULO}>Historia de Éxito y Testimonio Destacado</label>
+                      <label className={ROTULO}>{isEn ? 'Success Story and Featured Testimonial' : 'Historia de Éxito y Testimonio Destacado'}</label>
                       <textarea
                         className={`${CAMPO} min-h-[100px]`}
                         value={successStory}
                         onChange={(e) => setSuccessStory(e.target.value)}
-                        placeholder="Comparte el relato inspirador de un beneficiario, testimonio de vida o impacto humano que demuestre el valor de Rotary…"
+                        placeholder={isEn
+                          ? 'Share the inspiring story of a beneficiary, life testimonial, or human impact demonstrating the value of Rotary…'
+                          : 'Comparte el relato inspirador de un beneficiario, testimonio de vida o impacto humano que demuestre el valor de Rotary…'}
                       />
                     </div>
                   )}
@@ -1784,15 +1868,15 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
               /* Bloque estándar de Rotary en Acción */
               <>
                 <div>
-                  <h2 className="text-lg font-black text-gray-800">Cuéntanos la historia</h2>
-                  <p className="text-sm text-gray-500 mt-1">Tu club hace cosas extraordinarias. Cuéntanos qué está haciendo y nosotros te ayudamos a comunicarlo.</p>
+                  <h2 className="text-lg font-black text-gray-800">{isEn ? 'Tell us the story' : 'Cuéntanos la historia'}</h2>
+                  <p className="text-sm text-gray-500 mt-1">{isEn ? 'Your club does extraordinary things. Tell us what you are doing and we will help you communicate it.' : 'Tu club hace cosas extraordinarias. Cuéntanos qué está haciendo y nosotros te ayudamos a comunicarlo.'}</p>
                 </div>
-                <div><Etiqueta htmlFor="rea-titulo" tip="titulo">Título o nombre de la iniciativa</Etiqueta>
-                  <input id="rea-titulo" className={CAMPO} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Jornada de reforestación en…" aria-describedby="tip-titulo" /></div>
-                <div><Etiqueta htmlFor="rea-historia" tip="historia">Cuéntanos qué hizo tu club</Etiqueta>
-                  <textarea id="rea-historia" className={`${CAMPO} min-h-[140px]`} value={story} onChange={(e) => setStory(e.target.value)} placeholder="Cuéntalo con tus palabras…" aria-describedby="tip-historia" /></div>
+                <div><Etiqueta htmlFor="rea-titulo" tip="titulo">{isEn ? 'Initiative title or name' : 'Título o nombre de la iniciativa'}</Etiqueta>
+                  <input id="rea-titulo" className={CAMPO} value={title} onChange={(e) => setTitle(e.target.value)} placeholder={isEn ? 'Tree planting day in…' : 'Jornada de reforestación en…'} aria-describedby="tip-titulo" /></div>
+                <div><Etiqueta htmlFor="rea-historia" tip="historia">{isEn ? 'Tell us what your club did' : 'Cuéntanos qué hizo tu club'}</Etiqueta>
+                  <textarea id="rea-historia" className={`${CAMPO} min-h-[140px]`} value={story} onChange={(e) => setStory(e.target.value)} placeholder={isEn ? 'Tell it in your own words…' : 'Cuéntalo con tus palabras…'} aria-describedby="tip-historia" /></div>
                 <button onClick={pedirAyudaIA} disabled={assistLoading} className="flex items-center gap-2 text-xs font-bold text-rotary-blue border border-blue-100 rounded-xl px-3 py-2.5">
-                  {assistLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />} Ayúdame a contarlo mejor
+                  {assistLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />} {isEn ? 'Help me tell it better' : 'Ayúdame a contarlo mejor'}
                 </button>
                 {assistQs.length > 0 && (
                   <ul className="bg-amber-50 border border-amber-100 rounded-2xl p-4 space-y-1.5 text-sm text-amber-900">
@@ -1802,7 +1886,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                 {/* Bloque de emergencia: solo cuando el tipo lo justifica */}
                 {tipo === 'emergencia' && (
                   <div className="bg-red-50/60 border border-red-100 rounded-2xl p-4">
-                    <span className={ROTULO}>Información de la emergencia (opcional)</span>
+                    <span className={ROTULO}>{isEn ? 'Emergency details (optional)' : 'Información de la emergencia (opcional)'}</span>
                     <div className="grid sm:grid-cols-2 gap-3">
                       {['tipoEmergencia', 'zonaAfectada', 'ayudaEntregada', 'necesidades'].map((k) => (
                         <div key={k}><Etiqueta tip={k}>{EXTRA_LABELS[k] || k}</Etiqueta>
@@ -1835,12 +1919,12 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                   );
                 })()}
                 <div className="grid grid-cols-2 gap-3">
-                  <div><Etiqueta tip="fecha">Fecha de la actividad</Etiqueta><input type="date" className={CAMPO} value={activityDate} onChange={(e) => setActivityDate(e.target.value)} aria-describedby="tip-fecha" /></div>
-                  <div><Etiqueta tip="ciudad">Ciudad / municipio</Etiqueta><input className={CAMPO} value={city} onChange={(e) => setCity(e.target.value)} aria-describedby="tip-ciudad" /></div>
+                  <div><Etiqueta tip="fecha">{isEn ? 'Activity date' : 'Fecha de la actividad'}</Etiqueta><input type="date" className={CAMPO} value={activityDate} onChange={(e) => setActivityDate(e.target.value)} aria-describedby="tip-fecha" /></div>
+                  <div><Etiqueta tip="ciudad">{isEn ? 'City / municipality' : 'Ciudad / municipio'}</Etiqueta><input className={CAMPO} value={city} onChange={(e) => setCity(e.target.value)} aria-describedby="tip-ciudad" /></div>
                 </div>
                 {cond.impacto.length > 0 && (
                   <div>
-                    <span className={ROTULO}>Resultados o impacto (opcional)<InfoTip tipKey="impacto" /></span>
+                    <span className={ROTULO}>{isEn ? 'Results or impact (optional)' : 'Resultados o impacto (opcional)'}<InfoTip tipKey="impacto" /></span>
                     <div className="grid grid-cols-2 gap-3">
                       {cond.impacto.map((k) => (
                         <div key={k}><label className="sr-only" htmlFor={`rea-imp-${k}`}>{IMPACT_META[k]?.label || k}</label>
@@ -1850,18 +1934,18 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                   </div>
                 )}
                 <details className="bg-gray-50 rounded-2xl px-4 py-3">
-                  <summary className="text-xs font-bold text-gray-500 cursor-pointer">Relación con programas y temas (opcional)</summary>
+                  <summary className="text-xs font-bold text-gray-500 cursor-pointer">{isEn ? 'Relationship with programs and topics (optional)' : 'Relación con programas y temas (opcional)'}</summary>
                   <div className="grid sm:grid-cols-2 gap-3 mt-3">
-                    <div><Etiqueta tip="area">Área de interés</Etiqueta>
-                      <select className={CAMPO} value={area} onChange={(e) => setArea(e.target.value)} aria-describedby="tip-area"><option value="">Sin área específica</option>{areas.map((a: any) => <option key={a.slug} value={a.slug}>{a.name}</option>)}</select></div>
-                    <div><Etiqueta tip="programa">Programa</Etiqueta>
-                      <select className={CAMPO} value={programa} onChange={(e) => setPrograma(e.target.value)} aria-describedby="tip-programa"><option value="">Sin programa específico</option>{programas.map((a: any) => <option key={a.slug} value={a.slug}>{a.name}</option>)}</select></div>
-                    <div><Etiqueta tip="tema">Temática</Etiqueta>
-                      <select className={CAMPO} value={tema} onChange={(e) => setTema(e.target.value)} aria-describedby="tip-tema"><option value="">Sin temática específica</option>{temas.map((a: any) => <option key={a.slug} value={a.slug}>{a.name}</option>)}</select></div>
-                    <div><Etiqueta tip="tags">Etiquetas (comas)</Etiqueta>
-                      <input className={CAMPO} value={tagsText} onChange={(e) => setTagsText(e.target.value)} placeholder="juventud, navidad" aria-describedby="tip-tags" /></div>
-                    <div className="sm:col-span-2"><Etiqueta tip="aliados">Aliados (opcional)</Etiqueta>
-                      <input className={CAMPO} value={extraFields.aliados || ''} onChange={(e) => setExtraFields({ ...extraFields, aliados: e.target.value })} placeholder="Organizaciones o empresas que apoyaron" aria-describedby="tip-aliados" /></div>
+                    <div><Etiqueta tip="area">{isEn ? 'Area of focus' : 'Área de interés'}</Etiqueta>
+                      <select className={CAMPO} value={area} onChange={(e) => setArea(e.target.value)} aria-describedby="tip-area"><option value="">{isEn ? 'No specific area' : 'Sin área específica'}</option>{areas.map((a: any) => <option key={a.slug} value={a.slug}>{a.name}</option>)}</select></div>
+                    <div><Etiqueta tip="programa">{isEn ? 'Program' : 'Programa'}</Etiqueta>
+                      <select className={CAMPO} value={programa} onChange={(e) => setPrograma(e.target.value)} aria-describedby="tip-programa"><option value="">{isEn ? 'No specific program' : 'Sin programa específico'}</option>{programas.map((a: any) => <option key={a.slug} value={a.slug}>{a.name}</option>)}</select></div>
+                    <div><Etiqueta tip="tema">{isEn ? 'Topic' : 'Temática'}</Etiqueta>
+                      <select className={CAMPO} value={tema} onChange={(e) => setTema(e.target.value)} aria-describedby="tip-tema"><option value="">{isEn ? 'No specific topic' : 'Sin temática específica'}</option>{temas.map((a: any) => <option key={a.slug} value={a.slug}>{a.name}</option>)}</select></div>
+                    <div><Etiqueta tip="tags">{isEn ? 'Tags (comma separated)' : 'Etiquetas (comas)'}</Etiqueta>
+                      <input className={CAMPO} value={tagsText} onChange={(e) => setTagsText(e.target.value)} placeholder={isEn ? 'youth, christmas' : 'juventud, navidad'} aria-describedby="tip-tags" /></div>
+                    <div className="sm:col-span-2"><Etiqueta tip="aliados">{isEn ? 'Partners (optional)' : 'Aliados (opcional)'}</Etiqueta>
+                      <input className={CAMPO} value={extraFields.aliados || ''} onChange={(e) => setExtraFields({ ...extraFields, aliados: e.target.value })} placeholder={isEn ? 'Supporting organizations or companies' : 'Organizaciones o empresas que apoyaron'} aria-describedby="tip-aliados" /></div>
                   </div>
                 </details>
               </>
@@ -1873,8 +1957,8 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
         {step === 2 && !enviado && (
           <div className={TARJETA + ' space-y-5'}>
             <div>
-              <h2 className="text-lg font-black text-gray-800">Evidencias y contacto</h2>
-              <p className="text-sm text-gray-500 mt-1">{selectedImages.length} de {MIN_PHOTOS} mínima(s) · {advice.text}</p>
+              <h2 className="text-lg font-black text-gray-800">{isEn ? 'Evidence and Contact' : 'Evidencias y contacto'}</h2>
+              <p className="text-sm text-gray-500 mt-1">{isEn ? `${selectedImages.length} of ${MIN_PHOTOS} minimum · ${advice.text}` : `${selectedImages.length} de ${MIN_PHOTOS} mínima(s) · ${advice.text}`}</p>
             </div>
             <button
               type="button"
@@ -1882,8 +1966,8 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
               className="w-full border-2 border-dashed border-gray-200 rounded-2xl p-6 sm:p-8 text-center hover:border-rotary-blue hover:bg-blue-50/20 transition-all cursor-pointer"
             >
               <Upload className="w-8 h-8 mx-auto text-gray-400" />
-              <div className="text-sm font-bold text-gray-700 mt-2">Tocá acá para elegir, o arrastrá las fotos o video</div>
-              <div className="text-xs text-gray-400 mt-1">Desde el teléfono se abre la cámara o la galería (Mínimo 5 fotos, máx 10 fotos y 1 video · máx 5 MB por foto, 300 MB el video).</div>
+              <div className="text-sm font-bold text-gray-700 mt-2">{isEn ? 'Tap here to choose, or drag photos or video' : 'Tocá acá para elegir, o arrastrá las fotos o video'}</div>
+              <div className="text-xs text-gray-400 mt-1">{isEn ? 'From your phone, the camera or gallery will open (Min 5 photos, max 10 photos and 1 video · max 5 MB per photo, 300 MB video).' : 'Desde el teléfono se abre la cámara o la galería (Mínimo 5 fotos, máx 10 fotos y 1 video · máx 5 MB por foto, 300 MB el video).'}</div>
             </button>
             <input
               ref={inputRef}
@@ -1922,25 +2006,25 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                         <span className="text-gray-300 font-medium">{formatoTamano(a.file.size)}</span>
                         {a.estado === 'uploaded' && (
                           <span className="inline-flex items-center gap-0.5 text-emerald-400 font-bold">
-                            <CheckCircle2 className="w-3 h-3" /> Carga completada
+                            <CheckCircle2 className="w-3 h-3" /> {isEn ? 'Upload complete' : 'Carga completada'}
                           </span>
                         )}
                         {a.estado === 'uploading' && (
                           <span className="inline-flex items-center gap-1 text-blue-300 font-bold">
-                            <Loader2 className="w-3 h-3 animate-spin" /> Subiendo {a.progreso}%
+                            <Loader2 className="w-3 h-3 animate-spin" /> {isEn ? `Uploading ${a.progreso}%` : `Subiendo ${a.progreso}%`}
                           </span>
                         )}
                         {a.estado === 'pending' && (
-                          <span className="text-amber-300 font-bold">Pendiente</span>
+                          <span className="text-amber-300 font-bold">{isEn ? 'Pending' : 'Pendiente'}</span>
                         )}
                         {a.estado === 'error' && (
-                          <span className="text-red-400 font-bold">Error</span>
+                          <span className="text-red-400 font-bold">{isEn ? 'Error' : 'Error'}</span>
                         )}
                         {a.estado === 'too-heavy' && (
-                          <span className="text-orange-300 font-bold">Archivo demasiado pesado</span>
+                          <span className="text-orange-300 font-bold">{isEn ? 'File too heavy' : 'Archivo demasiado pesado'}</span>
                         )}
                         {a.estado === 'duplicate' && (
-                          <span className="text-violet-300 font-bold">Archivo duplicado</span>
+                          <span className="text-violet-300 font-bold">{isEn ? 'Duplicate file' : 'Archivo duplicado'}</span>
                         )}
                       </div>
                       {/* Motivo visible en la tarjeta: qué pasó y qué hacer */}
@@ -1962,7 +2046,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                           onClick={() => reintentarSubida(a.id)}
                           className="mt-1.5 w-full flex items-center justify-center gap-1 py-1 px-2 rounded-lg bg-red-600/90 hover:bg-red-600 text-white text-[10px] font-black tracking-wide transition-colors"
                         >
-                          <RotateCcw className="w-3 h-3" /> Reintentar
+                          <RotateCcw className="w-3 h-3" /> {isEn ? 'Retry' : 'Reintentar'}
                         </button>
                       )}
                     </div>
@@ -1970,7 +2054,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                     {/* Aviso de baja resolución */}
                     {a.width != null && a.width < 800 && (
                       <div className="absolute top-2 left-2 bg-amber-500/90 backdrop-blur-sm text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow">
-                        Baja resolución
+                        {isEn ? 'Low resolution' : 'Baja resolución'}
                       </div>
                     )}
 
@@ -1978,7 +2062,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                     <button
                       type="button"
                       onClick={() => quitarArchivo(a.id)}
-                      aria-label={`Quitar ${a.file.name}`}
+                      aria-label={isEn ? `Remove ${a.file.name}` : `Quitar ${a.file.name}`}
                       className="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/70 hover:bg-black text-white flex items-center justify-center shadow transition-colors"
                     >
                       <X className="w-3.5 h-3.5" />
@@ -1993,9 +2077,11 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
               <div className="bg-amber-50/90 border border-amber-200/80 rounded-2xl p-4 flex items-start gap-3 text-amber-900">
                 <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                 <div className="text-sm leading-relaxed">
-                  <span className="font-black text-amber-900">Faltan {faltanFotos} fotografía(s): </span>
+                  <span className="font-black text-amber-900">{isEn ? `Missing ${faltanFotos} photo(s): ` : `Faltan ${faltanFotos} fotografía(s): `}</span>
                   <span>
-                    Has cargado {fotosValidas} de las {MIN_PHOTOS} requeridas (cuentan solo las cargadas con éxito). Por favor selecciona al menos {MIN_PHOTOS} fotografías para poder continuar al paso de envío.
+                    {isEn
+                      ? `You have uploaded ${fotosValidas} of the ${MIN_PHOTOS} required (only successfully uploaded ones count). Please select at least ${MIN_PHOTOS} photos to proceed to the submit step.`
+                      : `Has cargado ${fotosValidas} de las ${MIN_PHOTOS} requeridas (cuentan solo las cargadas con éxito). Por favor selecciona al menos ${MIN_PHOTOS} fotografías para poder continuar al paso de envío.`}
                   </span>
                 </div>
               </div>
@@ -2005,7 +2091,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
             {faltanFotos === 0 && haySubiendo && (
               <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3.5 flex items-center gap-2.5 text-blue-900 text-xs font-bold">
                 <Loader2 className="w-4 h-4 animate-spin text-blue-600 shrink-0" />
-                <span>Subiendo evidencias al servidor seguro ({uploadedImages.length + uploadedVideos.length} de {enCupo.length} completadas)...</span>
+                <span>{isEn ? `Uploading evidence to secure server (${uploadedImages.length + uploadedVideos.length} of ${enCupo.length} completed)...` : `Subiendo evidencias al servidor seguro (${uploadedImages.length + uploadedVideos.length} de ${enCupo.length} completadas)...`}</span>
               </div>
             )}
 
@@ -2014,7 +2100,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
               <div className="bg-red-50 border border-red-200 rounded-2xl p-3.5 flex items-center justify-between gap-2 text-red-900 text-xs font-bold">
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
-                  <span>Uno o más archivos no se pudieron cargar. Tocá "Reintentar" en la tarjeta o elimínalos para continuar.</span>
+                  <span>{isEn ? 'One or more files could not be uploaded. Tap "Retry" on the card or remove them to continue.' : 'Uno o más archivos no se pudieron cargar. Tocá "Reintentar" en la tarjeta o elimínalos para continuar.'}</span>
                 </div>
               </div>
             )}
@@ -2024,7 +2110,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
             {hayRechazados && (
               <div className="bg-gray-50 border border-gray-200 rounded-2xl p-3.5 flex items-center gap-2 text-gray-700 text-xs font-bold">
                 <AlertTriangle className="w-4 h-4 text-gray-500 shrink-0" />
-                <span>Hay archivos que no se pueden enviar (demasiado pesados o duplicados). Eliminalos con la × de la tarjeta para continuar.</span>
+                <span>{isEn ? 'There are files that cannot be sent (too heavy or duplicates). Remove them with the × on the card to continue.' : 'Hay archivos que no se pueden enviar (demasiado pesados o duplicados). Eliminalos con la × de la tarjeta para continuar.'}</span>
               </div>
             )}
 
@@ -2032,38 +2118,38 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
             {faltanFotos === 0 && !haySubiendo && !hayErrores && !hayRechazados && (
               <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5 flex items-center gap-2 text-emerald-900 text-xs font-bold">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>{fotosValidas} fotografías {uploadedVideos.length > 0 ? `+ ${uploadedVideos.length} video ` : ''}cargadas con éxito. Puedes continuar al paso de envío.</span>
+                <span>{isEn ? `${fotosValidas} photos ${uploadedVideos.length > 0 ? `+ ${uploadedVideos.length} video ` : ''}uploaded successfully. You can continue to the submit step.` : `${fotosValidas} fotografías ${uploadedVideos.length > 0 ? `+ ${uploadedVideos.length} video ` : ''}cargadas con éxito. Puedes continuar al paso de envío.`}</span>
               </div>
             )}
             <div>
-              <Etiqueta htmlFor="rea-enlaces" tip="enlaces">Documentos o enlaces relacionados (opcional)</Etiqueta>
-              <div className="flex flex-wrap gap-1.5 mb-2">{enlaces.map((u) => <span key={u} className="bg-gray-100 text-gray-700 text-xs px-2.5 py-1.5 rounded-full flex items-center gap-1 max-w-full"><span className="truncate max-w-[220px]">{u}</span><button onClick={() => setEnlaces(enlaces.filter((x) => x !== u))} aria-label="Quitar enlace"><X className="w-3 h-3" /></button></span>)}</div>
+              <Etiqueta htmlFor="rea-enlaces" tip="enlaces">{isEn ? 'Related documents or links (optional)' : 'Documentos o enlaces relacionados (opcional)'}</Etiqueta>
+              <div className="flex flex-wrap gap-1.5 mb-2">{enlaces.map((u) => <span key={u} className="bg-gray-100 text-gray-700 text-xs px-2.5 py-1.5 rounded-full flex items-center gap-1 max-w-full"><span className="truncate max-w-[220px]">{u}</span><button onClick={() => setEnlaces(enlaces.filter((x) => x !== u))} aria-label={isEn ? 'Remove link' : 'Quitar enlace'}><X className="w-3 h-3" /></button></span>)}</div>
               <div className="flex gap-2"><input id="rea-enlaces" className={CAMPO} value={nuevoEnlace} onChange={(e) => setNuevoEnlace(e.target.value)} placeholder="https://…" inputMode="url" aria-describedby="tip-enlaces" />
-                <button onClick={() => { const u = nuevoEnlace.trim(); if (u && enlaces.length < 5) setEnlaces([...enlaces, u]); setNuevoEnlace(''); }} className="px-4 rounded-xl bg-gray-100 font-bold" aria-label="Agregar enlace"><Plus className="w-4 h-4" /></button></div>
+                <button onClick={() => { const u = nuevoEnlace.trim(); if (u && enlaces.length < 5) setEnlaces([...enlaces, u]); setNuevoEnlace(''); }} className="px-4 rounded-xl bg-gray-100 font-bold" aria-label={isEn ? 'Add link' : 'Agregar enlace'}><Plus className="w-4 h-4" /></button></div>
             </div>
             <div className="grid sm:grid-cols-2 gap-3">
-              <div><Etiqueta tip="distrito">Distrito</Etiqueta>
+              <div><Etiqueta tip="distrito">{isEn ? 'District' : 'Distrito'}</Etiqueta>
                 <select className={CAMPO} value={district} onChange={(e) => { setDistrict(e.target.value); setClub(''); setClubes([]); }} aria-describedby="tip-distrito">
-                  <option value="">Seleccionar…</option>{distritos.map((d: any) => <option key={d.value} value={d.value}>{d.label}</option>)}
+                  <option value="">{isEn ? 'Select…' : 'Seleccionar…'}</option>{distritos.map((d: any) => <option key={d.value} value={d.value}>{d.label}</option>)}
                 </select></div>
-              <div><Etiqueta htmlFor="rea-club" tip="club">Club Rotario</Etiqueta>
-                <input id="rea-club" className={CAMPO} list="clubes-distrito" value={club} onChange={(e) => setClub(e.target.value)} placeholder="Nombre del club" aria-describedby="tip-club" />
+              <div><Etiqueta htmlFor="rea-club" tip="club">{isEn ? 'Rotary Club' : 'Club Rotario'}</Etiqueta>
+                <input id="rea-club" className={CAMPO} list="clubes-distrito" value={club} onChange={(e) => setClub(e.target.value)} placeholder={isEn ? 'Club name' : 'Nombre del club'} aria-describedby="tip-club" />
                 <datalist id="clubes-distrito">{clubesDistrito.map((c) => <option key={c} value={c} />)}</datalist></div>
             </div>
             <div>
-              <Etiqueta tip="clubes">Otros clubes participantes (opcional)</Etiqueta>
-              <div className="flex flex-wrap gap-1.5 mb-2">{clubes.map((c) => <span key={c} className="bg-blue-50 text-blue-800 text-xs font-bold px-2.5 py-1.5 rounded-full flex items-center gap-1">{c}<button onClick={() => setClubes(clubes.filter((x) => x !== c))} aria-label="Quitar club"><X className="w-3 h-3" /></button></span>)}</div>
-              <div className="flex gap-2"><input className={CAMPO} list="clubes-distrito" value={nuevoClub} onChange={(e) => setNuevoClub(e.target.value)} placeholder="Agregar club…" />
-                <button onClick={() => { if (nuevoClub.trim() && !clubes.includes(nuevoClub.trim())) setClubes([...clubes, nuevoClub.trim()]); setNuevoClub(''); }} className="px-4 rounded-xl bg-gray-100 font-bold" aria-label="Agregar club"><Plus className="w-4 h-4" /></button></div>
+              <Etiqueta tip="clubes">{isEn ? 'Other participating clubs (optional)' : 'Otros clubes participantes (opcional)'}</Etiqueta>
+              <div className="flex flex-wrap gap-1.5 mb-2">{clubes.map((c) => <span key={c} className="bg-blue-50 text-blue-800 text-xs font-bold px-2.5 py-1.5 rounded-full flex items-center gap-1">{c}<button onClick={() => setClubes(clubes.filter((x) => x !== c))} aria-label={isEn ? 'Remove club' : 'Quitar club'}><X className="w-3 h-3" /></button></span>)}</div>
+              <div className="flex gap-2"><input className={CAMPO} list="clubes-distrito" value={nuevoClub} onChange={(e) => setNuevoClub(e.target.value)} placeholder={isEn ? 'Add club…' : 'Agregar club…'} />
+                <button onClick={() => { if (nuevoClub.trim() && !clubes.includes(nuevoClub.trim())) setClubes([...clubes, nuevoClub.trim()]); setNuevoClub(''); }} className="px-4 rounded-xl bg-gray-100 font-bold" aria-label={isEn ? 'Add club' : 'Agregar club'}><Plus className="w-4 h-4" /></button></div>
             </div>
-            {conPrefill && <p className="text-xs text-blue-800 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">Completamos algunos datos con información del ecosistema. Verifícalos antes de enviar.</p>}
+            {conPrefill && <p className="text-xs text-blue-800 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">{isEn ? 'We prefilled some data with ecosystem information. Please review before submitting.' : 'Completamos algunos datos con información del ecosistema. Verifícalos antes de enviar.'}</p>}
             <div className="grid sm:grid-cols-2 gap-3">
-              <div><Etiqueta htmlFor="rea-nombre" tip="nombre">Nombre de quien envía</Etiqueta><input id="rea-nombre" className={CAMPO} value={senderName} onChange={(e) => setSenderName(e.target.value)} autoComplete="name" aria-describedby="tip-nombre" /></div>
-              <div><Etiqueta htmlFor="rea-cargo" tip="cargo">Cargo o relación con el club</Etiqueta><input id="rea-cargo" className={CAMPO} value={role} onChange={(e) => setRole(e.target.value)} placeholder="Presidente, socio…" aria-describedby="tip-cargo" /></div>
+              <div><Etiqueta htmlFor="rea-nombre" tip="nombre">{isEn ? 'Sender name' : 'Nombre de quien envía'}</Etiqueta><input id="rea-nombre" className={CAMPO} value={senderName} onChange={(e) => setSenderName(e.target.value)} autoComplete="name" aria-describedby="tip-nombre" /></div>
+              <div><Etiqueta htmlFor="rea-cargo" tip="cargo">{isEn ? 'Role or relationship with the club' : 'Cargo o relación con el club'}</Etiqueta><input id="rea-cargo" className={CAMPO} value={role} onChange={(e) => setRole(e.target.value)} placeholder={isEn ? 'President, member…' : 'Presidente, socio…'} aria-describedby="tip-cargo" /></div>
             </div>
             <div className="grid sm:grid-cols-2 gap-3">
-              <div><Etiqueta htmlFor="rea-email" tip="email">Correo electrónico</Etiqueta><input id="rea-email" type="email" className={CAMPO} value={senderEmail} onChange={(e) => setSenderEmail(e.target.value)} autoComplete="email" aria-describedby="tip-email" /></div>
-              <div><Etiqueta htmlFor="rea-tel" tip="telefono">Teléfono / WhatsApp</Etiqueta>
+              <div><Etiqueta htmlFor="rea-email" tip="email">{isEn ? 'Email address' : 'Correo electrónico'}</Etiqueta><input id="rea-email" type="email" className={CAMPO} value={senderEmail} onChange={(e) => setSenderEmail(e.target.value)} autoComplete="email" aria-describedby="tip-email" /></div>
+              <div><Etiqueta htmlFor="rea-tel" tip="telefono">{isEn ? 'Phone / WhatsApp' : 'Teléfono / WhatsApp'}</Etiqueta>
                 <div className="flex gap-2 items-stretch">
                   <CountryPicker value={phoneCountry} onChange={setPhoneCountry} />
                   <input id="rea-tel" className={`${CAMPO} flex-1 min-w-0`} value={phoneNational} onChange={(e) => setPhoneNational(e.target.value)} inputMode="tel" autoComplete="tel-national" aria-describedby="tip-telefono" placeholder="300 123 4567" />
@@ -2072,20 +2158,20 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
             <div className="space-y-3">
               <label className="flex gap-3 items-start bg-gray-50 rounded-2xl p-4 cursor-pointer">
                 <input type="checkbox" checked={quiereResultados} onChange={(e) => setQuiereResultados(e.target.checked)} className="mt-1 w-5 h-5 shrink-0 accent-[#0c3c7c]" />
-                <span className="text-sm text-gray-700"><b>Quiero recibir los resultados de esta historia</b>
-                  <span className="block text-gray-500 text-[13px] mt-0.5">Deseo recibir por correo electrónico reportes o actualizaciones sobre el alcance, difusión y métricas de impacto que genere esta historia en los canales digitales del Distrito 4281.</span></span>
+                <span className="text-sm text-gray-700"><b>{isEn ? 'I want to receive the results of this story' : 'Quiero recibir los resultados de esta historia'}</b>
+                  <span className="block text-gray-500 text-[13px] mt-0.5">{isEn ? 'I want to receive email reports or updates on the reach, visibility, and impact metrics generated by this story on District 4281 digital channels.' : 'Deseo recibir por correo electrónico reportes o actualizaciones sobre el alcance, difusión y métricas de impacto que genere esta historia en los canales digitales del Distrito 4281.'}</span></span>
               </label>
               <label className="flex gap-3 items-start bg-gray-50 rounded-2xl p-4 cursor-pointer">
                 <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-1 w-5 h-5 shrink-0 accent-[#0c3c7c]" />
-                <span className="text-sm text-gray-700"><b>Autorizo el uso del contenido</b>
-                  <span className="block text-gray-500 text-[13px] mt-0.5">Autorizo el tratamiento y uso del contenido, fotografías, videos e información que envío a través de Rotary en Acción para fines de comunicación y difusión institucional, de acuerdo con los <a href="https://my.rotary.org/terms-of-use" target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="underline font-bold">Términos de Servicio</a> y la <a href="https://my.rotary.org/privacy-policy" target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="underline font-bold">Política de Privacidad</a> aplicables.</span>
-                  <span className="block text-gray-400 text-xs mt-1">La necesitamos para poder publicar tu historia.</span></span>
+                <span className="text-sm text-gray-700"><b>{isEn ? 'I authorize the use of the content' : 'Autorizo el uso del contenido'}</b>
+                  <span className="block text-gray-500 text-[13px] mt-0.5">{isEn ? <>I authorize the processing and use of the content, photographs, videos, and information submitted through Rotary in Action for institutional communication and dissemination purposes, in accordance with the applicable <a href="https://my.rotary.org/terms-of-use" target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="underline font-bold">Terms of Use</a> and <a href="https://my.rotary.org/privacy-policy" target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="underline font-bold">Privacy Policy</a>.</> : <>Autorizo el tratamiento y uso del contenido, fotografías, videos e información que envío a través de Rotary en Acción para fines de comunicación y difusión institucional, de acuerdo con los <a href="https://my.rotary.org/terms-of-use" target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="underline font-bold">Términos de Servicio</a> y la <a href="https://my.rotary.org/privacy-policy" target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="underline font-bold">Política de Privacidad</a> aplicables.</>}</span>
+                  <span className="block text-gray-400 text-xs mt-1">{isEn ? 'Required to publish your story.' : 'La necesitamos para poder publicar tu historia.'}</span></span>
               </label>
             </div>
             <button onClick={guardarBorrador} disabled={draftSaving} className="flex items-center gap-2 text-xs font-bold text-gray-500">
-              {draftSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar y continuar después
+              {draftSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} {isEn ? 'Save and continue later' : 'Guardar y continuar después'}
             </button>
-            {draftToken && <div className="text-xs text-gray-500 flex items-center gap-1.5"><Link2 className="w-3.5 h-3.5" /> Tu enlace para continuar: <code className="bg-gray-100 px-1.5 py-0.5 rounded">?draft={draftToken}</code></div>}
+            {draftToken && <div className="text-xs text-gray-500 flex items-center gap-1.5"><Link2 className="w-3.5 h-3.5" /> {isEn ? 'Your link to continue: ' : 'Tu enlace para continuar: '}<code className="bg-gray-100 px-1.5 py-0.5 rounded">?draft={draftToken}</code></div>}
           </div>
         )}
 
@@ -2093,20 +2179,26 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
         {step === 3 && !enviado && (
           <div className={TARJETA}>
             <h2 className="text-lg font-black text-gray-800">
-              {isFeriaMode ? 'Revisá y enviá tu proyecto a la Feria' : 'Revisá y enviá'}
+              {isFeriaMode
+                ? (isEn ? 'Review and submit your project to the Fair' : 'Revisá y enviá tu proyecto a la Feria')
+                : (isEn ? 'Review and submit' : 'Revisá y enviá')}
             </h2>
             <p className="text-sm text-gray-500 mt-1">
               {isFeriaMode
-                ? 'Verifica los datos e impacto antes de enviar a la Feria de Proyectos Colombia.'
-                : 'Todo en orden antes de enviar a Rotary en Acción.'}
+                ? (isEn
+                    ? 'Verify details and impact before submitting to Rotary Project Fair Colombia.'
+                    : 'Verifica los datos e impacto antes de enviar a la Feria de Proyectos Colombia.')
+                : (isEn
+                    ? 'Everything in order before submitting to Rotary in Action.'
+                    : 'Todo en orden antes de enviar a Rotary en Acción.')}
             </p>
             <div className="mt-2">
               {isFeriaMode ? (
                 <>
-                  <Bloque titulo="Área de Interés y Propósito" paso={0}>
+                  <Bloque titulo={isEn ? 'Area of Focus and Purpose' : 'Área de Interés y Propósito'} paso={0} onEdit={irA} editLabel={isEn ? 'Edit' : 'Editar'}>
                     <div className="space-y-1">
                       <p className="text-sm font-bold text-gray-800">
-                        {ROTARY_AREAS_INTEREST.find((a) => a.id === areaPrincipal)?.name || areaPrincipal}
+                        {getRotaryAreaName(areaPrincipal, lang) || areaPrincipal}
                         {areaPrincipal === 'otros' && otrosEspecificacion && (
                           <span className="text-xs text-amber-700 font-semibold ml-1">
                             ({otrosEspecificacion})
@@ -2115,41 +2207,43 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                       </p>
                       {areasSecundarias.length > 0 && (
                         <p className="text-xs text-gray-500">
-                          Áreas secundarias: {areasSecundarias.map((s) => ROTARY_AREAS_INTEREST.find((a) => a.id === s)?.name || s).join(', ')}
+                          {isEn ? 'Secondary areas: ' : 'Áreas secundarias: '}
+                          {areasSecundarias.map((s) => getRotaryAreaName(s, lang) || s).join(', ')}
                         </p>
                       )}
                       <p className="text-xs text-rotary-blue font-bold">
-                        Propósito: {PROJECT_GOAL_OPTIONS.find((g) => g.id === projectGoalType)?.label || projectGoalType}
+                        {isEn ? 'Purpose: ' : 'Propósito: '}
+                        {getProjectGoalLabel(projectGoalType, lang) || projectGoalType}
                       </p>
                     </div>
                   </Bloque>
 
-                  <Bloque titulo="Identificación y Evolución" paso={1}>
+                  <Bloque titulo={isEn ? 'Identification and Evolution' : 'Identificación y Evolución'} paso={1} onEdit={irA} editLabel={isEn ? 'Edit' : 'Editar'}>
                     <div className="space-y-1.5">
-                      <p className="text-sm font-bold text-gray-800">{title || 'Sin nombre'}</p>
+                      <p className="text-sm font-bold text-gray-800">{title || (isEn ? 'Untitled project' : 'Sin nombre')}</p>
                       <p className="text-xs text-gray-600">
                         {[club, district, projectCountry, city].filter(Boolean).join(' · ')}
                       </p>
                       <div className="flex flex-wrap gap-1.5 pt-0.5">
                         <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-rotary-blue border border-blue-100">
-                          {PROJECT_STAGES.find((s) => s.id === projectStage)?.label || projectStage}
+                          {getProjectStageLabel(projectStage, lang) || projectStage}
                         </span>
                         {projectStartYear && (
                           <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                            Inicio: {projectStartYear}
+                            {isEn ? 'Start: ' : 'Inicio: '}{projectStartYear}
                           </span>
                         )}
                         {linkedProject ? (
                           <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
-                            Vinculado: {linkedProject.title} {linkedProject.edition ? `(${linkedProject.edition})` : ''}
+                            {isEn ? 'Linked: ' : 'Vinculado: '}{linkedProject.title} {linkedProject.edition ? `(${linkedProject.edition})` : ''}
                           </span>
                         ) : wasInPreviousFair ? (
                           <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
-                            Edición anterior: {projectFairEdition}
+                            {isEn ? 'Previous edition: ' : 'Edición anterior: '}{projectFairEdition}
                           </span>
                         ) : (
                           <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                            Proyecto nuevo en Feria
+                            {isEn ? 'New project at the Fair' : 'Proyecto nuevo en Feria'}
                           </span>
                         )}
                       </div>
@@ -2161,17 +2255,17 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                       <div className="pt-2 grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px] border-t border-gray-100">
                         {(beneficiariesDirect || beneficiariesIndirect) && (
                           <div>
-                            <span className="text-gray-400 block">Beneficiarios</span>
+                            <span className="text-gray-400 block">{isEn ? 'Beneficiaries' : 'Beneficiarios'}</span>
                             <span className="font-bold text-gray-700">
-                              {beneficiariesDirect ? `${beneficiariesDirect} directos` : ''}
+                              {beneficiariesDirect ? `${beneficiariesDirect} ${isEn ? 'direct' : 'directos'}` : ''}
                               {beneficiariesDirect && beneficiariesIndirect ? ' / ' : ''}
-                              {beneficiariesIndirect ? `${beneficiariesIndirect} indirectos` : ''}
+                              {beneficiariesIndirect ? `${beneficiariesIndirect} ${isEn ? 'indirect' : 'indirectos'}` : ''}
                             </span>
                           </div>
                         )}
                         {fundsManaged && (
                           <div>
-                            <span className="text-gray-400 block">Gestionados</span>
+                            <span className="text-gray-400 block">{isEn ? 'Managed' : 'Gestionados'}</span>
                             <span className="font-bold text-emerald-700">
                               {fundsCurrency} {Number(fundsManaged).toLocaleString()}
                             </span>
@@ -2179,7 +2273,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                         )}
                         {fundsReceived && (
                           <div>
-                            <span className="text-gray-400 block">Recibidos</span>
+                            <span className="text-gray-400 block">{isEn ? 'Received' : 'Recibidos'}</span>
                             <span className="font-bold text-blue-700">
                               {fundsCurrency} {Number(fundsReceived).toLocaleString()}
                             </span>
@@ -2189,28 +2283,28 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
 
                       {verifiedResults && (
                         <p className="text-xs text-gray-600 pt-1">
-                          <strong className="text-gray-700">Resultados comprobados:</strong> {verifiedResults}
+                          <strong className="text-gray-700">{isEn ? 'Verified results: ' : 'Resultados comprobados: '}</strong>{verifiedResults}
                         </p>
                       )}
                       {currentNeeds && (
                         <p className="text-xs text-amber-800 bg-amber-50 rounded-lg p-2 mt-1">
-                          <strong>Necesidades de financiación:</strong> {currentNeeds}
+                          <strong>{isEn ? 'Funding needs: ' : 'Necesidades de financiación: '}</strong>{currentNeeds}
                         </p>
                       )}
                       {internationalParticipation && (
                         <p className="text-xs text-slate-700 pt-0.5">
-                          <strong>Alianza internacional:</strong> {internationalParticipation}
+                          <strong>{isEn ? 'International alliance: ' : 'Alianza internacional: '}</strong>{internationalParticipation}
                         </p>
                       )}
                     </div>
                   </Bloque>
 
-                  <Bloque titulo="Evidencias y Contacto" paso={2}>
+                  <Bloque titulo={isEn ? 'Evidence and Contact' : 'Evidencias y Contacto'} paso={2} onEdit={irA} editLabel={isEn ? 'Edit' : 'Editar'}>
                     <div className="space-y-2">
                       <p className="text-sm">
-                        <strong>{selectedImages.length} fotografía(s)</strong>
-                        {videos.length > 0 && ` · ${videos.length} video(s)`}
-                        {enlaces.length > 0 && ` · ${enlaces.length} enlace(s)`} · {club || 'Sin club'} · {senderName} ({senderEmail})
+                        <strong>{isEn ? `${selectedImages.length} photo(s)` : `${selectedImages.length} fotografía(s)`}</strong>
+                        {videos.length > 0 && (isEn ? ` · ${videos.length} video(s)` : ` · ${videos.length} video(s)`)}
+                        {enlaces.length > 0 && (isEn ? ` · ${enlaces.length} link(s)` : ` · ${enlaces.length} enlace(s)`)} · {club || (isEn ? 'No club specified' : 'Sin club')} · {senderName} ({senderEmail})
                       </p>
                       {adjuntos.length > 0 && (
                         <div className="flex flex-wrap gap-1.5 pt-1">
@@ -2234,28 +2328,28 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                       )}
                       {phoneNational && (
                         <p className="text-xs text-gray-500">
-                          Contacto: {phoneCountry} {phoneNational} {role ? `(${role})` : ''}
+                          {isEn ? 'Contact: ' : 'Contacto: '}{phoneCountry} {phoneNational} {role ? `(${role})` : ''}
                         </p>
                       )}
                       {quiereResultados && (
-                        <p className="text-xs text-gray-500">Quiere recibir actualizaciones y resultados de difusión.</p>
+                        <p className="text-xs text-gray-500">{isEn ? 'Wants to receive dissemination updates and results.' : 'Quiere recibir actualizaciones y resultados de difusión.'}</p>
                       )}
                     </div>
                   </Bloque>
                 </>
               ) : (
                 <>
-                  <Bloque titulo="Tipo de contenido" paso={0}><p className="text-sm font-bold">{tipoNombre || '—'}</p></Bloque>
-                  <Bloque titulo="Historia" paso={1}>
-                    <p className="text-sm font-bold">{title || 'Sin título'}</p>
+                  <Bloque titulo={isEn ? 'Content type' : 'Tipo de contenido'} paso={0} onEdit={irA} editLabel={isEn ? 'Edit' : 'Editar'}><p className="text-sm font-bold">{tipoNombre || '—'}</p></Bloque>
+                  <Bloque titulo={isEn ? 'Story' : 'Historia'} paso={1} onEdit={irA} editLabel={isEn ? 'Edit' : 'Editar'}>
+                    <p className="text-sm font-bold">{title || (isEn ? 'Untitled' : 'Sin título')}</p>
                     {story && <p className="text-sm text-gray-600 mt-1 line-clamp-4">{story}</p>}
                     {(activityDate || city || location) && <p className="text-xs text-gray-400 mt-1">{[activityDate, city, location].filter(Boolean).join(' · ')}</p>}
                     {impactoCargado.length > 0 && <p className="text-xs text-gray-500 mt-1">{impactoCargado.map(([k, v]) => `${IMPACT_META[k]?.label || k}: ${v}`).join(' · ')}</p>}
                   </Bloque>
-                  <Bloque titulo="Evidencias y contacto" paso={2}>
+                  <Bloque titulo={isEn ? 'Evidence and contact' : 'Evidencias y contacto'} paso={2} onEdit={irA} editLabel={isEn ? 'Edit' : 'Editar'}>
                     <div className="space-y-2">
                       <p className="text-sm">
-                        <strong>{selectedImages.length} fotografía(s)</strong>{videos.length > 0 && ` · ${videos.length} video(s)`} · {club || 'Sin club'} · {senderName} ({senderEmail})
+                        <strong>{isEn ? `${selectedImages.length} photo(s)` : `${selectedImages.length} fotografía(s)`}</strong>{videos.length > 0 && (isEn ? ` · ${videos.length} video(s)` : ` · ${videos.length} video(s)`)} · {club || (isEn ? 'No club specified' : 'Sin club')} · {senderName} ({senderEmail})
                       </p>
                       {adjuntos.length > 0 && (
                         <div className="flex flex-wrap gap-1.5 pt-1">
@@ -2277,7 +2371,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                           )}
                         </div>
                       )}
-                      {quiereResultados && <p className="text-xs text-gray-500 mt-1">Quiere recibir los resultados de la historia.</p>}
+                      {quiereResultados && <p className="text-xs text-gray-500 mt-1">{isEn ? 'Wants to receive dissemination results.' : 'Quiere recibir los resultados de la historia.'}</p>}
                     </div>
                   </Bloque>
                 </>
@@ -2300,12 +2394,18 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
               ) : (
                 <ImageIcon className="w-5 h-5" />
               )}
-              {isFeriaMode ? 'Enviar a la Feria de Proyectos Colombia' : 'Enviar a Rotary en Acción'}
+              {isFeriaMode
+                ? (isEn ? 'Submit to Rotary Project Fair Colombia' : 'Enviar a la Feria de Proyectos Colombia')
+                : (isEn ? 'Submit to Rotary in Action' : 'Enviar a Rotary en Acción')}
             </button>
             <p className="text-xs text-gray-400 mt-3 text-center">
               {isFeriaMode
-                ? 'Tu proyecto entra en la bandeja de la Feria de Proyectos Colombia. El comité revisa la información y coordina su difusión nacional e internacional.'
-                : 'Tu solicitud entra en “Recibido”. Nada se publica solo: el equipo la revisa y te avisa al publicarla.'}
+                ? (isEn
+                    ? 'Your project enters the Rotary Project Fair Colombia inbox. The committee reviews the information and coordinates national and international outreach.'
+                    : 'Tu proyecto entra en la bandeja de la Feria de Proyectos Colombia. El comité revisa la información y coordina su difusión nacional e internacional.')
+                : (isEn
+                    ? 'Your submission enters “Received”. Nothing is published automatically: the team reviews it and notifies you when published.'
+                    : 'Tu solicitud entra en “Recibido”. Nada se publica solo: el equipo la revisa y te avisa al publicarla.')}
             </p>
           </div>
         )}
@@ -2316,49 +2416,59 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
             <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto" />
             <h2 className="text-xl font-black text-gray-800 mt-3">
               {isFeriaMode
-                ? '¡Gracias por compartir tu iniciativa con la Feria de Proyectos Colombia!'
-                : 'Gracias por compartir lo que hace tu club'}
+                ? (isEn
+                    ? 'Thank you for sharing your project with Rotary Project Fair Colombia!'
+                    : '¡Gracias por compartir tu iniciativa con la Feria de Proyectos Colombia!')
+                : (isEn
+                    ? 'Thank you for sharing what your club does'
+                    : 'Gracias por compartir lo que hace tu club')}
             </h2>
             <dl className="text-sm mt-4 space-y-1.5 text-left max-w-sm mx-auto">
               <div className="flex gap-2">
-                <dt className="text-gray-400 w-32">N.º de solicitud</dt>
+                <dt className="text-gray-400 w-32">{isEn ? 'Submission No.' : 'N.º de solicitud'}</dt>
                 <dd className="font-mono font-bold">{String(enviado.id).slice(0, 8)}</dd>
               </div>
               <div className="flex gap-2">
-                <dt className="text-gray-400 w-32">{isFeriaMode ? 'Canal' : 'Tipo'}</dt>
-                <dd className="font-bold">{isFeriaMode ? 'Feria de Proyectos Colombia' : (tipoNombre || '—')}</dd>
+                <dt className="text-gray-400 w-32">{isFeriaMode ? (isEn ? 'Channel' : 'Canal') : (isEn ? 'Type' : 'Tipo')}</dt>
+                <dd className="font-bold">{isFeriaMode ? (isEn ? 'Rotary Project Fair Colombia' : 'Feria de Proyectos Colombia') : (tipoNombre || '—')}</dd>
               </div>
               {isFeriaMode && (
                 <div className="flex gap-2">
-                  <dt className="text-gray-400 w-32">Área de Interés</dt>
+                  <dt className="text-gray-400 w-32">{isEn ? 'Area of Focus' : 'Área de Interés'}</dt>
                   <dd className="font-semibold text-rotary-blue">
-                    {ROTARY_AREAS_INTEREST.find((a) => a.id === areaPrincipal)?.name || '—'}
+                    {getRotaryAreaName(areaPrincipal, lang) || '—'}
                   </dd>
                 </div>
               )}
               <div className="flex gap-2">
-                <dt className="text-gray-400 w-32">{isFeriaMode ? 'Proyecto' : 'Actividad'}</dt>
+                <dt className="text-gray-400 w-32">{isFeriaMode ? (isEn ? 'Project' : 'Proyecto') : (isEn ? 'Activity' : 'Actividad')}</dt>
                 <dd className="font-bold">{title || '—'}</dd>
               </div>
               <div className="flex gap-2">
-                <dt className="text-gray-400 w-32">Club</dt>
+                <dt className="text-gray-400 w-32">{isEn ? 'Club' : 'Club'}</dt>
                 <dd>{club || '—'}</dd>
               </div>
               <div className="flex gap-2">
-                <dt className="text-gray-400 w-32">Material</dt>
+                <dt className="text-gray-400 w-32">{isEn ? 'Material' : 'Material'}</dt>
                 <dd>
-                  {selectedImages.length} fotografía(s){videos.length > 0 ? ` + ${videos.length} video` : ''}
+                  {isEn
+                    ? `${selectedImages.length} photo(s)${videos.length > 0 ? ` + ${videos.length} video` : ''}`
+                    : `${selectedImages.length} fotografía(s)${videos.length > 0 ? ` + ${videos.length} video` : ''}`}
                 </dd>
               </div>
               <div className="flex gap-2">
-                <dt className="text-gray-400 w-32">Estado inicial</dt>
-                <dd className="text-emerald-700 font-bold">Recibido</dd>
+                <dt className="text-gray-400 w-32">{isEn ? 'Initial status' : 'Estado inicial'}</dt>
+                <dd className="text-emerald-700 font-bold">{isEn ? 'Received' : 'Recibido'}</dd>
               </div>
             </dl>
             <p className="text-xs text-gray-500 mt-4">
               {isFeriaMode
-                ? 'Qué sigue: El comité de la Feria de Proyectos Colombia revisa la información y evidencias, documenta la evolución histórica y coordina su difusión nacional e internacional.'
-                : 'Qué sigue: el equipo revisa tu historia, la convierte en contenido y te envía el enlace cuando se publique.'}
+                ? (isEn
+                    ? 'What is next: The Rotary Project Fair Colombia committee reviews information and evidence, documents historical evolution, and coordinates national and international outreach.'
+                    : 'Qué sigue: El comité de la Feria de Proyectos Colombia revisa la información y evidencias, documenta la evolución histórica y coordina su difusión nacional e internacional.')
+                : (isEn
+                    ? 'What is next: The team reviews your story, turns it into content, and sends you the link when published.'
+                    : 'Qué sigue: el equipo revisa tu historia, la convierte en contenido y te envía el enlace cuando se publique.')}
             </p>
             {enviado.warnings?.length > 0 && (
               <div className="text-xs text-amber-700 bg-amber-50 rounded-xl p-3 mt-4 text-left">
@@ -2380,14 +2490,14 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
               disabled={step === 0}
               className="flex items-center gap-1.5 px-4 py-3 rounded-xl border text-sm font-bold text-gray-500 disabled:opacity-40 min-h-[52px] bg-white hover:bg-gray-50"
             >
-              <ArrowLeft className="w-4 h-4" /> Atrás
+              <ArrowLeft className="w-4 h-4" /> {isEn ? 'Back' : 'Atrás'}
             </button>
             {step < 3 ? (
               <button
                 onClick={() => irA(step + 1)}
                 className="flex items-center gap-1.5 px-6 py-3 rounded-xl bg-rotary-blue text-white text-sm font-bold min-h-[52px] hover:bg-blue-900 transition-colors"
               >
-                Siguiente <ArrowRight className="w-4 h-4" />
+                {isEn ? 'Next' : 'Siguiente'} <ArrowRight className="w-4 h-4" />
               </button>
             ) : (
               <button
@@ -2398,7 +2508,9 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                 }`}
               >
                 {enviando ? <Loader2 className="w-4 h-4 animate-spin" /> : isFeriaMode ? <Award className="w-4 h-4 text-amber-400" /> : null}
-                {isFeriaMode ? 'Enviar a la Feria de Proyectos' : 'Enviar a Rotary en Acción'}
+                {isFeriaMode
+                  ? (isEn ? 'Submit to Project Fair' : 'Enviar a la Feria de Proyectos')
+                  : (isEn ? 'Submit to Rotary in Action' : 'Enviar a Rotary en Acción')}
               </button>
             )}
           </div>
@@ -2406,8 +2518,8 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
         <p className="text-center text-[11px] text-gray-400 flex items-center justify-center gap-1">
           <Users className="w-3 h-3" />
           {isFeriaMode
-            ? 'Feria de Proyectos Colombia · Rotary International'
-            : `Rotary en Acción · ${cfg?.site?.name || 'Distrito 4281'}`}{' '}
+            ? (isEn ? 'Rotary Project Fair Colombia · Rotary International' : 'Feria de Proyectos Colombia · Rotary International')
+            : `Rotary en Acción · ${cfg?.site?.name || (isEn ? 'District 4281' : 'Distrito 4281')}`}{' '}
           <MapPin className="w-3 h-3" />
         </p>
       </div>

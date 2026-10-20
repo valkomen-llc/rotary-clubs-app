@@ -117,7 +117,17 @@ async function resolveBulk({ texts, targetLang, page }) {
                 );
 
                 slice.forEach((s, k) => {
-                    const value = translations[k];
+                    let value = translations[k];
+                    // Guardia contra inversiones de idioma: si el destino es español y el proveedor
+                    // devolvió inglés para un texto original que ya estaba en español, conservar el original.
+                    if (targetLang === 'es' && typeof value === 'string' && typeof s.text === 'string') {
+                        const hasEnglishWords = /\b(the|share|help us|showcase|through the|and|our|your|projects?|events?|works?)\b/i.test(value);
+                        const sourceHasSpanish = /\b(el|la|los|las|en|de|del|y|que|para|con|por|un|una|club|proyectos?|iniciativas?|avances?)\b/i.test(s.text);
+                        if (hasEnglishWords && sourceHasSpanish) {
+                            console.warn('[translate] Descartando traducción corrupta en inglés para targetLang=es:', value);
+                            value = s.text;
+                        }
+                    }
                     s.at.forEach(idx => { out[idx] = value; });
                     s.value = value;
                 });

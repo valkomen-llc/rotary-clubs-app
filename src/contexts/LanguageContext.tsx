@@ -56,7 +56,22 @@ export function orderLanguages(defaultCode?: string) {
 const memCache: Record<string, Record<string, string>> = {};
 
 function loadLS(lang: string): Record<string, string> {
-    try { return JSON.parse(localStorage.getItem(`_t_${lang}`) || '{}'); }
+    try {
+        const raw = JSON.parse(localStorage.getItem(`_t_${lang}`) || '{}');
+        if (lang === 'es' && raw && typeof raw === 'object') {
+            let cleaned = false;
+            for (const [k, v] of Object.entries(raw)) {
+                if (typeof v === 'string' && /\b(the|share|help us|showcase|through the|and|our|your|projects?|events?|works?)\b/i.test(v) && /\b(el|la|los|las|en|de|del|y|que|para|con|por|un|una|club|proyectos?|iniciativas?|avances?)\b/i.test(k)) {
+                    delete raw[k];
+                    cleaned = true;
+                }
+            }
+            if (cleaned) {
+                try { localStorage.setItem(`_t_${lang}`, JSON.stringify(raw)); } catch {}
+            }
+        }
+        return raw;
+    }
     catch { return {}; }
 }
 
@@ -126,10 +141,17 @@ async function fetchMissing(texts: string[], lang: string): Promise<Record<strin
             );
             memCache[lang] ||= {};
             chunk.forEach((orig, idx) => {
-                const tr = arr[idx];
+                let tr = arr[idx];
                 if (typeof tr !== 'string' || !tr || failedAt.has(idx)) {
                     bad.add(orig);
                     return;
+                }
+                if (lang === 'es') {
+                    const looksEnglish = /\b(the|share|help us|showcase|through the|and|our|your|projects?|events?|works?)\b/i.test(tr);
+                    const origSpanish = /\b(el|la|los|las|en|de|del|y|que|para|con|por|un|una|club|proyectos?|iniciativas?|avances?)\b/i.test(orig);
+                    if (looksEnglish && origSpanish) {
+                        tr = orig;
+                    }
                 }
                 memCache[lang][orig] = tr;
                 persist[orig] = tr;
