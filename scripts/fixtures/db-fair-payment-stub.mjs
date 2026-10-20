@@ -16,32 +16,37 @@
 let seq = 0;
 const uid = (p) => `${p}_${++seq}`;
 
-export const tablas = {
-    ProjectFairSubmission: [],
-    ProjectFairPaymentAttempt: [],
-    ProjectFairEvent: [],
-    ProjectFairAccount: [],
-    ProjectFairStripeEvent: [],
+const _g = globalThis.__fairPaymentStub = globalThis.__fairPaymentStub || {
+    tablas: {
+        ProjectFairSubmission: [],
+        ProjectFairPaymentAttempt: [],
+        ProjectFairEvent: [],
+        ProjectFairAccount: [],
+        ProjectFairStripeEvent: [],
+    },
+    consultas: [],
+    config: {},
+    trm: null,
 };
-export const consultas = [];
-export let config = {};
-// La TRM que la base tiene en caché para HOY. Con una fila fresca,
-// `resolveTrm` la devuelve sin tocar la red — que es lo que hace que esta
-// prueba pueda ejercitar el camino en pesos sin credenciales ni internet.
-export let trm = null;
+
+export const tablas = _g.tablas;
+export const consultas = _g.consultas;
+export const config = _g.config;
 export const ponerTrm = (rate) => {
-    trm = rate == null ? null : {
+    _g.trm = rate == null ? null : {
         date: new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date()),
         rate, source: 'stub', fetchedAt: new Date().toISOString(),
     };
 };
+export const getTrm = () => _g.trm;
 
 export const reset = (submission = {}, cfg = {}) => {
     seq = 0;
-    trm = null;
-    for (const k of Object.keys(tablas)) tablas[k] = [];
-    consultas.length = 0;
-    config = {
+    _g.trm = null;
+    for (const k of Object.keys(_g.tablas)) _g.tablas[k] = [];
+    _g.consultas.length = 0;
+    for (const k of Object.keys(_g.config)) delete _g.config[k];
+    Object.assign(_g.config, {
         enabled: true,
         registration: { priceMode: 'USD', amountUsd: 62, concept: 'Inscripción de proyecto' },
         notifications: { sendReceipt: false, adminEmails: [] },
@@ -49,8 +54,8 @@ export const reset = (submission = {}, cfg = {}) => {
         formPath: '/postular-proyecto',
         edition: { name: 'XII Feria', key: 'xii' },
         ...cfg,
-    };
-    tablas.ProjectFairSubmission.push({
+    });
+    _g.tablas.ProjectFairSubmission.push({
         id: 'sub_1', publicRef: 'FP-TEST1', email: 'club@ejemplo.org',
         clubName: 'Club Rotario Barranquilla', district: '4271',
         projectName: 'Milagro entre hilos', status: 'pending_payment',
@@ -62,8 +67,8 @@ export const reset = (submission = {}, cfg = {}) => {
     });
 };
 
-export const submission = () => tablas.ProjectFairSubmission[0];
-export const intentos = () => tablas.ProjectFairPaymentAttempt.filter(a => a.submissionId === 'sub_1');
+export const submission = () => _g.tablas.ProjectFairSubmission[0];
+export const intentos = () => _g.tablas.ProjectFairPaymentAttempt.filter(a => a.submissionId === 'sub_1');
 export const abiertos = () => intentos().filter(a => a.status === 'open');
 
 // ── El motor mínimo ─────────────────────────────────────────────────
@@ -80,7 +85,7 @@ const query = async (textoCrudo, params = []) => {
     if (/UPDATE "ProjectFairSubmission" SET "workflowStatus"/i.test(sql)) return noop;
 
     // Configuración de la convocatoria.
-    if (/FROM "ProjectFairConfig"/i.test(sql)) return { rows: [{ config }], rowCount: 1 };
+    if (/FROM "ProjectFairConfig"/i.test(sql)) return { rows: [{ config: _g.config }], rowCount: 1 };
     if (/FROM "CalendarEvent"/i.test(sql)) return noop;
 
     // ── Inscripción ──
@@ -172,7 +177,7 @@ const query = async (textoCrudo, params = []) => {
     // Se responde ANTES de la lista de tablas mudas: es lo que evita que el
     // resolutor salga a la red a preguntarle la tasa a la Superintendencia.
     if (/FROM "ProjectFairTrm"/i.test(sql)) {
-        return trm ? { rows: [{ ...trm }], rowCount: 1 } : noop;
+        return _g.trm ? { rows: [{ ..._g.trm }], rowCount: 1 } : noop;
     }
     if (/"ProjectFairMasterForm"|"ProjectFairProjectForm"|"ProjectFairFile"|"ProjectFairFormRevision"|"ProjectFairTrm"/i.test(sql)) return noop;
 

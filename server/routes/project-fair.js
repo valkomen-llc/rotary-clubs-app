@@ -119,6 +119,8 @@ router.delete('/admin/postulaciones/:id/tags/:tagId', authMiddleware, fairEdit, 
 router.post('/admin/postulaciones/:id/files', authMiddleware, fairEdit, express.json(), fair.addFile);
 router.delete('/admin/postulaciones/:id/files/:fileId', authMiddleware, fairEdit, fair.deleteFile);
 router.post('/admin/postulaciones/:id/sync-stripe', authMiddleware, fairEdit, express.json(), fair.syncStripe);
+router.post('/admin/postulaciones/:id/confirm-manual-payment', authMiddleware, fairEdit, express.json(), fair.confirmManualPayment);
+router.get('/admin/postulaciones/:id/payment-history', authMiddleware, fairRead, fair.getPaymentHistory);
 router.post('/admin/postulaciones/:id/resend-receipt', authMiddleware, fairEdit, express.json(), fair.resendReceipt);
 
 // Formulación de proyectos (v4.608)

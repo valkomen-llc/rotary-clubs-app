@@ -4,24 +4,31 @@
 // Reproduce lo que de verdad importa del contrato de Checkout: una sesión
 // nace `open`, puede pagarse, caducar o expirarse a mano, y `retrieve`
 // devuelve su estado actual. Nada de red.
-let seq = 0;
-export const sesiones = new Map();
-export const llamadas = { create: 0, retrieve: 0, expire: 0 };
-export let fallarAlCrear = null;
-export let fallarAlLeer = null;
+const _gs = globalThis.__stripeFairStub = globalThis.__stripeFairStub || {
+    seq: 0,
+    sesiones: new Map(),
+    llamadas: { create: 0, retrieve: 0, expire: 0 },
+    fallarAlCrear: null,
+    fallarAlLeer: null,
+};
+
+export const sesiones = _gs.sesiones;
+export const llamadas = _gs.llamadas;
+export const getFallarAlCrear = () => _gs.fallarAlCrear;
+export const getFallarAlLeer = () => _gs.fallarAlLeer;
 
 export const reset = () => {
-    seq = 0;
-    sesiones.clear();
-    llamadas.create = 0; llamadas.retrieve = 0; llamadas.expire = 0;
-    fallarAlCrear = null; fallarAlLeer = null;
+    _gs.seq = 0;
+    _gs.sesiones.clear();
+    _gs.llamadas.create = 0; _gs.llamadas.retrieve = 0; _gs.llamadas.expire = 0;
+    _gs.fallarAlCrear = null; _gs.fallarAlLeer = null;
 };
-export const romperCreacion = (msg) => { fallarAlCrear = msg; };
-export const romperLectura = (msg) => { fallarAlLeer = msg; };
+export const romperCreacion = (msg) => { _gs.fallarAlCrear = msg; };
+export const romperLectura = (msg) => { _gs.fallarAlLeer = msg; };
 
 /** Marca una sesión como pagada, como haría el usuario en la pasarela. */
 export const pagar = (id, { paymentIntentId = 'pi_ok' } = {}) => {
-    const s = sesiones.get(id);
+    const s = _gs.sesiones.get(id);
     if (!s) throw new Error(`sesión desconocida: ${id}`);
     s.status = 'complete';
     s.payment_status = 'paid';
@@ -30,7 +37,7 @@ export const pagar = (id, { paymentIntentId = 'pi_ok' } = {}) => {
 };
 /** La sesión caduca sin pagarse. */
 export const caducar = (id) => {
-    const s = sesiones.get(id);
+    const s = _gs.sesiones.get(id);
     if (s) { s.status = 'expired'; s.payment_status = 'unpaid'; }
     return s;
 };
@@ -40,9 +47,9 @@ export default class Stripe {
         this.checkout = {
             sessions: {
                 create: async (payload) => {
-                    llamadas.create++;
-                    if (fallarAlCrear) throw new Error(fallarAlCrear);
-                    const id = `cs_test_${++seq}`;
+                    _gs.llamadas.create++;
+                    if (_gs.fallarAlCrear) throw new Error(_gs.fallarAlCrear);
+                    const id = `cs_test_${++_gs.seq}`;
                     const s = {
                         id,
                         object: 'checkout.session',
@@ -70,19 +77,19 @@ export default class Stripe {
                         // salió cada partida ni cómo se repartió el cobro.
                         __payload: payload,
                     };
-                    sesiones.set(id, s);
+                    _gs.sesiones.set(id, s);
                     return s;
                 },
                 retrieve: async (id) => {
-                    llamadas.retrieve++;
-                    if (fallarAlLeer) throw new Error(fallarAlLeer);
-                    const s = sesiones.get(id);
+                    _gs.llamadas.retrieve++;
+                    if (_gs.fallarAlLeer) throw new Error(_gs.fallarAlLeer);
+                    const s = _gs.sesiones.get(id);
                     if (!s) throw new Error(`No such checkout.session: ${id}`);
                     return { ...s };
                 },
                 expire: async (id) => {
-                    llamadas.expire++;
-                    const s = sesiones.get(id);
+                    _gs.llamadas.expire++;
+                    const s = _gs.sesiones.get(id);
                     if (s) { s.status = 'expired'; s.payment_status = 'unpaid'; }
                     return s || {};
                 },

@@ -42,6 +42,21 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1220.0',
+        title: 'Conciliación Financiera Stripe, Confirmación Manual y Trazabilidad en Postulación de Proyectos · Feria de Proyectos Colombia 💳🏛️',
+        description: 'Auditoría, reparación y optimización integral de la gestión de pagos de inscripción en el módulo de Postulación de Proyectos de la XII Feria de Proyectos Rotary Colombia – Valledupar 2027: 1) Conciliación financiera e histórica exitosa para la postulación de Clara Hernández (Club Rotario Nuevo Medellín, D4271), vinculando formalmente la sesión y payment intent de Stripe, habilitando de inmediato los formularios de "Formulación del proyecto" y "Solicitud FDD" con preservación al 100% de sus avances. 2) Confirmación Manual Administrativa permanente: nuevo flujo seguro con modal de doble paso y confirmación explícita para registrar transacciones con evidencia verificable (referencia, fecha, valor, medio y motivo) con autoría y trazabilidad en servidor. 3) Tarjeta de Resumen Financiero en el panel administrativo (/admin/postulaciones-pagos) con badge de estado, método, moneda, fecha, origen (Stripe vs Manual) y timestamp de sincronización. 4) Robustecimiento de webhooks de Stripe con idempotencia para checkout.session.completed, async_payment_succeeded y payment_intent.succeeded, asegurando roles de gestor y activación de formularios en tiempo real.',
+        date: new Date().toISOString(),
+        tags: ['stripe', 'pagos', 'postulaciones', 'feria-de-proyectos', 'conciliacion', 'seguridad', 'auditoria'],
+        type: 'feature',
+        impact: 'Crítica: Garantiza conciliación financiera inequívoca, desbloqueo instantáneo de formularios y mecanismos seguros de confirmación manual y trazabilidad para organizadores de la Feria.',
+        changes: [
+            { type: 'fixed', text: 'Conciliación de postulación de Clara Hernández y desbloqueo de formularios conservando el 100% de datos diligenciados.' },
+            { type: 'added', text: 'Módulo de confirmación de pago manual permanente en el panel administrativo con auditoría completa en ProjectFairEvent.' },
+            { type: 'improved', text: 'Tarjeta de resumen financiero y visor de historial detallado de transacciones e intentos de pago.' },
+            { type: 'improved', text: 'Robustecimiento de webhooks Stripe con soporte para payment_intent.succeeded y checkout diferidos.' }
+        ]
+    },
+    {
         version: '4.1219.0',
         title: 'Auditoría y Corrección Multiidioma (i18n/l10n) en Rotary en Acción · Feria de Proyectos Colombia 🌐✨',
         description: 'Corrección exhaustiva y blindaje multiidioma en la página pública de Rotary en Acción de la Feria de Proyectos Colombia (rotaryprojectfaircolombia.org/rotary-en-accion): 1) Corrección y fijación de textos en español: Subtítulo de cabecera aprobado "Comparte los proyectos, avances y resultados de tu club rotario. Hagamos visible su impacto, fortalezcamos las alianzas internacionales y mostremos cómo juntos transformamos comunidades." con título "Rotary en Acción · Feria de Proyectos". 2) Soporte bilingüe integral (ES/EN) sin mezclar idiomas en los 4 pasos del formulario: áreas de interés, propósitos, vinculación histórica, métricas de impacto y recursos financieros, zona de subida de evidencias, avisos reactivos, datos de contacto, autorizaciones legales y pantalla de confirmación. 3) Sanitización de caché y salvaguarda backend: purga del registro contaminado en la tabla Translation de PostgreSQL y validación en /api/translate para impedir sobreescritura errónea en español. 4) Conmutación reactiva fluida: cambio de idioma en navbar instantáneo sin pérdida de campos ni recargas forzadas.',

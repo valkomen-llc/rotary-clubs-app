@@ -46,7 +46,7 @@ import { embedLogoDataUrl } from '../lib/logoEmbed.js';
 import { hasPermission } from '../lib/rbacSpec.js';
 import { resolveUserGrant } from '../lib/rbacStore.js';
 
-console.log('[projectFairAdminController] v4.622.0 cargado — Gestión de Postulaciones y Pagos (dashboard, trazabilidad Stripe, etiquetas, alertas y reportes)');
+console.log('[projectFairAdminController] v4.1220.0 cargado — Gestión de Postulaciones y Pagos (dashboard, trazabilidad Stripe, confirmación manual, etiquetas, alertas y reportes)');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 
@@ -71,9 +71,11 @@ const WORKFLOW_KEYS = WORKFLOW_STATES.map(s => s.key);
 
 export const PAYMENT_STATES = [
     { key: 'pending_payment', label: 'Pendiente de pago', color: 'amber' },
-    { key: 'paid', label: 'Pagado', color: 'emerald' },
-    { key: 'failed', label: 'Fallido', color: 'red' },
-    { key: 'refunded', label: 'Reembolsado', color: 'orange' },
+    { key: 'processing', label: 'Pago en procesamiento', color: 'sky' },
+    { key: 'paid', label: 'Pago completado', color: 'emerald' },
+    { key: 'failed', label: 'Pago fallido', color: 'red' },
+    { key: 'refunded', label: 'Pago reembolsado', color: 'orange' },
+    { key: 'requires_reconciliation', label: 'Requiere conciliación', color: 'violet' },
 ];
 
 export const PRIORITIES = [
@@ -274,6 +276,14 @@ const mapRow = (row, access) => {
         archivedAt: row.archivedAt || null,
         archivedBy: row.archivedBy || null,
         archivedReason: row.archivedReason || null,
+        chargeCurrency: row.chargeCurrency || null,
+        paymentConfirmationOrigin: row.paymentConfirmationOrigin || (row.status === 'paid' ? (row.stripeSessionId || row.stripePaymentIntentId ? 'stripe' : 'manual_admin') : null),
+        lastSyncAt: row.lastSyncAt || null,
+        manualPaymentRef: row.manualPaymentRef || null,
+        manualPaymentEvidence: row.manualPaymentEvidence || null,
+        manualPaymentReason: row.manualPaymentReason || null,
+        manualPaymentBy: row.manualPaymentBy || null,
+        manualPaymentAt: row.manualPaymentAt || null,
         tags: row.tags || [],
     };
     // Los identificadores de Stripe y el comprobante son datos financieros:
@@ -1441,53 +1451,317 @@ export const syncStripe = withAccess(async (req, res, { access }) => {
     const { rows } = await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = $1 LIMIT 1', [req.params.id]);
     const submission = rows[0];
     if (!submission) return res.status(404).json({ error: 'Postulación no encontrada' });
-    if (!submission.stripeSessionId && !submission.stripePaymentIntentId) {
-        return res.status(400).json({ error: 'Esta postulación todavía no tiene una sesión de pago.' });
+
+    let rawRef = clean(req.body?.reference || req.body?.sessionId || req.body?.paymentIntentId, 200);
+    let sessionId = submission.stripeSessionId;
+    let paymentIntentId = submission.stripePaymentIntentId;
+
+    if (rawRef) {
+        if (rawRef.startsWith('cs_')) sessionId = rawRef;
+        else if (rawRef.startsWith('pi_')) paymentIntentId = rawRef;
+        else if (rawRef.startsWith('ch_')) {
+            const stripe = getStripe();
+            try {
+                const ch = await stripe.charges.retrieve(rawRef);
+                if (ch.payment_intent) {
+                    paymentIntentId = typeof ch.payment_intent === 'string' ? ch.payment_intent : ch.payment_intent.id;
+                }
+            } catch (err) {}
+        }
     }
 
     const stripe = getStripe();
+
+    // Si aún no tenemos sessionId ni paymentIntentId, intentar búsqueda inteligente en Stripe por correo o metadata
+    if (!sessionId && !paymentIntentId) {
+        try {
+            if (submission.email) {
+                const charges = await stripe.charges.list({ limit: 50 });
+                const matchedCharge = charges.data?.find(c =>
+                    c.billing_details?.email?.toLowerCase() === submission.email.toLowerCase() ||
+                    c.receipt_email?.toLowerCase() === submission.email.toLowerCase() ||
+                    c.metadata?.submissionId === submission.id ||
+                    c.metadata?.publicRef === submission.publicRef
+                );
+                if (matchedCharge) {
+                    if (matchedCharge.payment_intent) {
+                        paymentIntentId = typeof matchedCharge.payment_intent === 'string'
+                            ? matchedCharge.payment_intent
+                            : matchedCharge.payment_intent.id;
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('[project-fair-admin] syncStripe search charges error:', e?.message);
+        }
+    }
+
+    if (!sessionId && !paymentIntentId) {
+        return res.status(400).json({
+            error: `Esta postulación todavía no tiene una sesión de pago registrada en Stripe.`,
+            detail: `No se localizó una transacción automática en Stripe asociada a ${submission.email}. Si el pago fue realizado con otro correo, con tarjeta en otra sesión o por transferencia, puedes indicar el ID de la transacción o utilizar «Confirmar pago manualmente».`,
+            canManualConfirm: true,
+        });
+    }
+
     try {
         let session = null;
-        if (submission.stripeSessionId) {
-            session = await stripe.checkout.sessions.retrieve(submission.stripeSessionId);
+        if (sessionId) {
+            session = await stripe.checkout.sessions.retrieve(sessionId);
+            if (!paymentIntentId && session.payment_intent) {
+                paymentIntentId = typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent.id;
+            }
         }
+
+        const mod = await import('./projectFairController.js');
+
         if (session?.payment_status === 'paid') {
-            const mod = await import('./projectFairController.js');
             session.metadata = { ...(session.metadata || {}), submissionId: submission.id };
             await mod.confirmPaidSession(session);
         }
 
-        const pi = submission.stripePaymentIntentId
-            ? await stripe.paymentIntents.retrieve(submission.stripePaymentIntentId, { expand: ['latest_charge'] })
-            : null;
-        const charge = pi?.latest_charge || null;
-        if (charge) {
-            await db.query(`
-                UPDATE "ProjectFairSubmission"
-                SET "stripeChargeId" = COALESCE($1,"stripeChargeId"),
-                    "receiptUrl" = COALESCE($2,"receiptUrl"),
-                    "paymentMethod" = COALESCE($3,"paymentMethod"),
-                    "refundedAmount" = CASE WHEN $4 > 0 THEN $4 ELSE "refundedAmount" END,
-                    "updatedAt" = NOW()
-                WHERE id = $5
-            `, [charge.id, charge.receipt_url || null, charge.payment_method_details?.type || null,
-                (charge.amount_refunded || 0) / 100, submission.id]);
+        let pi = null;
+        if (paymentIntentId) {
+            pi = await stripe.paymentIntents.retrieve(paymentIntentId, { expand: ['latest_charge'] });
+            if (pi?.status === 'succeeded' && submission.status !== 'paid') {
+                await mod.handlePaymentIntentSucceeded(pi);
+            }
         }
 
+        const charge = pi?.latest_charge && typeof pi.latest_charge === 'object' ? pi.latest_charge : null;
+
+        await db.query(`
+            UPDATE "ProjectFairSubmission"
+            SET "stripeSessionId" = COALESCE($1, "stripeSessionId"),
+                "stripePaymentIntentId" = COALESCE($2, "stripePaymentIntentId"),
+                "stripeChargeId" = COALESCE($3, "stripeChargeId"),
+                "receiptUrl" = COALESCE($4, "receiptUrl"),
+                "paymentMethod" = COALESCE($5, "paymentMethod"),
+                "refundedAmount" = CASE WHEN $6 > 0 THEN $6 ELSE "refundedAmount" END,
+                "paymentConfirmationOrigin" = CASE WHEN status = 'paid' THEN COALESCE("paymentConfirmationOrigin", 'stripe') ELSE "paymentConfirmationOrigin" END,
+                "lastSyncAt" = NOW(),
+                "updatedAt" = NOW()
+            WHERE id = $7
+        `, [
+            sessionId || null,
+            paymentIntentId || null,
+            charge?.id || null,
+            charge?.receipt_url || null,
+            charge?.payment_method_details?.type || null,
+            (charge?.amount_refunded || 0) / 100,
+            submission.id,
+        ]);
+
         await logEvent(submission.id, {
-            type: 'stripe_sync', title: 'Sincronización manual con Stripe',
-            detail: session ? `Estado en Stripe: ${session.payment_status}` : 'Consulta del PaymentIntent',
+            type: 'stripe_sync',
+            title: 'Sincronización manual con Stripe',
+            detail: session ? `Estado en Stripe: ${session.payment_status}` : (pi ? `Estado en Stripe: ${pi.status}` : 'Consulta de transacción'),
             actor: actorFrom(req, access),
+            metadata: { sessionId, paymentIntentId, chargeId: charge?.id || null },
         });
 
         const { rows: fresh } = await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = $1', [submission.id]);
         const tags = await loadTagsFor([submission.id]);
-        res.json({ submission: mapRow({ ...fresh[0], tags: tags[submission.id] || [] }, access) });
+        res.json({
+            success: true,
+            submission: mapRow({ ...fresh[0], tags: tags[submission.id] || [] }, access),
+        });
     } catch (error) {
         console.error('[project-fair-admin] syncStripe:', error?.message);
         res.status(502).json({ error: `Stripe respondió con un error: ${error?.message}` });
     }
 }, 'managePayments');
+
+// POST /admin/submissions/:id/confirm-manual-payment
+// Confirmación manual y autorizada del pago con trazabilidad inmutable.
+export const confirmManualPayment = withAccess(async (req, res, { cfg, access }) => {
+    const { rows } = await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = $1 LIMIT 1', [req.params.id]);
+    const submission = rows[0];
+    if (!submission) return res.status(404).json({ error: 'Postulación no encontrada' });
+
+    const body = req.body || {};
+    const reference = clean(body.reference, 200);
+    if (!reference) {
+        return res.status(400).json({ error: 'La referencia o identificador de la transacción es obligatoria.' });
+    }
+
+    const dateInput = clean(body.paidAt, 50);
+    const paidAt = dateInput ? new Date(dateInput) : new Date();
+    if (isNaN(paidAt.getTime())) {
+        return res.status(400).json({ error: 'La fecha de pago no es válida.' });
+    }
+
+    const amount = Number(body.amount);
+    if (!amount || isNaN(amount) || amount <= 0) {
+        return res.status(400).json({ error: 'El valor pagado debe ser un monto numérico positivo.' });
+    }
+
+    const currency = (clean(body.currency, 10) || 'COP').toUpperCase();
+    const paymentMethod = clean(body.paymentMethod, 80);
+    if (!paymentMethod) {
+        return res.status(400).json({ error: 'El medio de pago es obligatorio.' });
+    }
+
+    const evidence = clean(body.evidence, 2000);
+    if (!evidence) {
+        return res.status(400).json({ error: 'El comprobante o evidencia verificable es obligatorio.' });
+    }
+
+    const reason = clean(body.reason, 1000);
+    if (!reason || reason.length < 5) {
+        return res.status(400).json({ error: 'Debes indicar el motivo de la confirmación manual (mínimo 5 caracteres).' });
+    }
+
+    const actor = actorFrom(req, access);
+    const previousStatus = submission.status;
+    const previousWorkflow = submission.workflowStatus;
+
+    const isUrl = evidence.startsWith('http://') || evidence.startsWith('https://');
+    const piId = reference.startsWith('pi_') ? reference : null;
+    const csId = reference.startsWith('cs_') ? reference : null;
+    const chId = reference.startsWith('ch_') ? reference : null;
+
+    const { rows: updatedRows } = await db.query(`
+        UPDATE "ProjectFairSubmission"
+        SET status = 'paid',
+            "workflowStatus" = CASE
+                WHEN "workflowStatus" IN ('received', 'pending_payment', 'draft') OR "workflowStatus" IS NULL
+                THEN 'payment_confirmed' ELSE "workflowStatus" END,
+            "paidAt" = $1,
+            "amountReceived" = $2,
+            "chargeCurrency" = $3,
+            "paymentMethod" = $4,
+            "paymentConfirmationOrigin" = 'manual_admin',
+            "manualPaymentRef" = $5,
+            "manualPaymentEvidence" = $6,
+            "manualPaymentReason" = $7,
+            "manualPaymentBy" = $8,
+            "manualPaymentAt" = NOW(),
+            "receiptUrl" = CASE WHEN $9::text IS NOT NULL THEN $9::text ELSE "receiptUrl" END,
+            "stripePaymentIntentId" = COALESCE($10, "stripePaymentIntentId"),
+            "stripeSessionId" = COALESCE($11, "stripeSessionId"),
+            "stripeChargeId" = COALESCE($12, "stripeChargeId"),
+            "lastPaymentError" = NULL,
+            "lastSyncAt" = NOW(),
+            "updatedAt" = NOW()
+        WHERE id = $13
+        RETURNING *
+    `, [
+        paidAt,
+        amount,
+        currency,
+        paymentMethod,
+        reference,
+        evidence,
+        reason,
+        actor.name,
+        isUrl ? evidence : null,
+        piId,
+        csId,
+        chId,
+        submission.id,
+    ]);
+
+    const updated = updatedRows[0];
+
+    // Otorga rol de Gestor de Proyectos al club
+    const { grantProjectManagerRole } = await import('./projectFairController.js');
+    await grantProjectManagerRole(updated, { reason: `manual_confirmation: ${reference} (${actor.name})` });
+
+    // Habilita e inicializa el formulario maestro si no existe
+    try {
+        const { rows: formRows } = await db.query('SELECT id FROM "ProjectFairMasterForm" WHERE "submissionId" = $1 LIMIT 1', [updated.id]);
+        if (!formRows[0]) {
+            const { seedAnswersFor } = await import('./projectFormsController.js');
+            const { resolveForm } = await import('../lib/projectFormsRegistry.js');
+            const { completionOf } = await import('../lib/projectFairMasterForm.js');
+            const answers = seedAnswersFor(resolveForm(cfg, 'master')?.template || cfg?.masterForm, updated, cfg);
+            await db.query(`
+                INSERT INTO "ProjectFairMasterForm" ("submissionId", answers, "completionPct", "lastEditedAt")
+                VALUES ($1, $2::jsonb, $3, NOW())
+                ON CONFLICT ("submissionId") DO NOTHING
+            `, [updated.id, JSON.stringify(answers), completionOf(cfg.masterForm, answers)]);
+        }
+    } catch (e) {
+        console.error('[project-fair-admin] Error inicializando MasterForm en confirmación manual:', e?.message);
+    }
+
+    // Auditoría inmutable en ProjectFairEvent
+    await logEvent(submission.id, {
+        type: 'payment_confirmed_manually',
+        title: 'Pago confirmado administrativamente',
+        detail: `${currency === 'COP' ? '$' + amount.toLocaleString('es-CO') : '$' + amount} ${currency} · Ref: ${reference} · Medio: ${paymentMethod}\nMotivo: ${reason}`,
+        actor,
+        metadata: {
+            reference,
+            paidAt: paidAt.toISOString(),
+            amount,
+            currency,
+            paymentMethod,
+            evidence,
+            reason,
+            previousStatus,
+            previousWorkflow,
+        },
+    });
+
+    const tags = await loadTagsFor([updated.id]);
+    res.json({
+        success: true,
+        submission: mapRow({ ...updated, tags: tags[updated.id] || [] }, access),
+    });
+}, 'managePayments');
+
+// GET /admin/submissions/:id/payment-history
+// Visualiza los intentos, confirmaciones, eventos de webhook y acciones administrativas.
+export const getPaymentHistory = withAccess(async (req, res, { access }) => {
+    const { rows } = await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = $1 LIMIT 1', [req.params.id]);
+    const submission = rows[0];
+    if (!submission) return res.status(404).json({ error: 'Postulación no encontrada' });
+
+    const [attempts, stripeEvents, events] = await Promise.all([
+        db.query('SELECT * FROM "ProjectFairPaymentAttempt" WHERE "submissionId" = $1 ORDER BY "startedAt" DESC', [submission.id]),
+        db.query('SELECT id, "stripeEventId", type, "objectId", "receivedAt" FROM "ProjectFairStripeEvent" WHERE "submissionId" = $1 ORDER BY "receivedAt" DESC LIMIT 50', [submission.id]),
+        db.query(`
+            SELECT * FROM "ProjectFairEvent"
+            WHERE "submissionId" = $1
+              AND type IN ('payment_succeeded', 'payment_failed', 'payment_confirmed_manually', 'stripe_sync', 'refund', 'checkout_created', 'checkout_expired', 'status_change')
+            ORDER BY "createdAt" DESC
+        `, [submission.id]),
+    ]);
+
+    res.json({
+        submissionId: submission.id,
+        publicRef: submission.publicRef,
+        summary: {
+            status: submission.status,
+            workflowStatus: submission.workflowStatus,
+            amountCop: num(submission.amountCop),
+            amountUsd: num(submission.amountUsd),
+            amountReceived: num(submission.amountReceived),
+            chargeCurrency: submission.chargeCurrency,
+            paidAt: submission.paidAt,
+            paymentMethod: submission.paymentMethod,
+            paymentConfirmationOrigin: submission.paymentConfirmationOrigin || (submission.status === 'paid' ? (submission.stripeSessionId || submission.stripePaymentIntentId ? 'stripe' : 'manual_admin') : null),
+            stripePaymentIntentId: submission.stripePaymentIntentId,
+            stripeSessionId: submission.stripeSessionId,
+            stripeChargeId: submission.stripeChargeId,
+            receiptUrl: submission.receiptUrl,
+            lastPaymentError: submission.lastPaymentError,
+            lastSyncAt: submission.lastSyncAt,
+            manualPayment: {
+                ref: submission.manualPaymentRef,
+                evidence: submission.manualPaymentEvidence,
+                reason: submission.manualPaymentReason,
+                by: submission.manualPaymentBy,
+                at: submission.manualPaymentAt,
+            },
+        },
+        attempts: attempts.rows,
+        stripeEvents: stripeEvents.rows,
+        events: events.rows,
+    });
+}, 'viewPayments');
 
 // POST /admin/submissions/:id/resend-receipt
 export const resendReceipt = withAccess(async (req, res, { cfg, access }) => {
@@ -2225,7 +2499,7 @@ export const resolveTransfers = withAccess(async (req, res, { access }) => {
 export default {
     getOverview, listSubmissions, getSubmission, updateSubmission, addComment,
     listTags, createTag, deleteTag, attachTag, detachTag,
-    addFile, deleteFile, syncStripe, resendReceipt,
+    addFile, deleteFile, syncStripe, resendReceipt, confirmManualPayment, getPaymentHistory,
     getAlerts, getReports, getIntelligence, getDashboardIntelligence, exportCsv, getCatalog, getSubmissionSnapshot,
     readConvocatoriaConfig, writeConvocatoriaConfig,
     listMasterForms, getMasterForm, downloadMasterFormDocx, reopenMasterForm, lockMasterForm,

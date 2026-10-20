@@ -174,6 +174,7 @@ export const stripeWebhook = async (req, res) => {
             case 'payment_intent.succeeded':
                 const paymentIntent = event.data.object;
                 await handleSuccessfulPayment(paymentIntent);
+                await routeProjectFairEvent(event, 'succeeded');
                 break;
             case 'payment_intent.payment_failed':
                 const failedIntent = event.data.object;
@@ -184,6 +185,14 @@ export const stripeWebhook = async (req, res) => {
             case 'checkout.session.completed':
                 const session = event.data.object;
                 await handleSuccessfulCheckoutSession(session, event);
+                break;
+            case 'checkout.session.async_payment_succeeded':
+                const asyncPaidSession = event.data.object;
+                await handleSuccessfulCheckoutSession(asyncPaidSession, event);
+                break;
+            case 'checkout.session.async_payment_failed':
+                await routeProjectFairEvent(event, 'failed');
+                await routeEventRegistration(event, 'failed');
                 break;
             // v4.598 — Desenlaces del pago de la Feria de Proyectos. La fuente
             // de verdad es el webhook, no el retorno del navegador.
@@ -235,7 +244,8 @@ async function routeProjectFairEvent(event, kind) {
         const fresh = await mod.recordStripeEvent(event, object?.metadata?.submissionId || null);
         if (!fresh) return; // ya procesado
 
-        if (kind === 'failed') await mod.handlePaymentFailed(object);
+        if (kind === 'succeeded') await mod.handlePaymentIntentSucceeded(object, event);
+        else if (kind === 'failed') await mod.handlePaymentFailed(object);
         else if (kind === 'expired') await mod.handleCheckoutExpired(object);
         else if (kind === 'refunded') await mod.handleRefund(object);
     } catch (error) {
@@ -340,18 +350,27 @@ async function handleSuccessfulCheckoutSession(session, event = null) {
     // 2.b v4.592 — Inscripción de proyecto a la Feria de Proyectos Rotary
     //     Colombia. Marca la inscripción como "Pago Confirmado", guarda la
     //     referencia de la transacción y envía el comprobante. Idempotente.
-    if (session.metadata && session.metadata.type === 'project_fair_registration') {
-        try {
-            const mod = await import('./projectFairController.js');
-            // Idempotencia por event.id: si Stripe reenvía el mismo evento, no
-            // se vuelve a procesar ni se duplican registros.
-            if (event) {
-                const fresh = await mod.recordStripeEvent(event, session.metadata.submissionId || null);
-                if (!fresh) return;
+    const isProjectFairSession = session.metadata && (
+        session.metadata.type === 'project_fair_registration' ||
+        Boolean(session.metadata.submissionId)
+    );
+    if (isProjectFairSession) {
+        const isPaid = session.payment_status === 'paid' || session.payment_status === 'no_payment_required';
+        if (isPaid) {
+            try {
+                const mod = await import('./projectFairController.js');
+                // Idempotencia por event.id: si Stripe reenvía el mismo evento, no
+                // se vuelve a procesar ni se duplican registros.
+                if (event) {
+                    const fresh = await mod.recordStripeEvent(event, session.metadata?.submissionId || null);
+                    if (!fresh) return;
+                }
+                await mod.confirmPaidSession(session);
+            } catch (error) {
+                console.error('[Stripe Webhook] ERROR confirmando inscripción de Feria de Proyectos:', error);
             }
-            await mod.confirmPaidSession(session);
-        } catch (error) {
-            console.error('[Stripe Webhook] ERROR confirmando inscripción de Feria de Proyectos:', error);
+        } else {
+            console.log(`[Stripe Webhook] Checkout session ${session.id} completada pero estado de pago es '${session.payment_status}' (no marcado pagado aún)`);
         }
     }
 

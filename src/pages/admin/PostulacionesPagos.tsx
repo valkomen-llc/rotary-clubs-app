@@ -16,7 +16,7 @@ import {
     CreditCard, Download, ExternalLink, Eye, FileSpreadsheet, FileText, Filter,
     Loader2, Mail, MessageSquarePlus, RefreshCw, Search,
     TrendingUp, Wallet, X, ShieldCheck, Paperclip, Settings, FileSignature, Lock, Unlock,
-    Archive, ArchiveRestore, CheckSquare, Square, Trash2, TagIcon, Banknote, ArrowRight,
+    Archive, ArchiveRestore, CheckSquare, Square, Trash2, TagIcon, Banknote, ArrowRight, History,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -99,6 +99,13 @@ interface Submission {
     archivedAt?: string | null; archivedBy?: string | null; archivedReason?: string | null;
     stripeSessionId?: string; stripePaymentIntentId?: string; stripeChargeId?: string;
     stripeCustomerId?: string; paymentMethod?: string; receiptUrl?: string; lastPaymentError?: string;
+    paymentConfirmationOrigin?: 'stripe' | 'manual_admin' | 'direct_transfer' | string | null;
+    lastSyncAt?: string | null;
+    manualPaymentRef?: string | null;
+    manualPaymentEvidence?: string | null;
+    manualPaymentReason?: string | null;
+    manualPaymentBy?: string | null;
+    manualPaymentAt?: string | null;
 }
 interface TimelineEvent {
     id: string; type: string; title: string; detail: string | null;
@@ -154,6 +161,10 @@ const EVENT_META: Record<string, { label: string; color: string }> = {
     file_removed: { label: 'Adjunto', color: 'slate' },
     email_sent: { label: 'Correo enviado', color: 'emerald' },
     stripe_sync: { label: 'Sincronización Stripe', color: 'indigo' },
+    manual_payment_confirmed: { label: 'Pago confirmado manualmente', color: 'emerald' },
+    payment_reconciliation: { label: 'Conciliación financiera', color: 'violet' },
+    submission_consolidated: { label: 'Postulación consolidada', color: 'indigo' },
+    sync_error: { label: 'Error de sincronización', color: 'red' },
     reviewed: { label: 'Revisada', color: 'emerald' },
     redirect: { label: 'Redirección a Grants', color: 'violet' },
 };
@@ -1691,6 +1702,37 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
     const [comment, setComment] = useState('');
     const [reason, setReason] = useState('');
     const [pane, setPane] = useState<'datos' | 'pago' | 'historial'>('datos');
+    const [showManualModal, setShowManualModal] = useState(false);
+    const [manualStep, setManualStep] = useState<'edit' | 'confirm'>('edit');
+    const [manualForm, setManualForm] = useState({
+        reference: '',
+        paidAt: new Date().toISOString().slice(0, 16),
+        amount: '',
+        currency: 'COP',
+        paymentMethod: 'Transferencia bancaria',
+        evidence: '',
+        reason: '',
+    });
+    const [paymentHistory, setPaymentHistory] = useState<any | null>(null);
+    const [loadingHistory, setLoadingHistory] = useState(false);
+    const [showHistorySection, setShowHistorySection] = useState(false);
+
+    const loadPaymentHistory = async () => {
+        setLoadingHistory(true);
+        try {
+            const res = await fetch(withEvento(`${API}/project-fair/admin/postulaciones/${id}/payment-history`), {
+                headers: authHeaders(),
+            });
+            const d = await res.json();
+            if (!res.ok) throw new Error(d.error || 'No se pudo cargar el historial');
+            setPaymentHistory(d);
+            setShowHistorySection(true);
+        } catch (err: any) {
+            toast.error(err.message || 'Error al consultar historial');
+        } finally {
+            setLoadingHistory(false);
+        }
+    };
 
     const load = useCallback(() => {
         setLoading(true);
@@ -1810,6 +1852,11 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                                         <span className="font-mono text-sm font-bold text-slate-500">{s.publicRef}</span>
                                         {wf && <Badge color={wf.color}>{wf.label}</Badge>}
                                         {pay && <Badge color={pay.color}>{pay.label}</Badge>}
+                                        {s.paymentStatus === 'paid' && (
+                                            <Badge color={s.paymentConfirmationOrigin === 'manual_admin' ? 'violet' : 'emerald'}>
+                                                {s.paymentConfirmationOrigin === 'manual_admin' ? 'Manual (Admin)' : 'Stripe'}
+                                            </Badge>
+                                        )}
                                     </div>
                                     <h2 className="mt-1 text-xl font-bold text-slate-900">{s.projectName}</h2>
                                     <p className="text-sm text-slate-500">{s.clubName} · {s.district}</p>
@@ -1824,7 +1871,28 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                                 {access.managePayments && (
                                     <>
                                         <button onClick={() => action('sync-stripe', {}, 'Sincronizado con Stripe')} disabled={saving}
-                                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"><RefreshCw size={13} /> Sincronizar con Stripe</button>
+                                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"><RefreshCw size={13} className={saving ? 'animate-spin' : ''} /> Sincronizar con Stripe</button>
+                                        {s.paymentStatus !== 'paid' && (
+                                            <button
+                                                onClick={() => {
+                                                    setManualForm({
+                                                        reference: '',
+                                                        paidAt: new Date().toISOString().slice(0, 16),
+                                                        amount: s.amountCop ? String(s.amountCop) : '250000',
+                                                        currency: s.chargeCurrency || (s.amountCop ? 'COP' : 'USD'),
+                                                        paymentMethod: 'Transferencia bancaria',
+                                                        evidence: '',
+                                                        reason: '',
+                                                    });
+                                                    setManualStep('edit');
+                                                    setShowManualModal(true);
+                                                }}
+                                                disabled={saving}
+                                                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700"
+                                            >
+                                                <ShieldCheck size={13} /> Confirmar pago manualmente
+                                            </button>
+                                        )}
                                         {s.paymentStatus === 'paid' && (
                                             <button onClick={() => action('resend-receipt', {}, 'Comprobante reenviado')} disabled={saving}
                                                 className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"><Mail size={13} /> Reenviar comprobante</button>
@@ -1961,33 +2029,241 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                             )}
 
                             {pane === 'pago' && (
-                                <Section title="Trazabilidad del pago">
+                                <div className="space-y-4">
                                     {!access.viewPayments ? (
-                                        <p className="text-sm text-slate-500">Tu perfil no tiene acceso al detalle financiero.</p>
+                                        <Section title="Trazabilidad del pago">
+                                            <p className="text-sm text-slate-500">Tu perfil no tiene acceso al detalle financiero.</p>
+                                        </Section>
                                     ) : (
                                         <>
-                                            <Row label="Estado" value={pay?.label || s.paymentStatus} />
-                                            {s.amountCop ? <Row label="Valor de inscripción" value={`${fmtCop(s.amountCop)} COP`} /> : null}
-                                            <Row label="Valor recibido" value={s.amountReceived ? `${fmtCop(s.amountReceived)} COP` : '—'} />
-                                            <Row label={s.amountCop ? 'Valor cobrado' : 'Valor de inscripción'} value={`${fmtUsd(s.amountUsd)} USD`} />
-                                            <Row label="TRM aplicada" value={s.trmRate ? `${fmtNum(s.trmRate)} COP/USD · ${s.trmDate || ''}` : '—'} />
-                                            <Row label="Fuente de la TRM" value={s.trmSource} />
-                                            <Row label="Método de pago" value={s.paymentMethod} />
-                                            <Row label="Fecha de confirmación" value={fmtDateTime(s.paidAt)} />
-                                            <Row label="Checkout Session" value={s.stripeSessionId} mono />
-                                            <Row label="Payment Intent" value={s.stripePaymentIntentId} mono />
-                                            <Row label="Charge" value={s.stripeChargeId} mono />
-                                            <Row label="Customer" value={s.stripeCustomerId} mono />
-                                            {s.refundedAmount ? <Row label="Reembolsado" value={`${fmtCop(s.refundedAmount)} COP · ${fmtDateTime(s.refundedAt)}`} /> : null}
-                                            {s.lastPaymentError ? <Row label="Último error" value={s.lastPaymentError} /> : null}
-                                            {s.receiptUrl && (
-                                                <a href={s.receiptUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-blue-700 hover:underline">
-                                                    <Download size={14} /> Ver comprobante de Stripe
-                                                </a>
+                                            {/* Tarjeta de Resumen Financiero */}
+                                            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <CreditCard size={18} className="text-blue-700" />
+                                                        <div>
+                                                            <h3 className="text-sm font-bold uppercase tracking-wide text-slate-800">Resumen Financiero</h3>
+                                                            <p className="text-xs text-slate-500">Estado consolidado y conciliación de inscripción</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <Badge color={pay?.color || 'slate'}>{pay?.label || s.paymentStatus}</Badge>
+                                                        {s.paymentStatus === 'paid' ? (
+                                                            <Badge color={s.paymentConfirmationOrigin === 'manual_admin' ? 'violet' : 'emerald'}>
+                                                                {s.paymentConfirmationOrigin === 'manual_admin' ? 'Confirmado administrativamente' : 'Confirmado por Stripe'}
+                                                            </Badge>
+                                                        ) : (
+                                                            <Badge color="amber">Pendiente</Badge>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* Grid de Métricas Financieras */}
+                                                <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                                                    <div className="rounded-lg bg-slate-50 p-3">
+                                                        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Valor Inscripción</span>
+                                                        <p className="mt-1 text-base font-bold text-slate-900">{amountLabel(s)}</p>
+                                                        <span className="text-[11px] text-slate-400">Tarifa de postulación</span>
+                                                    </div>
+                                                    <div className="rounded-lg bg-slate-50 p-3">
+                                                        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Valor Pagado</span>
+                                                        <p className="mt-1 text-base font-bold text-slate-900">
+                                                            {s.amountReceived ? `${fmtCop(s.amountReceived)} COP` : (s.paymentStatus === 'paid' ? amountLabel(s) : '—')}
+                                                        </p>
+                                                        <span className="text-[11px] text-slate-400">Monto verificado</span>
+                                                    </div>
+                                                    <div className="rounded-lg bg-slate-50 p-3">
+                                                        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Moneda</span>
+                                                        <p className="mt-1 text-base font-bold text-slate-900">{s.chargeCurrency || (s.amountCop ? 'COP' : 'USD')}</p>
+                                                        <span className="text-[11px] text-slate-400">Moneda de pago</span>
+                                                    </div>
+                                                    <div className="rounded-lg bg-slate-50 p-3">
+                                                        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Confirmación</span>
+                                                        <p className="mt-1 text-xs font-semibold text-slate-800">{s.paidAt ? fmtDateTime(s.paidAt) : 'Sin confirmación'}</p>
+                                                        <span className="text-[11px] text-slate-400">Fecha y hora</span>
+                                                    </div>
+                                                    <div className="rounded-lg bg-slate-50 p-3">
+                                                        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Método de Pago</span>
+                                                        <p className="mt-1 text-xs font-semibold text-slate-800">
+                                                            {s.paymentMethod || (s.stripeSessionId ? 'Tarjeta (Stripe)' : (s.paymentConfirmationOrigin === 'manual_admin' ? 'Manual' : '—'))}
+                                                        </p>
+                                                    </div>
+                                                    <div className="rounded-lg bg-slate-50 p-3">
+                                                        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Última Sincronización</span>
+                                                        <p className="mt-1 text-xs font-semibold text-slate-800">
+                                                            {s.lastSyncAt ? fmtDateTime(s.lastSyncAt) : (s.paidAt ? fmtDateTime(s.paidAt) : 'Sin sincronizar')}
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Barra de Acciones Financieras */}
+                                                {access.managePayments && (
+                                                    <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+                                                        <button
+                                                            onClick={() => action('sync-stripe', {}, 'Sincronizado con Stripe')}
+                                                            disabled={saving}
+                                                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                                                        >
+                                                            <RefreshCw size={13} className={saving ? 'animate-spin' : ''} /> Sincronizar con Stripe
+                                                        </button>
+
+                                                        {s.paymentStatus !== 'paid' && (
+                                                            <button
+                                                                onClick={() => {
+                                                                    setManualForm({
+                                                                        reference: '',
+                                                                        paidAt: new Date().toISOString().slice(0, 16),
+                                                                        amount: s.amountCop ? String(s.amountCop) : '250000',
+                                                                        currency: s.chargeCurrency || (s.amountCop ? 'COP' : 'USD'),
+                                                                        paymentMethod: 'Transferencia bancaria',
+                                                                        evidence: '',
+                                                                        reason: '',
+                                                                    });
+                                                                    setManualStep('edit');
+                                                                    setShowManualModal(true);
+                                                                }}
+                                                                disabled={saving}
+                                                                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
+                                                            >
+                                                                <ShieldCheck size={14} /> Confirmar pago manualmente
+                                                            </button>
+                                                        )}
+
+                                                        {s.paymentStatus === 'paid' && s.receiptUrl && (
+                                                            <>
+                                                                <a
+                                                                    href={s.receiptUrl}
+                                                                    target="_blank"
+                                                                    rel="noreferrer"
+                                                                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-slate-50"
+                                                                >
+                                                                    <Download size={13} /> Comprobante Stripe
+                                                                </a>
+                                                                <button
+                                                                    onClick={() => action('resend-receipt', {}, 'Comprobante reenviado')}
+                                                                    disabled={saving}
+                                                                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                                                                >
+                                                                    <Mail size={13} /> Reenviar comprobante
+                                                                </button>
+                                                            </>
+                                                        )}
+
+                                                        <button
+                                                            onClick={loadPaymentHistory}
+                                                            disabled={loadingHistory}
+                                                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                                                        >
+                                                            <History size={13} className={loadingHistory ? 'animate-spin' : ''} />
+                                                            {showHistorySection ? 'Actualizar historial' : 'Consultar historial de pago'}
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Bloque de Confirmación Administrativa Manual si aplica */}
+                                            {s.paymentConfirmationOrigin === 'manual_admin' && (
+                                                <div className="rounded-xl border border-violet-200 bg-violet-50/60 p-5">
+                                                    <div className="flex items-center gap-2 text-violet-900">
+                                                        <ShieldCheck size={18} className="text-violet-700" />
+                                                        <h3 className="text-sm font-bold uppercase tracking-wide">Confirmación Administrativa Manual</h3>
+                                                    </div>
+                                                    <div className="mt-3 space-y-2 text-xs text-violet-950">
+                                                        <div className="flex justify-between border-b border-violet-100 py-1">
+                                                            <span className="font-semibold">Responsable autorizado:</span>
+                                                            <span>{s.manualPaymentBy || 'Administrador'}</span>
+                                                        </div>
+                                                        <div className="flex justify-between border-b border-violet-100 py-1">
+                                                            <span className="font-semibold">Fecha de confirmación:</span>
+                                                            <span>{fmtDateTime(s.manualPaymentAt)}</span>
+                                                        </div>
+                                                        <div className="flex justify-between border-b border-violet-100 py-1">
+                                                            <span className="font-semibold">Referencia o soporte:</span>
+                                                            <span className="font-mono font-bold">{s.manualPaymentRef || '—'}</span>
+                                                        </div>
+                                                        <div className="flex justify-between border-b border-violet-100 py-1">
+                                                            <span className="font-semibold">Comprobante o evidencia:</span>
+                                                            <span className="break-all">{s.manualPaymentEvidence || '—'}</span>
+                                                        </div>
+                                                        <div className="py-1">
+                                                            <span className="font-semibold block mb-0.5">Motivo / Justificación:</span>
+                                                            <p className="rounded bg-white/70 p-2 text-slate-700 border border-violet-100">{s.manualPaymentReason || '—'}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             )}
+
+                                            {/* Alerta de error si existe */}
+                                            {s.lastPaymentError && (
+                                                <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-xs text-red-900">
+                                                    <div className="flex items-center gap-2 font-bold text-red-800">
+                                                        <AlertTriangle size={15} /> Último error de pago / pasarela
+                                                    </div>
+                                                    <p className="mt-1 font-mono">{s.lastPaymentError}</p>
+                                                </div>
+                                            )}
+
+                                            {/* Trazabilidad Técnica y Proveedor */}
+                                            <Section title="Detalle Técnico de Pasarela">
+                                                <Row label="Checkout Session" value={s.stripeSessionId} mono />
+                                                <Row label="Payment Intent" value={s.stripePaymentIntentId} mono />
+                                                <Row label="Charge ID" value={s.stripeChargeId} mono />
+                                                <Row label="Customer ID" value={s.stripeCustomerId} mono />
+                                                <Row label="TRM aplicada" value={s.trmRate ? `${fmtNum(s.trmRate)} COP/USD · ${s.trmDate || ''}` : '—'} />
+                                                <Row label="Fuente de la TRM" value={s.trmSource} />
+                                                {s.refundedAmount ? <Row label="Reembolsado" value={`${fmtCop(s.refundedAmount)} COP · ${fmtDateTime(s.refundedAt)}`} /> : null}
+                                            </Section>
+
+                                            {/* Historial Extendido de Pagos si fue consultado */}
+                                            {showHistorySection && paymentHistory && (
+                                                <Section title="Historial y Auditoría Financiera">
+                                                    <div className="space-y-4">
+                                                        {paymentHistory.paymentAttempts?.length > 0 && (
+                                                            <div>
+                                                                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Intentos de cobro ({paymentHistory.paymentAttempts.length})</p>
+                                                                <ul className="space-y-2 text-xs">
+                                                                    {paymentHistory.paymentAttempts.map((att: any, idx: number) => (
+                                                                        <li key={att.id || idx} className="rounded-lg border border-slate-100 bg-slate-50 p-2.5">
+                                                                            <div className="flex items-center justify-between">
+                                                                                <span className="font-semibold text-slate-800">Intento #{idx + 1} · {att.status}</span>
+                                                                                <span className="text-slate-400">{fmtDateTime(att.startedAt)}</span>
+                                                                            </div>
+                                                                            <div className="mt-1 text-slate-600">
+                                                                                {att.amountCop ? `${fmtCop(att.amountCop)} COP` : ''} {att.amountUsd ? `(${fmtUsd(att.amountUsd)} USD)` : ''}
+                                                                            </div>
+                                                                            {att.failureMessage && (
+                                                                                <p className="mt-1 text-red-600 font-mono text-[11px]">{att.failureMessage}</p>
+                                                                            )}
+                                                                        </li>
+                                                                    ))}
+                                                                </ul>
+                                                            </div>
+                                                        )}
+
+                                                        {paymentHistory.timeline?.length > 0 && (
+                                                            <div>
+                                                                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Bitácora Financiera ({paymentHistory.timeline.length} eventos)</p>
+                                                                <ul className="space-y-2 text-xs">
+                                                                    {paymentHistory.timeline.map((ev: any) => (
+                                                                        <li key={ev.id} className="rounded-lg border border-slate-100 bg-white p-2.5">
+                                                                            <div className="flex items-center justify-between">
+                                                                                <span className="font-bold text-slate-800">{ev.title}</span>
+                                                                                <span className="text-slate-400">{fmtDateTime(ev.createdAt)}</span>
+                                                                            </div>
+                                                                            {ev.detail && <p className="mt-1 text-slate-600">{ev.detail}</p>}
+                                                                            {ev.actorName && <p className="mt-0.5 text-[11px] text-slate-400">Por: {ev.actorName}</p>}
+                                                                        </li>
+                                                                    ))}
+                                                                </ul>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </Section>
+                                            )}
+
+                                            {/* Eventos Recibidos de Stripe */}
                                             {data.stripeEvents.length > 0 && (
-                                                <div className="mt-5">
-                                                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Eventos recibidos de Stripe</p>
+                                                <Section title={`Eventos recibidos de Stripe (${data.stripeEvents.length})`}>
                                                     <ul className="space-y-1 text-xs text-slate-600">
                                                         {data.stripeEvents.map(e => (
                                                             <li key={e.id} className="flex justify-between gap-3 border-b border-slate-100 py-1.5">
@@ -1996,11 +2272,11 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                                                             </li>
                                                         ))}
                                                     </ul>
-                                                </div>
+                                                </Section>
                                             )}
                                         </>
                                     )}
-                                </Section>
+                                </div>
                             )}
 
                             {pane === 'historial' && (
@@ -2043,6 +2319,205 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                     </>
                 )}
             </div>
+
+            {/* Modal de Confirmación Manual de Pago */}
+            {showManualModal && s && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 p-4" onClick={e => e.stopPropagation()}>
+                    <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                            <div className="flex items-center gap-2">
+                                <ShieldCheck size={20} className="text-emerald-600" />
+                                <div>
+                                    <h3 className="text-base font-bold text-slate-900">Confirmar Pago Manualmente</h3>
+                                    <p className="text-xs text-slate-500">Módulo administrativo de conciliación</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setShowManualModal(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100">
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {manualStep === 'edit' ? (
+                            <div className="mt-4 space-y-3.5">
+                                <p className="text-xs text-slate-600 leading-relaxed">
+                                    Registra la confirmación manual de este pago cuando exista evidencia verificable. Esta acción habilitará de inmediato los formularios del proyecto.
+                                </p>
+
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-700">Referencia o ID de transacción *</label>
+                                    <input
+                                        type="text"
+                                        value={manualForm.reference}
+                                        onChange={e => setManualForm(f => ({ ...f, reference: e.target.value }))}
+                                        placeholder="Ej. Bancolombia #9482710 o pi_3UA..."
+                                        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                    />
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-700">Fecha y hora del pago *</label>
+                                        <input
+                                            type="datetime-local"
+                                            value={manualForm.paidAt}
+                                            onChange={e => setManualForm(f => ({ ...f, paidAt: e.target.value }))}
+                                            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-700">Medio de pago *</label>
+                                        <select
+                                            value={manualForm.paymentMethod}
+                                            onChange={e => setManualForm(f => ({ ...f, paymentMethod: e.target.value }))}
+                                            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                        >
+                                            <option value="Transferencia bancaria">Transferencia bancaria</option>
+                                            <option value="Consignación bancaria">Consignación bancaria</option>
+                                            <option value="Tarjeta de crédito/débito">Tarjeta de crédito/débito</option>
+                                            <option value="Efectivo / Ventanilla">Efectivo / Ventanilla</option>
+                                            <option value="Otro">Otro medio verificado</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-700">Valor pagado *</label>
+                                        <input
+                                            type="number"
+                                            value={manualForm.amount}
+                                            onChange={e => setManualForm(f => ({ ...f, amount: e.target.value }))}
+                                            placeholder="250000"
+                                            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-700">Moneda *</label>
+                                        <select
+                                            value={manualForm.currency}
+                                            onChange={e => setManualForm(f => ({ ...f, currency: e.target.value }))}
+                                            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                        >
+                                            <option value="COP">COP (Pesos Colombianos)</option>
+                                            <option value="USD">USD (Dólares)</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-700">Comprobante o evidencia verificable *</label>
+                                    <input
+                                        type="text"
+                                        value={manualForm.evidence}
+                                        onChange={e => setManualForm(f => ({ ...f, evidence: e.target.value }))}
+                                        placeholder="Ej. URL a comprobante en Bóveda, # extracto, o recibo físico"
+                                        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-700">Motivo de la confirmación manual *</label>
+                                    <textarea
+                                        value={manualForm.reason}
+                                        onChange={e => setManualForm(f => ({ ...f, reason: e.target.value }))}
+                                        rows={2}
+                                        placeholder="Explica el motivo (ej. consignación directa, fallo en webhook del proveedor, conciliación)..."
+                                        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                    />
+                                </div>
+
+                                <div className="mt-5 flex justify-end gap-2 border-t border-slate-100 pt-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowManualModal(false)}
+                                        className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            if (!manualForm.reference.trim() || !manualForm.paidAt || !manualForm.amount || !manualForm.evidence.trim() || !manualForm.reason.trim()) {
+                                                toast.error('Por favor completa todos los campos requeridos.');
+                                                return;
+                                            }
+                                            setManualStep('confirm');
+                                        }}
+                                        className="rounded-lg bg-blue-700 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-800"
+                                    >
+                                        Continuar a revisión
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="mt-4 space-y-4">
+                                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-xs text-amber-900">
+                                    <div className="flex items-center gap-1.5 font-bold text-amber-800">
+                                        <AlertTriangle size={15} /> Confirmación explícita requerida
+                                    </div>
+                                    <p className="mt-1 leading-relaxed">
+                                        Esta acción marcará la postulación como <strong>Pago completado</strong>, desbloqueará los formularios «Formulación del proyecto» y «Solicitud de Aportes del FDD 2026–2027», y quedará registrada inmutablemente en el registro de auditoría a tu nombre.
+                                    </p>
+                                </div>
+
+                                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-xs text-slate-800 space-y-1.5">
+                                    <div className="flex justify-between py-1 border-b border-slate-200">
+                                        <span className="font-semibold text-slate-500">Postulación:</span>
+                                        <span className="font-mono font-bold">{s.publicRef} · {s.projectName}</span>
+                                    </div>
+                                    <div className="flex justify-between py-1 border-b border-slate-200">
+                                        <span className="font-semibold text-slate-500">Referencia:</span>
+                                        <span className="font-mono font-bold">{manualForm.reference}</span>
+                                    </div>
+                                    <div className="flex justify-between py-1 border-b border-slate-200">
+                                        <span className="font-semibold text-slate-500">Fecha del pago:</span>
+                                        <span>{fmtDateTime(manualForm.paidAt)}</span>
+                                    </div>
+                                    <div className="flex justify-between py-1 border-b border-slate-200">
+                                        <span className="font-semibold text-slate-500">Valor y moneda:</span>
+                                        <span className="font-bold text-emerald-700">{manualForm.currency === 'COP' ? fmtCop(Number(manualForm.amount)) : fmtUsd(Number(manualForm.amount))} {manualForm.currency}</span>
+                                    </div>
+                                    <div className="flex justify-between py-1 border-b border-slate-200">
+                                        <span className="font-semibold text-slate-500">Medio de pago:</span>
+                                        <span>{manualForm.paymentMethod}</span>
+                                    </div>
+                                    <div className="flex justify-between py-1 border-b border-slate-200">
+                                        <span className="font-semibold text-slate-500">Evidencia / Soporte:</span>
+                                        <span className="break-all">{manualForm.evidence}</span>
+                                    </div>
+                                    <div className="py-1">
+                                        <span className="font-semibold text-slate-500 block mb-0.5">Motivo:</span>
+                                        <span className="italic">{manualForm.reason}</span>
+                                    </div>
+                                </div>
+
+                                <div className="mt-5 flex justify-end gap-2 border-t border-slate-100 pt-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setManualStep('edit')}
+                                        disabled={saving}
+                                        className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                    >
+                                        Modificar datos
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            await action('confirm-manual-payment', manualForm, 'Pago confirmado y formularios habilitados exitosamente');
+                                            setShowManualModal(false);
+                                        }}
+                                        disabled={saving}
+                                        className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                                    >
+                                        {saving ? <Loader2 size={13} className="animate-spin" /> : <ShieldCheck size={14} />}
+                                        Confirmar y desbloquear formularios
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

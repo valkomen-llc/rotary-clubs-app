@@ -490,6 +490,16 @@ const ensureTables = async () => {
         addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "archivedAt" TIMESTAMPTZ`),
         addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "archivedBy" VARCHAR(160)`),
         addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "archivedReason" TEXT`),
+        // v4.1220 — Trazabilidad y conciliación de pagos (Stripe vs Administrativo)
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "paymentConfirmationOrigin" VARCHAR(40)`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "lastSyncAt" TIMESTAMPTZ`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "manualPaymentRef" TEXT`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "manualPaymentEvidence" TEXT`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "manualPaymentReason" TEXT`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "manualPaymentBy" VARCHAR(160)`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "manualPaymentAt" TIMESTAMPTZ`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "paymentFailureCode" VARCHAR(80)`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "paymentFailureMessage" TEXT`),
     ]);
     // El listado excluye lo archivado por defecto, así que el índice es
     // parcial: sólo indexa lo poco que hay archivado, no la tabla entera.
@@ -2369,6 +2379,8 @@ export const confirmPaidSession = async (session) => {
             "receiptUrl" = COALESCE($6, "receiptUrl"),
             "amountReceived" = COALESCE($7, "amountReceived"),
             "chargeCurrency" = COALESCE($10, "chargeCurrency"),
+            "paymentConfirmationOrigin" = COALESCE("paymentConfirmationOrigin", 'stripe'),
+            "lastSyncAt" = NOW(),
             "lastPaymentError" = NULL,
             "paidAt" = NOW(),
             metadata = COALESCE(metadata, '{}'::jsonb) || $8::jsonb,
@@ -2392,16 +2404,6 @@ export const confirmPaidSession = async (session) => {
                 amountTotal: (session.amount_total ?? null),
                 currency: (session.currency || '').toUpperCase(),
                 confirmedAt: new Date().toISOString(),
-                /**
-                 * ⚠️ EL DESGLOSE SE GUARDA SIEMPRE (v4.984). Hasta v4.983 sólo
-                 * sobrevivía dentro de `Payment.rawPayload`, y esa fila se
-                 * escribe únicamente cuando el administrador asoció un club a
-                 * la feria (`cfg.clubId`, null por defecto): sin eso la ÚNICA
-                 * copia del desglose quedaba en la metadata de Stripe y
-                 * «¿cuánto hemos comisionado?» no se podía contestar desde la
-                 * plataforma. Es la misma decisión que `EventRegistrationPayment`
-                 * ya tomaba en el registro de asistentes.
-                 */
                 surcharge: surchargeFromMetadata(session.metadata),
             },
         }),
@@ -2410,15 +2412,30 @@ export const confirmPaidSession = async (session) => {
     ]);
 
     const paid = updated[0];
-    // El intento que sostenía esta sesión queda cerrado como aprobado. El
-    // historial NO se sobrescribe: los rechazos anteriores siguen ahí, que es
-    // lo único que contesta «¿por qué este club llamó a soporte?» dentro de
-    // seis meses.
     await resolveAttemptFor(submissionId, 'succeeded', { sessionId: session.id, paymentIntentId });
     console.log(`[project-fair] ✅ Pago confirmado — inscripción ${paid.publicRef} (${paid.clubName}) ref ${paymentIntentId || session.id}`);
 
     // El pago confirmado es lo que convierte al club en Gestor de Proyectos.
     await grantProjectManagerRole(paid, { reason: paymentIntentId || session.id });
+
+    // Habilita e inicializa el formulario maestro si aún no existe
+    try {
+        const { rows: formRows } = await db.query('SELECT id FROM "ProjectFairMasterForm" WHERE "submissionId" = $1 LIMIT 1', [paid.id]);
+        if (!formRows[0]) {
+            const cfg = await readConfigForSubmission(paid.eventId || null);
+            const { seedAnswersFor } = await import('./projectFormsController.js');
+            const { resolveForm } = await import('../lib/projectFormsRegistry.js');
+            const { completionOf } = await import('../lib/projectFairMasterForm.js');
+            const answers = seedAnswersFor(resolveForm(cfg, 'master')?.template || cfg?.masterForm, paid, cfg);
+            await db.query(`
+                INSERT INTO "ProjectFairMasterForm" ("submissionId", answers, "completionPct", "lastEditedAt")
+                VALUES ($1, $2::jsonb, $3, NOW())
+                ON CONFLICT ("submissionId") DO NOTHING
+            `, [paid.id, JSON.stringify(answers), completionOf(cfg.masterForm, answers)]);
+        }
+    } catch (e) {
+        console.error('[project-fair] Error asegurando MasterForm tras pago:', e?.message);
+    }
 
     await logEvent(submissionId, {
         type: 'payment_succeeded',
@@ -2521,6 +2538,109 @@ const findSubmissionForStripe = async (object) => {
         if (rows[0]) return rows[0];
     }
     return null;
+};
+
+/** Pago exitoso por Stripe (payment_intent.succeeded). */
+export const handlePaymentIntentSucceeded = async (paymentIntent, event = null) => {
+    await ensureTables();
+    let submission = await findSubmissionForStripe(paymentIntent);
+
+    // Si aún no se encontró, buscar por email del cliente/facturación si existe
+    if (!submission && paymentIntent.charges?.data?.[0]?.billing_details?.email) {
+        const email = paymentIntent.charges.data[0].billing_details.email.toLowerCase().trim();
+        const { rows } = await db.query(
+            'SELECT * FROM "ProjectFairSubmission" WHERE lower(email) = $1 AND status != \'paid\' ORDER BY "createdAt" DESC LIMIT 1',
+            [email]
+        );
+        if (rows[0]) submission = rows[0];
+    }
+
+    if (!submission) {
+        console.warn('[project-fair] payment_intent.succeeded sin postulación identificable:', paymentIntent?.id);
+        return null;
+    }
+
+    if (submission.status === 'paid') return mapSubmission(submission);
+
+    const charge = paymentIntent.latest_charge && typeof paymentIntent.latest_charge === 'object'
+        ? paymentIntent.latest_charge
+        : (paymentIntent.charges?.data?.[0] || null);
+
+    const customerId = typeof paymentIntent.customer === 'string'
+        ? paymentIntent.customer
+        : (paymentIntent.customer?.id || null);
+
+    const amountReceived = fromStripeAmount(paymentIntent.amount_received ?? paymentIntent.amount ?? 0, paymentIntent.currency);
+
+    const { rows: updated } = await db.query(`
+        UPDATE "ProjectFairSubmission"
+        SET status = 'paid',
+            "workflowStatus" = CASE WHEN "workflowStatus" IN ('received','pending_payment','draft') OR "workflowStatus" IS NULL
+                                    THEN 'payment_confirmed' ELSE "workflowStatus" END,
+            "stripePaymentIntentId" = COALESCE($1, "stripePaymentIntentId"),
+            "stripeChargeId" = COALESCE($2, "stripeChargeId"),
+            "stripeCustomerId" = COALESCE($3, "stripeCustomerId"),
+            "paymentMethod" = COALESCE($4, "paymentMethod"),
+            "receiptUrl" = COALESCE($5, "receiptUrl"),
+            "amountReceived" = COALESCE($6, "amountReceived"),
+            "chargeCurrency" = COALESCE($7, "chargeCurrency"),
+            "paymentConfirmationOrigin" = 'stripe',
+            "lastSyncAt" = NOW(),
+            "lastPaymentError" = NULL,
+            "paidAt" = NOW(),
+            "updatedAt" = NOW()
+        WHERE id = $8
+        RETURNING *
+    `, [
+        paymentIntent.id,
+        charge?.id || null,
+        customerId,
+        charge?.payment_method_details?.type || null,
+        charge?.receipt_url || null,
+        amountReceived || null,
+        (paymentIntent.currency || '').toUpperCase() || null,
+        submission.id,
+    ]);
+
+    const paid = updated[0];
+    await resolveAttemptFor(submission.id, 'succeeded', { paymentIntentId: paymentIntent.id });
+    console.log(`[project-fair] ✅ Pago confirmado (PaymentIntent) — inscripción ${paid.publicRef} (${paid.clubName}) ref ${paymentIntent.id}`);
+
+    await grantProjectManagerRole(paid, { reason: paymentIntent.id });
+
+    // Habilita e inicializa el formulario maestro si aún no existe
+    try {
+        const { rows: formRows } = await db.query('SELECT id FROM "ProjectFairMasterForm" WHERE "submissionId" = $1 LIMIT 1', [paid.id]);
+        if (!formRows[0]) {
+            const cfg = await readConfigForSubmission(paid.eventId || null);
+            const { seedAnswersFor } = await import('./projectFormsController.js');
+            const { resolveForm } = await import('../lib/projectFormsRegistry.js');
+            const { completionOf } = await import('../lib/projectFairMasterForm.js');
+            const answers = seedAnswersFor(resolveForm(cfg, 'master')?.template || cfg?.masterForm, paid, cfg);
+            await db.query(`
+                INSERT INTO "ProjectFairMasterForm" ("submissionId", answers, "completionPct", "lastEditedAt")
+                VALUES ($1, $2::jsonb, $3, NOW())
+                ON CONFLICT ("submissionId") DO NOTHING
+            `, [paid.id, JSON.stringify(answers), completionOf(cfg.masterForm, answers)]);
+        }
+    } catch (e) {
+        console.error('[project-fair] Error asegurando MasterForm tras payment_intent.succeeded:', e?.message);
+    }
+
+    await logEvent(submission.id, {
+        type: 'payment_succeeded',
+        title: 'Pago aprobado (PaymentIntent)',
+        detail: `${fmtAmount(amountReceived, paymentIntent.currency)}${charge?.payment_method_details?.type ? ` · ${charge.payment_method_details.type}` : ''}`,
+        metadata: {
+            paymentIntentId: paymentIntent.id,
+            chargeId: charge?.id || null,
+            customerId,
+            receiptUrl: charge?.receipt_url || null,
+            amountReceived,
+        },
+    });
+
+    return mapSubmission(paid);
 };
 
 /** Pago rechazado por Stripe (payment_intent.payment_failed). */
