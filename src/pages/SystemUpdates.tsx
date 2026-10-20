@@ -42,6 +42,22 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1221.0',
+        title: 'Estandarización Institucional de Plantillas de Email Marketing · Rotary en Acción, Directorio de Clubes y Feria de Proyectos ✉️🏛️',
+        description: 'Estandarización arquitectónica y visual completa de los layouts de correo electrónico en los tres canales de comunicación del ecosistema Rotary en Acción, tomando como referencia oficial la plantilla validada de la Semana 1 · Captación: 1) Arquitectura modular de 4 bloques (A: Cabecera institucional adaptable por sitio/distrito con dimensiones seguras 240x60 máx; Central: Contenido dinámico, saludo personalizado, card de canal, CTA oficial #0C3C7C y firma institucional; B: Activación del ecosistema digital navy #0C3C7C con botón amarillo #f7a81b "ACTIVAR MI CLUB" toggleable; C: Footer institucional protegido Gente de Acción con redes sociales, asistencia por WhatsApp y copyright). 2) Canal Directorio de Clubes: Estandarización de las 5 campañas editoriales integrando barra de progreso reactiva y variables dinámicas de club. 3) Canal Feria de Proyectos Colombia: Estandarización de las 6 campañas con identidad oficial de Feria, 7 áreas de interés y propósitos de evolución. 4) Nueva Subpestaña "Layouts Institucionales": Administración centralizada de componentes y accesos rápidos de previsualización y edición visual. 5) Seguridad de Email: Función cleanUnresolvedVariables para sanitización estricta de variables antes de cualquier envío o previsualización. 6) Compatibilidad 100% con clientes de correo (Gmail, Outlook, Apple Mail) e inmutabilidad de registros históricos.',
+        date: new Date().toISOString(),
+        tags: ['email-marketing', 'rotary-en-accion', 'directorio-de-clubes', 'feria-de-proyectos', 'layouts', 'responsive', 'branding'],
+        type: 'feature',
+        impact: 'Alta: Garantiza identidad visual institucional unificada, responsive y profesional en todas las campañas de captación, gobernanza y proyectos sin alterar métricas ni envíos históricos.',
+        changes: [
+            { type: 'added', text: 'Arquitectura modular de bloques reutilizables (Bloque A, Bloque Central, Bloque B y Bloque C) en emailBlocks.ts.' },
+            { type: 'improved', text: 'Estandarización completa de las 5 campañas del Directorio de Clubes y las 6 campañas de la Feria de Proyectos.' },
+            { type: 'added', text: 'Nueva subpestaña "Layouts Institucionales" en el módulo de Marketing Inteligente para administración visual de componentes.' },
+            { type: 'improved', text: 'Sanitización estricta de variables (cleanUnresolvedVariables) en vistas previas, envíos de prueba y envíos masivos.' },
+            { type: 'fixed', text: 'Unificación visual continua de CTA y Footer sin franjas blancas en clientes de correo como Outlook.' }
+        ]
+    },
+    {
         version: '4.1220.0',
         title: 'Conciliación Financiera Stripe, Confirmación Manual y Trazabilidad en Postulación de Proyectos · Feria de Proyectos Colombia 💳🏛️',
         description: 'Auditoría, reparación y optimización integral de la gestión de pagos de inscripción en el módulo de Postulación de Proyectos de la XII Feria de Proyectos Rotary Colombia – Valledupar 2027: 1) Conciliación financiera e histórica exitosa para la postulación de Clara Hernández (Club Rotario Nuevo Medellín, D4271), vinculando formalmente la sesión y payment intent de Stripe, habilitando de inmediato los formularios de "Formulación del proyecto" y "Solicitud FDD" con preservación al 100% de sus avances. 2) Confirmación Manual Administrativa permanente: nuevo flujo seguro con modal de doble paso y confirmación explícita para registrar transacciones con evidencia verificable (referencia, fecha, valor, medio y motivo) con autoría y trazabilidad en servidor. 3) Tarjeta de Resumen Financiero en el panel administrativo (/admin/postulaciones-pagos) con badge de estado, método, moneda, fecha, origen (Stripe vs Manual) y timestamp de sincronización. 4) Robustecimiento de webhooks de Stripe con idempotencia para checkout.session.completed, async_payment_succeeded y payment_intent.succeeded, asegurando roles de gestor y activación de formularios en tiempo real.',

@@ -11,6 +11,13 @@ import { ensureRotaryMarketingSchema } from '../lib/ensureRotaryMarketingSchema.
 import { resolveClubId } from './crmController.js';
 import { routeToModel, getDefaultModel } from '../lib/ai-router.js';
 import EmailService from '../services/EmailService.js';
+import {
+  createRotaryMasterDesign,
+  createDirectorioMasterDesign,
+  createFeriaMasterDesign,
+  renderDesignToHtml,
+  cleanUnresolvedVariables
+} from '../../src/lib/emailBlocks.ts';
 
 const fail = (res, e) => {
   console.error('[rotaryMarketingController]', e);
@@ -699,16 +706,25 @@ export const syncWithEmailMarketing = async (req, res) => {
       }
     }
 
+    const initiativePrefix = campaign.initiative === 'directorio_clubes'
+      ? '[Directorio 4281]'
+      : campaign.initiative === 'feria_proyectos'
+        ? '[Feria de Proyectos]'
+        : '[Rotary en Acción]';
+
+    const renderedHtml = campaign.contentHtml || (campaign.design ? renderDesignToHtml(campaign.design) : '');
+    const cleanHtml = cleanUnresolvedVariables(renderedHtml);
+
     let emailCamp;
     if (campaign.emailCampaignId) {
       try {
         emailCamp = await prisma.emailCampaign.update({
           where: { id: campaign.emailCampaignId },
           data: {
-            name: `[Rotary en Acción] ${campaign.name}`,
+            name: `${initiativePrefix} ${campaign.name}`,
             subject: campaign.subject,
             preheader: campaign.preheader || '',
-            content: campaign.contentHtml || '',
+            content: cleanHtml,
             fromName: senderName || null,
             fromEmail: fromEmail || null,
             replyTo: replyTo || null,
@@ -724,10 +740,10 @@ export const syncWithEmailMarketing = async (req, res) => {
     if (!emailCamp) {
       emailCamp = await prisma.emailCampaign.create({
         data: {
-          name: `[Rotary en Acción] ${campaign.name}`,
+          name: `${initiativePrefix} ${campaign.name}`,
           subject: campaign.subject,
           preheader: campaign.preheader || '',
-          content: campaign.contentHtml || '',
+          content: cleanHtml,
           fromName: senderName || null,
           fromEmail: fromEmail || null,
           replyTo: replyTo || null,
@@ -1725,7 +1741,11 @@ export const getMasterTemplate = async (req, res) => {
   try {
     await ensureRotaryMarketingSchema();
     const initiative = req.query.initiative || 'rotary_en_accion';
-    const tplId = initiative === 'directorio_clubes' ? 'tpl-directorio-clubes-master' : 'tpl-rotary-en-accion-master';
+    const tplId = initiative === 'directorio_clubes'
+      ? 'tpl-directorio-clubes-master'
+      : initiative === 'feria_proyectos'
+        ? 'tpl-feria-proyectos-master'
+        : 'tpl-rotary-en-accion-master';
 
     const { rows } = await db.query(
       `SELECT * FROM "ContentActivationTemplate" WHERE id=$1 LIMIT 1`,
@@ -1742,19 +1762,17 @@ export const getMasterTemplate = async (req, res) => {
           isDefault: true,
           status: 'activa',
           version: 1,
-          design: {
-            version: 1,
-            settings: { bg: '#0f172a', contentBg: '#ffffff', font: "'Open Sans', Helvetica, Arial, sans-serif", textColor: '#334155', linkColor: '#013388', width: 600 },
-            blocks: [
-              { id: 'b_dir_hdr', type: 'global', globalKey: 'rotary_header', label: 'Cabecera Institucional Adaptable', isProtected: true, isLocked: true, logoUrl: '', logoMaxWidth: 240, logoMaxHeight: 60, align: 'center', bgColor: '#ffffff', padding: '24px 20px' },
-              { id: 'b_dir_titulo', type: 'heading', text: 'Tu club merece estar presente.\n¡Actualiza su perfil institucional!', level: 1, align: 'center', color: '#013388', weight: '800', label: 'Título de Campaña Directorio', isProtected: false },
-              { id: 'b_dir_saludo', type: 'heading', text: 'Hola {{contact.first_name|Líder Rotario(a)}},', level: 2, align: 'left', color: '#0f172a', weight: '800', label: 'Saludo Personalizado', isProtected: false },
-              { id: 'b_dir_intro', type: 'text', text: 'Estimadas rotarias y estimados rotarios:\n\nCada club Rotary, Rotaract e Interact de nuestro Distrito 4281 tiene una identidad, liderazgo y labor comunitaria que merece ser visible ante la sociedad en el Directorio Oficial.', align: 'left', color: '#334155', size: 15, label: 'Cuerpo de Campaña (Editable / IA)', isProtected: false },
-              { id: 'b_dir_cta', type: 'button', text: 'ACTUALIZAR EL PERFIL DE MI CLUB', href: '{{club.update_form_url|https://app.clubplatform.org/clubes/registro}}', bg: '#013388', color: '#ffffff', align: 'center', radius: 12, label: 'Botón CTA Oficial Directorio', isProtected: false },
-              { id: 'b_dir_firma', type: 'global', globalKey: 'rotary_signature', label: 'Firma Oficial Distrital', isProtected: true, isLocked: true },
-              { id: 'b_dir_footer', type: 'global', globalKey: 'rotary_footer', label: 'Pie de Página Institucional Protegido', isProtected: true, isLocked: true }
-            ]
-          }
+          design: createDirectorioMasterDesign()
+        };
+      } else if (initiative === 'feria_proyectos') {
+        tpl = {
+          id: 'tpl-feria-proyectos-master',
+          name: 'Plantilla Maestra Institucional · Feria de Proyectos Rotary Colombia',
+          channel: 'email',
+          isDefault: true,
+          status: 'activa',
+          version: 1,
+          design: createFeriaMasterDesign()
         };
       } else {
         tpl = {
@@ -1764,21 +1782,7 @@ export const getMasterTemplate = async (req, res) => {
           isDefault: true,
           status: 'activa',
           version: 1,
-          design: {
-            version: 1,
-            settings: { bg: '#0d233a', contentBg: '#ffffff', font: "'Open Sans', Helvetica, Arial, sans-serif", textColor: '#334155', linkColor: '#013388', width: 600 },
-            blocks: [
-              { id: 'b_master_hdr', type: 'global', globalKey: 'rotary_header', label: 'Cabecera Institucional Adaptable', isProtected: true, isLocked: true, logoUrl: '', logoMaxWidth: 240, logoMaxHeight: 60, align: 'center', bgColor: '#ffffff', padding: '24px 20px' },
-              { id: 'b_master_titulo', type: 'heading', text: 'Tu club transforma comunidades.\n¡Hagámoslo visible!', level: 1, align: 'center', color: '#013388', weight: '800', label: 'Título de Campaña (Editable)', isProtected: false },
-              { id: 'b_master_saludo', type: 'heading', text: 'Hola {{contact.first_name|Líder Rotario(a)}},', level: 2, align: 'left', color: '#0f172a', weight: '800', label: 'Saludo Personalizado', isProtected: false },
-              { id: 'b_master_intro', type: 'text', text: 'Estimadas rotarias y estimados rotarios:\n\nCada semana, los clubes realizan un esfuerzo incansable por sus comunidades. Rotary en Acción es la plataforma oficial para visibilizar y registrar ese impacto.', align: 'left', color: '#334155', size: 15, label: 'Cuerpo de Campaña (Editable / IA)', isProtected: false },
-              { id: 'b_master_areas', type: 'global', globalKey: 'rotary_areas_focus', label: '¿Qué puede compartir tu club en Rotary en Acción?', isProtected: true, isLocked: true },
-              { id: 'b_master_cta', type: 'button', text: 'COMPARTIR EN ROTARY EN ACCIÓN', href: '{{form_url}}', bg: '#013388', color: '#ffffff', align: 'center', radius: 12, label: 'Botón CTA Oficial', isProtected: false },
-              { id: 'b_master_firma', type: 'global', globalKey: 'rotary_signature', label: 'Firma Oficial Distrital', isProtected: true, isLocked: true },
-              { id: 'b_master_cp_cta', type: 'global', globalKey: 'club_platform_cta', label: 'CTA Promocional Club Platform', isProtected: true, isLocked: false, enabled: true, title: '¡Activa el ecosistema digital de tu club!', subtitle: 'Conecta, comunica y potencia el impacto de tu club con Club Platform.', buttonText: 'ACTIVAR MI CLUB', buttonHref: '{{activar_club_url}}', buttonBg: '#f7a81b', buttonColor: '#0c2340', bgColor: '#013388' },
-              { id: 'b_master_footer', type: 'global', globalKey: 'rotary_footer', label: 'Pie de Página Institucional Protegido', isProtected: true, isLocked: true }
-            ]
-          }
+          design: createRotaryMasterDesign()
         };
       }
     } else if (typeof tpl.design === 'string') {
@@ -2191,12 +2195,19 @@ export const sendTestEmail = async (req, res) => {
     }
 
     const emailSubject = `[PRUEBA] ${subject || 'Plantilla Institucional · Rotary en Acción'}`;
+    const sanitizedHtml = cleanUnresolvedVariables(html, {
+      'contact.first_name': 'Líder Rotario(a)',
+      'contact.name': 'Líder Rotario(a)',
+      'club.name': 'Club Rotary',
+      'club.type': 'Club Rotario',
+      'club.city': 'Distrito 4281'
+    });
 
     const result = await EmailService.sendEmail({
       clubId,
       to,
       subject: emailSubject,
-      html,
+      html: sanitizedHtml,
       userId: req.user?.id,
       fromEmail,
       fromName,
@@ -2700,7 +2711,11 @@ export const sendCampaignNow = async (req, res) => {
     }
 
     // Upsert con EmailCampaign en Prisma
-    const sendInitiativePrefix = campaign.initiative === 'directorio_clubes' ? '[Directorio 4281]' : '[Rotary en Acción]';
+    const sendInitiativePrefix = campaign.initiative === 'directorio_clubes'
+      ? '[Directorio 4281]'
+      : campaign.initiative === 'feria_proyectos'
+        ? '[Feria de Proyectos]'
+        : '[Rotary en Acción]';
     let emailCamp;
     if (campaign.emailCampaignId) {
       try {
@@ -2783,12 +2798,23 @@ export const sendCampaignNow = async (req, res) => {
         .replace(/\{\{\s*contact\.first_name\s*(\|\s*[^}]+)?\}\}/gi, c.firstName || 'Líder')
         .replace(/\{\{\s*club\.name\s*(\|\s*[^}]+)?\}\}/gi, c.clubName || 'tu club');
 
-      const fullHtml = buildFullEmailHtml(personalizedContent, campaign.preheader, rid, c, baseUrl);
+      const rawFullHtml = buildFullEmailHtml(personalizedContent, campaign.preheader, rid, c, baseUrl);
+      const fullHtml = cleanUnresolvedVariables(rawFullHtml, {
+        'contact.first_name': c.firstName || 'Líder Rotario(a)',
+        'contact.name': c.name || 'Líder Rotario(a)',
+        'club.name': c.clubName || 'su Club',
+        'club.type': c.clubType || 'Club Rotario',
+        'club.city': c.clubCity || 'Distrito 4281'
+      });
+      const cleanSubject = cleanUnresolvedVariables(personalizedSubject, {
+        'contact.first_name': c.firstName || 'Líder',
+        'club.name': c.clubName || 'tu club'
+      });
 
       let sendRes = await EmailService.sendEmail({
         clubId,
         to: c.email.trim(),
-        subject: personalizedSubject,
+        subject: cleanSubject,
         html: fullHtml,
         userId: req.user?.id,
         fromEmail,

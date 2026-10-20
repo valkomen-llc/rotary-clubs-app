@@ -576,4 +576,95 @@ test('Editor Visual: Personalización completa del Enlace de WhatsApp en el Foot
   assert.ok(!htmlDisabled.includes('Escríbenos directamente a WhatsApp'), 'No debe renderizarse si showWhatsapp es false');
 });
 
+test('Estandarización: Directorio de Clubes implementa la arquitectura modular institucional', async () => {
+  const { createDirectorioMasterDesign, renderDesignToHtml } = await import('../src/lib/emailBlocks.ts');
+
+  const dirDesign = createDirectorioMasterDesign({
+    name: 'Tu club merece estar presente. ¡Actualiza su perfil institucional!',
+    week: 1,
+  });
+
+  const header = dirDesign.blocks.find(b => b.type === 'global' && b.globalKey === 'rotary_header');
+  const ctaBlock = dirDesign.blocks.find(b => b.type === 'global' && b.globalKey === 'club_platform_cta');
+  const footer = dirDesign.blocks.find(b => b.type === 'global' && b.globalKey === 'rotary_footer');
+  const btn = dirDesign.blocks.find(b => b.type === 'button');
+  const statusHtml = dirDesign.blocks.find(b => b.type === 'html');
+
+  assert.ok(header, 'Debe incluir Bloque A (Cabecera institucional)');
+  assert.ok(ctaBlock, 'Debe incluir Bloque B (Activación de ecosistema)');
+  assert.ok(footer, 'Debe incluir Bloque C (Footer institucional)');
+  assert.ok(btn, 'Debe incluir Botón CTA');
+  assert.ok(statusHtml, 'Debe incluir tarjeta estructurada de estado de perfil institucional');
+
+  assert.equal(ctaBlock.buttonText, 'ACTIVAR MI CLUB');
+  assert.equal(btn.text, 'ACTUALIZAR EL PERFIL DE MI CLUB');
+
+  const html = renderDesignToHtml(dirDesign, {
+    siteContext: { domain: 'rotary4281.org', siteName: 'Rotary Distrito 4281' }
+  });
+  assert.ok(html.includes('Rotary-4281-Genera-un-Impacto-Duradero.png'), 'Debe resolver el logo oficial de D4281');
+  assert.ok(html.includes('ACTIVAR MI CLUB'), 'Debe incluir botón amarillo ACTIVAR MI CLUB');
+  assert.ok(html.includes('Directorio Oficial de Clubes Distrito 4281'), 'Debe incluir tarjeta editorial de Directorio');
+});
+
+test('Estandarización: Feria de Proyectos implementa la arquitectura modular con identidad de Feria', async () => {
+  const { createFeriaMasterDesign, renderDesignToHtml } = await import('../src/lib/emailBlocks.ts');
+
+  const feriaDesign = createFeriaMasterDesign({
+    name: 'Convocatoria Oficial: Postula tu proyecto a la Feria',
+    week: 1,
+  });
+
+  const header = feriaDesign.blocks.find(b => b.type === 'global' && b.globalKey === 'rotary_header');
+  const ctaBlock = feriaDesign.blocks.find(b => b.type === 'global' && b.globalKey === 'club_platform_cta');
+  const footer = feriaDesign.blocks.find(b => b.type === 'global' && b.globalKey === 'rotary_footer');
+  const btn = feriaDesign.blocks.find(b => b.type === 'button');
+  const areasHtml = feriaDesign.blocks.find(b => b.type === 'html');
+
+  assert.ok(header, 'Debe incluir Bloque A (Cabecera institucional)');
+  assert.ok(ctaBlock, 'Debe incluir Bloque B (Activación de ecosistema)');
+  assert.ok(footer, 'Debe incluir Bloque C (Footer institucional)');
+  assert.ok(btn, 'Debe incluir Botón CTA');
+  assert.ok(areasHtml, 'Debe incluir tarjeta estructurada de propósitos y áreas de la Feria');
+
+  assert.equal(ctaBlock.buttonText, 'ACTIVAR MI CLUB');
+  assert.equal(btn.text, 'POSTULAR PROYECTO EN LA FERIA');
+
+  const html = renderDesignToHtml(feriaDesign, {
+    siteContext: { domain: 'rotaryprojectfaircolombia.org', siteName: 'Feria de Proyectos Rotary Colombia' }
+  });
+  assert.ok(html.includes('FeriadeProyectosRotary-Logo'), 'Debe resolver el logo oficial de la Feria de Proyectos');
+  assert.ok(html.includes('ACTIVAR MI CLUB'), 'Debe incluir Bloque B de activación');
+});
+
+test('Seguridad de Email: cleanUnresolvedVariables previene fuga de {{variables}} sin resolver', async () => {
+  const { cleanUnresolvedVariables } = await import('../src/lib/emailBlocks.ts');
+
+  const rawTemplate = 'Hola {{contact.first_name|Líder Rotario(a)}}, tu club {{club.name}} en {{club.city}} tiene {{club.completion_percentage|0%}} avance. Formulario: {{form_url}}. Inesperado: {{variable_inexistente}}';
+
+  // 1. Con valores personalizados provistos
+  const resolved = cleanUnresolvedVariables(rawTemplate, {
+    'contact.first_name': 'Daniel',
+    'club.name': 'Club Rotary Bogotá Chicó',
+    'club.city': 'Bogotá',
+    'club.completion_percentage': '45%',
+    'form_url': 'https://rotary4281.org/rotary-en-accion'
+  });
+
+  assert.ok(resolved.includes('Hola Daniel'), 'Debe reemplazar con el nombre provisto');
+  assert.ok(resolved.includes('Club Rotary Bogotá Chicó'), 'Debe reemplazar el club provisto');
+  assert.ok(resolved.includes('Bogotá'), 'Debe reemplazar la ciudad provista');
+  assert.ok(!resolved.includes('{{'), 'No debe quedar ninguna variable sin resolver');
+  assert.ok(!resolved.includes('}}'), 'No debe quedar ningún cierre de variable sin resolver');
+
+  // 2. Sin valores provistos (modo fallback automático)
+  const defaultFallback = cleanUnresolvedVariables(rawTemplate);
+  assert.ok(defaultFallback.includes('Hola Líder Rotario(a)'), 'Debe usar fallback explícito de la variable');
+  assert.ok(defaultFallback.includes('su Club'), 'Debe usar fallback universal para club.name');
+  assert.ok(defaultFallback.includes('0%'), 'Debe usar fallback explícito para porcentaje');
+  assert.ok(!defaultFallback.includes('{{'), 'No debe quedar ningún {{ residual');
+  assert.ok(!defaultFallback.includes('}}'), 'No debe quedar ningún }} residual');
+});
+
+
 

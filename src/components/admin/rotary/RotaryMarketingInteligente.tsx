@@ -19,6 +19,7 @@ import VisualTemplateEditor from '../email-marketing/VisualTemplateEditor';
 import { useClub } from '../../../contexts/ClubContext';
 import {
   renderDesignToHtml, parseDesign, getActiveSiteBrandingContext,
+  cleanUnresolvedVariables, createChannelCampaignDesign,
   type SiteBrandingContext
 } from '../../../lib/emailBlocks';
 import { APP_VERSION } from '../../../lib/appVersion';
@@ -26,7 +27,7 @@ import { APP_VERSION } from '../../../lib/appVersion';
 const API = import.meta.env.VITE_API_URL || '/api';
 const getToken = () => localStorage.getItem('rotary_token');
 
-export type MarketingSubtab = 'panel' | 'planificador' | 'audiencias' | 'campanas' | 'agente' | 'resultados' | 'remitentes' | 'envios';
+export type MarketingSubtab = 'panel' | 'planificador' | 'audiencias' | 'campanas' | 'layouts' | 'agente' | 'resultados' | 'remitentes' | 'envios';
 
 export interface RotaryMarketingInteligenteProps {
   initialInitiative?: 'rotary_en_accion' | 'directorio_clubes' | 'feria_proyectos';
@@ -105,18 +106,29 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
 
   const renderedPreviewHtml = useMemo(() => {
     if (!previewCampaign) return '';
+    let rawHtml = '';
     if (previewCampaign.design) {
       try {
         const parsed = typeof previewCampaign.design === 'string'
           ? parseDesign(previewCampaign.design)
           : previewCampaign.design;
-        return renderDesignToHtml(parsed, { interactive: false, siteContext: siteBranding });
+        rawHtml = renderDesignToHtml(parsed, { interactive: false, siteContext: siteBranding });
       } catch (e) {
         console.warn('Error rendering previewCampaign.design:', e);
       }
     }
-    return previewCampaign.contentHtml || '';
-  }, [previewCampaign, siteBranding]);
+    if (!rawHtml) {
+      rawHtml = previewCampaign.contentHtml || '';
+    }
+    return cleanUnresolvedVariables(rawHtml, {
+      'contact.first_name': 'Líder Rotario(a)',
+      'contact.name': 'Líder Rotario(a)',
+      'club.name': initiative === 'directorio_clubes' ? 'Club Rotary Bogotá Chicó' : 'Club Rotary Bogotá',
+      'club.type': 'Rotary Club',
+      'club.city': 'Bogotá',
+      'club.completion_percentage': '15%'
+    });
+  }, [previewCampaign, siteBranding, initiative]);
   const [schedulingCampaignId, setSchedulingCampaignId] = useState<string | null>(null);
   const [scheduleDateTime, setScheduleDateTime] = useState<string>('');
 
@@ -1277,6 +1289,19 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
         </button>
 
         <button
+          onClick={() => setSubtab('layouts')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
+            subtab === 'layouts'
+              ? 'bg-white text-gray-900 shadow-sm border border-gray-200/60'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+          }`}
+        >
+          <Layers className="w-4 h-4 text-sky-700" />
+          <span>Layouts Institucionales</span>
+          <span className="text-[10px] px-1.5 py-0.2 bg-sky-100 text-sky-800 rounded-full font-bold">Bloques A, B y C</span>
+        </button>
+
+        <button
           onClick={() => {
             setSubtab('envios');
             setEnviosSubView('historial');
@@ -1855,6 +1880,303 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
                 )}
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* ════════ SUBPESTAÑA: LAYOUTS & COMPONENTES INSTITUCIONALES ════════ */}
+      {subtab === 'layouts' && (
+        <div className="space-y-6">
+          {/* Header Hero Banner */}
+          <div className="bg-gradient-to-r from-[#0C3C7C] via-[#013388] to-[#0c2340] rounded-3xl p-6 sm:p-8 text-white shadow-lg relative overflow-hidden">
+            <div className="absolute right-0 top-0 bottom-0 w-1/3 opacity-10 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white to-transparent pointer-events-none" />
+            <div className="relative z-10 max-w-3xl space-y-3">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 backdrop-blur-xs text-sky-200 text-xs font-black tracking-wide uppercase">
+                <Layers className="w-3.5 h-3.5" />
+                <span>Sistema Institucional Unificado de Plantillas</span>
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-black tracking-tight leading-snug">
+                Arquitectura Modular de Layouts para Email Marketing
+              </h2>
+              <p className="text-sm text-sky-100/90 leading-relaxed">
+                Estandarización visual oficial en los tres canales del ecosistema: <strong>Rotary en Acción</strong>, <strong>Directorio de Clubes</strong> y <strong>Feria de Proyectos Colombia</strong>. Cada canal conserva su independencia editorial, parámetros UTM y destinatarios, compartiendo una arquitectura institucional responsive y 100% compatible con Gmail, Outlook y Apple Mail.
+              </p>
+            </div>
+          </div>
+
+          {/* Tarjetas de los 3 Canales Estandarizados */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {/* Canal 1: Rotary en Acción */}
+            <div className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="px-2.5 py-1 bg-blue-50 text-rotary-blue rounded-full text-[11px] font-black uppercase">Canal 1</span>
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                    <CheckCircle className="w-3 h-3" /> Validada Oficial
+                  </span>
+                </div>
+                <div>
+                  <h3 className="font-black text-gray-900 text-base">Rotary en Acción</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">Captación de actividades, obras, proyectos y eventos comunitarios.</p>
+                </div>
+                <div className="p-3 bg-gray-50 rounded-2xl space-y-1.5 text-xs text-gray-600">
+                  <div className="flex justify-between font-medium">
+                    <span>Estructura Base:</span>
+                    <strong className="text-gray-900">Semana 1 · Captación</strong>
+                  </div>
+                  <div className="flex justify-between font-medium">
+                    <span>Bloque Central:</span>
+                    <strong className="text-gray-900">15 Categorías oficiales</strong>
+                  </div>
+                  <div className="flex justify-between font-medium">
+                    <span>CTA Principal:</span>
+                    <strong className="text-rotary-blue">COMPARTIR EN ROTARY EN ACCIÓN</strong>
+                  </div>
+                </div>
+              </div>
+              <div className="pt-4 mt-3 border-t border-gray-100 flex gap-2">
+                <button
+                  onClick={() => {
+                    const c = campaigns.find(x => !x.initiative || x.initiative === 'rotary_en_accion') || campaigns[0];
+                    if (c) {
+                      setPreviewCampaign(c);
+                      setPreviewTab('email');
+                    }
+                  }}
+                  className="flex-1 py-2 px-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold transition flex items-center justify-center gap-1.5"
+                >
+                  <Eye className="w-3.5 h-3.5 text-gray-600" />
+                  <span>Previsualizar</span>
+                </button>
+                <button
+                  onClick={() => {
+                    const c = campaigns.find(x => !x.initiative || x.initiative === 'rotary_en_accion') || campaigns[0];
+                    if (c) setVisualEditorCampaign(c);
+                  }}
+                  className="py-2 px-3 rounded-xl bg-rotary-blue hover:bg-[#002868] text-white text-xs font-bold transition flex items-center justify-center gap-1.5"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-sky-200" />
+                  <span>Diseñar</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Canal 2: Directorio de Clubes */}
+            <div className="bg-white rounded-3xl p-5 border border-sky-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="px-2.5 py-1 bg-sky-50 text-sky-800 rounded-full text-[11px] font-black uppercase">Canal 2</span>
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                    <CheckCircle className="w-3 h-3" /> Estandarizada
+                  </span>
+                </div>
+                <div>
+                  <h3 className="font-black text-gray-900 text-base">Directorio de Clubes</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">Activación, actualización y gobernanza de los 74 clubes del Distrito 4281.</p>
+                </div>
+                <div className="p-3 bg-gray-50 rounded-2xl space-y-1.5 text-xs text-gray-600">
+                  <div className="flex justify-between font-medium">
+                    <span>Campañas:</span>
+                    <strong className="text-gray-900">5 Semanas Estratégicas</strong>
+                  </div>
+                  <div className="flex justify-between font-medium">
+                    <span>Bloque Central:</span>
+                    <strong className="text-gray-900">Progreso Ficha {'{{club.completion_percentage}}'}</strong>
+                  </div>
+                  <div className="flex justify-between font-medium">
+                    <span>CTA Principal:</span>
+                    <strong className="text-rotary-blue">ACTUALIZAR EL PERFIL DE MI CLUB</strong>
+                  </div>
+                </div>
+              </div>
+              <div className="pt-4 mt-3 border-t border-gray-100 flex gap-2">
+                <button
+                  onClick={() => {
+                    const c = campaigns.find(x => x.initiative === 'directorio_clubes') || {
+                      id: 'sample-dir',
+                      code: 'dir-sem-01',
+                      name: 'Tu club merece estar presente. ¡Actualiza su perfil institucional!',
+                      subject: 'Tu club merece estar presente. ¡Actualiza su perfil institucional en el Directorio del Distrito 4281!',
+                      preheader: 'Cada club Rotary, Rotaract e Interact tiene una historia y un impacto que merece ser visible.',
+                      initiative: 'directorio_clubes',
+                      design: createChannelCampaignDesign('directorio_clubes')
+                    };
+                    setPreviewCampaign(c);
+                    setPreviewTab('email');
+                  }}
+                  className="flex-1 py-2 px-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold transition flex items-center justify-center gap-1.5"
+                >
+                  <Eye className="w-3.5 h-3.5 text-gray-600" />
+                  <span>Previsualizar</span>
+                </button>
+                <button
+                  onClick={() => {
+                    const c = campaigns.find(x => x.initiative === 'directorio_clubes') || {
+                      id: 'sample-dir',
+                      code: 'dir-sem-01',
+                      name: 'Tu club merece estar presente. ¡Actualiza su perfil institucional!',
+                      subject: 'Tu club merece estar presente. ¡Actualiza su perfil institucional en el Directorio del Distrito 4281!',
+                      preheader: 'Cada club Rotary, Rotaract e Interact tiene una historia y un impacto que merece ser visible.',
+                      initiative: 'directorio_clubes',
+                      design: createChannelCampaignDesign('directorio_clubes')
+                    };
+                    setVisualEditorCampaign(c);
+                  }}
+                  className="py-2 px-3 rounded-xl bg-rotary-blue hover:bg-[#002868] text-white text-xs font-bold transition flex items-center justify-center gap-1.5"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-sky-200" />
+                  <span>Diseñar</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Canal 3: Feria de Proyectos */}
+            <div className="bg-white rounded-3xl p-5 border border-purple-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="px-2.5 py-1 bg-purple-50 text-purple-800 rounded-full text-[11px] font-black uppercase">Canal 3</span>
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                    <CheckCircle className="w-3 h-3" /> Estandarizada
+                  </span>
+                </div>
+                <div>
+                  <h3 className="font-black text-gray-900 text-base">Feria de Proyectos Colombia</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">Postulación, evolución, resultados y cooperación internacional.</p>
+                </div>
+                <div className="p-3 bg-gray-50 rounded-2xl space-y-1.5 text-xs text-gray-600">
+                  <div className="flex justify-between font-medium">
+                    <span>Identidad:</span>
+                    <strong className="text-gray-900">Logo Oficial Feria de Proyectos</strong>
+                  </div>
+                  <div className="flex justify-between font-medium">
+                    <span>Bloque Central:</span>
+                    <strong className="text-gray-900">7 Áreas & 6 Propósitos de Evolución</strong>
+                  </div>
+                  <div className="flex justify-between font-medium">
+                    <span>CTA Principal:</span>
+                    <strong className="text-rotary-blue">POSTULAR PROYECTO EN LA FERIA</strong>
+                  </div>
+                </div>
+              </div>
+              <div className="pt-4 mt-3 border-t border-gray-100 flex gap-2">
+                <button
+                  onClick={() => {
+                    const c = campaigns.find(x => x.initiative === 'feria_proyectos') || {
+                      id: 'sample-feria',
+                      code: 'feria-sem-01',
+                      name: 'Convocatoria e Inscripción de Nuevos Proyectos',
+                      subject: 'Convocatoria Oficial: ¡Inscribe el proyecto de tu club en la Feria de Proyectos Rotary Colombia!',
+                      preheader: 'Presenta tus iniciativas y proyectos comunitarios ante la red rotaria nacional e internacional.',
+                      initiative: 'feria_proyectos',
+                      design: createChannelCampaignDesign('feria_proyectos')
+                    };
+                    setPreviewCampaign(c);
+                    setPreviewTab('email');
+                  }}
+                  className="flex-1 py-2 px-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold transition flex items-center justify-center gap-1.5"
+                >
+                  <Eye className="w-3.5 h-3.5 text-gray-600" />
+                  <span>Previsualizar</span>
+                </button>
+                <button
+                  onClick={() => {
+                    const c = campaigns.find(x => x.initiative === 'feria_proyectos') || {
+                      id: 'sample-feria',
+                      code: 'feria-sem-01',
+                      name: 'Convocatoria e Inscripción de Nuevos Proyectos',
+                      subject: 'Convocatoria Oficial: ¡Inscribe el proyecto de tu club en la Feria de Proyectos Rotary Colombia!',
+                      preheader: 'Presenta tus iniciativas y proyectos comunitarios ante la red rotaria nacional e internacional.',
+                      initiative: 'feria_proyectos',
+                      design: createChannelCampaignDesign('feria_proyectos')
+                    };
+                    setVisualEditorCampaign(c);
+                  }}
+                  className="py-2 px-3 rounded-xl bg-rotary-blue hover:bg-[#002868] text-white text-xs font-bold transition flex items-center justify-center gap-1.5"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-sky-200" />
+                  <span>Diseñar</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Especificación de Bloques Institucionales Reutilizables */}
+          <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm space-y-6">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Arquitectura Modular de Bloques Reutilizables</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Componentes institucionales compartidos que garantizan identidad sin duplicidad de código.</p>
+              </div>
+              <span className="text-xs px-3 py-1 bg-sky-50 text-rotary-blue font-bold rounded-xl border border-sky-100">
+                100% Inmunes a Regresiones
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 text-xs">
+              {/* Bloque A */}
+              <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/70 space-y-2.5">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-blue-100 text-rotary-blue flex items-center justify-center font-black text-xs">A</div>
+                  <div>
+                    <h4 className="font-bold text-gray-900 text-sm">Cabecera Institucional Adaptable</h4>
+                    <span className="text-[11px] text-gray-500">Global Key: <code className="bg-white px-1 py-0.5 rounded text-rotary-blue">rotary_header</code></span>
+                  </div>
+                </div>
+                <ul className="space-y-1.5 text-gray-600 pl-2">
+                  <li>• Resuelve el logotipo oficial según el sitio (Distrito 4281, Feria de Proyectos o Club).</li>
+                  <li>• Ancho máx: 240px, Alto máx: 60px, centrado horizontal con alineación vertical perfecta.</li>
+                  <li>• Tabla de borde colapsado y padding cero en envoltorios para clientes móviles y Outlook.</li>
+                </ul>
+              </div>
+
+              {/* Bloque Central */}
+              <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/70 space-y-2.5">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center font-black text-xs">C</div>
+                  <div>
+                    <h4 className="font-bold text-gray-900 text-sm">Bloque Central · Contenido Dinámico</h4>
+                    <span className="text-[11px] text-gray-500">Editorial & Específico por Canal</span>
+                  </div>
+                </div>
+                <ul className="space-y-1.5 text-gray-600 pl-2">
+                  <li>• Saludo con token de sanitización: <code className="bg-white px-1 py-0.5 rounded text-indigo-700">{'Hola {{contact.first_name|Líder Rotario(a)}},'}</code></li>
+                  <li>• Componente dinámico de canal (categorías, estado del perfil o áreas de la feria).</li>
+                  <li>• Botón CTA institucional <strong className="text-gray-900">#0C3C7C</strong> con radio de 12px y seguimiento UTM.</li>
+                </ul>
+              </div>
+
+              {/* Bloque B */}
+              <div className="p-4 rounded-2xl border border-amber-100 bg-amber-50/30 space-y-2.5">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center font-black text-xs">B</div>
+                  <div>
+                    <h4 className="font-bold text-gray-900 text-sm">¡Activa el ecosistema digital de tu club!</h4>
+                    <span className="text-[11px] text-gray-500">Global Key: <code className="bg-white px-1 py-0.5 rounded text-amber-800">club_platform_cta</code></span>
+                  </div>
+                </div>
+                <ul className="space-y-1.5 text-gray-600 pl-2">
+                  <li>• Fondo institucional <strong className="text-gray-900">#0C3C7C</strong> y botón de alto contraste amarillo <strong className="text-gray-900">#f7a81b</strong>.</li>
+                  <li>• Texto del botón: <strong className="text-gray-900">ACTIVAR MI CLUB</strong> hacia landing oficial.</li>
+                  <li>• Interruptor toggleable: activado por defecto con posibilidad de deshabilitar por campaña.</li>
+                </ul>
+              </div>
+
+              {/* Bloque C */}
+              <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/70 space-y-2.5">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-slate-200 text-slate-800 flex items-center justify-center font-black text-xs">D</div>
+                  <div>
+                    <h4 className="font-bold text-gray-900 text-sm">Footer Institucional Protegido</h4>
+                    <span className="text-[11px] text-gray-500">Global Key: <code className="bg-white px-1 py-0.5 rounded text-slate-800">rotary_footer</code></span>
+                  </div>
+                </div>
+                <ul className="space-y-1.5 text-gray-600 pl-2">
+                  <li>• Lockup oficial Gente de Acción (POA), lema y redes sociales distritales.</li>
+                  <li>• Botón de asistencia directa por WhatsApp con icono oficial y número distrital.</li>
+                  <li>• Enlaces legales y de desuscripción obligatorios según normativas CAN-SPAM.</li>
+                </ul>
+              </div>
+            </div>
           </div>
         </div>
       )}

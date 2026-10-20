@@ -595,6 +595,32 @@ export const resolveInstitutionalLogo = (
         };
     }
 
+    const rawDom = (siteContext?.domain || '').toLowerCase();
+    const rawPub = (siteContext?.publicUrl || '').toLowerCase();
+    const rawNm = (siteContext?.siteName || '').toLowerCase();
+
+    // D4281 verificado oficial
+    if (rawDom.includes('4281') || rawPub.includes('4281') || rawNm.includes('4281')) {
+        const d4281Logo = 'https://rotaryd4281.s3.amazonaws.com/media/Rotary-4281-Genera-un-Impacto-Duradero.png';
+        return {
+            url: d4281Logo,
+            logoUrl: d4281Logo,
+            source: 'site_settings',
+            alt: 'Rotary Distrito 4281'
+        };
+    }
+
+    // Feria de Proyectos Rotary Colombia oficial
+    if (rawDom.includes('rotaryprojectfair') || rawPub.includes('rotaryprojectfair') || rawNm.includes('feria')) {
+        const feriaLogo = 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/322c2f88-ad33-484d-bb54-272de9262d72/images/1785773906008-FeriadeProyectosRotary-Logo_(1).png';
+        return {
+            url: feriaLogo,
+            logoUrl: feriaLogo,
+            source: 'site_settings',
+            alt: 'Feria de Proyectos Rotary Colombia'
+        };
+    }
+
     // 3. Logo predeterminado de Club Platform, ÚNICAMENTE cuando corresponda al entorno central o como fallback explícitamente autorizado
     if (siteContext?.isMainPlatform) {
         const platLogo = siteContext.platformLogo || 'https://assets.cdn.clubplatform.org/logos/rotary-international-logo-blue.png';
@@ -1262,178 +1288,707 @@ export const normalizeInstitutionalDesign = (rawDesign?: EmailDesign | null): Em
 };
 
 // ─── Plantilla Maestra Institucional: Rotary en Acción ──────────────────────
-export const createRotaryMasterDesign = (): EmailDesign => ({
-    version: 1,
-    settings: {
-        bg: '#0d233a',
-        contentBg: '#ffffff',
-        font: "'Open Sans', Helvetica, Arial, sans-serif",
-        textColor: '#334155',
-        linkColor: '#013388',
-        width: 600,
-    },
-    blocks: [
-        {
-            id: newId(),
-            type: 'global',
-            globalKey: 'rotary_header',
-            label: 'Cabecera Institucional Adaptable',
-            isProtected: true,
-            isLocked: false,
-            logoUrl: '',
-            logoMaxWidth: 240,
-            logoMaxHeight: 60,
-            align: 'center',
-            bgColor: '#ffffff',
-            padding: '24px 20px',
+export const createRotaryMasterDesign = (campaign?: {
+    name?: string;
+    messageCentral?: string;
+    subject?: string;
+    formUrl?: string;
+    utmCampaign?: string;
+    week?: number;
+}): EmailDesign => {
+    const title = campaign?.name || 'Tu club transforma comunidades.\n¡Hagámoslo visible!';
+    const introText = campaign?.messageCentral
+        ? `Estimadas rotarias y estimados rotarios:\n\n${campaign.messageCentral}\n\nRotary en Acción es la plataforma oficial para visibilizar, registrar y difundir ese impacto ante el mundo.`
+        : 'Estimadas rotarias y estimados rotarios:\n\nCada semana, los clubes realizan un esfuerzo incansable por sus comunidades: jornadas de salud, agua potable, becas educativas y proyectos sostenibles. Rotary en Acción es la plataforma oficial para visibilizar, registrar y difundir ese impacto ante el mundo.';
+
+    const ctaUrl = campaign?.formUrl || `https://rotary4281.org/rotary-en-accion?utm_source=email_marketing&utm_medium=campaign&utm_campaign=${campaign?.utmCampaign || 'sem01_captacion'}`;
+
+    return {
+        version: 1,
+        settings: {
+            bg: '#e6e6e6',
+            contentBg: '#ffffff',
+            font: "'Open Sans', Helvetica, Arial, sans-serif",
+            textColor: '#334155',
+            linkColor: '#013388',
+            width: 600,
         },
-        {
-            id: newId(),
-            type: 'heading',
-            text: 'Tu club transforma comunidades.\n¡Hagámoslo visible!',
-            level: 1,
-            align: 'center',
-            color: '#013388',
-            weight: '800',
-            fontFamily: "'Open Sans', Helvetica, Arial, sans-serif",
-            fontWeight: '800',
-            label: 'Título de Campaña (Editable)',
-            isProtected: false,
+        blocks: [
+            {
+                id: newId(),
+                type: 'global',
+                globalKey: 'rotary_header',
+                label: 'Cabecera Institucional Adaptable',
+                isProtected: true,
+                isLocked: false,
+                logoUrl: '',
+                logoMaxWidth: 400,
+                logoMaxHeight: 92,
+                align: 'center',
+                bgColor: '#ffffff',
+                padding: '24px 20px',
+            },
+            {
+                id: newId(),
+                type: 'heading',
+                text: title,
+                level: 1,
+                align: 'center',
+                color: '#013388',
+                weight: '300',
+                fontSize: 17,
+                fontFamily: "'Open Sans', Helvetica, Arial, sans-serif",
+                fontWeight: '300',
+                letterSpacing: 0,
+                padTop: 8,
+                label: 'Título de Campaña (Editable)',
+                isProtected: false,
+            },
+            {
+                id: newId(),
+                type: 'heading',
+                text: 'Hola {{contact.first_name|Líder Rotario(a)}},',
+                level: 2,
+                align: 'left',
+                color: '#0f172a',
+                weight: '800',
+                fontSize: 18,
+                fontFamily: "'Open Sans', Helvetica, Arial, sans-serif",
+                lineHeight: 1.25,
+                padTop: 24,
+                letterSpacing: 0,
+                label: 'Saludo Personalizado',
+                isProtected: false,
+            },
+            {
+                id: newId(),
+                type: 'text',
+                text: introText,
+                align: 'left',
+                color: '#334155',
+                size: 14,
+                fontFamily: "'Open Sans', Helvetica, Arial, sans-serif",
+                fontWeight: '400',
+                lineHeight: 1.6,
+                padBottom: 0,
+                label: 'Cuerpo de Campaña (Editable / Asistido por IA)',
+                isProtected: false,
+            },
+            {
+                id: newId(),
+                type: 'global',
+                globalKey: 'rotary_areas_focus',
+                label: '¿Qué puede compartir tu club en Rotary en Acción?',
+                isProtected: true,
+                isLocked: false,
+                title: '¿Qué puede compartir tu club en Rotary en Acción?',
+                subtitle: 'El formulario unificado se adapta a lo que elijas para visibilizar el impacto de tu club:',
+                bgColor: '#f8fafc',
+                padTop: 0,
+            },
+            {
+                id: newId(),
+                type: 'text',
+                text: '¡Tu club tiene mucho que contar! Ingresa al formulario de Rotary en Acción y comparte las fotos y detalles de tu iniciativa en menos de 3 minutos.',
+                align: 'left',
+                color: '#334155',
+                size: 14,
+                fontFamily: "'Open Sans', Helvetica, Arial, sans-serif",
+                fontWeight: '400',
+                lineHeight: 1.6,
+                label: 'Llamado al Registro (Editable)',
+                isProtected: false,
+            },
+            {
+                id: newId(),
+                type: 'button',
+                text: 'COMPARTIR EN ROTARY EN ACCIÓN',
+                href: ctaUrl,
+                bg: '#0C3C7C',
+                color: '#ffffff',
+                align: 'center',
+                radius: 12,
+                fontFamily: "'Open Sans', Helvetica, Arial, sans-serif",
+                fontWeight: '700',
+                fontSize: 15,
+                label: 'Botón de Acción Principal (Estilo Protegido / Enlace Dinámico)',
+                isProtected: false,
+            },
+            {
+                id: newId(),
+                type: 'global',
+                globalKey: 'rotary_signature',
+                label: 'Firma Oficial Distrital',
+                isProtected: true,
+                isLocked: false,
+                title: 'Comité Distrital de Imagen Pública y Comunicaciones',
+                subtitle: 'Distrito 4281 de Rotary International',
+                motto: '«Dar de sí antes de pensar en sí»',
+                bgColor: '#f8fafc',
+                borderColor: '#013388',
+            },
+            {
+                id: newId(),
+                type: 'global',
+                globalKey: 'club_platform_cta',
+                label: 'CTA Promocional Club Platform',
+                isProtected: true,
+                isLocked: true,
+                enabled: true,
+                title: '¡Activa el ecosistema digital de tu club!',
+                subtitle: 'Conecta, comunica y potencia el impacto de tu club con Club Platform.',
+                buttonText: 'ACTIVAR MI CLUB',
+                buttonHref: 'https://app.clubplatform.org',
+                buttonBg: '#f7a81b',
+                buttonColor: '#0c2340',
+                buttonRadius: 20,
+                bgType: 'gradient',
+                bgColor: '#0C3C7C',
+                bgGradientStart: '#013388',
+                bgGradientEnd: '#0c2340',
+                bgGradientAngle: 180,
+                textColor: '#ffffff',
+                titleColor: '#ffffff',
+                subtitleColor: '#ffffff',
+                padTop: 0,
+                padBottom: 0,
+            },
+            {
+                id: newId(),
+                type: 'global',
+                globalKey: 'rotary_footer',
+                label: 'Pie de Página Institucional Protegido',
+                isProtected: true,
+                isLocked: false,
+                title: '¡SÍGUENOS Y COMPARTE EL ORGULLO ROTARIO!',
+                bgType: 'solid',
+                bgColor: '#0c2340',
+                titleColor: '#ffffff',
+                textColor: '#94a3b8',
+                linkColor: '#cbd5e1',
+                logoUrl: 'https://rotaryd4281.s3.amazonaws.com/media/poa_horizontallockup_rev_es-1.png',
+                showAreas: false,
+                showSocial: true,
+                socialIconStyle: 'white',
+                socialIconSize: 30,
+                socialIconGap: 12,
+                socialLinks: [
+                    { network: 'instagram', url: 'https://www.instagram.com/rotary4281', label: 'Instagram' },
+                    { network: 'facebook', url: 'https://www.facebook.com/profile.php?id=61576368985137', label: 'Facebook' },
+                    { network: 'youtube', url: 'https://youtube.com', label: 'YouTube' },
+                    { network: 'web', url: 'https://www.youtube.com/@RotaryDistrito4281', label: 'Rotary en Acción' },
+                ],
+                showWhatsapp: true,
+                showWhatsappIcon: true,
+                whatsappColor: '#ffffff',
+                whatsappText: 'Asistencia directa a través de WhatsApp',
+                whatsappUrl: 'https://wa.me/573114308882',
+                whatsappFontSize: 12,
+                whatsappFontWeight: '400',
+                footerText: 'Copyright © 2026 Rotary Distrito 4281. Todos los derechos reservados.<br/><a href="{{unsubscribe_url}}" target="_blank" style="color:#cbd5e1;text-decoration:underline">Preferencias de comunicación y cancelar suscripción</a>',
+                padTop: 0,
+                padBottom: 0,
+            },
+        ],
+    };
+};
+
+// ─── Plantilla Maestra Institucional: Directorio de Clubes ─────────────────
+export const createDirectorioMasterDesign = (campaign?: {
+    name?: string;
+    messageCentral?: string;
+    subject?: string;
+    formUrl?: string;
+    utmCampaign?: string;
+    week?: number;
+}): EmailDesign => {
+    const title = campaign?.name || 'Tu club merece estar presente.\n¡Actualiza su perfil institucional!';
+    const introText = campaign?.messageCentral
+        ? `Estimadas rotarias y estimados rotarios:\n\n${campaign.messageCentral}\n\nCada club Rotary, Rotaract e Interact de nuestro Distrito 4281 tiene una identidad, liderazgo y labor comunitaria que merece ser visible ante la sociedad en el Directorio Oficial.`
+        : 'Estimadas rotarias y estimados rotarios:\n\nCada club Rotary, Rotaract e Interact de nuestro Distrito 4281 tiene una historia, un liderazgo y un compromiso comunitario que merece ser reconocido y visibilizado en el Directorio Oficial.';
+
+    const ctaUrl = campaign?.formUrl || '{{club.update_form_url|https://app.clubplatform.org/clubes/registro}}';
+    const ctaText = campaign?.week === 4
+        ? 'REVISAR EL PERFIL DE MI CLUB'
+        : 'ACTUALIZAR EL PERFIL DE MI CLUB';
+
+    const directorioInfoHtml = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:16px 0;background-color:#f8fafc;border-left:4px solid #013388;border-radius:0 12px 12px 0">
+  <tr>
+    <td style="padding:16px 20px;font-family:'Open Sans',Helvetica,Arial,sans-serif;color:#334155;font-size:14px;line-height:1.6">
+      <div style="font-weight:700;color:#0f172a;font-size:15px;margin-bottom:6px">Directorio Oficial de Clubes Distrito 4281:</div>
+      <div style="font-size:13.5px;color:#64748b;line-height:1.5">Centraliza la ficha pública de <strong>{{club.name|su Club}}</strong> en <strong>{{club.city|su localidad}}</strong>, facilitando que nuevos miembros, aliados estratégicos y la comunidad general puedan contactarlos y conocer sus programas de servicio.</div>
+    </td>
+  </tr>
+</table>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:16px 0;background-color:#f1f5f9;border:1px solid #e2e8f0;border-radius:12px">
+  <tr>
+    <td style="padding:18px 20px;font-family:'Open Sans',Helvetica,Arial,sans-serif">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:8px">
+        <tr>
+          <td align="left" style="font-size:13px;font-weight:700;color:#0f172a">Estado del perfil institucional</td>
+          <td align="right" style="font-size:13px;font-weight:800;color:#013388">{{club.completion_percentage|0%}}</td>
+        </tr>
+      </table>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;background-color:#e2e8f0;border-radius:9999px;height:8px;line-height:8px;font-size:0;width:100%">
+        <tr>
+          <td width="{{club.completion_percentage|15%}}" style="background-color:#013388;border-radius:9999px;height:8px">&nbsp;</td>
+          <td>&nbsp;</td>
+        </tr>
+      </table>
+      <div style="margin-top:10px;font-size:12px;color:#64748b;line-height:1.4">Iniciar la ficha toma menos de 5 minutos y no requiere contraseñas complejas.</div>
+    </td>
+  </tr>
+</table>`;
+
+    return {
+        version: 1,
+        settings: {
+            bg: '#e6e6e6',
+            contentBg: '#ffffff',
+            font: "'Open Sans', Helvetica, Arial, sans-serif",
+            textColor: '#334155',
+            linkColor: '#013388',
+            width: 600,
         },
-        {
-            id: newId(),
-            type: 'heading',
-            text: 'Hola {{contact.first_name|Líder Rotario(a)}},',
-            level: 2,
-            align: 'left',
-            color: '#0f172a',
-            weight: '800',
-            fontFamily: "'Open Sans', Helvetica, Arial, sans-serif",
-            fontWeight: '700',
-            label: 'Saludo Personalizado',
-            isProtected: false,
+        blocks: [
+            {
+                id: newId(),
+                type: 'global',
+                globalKey: 'rotary_header',
+                label: 'Cabecera Institucional Adaptable',
+                isProtected: true,
+                isLocked: false,
+                logoUrl: '',
+                logoMaxWidth: 400,
+                logoMaxHeight: 92,
+                align: 'center',
+                bgColor: '#ffffff',
+                padding: '24px 20px',
+            },
+            {
+                id: newId(),
+                type: 'heading',
+                text: title,
+                level: 1,
+                align: 'center',
+                color: '#013388',
+                weight: '300',
+                fontFamily: "'Open Sans', Helvetica, Arial, sans-serif",
+                fontWeight: '300',
+                fontSize: 17,
+                padTop: 8,
+                letterSpacing: 0,
+                label: 'Título de Campaña Directorio',
+                isProtected: false,
+            },
+            {
+                id: newId(),
+                type: 'heading',
+                text: 'Hola {{contact.first_name|Líder Rotario(a)}},',
+                level: 2,
+                align: 'left',
+                color: '#0f172a',
+                weight: '800',
+                fontFamily: "'Open Sans', Helvetica, Arial, sans-serif",
+                fontWeight: '800',
+                fontSize: 18,
+                padTop: 24,
+                lineHeight: 1.25,
+                letterSpacing: 0,
+                label: 'Saludo Personalizado',
+                isProtected: false,
+            },
+            {
+                id: newId(),
+                type: 'text',
+                text: introText,
+                align: 'left',
+                color: '#334155',
+                size: 14,
+                fontFamily: "'Open Sans', Helvetica, Arial, sans-serif",
+                fontWeight: '400',
+                lineHeight: 1.6,
+                padBottom: 0,
+                label: 'Cuerpo de Campaña (Editable / IA)',
+                isProtected: false,
+            },
+            {
+                id: newId(),
+                type: 'html',
+                html: directorioInfoHtml,
+                label: 'Tarjeta de Estado del Perfil Institucional',
+                isProtected: false,
+            },
+            {
+                id: newId(),
+                type: 'button',
+                text: ctaText,
+                href: ctaUrl,
+                bg: '#0C3C7C',
+                color: '#ffffff',
+                align: 'center',
+                radius: 12,
+                fontFamily: "'Open Sans', Helvetica, Arial, sans-serif",
+                fontWeight: '700',
+                fontSize: 15,
+                label: 'Botón CTA Oficial Directorio',
+                isProtected: false,
+            },
+            {
+                id: newId(),
+                type: 'global',
+                globalKey: 'rotary_signature',
+                label: 'Firma Oficial Distrital',
+                isProtected: true,
+                isLocked: false,
+                title: 'Gobernación del Distrito 4281 · Comité de Directorio e Imagen Pública',
+                subtitle: 'Distrito 4281 de Rotary International',
+                motto: '«Dar de sí antes de pensar en sí»',
+                bgColor: '#f8fafc',
+                borderColor: '#013388',
+            },
+            {
+                id: newId(),
+                type: 'global',
+                globalKey: 'club_platform_cta',
+                label: 'CTA Promocional Club Platform',
+                isProtected: true,
+                isLocked: true,
+                enabled: true,
+                title: '¡Activa el ecosistema digital de tu club!',
+                subtitle: 'Conecta, comunica y potencia el impacto de tu club con Club Platform.',
+                buttonText: 'ACTIVAR MI CLUB',
+                buttonHref: 'https://rotary4281.org/activar-mi-club',
+                buttonBg: '#f7a81b',
+                buttonColor: '#0c2340',
+                buttonRadius: 20,
+                bgType: 'solid',
+                bgColor: '#0C3C7C',
+                textColor: '#ffffff',
+                titleColor: '#ffffff',
+                subtitleColor: '#ffffff',
+                padTop: 0,
+                padBottom: 0,
+            },
+            {
+                id: newId(),
+                type: 'global',
+                globalKey: 'rotary_footer',
+                label: 'Pie de Página Institucional Protegido',
+                isProtected: true,
+                isLocked: false,
+                title: '¡SÍGUENOS Y COMPARTE EL ORGULLO ROTARIO!',
+                bgType: 'solid',
+                bgColor: '#28354B',
+                titleColor: '#ffffff',
+                textColor: '#94a3b8',
+                linkColor: '#cbd5e1',
+                logoUrl: 'https://rotaryd4281.s3.amazonaws.com/media/poa_horizontallockup_rev_es-1.png',
+                showAreas: false,
+                showSocial: true,
+                socialIconStyle: 'white',
+                socialIconSize: 30,
+                socialIconGap: 12,
+                socialLinks: [
+                    { network: 'instagram', url: 'https://www.instagram.com/rotary4281', label: 'Instagram' },
+                    { network: 'facebook', url: 'https://www.facebook.com/profile.php?id=61576368985137', label: 'Facebook' },
+                    { network: 'youtube', url: 'https://youtube.com', label: 'YouTube' },
+                    { network: 'web', url: 'https://rotary4281.org', label: 'Distrito 4281' },
+                ],
+                showWhatsapp: true,
+                showWhatsappIcon: true,
+                whatsappColor: '#ffffff',
+                whatsappText: 'Asistencia directa a través de WhatsApp',
+                whatsappUrl: 'https://wa.me/573114308882',
+                whatsappFontSize: 12,
+                whatsappFontWeight: '400',
+                footerText: 'Copyright © 2026 Rotary Distrito 4281. Todos los derechos reservados.<br/><a href="{{unsubscribe_url}}" target="_blank" style="color:#cbd5e1;text-decoration:underline">Preferencias de comunicación y cancelar suscripción</a>',
+                padTop: 0,
+                padBottom: 0,
+            },
+        ],
+    };
+};
+
+// ─── Plantilla Maestra Institucional: Feria de Proyectos Colombia ──────────
+export const createFeriaMasterDesign = (campaign?: {
+    name?: string;
+    messageCentral?: string;
+    subject?: string;
+    formUrl?: string;
+    utmCampaign?: string;
+    week?: number;
+}): EmailDesign => {
+    const title = campaign?.name || 'Convocatoria Oficial: Postula tu proyecto\na la Feria de Proyectos Rotary Colombia';
+    const introText = campaign?.messageCentral
+        ? `Estimadas rotarias y estimados rotarios:\n\n${campaign.messageCentral}\n\nLa Feria de Proyectos es la vitrina internacional más importante de Colombia para conectar proyectos con clubes aliados, subvenciones globales de La Fundación Rotaria y financiamiento sostenible.`
+        : 'Estimadas rotarias y estimados rotarios:\n\nLa Feria de Proyectos Rotary Colombia abre su convocatoria oficial para que clubes de todo el país y de la red internacional postulen, actualicen y visibilicen sus proyectos de servicio transformador.';
+
+    const ctaUrl = campaign?.formUrl || `https://rotaryprojectfaircolombia.org/rotary-en-accion?canal=feria&utm_source=email_marketing&utm_medium=campaign&utm_campaign=${campaign?.utmCampaign || 'feria_proyectos'}`;
+    const ctaText = campaign?.week === 2
+        ? 'ACTUALIZAR AVANCES DEL PROYECTO'
+        : 'POSTULAR PROYECTO EN LA FERIA';
+
+    const feriaFocusAreasHtml = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:16px 0;background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px">
+  <tr>
+    <td style="padding:18px 20px;font-family:'Open Sans',Helvetica,Arial,sans-serif">
+      <div style="font-size:13px;font-weight:800;color:#013388;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px">
+        &#127775; Propósitos de Postulación y Evolución en la Feria:
+      </div>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
+        <tr>
+          <td width="50%" valign="top" style="padding:4px 6px 4px 0;font-size:12px;color:#334155;line-height:1.5">
+            <strong>&#128161; Proyecto Nuevo:</strong> Inicia tu postulación formal para conectar con clubes patrocinadores.<br/>
+            <strong>&#128200; Avances de Obra:</strong> Registra evidencias, porcentaje de avance e hitos alcanzados.
+          </td>
+          <td width="50%" valign="top" style="padding:4px 0 4px 6px;font-size:12px;color:#334155;line-height:1.5">
+            <strong>&#128176; Financiación / Aliados:</strong> Busca clubes internacionales y subvenciones globales.<br/>
+            <strong>&#127942; Historia de Éxito:</strong> Visibiliza resultados e impacto medible en tu comunidad.
+          </td>
+        </tr>
+      </table>
+      <div style="margin-top:12px;padding-top:10px;border-top:1px dashed #cbd5e1;font-size:11.5px;color:#64748b;line-height:1.4">
+        Abarca las 7 áreas de interés oficiales de Rotary: Paz, Salud, Agua, Madres y Niños, Educación, Desarrollo Económico y Medio Ambiente.
+      </div>
+    </td>
+  </tr>
+</table>`;
+
+    return {
+        version: 1,
+        settings: {
+            bg: '#e6e6e6',
+            contentBg: '#ffffff',
+            font: "'Open Sans', Helvetica, Arial, sans-serif",
+            textColor: '#334155',
+            linkColor: '#013388',
+            width: 600,
         },
-        {
-            id: newId(),
-            type: 'text',
-            text: 'Estimadas rotarias y estimados rotarios:\n\nCada semana, los clubes realizan un esfuerzo incansable por sus comunidades: jornadas de salud, agua potable, becas educativas y proyectos sostenibles. Rotary en Acción es la plataforma oficial para visibilizar, registrar y difundir ese impacto ante el mundo.',
-            align: 'left',
-            color: '#334155',
-            size: 15,
-            fontFamily: "'Open Sans', Helvetica, Arial, sans-serif",
-            fontWeight: '400',
-            lineHeight: 1.6,
-            label: 'Cuerpo de Campaña (Editable / Asistido por IA)',
-            isProtected: false,
-        },
-        {
-            id: newId(),
-            type: 'global',
-            globalKey: 'rotary_areas_focus',
-            label: '¿Qué puede compartir tu club en Rotary en Acción?',
-            isProtected: true,
-            isLocked: false,
-            title: '¿Qué puede compartir tu club en Rotary en Acción?',
-            subtitle: 'El formulario unificado se adapta a lo que elijas para visibilizar el impacto de tu club:',
-            bgColor: '#f8fafc',
-        },
-        {
-            id: newId(),
-            type: 'text',
-            text: '¡Tu club tiene mucho que contar! Ingresa al formulario de Rotary en Acción y comparte las fotos y detalles de tu iniciativa en menos de 3 minutos.',
-            align: 'left',
-            color: '#334155',
-            size: 15,
-            fontFamily: "'Open Sans', Helvetica, Arial, sans-serif",
-            fontWeight: '400',
-            lineHeight: 1.6,
-            label: 'Llamado al Registro (Editable)',
-            isProtected: false,
-        },
-        {
-            id: newId(),
-            type: 'button',
-            text: 'COMPARTIR EN ROTARY EN ACCIÓN',
-            href: '{{form_url}}',
-            bg: '#013388',
-            color: '#ffffff',
-            align: 'center',
-            radius: 12,
-            fontFamily: "'Open Sans', Helvetica, Arial, sans-serif",
-            fontWeight: '700',
-            fontSize: 15,
-            label: 'Botón de Acción Principal (Enlace Inteligente Adaptable)',
-            isProtected: false,
-        },
-        {
-            id: newId(),
-            type: 'global',
-            globalKey: 'rotary_signature',
-            label: 'Firma Oficial Distrital',
-            isProtected: true,
-            isLocked: false,
-            title: 'Comité Distrital de Imagen Pública y Comunicaciones',
-            subtitle: 'Rotary en Acción',
-            motto: '«Dar de sí antes de pensar en sí»',
-            bgColor: '#f8fafc',
-            borderColor: '#013388',
-        },
-        {
-            id: newId(),
-            type: 'global',
-            globalKey: 'club_platform_cta',
-            label: 'CTA Promocional Club Platform',
-            isProtected: true,
-            isLocked: false,
-            enabled: true,
-            title: '¡Activa el ecosistema digital de tu club!',
-            subtitle: 'Conecta, comunica y potencia el impacto de tu club con Club Platform.',
-            buttonText: 'ACTIVAR MI CLUB',
-            buttonHref: 'https://clubplatform.org?utm_source=email_marketing&utm_medium=campaign&utm_campaign=cta_club_platform',
-            buttonBg: '#f7a81b',
-            buttonColor: '#0c2340',
-            buttonRadius: 24,
-            bgType: 'gradient',
-            bgGradientStart: '#013388',
-            bgGradientEnd: '#0c2340',
-            bgGradientAngle: 180,
-            bgColor: '#0c2340',
-            textColor: '#ffffff',
-            titleColor: '#ffffff',
-            subtitleColor: '#ffffff',
-            padding: '28px 24px',
-        },
-        {
-            id: newId(),
-            type: 'global',
-            globalKey: 'rotary_footer',
-            label: 'Pie de Página Institucional Protegido',
-            isProtected: true,
-            isLocked: false,
-            title: '¡Síguenos y comparte el orgullo rotario!',
-            bgType: 'solid',
-            bgColor: '#0c2340',
-            titleColor: '#ffffff',
-            textColor: '#94a3b8',
-            linkColor: '#cbd5e1',
-            showAreas: true,
-            showSocial: true,
-            socialIconStyle: 'white',
-            socialIconSize: 28,
-            socialIconGap: 12,
-            socialLinks: DEFAULT_FOOTER_SOCIAL_LINKS,
-            showWhatsapp: true,
-            showWhatsappIcon: true,
-            whatsappColor: '#ffffff',
-            whatsappText: 'Asistencia directa a través de WhatsApp',
-            whatsappUrl: 'https://wa.me/573108520231',
-            whatsappFontSize: 13,
-            whatsappFontWeight: '600',
-            footerText: 'Rotary en Acción • Plataforma Oficial de Visibilidad.<br/>&copy; 2026 Rotary International. Todos los derechos reservados.<br/><a href="{{unsubscribe_url}}" target="_blank" style="color:#cbd5e1;text-decoration:underline">Preferencias de comunicación y cancelar suscripción</a>',
-            logoUrl: '',
-        },
-    ],
-});
+        blocks: [
+            {
+                id: newId(),
+                type: 'global',
+                globalKey: 'rotary_header',
+                label: 'Cabecera Institucional Feria de Proyectos',
+                isProtected: true,
+                isLocked: false,
+                logoUrl: 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/322c2f88-ad33-484d-bb54-272de9262d72/images/1785773906008-FeriadeProyectosRotary-Logo_(1).png',
+                logoMaxWidth: 340,
+                logoMaxHeight: 80,
+                align: 'center',
+                bgColor: '#ffffff',
+                padding: '24px 20px',
+            },
+            {
+                id: newId(),
+                type: 'heading',
+                text: title,
+                level: 1,
+                align: 'center',
+                color: '#013388',
+                weight: '300',
+                fontFamily: "'Open Sans', Helvetica, Arial, sans-serif",
+                fontWeight: '300',
+                fontSize: 17,
+                padTop: 8,
+                letterSpacing: 0,
+                label: 'Título de Campaña Feria',
+                isProtected: false,
+            },
+            {
+                id: newId(),
+                type: 'heading',
+                text: 'Hola {{contact.first_name|Líder Rotario(a)}},',
+                level: 2,
+                align: 'left',
+                color: '#0f172a',
+                weight: '800',
+                fontFamily: "'Open Sans', Helvetica, Arial, sans-serif",
+                fontWeight: '800',
+                fontSize: 18,
+                padTop: 24,
+                lineHeight: 1.25,
+                letterSpacing: 0,
+                label: 'Saludo Personalizado',
+                isProtected: false,
+            },
+            {
+                id: newId(),
+                type: 'text',
+                text: introText,
+                align: 'left',
+                color: '#334155',
+                size: 14,
+                fontFamily: "'Open Sans', Helvetica, Arial, sans-serif",
+                fontWeight: '400',
+                lineHeight: 1.6,
+                padBottom: 0,
+                label: 'Cuerpo de Campaña (Editable / IA)',
+                isProtected: false,
+            },
+            {
+                id: newId(),
+                type: 'html',
+                html: feriaFocusAreasHtml,
+                label: 'Áreas de Interés y Propósitos de la Feria',
+                isProtected: false,
+            },
+            {
+                id: newId(),
+                type: 'button',
+                text: ctaText,
+                href: ctaUrl,
+                bg: '#0C3C7C',
+                color: '#ffffff',
+                align: 'center',
+                radius: 12,
+                fontFamily: "'Open Sans', Helvetica, Arial, sans-serif",
+                fontWeight: '700',
+                fontSize: 15,
+                label: 'Botón CTA Oficial Feria',
+                isProtected: false,
+            },
+            {
+                id: newId(),
+                type: 'global',
+                globalKey: 'rotary_signature',
+                label: 'Firma Oficial Feria de Proyectos',
+                isProtected: true,
+                isLocked: false,
+                title: 'Comité Organizador · Feria de Proyectos Rotary Colombia',
+                subtitle: 'Distritos 4271 y 4281 · Rotary International',
+                motto: '«Dar de sí antes de pensar en sí»',
+                bgColor: '#f8fafc',
+                borderColor: '#013388',
+            },
+            {
+                id: newId(),
+                type: 'global',
+                globalKey: 'club_platform_cta',
+                label: 'CTA Promocional Club Platform',
+                isProtected: true,
+                isLocked: true,
+                enabled: true,
+                title: '¡Activa el ecosistema digital de tu club!',
+                subtitle: 'Conecta, comunica y potencia el impacto de tu club con Club Platform.',
+                buttonText: 'ACTIVAR MI CLUB',
+                buttonHref: 'https://app.clubplatform.org/activar-mi-club',
+                buttonBg: '#f7a81b',
+                buttonColor: '#0c2340',
+                buttonRadius: 20,
+                bgType: 'solid',
+                bgColor: '#0C3C7C',
+                textColor: '#ffffff',
+                titleColor: '#ffffff',
+                subtitleColor: '#ffffff',
+                padTop: 0,
+                padBottom: 0,
+            },
+            {
+                id: newId(),
+                type: 'global',
+                globalKey: 'rotary_footer',
+                label: 'Pie de Página Institucional Protegido',
+                isProtected: true,
+                isLocked: false,
+                title: '¡SÍGUENOS Y COMPARTE EL ORGULLO ROTARIO!',
+                bgType: 'solid',
+                bgColor: '#28354B',
+                titleColor: '#ffffff',
+                textColor: '#94a3b8',
+                linkColor: '#cbd5e1',
+                logoUrl: 'https://rotaryd4281.s3.amazonaws.com/media/poa_horizontallockup_rev_es-1.png',
+                showAreas: false,
+                showSocial: true,
+                socialIconStyle: 'white',
+                socialIconSize: 30,
+                socialIconGap: 12,
+                socialLinks: [
+                    { network: 'instagram', url: 'https://www.instagram.com/rotary4281', label: 'Instagram' },
+                    { network: 'facebook', url: 'https://www.facebook.com/profile.php?id=61576368985137', label: 'Facebook' },
+                    { network: 'youtube', url: 'https://youtube.com', label: 'YouTube' },
+                    { network: 'web', url: 'https://rotaryprojectfaircolombia.org', label: 'Feria de Proyectos' },
+                ],
+                showWhatsapp: true,
+                showWhatsappIcon: true,
+                whatsappColor: '#ffffff',
+                whatsappText: 'Asistencia directa a través de WhatsApp',
+                whatsappUrl: 'https://wa.me/573114308882',
+                whatsappFontSize: 12,
+                whatsappFontWeight: '400',
+                footerText: 'Feria de Proyectos Rotary Colombia · Distritos 4271 y 4281.<br/>&copy; 2026 Rotary International. Todos los derechos reservados.<br/><a href="{{unsubscribe_url}}" target="_blank" style="color:#cbd5e1;text-decoration:underline">Preferencias de comunicación y cancelar suscripción</a>',
+                padTop: 0,
+                padBottom: 0,
+            },
+        ],
+    };
+};
+
+/**
+ * Resuelve el diseño institucional completo para una campaña según su canal.
+ */
+export const createChannelCampaignDesign = (
+    channel: 'rotary_en_accion' | 'directorio_clubes' | 'feria_proyectos',
+    campaign?: {
+        code?: string;
+        name?: string;
+        messageCentral?: string;
+        subject?: string;
+        formUrl?: string;
+        utmCampaign?: string;
+        week?: number;
+    }
+): EmailDesign => {
+    if (channel === 'directorio_clubes') {
+        return createDirectorioMasterDesign(campaign);
+    }
+    if (channel === 'feria_proyectos') {
+        return createFeriaMasterDesign(campaign);
+    }
+    return createRotaryMasterDesign(campaign);
+};
+
+/**
+ * Garantiza que nunca se envíe ni previsualice una variable sin resolver (ej. {{contact.first_name}}).
+ * Sustituye variables con valores suministrados o recurre a fallbacks institucionales legibles y elegantes.
+ */
+export const cleanUnresolvedVariables = (
+    content: string,
+    sampleValues: Record<string, string> = {}
+): string => {
+    if (!content || typeof content !== 'string') return content || '';
+    let res = content;
+    // 1. Reemplazar variables conocidas provistas explícitamente
+    for (const [k, v] of Object.entries(sampleValues)) {
+        const regex = new RegExp(`\\{\\{\\s*${k.replace(/\./g, '\\.')}(\\s*\\|\\s*[^}]+)?\\}\\}`, 'gi');
+        res = res.replace(regex, v);
+    }
+    // 2. Si la expresión tiene fallback explícito {{variable|Fallback}}, extraer dicho fallback
+    res = res.replace(/\{\{\s*[\w\.\-_]+(?:\s*\|\s*([^}]+))\s*\}\}/g, (_match, fallback) => fallback.trim());
+    // 3. Fallbacks universales de contingencia para cualquier variable residual
+    const commonFallbacks: Record<string, string> = {
+        'contact.first_name': 'Líder Rotario(a)',
+        'contact.name': 'Líder Rotario(a)',
+        'contact.role': 'Líder Rotario',
+        'club.name': 'su Club',
+        'club.type': 'Club Rotario',
+        'club.city': 'su localidad',
+        'club.completion_percentage': '0%',
+        'club.missing_fields': 'Información institucional y fotografías',
+        'club.profile_url': 'https://app.clubplatform.org/clubes/directorio',
+        'club.update_form_url': 'https://app.clubplatform.org/clubes/registro',
+        'form_url': 'https://rotary4281.org/rotary-en-accion',
+        'feria_form_url': 'https://rotaryprojectfaircolombia.org/rotary-en-accion?canal=feria',
+        'activar_club_url': 'https://rotary4281.org/activar-mi-club',
+        'unsubscribe_url': '#'
+    };
+    res = res.replace(/\{\{\s*([\w\.\-_]+)\s*\}\}/g, (_match, varName) => {
+        const lower = varName.toLowerCase();
+        return commonFallbacks[lower] !== undefined ? commonFallbacks[lower] : '';
+    });
+    return res;
+};
 
 // Catálogo de bloques globales institucionales reutilizables
 export const getRotaryGlobalBlocksCatalog = () => [
