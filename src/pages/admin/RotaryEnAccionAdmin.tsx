@@ -23,7 +23,7 @@ import {
   Search, RefreshCw, ArrowLeft, AlertTriangle, Filter, X, ExternalLink,
   Image as ImageIcon, Film, Library, Users, Globe, ChevronLeft, ChevronRight,
   Copy, Check, CheckCircle2, Tag, Layers, Send, Eye, ShieldCheck, Sparkles,
-  Maximize2, Minimize2, Building2
+  Maximize2, Minimize2, Building2, Award
 } from 'lucide-react';
 import { toast } from 'sonner';
 import SubmissionDetail from '../../components/admin/contribution/SubmissionDetail';
@@ -41,6 +41,7 @@ import {
 import RotaryMarketingInteligente from '../../components/admin/rotary/RotaryMarketingInteligente';
 import RotaryActivacionClubes from '../../components/admin/rotary/RotaryActivacionClubes';
 import RotaryDirectorioClubes from '../../components/admin/rotary/RotaryDirectorioClubes';
+import RotaryFeriaProyectos from '../../components/admin/rotary/RotaryFeriaProyectos';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const getToken = () => localStorage.getItem('rotary_token');
@@ -52,7 +53,7 @@ const KINDS = [
   { id: 'tema', label: 'Temáticas', desc: 'Categorías y etiquetas temáticas transversales' },
 ];
 
-export type RotaryEnAccionTab = 'resumen' | 'solicitudes' | 'control' | 'marketing' | 'activacion' | 'directorio' | 'tax' | 'config' | 'impacto';
+export type RotaryEnAccionTab = 'resumen' | 'solicitudes' | 'control' | 'marketing' | 'activacion' | 'directorio' | 'feria' | 'tax' | 'config' | 'impacto';
 
 
 interface Fila {
@@ -139,6 +140,7 @@ const RotaryEnAccionAdmin: React.FC<RotaryEnAccionAdminProps> = ({
     if (tabParam === 'marketing' || tabParam === 'marketing-inteligente') return 'marketing';
     if (tabParam === 'activacion' || tabParam === 'activaciones' || tabParam === 'activar-club') return 'activacion';
     if (tabParam === 'directorio' || tabParam === 'directorio-clubes' || tabParam === 'clubes') return 'directorio';
+    if (tabParam === 'feria' || tabParam === 'feria-proyectos' || tabParam === 'feria-de-proyectos' || tabParam === 'proyectos') return 'feria';
     if ((tabParam === 'tax' || tabParam === 'taxonomias') && canManage) return 'tax';
     if ((tabParam === 'config' || tabParam === 'configuracion') && canManage) return 'config';
     if (tabParam === 'impacto') return 'impacto';
@@ -584,6 +586,21 @@ const RotaryEnAccionAdmin: React.FC<RotaryEnAccionAdminProps> = ({
           <span>Directorio de Clubes</span>
           <span className="text-[10px] font-black uppercase tracking-wider bg-sky-100 text-sky-800 px-2 py-0.5 rounded-full border border-sky-200">
             D4281
+          </span>
+        </button>
+
+        <button
+          onClick={() => cambiarTab('feria')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
+            activeTab === 'feria'
+              ? 'bg-white text-gray-900 shadow-sm border border-gray-200/60'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+          }`}
+        >
+          <Award className="w-4 h-4 text-amber-500" />
+          <span>Feria de Proyectos</span>
+          <span className="text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full border border-amber-200">
+            Feria
           </span>
         </button>
 
@@ -1378,6 +1395,11 @@ const RotaryEnAccionAdmin: React.FC<RotaryEnAccionAdminProps> = ({
       {/* ── SECCIÓN: DIRECTORIO DE CLUBES (CATÁLOGO, SOLICITUDES & CRM) ── */}
       {activeTab === 'directorio' && (
         <RotaryDirectorioClubes />
+      )}
+
+      {/* ── SECCIÓN: FERIA DE PROYECTOS COLOMBIA ── */}
+      {activeTab === 'feria' && (
+        <RotaryFeriaProyectos />
       )}
 
       {/* ── 7. SECCIÓN: TAXONOMÍAS ───────────────────────────────────── */}

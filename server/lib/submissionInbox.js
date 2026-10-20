@@ -325,9 +325,9 @@ export const isContentSubmissionsAllowedSite = ({ host = '', origin = '', user =
     }
 
     // 2. Feria de Proyectos
-    const isFeriaHost = effectiveHost.includes('feriadeproyectos') || effectiveHost.includes('feria-de-proyectos');
+    const isFeriaHost = effectiveHost.includes('feriadeproyectos') || effectiveHost.includes('feria-de-proyectos') || effectiveHost.includes('rotaryprojectfair');
     const isFeriaClub = clubType === 'feria de proyectos' || clubType === 'project_fair' || clubCategory === 'project_fair' ||
-        clubName.includes('feria de proyectos') || clubSubdomain.includes('feriadeproyectos') || clubDomain.includes('feriadeproyectos');
+        clubName.includes('feria de proyectos') || clubSubdomain.includes('feriadeproyectos') || clubDomain.includes('feriadeproyectos') || clubDomain.includes('rotaryprojectfair');
 
     if (isFeriaHost || isFeriaClub) {
         return true;

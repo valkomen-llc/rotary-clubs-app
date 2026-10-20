@@ -20,6 +20,7 @@ router.get('/drafts/:token', lightPublicLimit, ctrl.getDraftEp);
 router.delete('/drafts/:token', lightPublicLimit, ctrl.deleteDraftEp);
 router.post('/assist', lightPublicLimit, ctrl.assist);
 router.get('/related/:id', ctrl.related);
+router.get('/fair-projects/search', lightPublicLimit, ctrl.searchFairProjects);
 
 // Embudo público de activación de clubes (/activar-mi-club)
 router.get('/activacion/config', lightPublicLimit, actCtrl.getActivationConfig);
@@ -35,6 +36,10 @@ router.get('/config-admin', requireSubmissionInboxAccess, requireRoleOrPermissio
 router.put('/config-admin', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.manage'), ctrl.adminConfigPut);
 router.get('/stats', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.view'), ctrl.stats);
 router.get('/dashboard', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.view'), ctrl.board);
+
+// ── Admin: Feria de Proyectos Colombia ────────────────────────────────
+router.get('/fair/submissions', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.view'), ctrl.getFairSubmissions);
+router.get('/fair/stats', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.view'), ctrl.getFairStats);
 
 // ── Admin: Activación de Clubes (CRM & KPIs) ─────────────────────────
 router.get('/activacion/leads', requireSubmissionInboxAccess, actCtrl.getActivationLeads);

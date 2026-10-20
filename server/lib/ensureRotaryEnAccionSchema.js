@@ -14,6 +14,17 @@ const SUBMISSION_COLS = [
   ['notifiedPublishedAt', 'TIMESTAMPTZ'], ['mainClub', 'TEXT'],
   ['notifyUpdates', 'BOOLEAN'],
   ['utmSource', 'TEXT'], ['utmMedium', 'TEXT'], ['utmCampaign', 'TEXT'],
+  ['submissionType', 'TEXT'],
+  ['projectGoalType', 'TEXT'],
+  ['projectStage', 'TEXT'],
+  ['projectStartYear', 'TEXT'],
+  ['projectTargetCommunity', 'TEXT'],
+  ['projectFairEdition', 'TEXT'],
+  ['projectFairSubmissionId', 'TEXT'],
+  ['projectId', 'TEXT'],
+  ['country', 'TEXT'],
+  ['secondaryAreas', 'TEXT[]'],
+  ['projectEvolution', 'JSONB'],
 ];
 const TOKEN_COLS = [
   ['utmSource', 'TEXT'], ['utmMedium', 'TEXT'], ['utmCampaign', 'TEXT'],

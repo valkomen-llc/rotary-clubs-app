@@ -29,7 +29,7 @@ const getToken = () => localStorage.getItem('rotary_token');
 export type MarketingSubtab = 'panel' | 'planificador' | 'audiencias' | 'campanas' | 'agente' | 'resultados' | 'remitentes' | 'envios';
 
 export interface RotaryMarketingInteligenteProps {
-  initialInitiative?: 'rotary_en_accion' | 'directorio_clubes';
+  initialInitiative?: 'rotary_en_accion' | 'directorio_clubes' | 'feria_proyectos';
 }
 
 export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProps> = ({
@@ -52,7 +52,7 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
     };
   }, [siteClub]);
 
-  const [initiative, setInitiative] = useState<'rotary_en_accion' | 'directorio_clubes'>(initialInitiative);
+  const [initiative, setInitiative] = useState<'rotary_en_accion' | 'directorio_clubes' | 'feria_proyectos'>(initialInitiative);
 
   useEffect(() => {
     if (initialInitiative) {
@@ -946,7 +946,11 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        const prefix = initiative === 'directorio_clubes' ? 'Informe_Ejecutivo_Directorio_Clubes_D4281' : 'Informe_Ejecutivo_Rotary_en_Accion';
+        const prefix = initiative === 'feria_proyectos'
+          ? 'Informe_Ejecutivo_Feria_Proyectos_Colombia'
+          : initiative === 'directorio_clubes'
+          ? 'Informe_Ejecutivo_Directorio_Clubes_D4281'
+          : 'Informe_Ejecutivo_Rotary_en_Accion';
         a.download = `${prefix}_${new Date().toISOString().slice(0, 10)}.md`;
         a.click();
         URL.revokeObjectURL(url);
@@ -1024,10 +1028,26 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
                   <Building2 className="w-3.5 h-3.5 text-rotary-blue" />
                   <span>Directorio de Clubes (D4281)</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setInitiative('feria_proyectos')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all ${
+                    initiative === 'feria_proyectos'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-slate-300 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  <Award className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Feria de Proyectos Colombia</span>
+                </button>
               </div>
 
               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-200 border border-emerald-400/30">
-                {initiative === 'directorio_clubes' ? 'Distrito 4281 · 74 Clubes' : 'Fases 1, 2, 3 y 4 · Ecosistema Integral'}
+                {initiative === 'feria_proyectos'
+                  ? 'Feria de Proyectos · Canal Especializado'
+                  : initiative === 'directorio_clubes'
+                  ? 'Distrito 4281 · 74 Clubes'
+                  : 'Fases 1, 2, 3 y 4 · Ecosistema Integral'}
               </span>
               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-sky-500/20 text-sky-200 border border-sky-400/30 tracking-wide">
                 v{APP_VERSION}
@@ -1035,12 +1055,16 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
             </div>
 
             <h2 className="text-2xl sm:text-3xl font-light tracking-tight text-white">
-              {initiative === 'directorio_clubes'
+              {initiative === 'feria_proyectos'
+                ? 'Ecosistema de Captación y Difusión de Proyectos de Impacto'
+                : initiative === 'directorio_clubes'
                 ? 'Ecosistema de Activación y Gobernanza del Directorio de Clubes'
                 : 'Ecosistema de Captación, Automatización y Gobernanza de Clubes'}
             </h2>
             <p className="text-sm text-slate-300 leading-relaxed">
-              {initiative === 'directorio_clubes'
+              {initiative === 'feria_proyectos'
+                ? 'Estrategia de comunicación omnicanal para que los clubes rotarios compartan sus proyectos, documenten su evolución histórica, presenten necesidades de financiación y visibilicen sus resultados ante la comunidad rotaria nacional e internacional.'
+                : initiative === 'directorio_clubes'
                 ? 'Estrategia integral de comunicación para motivar y acompañar a los 74 clubes del Rotary Distrito 4281 a completar, publicar y mantener vigentes sus perfiles institucionales en el Directorio oficial.'
                 : 'Sistema integral para motivar el reporte continuo en los 133 clubes de nuestros distritos, midiendo la participación real, ejecutando flujos omnicanal, optimizando campañas mediante IA y garantizando el cumplimiento normativo institucional.'}
             </p>
@@ -1065,7 +1089,18 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
               <span>Informe Gobernación</span>
             </button>
 
-            {initiative === 'directorio_clubes' ? (
+            {initiative === 'feria_proyectos' ? (
+              <a
+                href="/rotary-en-accion?canal=feria&utm_source=marketing_inteligente&utm_medium=panel&utm_campaign=feria_proyectos"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white text-xs font-bold flex items-center gap-1.5 transition shadow-sm"
+                title="Probar formulario de la Feria de Proyectos con trazabilidad UTM"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>Formulario Feria (UTM)</span>
+              </a>
+            ) : initiative === 'directorio_clubes' ? (
               <>
                 <a
                   href="/clubes"
@@ -1107,15 +1142,23 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
         <div className="mt-6 pt-5 border-t border-white/10 grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
           <div>
             <div className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">
-              {initiative === 'directorio_clubes' ? 'Clubes D4281' : 'Universo de Clubes'}
+              {initiative === 'feria_proyectos'
+                ? 'Proyectos / Universo'
+                : initiative === 'directorio_clubes'
+                ? 'Clubes D4281'
+                : 'Universo de Clubes'}
             </div>
             <div className="text-xl font-bold text-white mt-0.5">
-              {kpis.universoTotal} <span className="text-xs font-normal text-slate-400">clubes</span>
+              {kpis.universoTotal} <span className="text-xs font-normal text-slate-400">proyectos</span>
             </div>
           </div>
           <div>
             <div className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">
-              {initiative === 'directorio_clubes' ? 'Perfiles Completos (>80%)' : 'Participación Actual'}
+              {initiative === 'feria_proyectos'
+                ? 'Evolución / Actualizados'
+                : initiative === 'directorio_clubes'
+                ? 'Perfiles Completos (>80%)'
+                : 'Participación Actual'}
             </div>
             <div className="text-xl font-bold text-emerald-400 mt-0.5">
               {kpis.participacionPct}%{' '}
@@ -1124,10 +1167,18 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
           </div>
           <div>
             <div className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">
-              {initiative === 'directorio_clubes' ? 'En Proceso / Sin Iniciar' : 'Flujos Automáticos'}
+              {initiative === 'feria_proyectos'
+                ? 'Alianzas / Financiación'
+                : initiative === 'directorio_clubes'
+                ? 'En Proceso / Sin Iniciar'
+                : 'Flujos Automáticos'}
             </div>
             <div className="text-xl font-bold text-sky-400 mt-0.5">
-              {initiative === 'directorio_clubes' ? (
+              {initiative === 'feria_proyectos' ? (
+                <span>
+                  {overview?.segmentos?.financiacionCount || 0} <span className="text-xs font-normal text-slate-400">con alianzas</span>
+                </span>
+              ) : initiative === 'directorio_clubes' ? (
                 <span>
                   {kpis.sinReportesTotal} <span className="text-xs font-normal text-slate-400">pendientes</span>
                 </span>
@@ -1141,10 +1192,18 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
           </div>
           <div>
             <div className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">
-              {initiative === 'directorio_clubes' ? 'Estrategia Directorio' : 'Política de Contacto'}
+              {initiative === 'feria_proyectos'
+                ? 'Estrategia Feria'
+                : initiative === 'directorio_clubes'
+                ? 'Estrategia Directorio'
+                : 'Política de Contacto'}
             </div>
             <div className="text-xl font-bold text-purple-300 mt-0.5">
-              {initiative === 'directorio_clubes' ? (
+              {initiative === 'feria_proyectos' ? (
+                <span>
+                  6 <span className="text-xs font-normal text-slate-400">campañas</span>
+                </span>
+              ) : initiative === 'directorio_clubes' ? (
                 <span>
                   5 <span className="text-xs font-normal text-slate-400">campañas</span>
                 </span>
@@ -1593,7 +1652,16 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
                   onChange={(e) => setLinkCampaignCode(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-gray-200 text-xs font-medium outline-none bg-white focus:border-rotary-blue"
                 >
-                  {initiative === 'directorio_clubes' ? (
+                  {initiative === 'feria_proyectos' ? (
+                    <>
+                      <option value="feria-sem-01">SEM 01 · Convocatoria e Inscripción de Nuevos Proyectos</option>
+                      <option value="feria-sem-02">SEM 02 · Actualización y Evolución de Proyectos Anteriores</option>
+                      <option value="feria-sem-03">SEM 03 · Publicación de Resultados e Impacto Verificado</option>
+                      <option value="feria-sem-04">SEM 04 · Historias de Éxito y Testimonios de Servicio</option>
+                      <option value="feria-sem-05">SEM 05 · Búsqueda de Fondos y Necesidades de Financiación</option>
+                      <option value="feria-sem-06">SEM 06 · Alianzas y Cooperación Internacional</option>
+                    </>
+                  ) : initiative === 'directorio_clubes' ? (
                     <>
                       <option value="dir-sem-01">SEM 01 · Bienvenida & Activación</option>
                       <option value="dir-sem-02">SEM 02 · Relevancia Pública & Beneficios</option>

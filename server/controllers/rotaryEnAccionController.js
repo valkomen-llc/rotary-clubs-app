@@ -102,8 +102,10 @@ export const getEngineConfig = async (req, res) => {
       } catch { /* sin sugerencia: el formulario arranca neutro */ }
     }
     const tax = await treeTaxonomies();
+    const isProjectFair = host.includes('rotaryprojectfair') || req.query.canal === 'feria' || req.query.mode === 'project_fair' || req.query.initiative === 'feria_proyectos';
     res.json({
       site,
+      isProjectFair,
       mode: ctx.mode,
       campaign: camp ? { id: camp.id, slug: camp.slug, name: camp.name, headline: sub.headline || camp.name, intro: sub.intro || '', thanksMessage: sub.thanksMessage || '', consentText: consentTextFor(sub), consentIsProvisional: !consentIsConfigured(sub.consentText), image: content.hero?.image || '' } : null,
       contextTax: ctx.tax,
@@ -352,3 +354,279 @@ export const related = async (req, res) => {  try {
     res.json({ related: dups });
   } catch (e) { return fail(res, e); }
 };
+
+// ─── Feria de Proyectos: Búsqueda de Proyectos Existentes ───────────────
+export const searchFairProjects = async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    const queryTerm = `%${q}%`;
+    const results = [];
+
+    // 1. Proyectos generales en "Project"
+    try {
+      const { rows: projectRows } = await db.query(
+        `SELECT p.id, p.title, p.description, p.category, p."clubId", c.name as "clubName", c.district
+         FROM "Project" p
+         LEFT JOIN "Club" c ON c.id = p."clubId"
+         WHERE p."deletedAt" IS NULL
+           AND ($1 = '%%' OR p.title ILIKE $1 OR p.description ILIKE $1 OR c.name ILIKE $1)
+         ORDER BY p."createdAt" DESC
+         LIMIT 10`,
+        [queryTerm]
+      );
+      for (const r of projectRows) {
+        results.push({
+          id: r.id,
+          source: 'project',
+          title: r.title,
+          description: r.description ? r.description.slice(0, 160) + '...' : '',
+          club: r.clubName || 'Club Rotario',
+          district: r.district || '',
+          area: r.category || '',
+          edition: 'Banco de Proyectos',
+        });
+      }
+    } catch (e) {
+      console.warn('[searchFairProjects] error querying Project:', e.message);
+    }
+
+    // 2. Postulaciones oficiales de la Feria en "ProjectFairSubmission"
+    try {
+      const { rows: fairRows } = await db.query(
+        `SELECT id, "publicRef", "projectName", "projectDescription", "clubName", district, "focusAreaLabel", "editionKey"
+         FROM "ProjectFairSubmission"
+         WHERE "archivedAt" IS NULL
+           AND ($1 = '%%' OR "projectName" ILIKE $1 OR "clubName" ILIKE $1 OR "publicRef" ILIKE $1)
+         ORDER BY "createdAt" DESC
+         LIMIT 15`,
+        [queryTerm]
+      );
+      for (const r of fairRows) {
+        results.push({
+          id: r.id,
+          source: 'fair_submission',
+          publicRef: r.publicRef,
+          title: r.projectName,
+          description: r.projectDescription ? r.projectDescription.slice(0, 160) + '...' : '',
+          club: r.clubName || '',
+          district: r.district || '',
+          area: r.focusAreaLabel || '',
+          edition: r.editionKey || 'Feria de Proyectos Colombia',
+        });
+      }
+    } catch (e) {
+      console.warn('[searchFairProjects] error querying ProjectFairSubmission:', e.message);
+    }
+
+    res.json({ results });
+  } catch (e) {
+    return fail(res, e);
+  }
+};
+
+// ─── Feria de Proyectos: Bandeja Especializada de Solicitudes ───────────
+export const getFairSubmissions = async (req, res) => {
+  try {
+    await ensureRotaryEnAccionSchema();
+    const {
+      status, district, club, country, area, edition, goalType, q,
+      tab = 'all', page = 1, perPage = 25
+    } = req.query;
+
+    const alcance = await campaignIdsInScope(req);
+    const scope = await resolveScope(req, alcance);
+
+    const conditions = [];
+    const params = [];
+    let pIdx = 1;
+
+    // Filtro transversal al canal de la Feria de Proyectos
+    conditions.push(`(
+      s."submissionType" = 'project_fair'
+      OR s."projectFairEdition" IS NOT NULL
+      OR s."projectGoalType" IS NOT NULL
+      OR s."originHost" ILIKE '%projectfair%'
+      OR s."originHost" ILIKE '%feriadeproyectos%'
+    )`);
+
+    // Aislamiento de alcance si el usuario no es operador global
+    if (!scope.isOperator) {
+      if (Array.isArray(scope.campaignIds) && scope.campaignIds.length > 0) {
+        conditions.push(`(s."campaignId" = ANY($${pIdx}) OR s."originClubId" = $${pIdx + 1})`);
+        params.push(scope.campaignIds, req.user?.clubId || '');
+        pIdx += 2;
+      } else if (req.user?.clubId) {
+        conditions.push(`s."originClubId" = $${pIdx}`);
+        params.push(req.user.clubId);
+        pIdx++;
+      }
+    }
+
+    // Filtros por pestaña rápida
+    if (tab === 'nuevos') {
+      conditions.push(`s."projectGoalType" = 'nuevo'`);
+    } else if (tab === 'avances') {
+      conditions.push(`s."projectGoalType" IN ('avances', 'nueva_etapa')`);
+    } else if (tab === 'historias') {
+      conditions.push(`s."projectGoalType" = 'historia_exito'`);
+    } else if (tab === 'financiacion') {
+      conditions.push(`(s."projectGoalType" = 'buscar_aliados_financiacion' OR (s."projectEvolution"->>'necesidadesActuales') IS NOT NULL)`);
+    } else if (tab === 'alianzas') {
+      conditions.push(`(
+        (s."projectEvolution"->>'participacionInternacional') IS NOT NULL
+        OR (s."projectEvolution"->>'clubesAliados') IS NOT NULL
+      )`);
+    } else if (tab === 'listos') {
+      conditions.push(`s.status = 'listo_difusion'`);
+    } else if (tab === 'publicados') {
+      conditions.push(`s.status = 'publicado'`);
+    }
+
+    if (status) {
+      conditions.push(`s.status = $${pIdx}`);
+      params.push(status);
+      pIdx++;
+    }
+    if (district) {
+      conditions.push(`s.district ILIKE $${pIdx}`);
+      params.push(`%${district}%`);
+      pIdx++;
+    }
+    if (club) {
+      conditions.push(`s.club ILIKE $${pIdx}`);
+      params.push(`%${club}%`);
+      pIdx++;
+    }
+    if (country) {
+      conditions.push(`s.country ILIKE $${pIdx}`);
+      params.push(`%${country}%`);
+      pIdx++;
+    }
+    if (area) {
+      conditions.push(`(s."areaFocus" = $${pIdx} OR $${pIdx} = ANY(s."secondaryAreas"))`);
+      params.push(area);
+      pIdx++;
+    }
+    if (edition) {
+      conditions.push(`s."projectFairEdition" ILIKE $${pIdx}`);
+      params.push(`%${edition}%`);
+      pIdx++;
+    }
+    if (goalType) {
+      conditions.push(`s."projectGoalType" = $${pIdx}`);
+      params.push(goalType);
+      pIdx++;
+    }
+    if (q) {
+      conditions.push(`(s.title ILIKE $${pIdx} OR s.club ILIKE $${pIdx} OR s."senderName" ILIKE $${pIdx} OR s.city ILIKE $${pIdx})`);
+      params.push(`%${q}%`);
+      pIdx++;
+    }
+
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const totalQuery = `SELECT COUNT(*)::int as total FROM "ContributionSubmission" s ${whereClause}`;
+    const totalRes = await db.query(totalQuery, params);
+    const total = totalRes.rows[0]?.total || 0;
+
+    const offset = (Math.max(1, Number(page)) - 1) * Number(perPage);
+    const listQuery = `
+      SELECT s.*,
+        (SELECT COUNT(*)::int FROM "ContributionSubmissionFile" f WHERE f."submissionId" = s.id AND f.kind = 'image') as "imageCount",
+        (SELECT COUNT(*)::int FROM "ContributionSubmissionFile" f WHERE f."submissionId" = s.id AND f.kind = 'video') as "videoCount",
+        (SELECT json_agg(json_build_object('id', f.id, 'kind', f.kind, 's3Key', f."s3Key", 'filename', f.filename))
+         FROM "ContributionSubmissionFile" f WHERE f."submissionId" = s.id) as files
+      FROM "ContributionSubmission" s
+      ${whereClause}
+      ORDER BY s."createdAt" DESC
+      LIMIT $${pIdx} OFFSET $${pIdx + 1}
+    `;
+    const { rows: submissions } = await db.query(listQuery, [...params, Number(perPage), offset]);
+
+    const baseWhere = `(
+      s."submissionType" = 'project_fair'
+      OR s."projectFairEdition" IS NOT NULL
+      OR s."projectGoalType" IS NOT NULL
+      OR s."originHost" ILIKE '%projectfair%'
+      OR s."originHost" ILIKE '%feriadeproyectos%'
+    )`;
+    const metricsRes = await db.query(`
+      SELECT
+        COUNT(*)::int as total,
+        COUNT(DISTINCT s.club)::int as "clubesParticipantes",
+        COUNT(DISTINCT s.district)::int as distritos,
+        COUNT(DISTINCT COALESCE(s.country, 'Colombia'))::int as paises,
+        COUNT(CASE WHEN s."projectGoalType" = 'nuevo' THEN 1 END)::int as nuevos,
+        COUNT(CASE WHEN s."projectGoalType" IN ('avances', 'nueva_etapa') THEN 1 END)::int as actualizaciones,
+        COUNT(CASE WHEN s."projectGoalType" = 'historia_exito' THEN 1 END)::int as "historiasExito",
+        COUNT(CASE WHEN s."projectGoalType" = 'buscar_aliados_financiacion' OR (s."projectEvolution"->>'necesidadesActuales') IS NOT NULL THEN 1 END)::int as "buscanFinanciacion",
+        COUNT(CASE WHEN (s."projectEvolution"->>'participacionInternacional') IS NOT NULL OR (s."projectEvolution"->>'clubesAliados') IS NOT NULL THEN 1 END)::int as "alianzasInternacionales",
+        COUNT(CASE WHEN s.status = 'listo_difusion' THEN 1 END)::int as "listasDifusion",
+        COUNT(CASE WHEN s.status = 'publicado' THEN 1 END)::int as publicadas
+      FROM "ContributionSubmission" s
+      WHERE ${baseWhere}
+    `);
+    const resumen = metricsRes.rows[0] || {};
+
+    const facetsRes = await db.query(`
+      SELECT
+        ARRAY_AGG(DISTINCT s.district) FILTER (WHERE s.district IS NOT NULL AND s.district <> '') as distritos,
+        ARRAY_AGG(DISTINCT s.club) FILTER (WHERE s.club IS NOT NULL AND s.club <> '') as clubes,
+        ARRAY_AGG(DISTINCT COALESCE(s.country, 'Colombia')) FILTER (WHERE s.country IS NOT NULL) as paises,
+        ARRAY_AGG(DISTINCT s."projectFairEdition") FILTER (WHERE s."projectFairEdition" IS NOT NULL) as ediciones
+      FROM "ContributionSubmission" s
+      WHERE ${baseWhere}
+    `);
+    const facets = facetsRes.rows[0] || {};
+
+    res.json({
+      submissions,
+      total,
+      page: Number(page),
+      perPage: Number(perPage),
+      resumen,
+      facets: {
+        distritos: facets.distritos || [],
+        clubes: facets.clubes || [],
+        paises: facets.paises || ['Colombia'],
+        ediciones: facets.ediciones || ['XII Edición Valledupar 2027', 'XI Edición Bucaramanga 2026', 'X Edición Cartagena 2025'],
+      }
+    });
+  } catch (e) {
+    return fail(res, e);
+  }
+};
+
+// ─── Feria de Proyectos: Métricas y Trazabilidad ────────────────────────
+export const getFairStats = async (req, res) => {
+  try {
+    const baseWhere = `(
+      s."submissionType" = 'project_fair'
+      OR s."projectFairEdition" IS NOT NULL
+      OR s."projectGoalType" IS NOT NULL
+      OR s."originHost" ILIKE '%projectfair%'
+      OR s."originHost" ILIKE '%feriadeproyectos%'
+    )`;
+
+    const [areasRes, goalsRes, timelineRes, geographicRes] = await Promise.all([
+      db.query(`SELECT COALESCE(s."areaFocus", 'Otras iniciativas') as area, COUNT(*)::int as total
+                FROM "ContributionSubmission" s WHERE ${baseWhere} GROUP BY 1 ORDER BY 2 DESC`),
+      db.query(`SELECT COALESCE(s."projectGoalType", 'general') as goal, COUNT(*)::int as total
+                FROM "ContributionSubmission" s WHERE ${baseWhere} GROUP BY 1 ORDER BY 2 DESC`),
+      db.query(`SELECT TO_CHAR(s."createdAt", 'YYYY-MM') as mes, COUNT(*)::int as total
+                FROM "ContributionSubmission" s WHERE ${baseWhere} GROUP BY 1 ORDER BY 1 ASC LIMIT 12`),
+      db.query(`SELECT COALESCE(s.country, 'Colombia') as pais, COUNT(DISTINCT s.district)::int as distritos, COUNT(DISTINCT s.club)::int as clubes, COUNT(*)::int as total
+                FROM "ContributionSubmission" s WHERE ${baseWhere} GROUP BY 1 ORDER BY 4 DESC`),
+    ]);
+
+    res.json({
+      porArea: areasRes.rows,
+      porObjetivo: goalsRes.rows,
+      evolucionMes: timelineRes.rows,
+      distribucionGeografica: geographicRes.rows,
+    });
+  } catch (e) {
+    return fail(res, e);
+  }
+};
+

@@ -204,9 +204,9 @@ export const isContentSubmissionsAllowedSite = (ctx: ContentSubmissionsSiteConte
     }
 
     // 2. Feria de Proyectos
-    const isFeriaHost = rawHost.includes('feriadeproyectos') || rawHost.includes('feria-de-proyectos');
+    const isFeriaHost = rawHost.includes('feriadeproyectos') || rawHost.includes('feria-de-proyectos') || rawHost.includes('rotaryprojectfair');
     const isFeriaClub = clubType === 'feria de proyectos' || clubType === 'project_fair' || clubCategory === 'project_fair' ||
-        clubName.includes('feria de proyectos') || clubSubdomain.includes('feriadeproyectos') || clubDomain.includes('feriadeproyectos');
+        clubName.includes('feria de proyectos') || clubSubdomain.includes('feriadeproyectos') || clubDomain.includes('feriadeproyectos') || clubDomain.includes('rotaryprojectfair');
 
     if (isFeriaHost || isFeriaClub) {
         return true;
