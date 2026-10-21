@@ -309,7 +309,7 @@ const PlatformOnlyRoute = ({ children }: { children: React.ReactNode }) => {
   if (!isPlatformSuperAdmin(user as any) && (user as any)?.role !== 'district_admin' && (user as any)?.role !== 'club_admin' && (user as any)?.role !== 'administrator' && !(user as any)?.isSuperAdmin) {
     return <Navigate to="/" replace />;
   }
-  return <>{children}</>;
+  return <AdminModuleBoundary>{children}</AdminModuleBoundary>;
 };
 
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
@@ -328,7 +328,7 @@ const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   if (user?.role !== 'administrator' && !onboardingDone && !hasPublishedDomain) {
     return <Navigate to="/admin/onboarding" />;
   }
-  return <>{children}</>;
+  return <AdminModuleBoundary>{children}</AdminModuleBoundary>;
 };
 
 const OnboardingGate = () => {

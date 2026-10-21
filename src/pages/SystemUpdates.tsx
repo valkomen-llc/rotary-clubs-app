@@ -42,6 +42,22 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1224.0',
+        title: 'Auditoría y Corrección Integral de Renderizado, Aislamiento por Módulo y Navegación SPA 🛡️⚡',
+        description: 'Auditoría técnica exhaustiva y corrección de la causa raíz de pantallas de error al navegar en el panel administrativo y sitios públicos: 1) Aislamiento multinivel mediante AdminModuleBoundary en todas las rutas protegidas (PrivateRoute y PlatformOnlyRoute), garantizando que el menú lateral y la cabecera (AdminLayout) se conserven operativos si un módulo falla. 2) Detección de navegación y reinicio automático de estado en ChunkErrorBoundary y AdminModuleBoundary al cambiar de ruta (locationKey), eliminando errores obsoletos heredados sin obligar a recargas manuales. 3) Fortificación defensiva del módulo de Analíticas (/admin/analytics): saneamiento estricto de tipos de dominio (club.domain/effectiveDomain), protección de fetchTraffic contra respuestas HTTP no-200 con valores de reserva seguros y banner no fatal de sincronización, blindaje con ErrorBoundary local en gráficos Recharts (AreaChart, BarChart), mapa coroplético mundial (SVGWorldMap), tabla de rendimiento y SocialAnalytics. 4) Nueva suite automatizada de pruebas scripts/test-error-boundary-navigation.mjs con 22 aserciones pasando al 100%.',
+        date: new Date().toISOString(),
+        tags: ['error-boundary', 'navegacion', 'admin-layout', 'analytics', 'resiliencia', 'multi-tenant', 'spa'],
+        type: 'fix',
+        impact: 'Crítica: Elimina pantallas de error bloqueantes en navegación administrativa y asegura que el usuario conserve siempre la navegación lateral y capacidad de recuperación in-situ.',
+        changes: [
+            { type: 'fixed', text: 'Corrección del árbol de Error Boundaries en App.tsx protegiendo todas las rutas administrativas con AdminModuleBoundary.' },
+            { type: 'fixed', text: 'Limpieza reactiva automática de estados de error obsoletos al navegar entre rutas (locationKey) en ChunkErrorBoundary y AdminModuleBoundary.' },
+            { type: 'improved', text: 'Blindaje defensivo en Analytics.tsx contra valores no-string en dominios y respuestas HTTP anómalas.' },
+            { type: 'added', text: 'Límites de error granulares (ErrorBoundary compact) para gráficos AreaChart, BarChart, mapa mundial SVG y tabla de rendimiento.' },
+            { type: 'added', text: 'Suite de pruebas scripts/test-error-boundary-navigation.mjs con 22 aserciones verificadas.' }
+        ]
+    },
+    {
         version: '4.1223.0',
         title: 'Reingeniería del Módulo de Conciliaciones, Recaudos y Desembolsos · XII Feria de Proyectos Valledupar 2027 💰🏛️',
         description: 'Recuperación, auditoría y ampliación del motor financiero multi-iniciativa de Club Platform para la XII Feria de Proyectos Rotarios Colombia — Valledupar 2027: 1) Habilitación de acceso administrativo mediante excepciones en siteModulesSpec y asignación de capacidades financieras (finance.view, finance.manage, finance.export) al rol project_fair_manager. 2) Ingesta unificada e idempotente de recaudos desde Postulaciones de Proyectos (ProjectFairSubmission) e Inscripciones al Evento (EventRegistration) con cálculo transparente de tarifas y comisiones. 3) Centro financiero integral de 7 pestañas: Resumen Financiero con separación estricta de divisas (COP y USD), Movimientos con desglose de ciclo de vida (DisbursementSection) y acciones en bloque, Conciliaciones con Stripe en modo ensayo/aplicado, Desembolsos con comprobantes institucionales (PDF/JPG/PNG), Trazabilidad de Avisos por Email y WhatsApp con enlaces firmados, Historial cronológico auditable (PaymentLifecycleEvent) y Configuración de Beneficiarios autorizados. 4) Generación del Acta de Cierre Financiero por Edición para rendición formal de cuentas al Comité Organizador.',

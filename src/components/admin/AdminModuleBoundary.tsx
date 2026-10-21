@@ -1,4 +1,5 @@
 import React, { Component, ReactNode } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import AdminLayout from './AdminLayout';
 import { AlertTriangle, RefreshCw, LayoutDashboard, Copy, Check, ChevronDown, ChevronUp } from 'lucide-react';
 import { toast } from 'sonner';
@@ -9,6 +10,11 @@ interface Props {
     wide?: boolean;
 }
 
+interface InnerProps extends Props {
+    locationKey: string;
+    navigate: (to: string) => void;
+}
+
 interface State {
     hasError: boolean;
     error: Error | null;
@@ -17,8 +23,8 @@ interface State {
     showDetails: boolean;
 }
 
-export class AdminModuleBoundary extends Component<Props, State> {
-    constructor(props: Props) {
+class AdminModuleBoundaryInner extends Component<InnerProps, State> {
+    constructor(props: InnerProps) {
         super(props);
         this.state = {
             hasError: false,
@@ -36,6 +42,19 @@ export class AdminModuleBoundary extends Component<Props, State> {
     componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
         console.error(`[AdminModuleBoundary] Error en módulo "${this.props.moduleName || 'Desconocido'}":`, error, errorInfo);
         this.setState({ errorInfo });
+    }
+
+    componentDidUpdate(prevProps: InnerProps) {
+        // Al cambiar de ruta o parámetros, restablecer automáticamente el estado de error
+        if (prevProps.locationKey !== this.props.locationKey && this.state.hasError) {
+            this.setState({
+                hasError: false,
+                error: null,
+                errorInfo: null,
+                copied: false,
+                showDetails: false,
+            });
+        }
     }
 
     handleRetry = () => {
@@ -56,7 +75,7 @@ export class AdminModuleBoundary extends Component<Props, State> {
 
     render() {
         if (this.state.hasError) {
-            const { moduleName, wide } = this.props;
+            const { moduleName, wide, navigate } = this.props;
             const { error, copied, showDetails } = this.state;
 
             return (
@@ -96,10 +115,10 @@ export class AdminModuleBoundary extends Component<Props, State> {
 
                                     <button
                                         type="button"
-                                        onClick={() => { window.location.href = '/admin/analytics'; }}
+                                        onClick={() => navigate('/admin/dashboard')}
                                         className="inline-flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold text-sm px-5 py-3 rounded-xl transition"
                                     >
-                                        <LayoutDashboard className="w-4 h-4" /> Ir a Analíticas
+                                        <LayoutDashboard className="w-4 h-4" /> Ir al Panel Principal
                                     </button>
 
                                     <button
@@ -145,6 +164,18 @@ export class AdminModuleBoundary extends Component<Props, State> {
 
         return this.props.children;
     }
+}
+
+export function AdminModuleBoundary(props: Props) {
+    const location = useLocation();
+    const navigate = useNavigate();
+    return (
+        <AdminModuleBoundaryInner
+            {...props}
+            locationKey={`${location.pathname}${location.search}`}
+            navigate={navigate}
+        />
+    );
 }
 
 export default AdminModuleBoundary;

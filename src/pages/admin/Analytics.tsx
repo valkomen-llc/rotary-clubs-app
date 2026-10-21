@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { lazyWithRetry } from '../../lib/lazyWithRetry';
 import AdminLayout from '../../components/admin/AdminLayout';
+import ErrorBoundary from '../../components/ErrorBoundary';
 const SocialAnalytics = lazyWithRetry(() => import('../../components/admin/analytics/SocialAnalytics'), 'SocialAnalytics');
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
@@ -110,7 +111,7 @@ const Skeleton = ({ h = 'h-8', w = 'w-24' }: { h?: string; w?: string }) => (
 
 // ── Interactive World SVG Map Component ──────────────────────────────────────
 const SVGWorldMap: React.FC<{ topCountries: { country: string; sessions: number }[] }> = ({ topCountries }) => {
-    const list = Array.isArray(topCountries) ? topCountries : [];
+    const list = Array.isArray(topCountries) ? topCountries.filter(Boolean) : [];
     const maxSessions = Math.max(1, list[0]?.sessions || 1);
     const countryMap = useMemo(() => {
         const map = new Map<string, number>();
@@ -197,10 +198,10 @@ const SVGWorldMap: React.FC<{ topCountries: { country: string; sessions: number 
             <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-gray-100 text-[11px] text-gray-400">
                 <span>Top países con actividad:</span>
                 <div className="flex items-center gap-3">
-                    {topCountries.slice(0, 4).map((c, idx) => (
-                        <span key={c.country} className="flex items-center gap-1 font-semibold text-gray-700">
+                    {list.slice(0, 4).map((c, idx) => (
+                        <span key={c?.country || idx} className="flex items-center gap-1 font-semibold text-gray-700">
                             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[idx % COLORS.length] }} />
-                            {c.country}: <strong className="text-gray-900">{fmtN(c.sessions)}</strong>
+                            {c?.country || 'Desconocido'}: <strong className="text-gray-900">{fmtN(c?.sessions)}</strong>
                         </span>
                     ))}
                 </div>
@@ -237,19 +238,24 @@ const AnalyticsPage: React.FC = () => {
         const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
         const isCustomHost = Boolean(currentHost && !currentHost.includes('clubplatform.org') && currentHost !== 'localhost' && currentHost !== '127.0.0.1');
 
-        const effectiveDomain = isCustomHost ? currentHost : (club.domain || '');
+        const rawClubDomain = typeof club.domain === 'string' ? club.domain : '';
+        const effectiveDomain = isCustomHost ? currentHost : rawClubDomain;
         const hostnames = new Set<string>();
-        if (effectiveDomain) {
+        if (typeof effectiveDomain === 'string' && effectiveDomain) {
             const clean = effectiveDomain.replace(/^https?:\/\//, '').replace(/\/$/, '');
-            hostnames.add(clean);
-            if (!clean.startsWith('www.')) hostnames.add(`www.${clean}`);
+            if (clean) {
+                hostnames.add(clean);
+                if (!clean.startsWith('www.')) hostnames.add(`www.${clean}`);
+            }
         }
-        if (club.domain) {
-            const cleanD = club.domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
-            hostnames.add(cleanD);
-            if (!cleanD.startsWith('www.')) hostnames.add(`www.${cleanD}`);
+        if (rawClubDomain) {
+            const cleanD = rawClubDomain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+            if (cleanD) {
+                hostnames.add(cleanD);
+                if (!cleanD.startsWith('www.')) hostnames.add(`www.${cleanD}`);
+            }
         }
-        if (club.subdomain) {
+        if (typeof club.subdomain === 'string' && club.subdomain) {
             hostnames.add(`${club.subdomain}.clubplatform.org`);
         }
 
@@ -356,6 +362,23 @@ const AnalyticsPage: React.FC = () => {
             }
 
             const r = await fetch(`${API}/analytics/traffic?${params.toString()}`, { headers: authHeaders() });
+            if (!r.ok) {
+                console.warn(`[Analytics] Traffic API returned status ${r.status}`);
+                const errData = await r.json().catch(() => ({}));
+                setData({
+                    totals: { sessions: 0, users: 0, pageViews: 0, pagesPerSession: 0, avgDurationSec: 0, bounceRate: 0 },
+                    chartData: [],
+                    topPages: [],
+                    topCountries: [],
+                    topCities: [],
+                    sources: [],
+                    devices: [],
+                    browsers: [],
+                    status: 'error',
+                    error: errData.error || `HTTP ${r.status}`
+                });
+                return;
+            }
             const d = await r.json();
             setData(d);
         } catch (err) {
@@ -502,18 +525,18 @@ const AnalyticsPage: React.FC = () => {
         avgDurationSec: Number(data?.totals?.avgDurationSec) || 0,
         bounceRate: Number(data?.totals?.bounceRate) || 0,
     };
-    const chartData = Array.isArray(data?.chartData) ? data.chartData : [];
-    const topPages = Array.isArray(data?.topPages) ? data.topPages : [];
-    const topCountries = Array.isArray(data?.topCountries) ? data.topCountries : [];
-    const topCities = Array.isArray(data?.topCities) ? data.topCities : [];
-    const sources = Array.isArray(data?.sources) ? data.sources : [];
-    const devices = Array.isArray(data?.devices) ? data.devices : [];
-    const browsers = Array.isArray(data?.browsers) ? data.browsers : [];
+    const chartData = (Array.isArray(data?.chartData) ? data.chartData : []).filter(Boolean);
+    const topPages = (Array.isArray(data?.topPages) ? data.topPages : []).filter(Boolean);
+    const topCountries = (Array.isArray(data?.topCountries) ? data.topCountries : []).filter(Boolean);
+    const topCities = (Array.isArray(data?.topCities) ? data.topCities : []).filter(Boolean);
+    const sources = (Array.isArray(data?.sources) ? data.sources : []).filter(Boolean);
+    const devices = (Array.isArray(data?.devices) ? data.devices : []).filter(Boolean);
+    const browsers = (Array.isArray(data?.browsers) ? data.browsers : []).filter(Boolean);
 
-    const maxPageViews = Math.max(1, topPages[0]?.views || 1);
-    const maxCountrySessions = Math.max(1, topCountries[0]?.sessions || 1);
-    const maxCitySessions = Math.max(1, topCities[0]?.sessions || 1);
-    const maxSourceSessions = Math.max(1, sources[0]?.sessions || 1);
+    const maxPageViews = Math.max(1, Number(topPages[0]?.views) || 1);
+    const maxCountrySessions = Math.max(1, Number(topCountries[0]?.sessions) || 1);
+    const maxCitySessions = Math.max(1, Number(topCities[0]?.sessions) || 1);
+    const maxSourceSessions = Math.max(1, Number(sources[0]?.sessions) || 1);
 
     const metricLabel = metric === 'value' ? 'Sesiones' : metric === 'users' ? 'Usuarios' : 'Páginas vistas';
     const activeSite = isTenantMode ? (selectedSite || currentClubSite || sites[0] || null) : selectedSite;
@@ -569,17 +592,41 @@ const AnalyticsPage: React.FC = () => {
             </div>
 
             {vista === 'social' && (
-                <React.Suspense fallback={
-                    <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center">
-                        <RefreshCw className="w-6 h-6 text-rotary-blue animate-spin mx-auto mb-3" />
-                        <p className="text-sm font-bold text-gray-700">Cargando métricas de redes sociales...</p>
-                    </div>
-                }>
-                    <SocialAnalytics />
-                </React.Suspense>
+                <ErrorBoundary fallbackLabel="Módulo de Redes Sociales no disponible">
+                    <React.Suspense fallback={
+                        <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center">
+                            <RefreshCw className="w-6 h-6 text-rotary-blue animate-spin mx-auto mb-3" />
+                            <p className="text-sm font-bold text-gray-700">Cargando métricas de redes sociales...</p>
+                        </div>
+                    }>
+                        <SocialAnalytics />
+                    </React.Suspense>
+                </ErrorBoundary>
             )}
 
             {vista === 'web' && (<>
+            {data?.status === 'error' && (
+                <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                        <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                        <div>
+                            <p className="text-xs font-bold text-amber-900">
+                                Sincronización parcial con el servicio de analíticas
+                            </p>
+                            <p className="text-[11px] text-amber-700">
+                                {data.error || 'No se pudieron consultar las métricas más recientes del servidor. Mostrando datos seguros de reserva.'}
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => fetchTraffic(period, selectedSite || (isTenantMode ? currentClubSite : null))}
+                        className="px-3 py-1.5 bg-white border border-amber-300 text-amber-800 text-xs font-bold rounded-xl hover:bg-amber-100 transition shadow-sm"
+                    >
+                        Reintentar consulta
+                    </button>
+                </div>
+            )}
             {/* ─── Header: Selector de Sitio + Rango de Período ──────────────── */}
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-8">
                 {/* Left: Title + Selected Site Context */}
@@ -918,44 +965,46 @@ const AnalyticsPage: React.FC = () => {
                             ))}
                         </div>
                     ) : (
-                        <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={chartData}>
-                                <defs>
-                                    <linearGradient id="gaTraffic" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#0c3c7c" stopOpacity={0.15} />
-                                        <stop offset="95%" stopColor="#0c3c7c" stopOpacity={0} />
-                                    </linearGradient>
-                                </defs>
-                                <XAxis
-                                    dataKey="name"
-                                    axisLine={false}
-                                    tickLine={false}
-                                    tick={{ fill: '#9CA3AF', fontSize: 10, fontWeight: '700' }}
-                                    dy={8}
-                                />
-                                <YAxis hide />
-                                <Tooltip
-                                    cursor={{ stroke: '#0c3c7c', strokeWidth: 1, strokeDasharray: '4 4' }}
-                                    contentStyle={{
-                                        borderRadius: '16px',
-                                        border: 'none',
-                                        boxShadow: '0 10px 40px rgba(0,0,0,0.08)',
-                                        padding: '12px 16px',
-                                        fontSize: 12
-                                    }}
-                                    formatter={(val: number) => [fmtN(val), metricLabel]}
-                                />
-                                <Area
-                                    type="monotone"
-                                    dataKey={metric}
-                                    stroke="#0c3c7c"
-                                    strokeWidth={2.5}
-                                    fill="url(#gaTraffic)"
-                                    dot={false}
-                                    activeDot={{ fill: '#0c3c7c', stroke: 'white', strokeWidth: 2, r: 5 }}
-                                />
-                            </AreaChart>
-                        </ResponsiveContainer>
+                        <ErrorBoundary compact fallbackLabel="Gráfico de tráfico no disponible">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <AreaChart data={chartData}>
+                                    <defs>
+                                        <linearGradient id="gaTraffic" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#0c3c7c" stopOpacity={0.15} />
+                                            <stop offset="95%" stopColor="#0c3c7c" stopOpacity={0} />
+                                        </linearGradient>
+                                    </defs>
+                                    <XAxis
+                                        dataKey="name"
+                                        axisLine={false}
+                                        tickLine={false}
+                                        tick={{ fill: '#9CA3AF', fontSize: 10, fontWeight: '700' }}
+                                        dy={8}
+                                    />
+                                    <YAxis hide />
+                                    <Tooltip
+                                        cursor={{ stroke: '#0c3c7c', strokeWidth: 1, strokeDasharray: '4 4' }}
+                                        contentStyle={{
+                                            borderRadius: '16px',
+                                            border: 'none',
+                                            boxShadow: '0 10px 40px rgba(0,0,0,0.08)',
+                                            padding: '12px 16px',
+                                            fontSize: 12
+                                        }}
+                                        formatter={(val: number) => [fmtN(val), metricLabel]}
+                                    />
+                                    <Area
+                                        type="monotone"
+                                        dataKey={metric}
+                                        stroke="#0c3c7c"
+                                        strokeWidth={2.5}
+                                        fill="url(#gaTraffic)"
+                                        dot={false}
+                                        activeDot={{ fill: '#0c3c7c', stroke: 'white', strokeWidth: 2, r: 5 }}
+                                    />
+                                </AreaChart>
+                            </ResponsiveContainer>
+                        </ErrorBoundary>
                     )}
                 </div>
             </div>
@@ -1013,6 +1062,7 @@ const AnalyticsPage: React.FC = () => {
 
                     {/* Table */}
                     <div className="overflow-x-auto">
+                        <ErrorBoundary compact fallbackLabel="Tabla de rendimiento de sitios no disponible">
                         <table className="w-full text-left text-xs">
                             <thead>
                                 <tr className="border-b border-gray-100 text-[10px] font-black uppercase tracking-wider text-gray-400 pb-3">
@@ -1107,6 +1157,7 @@ const AnalyticsPage: React.FC = () => {
                                 )}
                             </tbody>
                         </table>
+                        </ErrorBoundary>
                     </div>
                 </div>
             )}
@@ -1133,7 +1184,11 @@ const AnalyticsPage: React.FC = () => {
                         <p className="text-sm text-gray-400 text-center py-8">Sin datos de páginas en este período</p>
                     ) : (
                         <div className="space-y-3.5">
-                            {topPages.map((p, i) => (
+                            {topPages.map((p, i) => {
+                                if (!p) return null;
+                                const views = Number(p.views) || 0;
+                                const widthPct = Math.min(100, Math.max(0, (views / maxPageViews) * 100));
+                                return (
                                 <div key={i} className="group">
                                     <div className="flex items-center justify-between mb-1 text-xs">
                                         <div className="flex items-center gap-2 min-w-0 max-w-[75%]">
@@ -1146,16 +1201,16 @@ const AnalyticsPage: React.FC = () => {
                                                 </span>
                                             )}
                                         </div>
-                                        <span className="font-black text-gray-700">{fmtN(p.views)}</span>
+                                        <span className="font-black text-gray-700">{fmtN(views)}</span>
                                     </div>
                                     <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
                                         <div
                                             className="h-full bg-rotary-blue/80 rounded-full transition-all duration-700"
-                                            style={{ width: `${(p.views / maxPageViews) * 100}%` }}
+                                            style={{ width: `${widthPct}%` }}
                                         />
                                     </div>
                                 </div>
-                            ))}
+                            );})}
                         </div>
                     )}
                 </div>
@@ -1182,6 +1237,7 @@ const AnalyticsPage: React.FC = () => {
                         </div>
                     </div>
 
+                    <ErrorBoundary compact fallbackLabel="Distribución geográfica no disponible">
                     {loading ? (
                         <div className="space-y-4">
                             {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} h="h-8" w="w-full" />)}
@@ -1193,7 +1249,11 @@ const AnalyticsPage: React.FC = () => {
                             <p className="text-sm text-gray-400 text-center py-8">Sin datos de ciudades aún</p>
                         ) : (
                             <div className="space-y-3">
-                                {topCities.map((c, i) => (
+                                {topCities.map((c, i) => {
+                                    if (!c) return null;
+                                    const sessions = Number(c.sessions) || 0;
+                                    const widthPct = Math.min(100, Math.max(0, (sessions / maxCitySessions) * 100));
+                                    return (
                                     <div key={i} className="flex items-center gap-3">
                                         <div
                                             className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-black text-white flex-shrink-0"
@@ -1204,25 +1264,25 @@ const AnalyticsPage: React.FC = () => {
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center justify-between mb-1">
                                                 <div className="min-w-0">
-                                                    <span className="text-xs font-black text-gray-800 truncate block">{c.city}</span>
+                                                    <span className="text-xs font-black text-gray-800 truncate block">{c.city || 'Desconocido'}</span>
                                                     <span className="text-[10px] text-gray-400 font-medium">
-                                                        {c.region ? `${c.region}, ` : ''}{c.country}
+                                                        {c.region ? `${c.region}, ` : ''}{c.country || ''}
                                                     </span>
                                                 </div>
-                                                <span className="text-xs font-black text-gray-500 ml-2 flex-shrink-0">{fmtN(c.sessions)}</span>
+                                                <span className="text-xs font-black text-gray-500 ml-2 flex-shrink-0">{fmtN(sessions)}</span>
                                             </div>
                                             <div className="w-full h-1 bg-gray-100 rounded-full overflow-hidden">
                                                 <div
                                                     className="h-full rounded-full transition-all duration-700"
                                                     style={{
-                                                        width: `${(c.sessions / maxCitySessions) * 100}%`,
+                                                        width: `${widthPct}%`,
                                                         backgroundColor: COLORS[i % COLORS.length]
                                                     }}
                                                 />
                                             </div>
                                         </div>
                                     </div>
-                                ))}
+                                );})}
                             </div>
                         )
                     ) : (
@@ -1230,7 +1290,11 @@ const AnalyticsPage: React.FC = () => {
                             <p className="text-sm text-gray-400 text-center py-8">Sin datos de países aún</p>
                         ) : (
                             <div className="space-y-3">
-                                {topCountries.map((c, i) => (
+                                {topCountries.map((c, i) => {
+                                    if (!c) return null;
+                                    const sessions = Number(c.sessions) || 0;
+                                    const widthPct = Math.min(100, Math.max(0, (sessions / maxCountrySessions) * 100));
+                                    return (
                                     <div key={i} className="flex items-center gap-3">
                                         <div
                                             className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black text-white flex-shrink-0"
@@ -1241,23 +1305,24 @@ const AnalyticsPage: React.FC = () => {
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center justify-between mb-1">
                                                 <span className="text-xs font-bold text-gray-700 truncate">{c.country || 'Desconocido'}</span>
-                                                <span className="text-xs font-black text-gray-500 ml-2">{fmtN(c.sessions)}</span>
+                                                <span className="text-xs font-black text-gray-500 ml-2">{fmtN(sessions)}</span>
                                             </div>
                                             <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
                                                 <div
                                                     className="h-full rounded-full transition-all duration-700"
                                                     style={{
-                                                        width: `${(c.sessions / maxCountrySessions) * 100}%`,
+                                                        width: `${widthPct}%`,
                                                         backgroundColor: COLORS[i % COLORS.length]
                                                     }}
                                                 />
                                             </div>
                                         </div>
                                     </div>
-                                ))}
+                                );})}
                             </div>
                         )
                     )}
+                    </ErrorBoundary>
                 </div>
             </div>
 
@@ -1277,20 +1342,24 @@ const AnalyticsPage: React.FC = () => {
                         <p className="text-sm text-gray-400 text-center py-8">Sin datos de fuentes aún</p>
                     ) : (
                         <div className="space-y-3.5">
-                            {sources.map((s, i) => (
+                            {sources.map((s, i) => {
+                                if (!s) return null;
+                                const sessions = Number(s.sessions) || 0;
+                                const widthPct = Math.min(100, Math.max(0, (sessions / maxSourceSessions) * 100));
+                                return (
                                 <div key={i}>
                                     <div className="flex items-center justify-between text-xs mb-1">
-                                        <span className="font-bold text-gray-700">{s.source}</span>
-                                        <span className="font-black text-gray-900">{fmtN(s.sessions)}</span>
+                                        <span className="font-bold text-gray-700">{s.source || 'Directo / Desconocido'}</span>
+                                        <span className="font-black text-gray-900">{fmtN(sessions)}</span>
                                     </div>
                                     <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
                                         <div
                                             className="h-full bg-emerald-500 rounded-full transition-all duration-700"
-                                            style={{ width: `${(s.sessions / maxSourceSessions) * 100}%` }}
+                                            style={{ width: `${widthPct}%` }}
                                         />
                                     </div>
                                 </div>
-                            ))}
+                            );})}
                         </div>
                     )}
                 </div>
@@ -1311,12 +1380,14 @@ const AnalyticsPage: React.FC = () => {
                             <div>
                                 <p className="text-[10px] font-black uppercase tracking-wider text-gray-400 mb-2">Dispositivos</p>
                                 <div className="grid grid-cols-3 gap-2">
-                                    {devices.map((d, i) => (
+                                    {devices.map((d, i) => {
+                                        if (!d) return null;
+                                        return (
                                         <div key={i} className="bg-gray-50 rounded-xl p-3 text-center border border-gray-100">
-                                            <p className="text-[10px] text-gray-500 font-bold uppercase">{d.device}</p>
+                                            <p className="text-[10px] text-gray-500 font-bold uppercase">{d.device || 'Desconocido'}</p>
                                             <p className="text-base font-black text-gray-900 mt-0.5">{fmtN(d.sessions)}</p>
                                         </div>
-                                    ))}
+                                    );})}
                                 </div>
                             </div>
 
@@ -1324,11 +1395,13 @@ const AnalyticsPage: React.FC = () => {
                             <div>
                                 <p className="text-[10px] font-black uppercase tracking-wider text-gray-400 mb-2">Navegadores</p>
                                 <div className="flex flex-wrap gap-2">
-                                    {browsers.map((b, i) => (
+                                    {browsers.map((b, i) => {
+                                        if (!b) return null;
+                                        return (
                                         <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1 bg-gray-50 border border-gray-100 rounded-lg text-xs font-semibold text-gray-700">
-                                            {b.browser}: <strong>{fmtN(b.sessions)}</strong>
+                                            {b.browser || 'Navegador'}: <strong>{fmtN(b.sessions)}</strong>
                                         </span>
-                                    ))}
+                                    );})}
                                 </div>
                             </div>
                         </div>
@@ -1344,30 +1417,32 @@ const AnalyticsPage: React.FC = () => {
                         <h3 className="text-sm font-black text-gray-900">Comparativa sesiones vs usuarios por día</h3>
                     </div>
                     <div className="h-[200px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={chartData} barSize={6} barGap={2}>
-                                <XAxis
-                                    dataKey="name"
-                                    axisLine={false}
-                                    tickLine={false}
-                                    tick={{ fill: '#D1D5DB', fontSize: 9, fontWeight: '700' }}
-                                    dy={6}
-                                />
-                                <YAxis hide />
-                                <Tooltip
-                                    contentStyle={{
-                                        borderRadius: '16px',
-                                        border: 'none',
-                                        boxShadow: '0 10px 40px rgba(0,0,0,0.08)',
-                                        padding: '12px 16px',
-                                        fontSize: 12
-                                    }}
-                                    formatter={(val: number, name: string) => [fmtN(val), name === 'value' ? 'Sesiones' : 'Usuarios']}
-                                />
-                                <Bar dataKey="value" fill="#0c3c7c" radius={[4, 4, 0, 0]} opacity={0.85} />
-                                <Bar dataKey="users" fill="#60a5fa" radius={[4, 4, 0, 0]} opacity={0.6} />
-                            </BarChart>
-                        </ResponsiveContainer>
+                        <ErrorBoundary compact fallbackLabel="Comparativa de sesiones no disponible">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={chartData} barSize={6} barGap={2}>
+                                    <XAxis
+                                        dataKey="name"
+                                        axisLine={false}
+                                        tickLine={false}
+                                        tick={{ fill: '#D1D5DB', fontSize: 9, fontWeight: '700' }}
+                                        dy={6}
+                                    />
+                                    <YAxis hide />
+                                    <Tooltip
+                                        contentStyle={{
+                                            borderRadius: '16px',
+                                            border: 'none',
+                                            boxShadow: '0 10px 40px rgba(0,0,0,0.08)',
+                                            padding: '12px 16px',
+                                            fontSize: 12
+                                        }}
+                                        formatter={(val: number, name: string) => [fmtN(val), name === 'value' ? 'Sesiones' : 'Usuarios']}
+                                    />
+                                    <Bar dataKey="value" fill="#0c3c7c" radius={[4, 4, 0, 0]} opacity={0.85} />
+                                    <Bar dataKey="users" fill="#60a5fa" radius={[4, 4, 0, 0]} opacity={0.6} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </ErrorBoundary>
                     </div>
                     <div className="flex items-center gap-6 mt-4">
                         <div className="flex items-center gap-2">
