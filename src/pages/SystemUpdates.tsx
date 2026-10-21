@@ -42,6 +42,24 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1227.0',
+        title: 'Reparación Crítica del Editor Visual de Email: Desplazamiento Vertical, Drag & Drop e Interacción Fluida 🚀🛠️📬',
+        description: 'Resolución técnica profunda de la experiencia interactiva en el Editor Visual de Email Marketing (v4.1227.0), validada en la campaña del Directorio de Clubes [DIR-SEM-02] y extensiva a Rotary en Acción y Feria de Proyectos: 1) Corrección de la causa raíz del bloqueo de desplazamiento vertical (scroll): incorporación de min-h-0 en la cadena de cajas Flexbox y wrapper con amplio padding inferior (pb-48) permitiendo navegar desde la cabecera distrital hasta el footer sin cortes. 2) Desacoplamiento de estados de interacción: clic simple para seleccionar bloque y abrir inspector lateral de propiedades, doble clic para activar la edición de texto enriquecido in-situ sin trampas de cursor. 3) Drag & Drop nativo y fluido: incorporación de controladores de arrastre GripVertical para reorganizar bloques por arrastre y soltado sin interferir con la selección de texto, además de reordenamiento rápido con flechas arriba/abajo. 4) Arrastre directo de bloques desde el catálogo lateral hacia cualquier punto del lienzo o al final de la plantilla. 5) Exclusividad ergonómica del panel lateral: botón claro para volver al catálogo de bloques y navegación de pestañas sin superposiciones ni colisiones. 6) Preservación estricta del 100% de plantillas institucionales, Merge Tags y protecciones de cabeceras oficiales.',
+        date: new Date().toISOString(),
+        tags: ['email-marketing', 'visual-editor', 'drag-and-drop', 'scroll-fix', 'rotary-en-accion', 'directorio-clubes', 'feria-proyectos', 'bugfix'],
+        type: 'fix',
+        impact: 'Crítica: Restaura totalmente la operatividad del editor de plantillas de correo, permitiendo a los administradores desplazarse, reorganizar bloques con arrastre y soltar, editar texto enriquecido y gestionar propiedades en tiempo real con total estabilidad.',
+        changes: [
+            { type: 'fixed', text: 'Corrección de la jerarquía CSS Flexbox con min-h-0 en contenedor central, lienzo <main> y panel lateral <aside>, eliminando el congelamiento de scroll vertical.' },
+            { type: 'fixed', text: 'Separación estricta entre selección de bloque (clic) y edición de texto enriquecido (doble clic o botón Edit3), evitando trampas de foco de contentEditable.' },
+            { type: 'added', text: 'Sistema nativo de arrastrar y soltar (Drag & Drop) con controlador GripVertical, indicador visual de soltado y función handleDropBlock.' },
+            { type: 'added', text: 'Inserción posicional de nuevos componentes arrastrando bloques disponibles desde la barra lateral directamente al punto deseado del lienzo.' },
+            { type: 'improved', text: 'Inspector de propiedades exclusivo al seleccionar un bloque, con botón "Volver a Bloques" y alternancia limpia entre pestañas.' },
+            { type: 'fixed', text: 'Persistencia garantizada de la campaña [DIR-SEM-02] y protección de componentes institucionales distritales.' },
+            { type: 'added', text: 'Suite de pruebas automatizadas scripts/test-editor-interactions.mjs con 6 pruebas integrales de scroll, interacción, arrastre y preservación editorial.' }
+        ]
+    },
+    {
         version: '4.1226.0',
         title: 'Editor Visual de Texto Enriquecido (WYSIWYG) en Email Marketing para Canales Institucionales ✍️🎨✉️',
         description: 'Implementación integral del Editor de Texto Enriquecido in-situ sobre el lienzo visual de Email Marketing (Rotary en Acción, Directorio de Clubes y Feria de Proyectos): 1) Edición directa sobre el lienzo con selección de palabras, frases o párrafos y formato parcial sin alterar el resto del bloque. 2) Barra contextual flotante/anclada completa con selectores de familia tipográfica (Open Sans por defecto), tamaño de fuente (11px-32px), estilos inline (Negrita, Cursiva, Subrayado, Tachado, Superíndice, Subíndice), alineación, listas numeradas y viñetas, sangría e indentación. 3) Paleta oficial rotaria de colores y resaltador de fondo. 4) Diálogo modal de hipervínculos con variables rápidas rotarias ({{form_url}}, {{activar_club_url}}, {{club.profile_url}}). 5) Catálogo de Merge Tags dinámicas para inserción directa en el cursor. 6) Sanitización estricta y normalización HTML segura para clientes de correo (Outlook, Gmail, Apple Mail) con retrocompatibilidad 100% para plantillas heredadas. 7) Preservación de componentes institucionales protegidos (cabeceras, logos, botones globales y footer).',

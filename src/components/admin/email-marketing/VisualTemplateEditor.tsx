@@ -16,7 +16,7 @@ import {
   AlignLeft, AlignCenter, AlignRight, AlignJustify, Globe,
   Bold, Italic, Underline, Strikethrough, Superscript, Subscript, Smile,
   List, ListOrdered, Link as LinkIcon, Unlink as UnlinkIcon, RemoveFormatting,
-  Highlighter, ChevronDown, Indent, Outdent
+  Highlighter, ChevronDown, Indent, Outdent, GripVertical, Edit3
 } from 'lucide-react';
 
 import {
@@ -800,6 +800,9 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
   const [preheader, setPreheader] = useState(initialPreheader);
   const [design, setDesign] = useState<EmailDesign>(() => normalizeInstitutionalDesign(initialDesign || createRotaryMasterDesign()));
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+  const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
+  const [draggedBlockIndex, setDraggedBlockIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   // Pila de Deshacer / Rehacer (Undo / Redo)
   const [history, setHistory] = useState<EmailDesign[]>([normalizeInstitutionalDesign(initialDesign || createRotaryMasterDesign())]);
@@ -1325,15 +1328,36 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
     }
   }, [selectedBlockId, selectedTextContent]);
 
-  // Agregar nuevo bloque
-  const handleAddBlock = (type: BlockType) => {
+  // Auto-foco cuando un bloque entra en modo de edición enriquecida
+  useEffect(() => {
+    if (editingBlockId && activeEditableRef.current) {
+      activeEditableRef.current.focus();
+    }
+  }, [editingBlockId]);
+
+  // Insertar bloque en una posición específica (o al final)
+  const handleAddBlockAt = (type: BlockType, targetIndex?: number) => {
     const newB = makeBlock(type);
+    const arr = [...design.blocks];
+    if (targetIndex !== undefined && targetIndex >= 0 && targetIndex <= arr.length) {
+      arr.splice(targetIndex, 0, newB);
+    } else {
+      arr.push(newB);
+    }
     pushDesignState({
       ...design,
-      blocks: [...design.blocks, newB]
+      blocks: arr
     });
     setSelectedBlockId(newB.id);
+    if (type === 'text' || type === 'heading') {
+      setEditingBlockId(newB.id);
+    }
     toast.success(`Bloque «${BLOCK_LABELS[type]}» agregado`);
+  };
+
+  // Agregar nuevo bloque al final
+  const handleAddBlock = (type: BlockType) => {
+    handleAddBlockAt(type);
   };
 
   // Insertar bloque global institucional
@@ -1362,6 +1386,20 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
     const [moved] = arr.splice(index, 1);
     arr.splice(targetIdx, 0, moved);
     pushDesignState({ ...design, blocks: arr });
+    setSelectedBlockId(moved.id);
+  };
+
+  // Reordenar por Drag & Drop
+  const handleDropBlock = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= design.blocks.length || toIndex >= design.blocks.length) return;
+    const arr = [...design.blocks];
+    const [moved] = arr.splice(fromIndex, 1);
+    arr.splice(toIndex, 0, moved);
+    pushDesignState({ ...design, blocks: arr });
+    setSelectedBlockId(moved.id);
+    setDraggedBlockIndex(null);
+    setDragOverIndex(null);
+    toast.success('Posición del bloque actualizada');
   };
 
   // Duplicar bloque
@@ -1800,12 +1838,15 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
       </div>
 
       {/* ─── 3. ÁREA PRINCIPAL: LIENZO CENTRAL + BARRA LATERAL DERECHA ──── */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 min-h-0 flex overflow-hidden">
         {/* LIENZO DE TRABAJO (CANVAS CENTRAL) */}
         <main
-          className="flex-1 bg-slate-200/60 overflow-y-auto p-4 sm:p-8 flex flex-col items-center justify-start relative"
+          className="flex-1 min-h-0 bg-slate-200/60 overflow-y-auto p-4 sm:p-8 flex flex-col items-center justify-start relative"
           onClick={(e) => {
-            if (e.target === e.currentTarget) setSelectedBlockId(null);
+            if (e.target === e.currentTarget) {
+              setSelectedBlockId(null);
+              setEditingBlockId(null);
+            }
           }}
         >
           {/* BARRA FLOTANTE DE FORMATO ENRIQUECIDO WYSIWYG */}
@@ -1867,216 +1908,343 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
             }
           `}</style>
 
+          {/* Wrapper con scroll padding amplio para que el footer y los últimos bloques siempre sean accesibles */}
           <div
-            style={{
-              width: deviceView === 'mobile' ? '375px' : `${bodyWidthPreset}px`,
-              transform: `scale(${zoomLevel / 100})`,
-              transformOrigin: 'top center',
-              transition: 'width 0.2s ease, transform 0.2s ease'
+            className="w-full flex flex-col items-center pb-48 min-h-full"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setSelectedBlockId(null);
+                setEditingBlockId(null);
+              }
             }}
-            className="shadow-2xl rounded-2xl overflow-hidden border border-slate-300/80 transition-all bg-white"
           >
-            {previewMode === 'live' ? (
-              // Vista previa HTML real en Iframe
-              <iframe
-                title="Email Preview"
-                srcDoc={compiledHtml}
-                className="w-full min-h-[700px] border-0 bg-white"
-              />
-            ) : (
-              // Lienzo interactivo de bloques con protección visual
-              <div
-                style={{
-                  backgroundColor: design.settings.bg,
-                  fontFamily: design.settings.font
-                }}
-                className="p-3 sm:p-5"
-              >
+            <div
+              style={{
+                width: deviceView === 'mobile' ? '375px' : `${bodyWidthPreset}px`,
+                transform: `scale(${zoomLevel / 100})`,
+                transformOrigin: 'top center',
+                transition: 'width 0.2s ease, transform 0.2s ease'
+              }}
+              className="shadow-2xl rounded-2xl overflow-hidden border border-slate-300/80 transition-all bg-white"
+            >
+              {previewMode === 'live' ? (
+                // Vista previa HTML real en Iframe
+                <iframe
+                  title="Email Preview"
+                  srcDoc={compiledHtml}
+                  className="w-full min-h-[700px] border-0 bg-white"
+                />
+              ) : (
+                // Lienzo interactivo de bloques con protección visual
                 <div
                   style={{
-                    backgroundColor: design.settings.contentBg,
-                    color: design.settings.textColor
+                    backgroundColor: design.settings.bg,
+                    fontFamily: design.settings.font
                   }}
-                  className="rounded-xl overflow-hidden shadow-sm"
+                  className="p-3 sm:p-5"
                 >
-                  {design.blocks.map((block, idx) => {
-                    const isSelected = selectedBlockId === block.id;
-                    const isProt = Boolean(block.isProtected);
+                  <div
+                    style={{
+                      backgroundColor: design.settings.contentBg,
+                      color: design.settings.textColor
+                    }}
+                    className="rounded-xl overflow-hidden shadow-sm"
+                  >
+                    {design.blocks.map((block, idx) => {
+                      const isSelected = selectedBlockId === block.id;
+                      const isEditing = editingBlockId === block.id;
+                      const isProt = Boolean(block.isProtected);
+                      const isDragged = draggedBlockIndex === idx;
+                      const isOver = dragOverIndex === idx;
 
-                    return (
-                      <div
-                        key={block.id}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const target = e.target as HTMLElement;
-                          if (target && target.closest('a')) {
-                            e.preventDefault();
-                          }
-                          setSelectedBlockId(block.id);
-                        }}
-                        className={`relative group transition-all cursor-pointer ${
-                          isSelected
-                            ? 'ring-2 ring-blue-600 ring-inset shadow-md z-10'
-                            : 'hover:outline hover:outline-1 hover:outline-blue-400/80'
-                        }`}
-                      >
-                        {/* Etiqueta flotante del bloque */}
+                      return (
                         <div
-                          className={`absolute -top-3 left-3 flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wider uppercase shadow-md transition-opacity z-20 ${
-                            isProt
-                              ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                              : 'bg-blue-100 text-blue-900 border border-blue-300'
-                          } ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                          key={block.id}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = 'move';
+                            if (draggedBlockIndex !== null && draggedBlockIndex !== idx) {
+                              if (dragOverIndex !== idx) setDragOverIndex(idx);
+                            }
+                          }}
+                          onDragLeave={(e) => {
+                            if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                            if (dragOverIndex === idx) setDragOverIndex(null);
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const newBlockType = e.dataTransfer.getData('application/rotary-new-block-type');
+                            if (newBlockType) {
+                              handleAddBlockAt(newBlockType as BlockType, idx);
+                              setDragOverIndex(null);
+                              return;
+                            }
+                            const rawIdx = e.dataTransfer.getData('text/plain');
+                            const fromIndex = rawIdx !== '' ? parseInt(rawIdx, 10) : draggedBlockIndex;
+                            if (fromIndex !== null && !isNaN(fromIndex) && fromIndex !== idx) {
+                              handleDropBlock(fromIndex, idx);
+                            }
+                            setDraggedBlockIndex(null);
+                            setDragOverIndex(null);
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const target = e.target as HTMLElement;
+                            if (target && target.closest('a')) {
+                              e.preventDefault();
+                            }
+                            setSelectedBlockId(block.id);
+                            if (editingBlockId && editingBlockId !== block.id) {
+                              setEditingBlockId(null);
+                            }
+                          }}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            if (!isProt && !readOnly) {
+                              setSelectedBlockId(block.id);
+                              setEditingBlockId(block.id);
+                            }
+                          }}
+                          className={`relative group transition-all ${
+                            isDragged ? 'opacity-40 scale-[0.99] border-dashed border-2 border-slate-400' : ''
+                          } ${
+                            isOver ? 'border-t-4 border-rotary-blue shadow-lg' : ''
+                          } ${
+                            isSelected
+                              ? 'ring-2 ring-blue-600 ring-inset shadow-md z-10'
+                              : 'hover:outline hover:outline-1 hover:outline-blue-400/80 cursor-pointer'
+                          }`}
                         >
-                          {isProt ? (
-                            <>
-                              <Shield className="w-3 h-3 text-amber-600" />
-                              <span>{block.label || 'Protegido'}</span>
-                            </>
+                          {/* Etiqueta flotante del bloque */}
+                          <div
+                            className={`absolute -top-3 left-3 flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wider uppercase shadow-md transition-opacity z-20 ${
+                              isProt
+                                ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                : 'bg-blue-100 text-blue-900 border border-blue-300'
+                            } ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                          >
+                            {isProt ? (
+                              <>
+                                <Shield className="w-3 h-3 text-amber-600" />
+                                <span>{block.label || 'Protegido'}</span>
+                              </>
+                            ) : (
+                              <>
+                                <Box className="w-3 h-3 text-blue-600" />
+                                <span>{block.label || BLOCK_LABELS[block.type]}</span>
+                              </>
+                            )}
+                          </div>
+
+                          {/* Botones rápidos de orden y acción en hover */}
+                          <div
+                            className={`absolute top-2 right-2 flex items-center gap-1 bg-white/95 backdrop-blur rounded-xl p-1 shadow-lg border border-slate-200 z-20 transition-opacity ${
+                              isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                            }`}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {/* Controlador de Arrastre (Drag Handle) */}
+                            {!isProt && !readOnly && (
+                              <div
+                                draggable
+                                onDragStart={(e) => {
+                                  e.stopPropagation();
+                                  e.dataTransfer.setData('text/plain', String(idx));
+                                  e.dataTransfer.effectAllowed = 'move';
+                                  setDraggedBlockIndex(idx);
+                                }}
+                                onDragEnd={() => {
+                                  setDraggedBlockIndex(null);
+                                  setDragOverIndex(null);
+                                }}
+                                className="p-1 text-slate-500 hover:text-rotary-blue cursor-grab active:cursor-grabbing rounded-lg hover:bg-slate-100 transition-colors"
+                                title="Arrastrar para mover bloque"
+                              >
+                                <GripVertical className="w-3.5 h-3.5" />
+                              </div>
+                            )}
+
+                            {/* Botón Editar Texto Enriquecido */}
+                            {(block.type === 'text' || block.type === 'heading') && !isProt && !readOnly && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedBlockId(block.id);
+                                  setEditingBlockId(block.id);
+                                }}
+                                className={`p-1 rounded-lg transition-colors ${
+                                  isEditing ? 'text-rotary-blue bg-blue-50 font-bold' : 'text-slate-600 hover:text-rotary-blue hover:bg-slate-100'
+                                }`}
+                                title={isEditing ? 'Editando contenido actualmente' : 'Editar texto enriquecido (Doble clic)'}
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => handleMoveBlock(idx, 'up')}
+                              disabled={idx === 0}
+                              className="p-1 text-slate-600 hover:text-rotary-blue disabled:opacity-30 rounded-lg hover:bg-slate-100"
+                              title="Subir bloque"
+                            >
+                              <ArrowUp className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleMoveBlock(idx, 'down')}
+                              disabled={idx === design.blocks.length - 1}
+                              className="p-1 text-slate-600 hover:text-rotary-blue disabled:opacity-30 rounded-lg hover:bg-slate-100"
+                              title="Bajar bloque"
+                            >
+                              <ArrowDown className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDuplicateBlock(idx)}
+                              className="p-1 text-slate-600 hover:text-rotary-blue rounded-lg hover:bg-slate-100"
+                              title="Duplicar bloque"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleProtection(block.id)}
+                              className={`p-1 rounded-lg hover:bg-slate-100 ${isProt ? 'text-amber-600' : 'text-slate-400 hover:text-amber-600'}`}
+                              title={isProt ? 'Quitar protección institucional' : 'Proteger componente'}
+                            >
+                              {isProt ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteBlock(block.id, isProt)}
+                              className="p-1 text-rose-600 hover:text-rose-700 rounded-lg hover:bg-rose-50"
+                              title="Eliminar bloque"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
+                          {/* Renderizado de bloque individual */}
+                          {block.type === 'text' ? (
+                            <div className="w-full">
+                              <table role="presentation" width="100%" cellPadding="0" cellSpacing="0" style={{ borderCollapse: 'collapse', margin: 0, padding: 0 }}>
+                                <tbody>
+                                  <tr style={{ margin: 0, padding: 0 }}>
+                                    <td
+                                      style={{
+                                        padding: `${(block as any).padTop ?? 8}px 24px ${(block as any).padBottom ?? 8}px 24px`
+                                      }}
+                                    >
+                                      <div
+                                        ref={isEditing ? activeEditableRef : null}
+                                        contentEditable={isEditing && !isProt && !readOnly}
+                                        suppressContentEditableWarning
+                                        onInput={handleEditableInput}
+                                        onBlur={handleEditableBlur}
+                                        onMouseUp={handleSelectionCheck}
+                                        onKeyUp={handleSelectionCheck}
+                                        onSelect={handleSelectionCheck}
+                                        onKeyDown={handleEditableKeyDown}
+                                        onPaste={handleEditablePaste}
+                                        data-text-block-id={block.id}
+                                        className={`rich-text-canvas-content transition-all focus:outline-none ${
+                                          isEditing && !isProt ? 'cursor-text ring-1 ring-blue-500/50 rounded-lg p-1 bg-blue-50/10' : ''
+                                        }`}
+                                        style={{
+                                          fontFamily: block.fontFamily || design.settings.font,
+                                          fontSize: `${block.size || 15}px`,
+                                          lineHeight: block.lineHeight || 1.6,
+                                          letterSpacing: block.letterSpacing !== undefined ? `${block.letterSpacing}px` : 'normal',
+                                          color: block.color || '#334155',
+                                          textAlign: (block.align as any) || 'left',
+                                          fontWeight: block.fontWeight || (block.weight === 'bold' || block.weight === '800' ? '700' : '400'),
+                                          minHeight: '28px',
+                                          outline: 'none',
+                                          userSelect: isEditing ? 'text' : 'none'
+                                        }}
+                                        dangerouslySetInnerHTML={{ __html: textToHtml(block.text) }}
+                                      />
+                                    </td>
+                                  </tr>
+                                </tbody>
+                              </table>
+                            </div>
                           ) : (
-                            <>
-                              <Box className="w-3 h-3 text-blue-600" />
-                              <span>{block.label || BLOCK_LABELS[block.type]}</span>
-                            </>
+                            <div
+                              dangerouslySetInnerHTML={{
+                                __html: renderDesignToHtml(
+                                  { version: 1, settings: design.settings, blocks: [block] },
+                                  {
+                                    interactive: false,
+                                    siteContext: siteBranding,
+                                    isCtaActive: design.blocks.some(
+                                      (b) => b.type === 'global' && (b as GlobalBlockItem).globalKey === 'club_platform_cta' && (b as GlobalBlockItem).enabled !== false
+                                    )
+                                  }
+                                )
+                              }}
+                            />
                           )}
                         </div>
+                      );
+                    })}
 
-                        {/* Botones rápidos de orden y acción en hover */}
-                        <div
-                          className={`absolute top-2 right-2 flex items-center gap-1 bg-white/95 backdrop-blur rounded-xl p-1 shadow-lg border border-slate-200 z-20 transition-opacity ${
-                            isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-                          }`}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <button
-                            onClick={() => handleMoveBlock(idx, 'up')}
-                            disabled={idx === 0}
-                            className="p-1 text-slate-600 hover:text-rotary-blue disabled:opacity-30 rounded-lg hover:bg-slate-100"
-                            title="Subir"
-                          >
-                            <ArrowUp className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleMoveBlock(idx, 'down')}
-                            disabled={idx === design.blocks.length - 1}
-                            className="p-1 text-slate-600 hover:text-rotary-blue disabled:opacity-30 rounded-lg hover:bg-slate-100"
-                            title="Bajar"
-                          >
-                            <ArrowDown className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleDuplicateBlock(idx)}
-                            className="p-1 text-slate-600 hover:text-rotary-blue rounded-lg hover:bg-slate-100"
-                            title="Duplicar"
-                          >
-                            <Copy className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleToggleProtection(block.id)}
-                            className={`p-1 rounded-lg hover:bg-slate-100 ${isProt ? 'text-amber-600' : 'text-slate-400 hover:text-amber-600'}`}
-                            title={isProt ? 'Quitar protección institucional' : 'Proteger componente'}
-                          >
-                            {isProt ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
-                          </button>
-                          <button
-                            onClick={() => handleDeleteBlock(block.id, isProt)}
-                            className="p-1 text-rose-600 hover:text-rose-700 rounded-lg hover:bg-rose-50"
-                            title="Eliminar bloque"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-
-                        {/* Renderizado de bloque individual */}
-                        {block.type === 'text' ? (
-                          <div className="w-full">
-                            <table role="presentation" width="100%" cellPadding="0" cellSpacing="0" style={{ borderCollapse: 'collapse', margin: 0, padding: 0 }}>
-                              <tbody>
-                                <tr style={{ margin: 0, padding: 0 }}>
-                                  <td
-                                    style={{
-                                      padding: `${(block as any).padTop ?? 8}px 24px ${(block as any).padBottom ?? 8}px 24px`
-                                    }}
-                                  >
-                                    <div
-                                      ref={isSelected ? activeEditableRef : null}
-                                      contentEditable={isSelected && !isProt && !readOnly}
-                                      suppressContentEditableWarning
-                                      onInput={handleEditableInput}
-                                      onBlur={handleEditableBlur}
-                                      onMouseUp={handleSelectionCheck}
-                                      onKeyUp={handleSelectionCheck}
-                                      onSelect={handleSelectionCheck}
-                                      onKeyDown={handleEditableKeyDown}
-                                      onPaste={handleEditablePaste}
-                                      data-text-block-id={block.id}
-                                      className={`rich-text-canvas-content transition-all focus:outline-none ${
-                                        isSelected && !isProt ? 'cursor-text ring-1 ring-blue-500/50 rounded-lg p-1 bg-blue-50/10' : ''
-                                      }`}
-                                      style={{
-                                        fontFamily: block.fontFamily || design.settings.font,
-                                        fontSize: `${block.size || 15}px`,
-                                        lineHeight: block.lineHeight || 1.6,
-                                        letterSpacing: block.letterSpacing !== undefined ? `${block.letterSpacing}px` : 'normal',
-                                        color: block.color || '#334155',
-                                        textAlign: (block.align as any) || 'left',
-                                        fontWeight: block.fontWeight || (block.weight === 'bold' || block.weight === '800' ? '700' : '400'),
-                                        minHeight: '28px',
-                                        outline: 'none'
-                                      }}
-                                      dangerouslySetInnerHTML={{ __html: textToHtml(block.text) }}
-                                    />
-                                  </td>
-                                </tr>
-                              </tbody>
-                            </table>
-                          </div>
-                        ) : (
-                          <div
-                            dangerouslySetInnerHTML={{
-                              __html: renderDesignToHtml(
-                                { version: 1, settings: design.settings, blocks: [block] },
-                                {
-                                  interactive: false,
-                                  siteContext: siteBranding,
-                                  isCtaActive: design.blocks.some(
-                                    (b) => b.type === 'global' && (b as GlobalBlockItem).globalKey === 'club_platform_cta' && (b as GlobalBlockItem).enabled !== false
-                                  )
-                                }
-                              )
-                            }}
-                          />
-                        )}
-                      </div>
-                    );
-                  })}
-
-                  {design.blocks.length === 0 && (
-                    <div className="p-12 text-center text-slate-400 space-y-3">
-                      <Box className="w-10 h-10 mx-auto text-slate-300" />
-                      <p className="text-sm font-semibold">El diseño no tiene bloques aún.</p>
-                      <button
-                        onClick={handleResetToRotaryMaster}
-                        className="px-4 py-2 bg-rotary-blue text-white rounded-xl text-xs font-bold hover:bg-blue-700 shadow-xs"
-                      >
-                        Cargar Plantilla Maestra Oficial Rotary
-                      </button>
+                    {/* Área de caída inferior para agregar bloques al final */}
+                    <div
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'copy';
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const newBlockType = e.dataTransfer.getData('application/rotary-new-block-type');
+                        if (newBlockType) {
+                          handleAddBlockAt(newBlockType as BlockType);
+                        }
+                      }}
+                      className="py-3 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl my-3 mx-4 hover:border-rotary-blue hover:text-rotary-blue transition-colors cursor-pointer"
+                      onClick={() => {
+                        setSelectedBlockId(null);
+                        setEditingBlockId(null);
+                        setActiveTab('blocks');
+                      }}
+                    >
+                      + Arrastra un bloque aquí o haz clic para abrir la biblioteca
                     </div>
-                  )}
+
+                    {design.blocks.length === 0 && (
+                      <div className="p-12 text-center text-slate-400 space-y-3">
+                        <Box className="w-10 h-10 mx-auto text-slate-300" />
+                        <p className="text-sm font-semibold">El diseño no tiene bloques aún.</p>
+                        <button
+                          onClick={handleResetToRotaryMaster}
+                          className="px-4 py-2 bg-rotary-blue text-white rounded-xl text-xs font-bold hover:bg-blue-700 shadow-xs"
+                        >
+                          Cargar Plantilla Maestra Oficial Rotary
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </main>
 
         {/* ─── 4. BARRA LATERAL DERECHA (BLOQUES Y PROPIEDADES) ───────── */}
-        <aside className="w-80 sm:w-96 bg-white border-l border-slate-200 flex flex-col shrink-0 z-20">
+        <aside className="w-80 sm:w-96 bg-white border-l border-slate-200 flex flex-col min-h-0 shrink-0 z-20">
           {/* Pestañas de la barra lateral */}
-          <div className="flex border-b border-slate-200 bg-slate-50/90 p-1.5 gap-1">
+          <div className="flex border-b border-slate-200 bg-slate-50/90 p-1.5 gap-1 shrink-0">
             <button
-              onClick={() => setActiveTab('blocks')}
+              onClick={() => {
+                setSelectedBlockId(null);
+                setEditingBlockId(null);
+                setActiveTab('blocks');
+              }}
               className={`flex-1 py-2 px-1 text-center text-[11px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1 ${
-                activeTab === 'blocks'
+                activeTab === 'blocks' && !selectedBlock
                   ? 'bg-white text-rotary-blue shadow-xs border border-slate-200'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
@@ -2085,9 +2253,13 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
               <span>Bloques</span>
             </button>
             <button
-              onClick={() => setActiveTab('layouts')}
+              onClick={() => {
+                setSelectedBlockId(null);
+                setEditingBlockId(null);
+                setActiveTab('layouts');
+              }}
               className={`flex-1 py-2 px-1 text-center text-[11px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1 ${
-                activeTab === 'layouts'
+                activeTab === 'layouts' && !selectedBlock
                   ? 'bg-white text-rotary-blue shadow-xs border border-slate-200'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
@@ -2096,9 +2268,13 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
               <span>Diseños</span>
             </button>
             <button
-              onClick={() => setActiveTab('global')}
+              onClick={() => {
+                setSelectedBlockId(null);
+                setEditingBlockId(null);
+                setActiveTab('global');
+              }}
               className={`flex-1 py-2 px-1 text-center text-[11px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1 ${
-                activeTab === 'global'
+                activeTab === 'global' && !selectedBlock
                   ? 'bg-white text-rotary-blue shadow-xs border border-slate-200'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
@@ -2107,9 +2283,13 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
               <span>Globales</span>
             </button>
             <button
-              onClick={() => setActiveTab('style')}
+              onClick={() => {
+                setSelectedBlockId(null);
+                setEditingBlockId(null);
+                setActiveTab('style');
+              }}
               className={`flex-1 py-2 px-1 text-center text-[11px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1 ${
-                activeTab === 'style'
+                activeTab === 'style' && !selectedBlock
                   ? 'bg-white text-rotary-blue shadow-xs border border-slate-200'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
@@ -2118,9 +2298,13 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
               <span>Estilo</span>
             </button>
             <button
-              onClick={() => setActiveTab('tags')}
+              onClick={() => {
+                setSelectedBlockId(null);
+                setEditingBlockId(null);
+                setActiveTab('tags');
+              }}
               className={`flex-1 py-2 px-1 text-center text-[11px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1 ${
-                activeTab === 'tags'
+                activeTab === 'tags' && !selectedBlock
                   ? 'bg-white text-rotary-blue shadow-xs border border-slate-200'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
@@ -2132,14 +2316,27 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
           </div>
 
           {/* Contenido de la pestaña activa o Inspector de Bloque */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
             {/* Si hay un bloque seleccionado, mostrar Inspector de Propiedades */}
             {selectedBlock ? (
               <div className="space-y-4 bg-slate-50/80 border border-slate-200 rounded-2xl p-4 shadow-xs">
                 <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
                   <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedBlockId(null);
+                        setEditingBlockId(null);
+                        setActiveTab('blocks');
+                      }}
+                      className="text-slate-500 hover:text-rotary-blue hover:bg-slate-200/60 p-1 rounded-lg transition-colors flex items-center gap-1 text-[11px] font-bold"
+                      title="Volver al catálogo de bloques"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      <span>Volver</span>
+                    </button>
                     <span className="text-xs font-black text-slate-900 uppercase tracking-wider">
-                      Propiedades: {BLOCK_LABELS[selectedBlock.type] || selectedBlock.type}
+                      {BLOCK_LABELS[selectedBlock.type] || selectedBlock.type}
                     </span>
                     {selectedBlock.isProtected && (
                       <span className="text-[10px] bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full font-bold border border-amber-300">
@@ -2148,7 +2345,10 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                     )}
                   </div>
                   <button
-                    onClick={() => setSelectedBlockId(null)}
+                    onClick={() => {
+                      setSelectedBlockId(null);
+                      setEditingBlockId(null);
+                    }}
                     className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-200/60"
                     title="Cerrar inspector"
                   >
@@ -4394,55 +4594,61 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                   </div>
                 </div>
               </div>
-            ) : null}
+            ) : (
+              <>
+                {/* PESTAÑA: BLOQUES DISPONIBLES */}
+                {activeTab === 'blocks' && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs font-black uppercase tracking-wider text-slate-500">
+                        Bloques Disponibles
+                      </h3>
+                      <span className="text-[10px] text-slate-400">Clic o arrastra al lienzo</span>
+                    </div>
 
-            {/* PESTAÑA: BLOQUES DISPONIBLES */}
-            {activeTab === 'blocks' && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-500">
-                    Bloques Disponibles
-                  </h3>
-                  <span className="text-[10px] text-slate-400">Clic para insertar</span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { type: 'heading', label: 'ENCABEZADO', icon: Type, desc: 'Títulos H1, H2, H3' },
-                    { type: 'text', label: 'PÁRRAFO', icon: Type, desc: 'Texto editorial' },
-                    { type: 'button', label: 'BOTÓN', icon: Square, desc: 'Llamado a la acción' },
-                    { type: 'image', label: 'IMAGEN / LOGO', icon: ImageIcon, desc: 'Fotos y logos' },
-                    { type: 'columns', label: 'COLUMNAS', icon: Columns, desc: '2 columnas paralelas' },
-                    { type: 'divider', label: 'DIVISOR', icon: Minus, desc: 'Línea de separación' },
-                    { type: 'table', label: 'TABLA', icon: TableIcon, desc: 'Tabla estilizada' },
-                    { type: 'menu', label: 'MENÚ', icon: MenuIcon, desc: 'Barra de enlaces' },
-                    { type: 'social', label: 'REDES', icon: Share2, desc: 'Redes sociales' },
-                    { type: 'video', label: 'VIDEO', icon: Video, desc: 'Enlace a video' },
-                    { type: 'html', label: 'HTML', icon: Code, desc: 'Código libre seguro' },
-                    { type: 'spacer', label: 'ESPACIADOR', icon: Minus, desc: 'Espacio en blanco' }
-                  ].map((item) => {
-                    const Icon = item.icon;
-                    return (
-                      <button
-                        key={item.type}
-                        onClick={() => handleAddBlock(item.type as BlockType)}
-                        className="bg-white border border-slate-200 hover:border-rotary-blue hover:bg-blue-50/40 rounded-xl p-3 text-center transition-all group flex flex-col items-center justify-center gap-1.5 shadow-2xs"
-                      >
-                        <div className="w-8 h-8 rounded-lg bg-slate-100 group-hover:bg-blue-100 text-slate-700 group-hover:text-rotary-blue flex items-center justify-center transition-colors">
-                          <Icon className="w-4 h-4" />
-                        </div>
-                        <span className="text-xs font-black text-slate-800 tracking-wide">
-                          {item.label}
-                        </span>
-                        <span className="text-[10px] text-slate-500 line-clamp-1">
-                          {item.desc}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { type: 'heading', label: 'ENCABEZADO', icon: Type, desc: 'Títulos H1, H2, H3' },
+                        { type: 'text', label: 'PÁRRAFO', icon: Type, desc: 'Texto editorial' },
+                        { type: 'button', label: 'BOTÓN', icon: Square, desc: 'Llamado a la acción' },
+                        { type: 'image', label: 'IMAGEN / LOGO', icon: ImageIcon, desc: 'Fotos y logos' },
+                        { type: 'columns', label: 'COLUMNAS', icon: Columns, desc: '2 columnas paralelas' },
+                        { type: 'divider', label: 'DIVISOR', icon: Minus, desc: 'Línea de separación' },
+                        { type: 'table', label: 'TABLA', icon: TableIcon, desc: 'Tabla estilizada' },
+                        { type: 'menu', label: 'MENÚ', icon: MenuIcon, desc: 'Barra de enlaces' },
+                        { type: 'social', label: 'REDES', icon: Share2, desc: 'Redes sociales' },
+                        { type: 'video', label: 'VIDEO', icon: Video, desc: 'Enlace a video' },
+                        { type: 'html', label: 'HTML', icon: Code, desc: 'Código libre seguro' },
+                        { type: 'spacer', label: 'ESPACIADOR', icon: Minus, desc: 'Espacio en blanco' }
+                      ].map((item) => {
+                        const Icon = item.icon;
+                        return (
+                          <button
+                            key={item.type}
+                            draggable
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData('application/rotary-new-block-type', item.type);
+                              e.dataTransfer.effectAllowed = 'copy';
+                            }}
+                            onClick={() => handleAddBlock(item.type as BlockType)}
+                            className="bg-white border border-slate-200 hover:border-rotary-blue hover:bg-blue-50/40 rounded-xl p-3 text-center transition-all group flex flex-col items-center justify-center gap-1.5 shadow-2xs cursor-grab active:cursor-grabbing"
+                            title="Clic para agregar o arrastra al lienzo"
+                          >
+                            <div className="w-8 h-8 rounded-lg bg-slate-100 group-hover:bg-blue-100 text-slate-700 group-hover:text-rotary-blue flex items-center justify-center transition-colors">
+                              <Icon className="w-4 h-4" />
+                            </div>
+                            <span className="text-xs font-black text-slate-800 tracking-wide">
+                              {item.label}
+                            </span>
+                            <span className="text-[10px] text-slate-500 line-clamp-1">
+                              {item.desc}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
             {/* PESTAÑA: ESTRUCTURAS (LAYOUTS) */}
             {activeTab === 'layouts' && (
@@ -4693,6 +4899,8 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                   ))}
                 </div>
               </div>
+            )}
+              </>
             )}
           </div>
         </aside>
