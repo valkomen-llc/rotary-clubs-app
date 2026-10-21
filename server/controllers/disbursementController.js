@@ -1174,6 +1174,297 @@ export const refresh = async (req, res) => {
     }
 };
 
+/* ─── GET /financial/wallet/notices ─────────────────────────────────
+ *
+ * Listado de todos los comprobantes y avisos de conciliación emitidos por el club.
+ */
+export const listClubNotices = async (req, res) => {
+    try {
+        const clubId = clubDe(req);
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+        const { rows } = await db.query(
+            `SELECT id, "clubId", "batchId", scope, "paymentIds", "disbursementIds", "batchIds",
+                    "campaignId", beneficiary, currency, count, "netAmount",
+                    emails, phones, results, attachments, "sentAt", "createdAt"
+             FROM "DisbursementNotice"
+             WHERE "clubId" = $1
+             ORDER BY "sentAt" DESC, "createdAt" DESC
+             LIMIT $2`,
+            [clubId, Math.min(Math.max(1, Number(req.query?.limit) || 100), 500)]
+        );
+        return res.json({ notices: rows });
+    } catch (e) {
+        console.error('[DISB] listClubNotices:', e);
+        return res.status(500).json({ error: 'No se pudieron listar los avisos', detail: e.message?.slice(0, 200) });
+    }
+};
+
+/* ─── GET /financial/wallet/audit-events ─────────────────────────────
+ *
+ * Historial cronológico de eventos del ciclo de vida financiero.
+ */
+export const listAuditEvents = async (req, res) => {
+    try {
+        const clubId = clubDe(req);
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+        const { rows } = await db.query(
+            `SELECT e.id, e."paymentId", e."clubId", e.kind, e."fromState", e."toState",
+                    e."actorKind", e."actorId", e."actorLabel", e.reference, e.note, e.meta,
+                    e."occurredAt", e."createdAt",
+                    p.currency, p.amount, p."netAmount", p."rawPayload"
+             FROM "PaymentLifecycleEvent" e
+             LEFT JOIN "Payment" p ON p.id = e."paymentId"
+             WHERE e."clubId" = $1
+             ORDER BY e."occurredAt" DESC, e."createdAt" DESC
+             LIMIT $2`,
+            [clubId, Math.min(Math.max(1, Number(req.query?.limit) || 100), 500)]
+        );
+        const parsed = rows.map(r => {
+            let metaPayload = {};
+            try {
+                metaPayload = typeof r.rawPayload === 'string' ? JSON.parse(r.rawPayload) : (r.rawPayload || {});
+            } catch (_) {}
+            return {
+                ...r,
+                rawPayload: metaPayload,
+                source: metaPayload.source || 'payment',
+                description: metaPayload.projectTitle || metaPayload.participantName || r.note || r.kind,
+            };
+        });
+        return res.json({ events: parsed });
+    } catch (e) {
+        console.error('[DISB] listAuditEvents:', e);
+        return res.status(500).json({ error: 'No se pudieron listar los eventos de auditoría', detail: e.message?.slice(0, 200) });
+    }
+};
+
+/* ─── GET /financial/wallet/beneficiaries ───────────────────────────
+ *
+ * Entidades beneficiarias autorizadas. Si no hay ninguna, provee los predeterminados de la Feria.
+ */
+export const listBeneficiaries = async (req, res) => {
+    try {
+        const clubId = clubDe(req);
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+        const { rows } = await db.query(
+            `SELECT id, "legalName", "tradeName", "taxId", email, phone, website, address,
+                    "contactName", notes, active, "createdAt"
+             FROM "NotificationBeneficiary"
+             ORDER BY active DESC, "legalName" ASC`
+        );
+        if (rows.length === 0) {
+            const defaults = [
+                {
+                    legalName: 'Corporación Comité Organizador XII Feria de Proyectos Rotarios Colombia',
+                    tradeName: 'Comité Organizador Feria de Proyectos',
+                    taxId: '901.845.221-4',
+                    email: 'feriadeproyectos@rotary4281.org',
+                    phone: '+57 300 123 4567',
+                    contactName: 'Presidente Comité Organizador',
+                    notes: 'Cuenta recaudadora institucional autorizada para traslados y liquidación de la Feria.',
+                    active: true,
+                },
+                {
+                    legalName: 'Club Rotario Valledupar',
+                    tradeName: 'Rotary Club Valledupar',
+                    taxId: '892.300.412-1',
+                    email: 'valledupar@rotary4281.org',
+                    phone: '+57 310 987 6543',
+                    contactName: 'Tesorero Club Anfitrión',
+                    notes: 'Club anfitrión de la XII Feria de Proyectos Rotarios Valledupar 2027.',
+                    active: true,
+                },
+                {
+                    legalName: 'Distrito 4281 de Rotary International',
+                    tradeName: 'Distrito Rotario 4281',
+                    taxId: '860.007.982-9',
+                    email: 'gobernador@rotary4281.org',
+                    phone: '+57 315 555 7788',
+                    contactName: 'Gobernador / Tesorero Distrital',
+                    notes: 'Entidad supervisora distrital.',
+                    active: true,
+                }
+            ];
+            for (const b of defaults) {
+                await db.query(
+                    `INSERT INTO "NotificationBeneficiary"
+                     ("legalName", "tradeName", "taxId", email, phone, "contactName", notes, active)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                     ON CONFLICT DO NOTHING`,
+                    [b.legalName, b.tradeName, b.taxId, b.email, b.phone, b.contactName, b.notes, b.active]
+                );
+            }
+            const seeded = await db.query(
+                `SELECT id, "legalName", "tradeName", "taxId", email, phone, website, address,
+                        "contactName", notes, active, "createdAt"
+                 FROM "NotificationBeneficiary"
+                 ORDER BY active DESC, "legalName" ASC`
+            );
+            return res.json({ beneficiaries: seeded.rows });
+        }
+        return res.json({ beneficiaries: rows });
+    } catch (e) {
+        console.error('[DISB] listBeneficiaries:', e);
+        return res.status(500).json({ error: 'No se pudieron consultar los beneficiarios', detail: e.message?.slice(0, 200) });
+    }
+};
+
+/* ─── POST /financial/wallet/beneficiaries ──────────────────────────
+ *
+ * Crear o actualizar beneficiario autorizado.
+ */
+export const saveBeneficiary = async (req, res) => {
+    try {
+        const { id, legalName, tradeName, taxId, email, phone, website, address, contactName, notes, active = true } = req.body;
+        if (!legalName || !String(legalName).trim()) {
+            return res.status(400).json({ error: 'Nombre legal o institucional requerido' });
+        }
+        if (id) {
+            const { rows } = await db.query(
+                `UPDATE "NotificationBeneficiary"
+                 SET "legalName" = $1, "tradeName" = $2, "taxId" = $3, email = $4, phone = $5,
+                     website = $6, address = $7, "contactName" = $8, notes = $9, active = $10,
+                     "updatedAt" = NOW()
+                 WHERE id = $11
+                 RETURNING *`,
+                [legalName.trim(), tradeName?.trim() || null, taxId?.trim() || null, email?.trim() || null,
+                 phone?.trim() || null, website?.trim() || null, address?.trim() || null,
+                 contactName?.trim() || null, notes?.trim() || null, !!active, id]
+            );
+            return res.json({ beneficiary: rows[0] });
+        }
+        const { rows } = await db.query(
+            `INSERT INTO "NotificationBeneficiary"
+             ("legalName", "tradeName", "taxId", email, phone, website, address, "contactName", notes, active)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+             RETURNING *`,
+            [legalName.trim(), tradeName?.trim() || null, taxId?.trim() || null, email?.trim() || null,
+             phone?.trim() || null, website?.trim() || null, address?.trim() || null,
+             contactName?.trim() || null, notes?.trim() || null, !!active]
+        );
+        return res.json({ beneficiary: rows[0] });
+    } catch (e) {
+        console.error('[DISB] saveBeneficiary:', e);
+        return res.status(500).json({ error: 'No se pudo guardar el beneficiario', detail: e.message?.slice(0, 200) });
+    }
+};
+
+/* ─── GET /financial/wallet/closing-statement ───────────────────────
+ *
+ * Cierre financiero consolidado por edición (Recomendación Imagen 2).
+ */
+export const getEditionClosingStatement = async (req, res) => {
+    try {
+        const clubId = clubDe(req);
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+        const edition = String(req.query?.edition || 'valledupar2027').trim();
+
+        const { rows: payments } = await db.query(
+            `SELECT id, "providerRef", amount, currency, "applicationFee", "netAmount",
+                    status, "stripeStatus", "rawPayload", "createdAt"
+             FROM "Payment"
+             WHERE "clubId" = $1 AND "isPlatformCollection" = true
+             ORDER BY "createdAt" ASC`,
+            [clubId]
+        );
+
+        const { rows: batches } = await db.query(
+            `SELECT id, reference, beneficiary, currency, count, "grossAmount",
+                    "netAmount", fees, "disbursedAt", status, "receiptName"
+             FROM "DisbursementBatch"
+             WHERE "clubId" = $1
+             ORDER BY "disbursedAt" ASC`,
+            [clubId]
+        );
+
+        const statement = {
+            edition,
+            editionLabel: 'XII Feria de Proyectos Rotarios Colombia — Valledupar 2027',
+            generatedAt: new Date().toISOString(),
+            clubId,
+            byCurrency: {},
+            bySource: {
+                project_fair_submission: { count: 0, copGross: 0, copNet: 0, usdGross: 0, usdNet: 0 },
+                event_registration: { count: 0, copGross: 0, copNet: 0, usdGross: 0, usdNet: 0 },
+                other: { count: 0, copGross: 0, copNet: 0, usdGross: 0, usdNet: 0 },
+            },
+            disbursements: {
+                totalCount: batches.length,
+                byCurrency: {},
+                batches: batches.map(b => ({
+                    id: b.id,
+                    reference: b.reference,
+                    beneficiary: b.beneficiary,
+                    currency: b.currency,
+                    count: b.count,
+                    amount: b.netAmount,
+                    date: b.disbursedAt,
+                    receipt: b.receiptName,
+                })),
+            },
+            auditTrailSummary: {
+                totalPayments: payments.length,
+                totalDisbursementBatches: batches.length,
+            }
+        };
+
+        for (const p of payments) {
+            const cur = normalizeCurrency(p.currency);
+            if (!statement.byCurrency[cur]) {
+                statement.byCurrency[cur] = {
+                    gross: 0,
+                    fees: 0,
+                    net: 0,
+                    disbursed: 0,
+                    pendingDisbursement: 0,
+                    count: 0,
+                };
+            }
+            const gross = parseFloat(p.amount || 0);
+            const net = parseFloat(p.netAmount || 0);
+            const fee = gross - net;
+            statement.byCurrency[cur].gross += gross;
+            statement.byCurrency[cur].fees += fee;
+            statement.byCurrency[cur].net += net;
+            statement.byCurrency[cur].count += 1;
+
+            let parsed = {};
+            try { parsed = typeof p.rawPayload === 'string' ? JSON.parse(p.rawPayload) : (p.rawPayload || {}); } catch (_) {}
+            const src = parsed.source || 'other';
+            const targetSrc = statement.bySource[src] || statement.bySource.other;
+            targetSrc.count += 1;
+            if (cur === 'COP') {
+                targetSrc.copGross += gross;
+                targetSrc.copNet += net;
+            } else if (cur === 'USD') {
+                targetSrc.usdGross += gross;
+                targetSrc.usdNet += net;
+            }
+        }
+
+        for (const b of batches) {
+            const cur = normalizeCurrency(b.currency);
+            if (!statement.disbursements.byCurrency[cur]) {
+                statement.disbursements.byCurrency[cur] = 0;
+            }
+            statement.disbursements.byCurrency[cur] += parseFloat(b.netAmount || 0);
+            if (statement.byCurrency[cur]) {
+                statement.byCurrency[cur].disbursed += parseFloat(b.netAmount || 0);
+            }
+        }
+
+        for (const cur of Object.keys(statement.byCurrency)) {
+            const c = statement.byCurrency[cur];
+            c.pendingDisbursement = Math.max(0, c.net - c.disbursed);
+        }
+
+        return res.json({ ok: true, statement });
+    } catch (e) {
+        console.error('[DISB] getEditionClosingStatement:', e);
+        return res.status(500).json({ error: 'No se pudo generar el cierre financiero', detail: e.message?.slice(0, 200) });
+    }
+};
+
 export default {
     getLifecycle, createDisbursement, createBulkDisbursements, previewBulkDisbursements,
     listDisbursementBatches, getDisbursementBatch, getDisbursementBatchEmailPreview, retryDisbursementBatchNotice,
@@ -1183,4 +1474,5 @@ export default {
     resendBatchReconciliation, getNoticeDocument,
     resolveReconciliationScope, getSelectionReconciliation, resendSelectionReconciliation,
     getReconciliationReceipt,
+    listClubNotices, listAuditEvents, listBeneficiaries, saveBeneficiary, getEditionClosingStatement,
 };

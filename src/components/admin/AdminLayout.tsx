@@ -828,14 +828,15 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
             }
         }
 
-        // Finanzas: Bóveda de Fondos condicionado a siteModules.finance_vault (habilitado para Rotary E-Club Origen o excepción)
+        // Finanzas: Bóveda de Fondos / Conciliaciones condicionado a siteModules.finance_vault
         if (siteModules.finance_vault) {
+            const esFeria = isProjectFairSite || isProjectFairManager;
             items.push({
-                icon: Wallet,
-                label: 'Bóveda de Fondos',
-                path: '/admin/boveda',
+                icon: Landmark,
+                label: esFeria ? 'Conciliaciones y Desembolsos' : 'Bóveda de Fondos',
+                path: esFeria ? '/admin/conciliaciones' : '/admin/boveda',
                 category: 'Finanzas',
-                keywords: ['donacion', 'aporte', 'retiro', 'balance', 'wallet', 'fondos', 'stripe']
+                keywords: ['donacion', 'aporte', 'retiro', 'balance', 'wallet', 'fondos', 'stripe', 'conciliacion', 'desembolso', 'feria']
             });
         }
 

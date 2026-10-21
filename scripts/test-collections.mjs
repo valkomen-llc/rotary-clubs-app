@@ -50,12 +50,9 @@ const codigo = (p) => lee(p).replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\
 // ── 1. El catálogo ──────────────────────────────────────────────────
 section('1. El catálogo de fuentes es CERRADO y declara lo que no está');
 ok('la Feria está disponible', spec.COLLECTION_SOURCES.project_fair.available === true);
-ok('el registro de asistentes está DECLARADO y no disponible',
-    spec.COLLECTION_SOURCES.event_registration.available === false);
-ok('y dice POR QUÉ no lo está',
-    String(spec.COLLECTION_SOURCES.event_registration.reason || '').length > 40,
-    'un `available:false` sin motivo obliga a ir a buscarlo al código');
-eq('sólo la Feria se puede trasladar hoy', spec.availableSources(), ['project_fair']);
+ok('el registro de asistentes está DECLARADO y disponible',
+    spec.COLLECTION_SOURCES.event_registration.available === true);
+eq('las fuentes trasladables hoy', spec.availableSources(), ['project_fair', 'event_registration']);
 ok('un tipo que nadie declaró no es de ninguna fuente', spec.sourceOf({ type: 'lo_que_sea' }) === null);
 ok('un pago sin tipo tampoco', spec.sourceOf({}) === null);
 ok('el tipo se compara EXACTO, no por parecido',

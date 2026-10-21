@@ -42,6 +42,22 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1223.0',
+        title: 'Reingeniería del Módulo de Conciliaciones, Recaudos y Desembolsos · XII Feria de Proyectos Valledupar 2027 💰🏛️',
+        description: 'Recuperación, auditoría y ampliación del motor financiero multi-iniciativa de Club Platform para la XII Feria de Proyectos Rotarios Colombia — Valledupar 2027: 1) Habilitación de acceso administrativo mediante excepciones en siteModulesSpec y asignación de capacidades financieras (finance.view, finance.manage, finance.export) al rol project_fair_manager. 2) Ingesta unificada e idempotente de recaudos desde Postulaciones de Proyectos (ProjectFairSubmission) e Inscripciones al Evento (EventRegistration) con cálculo transparente de tarifas y comisiones. 3) Centro financiero integral de 7 pestañas: Resumen Financiero con separación estricta de divisas (COP y USD), Movimientos con desglose de ciclo de vida (DisbursementSection) y acciones en bloque, Conciliaciones con Stripe en modo ensayo/aplicado, Desembolsos con comprobantes institucionales (PDF/JPG/PNG), Trazabilidad de Avisos por Email y WhatsApp con enlaces firmados, Historial cronológico auditable (PaymentLifecycleEvent) y Configuración de Beneficiarios autorizados. 4) Generación del Acta de Cierre Financiero por Edición para rendición formal de cuentas al Comité Organizador.',
+        date: new Date().toISOString(),
+        tags: ['finanzas', 'conciliaciones', 'desembolsos', 'feria-de-proyectos', 'valledupar-2027', 'stripe', 'cierre-financiero', 'notificaciones'],
+        type: 'feature',
+        impact: 'Alta: Habilita la gestión transparente, auditable y centralizada de todos los recursos recaudados en la Feria de Proyectos, permitiendo traslados, conciliaciones y soportes oficiales a beneficiarios.',
+        changes: [
+            { type: 'added', text: 'Nuevo centro de Conciliaciones y Desembolsos (/admin/conciliaciones) con arquitectura de 7 pestañas.' },
+            { type: 'added', text: 'Unificación financiera en projectFairCollections.js para procesar inscripciones al evento y postulaciones de proyectos.' },
+            { type: 'added', text: 'Acta de Cierre Financiero por Edición con desglose consolidado de ingresos, comisiones, desembolsos y saldos.' },
+            { type: 'improved', text: 'Separación estricta de cuentas paralelas en COP y USD sin mezclar monedas.' },
+            { type: 'fixed', text: 'Recuperación de visibilidad y acceso administrativo en AdminLayout y control de roles RBAC.' }
+        ]
+    },
+    {
         version: '4.1222.0',
         title: 'Auditoría, Reparación y Sincronización del Ecosistema Rotary en Acción · Previsualización, Planificador 12 Campañas y Centro de Envíos 🛠️📊',
         description: 'Auditoría exhaustiva, reparación técnica y sincronización de datos del módulo Rotary en Acción → Marketing Inteligente en el Distrito 4281: 1) Corrección de error de carga en producción (500) resolviendo el empaquetado ESM de emailBlocks para Node.js en Vercel. 2) Reparación de Previsualización en Canal 1 con renderizado modular infalible y fallback institucional. 3) Planificador Editorial Multicanal: sincronización de la matriz completa de 12 campañas mensuales (4 por canal: Rotary en Acción, Directorio de Clubes y Feria de Proyectos) con selector consolidado, estados visuales, previsualización de Email/WhatsApp y acceso al editor de diseño. 4) Centro de Envíos: recuperación y visualización en tiempo real de los envíos históricos verificados (Despacho General: 354 destinatarios, 154 aperturas, 7 clics; Envío Piloto: 2 destinatarios) con filtro dinámico por canal e inmutabilidad de métricas reales.',

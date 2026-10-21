@@ -163,6 +163,7 @@ const SpotlightSlides = lazyWithRetry(() => import('./pages/admin/SpotlightSlide
 const ContributionNotifications = lazyWithRetry(() => import('./pages/admin/ContributionNotifications'), 'ContributionNotifications');
 const OrdersManagement = lazyWithRetry(() => import('./pages/admin/OrdersManagement'), 'OrdersManagement');
 const WalletManagement = lazyWithRetry(() => import('./pages/admin/WalletManagement'), 'WalletManagement');
+const ConciliacionesDesembolsos = lazyWithRetry(() => import('./pages/admin/ConciliacionesDesembolsos'), 'ConciliacionesDesembolsos');
 const NotificationSettings = lazyWithRetry(() => import('./pages/admin/NotificationSettings'), 'NotificationSettings');
 const CRMManagement = lazyWithRetry(() => import('./pages/admin/CRM'), 'CRM');
 const AIAssistant = lazyWithRetry(() => import('./pages/admin/AIAssistant'), 'AIAssistant');
@@ -1143,6 +1144,16 @@ function App() {
                     <PrivateRoute>
                       <SiteModuleRouteGuard moduleKey="finance_vault">
                         <WalletManagement />
+                      </SiteModuleRouteGuard>
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/conciliaciones"
+                  element={
+                    <PrivateRoute>
+                      <SiteModuleRouteGuard moduleKey="finance_vault">
+                        <ConciliacionesDesembolsos />
                       </SiteModuleRouteGuard>
                     </PrivateRoute>
                   }

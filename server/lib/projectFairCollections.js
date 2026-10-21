@@ -63,6 +63,13 @@ export const surchargeOf = (row = {}) => {
  * quien se inscribe justamente para dejarlo intacto (v4.980).
  */
 export const publishedPriceOf = (row = {}) => {
+    const chargeCur = normalizeCurrency(row.chargeCurrency || row.currency);
+    if (chargeCur === 'USD' && Number(row.amountUsd) > 0) {
+        return { amount: Number(row.amountUsd), currency: 'USD' };
+    }
+    if (chargeCur === 'COP' && Number(row.amountCop) > 0) {
+        return { amount: Number(row.amountCop), currency: 'COP' };
+    }
     const modo = String(row.priceMode || '').toUpperCase() === 'USD' ? 'USD' : 'COP';
     const importe = modo === 'USD' ? Number(row.amountUsd) : Number(row.amountCop);
     return { amount: Number.isFinite(importe) && importe > 0 ? importe : null, currency: modo };
@@ -106,7 +113,86 @@ export const siteForSubmission = async (submission = {}) => {
 };
 
 /**
- * LA FILA DEL MOVIMIENTO, ya repartida. **Puro**: recibe la inscripción y el
+ * A qué sitio pertenece una inscripción al evento.
+ */
+export const siteForEventRegistration = async (reg = {}) => {
+    let editionClub = await editionSiteOf(reg.eventId);
+    if (!editionClub) {
+        // Fallback institucional: Feria de Proyectos Rotarios Colombia
+        editionClub = '322c2f88-ad33-484d-bb54-272de9262d72';
+    }
+    return resolveCollectionSite({
+        configuredClubId: null,
+        editionClubId: editionClub,
+    });
+};
+
+/**
+ * LA FILA DEL MOVIMIENTO PARA INSCRIPCIÓN AL EVENTO.
+ */
+export const buildDraftForEventRegistration = (reg = {}, { clubId = null } = {}) => {
+    const providerRef = providerRefOf(reg);
+    if (!providerRef) return { ok: false, motivo: 'sin_referencia' };
+    if (!clubId) return { ok: false, motivo: 'sin_sitio' };
+
+    const currency = normalizeCurrency(reg.chargeCurrency || reg.currency);
+    if (!currency) return { ok: false, motivo: 'sin_moneda' };
+
+    const total = Number(reg.chargeAmount || reg.totalAmount) || 0;
+    const publicadoImporte = Number(reg.baseAmount || reg.totalAmount) || total;
+    const publicadoMoneda = normalizeCurrency(reg.baseCurrency || reg.currency);
+
+    const reparto = splitCollectionAmounts({
+        total,
+        currency,
+        surcharge: surchargeOf(reg),
+        publishedAmount: publicadoImporte,
+        publishedCurrency: publicadoMoneda,
+    });
+    if (!reparto.ok) return { ok: false, motivo: reparto.motivo, avisos: reparto.avisos };
+
+    const participantName = `${reg.firstName || ''} ${reg.lastName || ''}`.trim();
+    const ref = reg.registrationCode || reg.id;
+
+    return {
+        ok: true,
+        avisos: reparto.avisos,
+        basis: reparto.basis,
+        row: {
+            provider: 'stripe',
+            providerRef,
+            status: 'succeeded',
+            amount: total,
+            applicationFee: reparto.applicationFee,
+            netAmount: reparto.netAmount,
+            currency,
+            isPlatformCollection: true,
+            clubId,
+            paidAt: reg.paidAt || null,
+            rawPayload: {
+                type: 'event_registration',
+                registrationId: reg.id,
+                registrationCode: reg.registrationCode || null,
+                publicRef: ref,
+                participantName: participantName || null,
+                clubName: reg.clubName || null,
+                district: reg.district || null,
+                country: reg.country || null,
+                categoryKey: reg.categoryKey || null,
+                categoryLabel: reg.categoryLabel || null,
+                companionsCount: Number(reg.companionsCount) || 0,
+                companionsAmount: Number(reg.companionsAmount) || 0,
+                sessionId: reg.stripeSessionId || null,
+                edition: '12-valledupar',
+                basis: reparto.basis,
+                surcharge: surchargeOf(reg),
+            },
+        },
+    };
+};
+
+/**
+ * LA FILA DEL MOVIMIENTO, ya repartida. **Puro**: recibe la postulación y el
  * sitio, y no consulta nada.
  *
  * Devuelve `{ ok: false, motivo }` en vez de una fila a medias: un `Payment`
@@ -114,6 +200,9 @@ export const siteForSubmission = async (submission = {}) => {
  * equivocado. Los motivos están en `REBUILD_REASONS`.
  */
 export const paymentDraftFor = (submission = {}, { clubId = null } = {}) => {
+    if (submission.registrationCode || submission.categoryKey || ('firstName' in submission && 'lastName' in submission)) {
+        return buildDraftForEventRegistration(submission, { clubId });
+    }
     const providerRef = providerRefOf(submission);
     if (!providerRef) return { ok: false, motivo: 'sin_referencia' };
     if (!clubId) return { ok: false, motivo: 'sin_sitio' };
@@ -161,6 +250,7 @@ export const paymentDraftFor = (submission = {}, { clubId = null } = {}) => {
                 district: submission.district || null,
                 projectName: submission.projectName || null,
                 sessionId: submission.stripeSessionId || null,
+                edition: '12-valledupar',
                 // De dónde salió cada cifra. Presentar lo medido y lo derivado
                 // igual es lo que hace que un libro deje de servir para cuadrar.
                 basis: reparto.basis,
@@ -189,31 +279,51 @@ export const insertPayment = async (draft) => {
 };
 
 /**
- * LAS INSCRIPCIONES PAGADAS QUE TODAVÍA NO TIENEN MOVIMIENTO.
- *
- * El `LEFT JOIN` contra `Payment` es lo que hace la pasada IDEMPOTENTE por la
- * FORMA de la consulta y no por un candado: un cobro ya reconstruido deja de
- * ser candidato solo, así que correr esto diez veces hace trabajo la primera.
- * Es el patrón de `walletSweep` (v4.846).
+ * LAS POSTULACIONES E INSCRIPCIONES PAGADAS QUE TODAVÍA NO TIENEN MOVIMIENTO.
  */
-export const pendingCollections = async ({ limit = TOPE } = {}) => {
-    const { rows } = await db.query(
-        `SELECT s.id, s."publicRef", s."clubName", s.district, s."projectName",
-                s."clubId", s."eventId", s."priceMode", s."amountCop", s."amountUsd",
-                s."amountReceived", s."chargeCurrency", s."paidAt", s.metadata,
-                s."stripePaymentIntentId", s."stripeSessionId"
-           FROM "ProjectFairSubmission" s
-           LEFT JOIN "Payment" p
-                  ON p.provider = 'stripe'
-                 AND p."providerRef" = COALESCE(s."stripePaymentIntentId", s."stripeSessionId")
-          WHERE s.status = 'paid'
-            AND COALESCE(s."stripePaymentIntentId", s."stripeSessionId") IS NOT NULL
-            AND p.id IS NULL
-          ORDER BY s."paidAt" ASC NULLS LAST
-          LIMIT $1`,
-        [limit]
-    );
-    return rows || [];
+export const pendingCollections = async ({ limit = TOPE, source = 'all' } = {}) => {
+    const list = [];
+    if (source === 'all' || source === 'project_fair') {
+        const { rows: subRows } = await db.query(
+            `SELECT s.id, s."publicRef", s."clubName", s.district, s."projectName",
+                    s."clubId", s."eventId", s."priceMode", s."amountCop", s."amountUsd",
+                    s."amountReceived", s."chargeCurrency", s."paidAt", s.metadata,
+                    s."stripePaymentIntentId", s."stripeSessionId", 'project_fair' AS source_kind
+               FROM "ProjectFairSubmission" s
+               LEFT JOIN "Payment" p
+                      ON p.provider = 'stripe'
+                     AND p."providerRef" = COALESCE(s."stripePaymentIntentId", s."stripeSessionId")
+              WHERE s.status = 'paid'
+                AND COALESCE(s."stripePaymentIntentId", s."stripeSessionId") IS NOT NULL
+                AND p.id IS NULL
+              ORDER BY s."paidAt" ASC NULLS LAST
+              LIMIT $1`,
+            [limit]
+        );
+        list.push(...(subRows || []));
+    }
+    if (source === 'all' || source === 'event_registration') {
+        const { rows: regRows } = await db.query(
+            `SELECT r.id, r."registrationCode", r."firstName", r."lastName", r."clubName",
+                    r.district, r.country, r."categoryKey", r."categoryLabel",
+                    r."eventId", r.currency, r."chargeCurrency", r."totalAmount", r."chargeAmount",
+                    r."baseAmount", r."baseCurrency", r."companionsCount", r."companionsAmount",
+                    r."paidAt", r.metadata, r."stripePaymentIntentId", r."stripeSessionId",
+                    'event_registration' AS source_kind
+               FROM "EventRegistration" r
+               LEFT JOIN "Payment" p
+                      ON p.provider = 'stripe'
+                     AND p."providerRef" = COALESCE(r."stripePaymentIntentId", r."stripeSessionId")
+              WHERE r.status = 'paid'
+                AND COALESCE(r."stripePaymentIntentId", r."stripeSessionId") IS NOT NULL
+                AND p.id IS NULL
+              ORDER BY r."paidAt" ASC NULLS LAST
+              LIMIT $1`,
+            [limit]
+        );
+        list.push(...(regRows || []));
+    }
+    return list.slice(0, limit);
 };
 
 /**
@@ -316,14 +426,18 @@ export const rebuildProjectFairPayments = async ({
             break;
         }
         resumen.mirados += 1;
-        const ref = fila.publicRef || fila.id;
+        const isEventReg = fila.source_kind === 'event_registration' || Boolean(fila.registrationCode);
+        const ref = fila.publicRef || fila.registrationCode || fila.id;
 
-        const sitio = await siteForSubmission(fila);
+        const sitio = isEventReg ? await siteForEventRegistration(fila) : await siteForSubmission(fila);
         // Un sitio pedido a mano acota la pasada: sin esto, quien abre la
         // Bóveda de un sitio reconstruiría también los cobros de otro.
         if (clubId && sitio.clubId && sitio.clubId !== clubId) continue;
 
-        const draft = paymentDraftFor(fila, { clubId: sitio.clubId });
+        const draft = isEventReg
+            ? buildDraftForEventRegistration(fila, { clubId: sitio.clubId })
+            : paymentDraftFor(fila, { clubId: sitio.clubId });
+
         if (!draft.ok) {
             anotar(resumen.noReconstruidos, draft.motivo, ref);
             continue;
@@ -333,8 +447,11 @@ export const rebuildProjectFairPayments = async ({
         const moneda = draft.row.currency;
         resumen.porMoneda[moneda] = (resumen.porMoneda[moneda] || 0) + draft.row.netAmount;
         if (resumen.ejemplos.length < 5) {
+            const quien = isEventReg
+                ? `${fila.firstName || ''} ${fila.lastName || ''}`.trim() || fila.clubName
+                : fila.clubName || null;
             resumen.ejemplos.push({
-                ref, clubName: fila.clubName || null,
+                ref, clubName: quien,
                 amount: draft.row.amount, netAmount: draft.row.netAmount,
                 currency: moneda, basis: draft.basis, signal: sitio.signal, clubId: sitio.clubId,
             });
@@ -356,5 +473,6 @@ export const rebuildProjectFairPayments = async ({
 
 export default {
     providerRefOf, surchargeOf, publishedPriceOf, editionSiteOf, siteForSubmission,
-    paymentDraftFor, insertPayment, pendingCollections, rebuildProjectFairPayments,
+    siteForEventRegistration, paymentDraftFor, buildDraftForEventRegistration,
+    insertPayment, pendingCollections, rebuildProjectFairPayments,
 };

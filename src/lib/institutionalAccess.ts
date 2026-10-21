@@ -290,7 +290,7 @@ export const TOOL_ROUTES: Record<string, string[]> = {
     events: ['/admin/eventos', '/admin/eventos-convenciones'],
     contacts: ['/admin/leads', '/admin/crm'],
     rotary_en_accion: ['/admin/rotary-en-accion'],
-    finance_vault: ['/admin/boveda'],
+    finance_vault: ['/admin/boveda', '/admin/conciliaciones'],
     email_accounts: ['/admin/email'],
     users: ['/admin/miembros'],
     site_settings: ['/admin/configuracion', '/admin/integraciones', '/admin/imagenes-sitio'],

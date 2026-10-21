@@ -370,6 +370,7 @@ export const DEFAULT_SITE_MODULES_CONFIG = SITE_MODULES_CATALOG.reduce((acc, mod
  * Excepciones fundacionales por club (como Rotary E-Club Origen o Distrito 4281).
  */
 export const DISTRITO_4281_CLUB_ID = '8aa470c5-0a5a-4a8d-b872-38645b8b9f3a';
+export const PROJECT_FAIR_CLUB_ID = '322c2f88-ad33-484d-bb54-272de9262d72';
 
 export const FOUNDATIONAL_CLUB_EXCEPTIONS = {
     [ORIGEN_CLUB_ID]: {
@@ -394,6 +395,21 @@ export const FOUNDATIONAL_CLUB_EXCEPTIONS = {
         finance_vault: true,
     },
     'rotary-distrito-4281': {
+        finance_vault: true,
+    },
+    [PROJECT_FAIR_CLUB_ID]: {
+        finance_vault: true,
+    },
+    'rotaryprojectfaircolombia': {
+        finance_vault: true,
+    },
+    'rotaryprojectfaircolombia.org': {
+        finance_vault: true,
+    },
+    'feria-de-proyectos-rotary-colombia': {
+        finance_vault: true,
+    },
+    'projectfair': {
         finance_vault: true,
     },
 };

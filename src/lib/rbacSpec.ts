@@ -1326,7 +1326,10 @@ export const ROLE_PRESETS: RolePreset[] = [
             "media.delete",
             "downloads.view",
             "downloads.create",
-            "downloads.edit"
+            "downloads.edit",
+            "finance.view",
+            "finance.manage",
+            "finance.export"
         ]
     }
 ];

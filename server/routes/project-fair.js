@@ -2,7 +2,7 @@
 // Colombia" (v4.592.0). Los endpoints públicos alimentan el wizard de
 // /postular-proyecto; los /admin/* requieren token y sirven al configurador.
 import express from 'express';
-import { authMiddleware, SITE_ADMIN_ROLES } from '../middleware/auth.js';
+import { authMiddleware, requireSiteAdmin, SITE_ADMIN_ROLES } from '../middleware/auth.js';
 import { requireRoleOrPermission } from '../middleware/institutionalGuard.js';
 import {
     getEditions,
@@ -107,7 +107,7 @@ router.post('/admin/postulaciones/bulk-tag', authMiddleware, fairEdit, json, fai
 // inscripciones se pueden trasladar y cuáles no, con su motivo y su salida. El
 // REGISTRO va por `/financial/wallet/disbursements/bulk`, que es el único punto
 // que mueve este dinero. Literal ANTES de las paramétricas (`check:routes`).
-router.post('/admin/postulaciones/transfers/resolve', authMiddleware, fairEdit, json, fair.resolveTransfers);
+router.post('/admin/postulaciones/transfers/resolve', authMiddleware, requireSiteAdmin, json, fair.resolveTransfers);
 
 router.get('/admin/postulaciones', authMiddleware, fairRead, fair.listSubmissions);
 router.get('/admin/postulaciones/:id', authMiddleware, fairRead, fair.getSubmission);

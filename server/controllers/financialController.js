@@ -875,7 +875,7 @@ export const getClubWallet = async (req, res) => {
             `SELECT id, "providerRef", status, amount, currency, "applicationFee",
                     "netAmount", "stripeBalanceTxId", "stripeStatus",
                     "availableOn", "clubAvailableOn", "paymentMethod",
-                    "createdAt"
+                    "rawPayload", "createdAt"
              FROM "Payment"
              WHERE "clubId" = $1 AND "isPlatformCollection" = true
              ORDER BY "createdAt" DESC
@@ -905,6 +905,10 @@ export const getClubWallet = async (req, res) => {
             // la Fase 1 corrige con `FeeComponent` — cada comisión guardada
             // como tal, con su base y su tasa, en vez de reconstruida acá.
             const stripeFee = Math.max(0, grossAmount - netClub - platformFee);
+            let parsedPayload = {};
+            try {
+                parsedPayload = typeof p.rawPayload === 'string' ? JSON.parse(p.rawPayload) : (p.rawPayload || {});
+            } catch (_) {}
             return {
                 id: p.id,
                 providerRef: p.providerRef,
@@ -922,6 +926,7 @@ export const getClubWallet = async (req, res) => {
                 clubAvailableOn: p.clubAvailableOn,
                 paymentMethod: p.paymentMethod || 'card',
                 stripeBalanceTxId: p.stripeBalanceTxId,
+                rawPayload: parsedPayload,
                 createdAt: p.createdAt,
                 // v4.890 — Plegado con el desembolso, igual que en la ficha y
                 // con la MISMA función: dos criterios sobre el mismo pago

@@ -42,7 +42,7 @@ export const COLLECTION_SOURCES = {
     project_fair: {
         id: 'project_fair',
         payloadType: 'project_fair_registration',
-        label: 'Inscripción a la Feria de Proyectos',
+        label: 'Postulación a la Feria de Proyectos',
         /** Cómo se nombra UNA fila suya en la tabla del correo de traslado. */
         itemLabel: 'Inscripción',
         available: true,
@@ -53,12 +53,8 @@ export const COLLECTION_SOURCES = {
         payloadType: 'event_registration',
         label: 'Inscripción al evento',
         itemLabel: 'Inscripción',
-        available: false,
-        // El motivo se DECLARA para que no haya que ir a buscarlo al código el
-        // día que alguien pregunte por qué no está.
-        reason: 'El cobro de una inscripción al evento vive en `EventRegistrationPayment` '
-            + 'y todavía no crea una fila de `Payment`, así que ese dinero no existe para la '
-            + 'Bóveda. Habilitarlo exige su propio resolutor, no un interruptor.',
+        available: true,
+        reason: null,
     },
 };
 
@@ -115,8 +111,12 @@ export const composeCollectionName = (sourceId, { ref = '', party = '' } = {}) =
 export const collectionLabel = (payload = {}) => {
     const id = sourceOf(payload);
     if (!id) return null;
-    const ref = String(payload?.publicRef || '').trim();
-    const quien = String(payload?.clubName || '').trim();
+    const ref = String(payload?.publicRef || payload?.registrationCode || '').trim();
+    const quien = String(
+        payload?.participantName && payload?.clubName
+            ? `${payload.participantName} (${payload.clubName})`
+            : payload?.participantName || payload?.clubName || ''
+    ).trim();
     return {
         source: id,
         name: composeCollectionName(id, { ref, party: quien }),

@@ -17,12 +17,15 @@
 // ════════════════════════════════════════════════════════════════════
 let seq = 0;
 
-export const tablas = {
+globalThis.__stub_tablas = globalThis.__stub_tablas || {
     ProjectFairSubmission: [],
     Payment: [],
     CalendarEvent: [],
 };
-export const consultas = [];
+export const tablas = globalThis.__stub_tablas;
+
+globalThis.__stub_consultas = globalThis.__stub_consultas || [];
+export const consultas = globalThis.__stub_consultas;
 
 export const reset = () => {
     seq = 0;
@@ -59,6 +62,11 @@ export const query = async (sql, params = []) => {
         }
         const limite = Number(params[0]) || filas.length;
         return { rows: filas.slice(0, limite) };
+    }
+
+    // ── Las inscripciones al evento ─────────────────────────────────
+    if (/FROM "EventRegistration"/i.test(q)) {
+        return { rows: [] };
     }
 
     // ── El INSERT del movimiento ────────────────────────────────────

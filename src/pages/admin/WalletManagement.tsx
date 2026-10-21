@@ -1753,7 +1753,7 @@ export default function WalletManagement() {
                                                             holdingDays={wallet?.platformHoldingDays ?? 6}
                                                             clubId={clubIdActivo}
                                                             elegido={!!elegidos[m.id]}
-                                                            onElegir={puedeGestionar ? cambiarEleccion : undefined}
+                                                            onElegir={cambiarEleccion}
                                                             desembolsos={desembolsos[m.id] || []}
                                                             onVerTraslado={setTrasladoAbierto} />
                                                     ))}
