@@ -1,4 +1,4 @@
-import React, { Component, ReactNode } from 'react';
+import React, { Component, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import AdminLayout from './AdminLayout';
 import { AlertTriangle, RefreshCw, LayoutDashboard, Copy, Check, ChevronDown, ChevronUp } from 'lucide-react';
@@ -21,6 +21,42 @@ interface State {
     errorInfo: React.ErrorInfo | null;
     copied: boolean;
     showDetails: boolean;
+}
+
+/**
+ * Envoltorio seguro para la barra y navegación del administrador:
+ * si `AdminLayout` llegase a fallar por algún error de datos o iconos,
+ * este contenedor captura el fallo y mantiene disponible una interfaz limpia
+ * para no perder la navegación ni expulsar al usuario al enrutador raíz.
+ */
+class SafeLayoutShell extends Component<{ children: ReactNode; wide?: boolean }, { layoutFailed: boolean }> {
+    state = { layoutFailed: false };
+    static getDerivedStateFromError() {
+        return { layoutFailed: true };
+    }
+    render() {
+        if (this.state.layoutFailed) {
+            return (
+                <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+                    <header className="h-16 bg-white border-b border-gray-200 px-6 flex items-center justify-between shadow-sm">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-[#0c3c7c] text-white font-black flex items-center justify-center text-xs shadow-sm">
+                                CP
+                            </div>
+                            <span className="font-bold text-gray-900 text-sm">Panel de Control · Club Platform</span>
+                        </div>
+                        <a href="/admin/dashboard" className="text-xs font-bold text-[#0c3c7c] hover:underline">
+                            ← Ir al Dashboard
+                        </a>
+                    </header>
+                    <main className="flex-1 p-6 flex items-center justify-center">
+                        {this.props.children}
+                    </main>
+                </div>
+            );
+        }
+        return <AdminLayout wide={this.props.wide}>{this.props.children}</AdminLayout>;
+    }
 }
 
 class AdminModuleBoundaryInner extends Component<InnerProps, State> {
@@ -79,7 +115,7 @@ class AdminModuleBoundaryInner extends Component<InnerProps, State> {
             const { error, copied, showDetails } = this.state;
 
             return (
-                <AdminLayout wide={wide}>
+                <SafeLayoutShell wide={wide}>
                     <div className="max-w-3xl mx-auto my-12 animate-in fade-in duration-300">
                         <div className="bg-white rounded-3xl border border-red-100 shadow-xl overflow-hidden">
                             {/* Cabecera del aviso */}
@@ -158,7 +194,7 @@ class AdminModuleBoundaryInner extends Component<InnerProps, State> {
                             </div>
                         </div>
                     </div>
-                </AdminLayout>
+                </SafeLayoutShell>
             );
         }
 

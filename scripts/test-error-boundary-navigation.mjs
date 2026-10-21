@@ -44,7 +44,7 @@ ok(
 
 // Escenario: AdminModuleBoundary debe aislar el error dentro de AdminLayout
 ok(
-    adminModuleSrc.includes('<AdminLayout wide={wide}>'),
+    adminModuleSrc.includes('<AdminLayout') && (adminModuleSrc.includes('wide={wide}') || adminModuleSrc.includes('wide={this.props.wide}')),
     'AdminModuleBoundary mantiene el menú lateral y la cabecera (AdminLayout) operativos ante fallos'
 );
 ok(

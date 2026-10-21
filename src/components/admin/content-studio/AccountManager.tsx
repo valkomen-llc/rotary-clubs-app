@@ -395,7 +395,7 @@ const AccountManager: React.FC = () => {
 
     const connectMeta = async () => {
         if (!selectedClubId) {
-            toast.error(isAdmin
+            toast.error(isPlatformAdmin
                 ? 'Seleccioná primero el club al que querés asignar las cuentas'
                 : 'No tenés un club asociado a tu cuenta');
             return;
@@ -426,7 +426,7 @@ const AccountManager: React.FC = () => {
     // NO están vinculadas a una Fanpage. Usa el flujo OAuth de api.instagram.com.
     const connectInstagramDirect = async () => {
         if (!selectedClubId) {
-            toast.error(isAdmin
+            toast.error(isPlatformAdmin
                 ? 'Seleccioná primero el club al que querés asignar la cuenta de Instagram'
                 : 'No tenés un club asociado a tu cuenta');
             return;

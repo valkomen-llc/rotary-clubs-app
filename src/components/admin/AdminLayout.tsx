@@ -69,7 +69,8 @@ import {
     // al PINTAR y deja el panel en blanco.
     Inbox,
     Film,
-    Sliders
+    Sliders,
+    Landmark
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useSiteModulesConfig } from '../../hooks/useSiteModulesConfig';

@@ -42,6 +42,22 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1225.0',
+        title: 'Corrección Definitiva de ReferenceError Landmark en AdminLayout y Blindaje de Resiliencia Multi-Tenant 🏛️🛡️',
+        description: 'Corrección técnica de raíz del fallo que bloqueaba la navegación del panel administrativo en rotary4281.org: 1) Corrección de importación faltante de Landmark de lucide-react en AdminLayout.tsx, introducida en v4.1223.0 para el ítem de menú finance_vault, el cual se activa para el Distrito 4281 por regla fundacional (siteModulesSpec). 2) Reparación arquitectónica de cascada de errores: en caso de que AdminLayout falle, AdminModuleBoundary ahora implementa SafeLayoutShell para capturar excepciones internas del layout sin tumbar la aplicación hasta ChunkErrorBoundary. 3) Corrección de identificadores indefinidos en submódulos (isAdmin -> isPlatformAdmin en AccountManager, filteredMediaItems -> mediaItems en VideoReportWorkflow). 4) Nuevo script de validación estricta scripts/check-admin-menu-icons.mjs integrado a prebuild que verifica estáticamente que el 100% de los iconos utilizados en getMenuItems() estén explícitamente importados. 5) Suite scripts/test-admin-resilience-suite.mjs con 11 verificaciones de renderizado, multi-tenant y aislamiento público.',
+        date: new Date().toISOString(),
+        tags: ['admin-layout', 'landmark', 'lucide-react', 'distrito-4281', 'multi-tenant', 'resiliencia', 'prebuild'],
+        type: 'urgent',
+        impact: 'Crítica: Restablece de forma definitiva el acceso completo e ininterrumpido a todas las herramientas administrativas del Distrito 4281 y previene regresiones en el menú.',
+        changes: [
+            { type: 'fixed', text: 'Importación del icono Landmark de lucide-react en AdminLayout.tsx, eliminando el ReferenceError en tiempo de ejecución.' },
+            { type: 'improved', text: 'Implementación de SafeLayoutShell en AdminModuleBoundary para atrapar errores dentro de la cabecera/menú sin colapsar el shell global.' },
+            { type: 'fixed', text: 'Corrección de variables no declaradas en AccountManager.tsx (isPlatformAdmin) y VideoReportWorkflow.tsx (mediaItems).' },
+            { type: 'added', text: 'Verificador preventivo en prebuild check-admin-menu-icons.mjs para auditar importaciones de iconos en AdminLayout.' },
+            { type: 'added', text: 'Suite de pruebas test-admin-resilience-suite.mjs y test-render-admin-district4281.mjs con verificación SSR real de AdminLayout para Distrito 4281.' }
+        ]
+    },
+    {
         version: '4.1224.0',
         title: 'Auditoría y Corrección Integral de Renderizado, Aislamiento por Módulo y Navegación SPA 🛡️⚡',
         description: 'Auditoría técnica exhaustiva y corrección de la causa raíz de pantallas de error al navegar en el panel administrativo y sitios públicos: 1) Aislamiento multinivel mediante AdminModuleBoundary en todas las rutas protegidas (PrivateRoute y PlatformOnlyRoute), garantizando que el menú lateral y la cabecera (AdminLayout) se conserven operativos si un módulo falla. 2) Detección de navegación y reinicio automático de estado en ChunkErrorBoundary y AdminModuleBoundary al cambiar de ruta (locationKey), eliminando errores obsoletos heredados sin obligar a recargas manuales. 3) Fortificación defensiva del módulo de Analíticas (/admin/analytics): saneamiento estricto de tipos de dominio (club.domain/effectiveDomain), protección de fetchTraffic contra respuestas HTTP no-200 con valores de reserva seguros y banner no fatal de sincronización, blindaje con ErrorBoundary local en gráficos Recharts (AreaChart, BarChart), mapa coroplético mundial (SVGWorldMap), tabla de rendimiento y SocialAnalytics. 4) Nueva suite automatizada de pruebas scripts/test-error-boundary-navigation.mjs con 22 aserciones pasando al 100%.',

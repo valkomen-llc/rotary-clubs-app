@@ -1336,7 +1336,7 @@ export const VideoReportWorkflow: React.FC<VideoReportWorkflowProps> = ({
 
                             {/* Grid compacto de fotos del banco */}
                             <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2.5 max-h-64 overflow-y-auto pr-1">
-                                {filteredMediaItems.map(item => (
+                                {mediaItems.map(item => (
                                     <div
                                         key={item.id}
                                         onClick={() => setPreviewItem(item)}
@@ -2084,7 +2084,7 @@ export const VideoReportWorkflow: React.FC<VideoReportWorkflowProps> = ({
 
                         {/* Grid de selección de imagen */}
                         <div className="flex-1 overflow-y-auto p-5 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                            {filteredMediaItems.filter(i => i.kind === 'image').map(item => (
+                            {mediaItems.filter(i => i.kind === 'image').map(item => (
                                 <button
                                     key={item.id}
                                     type="button"
