@@ -8,7 +8,7 @@ import { buildCrmScopes, renderWithDefaults, findUnknownVars } from '../lib/cont
 // v4.438 — Sistema de Email Marketing (campañas tipo Mailchimp).
 // Reutiliza la audiencia del CRM (CrmContact/CrmList) y EmailService (Resend/SMTP)
 // para enviar. Cada campaña queda scopeada a un sitio (clubId) y respeta el opt-out.
-console.log('[emailMarketingController] v4.576 — resolveClubId compartido con el CRM (Platform Club para admin sin clubId) + audiencia multi-lista + conversiones');
+console.log('[emailMarketingController] v4.1226.0 — Editor Visual WYSIWYG, Merge Tags dinámicas y entrega multi-canal');
 
 // resolveClubId se comparte con el CRM (crmController) para operar sobre el MISMO sitio
 // que el Directorio CRM: admins sin clubId en el token caen al Platform Club (Origen).

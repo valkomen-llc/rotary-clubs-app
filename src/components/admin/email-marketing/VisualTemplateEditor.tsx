@@ -13,14 +13,17 @@ import {
   Minus, Table as TableIcon, Menu as MenuIcon, Share2, Video, Code,
   Tag, X, ArrowLeft, RefreshCw, ZoomIn, ZoomOut, Undo2, Redo2,
   CheckCircle2, Eye, Upload, RotateCcw, Building2,
-  AlignLeft, AlignCenter, AlignRight, Globe
+  AlignLeft, AlignCenter, AlignRight, AlignJustify, Globe,
+  Bold, Italic, Underline, Strikethrough, Superscript, Subscript, Smile,
+  List, ListOrdered, Link as LinkIcon, Unlink as UnlinkIcon, RemoveFormatting,
+  Highlighter, ChevronDown, Indent, Outdent
 } from 'lucide-react';
 
 import {
   renderDesignToHtml, makeBlock, BLOCK_LABELS,
   FONT_OPTIONS, FONT_WEIGHT_OPTIONS, LINE_HEIGHT_OPTIONS, newId, createRotaryMasterDesign, getRotaryGlobalBlocksCatalog,
   resolveInstitutionalLogo, getActiveSiteBrandingContext, normalizeInstitutionalDesign, resolveSiteRotaryEnAccionUrl,
-  DEFAULT_FOOTER_SOCIAL_LINKS,
+  DEFAULT_FOOTER_SOCIAL_LINKS, textToHtml, sanitizeRichTextHtml,
   type EmailDesign, type Block, type BlockType, type Align, type SocialNetwork,
   type TableRow, type MenuItem, type SiteBrandingContext, type FooterSocialLink, type SocialIconStyle, type GlobalBlockItem
 } from '../../../lib/emailBlocks';
@@ -66,6 +69,620 @@ export const INSTITUTIONAL_PRESET_COLORS = [
   { label: 'Gris', value: '#94A3B8' },
   { label: 'Oscuro', value: '#1E293B' },
 ];
+
+export const MERGE_TAGS_CATALOG = [
+  {
+    category: 'Contacto y Destinatario',
+    items: [
+      { tag: '{{contact.first_name|Líder Rotario(a)}}', label: 'Nombre con saludo por defecto', example: 'Estimado(a) Juan' },
+      { tag: '{{contact.first_name}}', label: 'Solo Primer Nombre', example: 'Juan' },
+      { tag: '{{contact.last_name}}', label: 'Apellido del Contacto', example: 'Pérez' },
+      { tag: '{{contact.email}}', label: 'Correo Electrónico', example: 'socio@rotary.org' },
+      { tag: '{{contact.role|Líder Rotario}}', label: 'Cargo o Rol Oficial', example: 'Presidente' }
+    ]
+  },
+  {
+    category: 'Club Rotario',
+    items: [
+      { tag: '{{club.name|su Club}}', label: 'Nombre Oficial del Club', example: 'Rotary Club Medellín' },
+      { tag: '{{club.city|su localidad}}', label: 'Ciudad o Localidad', example: 'Medellín' },
+      { tag: '{{club.type|Club Rotario}}', label: 'Tipo de Club (Rotary / Rotaract)', example: 'Club Rotario' },
+      { tag: '{{club.completion_percentage|0%}}', label: 'Porcentaje de Perfil Completado', example: '85%' },
+      { tag: '{{club.missing_fields|Información institucional}}', label: 'Campos Faltantes', example: 'Fotografías y logo' }
+    ]
+  },
+  {
+    category: 'Enlaces y Formularios Oficiales',
+    items: [
+      { tag: '{{form_url}}', label: 'Enlace Oficial Rotary en Acción', example: 'https://rotary4281.org/rotary-en-accion' },
+      { tag: '{{activar_club_url}}', label: 'Enlace Activar mi Club', example: 'https://rotary4281.org/activar-mi-club' },
+      { tag: '{{club.profile_url}}', label: 'Ficha Pública en Directorio', example: 'https://app.clubplatform.org/clubes/directorio' },
+      { tag: '{{club.update_form_url}}', label: 'Formulario de Actualización', example: 'https://app.clubplatform.org/clubes/registro' },
+      { tag: '{{unsubscribe_url}}', label: 'Enlace de Cancelación de Suscripción', example: 'https://.../unsubscribe' }
+    ]
+  },
+  {
+    category: 'Distrito y Campaña',
+    items: [
+      { tag: '{{district.name|Distrito 4281}}', label: 'Distrito Rotario', example: 'Distrito 4281' },
+      { tag: '{{campaign.name}}', label: 'Nombre de la Campaña', example: 'Identidad Digital' }
+    ]
+  }
+];
+
+export const EMOJI_LIST = [
+  '🌍', '🤝', '💙', '⚙️', '🎯', '✉️', '⭐', '🏆',
+  '📋', '✨', '👏', '💡', '📍', '📞', '📅', '👥',
+  '🚀', '💬', '📢', '🏷️', '🎉', '💼', '📌', '🔍'
+];
+
+export const HIGHLIGHT_PRESET_COLORS = [
+  { label: 'Amarillo', value: '#fef08a' },
+  { label: 'Azul', value: '#e0f2fe' },
+  { label: 'Verde', value: '#dcfce7' },
+  { label: 'Naranja', value: '#ffedd5' },
+  { label: 'Rosa', value: '#fce7f3' },
+  { label: 'Lavanda', value: '#f3e8ff' },
+  { label: 'Sin resaltar', value: 'transparent' }
+];
+
+export const TEXT_COLOR_PRESETS = [
+  { label: 'Azul Rotary', value: '#013388' },
+  { label: 'Royal Blue', value: '#005a9c' },
+  { label: 'Dorado', value: '#f7a81b' },
+  { label: 'Carbón', value: '#1e293b' },
+  { label: 'Pizarra', value: '#475569' },
+  { label: 'Rojo', value: '#dc2626' },
+  { label: 'Verde', value: '#16a34a' },
+  { label: 'Púrpura', value: '#9333ea' }
+];
+
+export const FONT_SIZE_OPTIONS = [
+  '11px', '12px', '13px', '14px', '15px', '16px', '18px', '20px', '22px', '24px', '28px', '32px'
+];
+
+interface InlineRichTextToolbarProps {
+  fontFamily: string;
+  fontSize: number;
+  color: string;
+  activeFormats: {
+    bold: boolean;
+    italic: boolean;
+    underline: boolean;
+    strike: boolean;
+    sup: boolean;
+    sub: boolean;
+    align: Align | 'justify';
+    listUl: boolean;
+    listOl: boolean;
+    textColor: string;
+    highlightColor: string;
+  };
+  onApplyFontFamily: (font: string) => void;
+  onApplyFontSize: (size: string) => void;
+  onApplyFormat: (cmd: string, val?: string) => void;
+  onApplyTextColor: (hex: string) => void;
+  onApplyHighlightColor: (hex: string) => void;
+  onInsertLink: () => void;
+  onUnlink: () => void;
+  onInsertMergeTag: (tag: string) => void;
+  onInsertEmoji: (emoji: string) => void;
+  onClearFormat: () => void;
+  onUndo: () => void;
+  onRedo: () => void;
+}
+
+export const InlineRichTextToolbar: React.FC<InlineRichTextToolbarProps> = ({
+  fontFamily,
+  fontSize,
+  color,
+  activeFormats,
+  onApplyFontFamily,
+  onApplyFontSize,
+  onApplyFormat,
+  onApplyTextColor,
+  onApplyHighlightColor,
+  onInsertLink,
+  onUnlink,
+  onInsertMergeTag,
+  onInsertEmoji,
+  onClearFormat,
+  onUndo,
+  onRedo
+}) => {
+  const [openDropdown, setOpenDropdown] = useState<'fontFamily' | 'fontSize' | 'emoji' | 'textColor' | 'highlight' | 'mergeTags' | null>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (toolbarRef.current && !toolbarRef.current.contains(e.target as Node)) {
+        setOpenDropdown(null);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
+  const toggleDropdown = (key: 'fontFamily' | 'fontSize' | 'emoji' | 'textColor' | 'highlight' | 'mergeTags') => {
+    setOpenDropdown((prev) => (prev === key ? null : key));
+  };
+
+  const currentFontLabel = useMemo(() => {
+    const found = FONT_OPTIONS.find((f) => f.value === fontFamily);
+    if (found) return found.label.split('(')[0].trim();
+    if (fontFamily.includes('Open Sans')) return 'Open Sans';
+    if (fontFamily.includes('Arial')) return 'Arial';
+    if (fontFamily.includes('Helvetica')) return 'Helvetica';
+    if (fontFamily.includes('Georgia')) return 'Georgia';
+    return 'Open Sans';
+  }, [fontFamily]);
+
+  return (
+    <div
+      ref={toolbarRef}
+      onMouseDown={(e) => {
+        // Crucial: impide que el contentEditable pierda el foco y la selección del texto
+        e.preventDefault();
+      }}
+      className="bg-white/95 backdrop-blur-md border border-slate-200/90 shadow-2xl rounded-2xl p-1.5 flex flex-wrap items-center gap-1 text-slate-700 select-none transition-all duration-150"
+    >
+      {/* 1. SELECTOR DE FAMILIA TIPOGRÁFICA */}
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => toggleDropdown('fontFamily')}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-800 transition-colors"
+          title="Familia Tipográfica"
+        >
+          <span className="max-w-[100px] truncate">{currentFontLabel}</span>
+          <ChevronDown className="w-3 h-3 text-slate-400" />
+        </button>
+
+        {openDropdown === 'fontFamily' && (
+          <div className="absolute top-full left-0 mt-1.5 w-60 bg-white border border-slate-200 rounded-xl shadow-2xl py-1.5 z-50 animate-in fade-in zoom-in-95 duration-100">
+            <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              Tipografías Seguras de Correo
+            </div>
+            {FONT_OPTIONS.map((f) => (
+              <button
+                key={f.value}
+                type="button"
+                onClick={() => {
+                  onApplyFontFamily(f.value);
+                  setOpenDropdown(null);
+                }}
+                className="w-full text-left px-3 py-1.5 text-xs text-slate-800 hover:bg-blue-50 hover:text-rotary-blue flex items-center justify-between"
+                style={{ fontFamily: f.value }}
+              >
+                <span>{f.label}</span>
+                {fontFamily === f.value && <CheckCircle2 className="w-3.5 h-3.5 text-rotary-blue" />}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 2. SELECTOR DE TAMAÑO DE FUENTE */}
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => toggleDropdown('fontSize')}
+          className="flex items-center gap-1 px-2 py-1 rounded-xl text-xs font-semibold bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-800 transition-colors"
+          title="Tamaño de Fuente"
+        >
+          <span>{fontSize}px</span>
+          <ChevronDown className="w-3 h-3 text-slate-400" />
+        </button>
+
+        {openDropdown === 'fontSize' && (
+          <div className="absolute top-full left-0 mt-1.5 w-24 bg-white border border-slate-200 rounded-xl shadow-2xl py-1 z-50 max-h-56 overflow-y-auto animate-in fade-in zoom-in-95 duration-100">
+            {FONT_SIZE_OPTIONS.map((sz) => (
+              <button
+                key={sz}
+                type="button"
+                onClick={() => {
+                  onApplyFontSize(sz);
+                  setOpenDropdown(null);
+                }}
+                className={`w-full text-left px-3 py-1 text-xs hover:bg-blue-50 hover:text-rotary-blue ${
+                  `${fontSize}px` === sz ? 'font-bold text-rotary-blue bg-blue-50/50' : 'text-slate-700'
+                }`}
+              >
+                {sz}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="w-[1px] h-5 bg-slate-200 mx-0.5" />
+
+      {/* 3. FORMATOS BÁSICOS EN LÍNEA: B, I, U, S, X2, X_2 */}
+      <button
+        type="button"
+        onClick={() => onApplyFormat('bold')}
+        className={`p-1.5 rounded-lg text-xs font-black transition-colors ${
+          activeFormats.bold ? 'bg-blue-100 text-rotary-blue ring-1 ring-rotary-blue/30' : 'hover:bg-slate-100 text-slate-700'
+        }`}
+        title="Negrita (Cmd+B)"
+      >
+        <Bold className="w-4 h-4" />
+      </button>
+
+      <button
+        type="button"
+        onClick={() => onApplyFormat('italic')}
+        className={`p-1.5 rounded-lg text-xs font-serif transition-colors ${
+          activeFormats.italic ? 'bg-blue-100 text-rotary-blue ring-1 ring-rotary-blue/30' : 'hover:bg-slate-100 text-slate-700'
+        }`}
+        title="Cursiva (Cmd+I)"
+      >
+        <Italic className="w-4 h-4" />
+      </button>
+
+      <button
+        type="button"
+        onClick={() => onApplyFormat('underline')}
+        className={`p-1.5 rounded-lg text-xs transition-colors ${
+          activeFormats.underline ? 'bg-blue-100 text-rotary-blue ring-1 ring-rotary-blue/30' : 'hover:bg-slate-100 text-slate-700'
+        }`}
+        title="Subrayado (Cmd+U)"
+      >
+        <Underline className="w-4 h-4" />
+      </button>
+
+      <button
+        type="button"
+        onClick={() => onApplyFormat('strikeThrough')}
+        className={`p-1.5 rounded-lg text-xs transition-colors ${
+          activeFormats.strike ? 'bg-blue-100 text-rotary-blue ring-1 ring-rotary-blue/30' : 'hover:bg-slate-100 text-slate-700'
+        }`}
+        title="Tachado"
+      >
+        <Strikethrough className="w-4 h-4" />
+      </button>
+
+      <button
+        type="button"
+        onClick={() => onApplyFormat('superscript')}
+        className={`p-1.5 rounded-lg text-xs transition-colors ${
+          activeFormats.sup ? 'bg-blue-100 text-rotary-blue ring-1 ring-rotary-blue/30' : 'hover:bg-slate-100 text-slate-700'
+        }`}
+        title="Superíndice"
+      >
+        <Superscript className="w-4 h-4" />
+      </button>
+
+      <button
+        type="button"
+        onClick={() => onApplyFormat('subscript')}
+        className={`p-1.5 rounded-lg text-xs transition-colors ${
+          activeFormats.sub ? 'bg-blue-100 text-rotary-blue ring-1 ring-rotary-blue/30' : 'hover:bg-slate-100 text-slate-700'
+        }`}
+        title="Subíndice"
+      >
+        <Subscript className="w-4 h-4" />
+      </button>
+
+      {/* 4. SELECTOR DE EMOJIS 😊 */}
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => toggleDropdown('emoji')}
+          className="p-1.5 rounded-lg text-slate-700 hover:bg-slate-100 transition-colors"
+          title="Insertar Emoji o Símbolo"
+        >
+          <Smile className="w-4 h-4 text-amber-500" />
+        </button>
+
+        {openDropdown === 'emoji' && (
+          <div className="absolute top-full left-0 mt-1.5 p-2 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 w-56 grid grid-cols-6 gap-1 animate-in fade-in zoom-in-95 duration-100">
+            {EMOJI_LIST.map((em) => (
+              <button
+                key={em}
+                type="button"
+                onClick={() => {
+                  onInsertEmoji(em);
+                  setOpenDropdown(null);
+                }}
+                className="w-7 h-7 flex items-center justify-center text-base rounded-md hover:bg-slate-100 hover:scale-125 transition-transform"
+              >
+                {em}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="w-[1px] h-5 bg-slate-200 mx-0.5" />
+
+      {/* 5. ALINEACIONES */}
+      <button
+        type="button"
+        onClick={() => onApplyFormat('justifyLeft')}
+        className={`p-1.5 rounded-lg text-xs transition-colors ${
+          activeFormats.align === 'left' ? 'bg-blue-100 text-rotary-blue' : 'hover:bg-slate-100 text-slate-700'
+        }`}
+        title="Alinear a la Izquierda"
+      >
+        <AlignLeft className="w-4 h-4" />
+      </button>
+
+      <button
+        type="button"
+        onClick={() => onApplyFormat('justifyCenter')}
+        className={`p-1.5 rounded-lg text-xs transition-colors ${
+          activeFormats.align === 'center' ? 'bg-blue-100 text-rotary-blue' : 'hover:bg-slate-100 text-slate-700'
+        }`}
+        title="Centrar"
+      >
+        <AlignCenter className="w-4 h-4" />
+      </button>
+
+      <button
+        type="button"
+        onClick={() => onApplyFormat('justifyRight')}
+        className={`p-1.5 rounded-lg text-xs transition-colors ${
+          activeFormats.align === 'right' ? 'bg-blue-100 text-rotary-blue' : 'hover:bg-slate-100 text-slate-700'
+        }`}
+        title="Alinear a la Derecha"
+      >
+        <AlignRight className="w-4 h-4" />
+      </button>
+
+      <button
+        type="button"
+        onClick={() => onApplyFormat('justifyFull')}
+        className={`p-1.5 rounded-lg text-xs transition-colors ${
+          activeFormats.align === 'justify' ? 'bg-blue-100 text-rotary-blue' : 'hover:bg-slate-100 text-slate-700'
+        }`}
+        title="Justificar"
+      >
+        <AlignJustify className="w-4 h-4" />
+      </button>
+
+      <div className="w-[1px] h-5 bg-slate-200 mx-0.5" />
+
+      {/* 6. LISTAS CON VIÑETAS Y NUMERADAS */}
+      <button
+        type="button"
+        onClick={() => onApplyFormat('insertUnorderedList')}
+        className={`p-1.5 rounded-lg text-xs transition-colors ${
+          activeFormats.listUl ? 'bg-blue-100 text-rotary-blue ring-1 ring-rotary-blue/30' : 'hover:bg-slate-100 text-slate-700'
+        }`}
+        title="Lista con viñetas"
+      >
+        <List className="w-4 h-4" />
+      </button>
+
+      <button
+        type="button"
+        onClick={() => onApplyFormat('insertOrderedList')}
+        className={`p-1.5 rounded-lg text-xs transition-colors ${
+          activeFormats.listOl ? 'bg-blue-100 text-rotary-blue ring-1 ring-rotary-blue/30' : 'hover:bg-slate-100 text-slate-700'
+        }`}
+        title="Lista numerada"
+      >
+        <ListOrdered className="w-4 h-4" />
+      </button>
+
+      <div className="w-[1px] h-5 bg-slate-200 mx-0.5" />
+
+      {/* 7. COLOR DE TEXTO (A) */}
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => toggleDropdown('textColor')}
+          className="flex flex-col items-center justify-center px-1.5 py-1 rounded-lg hover:bg-slate-100 transition-colors"
+          title="Color del texto seleccionado"
+        >
+          <span className="font-serif font-black text-xs leading-none">A</span>
+          <span
+            className="w-3.5 h-1 rounded-sm mt-0.5"
+            style={{ backgroundColor: color || '#334155' }}
+          />
+        </button>
+
+        {openDropdown === 'textColor' && (
+          <div className="absolute top-full left-0 mt-1.5 p-3 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 w-52 space-y-2 animate-in fade-in zoom-in-95 duration-100">
+            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              Paleta Institucional
+            </div>
+            <div className="grid grid-cols-4 gap-1.5">
+              {TEXT_COLOR_PRESETS.map((tc) => (
+                <button
+                  key={tc.value}
+                  type="button"
+                  onClick={() => {
+                    onApplyTextColor(tc.value);
+                    setOpenDropdown(null);
+                  }}
+                  className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center hover:scale-110 transition-transform shadow-2xs"
+                  style={{ backgroundColor: tc.value }}
+                  title={`${tc.label} (${tc.value})`}
+                />
+              ))}
+            </div>
+            <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
+              <span className="text-[10px] font-medium text-slate-500">Libre:</span>
+              <input
+                type="color"
+                onChange={(e) => {
+                  onApplyTextColor(e.target.value);
+                  setOpenDropdown(null);
+                }}
+                className="w-7 h-7 rounded border border-slate-200 cursor-pointer p-0"
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 8. COLOR DE RESALTADO / MARCADOR */}
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => toggleDropdown('highlight')}
+          className="flex flex-col items-center justify-center px-1.5 py-1 rounded-lg hover:bg-slate-100 transition-colors"
+          title="Resaltado de texto"
+        >
+          <Highlighter className="w-3.5 h-3.5 text-slate-700" />
+          <span className="w-3.5 h-1 rounded-sm mt-0.5 bg-yellow-300" />
+        </button>
+
+        {openDropdown === 'highlight' && (
+          <div className="absolute top-full left-0 mt-1.5 p-3 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 w-48 space-y-2 animate-in fade-in zoom-in-95 duration-100">
+            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              Color de Resaltado
+            </div>
+            <div className="grid grid-cols-4 gap-1.5">
+              {HIGHLIGHT_PRESET_COLORS.map((hc) => (
+                <button
+                  key={hc.value}
+                  type="button"
+                  onClick={() => {
+                    onApplyHighlightColor(hc.value);
+                    setOpenDropdown(null);
+                  }}
+                  className={`w-7 h-7 rounded-lg border flex items-center justify-center hover:scale-110 transition-transform ${
+                    hc.value === 'transparent' ? 'border-dashed border-slate-300 text-[10px] font-bold text-slate-400' : 'border-slate-200 shadow-2xs'
+                  }`}
+                  style={{ backgroundColor: hc.value === 'transparent' ? '#fff' : hc.value }}
+                  title={hc.label}
+                >
+                  {hc.value === 'transparent' ? '✕' : ''}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="w-[1px] h-5 bg-slate-200 mx-0.5" />
+
+      {/* 9. SANGRÍAS (OUTDENT / INDENT) */}
+      <button
+        type="button"
+        onClick={() => onApplyFormat('outdent')}
+        className="p-1.5 rounded-lg text-slate-700 hover:bg-slate-100 transition-colors"
+        title="Disminuir sangría"
+      >
+        <Outdent className="w-4 h-4" />
+      </button>
+
+      <button
+        type="button"
+        onClick={() => onApplyFormat('indent')}
+        className="p-1.5 rounded-lg text-slate-700 hover:bg-slate-100 transition-colors"
+        title="Aumentar sangría"
+      >
+        <Indent className="w-4 h-4" />
+      </button>
+
+      <div className="w-[1px] h-5 bg-slate-200 mx-0.5" />
+
+      {/* 10. ENLACE (LINK) Y QUITAR ENLACE (UNLINK) */}
+      <button
+        type="button"
+        onClick={onInsertLink}
+        className="p-1.5 rounded-lg text-slate-700 hover:bg-blue-50 hover:text-rotary-blue transition-colors"
+        title="Insertar o editar enlace"
+      >
+        <LinkIcon className="w-4 h-4" />
+      </button>
+
+      <button
+        type="button"
+        onClick={onUnlink}
+        className="p-1.5 rounded-lg text-slate-700 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+        title="Quitar hipervínculo"
+      >
+        <UnlinkIcon className="w-4 h-4" />
+      </button>
+
+      {/* 11. ELIMINAR FORMATO */}
+      <button
+        type="button"
+        onClick={onClearFormat}
+        className="p-1.5 rounded-lg text-slate-700 hover:bg-slate-100 transition-colors"
+        title="Eliminar formato de la selección"
+      >
+        <RemoveFormatting className="w-4 h-4" />
+      </button>
+
+      <div className="w-[1px] h-5 bg-slate-200 mx-0.5" />
+
+      {/* 12. DESHACER / REHACER */}
+      <button
+        type="button"
+        onClick={onUndo}
+        className="p-1.5 rounded-lg text-slate-700 hover:bg-slate-100 transition-colors"
+        title="Deshacer (Cmd+Z)"
+      >
+        <Undo2 className="w-4 h-4" />
+      </button>
+
+      <button
+        type="button"
+        onClick={onRedo}
+        className="p-1.5 rounded-lg text-slate-700 hover:bg-slate-100 transition-colors"
+        title="Rehacer (Cmd+Shift+Z)"
+      >
+        <Redo2 className="w-4 h-4" />
+      </button>
+
+      <div className="w-[1px] h-5 bg-slate-200 mx-0.5" />
+
+      {/* 13. SELECTOR DE VARIABLES DINÁMICAS (MERGE TAGS) */}
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => toggleDropdown('mergeTags')}
+          className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-blue-50 hover:bg-blue-100 text-rotary-blue font-bold text-xs transition-colors border border-blue-200/80 shadow-2xs"
+          title="Insertar variable dinámica"
+        >
+          <span>Merge Tags</span>
+          <ChevronDown className="w-3 h-3 text-rotary-blue" />
+        </button>
+
+        {openDropdown === 'mergeTags' && (
+          <div className="absolute top-full right-0 mt-1.5 w-72 bg-white border border-slate-200 rounded-xl shadow-2xl py-2 z-50 max-h-80 overflow-y-auto animate-in fade-in zoom-in-95 duration-100 space-y-2">
+            <div className="px-3 pb-1 border-b border-slate-100">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                Variables Institucionales
+              </span>
+            </div>
+            {MERGE_TAGS_CATALOG.map((cat) => (
+              <div key={cat.category} className="space-y-0.5">
+                <div className="px-3 py-1 text-[10px] font-bold text-slate-500 bg-slate-50">
+                  {cat.category}
+                </div>
+                {cat.items.map((it) => (
+                  <button
+                    key={it.tag}
+                    type="button"
+                    onClick={() => {
+                      onInsertMergeTag(it.tag);
+                      setOpenDropdown(null);
+                    }}
+                    className="w-full text-left px-3 py-1.5 hover:bg-blue-50 transition-colors flex flex-col group"
+                  >
+                    <span className="text-xs font-mono font-bold text-rotary-blue group-hover:underline">
+                      {it.tag}
+                    </span>
+                    <span className="text-[10px] text-slate-500">
+                      {it.label}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 interface ColorPickerInputProps {
   label?: string;
@@ -372,6 +989,15 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
   // Atajos de teclado (Cmd+Z / Ctrl+Z)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      if (
+        activeEl &&
+        (activeEl.tagName === 'INPUT' ||
+          activeEl.tagName === 'TEXTAREA' ||
+          activeEl.getAttribute('contenteditable') === 'true')
+      ) {
+        return;
+      }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         if (e.shiftKey) {
@@ -396,13 +1022,308 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
     });
   }, [design, pushDesignState]);
 
-  // Mutador de bloques
-  const updateBlock = useCallback((id: string, patch: Partial<Block>) => {
-    pushDesignState({
-      ...design,
-      blocks: design.blocks.map((b) => (b.id === id ? ({ ...b, ...patch } as Block) : b))
-    });
+  // Mutador de bloques con soporte para actualización continua (sin saturar historial) o con registro
+  const updateBlock = useCallback((id: string, patch: Partial<Block>, recordHistory = true) => {
+    if (recordHistory) {
+      pushDesignState({
+        ...design,
+        blocks: design.blocks.map((b) => (b.id === id ? ({ ...b, ...patch } as Block) : b))
+      });
+    } else {
+      setDesign((prev) => ({
+        ...prev,
+        blocks: prev.blocks.map((b) => (b.id === id ? ({ ...b, ...patch } as Block) : b))
+      }));
+    }
   }, [design, pushDesignState]);
+
+  // ─── EDITOR DE TEXTO ENRIQUECIDO EN LIENZO ───
+  const activeEditableRef = useRef<HTMLDivElement | null>(null);
+  const savedRangeRef = useRef<Range | null>(null);
+  const isTypingInCanvasRef = useRef(false);
+
+  const [linkModalOpen, setLinkModalOpen] = useState(false);
+  const [linkUrl, setLinkUrl] = useState('');
+
+  const [activeTextFormats, setActiveTextFormats] = useState({
+    bold: false,
+    italic: false,
+    underline: false,
+    strike: false,
+    sup: false,
+    sub: false,
+    align: 'left' as Align | 'justify',
+    listUl: false,
+    listOl: false,
+    textColor: '#334155',
+    highlightColor: 'transparent'
+  });
+
+  const restoreSelection = useCallback(() => {
+    if (savedRangeRef.current) {
+      const sel = window.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(savedRangeRef.current);
+      }
+    }
+  }, []);
+
+  const handleSelectionCheck = useCallback(() => {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) {
+      savedRangeRef.current = sel.getRangeAt(0);
+    }
+    try {
+      setActiveTextFormats({
+        bold: document.queryCommandState('bold'),
+        italic: document.queryCommandState('italic'),
+        underline: document.queryCommandState('underline'),
+        strike: document.queryCommandState('strikeThrough'),
+        sup: document.queryCommandState('superscript'),
+        sub: document.queryCommandState('subscript'),
+        align: document.queryCommandState('justifyCenter')
+          ? 'center'
+          : document.queryCommandState('justifyRight')
+          ? 'right'
+          : document.queryCommandState('justifyFull')
+          ? 'justify'
+          : 'left',
+        listUl: document.queryCommandState('insertUnorderedList'),
+        listOl: document.queryCommandState('insertOrderedList'),
+        textColor: document.queryCommandValue('foreColor') || '#334155',
+        highlightColor: document.queryCommandValue('hiliteColor') || 'transparent'
+      });
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const syncActiveEditorContent = useCallback(() => {
+    if (!activeEditableRef.current || !selectedBlockId) return;
+    const rawHtml = activeEditableRef.current.innerHTML;
+    const sanitized = sanitizeRichTextHtml(rawHtml);
+    isTypingInCanvasRef.current = true;
+    updateBlock(selectedBlockId, { text: sanitized });
+    setTimeout(() => {
+      isTypingInCanvasRef.current = false;
+    }, 100);
+  }, [selectedBlockId, updateBlock]);
+
+  const handleApplyFontFamily = useCallback((family: string) => {
+    restoreSelection();
+    document.execCommand('styleWithCSS', false, 'true');
+    document.execCommand('fontName', false, family);
+    if (activeEditableRef.current) {
+      const fonts = activeEditableRef.current.querySelectorAll('font[face]');
+      fonts.forEach((f) => {
+        const span = document.createElement('span');
+        span.style.fontFamily = f.getAttribute('face') || family;
+        while (f.firstChild) {
+          span.appendChild(f.firstChild);
+        }
+        f.parentNode?.replaceChild(span, f);
+      });
+    }
+    syncActiveEditorContent();
+  }, [restoreSelection, syncActiveEditorContent]);
+
+  const handleApplyFontSize = useCallback((sizePx: string) => {
+    restoreSelection();
+    document.execCommand('fontSize', false, '7');
+    if (activeEditableRef.current) {
+      const fonts = activeEditableRef.current.querySelectorAll('font[size="7"]');
+      fonts.forEach((f) => {
+        const span = document.createElement('span');
+        span.style.fontSize = sizePx;
+        while (f.firstChild) {
+          span.appendChild(f.firstChild);
+        }
+        f.parentNode?.replaceChild(span, f);
+      });
+    }
+    syncActiveEditorContent();
+  }, [restoreSelection, syncActiveEditorContent]);
+
+  const handleExecuteFormat = useCallback((cmd: string, val?: string) => {
+    restoreSelection();
+    document.execCommand(cmd, false, val);
+    handleSelectionCheck();
+    syncActiveEditorContent();
+  }, [restoreSelection, handleSelectionCheck, syncActiveEditorContent]);
+
+  const handleApplyTextColor = useCallback((hex: string) => {
+    restoreSelection();
+    document.execCommand('styleWithCSS', false, 'true');
+    document.execCommand('foreColor', false, hex);
+    if (activeEditableRef.current) {
+      const fonts = activeEditableRef.current.querySelectorAll('font[color]');
+      fonts.forEach((f) => {
+        const span = document.createElement('span');
+        span.style.color = f.getAttribute('color') || hex;
+        while (f.firstChild) {
+          span.appendChild(f.firstChild);
+        }
+        f.parentNode?.replaceChild(span, f);
+      });
+    }
+    syncActiveEditorContent();
+  }, [restoreSelection, syncActiveEditorContent]);
+
+  const handleApplyHighlightColor = useCallback((hex: string) => {
+    restoreSelection();
+    document.execCommand('styleWithCSS', false, 'true');
+    if (hex === 'transparent') {
+      document.execCommand('removeFormat', false);
+    } else {
+      document.execCommand('hiliteColor', false, hex);
+    }
+    syncActiveEditorContent();
+  }, [restoreSelection, syncActiveEditorContent]);
+
+  const handleOpenLinkModal = useCallback(() => {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) {
+      savedRangeRef.current = sel.getRangeAt(0);
+      let node: Node | null = sel.anchorNode;
+      let existingHref = '';
+      while (node && node !== activeEditableRef.current) {
+        if (node.nodeType === Node.ELEMENT_NODE && (node as HTMLElement).tagName === 'A') {
+          existingHref = (node as HTMLAnchorElement).getAttribute('href') || '';
+          break;
+        }
+        node = node.parentNode;
+      }
+      setLinkUrl(existingHref || '');
+    }
+    setLinkModalOpen(true);
+  }, []);
+
+  const handleConfirmLink = useCallback(() => {
+    if (!linkUrl.trim()) {
+      toast.error('Ingresa una URL válida');
+      return;
+    }
+    setLinkModalOpen(false);
+    restoreSelection();
+    const safeTarget = linkUrl.trim();
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed) {
+      document.execCommand('createLink', false, safeTarget);
+      if (activeEditableRef.current) {
+        const links = activeEditableRef.current.querySelectorAll('a');
+        links.forEach((a) => {
+          if (a.getAttribute('href') === safeTarget) {
+            a.setAttribute('target', '_blank');
+            a.setAttribute('rel', 'noopener noreferrer');
+            a.style.color = '#005a9c';
+            a.style.textDecoration = 'underline';
+          }
+        });
+      }
+    } else {
+      const aHtml = `<a href="${safeTarget}" target="_blank" rel="noopener noreferrer" style="color: #005a9c; text-decoration: underline;">${safeTarget}</a>`;
+      document.execCommand('insertHTML', false, aHtml);
+    }
+    syncActiveEditorContent();
+    toast.success('Enlace aplicado');
+  }, [linkUrl, restoreSelection, syncActiveEditorContent]);
+
+  const handleUnlink = useCallback(() => {
+    restoreSelection();
+    document.execCommand('unlink', false);
+    syncActiveEditorContent();
+    toast.info('Enlace retirado');
+  }, [restoreSelection, syncActiveEditorContent]);
+
+  const handleInsertMergeTag = useCallback((tag: string) => {
+    restoreSelection();
+    document.execCommand('insertHTML', false, tag);
+    syncActiveEditorContent();
+    toast.success(`Variable ${tag} insertada`);
+  }, [restoreSelection, syncActiveEditorContent]);
+
+  const handleInsertEmoji = useCallback((emoji: string) => {
+    restoreSelection();
+    document.execCommand('insertHTML', false, emoji);
+    syncActiveEditorContent();
+  }, [restoreSelection, syncActiveEditorContent]);
+
+  const handleClearFormat = useCallback(() => {
+    restoreSelection();
+    document.execCommand('removeFormat', false);
+    syncActiveEditorContent();
+    toast.info('Formato eliminado de la selección');
+  }, [restoreSelection, syncActiveEditorContent]);
+
+  const handleTextUndo = useCallback(() => {
+    document.execCommand('undo', false);
+    syncActiveEditorContent();
+  }, [syncActiveEditorContent]);
+
+  const handleTextRedo = useCallback(() => {
+    document.execCommand('redo', false);
+    syncActiveEditorContent();
+  }, [syncActiveEditorContent]);
+
+  const handleEditableInput = useCallback((e: React.FormEvent<HTMLDivElement>) => {
+    if (!selectedBlockId) return;
+    const currentHtml = e.currentTarget.innerHTML;
+    isTypingInCanvasRef.current = true;
+    updateBlock(selectedBlockId, { text: currentHtml }, false);
+    setTimeout(() => {
+      isTypingInCanvasRef.current = false;
+    }, 100);
+  }, [selectedBlockId, updateBlock]);
+
+  const handleEditableBlur = useCallback((e: React.FocusEvent<HTMLDivElement>) => {
+    if (!selectedBlockId) return;
+    const sanitized = sanitizeRichTextHtml(e.currentTarget.innerHTML);
+    updateBlock(selectedBlockId, { text: sanitized }, true);
+  }, [selectedBlockId, updateBlock]);
+
+  const handleEditablePaste = useCallback((e: React.ClipboardEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const html = e.clipboardData.getData('text/html');
+    const text = e.clipboardData.getData('text/plain');
+    if (html) {
+      const sanitized = sanitizeRichTextHtml(html);
+      document.execCommand('insertHTML', false, sanitized);
+    } else if (text) {
+      document.execCommand('insertText', false, text);
+    }
+    syncActiveEditorContent();
+  }, [syncActiveEditorContent]);
+
+  const handleEditableKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
+      e.preventDefault();
+      document.execCommand('bold', false);
+      syncActiveEditorContent();
+    } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'i') {
+      e.preventDefault();
+      document.execCommand('italic', false);
+      syncActiveEditorContent();
+    } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'u') {
+      e.preventDefault();
+      document.execCommand('underline', false);
+      syncActiveEditorContent();
+    }
+  }, [syncActiveEditorContent]);
+
+  // Sincronizar el contenido visual del canvas cuando cambia el bloque seleccionado o su texto desde el panel
+  const selectedTextContent = selectedBlock && selectedBlock.type === 'text' ? selectedBlock.text : null;
+
+  useEffect(() => {
+    if (activeEditableRef.current && selectedBlock && selectedBlock.type === 'text') {
+      if (!isTypingInCanvasRef.current) {
+        const targetHtml = textToHtml(selectedBlock.text);
+        if (activeEditableRef.current.innerHTML !== targetHtml) {
+          activeEditableRef.current.innerHTML = targetHtml;
+        }
+      }
+    }
+  }, [selectedBlockId, selectedTextContent]);
 
   // Agregar nuevo bloque
   const handleAddBlock = (type: BlockType) => {
@@ -882,11 +1803,70 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
       <div className="flex-1 flex overflow-hidden">
         {/* LIENZO DE TRABAJO (CANVAS CENTRAL) */}
         <main
-          className="flex-1 bg-slate-200/60 overflow-y-auto p-4 sm:p-8 flex justify-center items-start"
+          className="flex-1 bg-slate-200/60 overflow-y-auto p-4 sm:p-8 flex flex-col items-center justify-start relative"
           onClick={(e) => {
             if (e.target === e.currentTarget) setSelectedBlockId(null);
           }}
         >
+          {/* BARRA FLOTANTE DE FORMATO ENRIQUECIDO WYSIWYG */}
+          {selectedBlock && selectedBlock.type === 'text' && !readOnly && (
+            <div className="sticky top-0 z-30 mb-4 w-full max-w-3xl px-2 animate-in fade-in slide-in-from-top-2 duration-150">
+              <InlineRichTextToolbar
+                fontFamily={selectedBlock.fontFamily || design.settings.font}
+                fontSize={selectedBlock.size || 15}
+                color={selectedBlock.color || '#334155'}
+                activeFormats={activeTextFormats}
+                onApplyFontFamily={handleApplyFontFamily}
+                onApplyFontSize={handleApplyFontSize}
+                onApplyFormat={handleExecuteFormat}
+                onApplyTextColor={handleApplyTextColor}
+                onApplyHighlightColor={handleApplyHighlightColor}
+                onInsertLink={handleOpenLinkModal}
+                onUnlink={handleUnlink}
+                onInsertMergeTag={handleInsertMergeTag}
+                onInsertEmoji={handleInsertEmoji}
+                onClearFormat={handleClearFormat}
+                onUndo={handleTextUndo}
+                onRedo={handleTextRedo}
+              />
+            </div>
+          )}
+
+          {/* ESTILOS SCOPED PARA EDICIÓN EN LIENZO */}
+          <style>{`
+            .rich-text-canvas-content p {
+              margin: 0 0 12px 0;
+              line-height: inherit;
+            }
+            .rich-text-canvas-content p:last-child {
+              margin-bottom: 0;
+            }
+            .rich-text-canvas-content ul {
+              margin: 0 0 12px 0;
+              padding-left: 24px;
+              list-style-type: disc;
+            }
+            .rich-text-canvas-content ol {
+              margin: 0 0 12px 0;
+              padding-left: 24px;
+              list-style-type: decimal;
+            }
+            .rich-text-canvas-content li {
+              margin-bottom: 4px;
+            }
+            .rich-text-canvas-content a {
+              color: #005a9c;
+              text-decoration: underline;
+            }
+            .rich-text-canvas-content blockquote {
+              border-left: 3px solid #005a9c;
+              margin: 12px 0;
+              padding-left: 12px;
+              color: #475569;
+              font-style: italic;
+            }
+          `}</style>
+
           <div
             style={{
               width: deviceView === 'mobile' ? '375px' : `${bodyWidthPreset}px`,
@@ -1008,20 +1988,65 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                         </div>
 
                         {/* Renderizado de bloque individual */}
-                        <div
-                          dangerouslySetInnerHTML={{
-                            __html: renderDesignToHtml(
-                              { version: 1, settings: design.settings, blocks: [block] },
-                              {
-                                interactive: false,
-                                siteContext: siteBranding,
-                                isCtaActive: design.blocks.some(
-                                  (b) => b.type === 'global' && (b as GlobalBlockItem).globalKey === 'club_platform_cta' && (b as GlobalBlockItem).enabled !== false
-                                )
-                              }
-                            )
-                          }}
-                        />
+                        {block.type === 'text' ? (
+                          <div className="w-full">
+                            <table role="presentation" width="100%" cellPadding="0" cellSpacing="0" style={{ borderCollapse: 'collapse', margin: 0, padding: 0 }}>
+                              <tbody>
+                                <tr style={{ margin: 0, padding: 0 }}>
+                                  <td
+                                    style={{
+                                      padding: `${(block as any).padTop ?? 8}px 24px ${(block as any).padBottom ?? 8}px 24px`
+                                    }}
+                                  >
+                                    <div
+                                      ref={isSelected ? activeEditableRef : null}
+                                      contentEditable={isSelected && !isProt && !readOnly}
+                                      suppressContentEditableWarning
+                                      onInput={handleEditableInput}
+                                      onBlur={handleEditableBlur}
+                                      onMouseUp={handleSelectionCheck}
+                                      onKeyUp={handleSelectionCheck}
+                                      onSelect={handleSelectionCheck}
+                                      onKeyDown={handleEditableKeyDown}
+                                      onPaste={handleEditablePaste}
+                                      data-text-block-id={block.id}
+                                      className={`rich-text-canvas-content transition-all focus:outline-none ${
+                                        isSelected && !isProt ? 'cursor-text ring-1 ring-blue-500/50 rounded-lg p-1 bg-blue-50/10' : ''
+                                      }`}
+                                      style={{
+                                        fontFamily: block.fontFamily || design.settings.font,
+                                        fontSize: `${block.size || 15}px`,
+                                        lineHeight: block.lineHeight || 1.6,
+                                        letterSpacing: block.letterSpacing !== undefined ? `${block.letterSpacing}px` : 'normal',
+                                        color: block.color || '#334155',
+                                        textAlign: (block.align as any) || 'left',
+                                        fontWeight: block.fontWeight || (block.weight === 'bold' || block.weight === '800' ? '700' : '400'),
+                                        minHeight: '28px',
+                                        outline: 'none'
+                                      }}
+                                      dangerouslySetInnerHTML={{ __html: textToHtml(block.text) }}
+                                    />
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          <div
+                            dangerouslySetInnerHTML={{
+                              __html: renderDesignToHtml(
+                                { version: 1, settings: design.settings, blocks: [block] },
+                                {
+                                  interactive: false,
+                                  siteContext: siteBranding,
+                                  isCtaActive: design.blocks.some(
+                                    (b) => b.type === 'global' && (b as GlobalBlockItem).globalKey === 'club_platform_cta' && (b as GlobalBlockItem).enabled !== false
+                                  )
+                                }
+                              )
+                            }}
+                          />
+                        )}
                       </div>
                     );
                   })}
@@ -1265,8 +2290,21 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                   {/* Texto / Párrafo */}
                   {selectedBlock.type === 'text' && (
                     <>
+                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50/60 border border-blue-200/90 rounded-xl p-3 space-y-1.5 shadow-2xs">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-rotary-blue">
+                          <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                          <span>Edición Visual WYSIWYG en Lienzo</span>
+                        </div>
+                        <p className="text-[11px] text-slate-600 leading-relaxed">
+                          Haz doble clic o selecciona palabras directamente en la plantilla para aplicar negrilla, cursiva, enlaces, colores o variables individuales sin alterar el resto del párrafo.
+                        </p>
+                      </div>
+
                       <div>
-                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Contenido (admite párrafos y variables)</label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[11px] font-bold text-slate-700">Contenido (HTML / Texto y Variables)</label>
+                          <span className="text-[10px] text-slate-400 font-mono">Sincronizado en vivo</span>
+                        </div>
                         <textarea
                           rows={6}
                           value={selectedBlock.text}
@@ -3727,6 +4765,89 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
               >
                 {sendingTest ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
                 <span>{sendingTest ? 'Enviando...' : 'Enviar Prueba'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── 5.1 MODAL DE INSERTAR / EDITAR ENLACE ──────────────────────── */}
+      {linkModalOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-100"
+          onClick={() => setLinkModalOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl border border-slate-200 p-5 w-full max-w-sm space-y-3.5 text-slate-800 animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2 text-rotary-blue font-bold text-sm">
+                <LinkIcon className="w-4 h-4" />
+                <span>Insertar / Editar Enlace</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLinkModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-slate-600 block mb-1">Destino (URL o Variable)</label>
+              <input
+                type="text"
+                value={linkUrl}
+                onChange={(e) => setLinkUrl(e.target.value)}
+                placeholder="https://rotary4281.org o {{form_url}}"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 text-xs font-mono text-slate-900 focus:bg-white focus:border-rotary-blue"
+                autoFocus
+              />
+            </div>
+
+            <div>
+              <label className="text-[10px] font-bold text-slate-400 block mb-1">Accesos rápidos institucionales:</label>
+              <div className="flex flex-wrap gap-1">
+                <button
+                  type="button"
+                  onClick={() => setLinkUrl('{{form_url}}')}
+                  className="text-[10px] bg-blue-50 text-rotary-blue px-2 py-0.5 rounded-md font-mono hover:bg-blue-100 font-semibold"
+                >
+                  {'{{form_url}}'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLinkUrl('{{activar_club_url}}')}
+                  className="text-[10px] bg-blue-50 text-rotary-blue px-2 py-0.5 rounded-md font-mono hover:bg-blue-100 font-semibold"
+                >
+                  {'{{activar_club_url}}'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLinkUrl('{{club.profile_url}}')}
+                  className="text-[10px] bg-blue-50 text-rotary-blue px-2 py-0.5 rounded-md font-mono hover:bg-blue-100 font-semibold"
+                >
+                  {'{{club.profile_url}}'}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setLinkModalOpen(false)}
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmLink}
+                className="px-4 py-1.5 rounded-xl text-xs font-bold bg-rotary-blue text-white hover:bg-blue-700 shadow-xs"
+              >
+                Aplicar Enlace
               </button>
             </div>
           </div>

@@ -313,14 +313,106 @@ const safeUrl = (u: string): string => {
     return `https://${v.replace(/"/g, '%22')}`;
 };
 
-// Convierte texto plano con párrafos (línea en blanco) y saltos de línea a HTML.
-const textToHtml = (text: string): string =>
-    esc(text)
+/**
+ * Comprueba si una cadena contiene marcas HTML enriquecidas (p, strong, b, em, span, etc.)
+ */
+export const isRichTextHtml = (str?: string | null): boolean => {
+    if (!str || typeof str !== 'string') return false;
+    return /<\/?(p|div|span|strong|b|em|i|u|s|strike|del|sup|sub|a|ul|ol|li|br|h[1-6]|blockquote)\b[^>]*>/i.test(str);
+};
+
+/**
+ * Sanitiza y normaliza HTML enriquecido para garantizar compatibilidad estricta con clientes
+ * de correo (Gmail, Outlook, Apple Mail) y proteger contra scripts maliciosos.
+ */
+export const sanitizeRichTextHtml = (html?: string | null): string => {
+    if (!html || typeof html !== 'string') return '';
+    let clean = html;
+
+    // 1. Eliminar etiquetas no permitidas o peligrosas (scripts, styles, iframes, formularios, inputs, etc.)
+    clean = clean.replace(/<script[\s\S]*?<\/script>/gi, '');
+    clean = clean.replace(/<style[\s\S]*?<\/style>/gi, '');
+    clean = clean.replace(/<iframe[\s\S]*?<\/iframe>/gi, '');
+    clean = clean.replace(/<object[\s\S]*?<\/object>/gi, '');
+    clean = clean.replace(/<embed[\s\S]*?<\/embed>/gi, '');
+    clean = clean.replace(/<form[\s\S]*?<\/form>/gi, '');
+    clean = clean.replace(/<input[\s\S]*?>/gi, '');
+    clean = clean.replace(/<button[\s\S]*?<\/button>/gi, '');
+
+    // 2. Eliminar eventos JS inline (onclick, onerror, onload, etc.)
+    clean = clean.replace(/\son[a-z]+\s*=\s*(?:'[^']*'|"[^"]*"|[^\s>]+)/gi, '');
+
+    // 3. Eliminar protocolos peligrosos en enlaces (javascript:, data:text/html, etc.)
+    clean = clean.replace(/\shref\s*=\s*["']?\s*(?:javascript|vbscript|data):[^"'>\s]*/gi, ' href="#"');
+
+    // 4. Normalizar enlaces <a> para que tengan target="_blank" y rel="noopener noreferrer"
+    clean = clean.replace(/<a(\s+[^>]*)?>/gi, (match, attrs = '') => {
+        let cleanAttrs = attrs;
+        if (!/target\s*=/i.test(cleanAttrs)) {
+            cleanAttrs += ' target="_blank"';
+        }
+        if (!/rel\s*=/i.test(cleanAttrs)) {
+            cleanAttrs += ' rel="noopener noreferrer"';
+        }
+        return `<a${cleanAttrs}>`;
+    });
+
+    // 5. Garantizar márgenes e interlineado compatibles con Outlook y Gmail en párrafos <p>
+    clean = clean.replace(/<p(\s+[^>]*)?>/gi, (match, attrs = '') => {
+        if (!attrs || !attrs.trim()) {
+            return `<p style="margin:0 0 12px 0;line-height:inherit">`;
+        }
+        if (/style\s*=\s*["']([^"']*)["']/i.test(attrs)) {
+            return match.replace(/style\s*=\s*["']([^"']*)["']/i, (_m, s) => {
+                let mergedStyle = s.trim();
+                if (!/margin/i.test(mergedStyle)) {
+                    mergedStyle = `margin:0 0 12px 0;` + (mergedStyle ? `${mergedStyle}` : '');
+                }
+                if (!/line-height/i.test(mergedStyle)) {
+                    mergedStyle = (mergedStyle ? `${mergedStyle};` : '') + `line-height:inherit`;
+                }
+                return `style="${mergedStyle}"`;
+            });
+        }
+        return `<p style="margin:0 0 12px 0;line-height:inherit"${attrs}>`;
+    });
+
+    // 6. Asegurar estilos compatibles para listas <ul>, <ol> y <li>
+    clean = clean.replace(/<ul(\s+[^>]*)?>/gi, (match, attrs = '') => {
+        if (/style\s*=/i.test(attrs)) return match;
+        return `<ul style="margin:0 0 12px 0;padding-left:24px;list-style-type:disc"${attrs}>`;
+    });
+    clean = clean.replace(/<ol(\s+[^>]*)?>/gi, (match, attrs = '') => {
+        if (/style\s*=/i.test(attrs)) return match;
+        return `<ol style="margin:0 0 12px 0;padding-left:24px;list-style-type:decimal"${attrs}>`;
+    });
+    clean = clean.replace(/<li(\s+[^>]*)?>/gi, (match, attrs = '') => {
+        if (/style\s*=/i.test(attrs)) return match;
+        return `<li style="margin-bottom:4px"${attrs}>`;
+    });
+
+    // 7. Asegurar estilo para blockquotes si existen
+    clean = clean.replace(/<blockquote(\s+[^>]*)?>/gi, (match, attrs = '') => {
+        if (/style\s*=/i.test(attrs)) return match;
+        return `<blockquote style="border-left:3px solid #005a9c;margin:12px 0;padding-left:12px;color:#475569;font-style:italic"${attrs}>`;
+    });
+
+    return clean;
+};
+
+// Convierte texto (plano o enriquecido con HTML) a HTML seguro para emails.
+export const textToHtml = (text: string): string => {
+    if (!text || typeof text !== 'string') return '';
+    if (isRichTextHtml(text)) {
+        return sanitizeRichTextHtml(text);
+    }
+    return esc(text)
         .split(/\n\s*\n/)
         .map((p) => p.trim())
         .filter(Boolean)
-        .map((p) => `<p style="margin:0 0 12px 0">${p.replace(/\n/g, '<br>')}</p>`)
+        .map((p) => `<p style="margin:0 0 12px 0;line-height:inherit">${p.replace(/\n/g, '<br>')}</p>`)
         .join('');
+};
 
 const SOCIAL_LABEL: Record<SocialNetwork, string> = {
     facebook: 'f', instagram: 'IG', x: 'X', linkedin: 'in', youtube: '▶', whatsapp: 'WA', web: '🌐',

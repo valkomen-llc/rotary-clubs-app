@@ -170,7 +170,76 @@ var safeUrl = (u) => {
   if (v.startsWith("#") || v === "") return v;
   return `https://${v.replace(/"/g, "%22")}`;
 };
-var textToHtml = (text) => esc(text).split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean).map((p) => `<p style="margin:0 0 12px 0">${p.replace(/\n/g, "<br>")}</p>`).join("");
+var isRichTextHtml = (str) => {
+  if (!str || typeof str !== "string") return false;
+  return /<\/?(p|div|span|strong|b|em|i|u|s|strike|del|sup|sub|a|ul|ol|li|br|h[1-6]|blockquote)\b[^>]*>/i.test(str);
+};
+var sanitizeRichTextHtml = (html) => {
+  if (!html || typeof html !== "string") return "";
+  let clean = html;
+  clean = clean.replace(/<script[\s\S]*?<\/script>/gi, "");
+  clean = clean.replace(/<style[\s\S]*?<\/style>/gi, "");
+  clean = clean.replace(/<iframe[\s\S]*?<\/iframe>/gi, "");
+  clean = clean.replace(/<object[\s\S]*?<\/object>/gi, "");
+  clean = clean.replace(/<embed[\s\S]*?<\/embed>/gi, "");
+  clean = clean.replace(/<form[\s\S]*?<\/form>/gi, "");
+  clean = clean.replace(/<input[\s\S]*?>/gi, "");
+  clean = clean.replace(/<button[\s\S]*?<\/button>/gi, "");
+  clean = clean.replace(/\son[a-z]+\s*=\s*(?:'[^']*'|"[^"]*"|[^\s>]+)/gi, "");
+  clean = clean.replace(/\shref\s*=\s*["']?\s*(?:javascript|vbscript|data):[^"'>\s]*/gi, ' href="#"');
+  clean = clean.replace(/<a(\s+[^>]*)?>/gi, (match, attrs = "") => {
+    let cleanAttrs = attrs;
+    if (!/target\s*=/i.test(cleanAttrs)) {
+      cleanAttrs += ' target="_blank"';
+    }
+    if (!/rel\s*=/i.test(cleanAttrs)) {
+      cleanAttrs += ' rel="noopener noreferrer"';
+    }
+    return `<a${cleanAttrs}>`;
+  });
+  clean = clean.replace(/<p(\s+[^>]*)?>/gi, (match, attrs = "") => {
+    if (!attrs || !attrs.trim()) {
+      return `<p style="margin:0 0 12px 0;line-height:inherit">`;
+    }
+    if (/style\s*=\s*["']([^"']*)["']/i.test(attrs)) {
+      return match.replace(/style\s*=\s*["']([^"']*)["']/i, (_m, s) => {
+        let mergedStyle = s.trim();
+        if (!/margin/i.test(mergedStyle)) {
+          mergedStyle = `margin:0 0 12px 0;` + (mergedStyle ? `${mergedStyle}` : "");
+        }
+        if (!/line-height/i.test(mergedStyle)) {
+          mergedStyle = (mergedStyle ? `${mergedStyle};` : "") + `line-height:inherit`;
+        }
+        return `style="${mergedStyle}"`;
+      });
+    }
+    return `<p style="margin:0 0 12px 0;line-height:inherit"${attrs}>`;
+  });
+  clean = clean.replace(/<ul(\s+[^>]*)?>/gi, (match, attrs = "") => {
+    if (/style\s*=/i.test(attrs)) return match;
+    return `<ul style="margin:0 0 12px 0;padding-left:24px;list-style-type:disc"${attrs}>`;
+  });
+  clean = clean.replace(/<ol(\s+[^>]*)?>/gi, (match, attrs = "") => {
+    if (/style\s*=/i.test(attrs)) return match;
+    return `<ol style="margin:0 0 12px 0;padding-left:24px;list-style-type:decimal"${attrs}>`;
+  });
+  clean = clean.replace(/<li(\s+[^>]*)?>/gi, (match, attrs = "") => {
+    if (/style\s*=/i.test(attrs)) return match;
+    return `<li style="margin-bottom:4px"${attrs}>`;
+  });
+  clean = clean.replace(/<blockquote(\s+[^>]*)?>/gi, (match, attrs = "") => {
+    if (/style\s*=/i.test(attrs)) return match;
+    return `<blockquote style="border-left:3px solid #005a9c;margin:12px 0;padding-left:12px;color:#475569;font-style:italic"${attrs}>`;
+  });
+  return clean;
+};
+var textToHtml = (text) => {
+  if (!text || typeof text !== "string") return "";
+  if (isRichTextHtml(text)) {
+    return sanitizeRichTextHtml(text);
+  }
+  return esc(text).split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean).map((p) => `<p style="margin:0 0 12px 0;line-height:inherit">${p.replace(/\n/g, "<br>")}</p>`).join("");
+};
 var SOCIAL_LABEL = {
   facebook: "f",
   instagram: "IG",
@@ -1665,6 +1734,7 @@ export {
   getActiveSiteBrandingContext,
   getRotaryGlobalBlocksCatalog,
   injectCampaignIntoDesign,
+  isRichTextHtml,
   makeBlock,
   newId,
   normalizeInstitutionalDesign,
@@ -1673,5 +1743,7 @@ export {
   renderFooterSocialIcons,
   resolveInstitutionalLogo,
   resolveSiteActivarClubUrl,
-  resolveSiteRotaryEnAccionUrl
+  resolveSiteRotaryEnAccionUrl,
+  sanitizeRichTextHtml,
+  textToHtml
 };

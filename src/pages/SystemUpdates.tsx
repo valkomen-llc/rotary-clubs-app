@@ -42,6 +42,24 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1226.0',
+        title: 'Editor Visual de Texto Enriquecido (WYSIWYG) en Email Marketing para Canales Institucionales ✍️🎨✉️',
+        description: 'Implementación integral del Editor de Texto Enriquecido in-situ sobre el lienzo visual de Email Marketing (Rotary en Acción, Directorio de Clubes y Feria de Proyectos): 1) Edición directa sobre el lienzo con selección de palabras, frases o párrafos y formato parcial sin alterar el resto del bloque. 2) Barra contextual flotante/anclada completa con selectores de familia tipográfica (Open Sans por defecto), tamaño de fuente (11px-32px), estilos inline (Negrita, Cursiva, Subrayado, Tachado, Superíndice, Subíndice), alineación, listas numeradas y viñetas, sangría e indentación. 3) Paleta oficial rotaria de colores y resaltador de fondo. 4) Diálogo modal de hipervínculos con variables rápidas rotarias ({{form_url}}, {{activar_club_url}}, {{club.profile_url}}). 5) Catálogo de Merge Tags dinámicas para inserción directa en el cursor. 6) Sanitización estricta y normalización HTML segura para clientes de correo (Outlook, Gmail, Apple Mail) con retrocompatibilidad 100% para plantillas heredadas. 7) Preservación de componentes institucionales protegidos (cabeceras, logos, botones globales y footer).',
+        date: new Date().toISOString(),
+        tags: ['email-marketing', 'wysiwyg', 'rich-text', 'merge-tags', 'rotary-en-accion', 'directorio-clubes', 'feria-proyectos', 'email-blocks'],
+        type: 'feature',
+        impact: 'Alta: Los administradores y líderes rotarios ahora pueden diseñar correos electrónicos con tipografía, colores, enlaces y variables personalizadas frase a frase directamente en la plantilla visual.',
+        changes: [
+            { type: 'added', text: 'Edición de texto directamente sobre el lienzo (contentEditable) con prevención de salto de cursor y selección intacta.' },
+            { type: 'added', text: 'Barra de herramientas contextual InlineRichTextToolbar con tipografía Open Sans, tamaños 11-32px, negrita, cursiva, subrayado, tachado, superíndice, subíndice y selector de emojis.' },
+            { type: 'added', text: 'Paleta institucional de colores de texto Rotary (Gold, Royal Blue, Cranberry, etc.) y resaltado de fondo.' },
+            { type: 'added', text: 'Modal de enlaces interactivos con atajos para URLs dinámicas institucionales y eliminación de hipervínculos.' },
+            { type: 'added', text: 'Menú desplegable de Merge Tags dinámicas (nombre, apellido, club, porcentaje de completitud, distrito, etc.).' },
+            { type: 'improved', text: 'Motor emailBlocks con isRichTextHtml y sanitizeRichTextHtml para renderizar HTML limpio y seguro en todos los clientes de email con compatibilidad hacia atrás.' },
+            { type: 'added', text: 'Suite de pruebas automatizadas scripts/test-rotary-rich-text.mjs que valida formato parcial, sanitización y compilación de correo.' }
+        ]
+    },
+    {
         version: '4.1225.0',
         title: 'Corrección Definitiva de ReferenceError Landmark en AdminLayout y Blindaje de Resiliencia Multi-Tenant 🏛️🛡️',
         description: 'Corrección técnica de raíz del fallo que bloqueaba la navegación del panel administrativo en rotary4281.org: 1) Corrección de importación faltante de Landmark de lucide-react en AdminLayout.tsx, introducida en v4.1223.0 para el ítem de menú finance_vault, el cual se activa para el Distrito 4281 por regla fundacional (siteModulesSpec). 2) Reparación arquitectónica de cascada de errores: en caso de que AdminLayout falle, AdminModuleBoundary ahora implementa SafeLayoutShell para capturar excepciones internas del layout sin tumbar la aplicación hasta ChunkErrorBoundary. 3) Corrección de identificadores indefinidos en submódulos (isAdmin -> isPlatformAdmin en AccountManager, filteredMediaItems -> mediaItems en VideoReportWorkflow). 4) Nuevo script de validación estricta scripts/check-admin-menu-icons.mjs integrado a prebuild que verifica estáticamente que el 100% de los iconos utilizados en getMenuItems() estén explícitamente importados. 5) Suite scripts/test-admin-resilience-suite.mjs con 11 verificaciones de renderizado, multi-tenant y aislamiento público.',
