@@ -3782,7 +3782,7 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
       {/* ── MODAL DE PREVISUALIZACIÓN DE CAMPAÑA ────────────────────── */}
       {previewCampaign && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border border-gray-100">
+          <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[92vh] overflow-hidden flex flex-col shadow-2xl border border-gray-100">
             <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-gray-50/70">
               <div>
                 <span className="text-[10px] font-black uppercase text-rotary-blue tracking-wider">
@@ -3930,10 +3930,12 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
                     <div><strong>Preheader:</strong> {previewCampaign.preheader}</div>
                     <div><strong>UTM:</strong> <code className="text-[11px] bg-white px-1.5 py-0.5 rounded">{previewCampaign.utmCampaign}</code></div>
                   </div>
-                  <div
-                    className="border border-gray-200 rounded-2xl p-4 bg-white"
-                    dangerouslySetInnerHTML={{ __html: renderedPreviewHtml }}
-                  />
+                  <div className="border border-gray-200 rounded-2xl p-4 bg-slate-100/80 flex justify-center overflow-x-auto">
+                    <div
+                      className="w-full max-w-[620px] bg-white rounded-xl shadow-xs overflow-hidden select-text"
+                      dangerouslySetInnerHTML={{ __html: renderedPreviewHtml }}
+                    />
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-3">

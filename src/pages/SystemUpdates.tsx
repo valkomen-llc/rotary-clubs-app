@@ -42,6 +42,23 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1229.0',
+        title: 'Arquitectura WYSIWYG sin Oclusión, Renderizadores Ref-Controlled y Vista Previa Dinámica 💎🎨📬',
+        description: 'Optimización estructural integral del Editor Visual de Email Marketing (v4.1229.0) y el Planificador de Campañas Institucionales: 1) Renderizadores de lienzo controlados por Ref (TextBlockCanvasRenderer y HeadingBlockCanvasRenderer) que aíslan la escritura del ciclo de reconciliación de React, preservando selecciones, cursores y atajos de teclado sin parpadeos ni trampas de foco. 2) Barra de herramientas WYSIWYG dockeada permanentemente en la cabecera superior, eliminando la barra flotante que tapaba los párrafos al hacer scroll en el lienzo. 3) Inspector lateral con alternador de vista limpia: "Modo Visual" (predeterminado con botón de activación en lienzo y controles de tipografía/colores) y "Código HTML" (con editor de sintaxis oscura y validador sanitizador). 4) Vista previa en vivo (previewMode="live") con renderizado HTML directo y continuo, eliminando el iframe de altura fija de 700px y permitiendo inspeccionar correos de cualquier extensión. 5) Modal de previsualización en el Planificador de Campañas (RotaryMarketingInteligente) ampliado a max-w-4xl con contenedor centrado a 600px simulando clientes de correo reales. 6) Suite automatizada de pruebas de interacción y desplazamiento (test-editor-interactions.mjs) blindando la integridad en cada compilación.',
+        date: new Date().toISOString(),
+        tags: ['email-marketing', 'visual-editor', 'ref-controlled', 'wysiwyg-docked', 'preview-fix', 'campaign-planner', 'rotary-en-accion', 'directorio-clubes'],
+        type: 'feature',
+        impact: 'Crítica: Proporciona una experiencia de edición visual fluida y sin obstáculos visuales, preservando selecciones y garantizando previsualizaciones de campañas completas de arriba a abajo.',
+        changes: [
+            { type: 'improved', text: 'Renderizadores TextBlockCanvasRenderer y HeadingBlockCanvasRenderer para estabilidad total del cursor y selección de texto.' },
+            { type: 'improved', text: 'Barra WYSIWYG fija en cabecera superior; ningún elemento flotante oculta el contenido durante el scroll.' },
+            { type: 'added', text: 'Selector de Modo Visual vs Código HTML en el inspector lateral de párrafos.' },
+            { type: 'fixed', text: 'Eliminación del límite de 700px en vista previa en vivo, permitiendo scroll fluido y continuo en plantillas largas.' },
+            { type: 'improved', text: 'Modal de previsualización del Planificador ampliado a max-w-4xl con contenedor de 600px centrado.' },
+            { type: 'added', text: 'Suite de pruebas de interacción scripts/test-editor-interactions.mjs incorporada a prebuild.' }
+        ]
+    },
+    {
         version: '4.1228.0',
         title: 'Aislamiento de Scroll en Portal, Edición In-situ Inmediata y Asistente Visual de Componentes HTML 🛠️📬✨',
         description: 'Optimización definitiva de usabilidad y rendimiento del Editor Visual de Email Marketing (v4.1228.0), resolviendo las interferencias entre el layout administrativo y el lienzo de diseño: 1) Montaje del editor mediante createPortal en document.body con z-[99999], aislando completamente el editor de los scrolls, paddings y jerarquías de AdminLayout y garantizando que el scroll con trackpad/rueda responda sin bloqueos. 2) Bloqueo de scroll en document.body mientras el editor esté activo. 3) Barra de desplazamiento vertical nativa estilizada y visible de 12px en color azul rotario con colchón inferior pb-64. 4) Habilitación de edición inline directa con un solo clic tanto en bloques de texto como en encabezados (H1, H2, H3), eliminando barreras de doble clic y sincronizando el cursor sin saltos. 5) Asistente visual estructurado para edición de textos y variables en componentes HTML (tarjeta de estado del Directorio de Clubes [DIR-SEM-02], títulos, descripciones y notas) sin necesidad de tocar código HTML. 6) Editor de código HTML fuente avanzado ampliado a 8 líneas con fondo oscuro para desarrolladores.',

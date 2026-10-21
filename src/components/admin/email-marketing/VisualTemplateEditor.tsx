@@ -17,7 +17,7 @@ import {
   AlignLeft, AlignCenter, AlignRight, AlignJustify, Globe,
   Bold, Italic, Underline, Strikethrough, Superscript, Subscript, Smile,
   List, ListOrdered, Link as LinkIcon, Unlink as UnlinkIcon, RemoveFormatting,
-  Highlighter, ChevronDown, Indent, Outdent, GripVertical, Edit3
+  Highlighter, ChevronDown, Indent, Outdent, GripVertical, Edit3, Code2
 } from 'lucide-react';
 
 import {
@@ -26,7 +26,8 @@ import {
   resolveInstitutionalLogo, getActiveSiteBrandingContext, normalizeInstitutionalDesign, resolveSiteRotaryEnAccionUrl,
   DEFAULT_FOOTER_SOCIAL_LINKS, textToHtml, sanitizeRichTextHtml,
   type EmailDesign, type Block, type BlockType, type Align, type SocialNetwork,
-  type TableRow, type MenuItem, type SiteBrandingContext, type FooterSocialLink, type SocialIconStyle, type GlobalBlockItem
+  type TableRow, type MenuItem, type SiteBrandingContext, type FooterSocialLink, type SocialIconStyle, type GlobalBlockItem,
+  type TextBlock, type HeadingBlock
 } from '../../../lib/emailBlocks';
 import { DEFAULT_TIPOS } from '../../../lib/rotaryEnAccionSpec';
 import MediaPicker from '../content-studio/MediaPicker';
@@ -784,6 +785,230 @@ export const ColorPickerInput: React.FC<ColorPickerInputProps> = ({
 
 type TabMode = 'blocks' | 'layouts' | 'global' | 'style' | 'tags';
 
+interface TextBlockCanvasRendererProps {
+  block: TextBlock;
+  isEditing: boolean;
+  isProt: boolean;
+  readOnly: boolean;
+  designFont: string;
+  onUpdateText: (newHtml: string, isFinal: boolean) => void;
+  onSelectionChange: () => void;
+  onDoubleClick: () => void;
+  onFocus: () => void;
+  registerEditableRef: (el: HTMLDivElement | null) => void;
+}
+
+const TextBlockCanvasRenderer: React.FC<TextBlockCanvasRendererProps> = ({
+  block,
+  isEditing,
+  isProt,
+  readOnly,
+  designFont,
+  onUpdateText,
+  onSelectionChange,
+  onDoubleClick,
+  onFocus,
+  registerEditableRef
+}) => {
+  const divRef = useRef<HTMLDivElement | null>(null);
+  const isTypingRef = useRef(false);
+
+  useEffect(() => {
+    if (isEditing) {
+      registerEditableRef(divRef.current);
+    }
+  }, [isEditing, registerEditableRef]);
+
+  // Sincronizar HTML solo cuando cambia el bloque o externamente, NUNCA sobreescribir mientras el usuario escribe
+  useEffect(() => {
+    if (divRef.current) {
+      if (isTypingRef.current) {
+        return;
+      }
+      const targetHtml = textToHtml(block.text);
+      if (divRef.current.innerHTML !== targetHtml) {
+        divRef.current.innerHTML = targetHtml;
+      }
+    }
+  }, [block.id, block.text]);
+
+  const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
+    isTypingRef.current = true;
+    const html = e.currentTarget.innerHTML;
+    onUpdateText(html, false);
+  };
+
+  const handleBlur = (e: React.FocusEvent<HTMLDivElement>) => {
+    isTypingRef.current = false;
+    const html = e.currentTarget.innerHTML;
+    onUpdateText(html, true);
+  };
+
+  return (
+    <div className="w-full">
+      <table role="presentation" width="100%" cellPadding="0" cellSpacing="0" style={{ borderCollapse: 'collapse', margin: 0, padding: 0 }}>
+        <tbody>
+          <tr style={{ margin: 0, padding: 0 }}>
+            <td
+              style={{
+                padding: `${(block as any).padTop ?? 8}px 24px ${(block as any).padBottom ?? 8}px 24px`
+              }}
+            >
+              <div
+                ref={divRef}
+                contentEditable={isEditing && !isProt && !readOnly}
+                suppressContentEditableWarning
+                onFocus={onFocus}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  onDoubleClick();
+                }}
+                onClick={(e) => {
+                  if (isEditing) {
+                    e.stopPropagation();
+                  }
+                }}
+                onInput={handleInput}
+                onBlur={handleBlur}
+                onMouseUp={onSelectionChange}
+                onKeyUp={onSelectionChange}
+                onSelect={onSelectionChange}
+                data-text-block-id={block.id}
+                className={`rich-text-canvas-content transition-all focus:outline-none ${
+                  isEditing && !isProt ? 'ring-2 ring-blue-500 rounded-lg p-1.5 bg-blue-50/15 cursor-text' : 'cursor-pointer'
+                }`}
+                style={{
+                  fontFamily: block.fontFamily || designFont,
+                  fontSize: `${block.size || 15}px`,
+                  lineHeight: block.lineHeight || 1.6,
+                  letterSpacing: block.letterSpacing !== undefined ? `${block.letterSpacing}px` : 'normal',
+                  color: block.color || '#334155',
+                  textAlign: (block.align as any) || 'left',
+                  fontWeight: block.fontWeight || (block.weight === 'bold' || block.weight === '800' ? '700' : '400'),
+                  minHeight: '28px',
+                  outline: 'none',
+                  userSelect: isEditing ? 'text' : 'auto'
+                }}
+              />
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+interface HeadingBlockCanvasRendererProps {
+  block: HeadingBlock;
+  isEditing: boolean;
+  isProt: boolean;
+  readOnly: boolean;
+  designFont: string;
+  onUpdateText: (newHtml: string, isFinal: boolean) => void;
+  onSelectionChange: () => void;
+  onDoubleClick: () => void;
+  onFocus: () => void;
+  registerEditableRef: (el: HTMLDivElement | null) => void;
+}
+
+const HeadingBlockCanvasRenderer: React.FC<HeadingBlockCanvasRendererProps> = ({
+  block,
+  isEditing,
+  isProt,
+  readOnly,
+  designFont,
+  onUpdateText,
+  onSelectionChange,
+  onDoubleClick,
+  onFocus,
+  registerEditableRef
+}) => {
+  const divRef = useRef<HTMLDivElement | null>(null);
+  const isTypingRef = useRef(false);
+
+  useEffect(() => {
+    if (isEditing) {
+      registerEditableRef(divRef.current);
+    }
+  }, [isEditing, registerEditableRef]);
+
+  useEffect(() => {
+    if (divRef.current) {
+      if (isTypingRef.current) {
+        return;
+      }
+      const targetHtml = block.text || '';
+      if (divRef.current.innerHTML !== targetHtml) {
+        divRef.current.innerHTML = targetHtml;
+      }
+    }
+  }, [block.id, block.text]);
+
+  const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
+    isTypingRef.current = true;
+    const html = e.currentTarget.innerHTML;
+    onUpdateText(html, false);
+  };
+
+  const handleBlur = (e: React.FocusEvent<HTMLDivElement>) => {
+    isTypingRef.current = false;
+    const html = e.currentTarget.innerHTML;
+    onUpdateText(html, true);
+  };
+
+  return (
+    <div className="w-full">
+      <table role="presentation" width="100%" cellPadding="0" cellSpacing="0" style={{ borderCollapse: 'collapse', margin: 0, padding: 0 }}>
+        <tbody>
+          <tr style={{ margin: 0, padding: 0 }}>
+            <td
+              style={{
+                padding: `${(block as any).padTop ?? (block.level === 1 ? 16 : 8)}px 24px ${(block as any).padBottom ?? 8}px 24px`,
+                textAlign: (block.align as any) || 'center'
+              }}
+            >
+              <div
+                ref={divRef}
+                contentEditable={isEditing && !isProt && !readOnly}
+                suppressContentEditableWarning
+                onFocus={onFocus}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  onDoubleClick();
+                }}
+                onClick={(e) => {
+                  if (isEditing) {
+                    e.stopPropagation();
+                  }
+                }}
+                onInput={handleInput}
+                onBlur={handleBlur}
+                onMouseUp={onSelectionChange}
+                onKeyUp={onSelectionChange}
+                onSelect={onSelectionChange}
+                data-text-block-id={block.id}
+                className={`transition-all focus:outline-none rounded-lg p-1 ${
+                  isEditing && !isProt ? 'ring-2 ring-blue-500 bg-blue-50/15 cursor-text' : 'cursor-pointer'
+                }`}
+                style={{
+                  fontFamily: block.fontFamily || designFont,
+                  fontSize: `${block.fontSize || (block.level === 1 ? 28 : block.level === 2 ? 22 : 18)}px`,
+                  fontWeight: block.fontWeight || (block.weight === '300' ? '300' : block.weight === '800' ? '800' : '700'),
+                  color: block.color || '#013388',
+                  lineHeight: block.lineHeight || 1.25,
+                  letterSpacing: block.letterSpacing !== undefined ? `${block.letterSpacing}px` : 0,
+                  outline: 'none',
+                  userSelect: isEditing ? 'text' : 'auto'
+                }}
+              />
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
 export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
   initialDesign,
   initialName = 'Plantilla Maestra Institucional · Rotary en Acción',
@@ -815,6 +1040,7 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
   const [bodyWidthPreset, setBodyWidthPreset] = useState<number>(600);
   const [previewMode, setPreviewMode] = useState<'editor' | 'live'>('editor');
   const [zoomLevel, setZoomLevel] = useState<number>(100);
+  const [textInspectorMode, setTextInspectorMode] = useState<'visual' | 'html'>('visual');
 
   // Modales
   const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
@@ -1083,6 +1309,10 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
         sel.addRange(savedRangeRef.current);
       }
     }
+  }, []);
+
+  const registerEditableRef = useCallback((el: HTMLDivElement | null) => {
+    activeEditableRef.current = el;
   }, []);
 
   const handleSelectionCheck = useCallback(() => {
@@ -1851,6 +2081,30 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
         </div>
       </div>
 
+      {/* ─── 2.5. BARRA DE FORMATO ENRIQUECIDO WYSIWYG DOCKEADA AL TOPE ──── */}
+      {selectedBlock && (selectedBlock.type === 'text' || selectedBlock.type === 'heading') && !readOnly && (
+        <div className="bg-white border-b border-slate-200 px-4 py-1.5 flex items-center justify-center shrink-0 z-30 shadow-xs">
+          <InlineRichTextToolbar
+            fontFamily={selectedBlock.fontFamily || design.settings.font}
+            fontSize={selectedBlock.size || (selectedBlock.type === 'heading' ? (selectedBlock.fontSize || 22) : 15)}
+            color={selectedBlock.color || '#334155'}
+            activeFormats={activeTextFormats}
+            onApplyFontFamily={handleApplyFontFamily}
+            onApplyFontSize={handleApplyFontSize}
+            onApplyFormat={handleExecuteFormat}
+            onApplyTextColor={handleApplyTextColor}
+            onApplyHighlightColor={handleApplyHighlightColor}
+            onInsertLink={handleOpenLinkModal}
+            onUnlink={handleUnlink}
+            onInsertMergeTag={handleInsertMergeTag}
+            onInsertEmoji={handleInsertEmoji}
+            onClearFormat={handleClearFormat}
+            onUndo={handleTextUndo}
+            onRedo={handleTextRedo}
+          />
+        </div>
+      )}
+
       {/* ─── 3. ÁREA PRINCIPAL: LIENZO CENTRAL + BARRA LATERAL DERECHA ──── */}
       <div className="flex-1 min-h-0 flex overflow-hidden">
         {/* LIENZO DE TRABAJO (CANVAS CENTRAL) */}
@@ -1867,29 +2121,6 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
             }
           }}
         >
-          {/* BARRA FLOTANTE DE FORMATO ENRIQUECIDO WYSIWYG */}
-          {selectedBlock && (selectedBlock.type === 'text' || selectedBlock.type === 'heading') && !readOnly && (
-            <div className="sticky top-0 z-30 mb-4 w-full max-w-3xl px-2 animate-in fade-in slide-in-from-top-2 duration-150">
-              <InlineRichTextToolbar
-                fontFamily={selectedBlock.fontFamily || design.settings.font}
-                fontSize={selectedBlock.size || (selectedBlock.type === 'heading' ? (selectedBlock.fontSize || 22) : 15)}
-                color={selectedBlock.color || '#334155'}
-                activeFormats={activeTextFormats}
-                onApplyFontFamily={handleApplyFontFamily}
-                onApplyFontSize={handleApplyFontSize}
-                onApplyFormat={handleExecuteFormat}
-                onApplyTextColor={handleApplyTextColor}
-                onApplyHighlightColor={handleApplyHighlightColor}
-                onInsertLink={handleOpenLinkModal}
-                onUnlink={handleUnlink}
-                onInsertMergeTag={handleInsertMergeTag}
-                onInsertEmoji={handleInsertEmoji}
-                onClearFormat={handleClearFormat}
-                onUndo={handleTextUndo}
-                onRedo={handleTextRedo}
-              />
-            </div>
-          )}
 
           {/* ESTILOS SCOPED PARA EDICIÓN EN LIENZO Y SCROLLBAR VISIBLE */}
           <style>{`
@@ -1961,11 +2192,10 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
               className="shadow-2xl rounded-2xl overflow-hidden border border-slate-300/80 transition-all bg-white"
             >
               {previewMode === 'live' ? (
-                // Vista previa HTML real en Iframe
-                <iframe
-                  title="Email Preview"
-                  srcDoc={compiledHtml}
-                  className="w-full min-h-[700px] border-0 bg-white"
+                // Vista previa HTML real: altura dinámica al 100%, scroll continuo y fidelidad exacta
+                <div
+                  className="w-full bg-white select-text transition-all"
+                  dangerouslySetInnerHTML={{ __html: compiledHtml }}
                 />
               ) : (
                 // Lienzo interactivo de bloques con protección visual
@@ -2028,15 +2258,13 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                               e.preventDefault();
                             }
                             setSelectedBlockId(block.id);
-                            if (!isProt && !readOnly && (block.type === 'text' || block.type === 'heading')) {
-                              setEditingBlockId(block.id);
-                            } else if (editingBlockId && editingBlockId !== block.id) {
+                            if (editingBlockId && editingBlockId !== block.id) {
                               setEditingBlockId(null);
                             }
                           }}
                           onDoubleClick={(e) => {
                             e.stopPropagation();
-                            if (!isProt && !readOnly) {
+                            if (!isProt && !readOnly && (block.type === 'text' || block.type === 'heading')) {
                               setSelectedBlockId(block.id);
                               setEditingBlockId(block.id);
                             }
@@ -2163,109 +2391,53 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
 
                           {/* Renderizado de bloque individual */}
                           {block.type === 'heading' ? (
-                            <div className="w-full">
-                              <table role="presentation" width="100%" cellPadding="0" cellSpacing="0" style={{ borderCollapse: 'collapse', margin: 0, padding: 0 }}>
-                                <tbody>
-                                  <tr style={{ margin: 0, padding: 0 }}>
-                                    <td
-                                      style={{
-                                        padding: `${(block as any).padTop ?? (block.level === 1 ? 16 : 8)}px 24px ${(block as any).padBottom ?? 8}px 24px`,
-                                        textAlign: (block.align as any) || 'center'
-                                      }}
-                                    >
-                                      <div
-                                        ref={isEditing ? activeEditableRef : null}
-                                        contentEditable={isEditing && !isProt && !readOnly}
-                                        suppressContentEditableWarning
-                                        onFocus={() => {
-                                          setSelectedBlockId(block.id);
-                                          setEditingBlockId(block.id);
-                                        }}
-                                        onInput={(e) => {
-                                          isTypingInCanvasRef.current = true;
-                                          const text = (e.currentTarget.textContent || '').trim();
-                                          updateBlock(block.id, { text }, false);
-                                          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-                                          typingTimeoutRef.current = setTimeout(() => {
-                                            isTypingInCanvasRef.current = false;
-                                          }, 400);
-                                        }}
-                                        onBlur={(e) => {
-                                          const text = (e.currentTarget.textContent || '').trim();
-                                          updateBlock(block.id, { text }, true);
-                                        }}
-                                        onMouseUp={handleSelectionCheck}
-                                        onKeyUp={handleSelectionCheck}
-                                        onSelect={handleSelectionCheck}
-                                        data-text-block-id={block.id}
-                                        className={`transition-all focus:outline-none rounded-lg p-1 ${
-                                          isEditing && !isProt ? 'cursor-text ring-1 ring-blue-500/50 bg-blue-50/10' : ''
-                                        }`}
-                                        style={{
-                                          fontFamily: block.fontFamily || design.settings.font,
-                                          fontSize: `${block.fontSize || (block.level === 1 ? 28 : block.level === 2 ? 22 : 18)}px`,
-                                          fontWeight: block.fontWeight || (block.weight === '300' ? '300' : block.weight === '800' ? '800' : '700'),
-                                          color: block.color || '#013388',
-                                          lineHeight: block.lineHeight || 1.25,
-                                          letterSpacing: block.letterSpacing !== undefined ? `${block.letterSpacing}px` : 0,
-                                          outline: 'none',
-                                          userSelect: isEditing ? 'text' : 'auto'
-                                        }}
-                                        dangerouslySetInnerHTML={{ __html: block.text }}
-                                      />
-                                    </td>
-                                  </tr>
-                                </tbody>
-                              </table>
-                            </div>
+                            <HeadingBlockCanvasRenderer
+                              block={block as HeadingBlock}
+                              isEditing={isEditing}
+                              isProt={isProt}
+                              readOnly={readOnly}
+                              designFont={design.settings.font}
+                              registerEditableRef={registerEditableRef}
+                              onFocus={() => {
+                                setSelectedBlockId(block.id);
+                              }}
+                              onDoubleClick={() => {
+                                setSelectedBlockId(block.id);
+                                setEditingBlockId(block.id);
+                              }}
+                              onSelectionChange={handleSelectionCheck}
+                              onUpdateText={(newHtml, isFinal) => {
+                                if (isFinal) {
+                                  updateBlock(block.id, { text: newHtml }, true);
+                                } else {
+                                  updateBlock(block.id, { text: newHtml }, false);
+                                }
+                              }}
+                            />
                           ) : block.type === 'text' ? (
-                            <div className="w-full">
-                              <table role="presentation" width="100%" cellPadding="0" cellSpacing="0" style={{ borderCollapse: 'collapse', margin: 0, padding: 0 }}>
-                                <tbody>
-                                  <tr style={{ margin: 0, padding: 0 }}>
-                                    <td
-                                      style={{
-                                        padding: `${(block as any).padTop ?? 8}px 24px ${(block as any).padBottom ?? 8}px 24px`
-                                      }}
-                                    >
-                                      <div
-                                        ref={isEditing ? activeEditableRef : null}
-                                        contentEditable={isEditing && !isProt && !readOnly}
-                                        suppressContentEditableWarning
-                                        onFocus={() => {
-                                          setSelectedBlockId(block.id);
-                                          setEditingBlockId(block.id);
-                                        }}
-                                        onInput={handleEditableInput}
-                                        onBlur={handleEditableBlur}
-                                        onMouseUp={handleSelectionCheck}
-                                        onKeyUp={handleSelectionCheck}
-                                        onSelect={handleSelectionCheck}
-                                        onKeyDown={handleEditableKeyDown}
-                                        onPaste={handleEditablePaste}
-                                        data-text-block-id={block.id}
-                                        className={`rich-text-canvas-content transition-all focus:outline-none cursor-text ${
-                                          isEditing && !isProt ? 'ring-1 ring-blue-500/50 rounded-lg p-1 bg-blue-50/10' : ''
-                                        }`}
-                                        style={{
-                                          fontFamily: block.fontFamily || design.settings.font,
-                                          fontSize: `${block.size || 15}px`,
-                                          lineHeight: block.lineHeight || 1.6,
-                                          letterSpacing: block.letterSpacing !== undefined ? `${block.letterSpacing}px` : 'normal',
-                                          color: block.color || '#334155',
-                                          textAlign: (block.align as any) || 'left',
-                                          fontWeight: block.fontWeight || (block.weight === 'bold' || block.weight === '800' ? '700' : '400'),
-                                          minHeight: '28px',
-                                          outline: 'none',
-                                          userSelect: isEditing ? 'text' : 'auto'
-                                        }}
-                                        dangerouslySetInnerHTML={{ __html: textToHtml(block.text) }}
-                                      />
-                                    </td>
-                                  </tr>
-                                </tbody>
-                              </table>
-                            </div>
+                            <TextBlockCanvasRenderer
+                              block={block as TextBlock}
+                              isEditing={isEditing}
+                              isProt={isProt}
+                              readOnly={readOnly}
+                              designFont={design.settings.font}
+                              registerEditableRef={registerEditableRef}
+                              onFocus={() => {
+                                setSelectedBlockId(block.id);
+                              }}
+                              onDoubleClick={() => {
+                                setSelectedBlockId(block.id);
+                                setEditingBlockId(block.id);
+                              }}
+                              onSelectionChange={handleSelectionCheck}
+                              onUpdateText={(newHtml, isFinal) => {
+                                if (isFinal) {
+                                  updateBlock(block.id, { text: newHtml }, true);
+                                } else {
+                                  updateBlock(block.id, { text: newHtml }, false);
+                                }
+                              }}
+                            />
                           ) : (
                             <div
                               dangerouslySetInnerHTML={{
@@ -2585,29 +2757,96 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                   {/* Texto / Párrafo */}
                   {selectedBlock.type === 'text' && (
                     <>
-                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50/60 border border-blue-200/90 rounded-xl p-3 space-y-1.5 shadow-2xs">
-                        <div className="flex items-center gap-1.5 text-xs font-bold text-rotary-blue">
-                          <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                          <span>Edición Visual WYSIWYG en Lienzo</span>
-                        </div>
-                        <p className="text-[11px] text-slate-600 leading-relaxed">
-                          Haz doble clic o selecciona palabras directamente en la plantilla para aplicar negrilla, cursiva, enlaces, colores o variables individuales sin alterar el resto del párrafo.
-                        </p>
+                      {/* Selector de Modo: Visual vs Código HTML */}
+                      <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold mb-3">
+                        <button
+                          type="button"
+                          onClick={() => setTextInspectorMode('visual')}
+                          className={`flex-1 py-1.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all ${
+                            textInspectorMode === 'visual'
+                              ? 'bg-white text-rotary-blue shadow-xs border border-slate-200/60'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                          <span>Modo Visual</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTextInspectorMode('html')}
+                          className={`flex-1 py-1.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all ${
+                            textInspectorMode === 'html'
+                              ? 'bg-white text-rotary-blue shadow-xs border border-slate-200/60'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          <Code2 className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Código HTML</span>
+                        </button>
                       </div>
 
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <label className="text-[11px] font-bold text-slate-700">Contenido (HTML / Texto y Variables)</label>
-                          <span className="text-[10px] text-slate-400 font-mono">Sincronizado en vivo</span>
+                      {textInspectorMode === 'visual' ? (
+                        <div className="bg-gradient-to-r from-blue-50 to-indigo-50/60 border border-blue-200/90 rounded-xl p-3 space-y-2.5 shadow-2xs">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5 text-xs font-bold text-rotary-blue">
+                              <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                              <span>Edición Directa en el Lienzo</span>
+                            </div>
+                            <span className="text-[10px] bg-blue-100 text-rotary-blue font-bold px-2 py-0.5 rounded-full">
+                              WYSIWYG
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-600 leading-relaxed">
+                            Haz doble clic sobre este párrafo en la plantilla para editar el texto o selecciona palabras para aplicar negrita, colores, enlaces o variables institucionales con la barra superior.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedBlockId(selectedBlock.id);
+                              setEditingBlockId(selectedBlock.id);
+                            }}
+                            className="w-full py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition-colors"
+                          >
+                            <Edit3 className="w-3.5 h-3.5 text-white" />
+                            <span>{editingBlockId === selectedBlock.id ? 'Editando actualmente en el lienzo' : 'Activar Edición en el Lienzo'}</span>
+                          </button>
                         </div>
-                        <textarea
-                          rows={6}
-                          value={selectedBlock.text}
-                          onChange={(e) => updateBlock(selectedBlock.id, { text: e.target.value })}
-                          className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-mono text-xs focus:border-rotary-blue focus:ring-1 focus:ring-rotary-blue"
-                          placeholder="Texto del mensaje..."
-                        />
-                      </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
+                            <Code2 className="w-4 h-4 text-amber-600 shrink-0" />
+                            <p className="text-[11px] leading-tight">
+                              <strong>Modo avanzado:</strong> Edita el código HTML crudo solo si requieres maquetación especializada. La edición visual en el lienzo es recomendada.
+                            </p>
+                          </div>
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-[11px] font-bold text-slate-700">Código HTML Fuente del Párrafo</label>
+                              <span className="text-[10px] text-slate-400 font-mono">Sincronizado</span>
+                            </div>
+                            <textarea
+                              rows={8}
+                              value={selectedBlock.text}
+                              onChange={(e) => updateBlock(selectedBlock.id, { text: e.target.value })}
+                              className="w-full bg-slate-900 text-emerald-400 border border-slate-700 rounded-xl p-3 font-mono text-xs focus:border-rotary-blue focus:ring-1 focus:ring-rotary-blue leading-relaxed"
+                              placeholder="<p>Texto con etiquetas HTML...</p>"
+                            />
+                            <div className="flex justify-end mt-1.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const sanitized = sanitizeRichTextHtml(selectedBlock.text);
+                                  updateBlock(selectedBlock.id, { text: sanitized });
+                                  toast.success('HTML sanitizado y sincronizado');
+                                }}
+                                className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-lg transition-colors"
+                              >
+                                Limpiar y Validar HTML
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                       <div className="grid grid-cols-2 gap-2">
                         <div>
                           <label className="text-[11px] font-bold text-slate-600 block mb-1">Tamaño Base (px)</label>

@@ -1,14 +1,14 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1228.0",
-  "cache_bust": "4.1228.0",
+  "version": "4.1229.0",
+  "cache_bust": "4.1229.0",
   "type": "module",
-  "//": "UI V4.1228.0 | 2026-10-21 (Aislamiento de Scroll en Portal, Edición In-situ Inmediata y Asistente Visual de Componentes HTML)",
+  "//": "UI V4.1229.0 | 2026-10-21 (Arquitectura WYSIWYG sin Oclusión, Renderizadores Ref-Controlled y Vista Previa Dinámica)",
   "scripts": {
     "dev": "vite",
     "bundle:server-blocks": "npx esbuild src/lib/emailBlocks.ts --bundle --platform=node --format=esm --target=node18 --outfile=server/lib/emailBlocks.js",
-    "prebuild": "npm run bundle:server-blocks && node scripts/check-build-safety.mjs && node scripts/check-version-parity.mjs && node scripts/check-syntax.mjs && node scripts/check-hooks.mjs && node scripts/check-routes.mjs && node scripts/check-imports.mjs && node scripts/check-server-undef.mjs && node scripts/check-route-handlers.mjs && node scripts/check-admin-menu-icons.mjs && node scripts/test-admin-resilience-suite.mjs && node scripts/test-render-admin-district4281.mjs",
+    "prebuild": "npm run bundle:server-blocks && node scripts/check-build-safety.mjs && node scripts/check-version-parity.mjs && node scripts/check-syntax.mjs && node scripts/check-hooks.mjs && node scripts/check-routes.mjs && node scripts/check-imports.mjs && node scripts/check-server-undef.mjs && node scripts/check-route-handlers.mjs && node scripts/check-admin-menu-icons.mjs && node scripts/test-admin-resilience-suite.mjs && node scripts/test-render-admin-district4281.mjs && node scripts/test-editor-interactions.mjs && node scripts/test-rotary-rich-text.mjs",
     "test:admin:resilience": "node scripts/check-admin-menu-icons.mjs && node scripts/test-admin-resilience-suite.mjs && node scripts/test-render-admin-district4281.mjs",
     "test:editor:interactions": "node scripts/test-editor-interactions.mjs",
     "check:typecheck": "node scripts/check-typecheck-real.mjs",
