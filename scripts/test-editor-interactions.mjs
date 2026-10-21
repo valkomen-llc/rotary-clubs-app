@@ -26,70 +26,78 @@ const editorSourcePath = path.resolve(__dirname, '../src/components/admin/email-
 const editorSource = fs.readFileSync(editorSourcePath, 'utf-8');
 
 // ─── TEST 1: ARQUITECTURA DE SCROLL Y CONTENEDORES CSS ───
-test('Arquitectura CSS: flex-1 con min-h-0 previene el bloqueo de scroll vertical en el lienzo y la barra lateral', () => {
-  // 1. El contenedor flex padre de la fila central debe tener min-h-0
+test('Arquitectura CSS: flex-1 con min-h-0, createPortal y overflow-y-scroll previenen el bloqueo de scroll vertical en el lienzo y la barra lateral', () => {
+  // 1. El modal debe usar createPortal para desacoplarse del DOM de AdminLayout
+  assert.ok(
+    editorSource.includes('createPortal(editorModalContent, document.body)'),
+    'El editor debe montarse mediante createPortal en document.body para aislarse de scrolls ancestros'
+  );
+
+  // 2. El contenedor raíz debe tener z-[99999] y dimensiones de pantalla completas
+  assert.ok(
+    editorSource.includes('fixed inset-0 z-[99999] h-screen w-screen bg-slate-100 flex flex-col text-slate-800 font-sans overflow-hidden'),
+    'El contenedor raíz debe cubrir el viewport con z-[99999] y bloquear overflow exterior'
+  );
+
+  // 3. El contenedor flex padre de la fila central debe tener min-h-0
   assert.ok(
     editorSource.includes('className="flex-1 min-h-0 flex overflow-hidden"'),
     'El contenedor flex principal debe incluir min-h-0 para permitir que los hijos calculen la altura del viewport'
   );
 
-  // 2. El elemento <main> debe tener flex-1 min-h-0 overflow-y-auto
+  // 4. El elemento <main> debe tener flex-1 min-h-0 overflow-y-scroll con scrollbar estable
   assert.ok(
-    editorSource.includes('className="flex-1 min-h-0 bg-slate-200/60 overflow-y-auto'),
-    'El lienzo <main> debe tener min-h-0 y overflow-y-auto para permitir scroll completo con rueda y trackpad'
+    editorSource.includes('className="flex-1 min-h-0 bg-slate-200/60 overflow-y-scroll'),
+    'El lienzo <main> debe tener min-h-0 y overflow-y-scroll para garantizar scroll continuo y visible con rueda y trackpad'
   );
 
-  // 3. El panel lateral <aside> debe tener min-h-0
+  // 5. El panel lateral <aside> debe tener min-h-0
   assert.ok(
     editorSource.includes('<aside className="w-80 sm:w-96 bg-white border-l border-slate-200 flex flex-col min-h-0 shrink-0 z-20">'),
     'La barra lateral debe tener min-h-0 para mantener su propio scroll independiente'
   );
 
-  // 4. El contenedor de scroll interno del aside debe tener min-h-0 overflow-y-auto
+  // 6. El contenedor de scroll interno del aside debe tener min-h-0 overflow-y-auto
   assert.ok(
     editorSource.includes('className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4"'),
     'El scroll interior del inspector/catálogo debe tener min-h-0 y overflow-y-auto'
   );
 
-  // 5. Wrapper con padding inferior amplio (pb-48) para no cortar footers ni botones inferiores
+  // 7. Wrapper con padding inferior amplio (pb-64) para no cortar footers ni botones inferiores
   assert.ok(
-    editorSource.includes('className="w-full flex flex-col items-center pb-48 min-h-full"'),
-    'Debe existir un wrapper de lienzo con pb-48 para garantizar acceso cómodo hasta el último bloque'
+    editorSource.includes('className="w-full flex flex-col items-center pb-64 min-h-full"'),
+    'Debe existir un wrapper de lienzo con pb-64 para garantizar acceso cómodo hasta el último bloque'
   );
 });
 
-// ─── TEST 2: SEPARACIÓN DE MODOS DE INTERACCIÓN (UN CLIC VS DOBLE CLIC) ───
-test('Jerarquía de Interacción: un clic selecciona bloque, doble clic activa edición enriquecida', () => {
+// ─── TEST 2: SEPARACIÓN DE MODOS DE INTERACCIÓN Y EDICIÓN INMEDIATA ───
+test('Jerarquía de Interacción: un clic selecciona bloque y activa edición en texto/encabezados sin trampas de cursor', () => {
   // 1. Debe existir estado editingBlockId separado de selectedBlockId
   assert.ok(editorSource.includes('const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);'));
   assert.ok(editorSource.includes('const [editingBlockId, setEditingBlockId] = useState<string | null>(null);'));
 
-  // 2. Double click activa edición
+  // 2. Click activa edición en bloques de texto o encabezados
   assert.ok(
-    editorSource.includes('onDoubleClick={(e) => {'),
-    'Debe existir manejador onDoubleClick en los bloques'
-  );
-  assert.ok(
-    editorSource.includes('setEditingBlockId(block.id);'),
-    'Doble clic debe activar setEditingBlockId'
+    editorSource.includes("if (!isProt && !readOnly && (block.type === 'text' || block.type === 'heading')) {\n                              setEditingBlockId(block.id);"),
+    'Clic simple en bloque editable debe habilitar el modo de edición de inmediato'
   );
 
-  // 3. Single click sólo selecciona y desactiva modo edición previo
-  assert.ok(
-    editorSource.includes('if (editingBlockId && editingBlockId !== block.id) {'),
-    'Clic en otro bloque debe salir del modo de edición enriquecida'
-  );
-
-  // 4. contentEditable se habilita ÚNICAMENTE cuando isEditing es true
+  // 3. contentEditable se habilita para textos y encabezados
   assert.ok(
     editorSource.includes('contentEditable={isEditing && !isProt && !readOnly}'),
-    'contentEditable no debe activarse en un clic simple; sólo en modo isEditing'
+    'contentEditable debe activarse en modo isEditing para permitir edición directa en el lienzo'
   );
 
-  // 5. userSelect previene trampas de selección de texto cuando no se está editando
+  // 4. Edición de encabezados en el lienzo
   assert.ok(
-    editorSource.includes("userSelect: isEditing ? 'text' : 'none'"),
-    'userSelect debe ser none cuando no se está editando para permitir seleccionar y arrastrar el bloque limpiamente'
+    editorSource.includes("{block.type === 'heading' ? ("),
+    'Los encabezados deben renderizarse con soporte de edición en vivo'
+  );
+
+  // 5. Asistente visual estructurado para componentes HTML en la barra lateral
+  assert.ok(
+    editorSource.includes('Textos del Componente Institucional'),
+    'El inspector lateral debe ofrecer campos amigables para editar los textos de componentes HTML'
   );
 
   // 6. Botón de edición explícito en barra flotante rápida (Edit3)

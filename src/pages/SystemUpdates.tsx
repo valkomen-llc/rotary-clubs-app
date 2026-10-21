@@ -42,6 +42,22 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1228.0',
+        title: 'Aislamiento de Scroll en Portal, Edición In-situ Inmediata y Asistente Visual de Componentes HTML 🛠️📬✨',
+        description: 'Optimización definitiva de usabilidad y rendimiento del Editor Visual de Email Marketing (v4.1228.0), resolviendo las interferencias entre el layout administrativo y el lienzo de diseño: 1) Montaje del editor mediante createPortal en document.body con z-[99999], aislando completamente el editor de los scrolls, paddings y jerarquías de AdminLayout y garantizando que el scroll con trackpad/rueda responda sin bloqueos. 2) Bloqueo de scroll en document.body mientras el editor esté activo. 3) Barra de desplazamiento vertical nativa estilizada y visible de 12px en color azul rotario con colchón inferior pb-64. 4) Habilitación de edición inline directa con un solo clic tanto en bloques de texto como en encabezados (H1, H2, H3), eliminando barreras de doble clic y sincronizando el cursor sin saltos. 5) Asistente visual estructurado para edición de textos y variables en componentes HTML (tarjeta de estado del Directorio de Clubes [DIR-SEM-02], títulos, descripciones y notas) sin necesidad de tocar código HTML. 6) Editor de código HTML fuente avanzado ampliado a 8 líneas con fondo oscuro para desarrolladores.',
+        date: new Date().toISOString(),
+        tags: ['email-marketing', 'visual-editor', 'create-portal', 'scroll-fix', 'html-assistant', 'heading-editing', 'rotary-en-accion', 'directorio-clubes'],
+        type: 'fix',
+        impact: 'Crítica: Garantiza desplazamiento vertical continuo y visible en toda la plantilla, edición inmediata de encabezados y textos con un solo clic, y edición asistida de textos en componentes HTML para usuarios no técnicos.',
+        changes: [
+            { type: 'fixed', text: 'Desacoplamiento total del editor mediante React createPortal hacia document.body con z-[99999], eliminando interferencias de scroll con AdminLayout.' },
+            { type: 'improved', text: 'Scrollbar vertical visible de 12px estilizado en azul institucional (#013388) sobre fondo claro con scroll continuo (overflow-y-scroll).' },
+            { type: 'improved', text: 'Edición inline inmediata con un solo clic en bloques de texto y encabezados sin desajuste de cursor.' },
+            { type: 'added', text: 'Asistente de textos para bloques HTML en la barra lateral, permitiendo modificar títulos, descripciones con Merge Tags y notas sin lidiar con etiquetas HTML.' },
+            { type: 'improved', text: 'Padding inferior del lienzo ampliado a pb-64 para máxima comodidad al visualizar y editar el pie de página y botones de acción.' }
+        ]
+    },
+    {
         version: '4.1227.0',
         title: 'Reparación Crítica del Editor Visual de Email: Desplazamiento Vertical, Drag & Drop e Interacción Fluida 🚀🛠️📬',
         description: 'Resolución técnica profunda de la experiencia interactiva en el Editor Visual de Email Marketing (v4.1227.0), validada en la campaña del Directorio de Clubes [DIR-SEM-02] y extensiva a Rotary en Acción y Feria de Proyectos: 1) Corrección de la causa raíz del bloqueo de desplazamiento vertical (scroll): incorporación de min-h-0 en la cadena de cajas Flexbox y wrapper con amplio padding inferior (pb-48) permitiendo navegar desde la cabecera distrital hasta el footer sin cortes. 2) Desacoplamiento de estados de interacción: clic simple para seleccionar bloque y abrir inspector lateral de propiedades, doble clic para activar la edición de texto enriquecido in-situ sin trampas de cursor. 3) Drag & Drop nativo y fluido: incorporación de controladores de arrastre GripVertical para reorganizar bloques por arrastre y soltado sin interferir con la selección de texto, además de reordenamiento rápido con flechas arriba/abajo. 4) Arrastre directo de bloques desde el catálogo lateral hacia cualquier punto del lienzo o al final de la plantilla. 5) Exclusividad ergonómica del panel lateral: botón claro para volver al catálogo de bloques y navegación de pestañas sin superposiciones ni colisiones. 6) Preservación estricta del 100% de plantillas institucionales, Merge Tags y protecciones de cabeceras oficiales.',

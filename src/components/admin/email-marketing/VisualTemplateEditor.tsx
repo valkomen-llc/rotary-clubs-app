@@ -5,6 +5,7 @@
 // separación estricta entre Plantilla Maestra y zonas dinámicas de Campaña.
 // ════════════════════════════════════════════════════════════════════════════
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import {
   Shield, Lock, Unlock, Sparkles, Send, Save, Layout, Box, Palette,
@@ -1044,6 +1045,18 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
   const activeEditableRef = useRef<HTMLDivElement | null>(null);
   const savedRangeRef = useRef<Range | null>(null);
   const isTypingInCanvasRef = useRef(false);
+  const typingTimeoutRef = useRef<any>(null);
+
+  // Bloquear scroll de la página de fondo mientras el editor esté abierto
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const origOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = origOverflow;
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    };
+  }, []);
 
   const [linkModalOpen, setLinkModalOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
@@ -1274,9 +1287,10 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
     const currentHtml = e.currentTarget.innerHTML;
     isTypingInCanvasRef.current = true;
     updateBlock(selectedBlockId, { text: currentHtml }, false);
-    setTimeout(() => {
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
       isTypingInCanvasRef.current = false;
-    }, 100);
+    }, 400);
   }, [selectedBlockId, updateBlock]);
 
   const handleEditableBlur = useCallback((e: React.FocusEvent<HTMLDivElement>) => {
@@ -1315,12 +1329,12 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
   }, [syncActiveEditorContent]);
 
   // Sincronizar el contenido visual del canvas cuando cambia el bloque seleccionado o su texto desde el panel
-  const selectedTextContent = selectedBlock && selectedBlock.type === 'text' ? selectedBlock.text : null;
+  const selectedTextContent = selectedBlock && (selectedBlock.type === 'text' || selectedBlock.type === 'heading') ? (selectedBlock as any).text : null;
 
   useEffect(() => {
-    if (activeEditableRef.current && selectedBlock && selectedBlock.type === 'text') {
-      if (!isTypingInCanvasRef.current) {
-        const targetHtml = textToHtml(selectedBlock.text);
+    if (activeEditableRef.current && selectedBlock && (selectedBlock.type === 'text' || selectedBlock.type === 'heading')) {
+      if (!isTypingInCanvasRef.current && document.activeElement !== activeEditableRef.current) {
+        const targetHtml = selectedBlock.type === 'text' ? textToHtml((selectedBlock as any).text) : (selectedBlock as any).text;
         if (activeEditableRef.current.innerHTML !== targetHtml) {
           activeEditableRef.current.innerHTML = targetHtml;
         }
@@ -1638,8 +1652,8 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
     setMediaPickerOpen(true);
   };
 
-  return (
-    <div className="fixed inset-0 z-50 bg-slate-100 flex flex-col text-slate-800 font-sans">
+  const editorModalContent = (
+    <div className="fixed inset-0 z-[99999] h-screen w-screen bg-slate-100 flex flex-col text-slate-800 font-sans overflow-hidden">
       {/* ─── 1. BARRA SUPERIOR (HEADER ESTILO CLUB PLATFORM) ─────────────── */}
       <header className="bg-white border-b border-slate-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-xs shrink-0 z-30">
         {/* Lado izquierdo: Botón volver + Identidad + Nombre de plantilla */}
@@ -1841,7 +1855,11 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
       <div className="flex-1 min-h-0 flex overflow-hidden">
         {/* LIENZO DE TRABAJO (CANVAS CENTRAL) */}
         <main
-          className="flex-1 min-h-0 bg-slate-200/60 overflow-y-auto p-4 sm:p-8 flex flex-col items-center justify-start relative"
+          className="flex-1 min-h-0 bg-slate-200/60 overflow-y-scroll p-4 sm:p-8 flex flex-col items-center justify-start relative select-auto"
+          style={{
+            scrollbarGutter: 'stable',
+            scrollbarWidth: 'thin'
+          }}
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setSelectedBlockId(null);
@@ -1850,11 +1868,11 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
           }}
         >
           {/* BARRA FLOTANTE DE FORMATO ENRIQUECIDO WYSIWYG */}
-          {selectedBlock && selectedBlock.type === 'text' && !readOnly && (
+          {selectedBlock && (selectedBlock.type === 'text' || selectedBlock.type === 'heading') && !readOnly && (
             <div className="sticky top-0 z-30 mb-4 w-full max-w-3xl px-2 animate-in fade-in slide-in-from-top-2 duration-150">
               <InlineRichTextToolbar
                 fontFamily={selectedBlock.fontFamily || design.settings.font}
-                fontSize={selectedBlock.size || 15}
+                fontSize={selectedBlock.size || (selectedBlock.type === 'heading' ? (selectedBlock.fontSize || 22) : 15)}
                 color={selectedBlock.color || '#334155'}
                 activeFormats={activeTextFormats}
                 onApplyFontFamily={handleApplyFontFamily}
@@ -1873,8 +1891,23 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
             </div>
           )}
 
-          {/* ESTILOS SCOPED PARA EDICIÓN EN LIENZO */}
+          {/* ESTILOS SCOPED PARA EDICIÓN EN LIENZO Y SCROLLBAR VISIBLE */}
           <style>{`
+            main::-webkit-scrollbar {
+              width: 12px;
+            }
+            main::-webkit-scrollbar-track {
+              background: #cbd5e1;
+              border-radius: 6px;
+            }
+            main::-webkit-scrollbar-thumb {
+              background: #013388;
+              border-radius: 6px;
+              border: 2px solid #cbd5e1;
+            }
+            main::-webkit-scrollbar-thumb:hover {
+              background: #00246c;
+            }
             .rich-text-canvas-content p {
               margin: 0 0 12px 0;
               line-height: inherit;
@@ -1910,7 +1943,7 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
 
           {/* Wrapper con scroll padding amplio para que el footer y los últimos bloques siempre sean accesibles */}
           <div
-            className="w-full flex flex-col items-center pb-48 min-h-full"
+            className="w-full flex flex-col items-center pb-64 min-h-full"
             onClick={(e) => {
               if (e.target === e.currentTarget) {
                 setSelectedBlockId(null);
@@ -1995,7 +2028,9 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                               e.preventDefault();
                             }
                             setSelectedBlockId(block.id);
-                            if (editingBlockId && editingBlockId !== block.id) {
+                            if (!isProt && !readOnly && (block.type === 'text' || block.type === 'heading')) {
+                              setEditingBlockId(block.id);
+                            } else if (editingBlockId && editingBlockId !== block.id) {
                               setEditingBlockId(null);
                             }
                           }}
@@ -2127,7 +2162,63 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                           </div>
 
                           {/* Renderizado de bloque individual */}
-                          {block.type === 'text' ? (
+                          {block.type === 'heading' ? (
+                            <div className="w-full">
+                              <table role="presentation" width="100%" cellPadding="0" cellSpacing="0" style={{ borderCollapse: 'collapse', margin: 0, padding: 0 }}>
+                                <tbody>
+                                  <tr style={{ margin: 0, padding: 0 }}>
+                                    <td
+                                      style={{
+                                        padding: `${(block as any).padTop ?? (block.level === 1 ? 16 : 8)}px 24px ${(block as any).padBottom ?? 8}px 24px`,
+                                        textAlign: (block.align as any) || 'center'
+                                      }}
+                                    >
+                                      <div
+                                        ref={isEditing ? activeEditableRef : null}
+                                        contentEditable={isEditing && !isProt && !readOnly}
+                                        suppressContentEditableWarning
+                                        onFocus={() => {
+                                          setSelectedBlockId(block.id);
+                                          setEditingBlockId(block.id);
+                                        }}
+                                        onInput={(e) => {
+                                          isTypingInCanvasRef.current = true;
+                                          const text = (e.currentTarget.textContent || '').trim();
+                                          updateBlock(block.id, { text }, false);
+                                          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+                                          typingTimeoutRef.current = setTimeout(() => {
+                                            isTypingInCanvasRef.current = false;
+                                          }, 400);
+                                        }}
+                                        onBlur={(e) => {
+                                          const text = (e.currentTarget.textContent || '').trim();
+                                          updateBlock(block.id, { text }, true);
+                                        }}
+                                        onMouseUp={handleSelectionCheck}
+                                        onKeyUp={handleSelectionCheck}
+                                        onSelect={handleSelectionCheck}
+                                        data-text-block-id={block.id}
+                                        className={`transition-all focus:outline-none rounded-lg p-1 ${
+                                          isEditing && !isProt ? 'cursor-text ring-1 ring-blue-500/50 bg-blue-50/10' : ''
+                                        }`}
+                                        style={{
+                                          fontFamily: block.fontFamily || design.settings.font,
+                                          fontSize: `${block.fontSize || (block.level === 1 ? 28 : block.level === 2 ? 22 : 18)}px`,
+                                          fontWeight: block.fontWeight || (block.weight === '300' ? '300' : block.weight === '800' ? '800' : '700'),
+                                          color: block.color || '#013388',
+                                          lineHeight: block.lineHeight || 1.25,
+                                          letterSpacing: block.letterSpacing !== undefined ? `${block.letterSpacing}px` : 0,
+                                          outline: 'none',
+                                          userSelect: isEditing ? 'text' : 'auto'
+                                        }}
+                                        dangerouslySetInnerHTML={{ __html: block.text }}
+                                      />
+                                    </td>
+                                  </tr>
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : block.type === 'text' ? (
                             <div className="w-full">
                               <table role="presentation" width="100%" cellPadding="0" cellSpacing="0" style={{ borderCollapse: 'collapse', margin: 0, padding: 0 }}>
                                 <tbody>
@@ -2141,6 +2232,10 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                                         ref={isEditing ? activeEditableRef : null}
                                         contentEditable={isEditing && !isProt && !readOnly}
                                         suppressContentEditableWarning
+                                        onFocus={() => {
+                                          setSelectedBlockId(block.id);
+                                          setEditingBlockId(block.id);
+                                        }}
                                         onInput={handleEditableInput}
                                         onBlur={handleEditableBlur}
                                         onMouseUp={handleSelectionCheck}
@@ -2149,8 +2244,8 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                                         onKeyDown={handleEditableKeyDown}
                                         onPaste={handleEditablePaste}
                                         data-text-block-id={block.id}
-                                        className={`rich-text-canvas-content transition-all focus:outline-none ${
-                                          isEditing && !isProt ? 'cursor-text ring-1 ring-blue-500/50 rounded-lg p-1 bg-blue-50/10' : ''
+                                        className={`rich-text-canvas-content transition-all focus:outline-none cursor-text ${
+                                          isEditing && !isProt ? 'ring-1 ring-blue-500/50 rounded-lg p-1 bg-blue-50/10' : ''
                                         }`}
                                         style={{
                                           fontFamily: block.fontFamily || design.settings.font,
@@ -2162,7 +2257,7 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                                           fontWeight: block.fontWeight || (block.weight === 'bold' || block.weight === '800' ? '700' : '400'),
                                           minHeight: '28px',
                                           outline: 'none',
-                                          userSelect: isEditing ? 'text' : 'none'
+                                          userSelect: isEditing ? 'text' : 'auto'
                                         }}
                                         dangerouslySetInnerHTML={{ __html: textToHtml(block.text) }}
                                       />
@@ -3269,19 +3364,102 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                     </div>
                   )}
 
-                  {/* HTML Libre */}
-                  {selectedBlock.type === 'html' && (
-                    <div>
-                      <label className="text-[11px] font-bold text-slate-600 block mb-1">Código HTML Seguro</label>
-                      <textarea
-                        rows={6}
-                        value={selectedBlock.html}
-                        onChange={(e) => updateBlock(selectedBlock.id, { html: e.target.value })}
-                        className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-mono text-xs"
-                        placeholder="<div>...</div>"
-                      />
-                    </div>
-                  )}
+                  {/* HTML Propio / Componente Especial */}
+                  {selectedBlock.type === 'html' && (() => {
+                    const htmlContent = selectedBlock.html || '';
+                    const titleMatch = htmlContent.match(/<div style="font-weight:700[^>]*>([^<]+)<\/div>/);
+                    const descMatch = htmlContent.match(/<div style="font-size:13\.5px[^>]*>(.*?)<\/div>/s);
+                    const noteMatch = htmlContent.match(/<div style="margin-top:10px[^>]*>([^<]+)<\/div>/);
+
+                    const hasDirectorioStructure = Boolean(titleMatch || descMatch);
+
+                    return (
+                      <div className="space-y-4">
+                        {hasDirectorioStructure && (
+                          <div className="space-y-3 bg-white border border-slate-200 rounded-2xl p-3.5 shadow-2xs">
+                            <div className="flex items-center gap-1.5 text-xs font-bold text-rotary-blue pb-1 border-b border-slate-100">
+                              <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                              <span>Textos del Componente Institucional</span>
+                            </div>
+
+                            {titleMatch && (
+                              <div>
+                                <label className="text-[11px] font-bold text-slate-700 block mb-1">Título del Módulo</label>
+                                <input
+                                  type="text"
+                                  value={titleMatch[1]}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    const updated = htmlContent.replace(
+                                      titleMatch[0],
+                                      titleMatch[0].replace(titleMatch[1], val)
+                                    );
+                                    updateBlock(selectedBlock.id, { html: updated });
+                                  }}
+                                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 text-xs font-bold text-slate-900 focus:bg-white"
+                                />
+                              </div>
+                            )}
+
+                            {descMatch && (
+                              <div>
+                                <div className="flex items-center justify-between mb-1">
+                                  <label className="text-[11px] font-bold text-slate-700">Descripción y Variables</label>
+                                  <span className="text-[10px] text-slate-400">Soporta Merge Tags</span>
+                                </div>
+                                <textarea
+                                  rows={4}
+                                  value={descMatch[1]}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    const updated = htmlContent.replace(
+                                      descMatch[0],
+                                      descMatch[0].replace(descMatch[1], val)
+                                    );
+                                    updateBlock(selectedBlock.id, { html: updated });
+                                  }}
+                                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 text-xs text-slate-900 font-sans leading-relaxed focus:bg-white"
+                                />
+                              </div>
+                            )}
+
+                            {noteMatch && (
+                              <div>
+                                <label className="text-[11px] font-bold text-slate-700 block mb-1">Nota al Pie</label>
+                                <input
+                                  type="text"
+                                  value={noteMatch[1]}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    const updated = htmlContent.replace(
+                                      noteMatch[0],
+                                      noteMatch[0].replace(noteMatch[1], val)
+                                    );
+                                    updateBlock(selectedBlock.id, { html: updated });
+                                  }}
+                                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 text-xs text-slate-900 focus:bg-white"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <label className="text-[11px] font-bold text-slate-600">Código HTML Fuente (Avanzado)</label>
+                            <span className="text-[10px] text-slate-400">Totalmente editable</span>
+                          </div>
+                          <textarea
+                            rows={8}
+                            value={selectedBlock.html}
+                            onChange={(e) => updateBlock(selectedBlock.id, { html: e.target.value })}
+                            className="w-full bg-slate-900 text-slate-100 border border-slate-700 rounded-xl p-2.5 font-mono text-[11px] leading-snug focus:border-rotary-blue focus:ring-1 focus:ring-rotary-blue"
+                            placeholder="<div>...</div>"
+                          />
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* Bloque Global Institucional */}
                   {selectedBlock.type === 'global' && (
@@ -5095,6 +5273,10 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
       />
     </div>
   );
+
+  return typeof document !== 'undefined'
+    ? createPortal(editorModalContent, document.body)
+    : editorModalContent;
 };
 
 export default VisualTemplateEditor;
