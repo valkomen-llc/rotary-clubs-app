@@ -10,14 +10,30 @@ const plannerPath = path.join(projectRoot, 'src/components/admin/rotary/RotaryMa
 test('VisualTemplateEditor: Estructura Flexbox y scroll vertical sin bloqueos (min-h-0)', () => {
   const code = fs.readFileSync(visualEditorPath, 'utf8');
 
-  // Verificar que el contenedor de fila y el main tienen min-h-0
+  // Verificar que el contenedor de fila y el main tienen min-h-0 y scrollbar visible permanente
   assert.ok(
     code.includes('className="flex-1 min-h-0 flex overflow-hidden"'),
     'El contenedor horizontal debe tener flex-1 min-h-0 flex overflow-hidden'
   );
   assert.ok(
-    code.includes('className="flex-1 min-h-0 bg-slate-200/60 overflow-y-scroll'),
-    'El main debe tener flex-1 min-h-0 overflow-y-scroll para permitir scroll nativo sin trabas'
+    code.includes('id="rotary-visual-canvas-scroll"'),
+    'El main debe tener el id rotary-visual-canvas-scroll para estilos dedicados de scrollbar'
+  );
+  assert.ok(
+    code.includes('#rotary-visual-canvas-scroll::-webkit-scrollbar'),
+    'Debe existir la regla de scrollbar visible con thumb en azul rotario #013388'
+  );
+  assert.ok(
+    code.includes('scrollToBottom'),
+    'Debe incluir función scrollToBottom para navegación rápida al pie de página'
+  );
+  assert.ok(
+    code.includes('scrollToTop'),
+    'Debe incluir función scrollToTop para navegación rápida al inicio'
+  );
+  assert.ok(
+    code.includes('onWheel='),
+    'Debe existir reenvío de eventos onWheel al contenedor principal de diseño'
   );
 
   // Verificar el wrapper de scroll con padding inferior amplio

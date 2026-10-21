@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1229.0",
-  "cache_bust": "4.1229.0",
+  "version": "4.1230.0",
+  "cache_bust": "4.1230.0",
   "type": "module",
-  "//": "UI V4.1229.0 | 2026-10-21 (Arquitectura WYSIWYG sin Oclusión, Renderizadores Ref-Controlled y Vista Previa Dinámica)",
+  "//": "UI V4.1230.0 | 2026-10-21 (Desplazamiento Vertical Fluido, Barra de Scroll Visible y Mini-Dock de Navegación Rápida)",
   "scripts": {
     "dev": "vite",
     "bundle:server-blocks": "npx esbuild src/lib/emailBlocks.ts --bundle --platform=node --format=esm --target=node18 --outfile=server/lib/emailBlocks.js",

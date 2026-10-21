@@ -22,7 +22,7 @@ import {
 
 import {
   renderDesignToHtml, makeBlock, BLOCK_LABELS,
-  FONT_OPTIONS, FONT_WEIGHT_OPTIONS, LINE_HEIGHT_OPTIONS, newId, createRotaryMasterDesign, getRotaryGlobalBlocksCatalog,
+  FONT_OPTIONS, FONT_WEIGHT_OPTIONS, LINE_HEIGHT_OPTIONS, newId, createRotaryMasterDesign, createChannelCampaignDesign, getRotaryGlobalBlocksCatalog,
   resolveInstitutionalLogo, getActiveSiteBrandingContext, normalizeInstitutionalDesign, resolveSiteRotaryEnAccionUrl,
   DEFAULT_FOOTER_SOCIAL_LINKS, textToHtml, sanitizeRichTextHtml,
   type EmailDesign, type Block, type BlockType, type Align, type SocialNetwork,
@@ -1024,14 +1024,54 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
   const [name, setName] = useState(initialName);
   const [subject, setSubject] = useState(initialSubject);
   const [preheader, setPreheader] = useState(initialPreheader);
-  const [design, setDesign] = useState<EmailDesign>(() => normalizeInstitutionalDesign(initialDesign || createRotaryMasterDesign()));
+  const [design, setDesign] = useState<EmailDesign>(() => {
+    if (initialDesign) return normalizeInstitutionalDesign(initialDesign);
+    if (campaignContext) {
+      const channel = (campaignContext as any).initiative === 'directorio_clubes'
+        ? 'directorio_clubes'
+        : (campaignContext as any).initiative === 'feria_proyectos'
+        ? 'feria_proyectos'
+        : 'rotary_en_accion';
+      return normalizeInstitutionalDesign(createChannelCampaignDesign(channel, campaignContext));
+    }
+    return normalizeInstitutionalDesign(createRotaryMasterDesign());
+  });
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
   const [draggedBlockIndex, setDraggedBlockIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
+  // Referencia al contenedor de desplazamiento del lienzo y ayudantes de navegación
+  const mainCanvasRef = useRef<HTMLElement | null>(null);
+  const scrollToTop = () => {
+    if (mainCanvasRef.current) {
+      mainCanvasRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+  const scrollToBottom = () => {
+    if (mainCanvasRef.current) {
+      mainCanvasRef.current.scrollTo({
+        top: mainCanvasRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
+  };
+
   // Pila de Deshacer / Rehacer (Undo / Redo)
-  const [history, setHistory] = useState<EmailDesign[]>([normalizeInstitutionalDesign(initialDesign || createRotaryMasterDesign())]);
+  const [history, setHistory] = useState<EmailDesign[]>([
+    initialDesign
+      ? normalizeInstitutionalDesign(initialDesign)
+      : campaignContext
+      ? normalizeInstitutionalDesign(createChannelCampaignDesign(
+          (campaignContext as any).initiative === 'directorio_clubes'
+            ? 'directorio_clubes'
+            : (campaignContext as any).initiative === 'feria_proyectos'
+            ? 'feria_proyectos'
+            : 'rotary_en_accion',
+          campaignContext
+        ))
+      : normalizeInstitutionalDesign(createRotaryMasterDesign())
+  ]);
   const [historyIdx, setHistoryIdx] = useState(0);
 
   // Inspector y barra lateral
@@ -1883,7 +1923,15 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
   };
 
   const editorModalContent = (
-    <div className="fixed inset-0 z-[99999] h-screen w-screen bg-slate-100 flex flex-col text-slate-800 font-sans overflow-hidden">
+    <div
+      className="fixed inset-0 z-[99999] h-screen w-screen bg-slate-100 flex flex-col text-slate-800 font-sans overflow-hidden"
+      onWheel={(e) => {
+        const target = e.target as HTMLElement;
+        if (target && !target.closest('aside') && !target.closest('input') && !target.closest('textarea') && mainCanvasRef.current) {
+          mainCanvasRef.current.scrollTop += e.deltaY;
+        }
+      }}
+    >
       {/* ─── 1. BARRA SUPERIOR (HEADER ESTILO CLUB PLATFORM) ─────────────── */}
       <header className="bg-white border-b border-slate-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-xs shrink-0 z-30">
         {/* Lado izquierdo: Botón volver + Identidad + Nombre de plantilla */}
@@ -2109,35 +2157,71 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
       <div className="flex-1 min-h-0 flex overflow-hidden">
         {/* LIENZO DE TRABAJO (CANVAS CENTRAL) */}
         <main
-          className="flex-1 min-h-0 bg-slate-200/60 overflow-y-scroll p-4 sm:p-8 flex flex-col items-center justify-start relative select-auto"
-          style={{
-            scrollbarGutter: 'stable',
-            scrollbarWidth: 'thin'
-          }}
+          ref={mainCanvasRef}
+          id="rotary-visual-canvas-scroll"
+          tabIndex={0}
+          className="flex-1 min-h-0 bg-slate-200/60 overflow-y-auto p-4 sm:p-8 flex flex-col items-center justify-start relative select-auto focus:outline-none"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setSelectedBlockId(null);
               setEditingBlockId(null);
             }
           }}
+          onKeyDown={(e) => {
+            const activeEl = document.activeElement;
+            if (
+              activeEl &&
+              (activeEl.tagName === 'INPUT' ||
+                activeEl.tagName === 'TEXTAREA' ||
+                activeEl.getAttribute('contenteditable') === 'true')
+            ) {
+              return;
+            }
+            if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              mainCanvasRef.current?.scrollBy({ top: 80, behavior: 'smooth' });
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              mainCanvasRef.current?.scrollBy({ top: -80, behavior: 'smooth' });
+            } else if (e.key === 'PageDown' || (e.key === ' ' && !e.shiftKey)) {
+              e.preventDefault();
+              mainCanvasRef.current?.scrollBy({ top: 450, behavior: 'smooth' });
+            } else if (e.key === 'PageUp' || (e.key === ' ' && e.shiftKey)) {
+              e.preventDefault();
+              mainCanvasRef.current?.scrollBy({ top: -450, behavior: 'smooth' });
+            } else if (e.key === 'Home') {
+              e.preventDefault();
+              scrollToTop();
+            } else if (e.key === 'End') {
+              e.preventDefault();
+              scrollToBottom();
+            }
+          }}
         >
 
-          {/* ESTILOS SCOPED PARA EDICIÓN EN LIENZO Y SCROLLBAR VISIBLE */}
+          {/* ESTILOS SCOPED PARA EDICIÓN EN LIENZO Y SCROLLBAR ROTARY BLUE PERMANENTE */}
           <style>{`
-            main::-webkit-scrollbar {
-              width: 12px;
+            #rotary-visual-canvas-scroll {
+              overflow-y: auto !important;
+              overscroll-behavior: contain;
+              scrollbar-color: #013388 #e2e8f0;
             }
-            main::-webkit-scrollbar-track {
-              background: #cbd5e1;
-              border-radius: 6px;
+            #rotary-visual-canvas-scroll::-webkit-scrollbar {
+              width: 14px !important;
+              height: 14px !important;
+              display: block !important;
             }
-            main::-webkit-scrollbar-thumb {
-              background: #013388;
-              border-radius: 6px;
-              border: 2px solid #cbd5e1;
+            #rotary-visual-canvas-scroll::-webkit-scrollbar-track {
+              background: #e2e8f0 !important;
+              border-radius: 8px !important;
             }
-            main::-webkit-scrollbar-thumb:hover {
-              background: #00246c;
+            #rotary-visual-canvas-scroll::-webkit-scrollbar-thumb {
+              background: #013388 !important;
+              border-radius: 8px !important;
+              border: 3px solid #e2e8f0 !important;
+            }
+            #rotary-visual-canvas-scroll::-webkit-scrollbar-thumb:hover {
+              background: #00246c !important;
             }
             .rich-text-canvas-content p {
               margin: 0 0 12px 0;
@@ -2497,6 +2581,32 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Mini-dock flotante de navegación vertical rápida */}
+          <div className="fixed bottom-6 right-84 sm:right-104 z-30 flex items-center gap-1.5 bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-2xl shadow-xl border border-slate-200/90 text-xs">
+            <span className="font-extrabold text-[10px] text-slate-500 uppercase tracking-wider hidden sm:inline mr-1">
+              {previewMode === 'live' ? 'Vista Final' : `${design.blocks.length} Bloques`}
+            </span>
+            <button
+              type="button"
+              onClick={scrollToTop}
+              className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-700 hover:text-rotary-blue flex items-center gap-1 font-bold transition-colors cursor-pointer"
+              title="Ir al inicio de la plantilla (Cabecera)"
+            >
+              <ArrowUp className="w-3.5 h-3.5 text-rotary-blue" />
+              <span>Inicio</span>
+            </button>
+            <div className="w-px h-4 bg-slate-200" />
+            <button
+              type="button"
+              onClick={scrollToBottom}
+              className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-700 hover:text-rotary-blue flex items-center gap-1 font-bold transition-colors cursor-pointer"
+              title="Ir al pie de página (Tarjeta Directorio, Botón CTA y Footer)"
+            >
+              <ArrowDown className="w-3.5 h-3.5 text-rotary-blue" />
+              <span>Pie de página</span>
+            </button>
           </div>
         </main>
 

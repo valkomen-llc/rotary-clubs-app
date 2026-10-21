@@ -42,6 +42,22 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1230.0',
+        title: 'Desplazamiento Vertical Fluido, Barra de Scroll Visible y Mini-Dock de Navegación Rápida 🚀📜✨',
+        description: 'Solución definitiva al desplazamiento vertical y visualización íntegra de plantillas en el Editor Visual de Email Marketing y campañas institucionales ([DIR-SEM-02], Rotary en Acción y Feria de Proyectos): 1) Identificación y corrección de la supresión de scrollbars en Chromium/macOS provocada por scrollbar-width: thin; reemplazo por el contenedor #rotary-visual-canvas-scroll con scrollbar nativa permanente de 14px en color azul rotario (#013388) sobre riel gris (#e2e8f0), siempre visible y fácilmente arrastrable con mouse. 2) Reenvío directo de eventos de rueda (wheel event listener) desde la raíz del modal hacia el lienzo principal, garantizando desplazamiento inmediato con mouse o trackpad sin importar dónde se pose el cursor. 3) Mini-dock flotante de navegación rápida fijado en el lienzo para saltar al instante entre el "Inicio" (cabecera distrital) y el "Pie de página" (tarjeta de estado del Directorio de Clubes, botón CTA, firma y footer institucional). 4) Soporte completo de navegación por teclado en el lienzo mediante teclas de dirección (Flechas Arriba/Abajo), Page Up, Page Down, Inicio (Home) y Fin (End). 5) Inicialización contextual con detección de iniciativa (directorio_clubes, feria_proyectos, rotary_en_accion) para que la plantilla inicial cargue exactamente los bloques del canal correspondiente.',
+        date: new Date().toISOString(),
+        tags: ['email-marketing', 'visual-editor', 'scroll-fix', 'custom-scrollbar', 'navigation-dock', 'directorio-clubes', 'keyboard-scroll', 'rotary-en-accion'],
+        type: 'feature',
+        impact: 'Crítica: Garantiza visibilidad total, scroll continuo y acceso inmediato a todos los bloques de la plantilla (incluyendo tarjeta del Directorio Oficial de Clubes, botón de actualización, firma y pie de página) tanto en modo edición como en vista previa final.',
+        changes: [
+            { type: 'fixed', text: 'Corrección de la supresión de scrollbar en navegadores Chrome y WebKit: scrollbar de 14px en azul rotario (#013388) visible y arrastrable de forma permanente.' },
+            { type: 'added', text: 'Mini-dock flotante con accesos directos de navegación: "Inicio" y "Pie de página" para salto instantáneo entre extremos de la plantilla.' },
+            { type: 'improved', text: 'Reenvío de eventos de rueda de ratón (onWheel) para scroll fluido sobre cualquier área o bloque del lienzo.' },
+            { type: 'added', text: 'Navegación nativa por teclado con soporte de Flechas, PageUp, PageDown, Home y End en el lienzo de diseño.' },
+            { type: 'fixed', text: 'Resolución íntegra y garantizada de todos los bloques de [DIR-SEM-02] en modo edición y en Vista Previa Final.' }
+        ]
+    },
+    {
         version: '4.1229.0',
         title: 'Arquitectura WYSIWYG sin Oclusión, Renderizadores Ref-Controlled y Vista Previa Dinámica 💎🎨📬',
         description: 'Optimización estructural integral del Editor Visual de Email Marketing (v4.1229.0) y el Planificador de Campañas Institucionales: 1) Renderizadores de lienzo controlados por Ref (TextBlockCanvasRenderer y HeadingBlockCanvasRenderer) que aíslan la escritura del ciclo de reconciliación de React, preservando selecciones, cursores y atajos de teclado sin parpadeos ni trampas de foco. 2) Barra de herramientas WYSIWYG dockeada permanentemente en la cabecera superior, eliminando la barra flotante que tapaba los párrafos al hacer scroll en el lienzo. 3) Inspector lateral con alternador de vista limpia: "Modo Visual" (predeterminado con botón de activación en lienzo y controles de tipografía/colores) y "Código HTML" (con editor de sintaxis oscura y validador sanitizador). 4) Vista previa en vivo (previewMode="live") con renderizado HTML directo y continuo, eliminando el iframe de altura fija de 700px y permitiendo inspeccionar correos de cualquier extensión. 5) Modal de previsualización en el Planificador de Campañas (RotaryMarketingInteligente) ampliado a max-w-4xl con contenedor centrado a 600px simulando clientes de correo reales. 6) Suite automatizada de pruebas de interacción y desplazamiento (test-editor-interactions.mjs) blindando la integridad en cada compilación.',
