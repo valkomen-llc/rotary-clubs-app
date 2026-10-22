@@ -4044,6 +4044,17 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
             toast.success('Campaña actualizada y sincronizada con éxito');
             setVisualEditorCampaign(null);
           }}
+          onAutoSaved={({ subject: s, preheader: p, html, design: savedDesign }) => {
+            // El autoguardado ya quedó en la base: reflejarlo en la lista para
+            // que reabrir el editor (sin recargar) muestre la última versión.
+            const patch = { subject: s, preheader: p, contentHtml: html, design: savedDesign };
+            setCampaigns((prev) =>
+              prev.map((c) => (c.id === visualEditorCampaign.id ? { ...c, ...patch } : c))
+            );
+            if (previewCampaign?.id === visualEditorCampaign.id) {
+              setPreviewCampaign((prev: any) => ({ ...prev, ...patch }));
+            }
+          }}
           onClose={() => setVisualEditorCampaign(null)}
         />
       )}

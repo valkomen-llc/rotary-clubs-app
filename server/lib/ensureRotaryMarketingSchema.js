@@ -422,6 +422,20 @@ export async function ensureRotaryMarketingSchema() {
   await db.query(`ALTER TABLE "RotaryMarketingCampaign" ADD COLUMN IF NOT EXISTS "lastSentAt" TIMESTAMPTZ`).catch(() => {});
   await db.query(`ALTER TABLE "RotaryMarketingCampaign" ADD COLUMN IF NOT EXISTS "lastSendResult" JSONB`).catch(() => {});
   await db.query(`ALTER TABLE "RotaryMarketingCampaign" ADD COLUMN IF NOT EXISTS "initiative" TEXT NOT NULL DEFAULT 'rotary_en_accion'`).catch(() => {});
+  // Cuándo una persona personalizó la campaña desde el Editor Visual (v4.1235).
+  // Mientras sea NULL, las semillas pueden refrescar el borrador con el copy del
+  // código; en cuanto tiene fecha, NINGUNA semilla vuelve a tocar su diseño,
+  // asunto, preheader ni textos. Antes, cada arranque en frío del servidor
+  // re-sembraba los borradores y borraba lo guardado en el editor.
+  await db.query(`ALTER TABLE "RotaryMarketingCampaign" ADD COLUMN IF NOT EXISTS "customizedAt" TIMESTAMPTZ`).catch(() => {});
+  // Rescate de lo ya editado: una campaña tocada por una persona tiene "updatedAt"
+  // posterior a su creación (las semillas nunca lo cambian). Se marca como
+  // personalizada para que la primera re-siembra tras el despliegue no la pise.
+  await db.query(`UPDATE "RotaryMarketingCampaign"
+    SET "customizedAt" = "updatedAt"
+    WHERE "customizedAt" IS NULL
+      AND "updatedAt" IS NOT NULL AND "createdAt" IS NOT NULL
+      AND "updatedAt" > "createdAt" + INTERVAL '1 minute'`).catch(() => {});
   await db.query(`ALTER TABLE "RotaryCampaignExecution" ADD COLUMN IF NOT EXISTS "initiative" TEXT NOT NULL DEFAULT 'rotary_en_accion'`).catch(() => {});
   await db.query(`UPDATE "RotaryMarketingCampaign" SET "initiative" = 'rotary_en_accion' WHERE "initiative" IS NULL`).catch(() => {});
 
@@ -642,10 +656,10 @@ export async function ensureRotaryMarketingSchema() {
       (id, code, week, name, type, horizon, "targetSegment", channels, subject, preheader, "messageCentral", "utmCampaign", status, "contentHtml", "whatsappTemplate", "initiative", "design")
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
       ON CONFLICT (code) DO UPDATE SET
-        name = CASE WHEN "RotaryMarketingCampaign".status = 'draft' THEN EXCLUDED.name ELSE "RotaryMarketingCampaign".name END,
+        name = CASE WHEN "RotaryMarketingCampaign".status = 'draft' AND "RotaryMarketingCampaign"."customizedAt" IS NULL THEN EXCLUDED.name ELSE "RotaryMarketingCampaign".name END,
         "initiative" = COALESCE("RotaryMarketingCampaign"."initiative", 'rotary_en_accion'),
-        "design" = CASE WHEN "RotaryMarketingCampaign"."design" IS NULL OR "RotaryMarketingCampaign".status = 'draft' THEN EXCLUDED."design" ELSE "RotaryMarketingCampaign"."design" END,
-        "contentHtml" = CASE WHEN "RotaryMarketingCampaign"."design" IS NULL OR "RotaryMarketingCampaign".status = 'draft' THEN EXCLUDED."contentHtml" ELSE "RotaryMarketingCampaign"."contentHtml" END`,
+        "design" = CASE WHEN "RotaryMarketingCampaign"."design" IS NULL OR ("RotaryMarketingCampaign".status = 'draft' AND "RotaryMarketingCampaign"."customizedAt" IS NULL) THEN EXCLUDED."design" ELSE "RotaryMarketingCampaign"."design" END,
+        "contentHtml" = CASE WHEN "RotaryMarketingCampaign"."design" IS NULL OR ("RotaryMarketingCampaign".status = 'draft' AND "RotaryMarketingCampaign"."customizedAt" IS NULL) THEN EXCLUDED."contentHtml" ELSE "RotaryMarketingCampaign"."contentHtml" END`,
       [
         `rmk-${c.code}`, c.code, c.week, c.name, c.type, c.horizon,
         c.targetSegment, c.channels, c.subject, c.preheader, c.messageCentral,
@@ -661,20 +675,20 @@ export async function ensureRotaryMarketingSchema() {
       (id, code, week, name, type, horizon, "targetSegment", channels, subject, preheader, "messageCentral", "utmCampaign", status, "contentHtml", "whatsappTemplate", "initiative", "design")
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
       ON CONFLICT (code) DO UPDATE SET
-        name = EXCLUDED.name,
+        name = CASE WHEN "RotaryMarketingCampaign"."customizedAt" IS NULL THEN EXCLUDED.name ELSE "RotaryMarketingCampaign".name END,
         week = EXCLUDED.week,
         type = EXCLUDED.type,
         horizon = EXCLUDED.horizon,
         "targetSegment" = EXCLUDED."targetSegment",
         channels = EXCLUDED.channels,
-        subject = EXCLUDED.subject,
-        preheader = EXCLUDED.preheader,
-        "messageCentral" = EXCLUDED."messageCentral",
+        subject = CASE WHEN "RotaryMarketingCampaign"."customizedAt" IS NULL THEN EXCLUDED.subject ELSE "RotaryMarketingCampaign".subject END,
+        preheader = CASE WHEN "RotaryMarketingCampaign"."customizedAt" IS NULL THEN EXCLUDED.preheader ELSE "RotaryMarketingCampaign".preheader END,
+        "messageCentral" = CASE WHEN "RotaryMarketingCampaign"."customizedAt" IS NULL THEN EXCLUDED."messageCentral" ELSE "RotaryMarketingCampaign"."messageCentral" END,
         "utmCampaign" = EXCLUDED."utmCampaign",
         "whatsappTemplate" = EXCLUDED."whatsappTemplate",
         "initiative" = EXCLUDED."initiative",
-        "design" = CASE WHEN "RotaryMarketingCampaign"."design" IS NULL OR "RotaryMarketingCampaign".status = 'draft' THEN EXCLUDED."design" ELSE "RotaryMarketingCampaign"."design" END,
-        "contentHtml" = CASE WHEN "RotaryMarketingCampaign"."design" IS NULL OR "RotaryMarketingCampaign".status = 'draft' THEN EXCLUDED."contentHtml" ELSE "RotaryMarketingCampaign"."contentHtml" END`,
+        "design" = CASE WHEN "RotaryMarketingCampaign"."design" IS NULL OR ("RotaryMarketingCampaign".status = 'draft' AND "RotaryMarketingCampaign"."customizedAt" IS NULL) THEN EXCLUDED."design" ELSE "RotaryMarketingCampaign"."design" END,
+        "contentHtml" = CASE WHEN "RotaryMarketingCampaign"."design" IS NULL OR ("RotaryMarketingCampaign".status = 'draft' AND "RotaryMarketingCampaign"."customizedAt" IS NULL) THEN EXCLUDED."contentHtml" ELSE "RotaryMarketingCampaign"."contentHtml" END`,
       [
         `rmk-${c.code}`, c.code, c.week, c.name, c.type, c.horizon,
         c.targetSegment, c.channels, c.subject, c.preheader, c.messageCentral,
@@ -690,20 +704,20 @@ export async function ensureRotaryMarketingSchema() {
       (id, code, week, name, type, horizon, "targetSegment", channels, subject, preheader, "messageCentral", "utmCampaign", status, "contentHtml", "whatsappTemplate", "initiative", "design")
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
       ON CONFLICT (code) DO UPDATE SET
-        name = EXCLUDED.name,
+        name = CASE WHEN "RotaryMarketingCampaign"."customizedAt" IS NULL THEN EXCLUDED.name ELSE "RotaryMarketingCampaign".name END,
         week = EXCLUDED.week,
         type = EXCLUDED.type,
         horizon = EXCLUDED.horizon,
         "targetSegment" = EXCLUDED."targetSegment",
         channels = EXCLUDED.channels,
-        subject = EXCLUDED.subject,
-        preheader = EXCLUDED.preheader,
-        "messageCentral" = EXCLUDED."messageCentral",
+        subject = CASE WHEN "RotaryMarketingCampaign"."customizedAt" IS NULL THEN EXCLUDED.subject ELSE "RotaryMarketingCampaign".subject END,
+        preheader = CASE WHEN "RotaryMarketingCampaign"."customizedAt" IS NULL THEN EXCLUDED.preheader ELSE "RotaryMarketingCampaign".preheader END,
+        "messageCentral" = CASE WHEN "RotaryMarketingCampaign"."customizedAt" IS NULL THEN EXCLUDED."messageCentral" ELSE "RotaryMarketingCampaign"."messageCentral" END,
         "utmCampaign" = EXCLUDED."utmCampaign",
         "whatsappTemplate" = EXCLUDED."whatsappTemplate",
         "initiative" = EXCLUDED."initiative",
-        "design" = CASE WHEN "RotaryMarketingCampaign"."design" IS NULL OR "RotaryMarketingCampaign".status = 'draft' THEN EXCLUDED."design" ELSE "RotaryMarketingCampaign"."design" END,
-        "contentHtml" = CASE WHEN "RotaryMarketingCampaign"."design" IS NULL OR "RotaryMarketingCampaign".status = 'draft' THEN EXCLUDED."contentHtml" ELSE "RotaryMarketingCampaign"."contentHtml" END`,
+        "design" = CASE WHEN "RotaryMarketingCampaign"."design" IS NULL OR ("RotaryMarketingCampaign".status = 'draft' AND "RotaryMarketingCampaign"."customizedAt" IS NULL) THEN EXCLUDED."design" ELSE "RotaryMarketingCampaign"."design" END,
+        "contentHtml" = CASE WHEN "RotaryMarketingCampaign"."design" IS NULL OR ("RotaryMarketingCampaign".status = 'draft' AND "RotaryMarketingCampaign"."customizedAt" IS NULL) THEN EXCLUDED."contentHtml" ELSE "RotaryMarketingCampaign"."contentHtml" END`,
       [
         `rmk-${c.code}`, c.code, c.week, c.name, c.type, c.horizon,
         c.targetSegment, c.channels, c.subject, c.preheader, c.messageCentral,
@@ -807,7 +821,8 @@ export async function ensureRotaryMarketingSchema() {
       ON CONFLICT (id) DO UPDATE SET
         design = EXCLUDED.design,
         html = EXCLUDED.html,
-        name = EXCLUDED.name`,
+        name = EXCLUDED.name
+      WHERE COALESCE("ContentActivationTemplate".version, 1) <= 1`,
       [
         'tpl-rotary-en-accion-master',
         'global',
@@ -833,7 +848,8 @@ export async function ensureRotaryMarketingSchema() {
       ON CONFLICT (id) DO UPDATE SET
         design = EXCLUDED.design,
         html = EXCLUDED.html,
-        name = EXCLUDED.name`,
+        name = EXCLUDED.name
+      WHERE COALESCE("ContentActivationTemplate".version, 1) <= 1`,
       [
         'tpl-directorio-clubes-master',
         'global',
@@ -859,7 +875,8 @@ export async function ensureRotaryMarketingSchema() {
       ON CONFLICT (id) DO UPDATE SET
         design = EXCLUDED.design,
         html = EXCLUDED.html,
-        name = EXCLUDED.name`,
+        name = EXCLUDED.name
+      WHERE COALESCE("ContentActivationTemplate".version, 1) <= 1`,
       [
         'tpl-feria-proyectos-master',
         'global',

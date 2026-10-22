@@ -43,6 +43,14 @@ const authHeaders = () => ({
   'Content-Type': 'application/json'
 });
 
+type SavedTemplate = { name: string; subject: string; preheader: string; design: EmailDesign; html: string };
+type SaveOutcome = { ok: boolean; error?: string; version?: number; saved?: SavedTemplate };
+
+// Pausa sin teclear antes del autoguardado de una campaña.
+const AUTOSAVE_DELAY_MS = 4000;
+// Tope de un fetch con keepalive (el navegador rechaza cuerpos de más de 64 KB).
+const KEEPALIVE_MAX_BYTES = 60000;
+
 interface VisualTemplateEditorProps {
   initialDesign?: EmailDesign | null;
   initialName?: string;
@@ -58,7 +66,9 @@ interface VisualTemplateEditorProps {
     messageCentral?: string;
     utmCampaign?: string;
   } | null;
-  onSave?: (saved: { name: string; subject: string; preheader: string; design: EmailDesign; html: string }) => void;
+  onSave?: (saved: SavedTemplate) => void;
+  // Autoguardado de una campaña confirmado por el servidor (el editor sigue abierto).
+  onAutoSaved?: (saved: SavedTemplate) => void;
   onClose?: () => void;
   readOnly?: boolean;
 }
@@ -1017,6 +1027,7 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
   templateId = null,
   campaignContext = null,
   onSave,
+  onAutoSaved,
   onClose,
   readOnly = false
 }) => {
@@ -1755,101 +1766,221 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
     }
   }, [design, siteBranding]);
 
-  // Guardar plantilla
+  // ─── PERSISTENCIA DE LA PLANTILLA (v4.1235) ───
+  // Lo guardado se reconoce por una "foto" serializada de nombre, asunto,
+  // preheader y diseño. "Cambios sin guardar" = la foto actual difiere de la
+  // última que el servidor CONFIRMÓ. Los guardados van en fila (nunca dos a la
+  // vez) y cada uno envía el estado más reciente, así una respuesta tardía no
+  // puede pisar una edición posterior.
+  const currentSnapshot = useMemo(
+    () => JSON.stringify({ n: name.trim(), s: subject.trim(), p: preheader.trim(), d: design }),
+    [name, subject, preheader, design]
+  );
+  const [savedSnapshot, setSavedSnapshot] = useState<string>(currentSnapshot);
+  const savedSnapshotRef = useRef<string>(currentSnapshot);
+  const latestStateRef = useRef({ name, subject, preheader, design, snapshot: currentSnapshot });
+  latestStateRef.current = { name, subject, preheader, design, snapshot: currentSnapshot };
+  const saveChainRef = useRef<Promise<unknown>>(Promise.resolve());
+  const discardOnExitRef = useRef(false);
+  const [savesInFlight, setSavesInFlight] = useState(0);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const isDirty = !readOnly && currentSnapshot !== savedSnapshot;
+  const autosaveEnabled = Boolean(campaignContext?.id) && !readOnly;
+  const campaignSaveUrl = campaignContext?.id
+    ? `${API}/rotary-en-accion/marketing/campaigns/${campaignContext.id}/apply-template`
+    : null;
+
+  // Escribe en la base el estado MÁS RECIENTE del editor. Sólo da el guardado
+  // por bueno cuando el servidor devuelve el registro persistido.
+  const persistLatest = useCallback(async (): Promise<SaveOutcome> => {
+    const { name: n, subject: s, preheader: p, design: d, snapshot } = latestStateRef.current;
+    if (!n.trim()) return { ok: false, error: 'La plantilla requiere un nombre identificador' };
+    try {
+      const fullHtml = renderDesignToHtml(d, { interactive: false, siteContext: siteBranding });
+      let res: Response;
+      if (campaignSaveUrl) {
+        res = await fetch(campaignSaveUrl, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({ design: d, subject: s.trim(), preheader: p.trim(), html: fullHtml })
+        });
+      } else if (templateId) {
+        res = await fetch(`${API}/content-activation/templates/${templateId}`, {
+          method: 'PUT',
+          headers: authHeaders(),
+          body: JSON.stringify({
+            name: n.trim(), subject: s.trim(), preheader: p.trim(), design: d, html: fullHtml,
+            note: 'Guardado desde Editor Visual de Plantillas'
+          })
+        });
+      } else {
+        res = await fetch(`${API}/rotary-en-accion/marketing/templates/save-master`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({
+            name: n.trim(), subject: s.trim(), preheader: p.trim(), design: d, html: fullHtml,
+            note: 'Guardado desde Editor Visual de Plantillas'
+          })
+        });
+      }
+      const data = await res.json().catch(() => ({} as any));
+      const persisted = campaignSaveUrl
+        ? res.ok && data.ok && Boolean(data.campaign?.id)
+        : res.ok && Boolean(data.template);
+      if (!persisted) {
+        const error = data.error || `El servidor no confirmó el guardado (HTTP ${res.status}).`;
+        setSaveError(error);
+        return { ok: false, error };
+      }
+      savedSnapshotRef.current = snapshot;
+      setSavedSnapshot(snapshot);
+      setSaveError(null);
+      setLastSavedAt(new Date());
+      return {
+        ok: true,
+        version: data.template?.version,
+        saved: { name: n, subject: s, preheader: p, design: d, html: fullHtml }
+      };
+    } catch (err: any) {
+      const error = err?.message || 'No se pudo comunicar con el servidor.';
+      setSaveError(error);
+      return { ok: false, error };
+    }
+  }, [campaignSaveUrl, templateId, siteBranding]);
+
+  // Encola un guardado detrás de los anteriores.
+  const runSave = useCallback((): Promise<SaveOutcome> => {
+    setSavesInFlight((c) => c + 1);
+    const next = saveChainRef.current.then(persistLatest, persistLatest);
+    saveChainRef.current = next.catch(() => undefined);
+    return next.finally(() => setSavesInFlight((c) => c - 1));
+  }, [persistLatest]);
+
+  // Guarda hasta que lo persistido coincida con lo que se ve (si se editó
+  // durante el guardado, vuelve a guardar).
+  const saveUntilClean = useCallback(async (): Promise<SaveOutcome> => {
+    let outcome = await runSave();
+    for (let i = 0; i < 3 && outcome.ok && latestStateRef.current.snapshot !== savedSnapshotRef.current; i++) {
+      outcome = await runSave();
+    }
+    return outcome;
+  }, [runSave]);
+
+  // Autoguardado con debounce, sólo para campañas (en plantillas cada guardado
+  // crea una versión nueva y no conviene llenarlas de versiones intermedias).
+  useEffect(() => {
+    if (!autosaveEnabled || !isDirty || saving || savesInFlight > 0 || saveError) return;
+    const timer = setTimeout(() => {
+      runSave().then((outcome) => {
+        if (outcome.ok && outcome.saved) onAutoSaved?.(outcome.saved);
+      });
+    }, AUTOSAVE_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [autosaveEnabled, isDirty, currentSnapshot, saving, savesInFlight, saveError, runSave, onAutoSaved]);
+
+  // Tras un error, el autoguardado se reanuda cuando la persona vuelve a editar.
+  useEffect(() => {
+    if (saveError && currentSnapshot !== savedSnapshotRef.current) {
+      const timer = setTimeout(() => setSaveError(null), AUTOSAVE_DELAY_MS);
+      return () => clearTimeout(timer);
+    }
+  }, [currentSnapshot, saveError]);
+
+  // Aviso del navegador al recargar o cerrar la pestaña con cambios pendientes.
+  useEffect(() => {
+    if (!isDirty && savesInFlight === 0) return;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDirty, savesInFlight]);
+
+  // Último recurso en campañas: si el editor se desmonta o la página se cierra
+  // con cambios sin confirmar, se envían con keepalive (el servidor compila el
+  // HTML a partir del diseño). No aplica si la persona eligió descartar.
+  useEffect(() => {
+    if (!autosaveEnabled || !campaignSaveUrl) return;
+    const flush = () => {
+      if (discardOnExitRef.current) return;
+      const cur = latestStateRef.current;
+      if (cur.snapshot === savedSnapshotRef.current) return;
+      try {
+        const body = JSON.stringify({ design: cur.design, subject: cur.subject.trim(), preheader: cur.preheader.trim() });
+        if (body.length > KEEPALIVE_MAX_BYTES) return;
+        savedSnapshotRef.current = cur.snapshot;
+        fetch(campaignSaveUrl, { method: 'POST', headers: authHeaders(), body, keepalive: true }).catch(() => {});
+      } catch {
+        // best-effort
+      }
+    };
+    window.addEventListener('pagehide', flush);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      flush();
+    };
+  }, [autosaveEnabled, campaignSaveUrl]);
+
+  // Guardar (botón «Guardar y Sincronizar» / «Guardar Plantilla»)
   const handleSave = async () => {
+    if (readOnly) return;
     if (!name.trim()) {
       toast.error('La plantilla requiere un nombre identificador');
       return;
     }
     setSaving(true);
     try {
-      const fullHtml = renderDesignToHtml(design, { interactive: false, siteContext: siteBranding });
-
-      // 1. Si viene contexto de campaña, aplicar y sincronizar con la campaña
+      const outcome = await saveUntilClean();
+      if (!outcome.ok || !outcome.saved) {
+        toast.error('No se pudo guardar la plantilla', {
+          description: `${outcome.error || 'Error desconocido.'} Tus cambios siguen en el editor; vuelve a intentarlo.`
+        });
+        return;
+      }
       if (campaignContext?.id) {
-        const res = await fetch(`${API}/rotary-en-accion/marketing/campaigns/${campaignContext.id}/apply-template`, {
-          method: 'POST',
-          headers: authHeaders(),
-          body: JSON.stringify({
-            design,
-            subject: subject.trim(),
-            preheader: preheader.trim(),
-            html: fullHtml
-          })
+        toast.success('¡Diseño aplicado y sincronizado con la campaña!', {
+          description: `Campaña ${campaignContext.code.toUpperCase()} guardada y sincronizada con Email Marketing.`
         });
-
-        const data = await res.json().catch(() => ({}));
-        if (res.ok && data.ok) {
-          toast.success('¡Diseño aplicado y sincronizado con la campaña!', {
-            description: `Campaña ${campaignContext.code.toUpperCase()} guardada y sincronizada con Email Marketing.`
-          });
-          onSave?.({ name, subject, preheader, design, html: fullHtml });
-          onClose?.();
-          return;
-        } else {
-          toast.error(data.error || 'No se pudo guardar la plantilla de la campaña');
-          return;
-        }
+        onSave?.(outcome.saved);
+        onClose?.();
+        return;
       }
-
-      // 2. Si viene templateId específico, actualizar en content-activation
-      if (templateId) {
-        const res = await fetch(`${API}/content-activation/templates/${templateId}`, {
-          method: 'PUT',
-          headers: authHeaders(),
-          body: JSON.stringify({
-            name: name.trim(),
-            subject: subject.trim(),
-            preheader: preheader.trim(),
-            design,
-            html: fullHtml,
-            note: 'Guardado desde Editor Visual de Plantillas'
-          })
-        });
-
-        const data = await res.json().catch(() => ({}));
-        if (res.ok) {
-          toast.success(`¡Plantilla guardada como v${data.template?.version || 1}!`, {
-            description: 'Cambios persistidos correctamente.'
-          });
-          onSave?.({ name, subject, preheader, design, html: fullHtml });
-          return;
-        } else {
-          toast.error(data.error || 'No se pudo guardar la plantilla');
-          return;
-        }
-      }
-
-      // 3. Guardar como Plantilla Maestra Central Oficial de Rotary en Acción
-      const res = await fetch(`${API}/rotary-en-accion/marketing/templates/save-master`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({
-          name: name.trim(),
-          subject: subject.trim(),
-          preheader: preheader.trim(),
-          design,
-          html: fullHtml,
-          note: 'Guardado desde Editor Visual de Plantillas'
-        })
+      toast.success(`¡Plantilla guardada como v${outcome.version || 1}!`, {
+        description: templateId ? 'Cambios persistidos correctamente.' : 'Estructura institucional protegida y lista para campañas.'
       });
-
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.ok) {
-        toast.success(`¡Plantilla guardada como v${data.template?.version || 1}!`, {
-          description: 'Estructura institucional protegida y lista para campañas.'
-        });
-        onSave?.({ name, subject, preheader, design, html: fullHtml });
-      } else {
-        toast.error(data.error || 'No se pudo guardar la plantilla');
-      }
-    } catch (err: any) {
-      toast.error('Error de red al guardar la plantilla', {
-        description: err?.message || 'No se pudo comunicar con el servidor.'
-      });
+      onSave?.(outcome.saved);
     } finally {
       setSaving(false);
     }
+  };
+
+  // Salir del editor sin perder cambios en silencio
+  const handleRequestClose = async () => {
+    if (!onClose) return;
+    if (isDirty || savesInFlight > 0) {
+      const wantsSave = window.confirm(
+        'Hay cambios sin guardar en esta plantilla.\n\nAceptar: guardarlos y salir.\nCancelar: elegir entre seguir editando o descartarlos.'
+      );
+      if (wantsSave) {
+        setSaving(true);
+        const outcome = await saveUntilClean();
+        setSaving(false);
+        if (!outcome.ok || !outcome.saved) {
+          toast.error('No se pudo guardar; sigues en el editor para no perder tus cambios.', {
+            description: outcome.error
+          });
+          return;
+        }
+        onSave?.(outcome.saved);
+        onClose();
+        return;
+      }
+      if (!window.confirm('¿Descartar los cambios no guardados y salir del editor?')) return;
+      discardOnExitRef.current = true;
+    }
+    onClose();
   };
 
   // Enviar correo de prueba con validación estricta y reporte del proveedor
@@ -1862,13 +1993,27 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
     setSendingTest(true);
     setTestReceipt(null);
     try {
-      const testHtml = renderDesignToHtml(design, { interactive: false, siteContext: siteBranding });
+      // La prueba usa la MISMA versión persistida: si hay cambios pendientes,
+      // primero se guardan; si el guardado falla, no se envía nada.
+      let testHtml = renderDesignToHtml(design, { interactive: false, siteContext: siteBranding });
+      let testSubject = subject;
+      if (isDirty) {
+        const outcome = await saveUntilClean();
+        if (!outcome.ok || !outcome.saved) {
+          toast.error('No se envió la prueba: los cambios no se pudieron guardar', {
+            description: outcome.error
+          });
+          return;
+        }
+        testHtml = outcome.saved.html;
+        testSubject = outcome.saved.subject;
+      }
       const res = await fetch(`${API}/rotary-en-accion/marketing/templates/test-email`, {
         method: 'POST',
         headers: authHeaders(),
         body: JSON.stringify({
           to: emailTo,
-          subject,
+          subject: testSubject,
           html: testHtml
         })
       });
@@ -1949,7 +2094,7 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
         <div className="flex items-center gap-3 min-w-0">
           {onClose && (
             <button
-              onClick={onClose}
+              onClick={handleRequestClose}
               className="p-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors"
               title="Volver"
             >
@@ -2110,6 +2255,34 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
             <Send className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Enviar Prueba</span>
           </button>
+
+          {/* Estado del guardado */}
+          {!readOnly && (
+            <span
+              role="status"
+              aria-live="polite"
+              title={saveError || (lastSavedAt ? `Último guardado confirmado: ${lastSavedAt.toLocaleTimeString('es-CO')}` : undefined)}
+              className={`hidden md:inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold border ${
+                saving || savesInFlight > 0
+                  ? 'bg-blue-50 border-blue-200 text-blue-700'
+                  : saveError
+                  ? 'bg-red-50 border-red-200 text-red-700'
+                  : isDirty
+                  ? 'bg-amber-50 border-amber-200 text-amber-700'
+                  : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+              }`}
+            >
+              {saving || savesInFlight > 0 ? (
+                <><RefreshCw className="w-3 h-3 animate-spin" /> Guardando…</>
+              ) : saveError ? (
+                <><X className="w-3 h-3" /> Error al guardar</>
+              ) : isDirty ? (
+                <>● Cambios sin guardar{autosaveEnabled ? ' · autoguardado' : ''}</>
+              ) : (
+                <><CheckCircle2 className="w-3 h-3" /> {lastSavedAt ? 'Guardado correctamente' : 'Sin cambios'}</>
+              )}
+            </span>
+          )}
 
           {/* Guardar */}
           <button
