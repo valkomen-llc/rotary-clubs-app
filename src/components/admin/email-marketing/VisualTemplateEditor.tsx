@@ -17,11 +17,11 @@ import {
   AlignLeft, AlignCenter, AlignRight, AlignJustify, Globe,
   Bold, Italic, Underline, Strikethrough, Superscript, Subscript, Smile,
   List, ListOrdered, Link as LinkIcon, Unlink as UnlinkIcon, RemoveFormatting,
-  Highlighter, ChevronDown, Indent, Outdent, GripVertical, Edit3, Code2
+  Highlighter, ChevronDown, Indent, Outdent, GripVertical, Edit3, Code2, Layers
 } from 'lucide-react';
 
 import {
-  renderDesignToHtml, makeBlock, BLOCK_LABELS,
+  renderDesignToHtml, renderSingleBlockHtml, makeBlock, BLOCK_LABELS,
   FONT_OPTIONS, FONT_WEIGHT_OPTIONS, LINE_HEIGHT_OPTIONS, newId, createRotaryMasterDesign, createChannelCampaignDesign, getRotaryGlobalBlocksCatalog,
   resolveInstitutionalLogo, getActiveSiteBrandingContext, normalizeInstitutionalDesign, resolveSiteRotaryEnAccionUrl,
   DEFAULT_FOOTER_SOCIAL_LINKS, textToHtml, sanitizeRichTextHtml,
@@ -1040,6 +1040,7 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
   const [draggedBlockIndex, setDraggedBlockIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [blockNavigatorOpen, setBlockNavigatorOpen] = useState(false);
 
   // Referencia al contenedor de desplazamiento del lienzo y ayudantes de navegación
   const mainCanvasRef = useRef<HTMLElement | null>(null);
@@ -1047,13 +1048,23 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
     if (mainCanvasRef.current) {
       mainCanvasRef.current.scrollTo({ top: 0, behavior: 'smooth' });
     }
+    const firstBlock = design.blocks[0];
+    if (firstBlock) {
+      const el = document.getElementById(`canvas-block-${firstBlock.id}`);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   };
   const scrollToBottom = () => {
     if (mainCanvasRef.current) {
       mainCanvasRef.current.scrollTo({
-        top: mainCanvasRef.current.scrollHeight,
+        top: mainCanvasRef.current.scrollHeight + 1000,
         behavior: 'smooth'
       });
+    }
+    const lastBlock = design.blocks[design.blocks.length - 1];
+    if (lastBlock) {
+      const el = document.getElementById(`canvas-block-${lastBlock.id}`);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'end' });
     }
   };
 
@@ -2173,11 +2184,12 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
           ref={mainCanvasRef}
           id="rotary-visual-canvas-scroll"
           tabIndex={0}
-          className="flex-1 min-h-0 bg-slate-200/60 overflow-y-auto p-4 sm:p-8 flex flex-col items-center justify-start relative select-auto focus:outline-none"
+          className="flex-1 min-h-0 bg-slate-200/70 overflow-y-auto overflow-x-hidden relative focus:outline-none"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setSelectedBlockId(null);
               setEditingBlockId(null);
+              setBlockNavigatorOpen(false);
             }
           }}
           onKeyDown={(e) => {
@@ -2276,13 +2288,16 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
               if (e.target === e.currentTarget) {
                 setSelectedBlockId(null);
                 setEditingBlockId(null);
+                setBlockNavigatorOpen(false);
               }
             }}
           >
             <div
+              id="rotary-email-card-container"
               style={{
                 width: deviceView === 'mobile' ? '375px' : `${bodyWidthPreset}px`,
-                transform: `scale(${zoomLevel / 100})`,
+                maxWidth: '100%',
+                transform: zoomLevel === 100 ? undefined : `scale(${zoomLevel / 100})`,
                 transformOrigin: 'top center',
                 transition: 'width 0.2s ease, transform 0.2s ease'
               }}
@@ -2295,31 +2310,27 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                   dangerouslySetInnerHTML={{ __html: compiledHtml }}
                 />
               ) : (
-                // Lienzo interactivo de bloques con protección visual
+                // Lienzo interactivo continuo de bloques con fidelidad 1:1 con el correo real
                 <div
                   style={{
-                    backgroundColor: design.settings.bg,
-                    fontFamily: design.settings.font
+                    backgroundColor: design.settings.contentBg || '#ffffff',
+                    color: design.settings.textColor || '#334155',
+                    fontFamily: design.settings.font || "'Open Sans', Helvetica, Arial, sans-serif"
                   }}
-                  className="p-3 sm:p-5"
+                  className="w-full flex flex-col"
                 >
-                  <div
-                    style={{
-                      backgroundColor: design.settings.contentBg,
-                      color: design.settings.textColor
-                    }}
-                    className="rounded-xl overflow-hidden shadow-sm"
-                  >
-                    {design.blocks.map((block, idx) => {
-                      const isSelected = selectedBlockId === block.id;
-                      const isEditing = editingBlockId === block.id;
-                      const isProt = Boolean(block.isProtected);
-                      const isDragged = draggedBlockIndex === idx;
-                      const isOver = dragOverIndex === idx;
+                  {design.blocks.map((block, idx) => {
+                    const isSelected = selectedBlockId === block.id;
+                    const isEditing = editingBlockId === block.id;
+                    const isProt = Boolean(block.isProtected);
+                    const isDragged = draggedBlockIndex === idx;
+                    const isOver = dragOverIndex === idx;
 
-                      return (
-                        <div
-                          key={block.id}
+                    return (
+                      <div
+                        key={block.id}
+                        id={`canvas-block-${block.id}`}
+                        data-block-id={block.id}
                           onDragOver={(e) => {
                             e.preventDefault();
                             e.dataTransfer.dropEffect = 'move';
@@ -2538,11 +2549,12 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                           ) : (
                             <div
                               dangerouslySetInnerHTML={{
-                                __html: renderDesignToHtml(
-                                  { version: 1, settings: design.settings, blocks: [block] },
+                                __html: renderSingleBlockHtml(
+                                  block,
+                                  design.settings,
+                                  siteBranding,
                                   {
                                     interactive: false,
-                                    siteContext: siteBranding,
                                     isCtaActive: design.blocks.some(
                                       (b) => b.type === 'global' && (b as GlobalBlockItem).globalKey === 'club_platform_cta' && (b as GlobalBlockItem).enabled !== false
                                     )
@@ -2591,35 +2603,136 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
                       </div>
                     )}
                   </div>
-                </div>
               )}
             </div>
           </div>
 
-          {/* Mini-dock flotante de navegación vertical rápida */}
-          <div className="fixed bottom-6 right-84 sm:right-104 z-30 flex items-center gap-1.5 bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-2xl shadow-xl border border-slate-200/90 text-xs">
-            <span className="font-extrabold text-[10px] text-slate-500 uppercase tracking-wider hidden sm:inline mr-1">
-              {previewMode === 'live' ? 'Vista Final' : `${design.blocks.length} Bloques`}
-            </span>
-            <button
-              type="button"
-              onClick={scrollToTop}
-              className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-700 hover:text-rotary-blue flex items-center gap-1 font-bold transition-colors cursor-pointer"
-              title="Ir al inicio de la plantilla (Cabecera)"
-            >
-              <ArrowUp className="w-3.5 h-3.5 text-rotary-blue" />
-              <span>Inicio</span>
-            </button>
-            <div className="w-px h-4 bg-slate-200" />
-            <button
-              type="button"
-              onClick={scrollToBottom}
-              className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-700 hover:text-rotary-blue flex items-center gap-1 font-bold transition-colors cursor-pointer"
-              title="Ir al pie de página (Tarjeta Directorio, Botón CTA y Footer)"
-            >
-              <ArrowDown className="w-3.5 h-3.5 text-rotary-blue" />
-              <span>Pie de página</span>
-            </button>
+          {/* ─── NAVEGADOR DE PLANTILLA FLOTANTE (ESTILO OFICIAL CLUB PLATFORM) ─── */}
+          <div className="fixed bottom-6 right-84 sm:right-104 z-30 flex flex-col items-center select-none">
+            {/* Popover desplegable con índice de bloques */}
+            {blockNavigatorOpen && (
+              <div
+                className="mb-2 w-80 max-h-96 bg-white/98 backdrop-blur-md rounded-2xl shadow-2xl border border-slate-200/90 p-3 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-150 z-40"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between pb-2 border-b border-slate-100 px-1">
+                  <div className="flex items-center gap-1.5">
+                    <Layers className="w-4 h-4 text-rotary-blue" />
+                    <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                      Índice de la Plantilla
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setBlockNavigatorOpen(false)}
+                    className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                <div className="overflow-y-auto max-h-72 py-1.5 space-y-1">
+                  {design.blocks.map((b, i) => {
+                    const isSelected = selectedBlockId === b.id;
+                    const isProt = Boolean(b.isProtected);
+                    const label = b.label || BLOCK_LABELS[b.type] || 'Bloque';
+
+                    return (
+                      <button
+                        key={b.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedBlockId(b.id);
+                          setBlockNavigatorOpen(false);
+                          setTimeout(() => {
+                            const el = document.getElementById(`canvas-block-${b.id}`);
+                            if (el) {
+                              el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            }
+                          }, 50);
+                        }}
+                        className={`w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-xl text-left text-xs transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-blue-50 text-rotary-blue font-bold ring-1 ring-rotary-blue'
+                            : 'text-slate-700 hover:bg-slate-50 hover:text-slate-900'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-[10px] font-mono text-slate-400 font-bold shrink-0">
+                            #{i + 1}
+                          </span>
+                          <span className="truncate">{label}</span>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {isProt && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                              Protegido
+                            </span>
+                          )}
+                          {isSelected && (
+                            <span className="w-2 h-2 rounded-full bg-rotary-blue shrink-0 animate-pulse" />
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Barra del navegador de plantilla */}
+            <div className="flex flex-col bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-slate-200/90 overflow-hidden text-xs">
+              {/* Cabecera del navegador */}
+              <div className="flex items-center justify-between px-3.5 pt-2 pb-1 border-b border-slate-100 gap-3">
+                <span className="text-[11px] font-extrabold text-slate-700 tracking-tight">
+                  Navegador de plantilla
+                </span>
+                <span className="text-[10px] font-mono font-black text-rotary-blue bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                  {design.blocks.length} bloques
+                </span>
+              </div>
+
+              {/* Botones de acción: Inicio | Bloques | Pie de página */}
+              <div className="flex items-center gap-1 p-1">
+                <button
+                  type="button"
+                  onClick={scrollToTop}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-slate-700 hover:text-rotary-blue hover:bg-blue-50/50 rounded-xl font-bold transition-all cursor-pointer"
+                  title="Ir al inicio de la plantilla (Cabecera)"
+                >
+                  <ArrowUp className="w-3.5 h-3.5 text-rotary-blue" />
+                  <span>Inicio</span>
+                </button>
+
+                <div className="w-px h-4 bg-slate-200 mx-0.5" />
+
+                <button
+                  type="button"
+                  onClick={() => setBlockNavigatorOpen((prev) => !prev)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+                    blockNavigatorOpen
+                      ? 'bg-rotary-blue text-white shadow-xs'
+                      : 'text-slate-700 hover:text-rotary-blue hover:bg-blue-50/50'
+                  }`}
+                  title="Abrir índice completo de bloques para salto rápido"
+                >
+                  <MenuIcon className="w-3.5 h-3.5" />
+                  <span>Bloques</span>
+                </button>
+
+                <div className="w-px h-4 bg-slate-200 mx-0.5" />
+
+                <button
+                  type="button"
+                  onClick={scrollToBottom}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-slate-700 hover:text-rotary-blue hover:bg-blue-50/50 rounded-xl font-bold transition-all cursor-pointer"
+                  title="Ir al pie de página (Tarjeta Directorio, Botón CTA y Footer)"
+                >
+                  <ArrowDown className="w-3.5 h-3.5 text-rotary-blue" />
+                  <span>Pie de página</span>
+                </button>
+              </div>
+            </div>
           </div>
         </main>
 

@@ -42,6 +42,21 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1232.0',
+        title: 'Lienzo Continuo 1:1, Navegador de Plantilla Flotante con Salto a Bloques y Desplazamiento Vertical Fluido 🚀📜🎨',
+        description: 'Actualización integral del Editor Visual de Email Marketing de Club Platform: 1) Lienzo de correo continuo y unificado a 600px de ancho con fidelidad 1:1 frente al correo final enviado, eliminando cajas grises concéntricas intermedias y desajustes de bordes. 2) Nueva función de renderizado atómico por bloque (renderSingleBlockHtml) que proyecta cada bloque sin generar márgenes ni anidaciones redundantes, logrando continuidad perfecta desde la cabecera distrital hasta el pie de página. 3) Navegador de Plantilla flotante de alta precisión (con contador de bloques, salto directo a "Inicio", "Pie de página" y popover con el índice completo de bloques para desplazarse y activar cualquier sección del correo con un solo clic). 4) Optimización definitiva del motor de desplazamiento vertical en el lienzo con desacoplamiento de Flexbox (eliminando interferencias de centrado vertical) y zona de resguardo inferior (pb-80) para acceder cómodamente a todos los bloques, firmas y footer en cualquier resolución.',
+        date: new Date().toISOString(),
+        tags: ['email-marketing', 'visual-editor', 'block-navigator', 'smooth-scroll', 'unified-canvas', 'directorio-clubes', 'rotary-en-accion', 'feria-proyectos'],
+        type: 'feature',
+        impact: 'Crítica: Proporciona una experiencia de edición visual fluida, precisa y con fidelidad idéntica al correo electrónico real, con navegación instantánea entre cualquier bloque de la plantilla.',
+        changes: [
+            { type: 'fixed', text: 'Desacoplamiento del contenedor flex del lienzo y eliminación de padding interno lateral redundante, logrando desplazamiento vertical nativo fluido y continuo.' },
+            { type: 'added', text: 'Navegador de Plantilla flotante con índice interactivo desplegable de todos los bloques, salto rápido a Cabecera e inicio y salto a Pie de página.' },
+            { type: 'improved', text: 'Renderizado atómico de bloques mediante renderSingleBlockHtml sin envolturas de ancho fijo ni duplicación de fondos.' },
+            { type: 'fixed', text: 'Visualización y edición 100% fluida de campañas en todos los canales: Directorio de Clubes [DIR-SEM-02], Rotary en Acción y Feria de Proyectos.' },
+        ],
+    },
+    {
         version: '4.1231.0',
         title: 'Garantía Estructural Completa de Plantillas de Email Marketing y Vista Rápida Ajustada 📧🛡️✨',
         description: 'Reparación arquitectónica para garantizar que toda plantilla de Email Marketing en Club Platform se visualice con su formato institucional 100% completo en cualquier canal ([DIR-SEM-02] Directorio de Clubes, Rotary en Acción y Feria de Proyectos Colombia): 1) Enriquecimiento automático no destructivo en normalizeInstitutionalDesign para asegurar la presencia incondicional de los 5 pilares institucionales: Cabecera Adaptable (rotary_header), Botón Principal de Acción (CTA Oficial), Firma Oficial Distrital (rotary_signature con «Dar de sí antes de pensar en sí»), Tarjeta Promocional Club Platform (club_platform_cta) y Pie de Página Institucional Protegido (rotary_footer con logo oficial, redes sociales, asistencia WhatsApp y enlaces legales). 2) Sincronización íntegra en la API de campañas (rotaryMarketingController.getCampaigns) y semillas de base de datos (ensureRotaryMarketingSchema) para que ningún borrador o plantilla heredada carezca de los bloques institucionales. 3) Nuevo control ergonómico "Ver Completa" (toggle de zoom al 65% / 100%) en la barra superior del editor para apreciar de un solo vistazo la totalidad del correo desde la cabecera hasta el footer sin requerir scroll. 4) Validación cruzada mediante suite automatizada de pruebas para la integridad de bloques institucionales.',

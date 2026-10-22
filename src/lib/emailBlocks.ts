@@ -805,7 +805,7 @@ export const renderFooterSocialIcons = (
     return `<div style="text-align:center;margin-bottom:16px;line-height:1">${iconsHtml}</div>`;
 };
 
-const renderBlock = (
+export const renderBlock = (
     b: Block,
     s: EmailSettings,
     interactive = false,
@@ -1213,6 +1213,24 @@ ${fontsHead}
 ${rows}
 </table>
 </div>${script}`;
+};
+
+/**
+ * Renderiza un bloque individual dentro del contexto del lienzo interactivo
+ * garantizando que herede el ancho 100% y el fondo de contenido continuo,
+ * sin generar divs externos ni tablas anidadas con anchos fijos que causen recortes.
+ */
+export const renderSingleBlockHtml = (
+    block: Block,
+    settings: EmailSettings,
+    siteContext?: SiteBrandingContext,
+    opts: { isCtaActive?: boolean; interactive?: boolean } = {}
+): string => {
+    const s = { ...DEFAULT_SETTINGS, ...(settings || {}) };
+    const row = renderBlock(block, s, !!opts.interactive, siteContext, { isCtaActive: opts.isCtaActive });
+    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;margin:0;padding:0;background:${esc(s.contentBg || '#ffffff')}">
+${row}
+</table>`;
 };
 
 // Parsea el JSON de diseño guardado; retorna null si no es válido.

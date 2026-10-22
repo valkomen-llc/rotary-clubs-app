@@ -859,6 +859,13 @@ ${rows}
 </table>
 </div>${script}`;
 };
+var renderSingleBlockHtml = (block, settings, siteContext, opts = {}) => {
+  const s = { ...DEFAULT_SETTINGS, ...settings || {} };
+  const row = renderBlock(block, s, !!opts.interactive, siteContext, { isCtaActive: opts.isCtaActive });
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;margin:0;padding:0;background:${esc(s.contentBg || "#ffffff")}">
+${row}
+</table>`;
+};
 var parseDesign = (raw) => {
   if (!raw) return null;
   try {
@@ -1866,8 +1873,10 @@ export {
   newId,
   normalizeInstitutionalDesign,
   parseDesign,
+  renderBlock,
   renderDesignToHtml,
   renderFooterSocialIcons,
+  renderSingleBlockHtml,
   resolveInstitutionalLogo,
   resolveSiteActivarClubUrl,
   resolveSiteRotaryEnAccionUrl,
