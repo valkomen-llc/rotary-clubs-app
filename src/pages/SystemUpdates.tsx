@@ -42,6 +42,22 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1235.0',
+        title: 'Editor Visual de Plantillas: lo guardado se queda guardado 💾✅',
+        description: 'Corrección de la causa raíz por la que los cambios del Editor Visual de Plantillas desaparecían al recargar o volver a entrar: cada vez que el servidor arrancaba en frío (Vercel levanta instancias nuevas sin aviso), las semillas de campañas reescribían el diseño de toda campaña en borrador —y en Directorio de Clubes y Feria de Proyectos también el asunto, el preheader y los textos— y el diseño de las tres plantillas maestras. «Guardar y Sincronizar» sí escribía en la base, pero la siguiente instancia lo pisaba. Ahora una campaña editada queda marcada como personalizada y ninguna semilla vuelve a tocarla; las maestras sólo se refrescan mientras nadie las haya guardado. Además el editor muestra el estado del guardado, autoguarda las campañas, protege la salida con cambios pendientes y envía el correo de prueba con la versión persistida.',
+        date: new Date().toISOString(),
+        tags: ['email-marketing', 'editor-visual', 'plantillas', 'persistencia', 'rotary-en-accion', 'directorio-clubes', 'feria-proyectos'],
+        type: 'hotfix',
+        impact: 'Crítica: lo que se guarda en el editor (textos, formato, bloques, orden, estilos, CTA, variables, asunto y preheader) permanece tras recargar, salir o reiniciar el servidor, en los tres canales.',
+        changes: [
+            { type: 'fixed', text: 'Las semillas del arranque ya no reescriben campañas personalizadas (nueva marca customizedAt) ni plantillas maestras guardadas (versión > 1). Las ediciones hechas antes de esta versión se rescatan y marcan solas.' },
+            { type: 'fixed', text: 'Directorio de Clubes y Feria de Proyectos: el asunto, el preheader, el nombre y el mensaje central editados dejan de volver al texto original en cada despliegue.' },
+            { type: 'added', text: 'Indicador «Cambios sin guardar / Guardando… / Guardado correctamente / Error al guardar»; el éxito sólo se confirma cuando el servidor devuelve el registro persistido.' },
+            { type: 'added', text: 'Autoguardado con debounce en campañas, guardados en fila sin condiciones de carrera, aviso al recargar o cerrar con cambios y confirmación al salir (guardar o descartar).' },
+            { type: 'fixed', text: 'El correo de prueba guarda primero y envía exactamente la versión persistida; un fallo de guardado ya no cierra el editor ni pierde lo editado.' },
+        ],
+    },
+    {
         version: '4.1234.0',
         title: 'CRM Institucional: Conciliación con el Directorio Oficial, Ficha 360° y Analítica de Clubes 🏛️🤝📊',
         description: 'Evolución del Directorio CRM a un CRM institucional inteligente que relaciona cada contacto con su club rotario real, su distrito, sus cargos y el estado de digitalización del club: 1) Corrección de la causa raíz que mostraba «Club Platform for Rotary» como club de todos los contactos: la columna «Club oficial» ahora lee el club de pertenencia del Directorio y el tenant del CRM se muestra separado como «Origen». 2) Motor de conciliación con reglas de distrito, tipo de organización, cargo y período: sólo se confirma una coincidencia exacta y única; Rotaract e Interact nunca se asocian a un club rotario de la misma ciudad, y los contactos del Distrito 4271 sin perfil en el Directorio quedan pendientes sin cruzarse contra el 4281. 3) Conciliación auditable en tres pasos (vista previa, aplicación y reversión) sobre tablas aditivas, sin modificar contactos ni perfiles. 4) Ficha inteligente del contacto, vista 360° del club, filtros institucionales combinables, columnas personalizables y segmentos dinámicos. 5) Analítica institucional y audiencia «institucional» en Email Marketing con selección de segmento. La completitud se lee del Directorio Oficial y el estado Club Platform de sus fuentes reales, nunca de etiquetas CRM.',

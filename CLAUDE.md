@@ -204,6 +204,7 @@ es **rotar la credencial en Neon**, no sólo borrar el archivo.
 
 | Módulo | Archivo |
 |---|---|
+| Persistencia del Editor Visual de Plantillas (Email Marketing) — v4.1235 | `docs/claude/persistencia-del-editor-visual-de-plantillas.md` |
 | Generador de Outros IA — v4.647 | `docs/claude/generador-de-outros-ia.md` |
 | Outro sobre un video de la Biblioteca — v4.1039 | `docs/claude/outro-sobre-un-video-de-la-biblioteca.md` |
 | Creador de Reels IA — v4.797 | `docs/claude/creador-de-reels-ia.md` |

@@ -21,6 +21,8 @@ import {
   createChannelCampaignDesign
 } from '../lib/emailBlocks.js';
 
+console.log('[rotaryMarketing] Controlador v4.1235 — lo guardado en el Editor Visual ya no lo pisan las semillas del arranque.');
+
 const fail = (res, e) => {
   console.error('[rotaryMarketingController]', e);
   res.status(500).json({ error: e.message || 'Error interno en Marketing Inteligente' });
@@ -1392,7 +1394,7 @@ export const declareAbWinner = async (req, res) => {
     const winnerSubject = winner === 'A' ? ab.variantASubject : ab.variantBSubject;
     await db.query(
       `UPDATE "RotaryMarketingCampaign"
-       SET subject=$1, "updatedAt"=NOW()
+       SET subject=$1, "customizedAt"=NOW(), "updatedAt"=NOW()
        WHERE id=$2`,
       [winnerSubject, ab.campaignId]
     );
@@ -2014,12 +2016,28 @@ export const applyCampaignTemplate = async (req, res) => {
     const campaign = rows[0];
     if (!campaign) return res.status(404).json({ error: 'Campaña no encontrada' });
 
+    if (typeof design !== 'object' || !Array.isArray(design.blocks)) {
+      return res.status(400).json({ error: 'El diseño de la plantilla no tiene bloques válidos' });
+    }
+
+    // El HTML se deriva del mismo diseño que se guarda: si el cliente no lo
+    // manda (guardado de emergencia al salir del editor), se compila aquí para
+    // que "contentHtml" nunca quede desfasado de "design".
+    let finalHtml = typeof html === 'string' && html.trim() ? html : null;
+    if (!finalHtml) {
+      try { finalHtml = renderDesignToHtml(normalizeInstitutionalDesign(design)); } catch { finalHtml = null; }
+    }
+
+    // "customizedAt" marca la campaña como editada por una persona: desde ese
+    // momento ninguna semilla del arranque vuelve a reescribir su diseño ni sus
+    // textos (causa de la pérdida de cambios del Editor Visual, v4.1235).
     const updatedRes = await db.query(
       `UPDATE "RotaryMarketingCampaign"
        SET subject = COALESCE($2, subject),
            preheader = COALESCE($3, preheader),
            "contentHtml" = COALESCE($4, "contentHtml"),
            design = $5,
+           "customizedAt" = NOW(),
            "updatedAt" = NOW()
        WHERE id = $1
        RETURNING *`,
@@ -2027,16 +2045,18 @@ export const applyCampaignTemplate = async (req, res) => {
         campaign.id,
         subject?.trim() || null,
         preheader?.trim() || null,
-        html || null,
+        finalHtml,
         JSON.stringify(design)
       ]
     );
 
     const updatedCampaign = updatedRes.rows[0];
+    if (!updatedCampaign) return res.status(500).json({ error: 'La base de datos no confirmó el guardado de la campaña' });
 
-    // Sincronizar con Email Marketing si aplica
+    // Sincronizar con Email Marketing si aplica. La campaña ya quedó guardada:
+    // un fallo aquí no debe reportarse como fallo del guardado.
     let emailCamp = null;
-    const clubId = await resolveClubId(req, true);
+    const clubId = await resolveClubId(req, true).catch(() => null);
 
     if (campaign.emailCampaignId) {
       try {
@@ -2045,7 +2065,7 @@ export const applyCampaignTemplate = async (req, res) => {
           data: {
             subject: subject || campaign.subject,
             preheader: preheader || campaign.preheader || '',
-            content: html || campaign.contentHtml || '',
+            content: finalHtml || campaign.contentHtml || '',
             design: JSON.stringify(design),
             status: 'draft'
           }
@@ -2062,7 +2082,7 @@ export const applyCampaignTemplate = async (req, res) => {
             subject: subject || campaign.subject,
             fromName: 'Rotary en Acción',
             preheader: preheader || campaign.preheader || '',
-            content: html || campaign.contentHtml || '',
+            content: finalHtml || campaign.contentHtml || '',
             design: JSON.stringify(design),
             status: 'draft',
             audience: 'all'
@@ -2083,6 +2103,7 @@ export const applyCampaignTemplate = async (req, res) => {
     res.json({
       ok: true,
       message: 'Campaña guardada y sincronizada con éxito',
+      savedAt: updatedCampaign.updatedAt,
       campaign: updatedCampaign,
       emailCampaign: emailCamp
     });
