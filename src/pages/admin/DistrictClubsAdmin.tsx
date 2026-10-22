@@ -38,6 +38,8 @@ export interface AdminClubProfile {
   city?: string;
   state?: string;
   country?: string;
+  sponsorClubId?: string;
+  sponsorClubName?: string;
   currentPresident?: string;
   rotaryPeriod?: string;
   foundationYear?: number;
@@ -75,6 +77,8 @@ export interface AdminSubmission {
   districtNumber: number;
   organizationType: 'rotary' | 'rotaract' | 'interact';
   clubName: string;
+  sponsorClubId?: string;
+  sponsorClubName?: string;
   submissionType: 'create' | 'update';
   applicantName: string;
   applicantEmail: string;
@@ -2053,6 +2057,15 @@ export const DistrictClubsAdmin: React.FC = () => {
                     <p className="text-gray-500">{selectedSubmission.applicantPhone || 'Sin teléfono'}</p>
                   </div>
                 </div>
+
+                {(selectedSubmission.sponsorClubName || selectedSubmission.payload?.sponsorClubName) && (
+                  <div className="bg-amber-50 p-3.5 rounded-2xl border border-amber-200/70 text-xs text-amber-900 flex items-center justify-between">
+                    <span className="font-bold">Club Rotario Patrocinador:</span>
+                    <strong className="font-extrabold text-rotary-blue">
+                      {selectedSubmission.sponsorClubName || selectedSubmission.payload?.sponsorClubName}
+                    </strong>
+                  </div>
+                )}
 
                 <div>
                   <span className="text-gray-400 uppercase font-black text-[10px] block mb-2">Datos Enviados en la Solicitud</span>

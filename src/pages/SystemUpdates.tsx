@@ -42,6 +42,21 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1233.0',
+        title: 'Optimización del Formulario de Registro de Clubes a 6 Pasos, Selección Dinámica de Patrocinador y Navegación Adaptable 🏛️✨📋',
+        description: 'Actualización integral del módulo público de registro de clubes (Rotary Distrito 4281): 1) Reorganización estructural a 6 pasos consecutivos mediante la integración natural de los datos de contacto y sedes dentro del Paso 1 (Sección A: Tipo e Identificación, Sección B: Contacto y Reuniones), eliminando el paso independiente y actualizando la barra de progreso a "Paso X de 6". 2) Rediseño completo de la barra de navegación (PublicStepNav) con distribución responsiva sin desbordamiento ni recortes en escritorio y modo compacto con barra de progreso continua y botones de paso ergonómicos en móviles. 3) Comportamiento dinámico inteligente según tipo de club: catálogo distrital directo para Rotary; y selector exclusivo de clubes rotarios patrocinadores para Rotaract e Interact, garantizando que el club registrado conserve su identidad e información independiente. 4) Persistencia no destructiva y retrocompatible en base de datos (columnas sponsorClubId y sponsorClubName con índice dedicado en DistrictClubProfile y DistrictClubSubmission), vinculada al flujo de revisión administrativa y a la ficha pública del directorio.',
+        date: new Date().toISOString(),
+        tags: ['directorio-clubes', 'formulario-registro', '6-pasos', 'rotaract', 'interact', 'patrocinador', 'responsive-navigation', 'district-4281'],
+        type: 'feature',
+        impact: 'Crítica: Optimiza la experiencia de registro y actualización de perfiles de clubes rotarios, rotaractianos e interactianos, eliminando fricción y garantizando relaciones de patrocinio precisas.',
+        changes: [
+            { type: 'improved', text: 'Estructuración del formulario en 6 pasos unificando identificación y contacto en el primer paso con Secciones A y B visualmente delimitadas.' },
+            { type: 'added', text: 'Selector dinámico de Club Rotario Patrocinador exclusivo para Rotaract e Interact, impidiendo la selección errónea de clubes no rotarios y ofreciendo opción de revisión administrativa.' },
+            { type: 'fixed', text: 'Barra de progreso de 6 pasos con distribución balanceada en escritorio (sin recortes horizontales ni barras de scroll forzadas) y navegación táctil adaptable en móviles.' },
+            { type: 'improved', text: 'Independencia total entre la identidad del club registrado y su club patrocinador en la base de datos, panel de revisión administrativa y ficha pública.' },
+        ],
+    },
+    {
         version: '4.1232.0',
         title: 'Lienzo Continuo 1:1, Navegador de Plantilla Flotante con Salto a Bloques y Desplazamiento Vertical Fluido 🚀📜🎨',
         description: 'Actualización integral del Editor Visual de Email Marketing de Club Platform: 1) Lienzo de correo continuo y unificado a 600px de ancho con fidelidad 1:1 frente al correo final enviado, eliminando cajas grises concéntricas intermedias y desajustes de bordes. 2) Nueva función de renderizado atómico por bloque (renderSingleBlockHtml) que proyecta cada bloque sin generar márgenes ni anidaciones redundantes, logrando continuidad perfecta desde la cabecera distrital hasta el pie de página. 3) Navegador de Plantilla flotante de alta precisión (con contador de bloques, salto directo a "Inicio", "Pie de página" y popover con el índice completo de bloques para desplazarse y activar cualquier sección del correo con un solo clic). 4) Optimización definitiva del motor de desplazamiento vertical en el lienzo con desacoplamiento de Flexbox (eliminando interferencias de centrado vertical) y zona de resguardo inferior (pb-80) para acceder cómodamente a todos los bloques, firmas y footer en cualquier resolución.',

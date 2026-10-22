@@ -201,11 +201,14 @@ export async function ensureDistrictClubDirectorySchema() {
   await db.query(`ALTER TABLE "DistrictClubProfile" ADD COLUMN IF NOT EXISTS "pendingProtectedChanges" JSONB DEFAULT NULL`).catch(() => {});
   await db.query(`ALTER TABLE "DistrictClubProfile" ADD COLUMN IF NOT EXISTS "auditLog" JSONB DEFAULT '[]'::jsonb`).catch(() => {});
   await db.query(`ALTER TABLE "DistrictClubProfile" ADD COLUMN IF NOT EXISTS "igiScore" INT DEFAULT 0`).catch(() => {});
+  await db.query(`ALTER TABLE "DistrictClubProfile" ADD COLUMN IF NOT EXISTS "sponsorClubId" TEXT`).catch(() => {});
+  await db.query(`ALTER TABLE "DistrictClubProfile" ADD COLUMN IF NOT EXISTS "sponsorClubName" TEXT`).catch(() => {});
 
   // Índices
   await db.query(`CREATE INDEX IF NOT EXISTS idx_dcp_dist_org_stat ON "DistrictClubProfile"("districtNumber", "organizationType", status)`).catch(() => {});
   await db.query(`CREATE INDEX IF NOT EXISTS idx_dcp_slug ON "DistrictClubProfile"("districtNumber", "organizationType", slug)`).catch(() => {});
   await db.query(`CREATE INDEX IF NOT EXISTS idx_dcp_city ON "DistrictClubProfile"(city)`).catch(() => {});
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_dcp_sponsor ON "DistrictClubProfile"("sponsorClubId")`).catch(() => {});
 
   // 2. Tabla de Solicitudes y Revisiones de Contenido
   await db.query(`CREATE TABLE IF NOT EXISTS "DistrictClubSubmission" (
@@ -236,6 +239,8 @@ export async function ensureDistrictClubDirectorySchema() {
     "stepReached" INT DEFAULT 1,
     "formStartedAt" TIMESTAMPTZ DEFAULT NOW(),
     "lastActiveAt" TIMESTAMPTZ DEFAULT NOW(),
+    "sponsorClubId" TEXT,
+    "sponsorClubName" TEXT,
     "createdAt" TIMESTAMPTZ DEFAULT NOW(),
     "updatedAt" TIMESTAMPTZ DEFAULT NOW()
   )`);
@@ -247,6 +252,8 @@ export async function ensureDistrictClubDirectorySchema() {
   await db.query(`ALTER TABLE "DistrictClubSubmission" ADD COLUMN IF NOT EXISTS "stepReached" INT DEFAULT 1`).catch(() => {});
   await db.query(`ALTER TABLE "DistrictClubSubmission" ADD COLUMN IF NOT EXISTS "formStartedAt" TIMESTAMPTZ DEFAULT NOW()`).catch(() => {});
   await db.query(`ALTER TABLE "DistrictClubSubmission" ADD COLUMN IF NOT EXISTS "lastActiveAt" TIMESTAMPTZ DEFAULT NOW()`).catch(() => {});
+  await db.query(`ALTER TABLE "DistrictClubSubmission" ADD COLUMN IF NOT EXISTS "sponsorClubId" TEXT`).catch(() => {});
+  await db.query(`ALTER TABLE "DistrictClubSubmission" ADD COLUMN IF NOT EXISTS "sponsorClubName" TEXT`).catch(() => {});
 
   await db.query(`CREATE INDEX IF NOT EXISTS idx_dcs_tracking ON "DistrictClubSubmission"("trackingNumber")`).catch(() => {});
   await db.query(`CREATE INDEX IF NOT EXISTS idx_dcs_status ON "DistrictClubSubmission"("districtNumber", status)`).catch(() => {});

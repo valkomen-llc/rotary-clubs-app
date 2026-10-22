@@ -27,6 +27,8 @@ interface ClubProfileData {
   city?: string;
   state?: string;
   country?: string;
+  sponsorClubId?: string;
+  sponsorClubName?: string;
   foundationYear?: number;
   motto?: string;
   description?: string;
@@ -237,6 +239,11 @@ export const ClubPublicProfile: React.FC = () => {
             {club.rotaryPeriod && (
               <span className="inline-flex items-center gap-1.5 bg-black/30 backdrop-blur-sm px-3 py-1 rounded-full border border-white/10">
                 <Award className="w-3.5 h-3.5 text-yellow-400" /> Período {club.rotaryPeriod}
+              </span>
+            )}
+            {orgType !== 'rotary' && club.sponsorClubName && (
+              <span className="inline-flex items-center gap-1.5 bg-yellow-400/20 text-yellow-100 backdrop-blur-sm px-3.5 py-1 rounded-full border border-yellow-300/30 font-bold">
+                <Sparkles className="w-3.5 h-3.5 text-yellow-400" /> Patrocinado por: {club.sponsorClubName}
               </span>
             )}
           </div>

@@ -639,8 +639,8 @@ export const RotaryDirectorioClubes: React.FC = () => {
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-xs">
                     {draftsAndActiveList.map(draft => {
-                      const step = draft.stepReached || 1;
-                      const stepPct = Math.round((step / 7) * 100);
+                      const step = Math.min(draft.stepReached || 1, 6);
+                      const stepPct = Math.round((step / 6) * 100);
 
                       return (
                         <tr key={draft.id} className="hover:bg-gray-50/60 transition-colors">
@@ -672,7 +672,7 @@ export const RotaryDirectorioClubes: React.FC = () => {
                           <td className="py-3.5 px-4">
                             <div className="w-32 space-y-1">
                               <div className="flex justify-between items-center text-[10px] font-bold">
-                                <span className="text-gray-500">Paso {step} de 7</span>
+                                <span className="text-gray-500">Paso {step} de 6</span>
                                 <span className="text-indigo-600">{stepPct}%</span>
                               </div>
                               <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">

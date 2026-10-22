@@ -16,7 +16,7 @@ import {
 import { CLUBS_4281, CLUBS_BY_DISTRICT_NUMBER, districtNumberOf } from '../lib/rotaryClubs.js';
 import { norm, clubDisplayName } from '../lib/publicClubs.js';
 
-console.log('[districtClubsController] v4.1214.0 cargado — Integración Rotary en Acción y Portal de Autogestión');
+console.log('[districtClubsController] v4.1233.0 cargado — Optimización formulario 6 pasos, patrocinio dinámico Rotaract/Interact');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'rotary_secret_key_2026';
 const PORTAL_AUDIENCE = 'rotary-club-portal';
@@ -150,7 +150,7 @@ export const getPublicDirectory = async (req, res) => {
         "currentPresident", "rotaryPeriod", "completionPercentage", "lastUpdatedPeriod",
         "logoUrl", "coverImageUrl", "meetingAddress", "meetingSchedule", "meetingCity",
         "contactEmail", "contactPhone", "websiteUrl", "socialMedia", "serviceAreas",
-        "publishedAt"
+        "sponsorClubId", "sponsorClubName", "publishedAt"
        FROM "DistrictClubProfile"
        ${whereClause}
        ORDER BY "officialName" ASC`,
@@ -161,7 +161,7 @@ export const getPublicDirectory = async (req, res) => {
     let filteredClubs = clubs;
     if (q) {
       filteredClubs = clubs.filter(c => {
-        const text = `${norm(c.officialName)} ${norm(c.shortName)} ${norm(c.city)} ${norm(c.state)} ${norm(c.currentPresident)} ${norm(c.description)}`;
+        const text = `${norm(c.officialName)} ${norm(c.shortName)} ${norm(c.city)} ${norm(c.state)} ${norm(c.currentPresident)} ${norm(c.description)} ${norm(c.sponsorClubName || '')}`;
         return text.includes(q);
       });
     }
@@ -354,6 +354,9 @@ export const submitClubDirectoryRequest = async (req, res) => {
       }
     }
 
+    const sponsorClubId = data.sponsorClubId || null;
+    const sponsorClubName = (data.sponsorClubName === '__other__' ? data.sponsorClubOther : (data.sponsorClubName || data.sponsorClubOther)) || null;
+
     const initialHistory = [{
       event: 'solicitud_recibida',
       date: new Date().toISOString(),
@@ -368,9 +371,9 @@ export const submitClubDirectoryRequest = async (req, res) => {
         id, "trackingNumber", "profileId", "districtNumber", "organizationType",
         "clubName", "submissionType", "applicantName", "applicantEmail", "applicantPhone",
         "applicantRole", "dataConsent", payload, status, history, "draftToken",
-        "utmSource", "utmMedium", "utmCampaign", "utmContent", "stepReached",
-        "formStartedAt", "lastActiveAt"
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 7, NOW(), NOW())`,
+        "utmSource", "utmMedium", "utmCampaign", "utmContent", "sponsorClubId", "sponsorClubName",
+        "stepReached", "formStartedAt", "lastActiveAt"
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, 6, NOW(), NOW())`,
       [
         submissionId,
         trackingNumber,
@@ -391,7 +394,9 @@ export const submitClubDirectoryRequest = async (req, res) => {
         utmSource,
         utmMedium,
         utmCampaign,
-        utmContent
+        utmContent,
+        sponsorClubId,
+        sponsorClubName
       ]
     );
 
@@ -783,6 +788,9 @@ export const reviewSubmission = async (req, res) => {
       const cleanSlug = payload.slug || slugifyClub(payload.officialName || sub.clubName);
       const rotaryPeriod = payload.rotaryPeriod || '2026–2027';
 
+      const sponsorClubId = payload.sponsorClubId || sub.sponsorClubId || null;
+      const sponsorClubName = payload.sponsorClubName || payload.sponsorClubOther || sub.sponsorClubName || null;
+
       if (sub.profileId) {
         // Actualización de perfil existente
         await db.query(
@@ -815,13 +823,15 @@ export const reviewSubmission = async (req, res) => {
             "contactPhone" = COALESCE($26, "contactPhone"),
             "websiteUrl" = COALESCE($27, "websiteUrl"),
             "socialMedia" = COALESCE($28, "socialMedia"),
+            "sponsorClubId" = COALESCE($29, "sponsorClubId"),
+            "sponsorClubName" = COALESCE($30, "sponsorClubName"),
             status = 'published',
-            "completionPercentage" = $29,
+            "completionPercentage" = $31,
             "lastUpdatedPeriod" = $14,
             "publishedAt" = NOW(),
-            "publishedBy" = $30,
+            "publishedBy" = $32,
             "updatedAt" = NOW()
-          WHERE id = $31`,
+          WHERE id = $33`,
           [
             payload.officialName || sub.clubName,
             payload.shortName || sub.clubName,
@@ -851,6 +861,8 @@ export const reviewSubmission = async (req, res) => {
             payload.contactPhone || null,
             payload.websiteUrl || null,
             JSON.stringify(payload.socialMedia || {}),
+            sponsorClubId,
+            sponsorClubName,
             completion,
             reviewerName,
             sub.profileId
@@ -866,9 +878,9 @@ export const reviewSubmission = async (req, res) => {
             mission, vision, "serviceAreas", "currentPresident", "rotaryPeriod",
             "boardMembers", "memberCount", "joinInfo", "featuredProjects", "logoUrl",
             "coverImageUrl", gallery, "meetingAddress", "meetingSchedule", "meetingCity",
-            "contactEmail", "contactPhone", "websiteUrl", "socialMedia", status,
-            "completionPercentage", "lastUpdatedPeriod", "publishedAt", "publishedBy"
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, 'published', $33, $34, NOW(), $35)`,
+            "contactEmail", "contactPhone", "websiteUrl", "socialMedia", "sponsorClubId", "sponsorClubName",
+            status, "completionPercentage", "lastUpdatedPeriod", "publishedAt", "publishedBy"
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, 'published', $35, $36, NOW(), $37)`,
           [
             newProfileId,
             sub.districtNumber,
@@ -902,6 +914,8 @@ export const reviewSubmission = async (req, res) => {
             payload.contactPhone || null,
             payload.websiteUrl || null,
             JSON.stringify(payload.socialMedia || {}),
+            sponsorClubId,
+            sponsorClubName,
             completion,
             rotaryPeriod,
             reviewerName
@@ -995,12 +1009,14 @@ export const updateClubProfileDirect = async (req, res) => {
         "contactPhone" = COALESCE($26, "contactPhone"),
         "websiteUrl" = COALESCE($27, "websiteUrl"),
         "socialMedia" = COALESCE($28, "socialMedia"),
-        status = COALESCE($29, status),
-        "completionPercentage" = $30,
+        "sponsorClubId" = COALESCE($29, "sponsorClubId"),
+        "sponsorClubName" = COALESCE($30, "sponsorClubName"),
+        status = COALESCE($31, status),
+        "completionPercentage" = $32,
         "lastUpdatedPeriod" = $14,
-        "publishedBy" = $31,
+        "publishedBy" = $33,
         "updatedAt" = NOW()
-      WHERE id = $32`,
+      WHERE id = $34`,
       [
         body.officialName || null,
         body.shortName || null,
@@ -1030,6 +1046,8 @@ export const updateClubProfileDirect = async (req, res) => {
         body.contactPhone || null,
         body.websiteUrl || null,
         body.socialMedia ? JSON.stringify(body.socialMedia) : null,
+        body.sponsorClubId || null,
+        body.sponsorClubName || null,
         body.status || null,
         completion,
         reviewerName,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import {
   Upload, Image as ImageIcon,
@@ -12,13 +12,12 @@ import { flagEmoji } from '../../lib/countryPhones';
 const API = import.meta.env.VITE_API_URL || '/api';
 
 const PASOS = [
-  'Identificación',
-  'Identidad',
-  'Liderazgo',
-  'Proyectos',
-  'Multimedia',
-  'Contacto',
-  'Revisión y Envío'
+  { id: 'identificacion', label: 'Identificación y Contacto', shortLabel: 'Identificación' },
+  { id: 'identidad', label: 'Identidad Institucional', shortLabel: 'Identidad' },
+  { id: 'liderazgo', label: 'Liderazgo y Membresía', shortLabel: 'Liderazgo' },
+  { id: 'proyectos', label: 'Proyectos y Actividades', shortLabel: 'Proyectos' },
+  { id: 'multimedia', label: 'Galería Multimedia', shortLabel: 'Multimedia' },
+  { id: 'revision', label: 'Revisión y Envío', shortLabel: 'Revisión' }
 ];
 
 const AREAS_DE_INTERES = [
@@ -51,7 +50,7 @@ interface ProjectItem {
 }
 
 export interface ClubFormData {
-  // Paso 1
+  // Paso 1: Identificación y Contacto
   districtNumber: number;
   organizationType: 'rotary' | 'rotaract' | 'interact';
   submissionType: 'create' | 'update';
@@ -61,33 +60,12 @@ export interface ClubFormData {
   city: string;
   state: string;
 
-  // Paso 2
-  foundationYear: string;
-  motto: string;
-  description: string;
-  history: string;
-  mission: string;
-  vision: string;
-  serviceAreas: string[];
-  logoUrl: string;
-  coverImageUrl: string;
+  // Club Rotario Patrocinador (Rotaract e Interact)
+  sponsorClubId?: string;
+  sponsorClubName?: string;
+  sponsorClubOther?: string;
 
-  // Paso 3
-  currentPresident: string;
-  rotaryPeriod: string;
-  boardMembers: BoardMember[];
-  memberCount: string;
-  youthPrograms: string;
-  joinInfo: string;
-
-  // Paso 4
-  featuredProjects: ProjectItem[];
-
-  // Paso 5
-  gallery: Array<{ url: string; caption?: string; isMain?: boolean }>;
-  videoLinks: string[];
-
-  // Paso 6
+  // Contacto y Reuniones (Integrados en Paso 1)
   meetingAddress: string;
   meetingSchedule: string;
   contactEmail: string;
@@ -102,7 +80,33 @@ export interface ClubFormData {
     tiktok?: string;
   };
 
-  // Paso 7
+  // Paso 2: Identidad Institucional
+  foundationYear: string;
+  motto: string;
+  description: string;
+  history: string;
+  mission: string;
+  vision: string;
+  serviceAreas: string[];
+  logoUrl: string;
+  coverImageUrl: string;
+
+  // Paso 3: Liderazgo y Membresía
+  currentPresident: string;
+  rotaryPeriod: string;
+  boardMembers: BoardMember[];
+  memberCount: string;
+  youthPrograms: string;
+  joinInfo: string;
+
+  // Paso 4: Proyectos y Actividades
+  featuredProjects: ProjectItem[];
+
+  // Paso 5: Galería Multimedia
+  gallery: Array<{ url: string; caption?: string; isMain?: boolean }>;
+  videoLinks: string[];
+
+  // Paso 6: Revisión y Envío
   applicantName: string;
   applicantEmail: string;
   applicantPhone: string;
@@ -125,6 +129,16 @@ const INITIAL_FORM: ClubFormData = {
   shortName: '',
   city: '',
   state: '',
+  sponsorClubId: '',
+  sponsorClubName: '',
+  sponsorClubOther: '',
+  meetingAddress: '',
+  meetingSchedule: '',
+  contactEmail: '',
+  contactPhone: '',
+  contactCountryCode: 'CO',
+  websiteUrl: '',
+  socialMedia: {},
   foundationYear: '',
   motto: '',
   description: '',
@@ -143,13 +157,6 @@ const INITIAL_FORM: ClubFormData = {
   featuredProjects: [],
   gallery: [],
   videoLinks: [],
-  meetingAddress: '',
-  meetingSchedule: '',
-  contactEmail: '',
-  contactPhone: '',
-  contactCountryCode: 'CO',
-  websiteUrl: '',
-  socialMedia: {},
   applicantName: '',
   applicantEmail: '',
   applicantPhone: '',
@@ -205,6 +212,32 @@ export const UnifiedClubForm: React.FC = () => {
     fetchConfig();
     return () => { active = false; };
   }, []);
+
+  // Lista exclusiva de clubes rotarios para selección de patrocinador (Rotaract / Interact)
+  const rotarySponsorList = useMemo(() => {
+    const map = new Map<string, { id?: string; name: string; display: string }>();
+    catalogClubs.forEach(c => {
+      map.set(c.name.toLowerCase(), { name: c.name, display: c.display || `Club Rotario ${c.name}` });
+    });
+    existingProfiles
+      .filter(p => p.organizationType === 'rotary' || !p.organizationType)
+      .forEach(p => {
+        const key = (p.shortName || p.officialName).toLowerCase();
+        if (!map.has(key)) {
+          map.set(key, { id: p.id, name: p.shortName || p.officialName, display: p.officialName });
+        } else {
+          const existing = map.get(key)!;
+          if (p.id) existing.id = p.id;
+        }
+      });
+    return Array.from(map.values()).sort((a, b) => a.display.localeCompare(b.display));
+  }, [catalogClubs, existingProfiles]);
+
+  // Perfiles existentes del mismo subtipo (Rotaract o Interact) para actualización
+  const existingSubtypeProfiles = useMemo(() => {
+    if (formData.organizationType === 'rotary') return [];
+    return existingProfiles.filter(p => p.organizationType === formData.organizationType);
+  }, [existingProfiles, formData.organizationType]);
 
   // Pre-cargar desde borrador si existe en URL o LocalStorage y capturar UTMs
   useEffect(() => {
@@ -265,6 +298,8 @@ export const UnifiedClubForm: React.FC = () => {
         shortName: matchedProfile.shortName,
         city: matchedProfile.city || prev.city,
         state: matchedProfile.state || prev.state,
+        sponsorClubId: matchedProfile.sponsorClubId || prev.sponsorClubId,
+        sponsorClubName: matchedProfile.sponsorClubName || prev.sponsorClubName,
         description: matchedProfile.description || prev.description,
         history: matchedProfile.history || prev.history,
         foundationYear: matchedProfile.foundationYear ? String(matchedProfile.foundationYear) : prev.foundationYear,
@@ -290,6 +325,117 @@ export const UnifiedClubForm: React.FC = () => {
         shortName: selectedName.replace(/^(Club Rotario |Rotary Club |Rotary )/i, '')
       }));
     }
+  };
+
+  // Cargar ficha existente para Rotaract o Interact
+  const handleSelectExistingProfile = (matchedProfile: any) => {
+    setFormData(prev => ({
+      ...prev,
+      submissionType: 'update',
+      profileId: matchedProfile.id,
+      officialName: matchedProfile.officialName,
+      shortName: matchedProfile.shortName,
+      city: matchedProfile.city || prev.city,
+      state: matchedProfile.state || prev.state,
+      sponsorClubId: matchedProfile.sponsorClubId || prev.sponsorClubId,
+      sponsorClubName: matchedProfile.sponsorClubName || prev.sponsorClubName,
+      description: matchedProfile.description || prev.description,
+      history: matchedProfile.history || prev.history,
+      foundationYear: matchedProfile.foundationYear ? String(matchedProfile.foundationYear) : prev.foundationYear,
+      logoUrl: matchedProfile.logoUrl || prev.logoUrl,
+      coverImageUrl: matchedProfile.coverImageUrl || prev.coverImageUrl,
+      currentPresident: matchedProfile.currentPresident || prev.currentPresident,
+      rotaryPeriod: matchedProfile.rotaryPeriod || '2026–2027',
+      meetingAddress: matchedProfile.meetingAddress || prev.meetingAddress,
+      meetingSchedule: matchedProfile.meetingSchedule || prev.meetingSchedule,
+      contactEmail: matchedProfile.contactEmail || prev.contactEmail,
+      contactPhone: matchedProfile.contactPhone || prev.contactPhone,
+      websiteUrl: matchedProfile.websiteUrl || prev.websiteUrl,
+      socialMedia: matchedProfile.socialMedia || prev.socialMedia,
+      serviceAreas: Array.isArray(matchedProfile.serviceAreas) ? matchedProfile.serviceAreas : prev.serviceAreas
+    }));
+    toast.success(`Ficha institucional cargada para ${matchedProfile.officialName}.`);
+  };
+
+  // Seleccionar club rotario patrocinador (exclusivo para Rotaract e Interact)
+  const handleSelectSponsorClub = (selectedSponsorName: string) => {
+    if (!selectedSponsorName) {
+      setFormData(prev => ({
+        ...prev,
+        sponsorClubId: undefined,
+        sponsorClubName: '',
+        sponsorClubOther: ''
+      }));
+      return;
+    }
+
+    if (selectedSponsorName === '__other__') {
+      setFormData(prev => ({
+        ...prev,
+        sponsorClubId: undefined,
+        sponsorClubName: '__other__',
+        sponsorClubOther: prev.sponsorClubOther || ''
+      }));
+      return;
+    }
+
+    // Buscar en perfiles existentes para vincular el ID si está registrado
+    const matched = existingProfiles.find(p =>
+      (p.organizationType === 'rotary' || !p.organizationType) &&
+      (p.officialName.toLowerCase() === selectedSponsorName.toLowerCase() ||
+       p.shortName.toLowerCase() === selectedSponsorName.toLowerCase() ||
+       selectedSponsorName.toLowerCase().includes(p.shortName.toLowerCase()))
+    );
+
+    const officialSponsorName = selectedSponsorName.startsWith('Club Rotario') || selectedSponsorName.startsWith('Rotary')
+      ? selectedSponsorName
+      : `Club Rotario ${selectedSponsorName}`;
+
+    // REGLA FUNDAMENTAL: Seleccionar patrocinador NO reemplaza los datos del club que se registra
+    setFormData(prev => ({
+      ...prev,
+      sponsorClubId: matched?.id || undefined,
+      sponsorClubName: officialSponsorName,
+      sponsorClubOther: ''
+    }));
+    toast.success(`Club rotario patrocinador seleccionado: ${officialSponsorName}`);
+  };
+
+  // Cambio dinámico de tipo de club preservando datos ingresados
+  const handleOrganizationTypeChange = (newType: 'rotary' | 'rotaract' | 'interact') => {
+    if (newType === formData.organizationType) return;
+
+    setFormData(prev => {
+      let newOfficialName = prev.officialName;
+      let newShortName = prev.shortName;
+
+      // Adaptar prefijo del nombre si corresponde sin borrar texto personalizado
+      if (!newOfficialName) {
+        if (newType === 'rotary') newOfficialName = '';
+        else if (newType === 'rotaract') newOfficialName = 'Club Rotaract ';
+        else if (newType === 'interact') newOfficialName = 'Club Interact ';
+      } else {
+        if (newType === 'rotaract' && newOfficialName.toLowerCase().startsWith('club rotario')) {
+          newOfficialName = newOfficialName.replace(/^club rotario\s*/i, 'Club Rotaract ');
+        } else if (newType === 'interact' && newOfficialName.toLowerCase().startsWith('club rotario')) {
+          newOfficialName = newOfficialName.replace(/^club rotario\s*/i, 'Club Interact ');
+        } else if (newType === 'rotary' && (newOfficialName.toLowerCase().startsWith('club rotaract') || newOfficialName.toLowerCase().startsWith('club interact'))) {
+          newOfficialName = newOfficialName.replace(/^(club rotaract|club interact)\s*/i, 'Club Rotario ');
+        }
+      }
+
+      return {
+        ...prev,
+        organizationType: newType,
+        officialName: newOfficialName,
+        shortName: newShortName,
+        // Rotary no requiere patrocinador; Rotaract e Interact conservan patrocinador si ya fue elegido
+        sponsorClubId: newType === 'rotary' ? undefined : prev.sponsorClubId,
+        sponsorClubName: newType === 'rotary' ? undefined : prev.sponsorClubName,
+        sponsorClubOther: newType === 'rotary' ? undefined : prev.sponsorClubOther,
+        profileId: newType === prev.organizationType ? prev.profileId : undefined,
+      };
+    });
   };
 
   // Guardar borrador manual con trazabilidad de Rotary en Acción
@@ -382,7 +528,34 @@ export const UnifiedClubForm: React.FC = () => {
         return false;
       }
       if (!formData.city.trim()) {
-        toast.error('Por favor indica la ciudad sede del club.');
+        toast.error('Por favor indica la ciudad o municipio sede del club.');
+        return false;
+      }
+
+      // Validar club rotario patrocinador para Interact (obligatorio según normativa Rotary)
+      if (formData.organizationType === 'interact') {
+        const sponsor = (formData.sponsorClubName === '__other__' ? formData.sponsorClubOther : formData.sponsorClubName) || '';
+        if (!sponsor.trim()) {
+          toast.error('Para clubes Interact es obligatorio seleccionar o indicar el Club Rotario Patrocinador.');
+          return false;
+        }
+      }
+
+      // Si es Rotaract y seleccionó "__other__", verificar que no quede en blanco
+      if (formData.organizationType === 'rotaract' && formData.sponsorClubName === '__other__') {
+        if (!formData.sponsorClubOther?.trim()) {
+          toast.error('Por favor escribe el nombre del club rotario patrocinador para revisión administrativa.');
+          return false;
+        }
+      }
+
+      // Validación Sección B: Canales de contacto obligatorios (al menos uno autorizado)
+      if (!formData.contactEmail.trim() && !formData.contactPhone.trim()) {
+        toast.error('Por favor ingresa al menos un canal de contacto autorizado (correo electrónico o teléfono/WhatsApp).');
+        return false;
+      }
+      if (formData.contactEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.contactEmail.trim())) {
+        toast.error('Por favor ingresa un correo electrónico de contacto válido.');
         return false;
       }
     }
@@ -398,13 +571,8 @@ export const UnifiedClubForm: React.FC = () => {
         return false;
       }
     }
+    // Paso 3 (Proyectos) y Paso 4 (Multimedia) son opcionales
     if (step === 5) {
-      if (!formData.contactEmail.trim() && !formData.contactPhone.trim()) {
-        toast.error('Por favor ingresa al menos un canal de contacto autorizado (correo o teléfono).');
-        return false;
-      }
-    }
-    if (step === 6) {
       if (!formData.applicantName.trim() || !formData.applicantEmail.trim()) {
         toast.error('Por favor ingresa tu nombre y correo como persona responsable de la solicitud.');
         return false;
@@ -442,7 +610,7 @@ export const UnifiedClubForm: React.FC = () => {
   // Enviar formulario final
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validateStep(6)) return;
+    if (!validateStep(5)) return;
 
     setIsSubmitting(true);
     try {
@@ -555,120 +723,347 @@ export const UnifiedClubForm: React.FC = () => {
         <PublicFormCard className="p-6 sm:p-10">
 
           {/* ════════════════════════════════════════════════════════════════
-              PASO 1: IDENTIFICACIÓN DEL CLUB
+              PASO 1: IDENTIFICACIÓN Y CONTACTO
              ════════════════════════════════════════════════════════════════ */}
           {currentStep === 0 && (
-            <div className="space-y-6 animate-fade-in">
+            <div className="space-y-8 animate-fade-in">
               <div className="border-b border-gray-100 pb-4">
-                <span className="text-xs font-black text-rotary-blue uppercase tracking-widest">Paso 1 de 7</span>
-                <h3 className="text-2xl font-extrabold text-gray-900 mt-1">Identificación del Club</h3>
-                <p className="text-sm text-gray-500">Selecciona o escribe los datos oficiales del club en el Distrito 4281.</p>
+                <span className="text-xs font-black text-rotary-blue uppercase tracking-widest">Paso 1 de 6</span>
+                <h3 className="text-2xl font-extrabold text-gray-900 mt-1">Identificación y Contacto</h3>
+                <p className="text-sm text-gray-500">Selecciona el tipo de club, sus datos oficiales y canales institucionales de comunicación.</p>
               </div>
 
-              {/* Selector de Tipo de Club (Rotary, Rotaract, Interact) */}
-              <div>
-                <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
-                  Tipo de Club <span className="text-red-500">*</span>
-                </label>
-                <div className="grid grid-cols-3 gap-3">
-                  {[
-                    { id: 'rotary', label: 'Rotary', desc: 'Club Rotario', color: 'border-rotary-blue bg-blue-50/50 text-rotary-blue' },
-                    { id: 'rotaract', label: 'Rotaract', desc: 'Jóvenes Líderes (18+)', color: 'border-[#D91B5C] bg-pink-50/50 text-[#D91B5C]' },
-                    { id: 'interact', label: 'Interact', desc: 'Jóvenes (12 a 18 años)', color: 'border-[#005DAA] bg-sky-50/50 text-[#005DAA]' }
-                  ].map(t => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, organizationType: t.id as any })}
-                      className={`p-3.5 sm:p-4 rounded-2xl border-2 text-left transition-all ${
-                        formData.organizationType === t.id
-                          ? `${t.color} font-black shadow-sm`
-                          : 'border-gray-200 bg-white hover:border-gray-300 text-gray-700'
-                      }`}
+              {/* SECCIÓN A: Tipo e identificación del club */}
+              <div className="space-y-5">
+                <div className="flex items-center gap-2 pb-2 border-b border-gray-100">
+                  <span className="px-2.5 py-1 bg-rotary-blue/10 text-rotary-blue font-black text-xs rounded-lg uppercase tracking-wider">
+                    Sección A
+                  </span>
+                  <h4 className="text-sm font-black text-gray-800 uppercase tracking-wider">
+                    Tipo e Identificación del Club
+                  </h4>
+                </div>
+
+                {/* Selector de Tipo de Club (Rotary, Rotaract, Interact) */}
+                <div>
+                  <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
+                    Tipo de Club <span className="text-red-500">*</span>
+                  </label>
+                  <div className="grid grid-cols-3 gap-3">
+                    {[
+                      { id: 'rotary', label: 'Rotary', desc: 'Club Rotario', color: 'border-rotary-blue bg-blue-50/50 text-rotary-blue' },
+                      { id: 'rotaract', label: 'Rotaract', desc: 'Jóvenes Líderes (18+)', color: 'border-[#D91B5C] bg-pink-50/50 text-[#D91B5C]' },
+                      { id: 'interact', label: 'Interact', desc: 'Jóvenes (12 a 18 años)', color: 'border-[#005DAA] bg-sky-50/50 text-[#005DAA]' }
+                    ].map(t => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => handleOrganizationTypeChange(t.id as any)}
+                        className={`p-3.5 sm:p-4 rounded-2xl border-2 text-left transition-all ${
+                          formData.organizationType === t.id
+                            ? `${t.color} font-black shadow-sm`
+                            : 'border-gray-200 bg-white hover:border-gray-300 text-gray-700'
+                        }`}
+                      >
+                        <span className="block text-sm sm:text-base font-bold">{t.label}</span>
+                        <span className="block text-[11px] text-gray-500 font-normal">{t.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* CASO A: ROTARY */}
+                {formData.organizationType === 'rotary' && (
+                  <div className="bg-blue-50/40 p-4 sm:p-5 rounded-2xl border border-blue-100/80 space-y-2">
+                    <label className="block text-xs font-black text-gray-700 uppercase tracking-wider">
+                      Seleccionar Club del Catálogo Oficial Distrito 4281
+                    </label>
+                    <p className="text-xs text-gray-500">
+                      Si tu club ya se encuentra registrado en el directorio distrital, selecciónalo para cargar automáticamente su información.
+                    </p>
+                    <select
+                      aria-label="Seleccionar Club del Catálogo Oficial Distrito 4281"
+                      value={formData.shortName}
+                      onChange={(e) => handleSelectOfficialClub(e.target.value)}
+                      className="w-full p-3.5 rounded-xl border-2 border-gray-200 bg-white text-sm font-semibold outline-none focus:border-rotary-blue"
                     >
-                      <span className="block text-sm sm:text-base font-bold">{t.label}</span>
-                      <span className="block text-[11px] text-gray-500 font-normal">{t.desc}</span>
-                    </button>
-                  ))}
+                      <option value="">-- Elige tu club de la lista oficial (o escribe abajo) --</option>
+                      {catalogClubs.map(c => (
+                        <option key={c.name} value={c.name}>{c.display} ({c.name})</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* CASO B & C: ROTARACT / INTERACT */}
+                {formData.organizationType !== 'rotary' && (
+                  <div className="space-y-4">
+                    {/* Club Rotario Patrocinador */}
+                    <div className="bg-amber-50/40 p-4 sm:p-5 rounded-2xl border border-amber-200/70 space-y-2">
+                      <label className="block text-xs font-black text-gray-700 uppercase tracking-wider">
+                        Club Rotario Patrocinador {formData.organizationType === 'interact' && <span className="text-red-500">*</span>}
+                      </label>
+                      <p className="text-xs text-gray-500">
+                        {formData.organizationType === 'rotaract'
+                          ? 'Selecciona el club rotario del Distrito 4281 que patrocina o acompaña a tu club Rotaract.'
+                          : 'Selecciona el club rotario del Distrito 4281 que patrocina a tu club Interact.'}
+                      </p>
+                      <select
+                        aria-label="Club Rotario Patrocinador"
+                        value={formData.sponsorClubName || ''}
+                        onChange={(e) => handleSelectSponsorClub(e.target.value)}
+                        className="w-full p-3.5 rounded-xl border-2 border-gray-200 bg-white text-sm font-semibold outline-none focus:border-rotary-blue"
+                      >
+                        <option value="">-- Elige tu club rotario patrocinador de la lista oficial --</option>
+                        {rotarySponsorList.map(c => (
+                          <option key={c.name} value={c.display}>
+                            {c.display}
+                          </option>
+                        ))}
+                        <option value="__other__">-- Otro club rotario (revisión administrativa) --</option>
+                      </select>
+
+                      {formData.sponsorClubName === '__other__' && (
+                        <div className="pt-2">
+                          <label className="block text-[11px] font-black text-gray-600 uppercase tracking-wider mb-1">
+                            Nombre del Club Rotario Patrocinador (Revisión administrativa) <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="Ej. Club Rotario Valledupar Carora"
+                            value={formData.sponsorClubOther || ''}
+                            onChange={(e) => setFormData({ ...formData, sponsorClubOther: e.target.value })}
+                            className="w-full p-3 rounded-xl border-2 border-gray-200 bg-white text-xs font-semibold outline-none focus:border-rotary-blue"
+                          />
+                        </div>
+                      )}
+
+                      {formData.sponsorClubName && formData.sponsorClubName !== '__other__' && (
+                        <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 px-3 py-2 rounded-xl border border-emerald-100">
+                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Patrocinador vinculado: <strong>{formData.sponsorClubName}</strong></span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Si ya existe perfil de este Rotaract / Interact para actualizar */}
+                    {existingSubtypeProfiles.length > 0 && (
+                      <div className="bg-gray-50/80 p-3 sm:p-4 rounded-xl border border-gray-200">
+                        <label className="block text-[11px] font-bold text-gray-600 mb-1">
+                          ¿Tu club {formData.organizationType === 'rotaract' ? 'Rotaract' : 'Interact'} ya cuenta con ficha creada? Cárgala aquí para actualizarla:
+                        </label>
+                        <select
+                          value={formData.profileId || ''}
+                          onChange={(e) => {
+                            const found = existingSubtypeProfiles.find(p => p.id === e.target.value);
+                            if (found) handleSelectExistingProfile(found);
+                          }}
+                          className="w-full p-2.5 rounded-lg border border-gray-200 bg-white text-xs font-semibold outline-none focus:border-rotary-blue"
+                        >
+                          <option value="">-- Seleccionar ficha existente para actualizar (opcional) --</option>
+                          {existingSubtypeProfiles.map(p => (
+                            <option key={p.id} value={p.id}>{p.officialName} ({p.city})</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Nombre oficial y Nombre corto */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
+                      Nombre Oficial del Club <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder={formData.organizationType === 'rotary' ? 'Ej. Club Rotario Tuluá' : formData.organizationType === 'rotaract' ? 'Ej. Club Rotaract Tuluá' : 'Ej. Club Interact Tuluá'}
+                      value={formData.officialName}
+                      onChange={(e) => setFormData({ ...formData, officialName: e.target.value })}
+                      className="w-full p-3.5 rounded-xl border-2 border-gray-100 bg-gray-50/60 text-sm font-semibold outline-none focus:border-rotary-blue"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
+                      Nombre Corto / Ciudad Sede
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ej. Tuluá"
+                      value={formData.shortName}
+                      onChange={(e) => setFormData({ ...formData, shortName: e.target.value })}
+                      className="w-full p-3.5 rounded-xl border-2 border-gray-100 bg-gray-50/60 text-sm font-semibold outline-none focus:border-rotary-blue"
+                    />
+                  </div>
+                </div>
+
+                {/* Ubicación Geográfica */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
+                      Ciudad / Municipio <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej. Tuluá, Cali, Bogotá, Pasto..."
+                      value={formData.city}
+                      onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                      className="w-full p-3.5 rounded-xl border-2 border-gray-100 bg-gray-50/60 text-sm font-semibold outline-none focus:border-rotary-blue"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
+                      Departamento
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ej. Valle del Cauca, Cundinamarca..."
+                      value={formData.state}
+                      onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+                      className="w-full p-3.5 rounded-xl border-2 border-gray-100 bg-gray-50/60 text-sm font-semibold outline-none focus:border-rotary-blue"
+                    />
+                  </div>
                 </div>
               </div>
 
-              {/* Selector inteligente desde el Catálogo Oficial */}
-              <div>
-                <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-1">
-                  Seleccionar Club del Catálogo Oficial Distrito 4281
-                </label>
-                <p className="text-xs text-gray-500 mb-2">
-                  Si tu club ya está registrado en el directorio distrital, selecciónalo para cargar su ficha automáticamente.
-                </p>
-                <select
-                  aria-label="Seleccionar Club del Catálogo Oficial Distrito 4281"
-                  value={formData.shortName}
-                  onChange={(e) => handleSelectOfficialClub(e.target.value)}
-                  className="w-full p-3.5 rounded-xl border-2 border-gray-100 bg-gray-50/60 text-sm font-semibold outline-none focus:border-rotary-blue"
-                >
-                  <option value="">-- Elige tu club de la lista oficial (o escribe abajo) --</option>
-                  {catalogClubs.map(c => (
-                    <option key={c.name} value={c.name}>{c.display} ({c.name})</option>
-                  ))}
-                </select>
-              </div>
+              {/* SECCIÓN B: Información de contacto y reuniones */}
+              <div className="space-y-5 pt-4 border-t border-gray-100">
+                <div className="flex items-center gap-2 pb-2 border-b border-gray-100">
+                  <span className="px-2.5 py-1 bg-amber-500/15 text-amber-800 font-black text-xs rounded-lg uppercase tracking-wider">
+                    Sección B
+                  </span>
+                  <h4 className="text-sm font-black text-gray-800 uppercase tracking-wider">
+                    Información de Contacto y Reuniones
+                  </h4>
+                </div>
 
-              {/* Nombre oficial y Nombre corto */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
-                    Nombre Oficial del Club <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej. Club Rotario Tuluá"
-                    value={formData.officialName}
-                    onChange={(e) => setFormData({ ...formData, officialName: e.target.value })}
-                    className="w-full p-3.5 rounded-xl border-2 border-gray-100 bg-gray-50/60 text-sm font-semibold outline-none focus:border-rotary-blue"
-                  />
+                {/* Canales Oficiales: Correo y Teléfono */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
+                      Correo Electrónico Institucional
+                    </label>
+                    <input
+                      type="email"
+                      placeholder="contacto@clubrotarioejemplo.org"
+                      value={formData.contactEmail}
+                      onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })}
+                      className="w-full p-3.5 rounded-xl border-2 border-gray-100 bg-gray-50/60 text-sm font-semibold outline-none focus:border-rotary-blue"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
+                      Teléfono / WhatsApp Autorizado
+                    </label>
+                    <div className="flex gap-2">
+                      <span className="h-full py-3.5 px-3 bg-gray-100 border border-gray-200 rounded-xl text-xs font-bold text-gray-600 flex items-center gap-1">
+                        {flagEmoji(formData.contactCountryCode)} +57
+                      </span>
+                      <input
+                        type="tel"
+                        placeholder="310 123 4567"
+                        value={formData.contactPhone}
+                        onChange={(e) => setFormData({ ...formData, contactPhone: e.target.value })}
+                        className="flex-1 p-3.5 rounded-xl border-2 border-gray-100 bg-gray-50/60 text-sm font-semibold outline-none focus:border-rotary-blue"
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
-                    Nombre Corto / Ciudad Sede
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ej. Tuluá"
-                    value={formData.shortName}
-                    onChange={(e) => setFormData({ ...formData, shortName: e.target.value })}
-                    className="w-full p-3.5 rounded-xl border-2 border-gray-100 bg-gray-50/60 text-sm font-semibold outline-none focus:border-rotary-blue"
-                  />
-                </div>
-              </div>
 
-              {/* Ubicación Geográfica */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
-                    Ciudad / Municipio <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej. Tuluá, Cali, Bogotá, Pasto..."
-                    value={formData.city}
-                    onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                    className="w-full p-3.5 rounded-xl border-2 border-gray-100 bg-gray-50/60 text-sm font-semibold outline-none focus:border-rotary-blue"
-                  />
+                {/* Sede y Horarios */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
+                      Lugar Habitual de Reunión
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ej. Hotel Dann Carlton / Sede Campestre"
+                      value={formData.meetingAddress}
+                      onChange={(e) => setFormData({ ...formData, meetingAddress: e.target.value })}
+                      className="w-full p-3.5 rounded-xl border-2 border-gray-100 bg-gray-50/60 text-sm font-semibold outline-none focus:border-rotary-blue"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
+                      Día y Hora de Sesión
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ej. Martes 7:00 PM (Semanal)"
+                      value={formData.meetingSchedule}
+                      onChange={(e) => setFormData({ ...formData, meetingSchedule: e.target.value })}
+                      className="w-full p-3.5 rounded-xl border-2 border-gray-100 bg-gray-50/60 text-sm font-semibold outline-none focus:border-rotary-blue"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
-                    Departamento
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ej. Valle del Cauca, Cundinamarca..."
-                    value={formData.state}
-                    onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                    className="w-full p-3.5 rounded-xl border-2 border-gray-100 bg-gray-50/60 text-sm font-semibold outline-none focus:border-rotary-blue"
-                  />
+
+                {/* Sitio web y Redes */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
+                      Sitio Web Oficial
+                    </label>
+                    <input
+                      type="url"
+                      placeholder="https://..."
+                      value={formData.websiteUrl}
+                      onChange={(e) => setFormData({ ...formData, websiteUrl: e.target.value })}
+                      className="w-full p-3.5 rounded-xl border-2 border-gray-100 bg-gray-50/60 text-sm font-semibold outline-none focus:border-rotary-blue"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
+                      Instagram Oficial
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="@rotarytulua"
+                      value={formData.socialMedia.instagram || ''}
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        socialMedia: { ...formData.socialMedia, instagram: e.target.value }
+                      })}
+                      className="w-full p-3.5 rounded-xl border-2 border-gray-100 bg-gray-50/60 text-sm font-semibold outline-none focus:border-rotary-blue"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
+                      Página de Facebook
+                    </label>
+                    <input
+                      type="url"
+                      placeholder="https://facebook.com/..."
+                      value={formData.socialMedia.facebook || ''}
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        socialMedia: { ...formData.socialMedia, facebook: e.target.value }
+                      })}
+                      className="w-full p-3.5 rounded-xl border-2 border-gray-100 bg-gray-50/60 text-sm font-semibold outline-none focus:border-rotary-blue"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
+                      Canal de YouTube / TikTok
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="https://youtube.com/..."
+                      value={formData.socialMedia.youtube || ''}
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        socialMedia: { ...formData.socialMedia, youtube: e.target.value }
+                      })}
+                      className="w-full p-3.5 rounded-xl border-2 border-gray-100 bg-gray-50/60 text-sm font-semibold outline-none focus:border-rotary-blue"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -688,7 +1083,7 @@ export const UnifiedClubForm: React.FC = () => {
           {currentStep === 1 && (
             <div className="space-y-6 animate-fade-in">
               <div className="border-b border-gray-100 pb-4">
-                <span className="text-xs font-black text-rotary-blue uppercase tracking-widest">Paso 2 de 7</span>
+                <span className="text-xs font-black text-rotary-blue uppercase tracking-widest">Paso 2 de 6</span>
                 <h3 className="text-2xl font-extrabold text-gray-900 mt-1">Identidad Institucional</h3>
                 <p className="text-sm text-gray-500">Historia, propósito y elementos visuales del club.</p>
               </div>
@@ -864,7 +1259,7 @@ export const UnifiedClubForm: React.FC = () => {
           {currentStep === 2 && (
             <div className="space-y-6 animate-fade-in">
               <div className="border-b border-gray-100 pb-4">
-                <span className="text-xs font-black text-rotary-blue uppercase tracking-widest">Paso 3 de 7</span>
+                <span className="text-xs font-black text-rotary-blue uppercase tracking-widest">Paso 3 de 6</span>
                 <h3 className="text-2xl font-extrabold text-gray-900 mt-1">Liderazgo y Membresía</h3>
                 <p className="text-sm text-gray-500">Presidente actual, período rotario y miembros directivos autorizados.</p>
               </div>
@@ -1010,7 +1405,7 @@ export const UnifiedClubForm: React.FC = () => {
           {currentStep === 3 && (
             <div className="space-y-6 animate-fade-in">
               <div className="border-b border-gray-100 pb-4">
-                <span className="text-xs font-black text-rotary-blue uppercase tracking-widest">Paso 4 de 7</span>
+                <span className="text-xs font-black text-rotary-blue uppercase tracking-widest">Paso 4 de 6</span>
                 <h3 className="text-2xl font-extrabold text-gray-900 mt-1">Proyectos y Actividades</h3>
                 <p className="text-sm text-gray-500">Iniciativas de servicio, programas comunitarios y logros destacados.</p>
               </div>
@@ -1122,7 +1517,7 @@ export const UnifiedClubForm: React.FC = () => {
           {currentStep === 4 && (
             <div className="space-y-6 animate-fade-in">
               <div className="border-b border-gray-100 pb-4">
-                <span className="text-xs font-black text-rotary-blue uppercase tracking-widest">Paso 5 de 7</span>
+                <span className="text-xs font-black text-rotary-blue uppercase tracking-widest">Paso 5 de 6</span>
                 <h3 className="text-2xl font-extrabold text-gray-900 mt-1">Galería Multimedia</h3>
                 <p className="text-sm text-gray-500">Fotografías institucionales de actividades y enlaces de video.</p>
               </div>
@@ -1223,150 +1618,12 @@ export const UnifiedClubForm: React.FC = () => {
           )}
 
           {/* ════════════════════════════════════════════════════════════════
-              PASO 6: CONTACTO Y UBICACIÓN
+              PASO 6: REVISIÓN Y ENVÍO
              ════════════════════════════════════════════════════════════════ */}
           {currentStep === 5 && (
             <div className="space-y-6 animate-fade-in">
               <div className="border-b border-gray-100 pb-4">
-                <span className="text-xs font-black text-rotary-blue uppercase tracking-widest">Paso 6 de 7</span>
-                <h3 className="text-2xl font-extrabold text-gray-900 mt-1">Contacto y Reuniones</h3>
-                <p className="text-sm text-gray-500">Canales oficiales de comunicación y lugar habitual de sesión.</p>
-              </div>
-
-              {/* Sede y Horarios */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
-                    Lugar Habitual de Reunión
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ej. Hotel Dann Carlton / Sede Campestre"
-                    value={formData.meetingAddress}
-                    onChange={(e) => setFormData({ ...formData, meetingAddress: e.target.value })}
-                    className="w-full p-3.5 rounded-xl border-2 border-gray-100 bg-gray-50/60 text-sm font-semibold outline-none focus:border-rotary-blue"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
-                    Día y Hora de Sesión
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ej. Martes 7:00 PM (Semanal)"
-                    value={formData.meetingSchedule}
-                    onChange={(e) => setFormData({ ...formData, meetingSchedule: e.target.value })}
-                    className="w-full p-3.5 rounded-xl border-2 border-gray-100 bg-gray-50/60 text-sm font-semibold outline-none focus:border-rotary-blue"
-                  />
-                </div>
-              </div>
-
-              {/* Canales Oficiales: Correo y Teléfono */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
-                    Correo Electrónico Institucional
-                  </label>
-                  <input
-                    type="email"
-                    placeholder="contacto@clubrotarioejemplo.org"
-                    value={formData.contactEmail}
-                    onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })}
-                    className="w-full p-3.5 rounded-xl border-2 border-gray-100 bg-gray-50/60 text-sm font-semibold outline-none focus:border-rotary-blue"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
-                    Teléfono / WhatsApp Autorizado
-                  </label>
-                  <div className="flex gap-2">
-                    <span className="h-full py-3.5 px-3 bg-gray-100 border border-gray-200 rounded-xl text-xs font-bold text-gray-600 flex items-center gap-1">
-                      {flagEmoji(formData.contactCountryCode)} +57
-                    </span>
-                    <input
-                      type="tel"
-                      placeholder="310 123 4567"
-                      value={formData.contactPhone}
-                      onChange={(e) => setFormData({ ...formData, contactPhone: e.target.value })}
-                      className="flex-1 p-3.5 rounded-xl border-2 border-gray-100 bg-gray-50/60 text-sm font-semibold outline-none focus:border-rotary-blue"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Sitio web y Redes */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
-                    Sitio Web Oficial
-                  </label>
-                  <input
-                    type="url"
-                    placeholder="https://..."
-                    value={formData.websiteUrl}
-                    onChange={(e) => setFormData({ ...formData, websiteUrl: e.target.value })}
-                    className="w-full p-3.5 rounded-xl border-2 border-gray-100 bg-gray-50/60 text-sm font-semibold outline-none focus:border-rotary-blue"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
-                    Instagram Oficial
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="@rotarytulua"
-                    value={formData.socialMedia.instagram || ''}
-                    onChange={(e) => setFormData({
-                      ...formData,
-                      socialMedia: { ...formData.socialMedia, instagram: e.target.value }
-                    })}
-                    className="w-full p-3.5 rounded-xl border-2 border-gray-100 bg-gray-50/60 text-sm font-semibold outline-none focus:border-rotary-blue"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
-                    Página de Facebook
-                  </label>
-                  <input
-                    type="url"
-                    placeholder="https://facebook.com/..."
-                    value={formData.socialMedia.facebook || ''}
-                    onChange={(e) => setFormData({
-                      ...formData,
-                      socialMedia: { ...formData.socialMedia, facebook: e.target.value }
-                    })}
-                    className="w-full p-3.5 rounded-xl border-2 border-gray-100 bg-gray-50/60 text-sm font-semibold outline-none focus:border-rotary-blue"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
-                    Canal de YouTube / TikTok
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="https://youtube.com/..."
-                    value={formData.socialMedia.youtube || ''}
-                    onChange={(e) => setFormData({
-                      ...formData,
-                      socialMedia: { ...formData.socialMedia, youtube: e.target.value }
-                    })}
-                    className="w-full p-3.5 rounded-xl border-2 border-gray-100 bg-gray-50/60 text-sm font-semibold outline-none focus:border-rotary-blue"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ════════════════════════════════════════════════════════════════
-              PASO 7: REVISIÓN Y ENVÍO
-             ════════════════════════════════════════════════════════════════ */}
-          {currentStep === 6 && (
-            <div className="space-y-6 animate-fade-in">
-              <div className="border-b border-gray-100 pb-4">
-                <span className="text-xs font-black text-rotary-blue uppercase tracking-widest">Paso 7 de 7</span>
+                <span className="text-xs font-black text-rotary-blue uppercase tracking-widest">Paso 6 de 6</span>
                 <h3 className="text-2xl font-extrabold text-gray-900 mt-1">Revisión y Autorización</h3>
                 <p className="text-sm text-gray-500">Verifica la información antes de remitirla al equipo distrital.</p>
               </div>
@@ -1388,6 +1645,11 @@ export const UnifiedClubForm: React.FC = () => {
                   <p><strong>Fundación:</strong> {formData.foundationYear || 'No indicada'}</p>
                   <p><strong>Reuniones:</strong> {formData.meetingSchedule || 'No indicada'} ({formData.meetingAddress || 'Por definir'})</p>
                   <p><strong>Contacto:</strong> {formData.contactEmail || formData.contactPhone || 'No indicado'}</p>
+                  {formData.organizationType !== 'rotary' && (formData.sponsorClubName || formData.sponsorClubOther) && (
+                    <p className="col-span-1 sm:col-span-2 text-rotary-blue font-bold">
+                      <strong>Club Rotario Patrocinador:</strong> {formData.sponsorClubName === '__other__' ? formData.sponsorClubOther : formData.sponsorClubName}
+                    </p>
+                  )}
                 </div>
 
                 {formData.description && (
