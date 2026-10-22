@@ -42,6 +42,23 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1234.0',
+        title: 'CRM Institucional: Conciliación con el Directorio Oficial, Ficha 360° y Analítica de Clubes 🏛️🤝📊',
+        description: 'Evolución del Directorio CRM a un CRM institucional inteligente que relaciona cada contacto con su club rotario real, su distrito, sus cargos y el estado de digitalización del club: 1) Corrección de la causa raíz que mostraba «Club Platform for Rotary» como club de todos los contactos: la columna «Club oficial» ahora lee el club de pertenencia del Directorio y el tenant del CRM se muestra separado como «Origen». 2) Motor de conciliación con reglas de distrito, tipo de organización, cargo y período: sólo se confirma una coincidencia exacta y única; Rotaract e Interact nunca se asocian a un club rotario de la misma ciudad, y los contactos del Distrito 4271 sin perfil en el Directorio quedan pendientes sin cruzarse contra el 4281. 3) Conciliación auditable en tres pasos (vista previa, aplicación y reversión) sobre tablas aditivas, sin modificar contactos ni perfiles. 4) Ficha inteligente del contacto, vista 360° del club, filtros institucionales combinables, columnas personalizables y segmentos dinámicos. 5) Analítica institucional y audiencia «institucional» en Email Marketing con selección de segmento. La completitud se lee del Directorio Oficial y el estado Club Platform de sus fuentes reales, nunca de etiquetas CRM.',
+        date: new Date().toISOString(),
+        tags: ['crm-institucional', 'directorio-clubes', 'conciliacion', 'distrito-4281', 'distrito-4271', 'rotaract', 'interact', 'segmentos', 'email-marketing', 'analitica'],
+        type: 'feature',
+        impact: 'Crítica: Recupera la relación real entre contactos, clubes y distritos, elimina la atribución masiva al tenant de la plataforma y habilita segmentación y seguimiento institucional verificable.',
+        changes: [
+            { type: 'fixed', text: 'La columna «Club» del CRM deja de mostrar el tenant «Club Platform for Rotary» y muestra el club oficial del Directorio; el tenant se presenta como «Origen» del contacto.' },
+            { type: 'added', text: 'Motor de conciliación exacta y única con prioridad de distrito, tipo de organización, cargos múltiples y período; las coincidencias aproximadas quedan como candidatas sin confirmar.' },
+            { type: 'added', text: 'Conciliación con vista previa, aplicación confirmada y reversión auditada; los vínculos viven en tablas aditivas y no se alteran contactos ni perfiles.' },
+            { type: 'fixed', text: 'Rotaract e Interact no se confunden con el club rotario homónimo y los contactos del 4271 u otros distritos sin directorio cargado permanecen pendientes.' },
+            { type: 'added', text: 'Ficha inteligente del contacto, vista 360° del club, filtros combinables, selector de columnas persistido y diseño responsive.' },
+            { type: 'added', text: 'Segmentos dinámicos institucionales, analítica por distrito, cargo, completitud y estado de plataforma, y audiencia institucional en Email Marketing.' },
+        ],
+    },
+    {
         version: '4.1233.0',
         title: 'Optimización del Formulario de Registro de Clubes a 6 Pasos, Selección Dinámica de Patrocinador y Navegación Adaptable 🏛️✨📋',
         description: 'Actualización integral del módulo público de registro de clubes (Rotary Distrito 4281): 1) Reorganización estructural a 6 pasos consecutivos mediante la integración natural de los datos de contacto y sedes dentro del Paso 1 (Sección A: Tipo e Identificación, Sección B: Contacto y Reuniones), eliminando el paso independiente y actualizando la barra de progreso a "Paso X de 6". 2) Rediseño completo de la barra de navegación (PublicStepNav) con distribución responsiva sin desbordamiento ni recortes en escritorio y modo compacto con barra de progreso continua y botones de paso ergonómicos en móviles. 3) Comportamiento dinámico inteligente según tipo de club: catálogo distrital directo para Rotary; y selector exclusivo de clubes rotarios patrocinadores para Rotaract e Interact, garantizando que el club registrado conserve su identidad e información independiente. 4) Persistencia no destructiva y retrocompatible en base de datos (columnas sponsorClubId y sponsorClubName con índice dedicado en DistrictClubProfile y DistrictClubSubmission), vinculada al flujo de revisión administrativa y a la ficha pública del directorio.',

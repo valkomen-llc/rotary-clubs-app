@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, User, MapPin, Tag, List as ListIcon, Check, ChevronDown, Globe } from 'lucide-react';
+import { X, Tag, List as ListIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../../../hooks/useAuth';
 import PhoneInputWithCountry from '../../../common/PhoneInputWithCountry';
-import { COUNTRIES, CountryInfo, findCountryByCode, findCountryByNameOrQuery } from '../../../../lib/countryData';
+import { COUNTRIES, findCountryByNameOrQuery } from '../../../../lib/countryData';
+import InstitutionalContactPanel from './InstitutionalContactPanel';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -386,6 +387,11 @@ export default function ContactModal({ onClose, onSaved, contactId }: { onClose:
                             </div>
                         )}
                     </div>
+
+                    {/* RELACIÓN INSTITUCIONAL (sólo contacto existente) */}
+                    {contactId && (
+                        <InstitutionalContactPanel contactId={contactId} token={token} />
+                    )}
 
                     {/* IDENTIFICADORES (LISTAS Y ETIQUETAS INLINE) */}
                     <section className="border-t border-gray-100 pt-6">

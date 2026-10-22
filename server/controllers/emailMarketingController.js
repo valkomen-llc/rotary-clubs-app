@@ -4,6 +4,7 @@ import db from '../lib/db.js';
 import EmailService from '../services/EmailService.js';
 import { resolveClubId } from './crmController.js';
 import { buildCrmScopes, renderWithDefaults, findUnknownVars } from '../lib/contentActivationVariables.js';
+import { resolveInstitutionalSegment } from '../lib/institutionalCrm.js';
 
 // v4.438 — Sistema de Email Marketing (campañas tipo Mailchimp).
 // Reutiliza la audiencia del CRM (CrmContact/CrmList) y EmailService (Resend/SMTP)
@@ -67,9 +68,19 @@ export const duplicateCampaignName = (base) => {
 };
 
 // Resuelve los destinatarios reales (contactos con email válido, activos y sin baja).
-const resolveRecipients = async (clubId, audience, listId, tag, listIds) => {
+const resolveRecipients = async (clubId, audience, listId, tag, listIds, institutionalSegment = null) => {
     let contacts;
-    if (audience === 'list') {
+    if (audience === 'institutional') {
+        // Segmento institucional dinámico: club confirmado, cargo, distrito,
+        // estado de plataforma o completitud del Directorio. Se recalcula al
+        // enviar; nunca se guarda una lista fija de contactos.
+        if (!institutionalSegment) {
+            contacts = [];
+        } else {
+            const segment = await resolveInstitutionalSegment(clubId, institutionalSegment);
+            contacts = segment.error ? [] : segment.contacts;
+        }
+    } else if (audience === 'list') {
         // Acepta una o varias listas del CRM. Valida que sean propias o compartidas con
         // este sitio (siteIds), y toma sus miembros sin filtrar por el club del contacto
         // (para soportar listas vinculadas por otro sitio, ej. un distrito).
@@ -144,9 +155,9 @@ export const previewAudience = async (req, res) => {
     try {
         const clubId = await resolveClubId(req);
         if (!clubId) return res.json({ count: 0 });
-        const { audience = 'all', listId, segmentTag, listIds } = req.query;
+        const { audience = 'all', listId, segmentTag, listIds, institutionalSegment } = req.query;
         const listIdsArr = typeof listIds === 'string' ? listIds.split(',').filter(Boolean) : (Array.isArray(listIds) ? listIds : []);
-        const recipients = await resolveRecipients(clubId, audience, listId || null, segmentTag || null, listIdsArr);
+        const recipients = await resolveRecipients(clubId, audience, listId || null, segmentTag || null, listIdsArr, institutionalSegment || null);
         res.json({ count: recipients.length });
     } catch (error) {
         console.error('[emailMarketing] previewAudience:', error);
@@ -174,12 +185,15 @@ export const createCampaign = async (req, res) => {
     try {
         const clubId = await resolveClubId(req);
         if (!clubId) return res.status(400).json({ error: 'No hay un sitio asociado a esta campaña' });
-        const { name, subject, fromName, fromEmail, replyTo, senderIdentityId, preheader, content, design, audience, listId, listIds, segmentTag,
+        const { name, subject, fromName, fromEmail, replyTo, senderIdentityId, preheader, content, design, audience, listId, listIds, segmentTag, institutionalSegment,
             abEnabled, variantSubject, variantPreheader, variantContent, abSamplePct, abWindowHours, abMetric } = req.body;
         if (!name || !subject || !content) {
             return res.status(400).json({ error: 'Nombre, asunto y contenido son obligatorios' });
         }
-        const aud = ['list', 'tag'].includes(audience) ? audience : 'all';
+        const aud = ['list', 'tag', 'institutional'].includes(audience) ? audience : 'all';
+        if (aud === 'institutional' && !institutionalSegment) {
+            return res.status(400).json({ error: 'Elige un segmento institucional para la campaña.' });
+        }
         const listIdsClean = aud === 'list'
             ? [...new Set([...(Array.isArray(listIds) ? listIds : []), ...(listId ? [listId] : [])].filter(Boolean))]
             : [];
@@ -200,6 +214,7 @@ export const createCampaign = async (req, res) => {
                 listId: aud === 'list' ? (listIdsClean[0] || null) : null,
                 listIds: listIdsClean,
                 segmentTag: aud === 'tag' ? (segmentTag || null) : null,
+                institutionalSegment: aud === 'institutional' ? (institutionalSegment || null) : null,
                 abEnabled: ab,
                 variantSubject: ab ? (variantSubject || null) : null,
                 variantPreheader: ab ? (variantPreheader || null) : null,
@@ -229,9 +244,12 @@ export const updateCampaign = async (req, res) => {
         if (!['draft', 'scheduled', 'failed'].includes(existing.status)) {
             return res.status(400).json({ error: 'Solo se pueden editar campañas en borrador o programadas' });
         }
-        const { name, subject, fromName, fromEmail, replyTo, senderIdentityId, preheader, content, design, audience, listId, listIds, segmentTag,
+        const { name, subject, fromName, fromEmail, replyTo, senderIdentityId, preheader, content, design, audience, listId, listIds, segmentTag, institutionalSegment,
             abEnabled, variantSubject, variantPreheader, variantContent, abSamplePct, abWindowHours, abMetric } = req.body;
-        const aud = audience !== undefined ? (['list', 'tag'].includes(audience) ? audience : 'all') : undefined;
+        const aud = audience !== undefined ? (['list', 'tag', 'institutional'].includes(audience) ? audience : 'all') : undefined;
+        if (aud === 'institutional' && !institutionalSegment && !existing.institutionalSegment) {
+            return res.status(400).json({ error: 'Elige un segmento institucional para la campaña.' });
+        }
         const listIdsClean = aud === 'list'
             ? [...new Set([...(Array.isArray(listIds) ? listIds : []), ...(listId ? [listId] : [])].filter(Boolean))]
             : [];
@@ -251,6 +269,11 @@ export const updateCampaign = async (req, res) => {
                 ...(aud !== undefined && { listId: aud === 'list' ? (listIdsClean[0] || null) : null }),
                 ...(aud !== undefined && { listIds: listIdsClean }),
                 ...(aud !== undefined && { segmentTag: aud === 'tag' ? (segmentTag || null) : null }),
+                ...(aud !== undefined && {
+                    institutionalSegment: aud === 'institutional'
+                        ? (institutionalSegment || existing.institutionalSegment || null)
+                        : null
+                }),
                 ...(abEnabled !== undefined && {
                     abEnabled: !!abEnabled,
                     variantSubject: abEnabled ? (variantSubject || null) : null,
@@ -356,7 +379,7 @@ const sendToContacts = async ({ clubId, campaignId, contacts, subject, content, 
 // Lanza un Error si no hay destinatarios; el llamador decide cómo reportarlo.
 const dispatchCampaign = async ({ campaign, baseUrl, userId }) => {
     const clubId = campaign.clubId;
-    const recipients = await resolveRecipients(clubId, campaign.audience, campaign.listId, campaign.segmentTag, campaign.listIds);
+    const recipients = await resolveRecipients(clubId, campaign.audience, campaign.listId, campaign.segmentTag, campaign.listIds, campaign.institutionalSegment);
     if (recipients.length === 0) {
         const err = new Error('No hay destinatarios con email válido para esta audiencia');
         err.code = 'NO_RECIPIENTS';
@@ -400,7 +423,7 @@ const AB_MIN_AUDIENCE = 4;
 // El ganador se decide y se envía al resto más tarde, vía processAbTests (cron).
 const dispatchAbTest = async ({ campaign, baseUrl, userId }) => {
     const clubId = campaign.clubId;
-    const recipients = await resolveRecipients(clubId, campaign.audience, campaign.listId, campaign.segmentTag, campaign.listIds);
+    const recipients = await resolveRecipients(clubId, campaign.audience, campaign.listId, campaign.segmentTag, campaign.listIds, campaign.institutionalSegment);
     if (recipients.length < AB_MIN_AUDIENCE) {
         const err = new Error(`La audiencia (${recipients.length}) es muy pequeña para una prueba A/B (mínimo ${AB_MIN_AUDIENCE} contactos).`);
         err.code = 'AB_TOO_SMALL';
@@ -485,7 +508,7 @@ export const processAbTests = async ({ baseUrl, now = new Date() } = {}) => {
             const winner = rateB > rateA ? 'B' : 'A';
 
             // Resto de la audiencia: los que aún no recibieron la muestra.
-            const all = await resolveRecipients(campaign.clubId, campaign.audience, campaign.listId, campaign.segmentTag, campaign.listIds);
+            const all = await resolveRecipients(campaign.clubId, campaign.audience, campaign.listId, campaign.segmentTag, campaign.listIds, campaign.institutionalSegment);
             const already = await prisma.emailCampaignRecipient.findMany({ where: { campaignId: campaign.id }, select: { email: true } });
             const sentSet = new Set(already.map((a) => a.email.trim().toLowerCase()));
             const remainder = all
@@ -677,6 +700,7 @@ export const duplicateCampaign = async (req, res) => {
                 listId: cur.listId,
                 listIds: cur.listIds || [],
                 segmentTag: cur.segmentTag,
+                institutionalSegment: cur.institutionalSegment || null,
                 status: 'draft',
                 createdById: req.user?.id || null,
             },
@@ -1128,7 +1152,7 @@ export const getDashboard = async (req, res) => {
             const pc = perCampaign[c.id] || { sent: c.sentCount, opens: 0, clicks: 0 };
             return {
                 id: c.id, name: c.name, subject: c.subject, status: c.status,
-                audience: c.audience, segmentTag: c.segmentTag, listId: c.listId,
+                audience: c.audience, segmentTag: c.segmentTag, institutionalSegment: c.institutionalSegment || null, listId: c.listId,
                 sentAt: c.sentAt, createdAt: c.createdAt, scheduledAt: c.scheduledAt,
                 totalRecipients: c.totalRecipients, sentCount: c.sentCount, failedCount: c.failedCount,
                 openCount: c.openCount, clickCount: c.clickCount,

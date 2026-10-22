@@ -107,10 +107,10 @@ test('Escenario 6 — Paridad de Versión en el Ecosistema', () => {
   const appVersionCode = fs.readFileSync(path.join(root, 'src/lib/appVersion.ts'), 'utf8');
   const updatesCode = fs.readFileSync(path.join(root, 'src/pages/SystemUpdates.tsx'), 'utf8');
 
-  assert.equal(pkg.version, '4.1233.0', 'package.json version');
-  assert.equal(pkg.cache_bust, '4.1233.0', 'package.json cache_bust');
-  assert.ok(appVersionCode.includes("APP_VERSION = '4.1233.0'"), 'appVersion.ts');
-  assert.ok(updatesCode.includes("version: '4.1233.0'"), 'SystemUpdates.tsx');
+  assert.equal(pkg.version, '4.1234.0', 'package.json version');
+  assert.equal(pkg.cache_bust, '4.1234.0', 'package.json cache_bust');
+  assert.ok(appVersionCode.includes("APP_VERSION = '4.1234.0'"), 'appVersion.ts');
+  assert.ok(updatesCode.includes("version: '4.1234.0'"), 'SystemUpdates.tsx');
 });
 
 console.log('✅ Todos los escenarios de validación de la optimización del formulario han sido verificados con éxito.');

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { useAuth } from '../../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
-import { Mail, MessageCircle, Send, ClipboardList, CheckCircle2, XCircle, Search, Clock, Settings, Users, List, Megaphone, FileText, BarChart3, MessageSquare, Tag, QrCode, AlertCircle, Bot, Workflow, Activity, Inbox, TrendingUp, FolderOpen, Stethoscope } from 'lucide-react';
+import { Mail, MessageCircle, Send, ClipboardList, CheckCircle2, XCircle, Search, Clock, Settings, Users, List, Megaphone, FileText, BarChart3, MessageSquare, Tag, QrCode, AlertCircle, Bot, Workflow, Activity, Inbox, TrendingUp, FolderOpen, Stethoscope, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
 // WhatsApp CRM Sub-components
@@ -25,10 +25,11 @@ import ContactsManager from '../../components/admin/crm/fluent/ContactsManager';
 import ListsManager from '../../components/admin/crm/fluent/ListsManager';
 import TagsManager from '../../components/admin/crm/fluent/TagsManager';
 import CustomFieldsManager from '../../components/admin/crm/fluent/CustomFieldsManager';
+import InstitutionalIntelligence from '../../components/admin/crm/fluent/InstitutionalIntelligence';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
-type TabKey = 'email-send' | 'email-templates' | 'email-logs' | 'wa-config' | 'wa-templates' | 'wa-campaigns' | 'wa-analytics' | 'wa-chat' | 'wa-automation' | 'wa-journeys' | 'wa-lifecycle' | 'wa-inbox' | 'wa-insights' | 'wa-library' | 'wa-diagnostics' | 'crm-contacts' | 'crm-lists' | 'crm-tags' | 'crm-settings' | 'list-detail' | 'tag-detail';
+type TabKey = 'email-send' | 'email-templates' | 'email-logs' | 'wa-config' | 'wa-templates' | 'wa-campaigns' | 'wa-analytics' | 'wa-chat' | 'wa-automation' | 'wa-journeys' | 'wa-lifecycle' | 'wa-inbox' | 'wa-insights' | 'wa-library' | 'wa-diagnostics' | 'crm-contacts' | 'crm-intelligence' | 'crm-lists' | 'crm-tags' | 'crm-settings' | 'list-detail' | 'tag-detail';
 
 /**
  * CRM Interfaz
@@ -98,6 +99,7 @@ const CRMManagement: React.FC = () => {
 
     const crmTabs: { key: TabKey; label: string; icon: React.ReactNode }[] = [
         { key: 'crm-contacts', label: 'Contactos', icon: <Users className="w-4 h-4" /> },
+        { key: 'crm-intelligence', label: 'Inteligencia institucional', icon: <Sparkles className="w-4 h-4" /> },
         { key: 'crm-lists', label: 'Listas', icon: <List className="w-4 h-4" /> },
         { key: 'crm-tags', label: 'Etiquetas', icon: <Tag className="w-4 h-4" /> },
         { key: 'crm-settings', label: 'Ajustes', icon: <Settings className="w-4 h-4" /> },
@@ -208,6 +210,7 @@ const CRMManagement: React.FC = () => {
 
                 {/* ═══ CRM TABS ═══ */}
                 {activeTab === 'crm-contacts' && <ContactsManager />}
+                {activeTab === 'crm-intelligence' && <InstitutionalIntelligence />}
                 {activeTab === 'crm-lists' && <ListsManager onViewDetails={(id) => { setSelectedAudienceId(id); setActiveTab('list-detail'); }} />}
                 {activeTab === 'crm-tags' && <TagsManager onViewDetails={(id) => { setSelectedAudienceId(id); setActiveTab('tag-detail'); }} />}
                 {activeTab === 'crm-settings' && <CustomFieldsManager />}
