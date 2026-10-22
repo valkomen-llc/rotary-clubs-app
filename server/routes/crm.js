@@ -27,6 +27,7 @@ import {
     getAnalytics, verifyWebhook, handleWebhook
 } from '../controllers/crmController.js';
 import * as connections from '../controllers/crm/connections.controller.js';
+import * as institutional from '../controllers/crm/institutional.controller.js';
 
 const router = express.Router();
 
@@ -99,6 +100,20 @@ router.get('/kill-locks', async (req, res) => {
     }
 });
 
+
+// ── CRM institucional (v4.1234) ──────────────────────────────────────────
+// Las rutas literales van ANTES de `/contacts/:id`: si no, Express interpreta
+// «institutional» como un id de contacto y el endpoint responde 404 mudo.
+router.get('/institutional/catalog', institutional.getCatalog);
+router.get('/institutional/overview', institutional.getOverview);
+router.get('/institutional/runs', institutional.getRuns);
+router.post('/institutional/reconcile/preview', institutional.previewReconciliation);
+router.post('/institutional/reconcile/apply', institutional.applyReconciliation);
+router.post('/institutional/runs/:runId/rollback', institutional.rollbackRun);
+router.get('/institutional/contacts/:contactId', institutional.getContactDetail);
+router.post('/institutional/contacts/:contactId/links', institutional.createLink);
+router.put('/institutional/links/:linkId', institutional.patchLink);
+router.get('/institutional/clubs/:profileId', institutional.getClubDetail);
 
 // ── Contactos (NUEVO) ────────────────────────────────────────────────────
 router.get('/contacts', getContacts);

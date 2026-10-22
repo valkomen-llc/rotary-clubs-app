@@ -1,6 +1,89 @@
 import db from '../../lib/prisma.js';
 import { resolveClubId } from '../crmController.js';
 import { validatePhoneNumber, sanitizeRawPhone } from '../../lib/phone.js';
+import {
+  ensureInstitutionalSchema,
+  enrichContactPage,
+  filterInstitutionalContactIds,
+  hasInstitutionalFilters,
+  resolveInstitutionalSegment,
+  getInstitutionalContactDetail,
+} from '../../lib/institutionalCrm.js';
+
+const contactInclude = {
+  listMemberships: { include: { list: true } },
+  customFieldValues: { include: { field: { select: { id: true, label: true, key: true } } } },
+  club: { select: { id: true, name: true } },
+};
+
+function mapTag(t, explicitTags = []) {
+  const name = typeof t === 'string' ? t : t?.name;
+  const explicit = explicitTags.find((et) => et.name === name);
+  return { id: typeof t === 'string' ? t : (t?.id || name), name, color: explicit?.color || '#3B82F6' };
+}
+
+function serializeContact(contact, explicitTags = []) {
+  return {
+    ...contact,
+    tags: contact.tags ? contact.tags.map((t) => mapTag(t, explicitTags)) : [],
+    lists: contact.lists || (contact.listMemberships ? contact.listMemberships.map((lm) => lm.list) : []),
+    customFields: contact.customFields || (contact.customFieldValues || []).map((item) => ({
+      fieldId: item.fieldId,
+      value: item.value,
+      label: item.field?.label || null,
+      key: item.field?.key || null,
+    })),
+  };
+}
+
+async function getExplicitTags(clubId) {
+  const settings = await db.setting.findFirst({
+    where: { clubId, key: 'crm_tags' }
+  });
+  if (!settings?.value) return [];
+  try { return JSON.parse(settings.value); } catch { return []; }
+}
+
+/**
+ * Sincroniza los campos personalizados de UN contacto. Sólo acepta campos del
+ * club y reemplaza el conjunto de valores de ese contacto: lo que la ficha no
+ * envía queda vacío, igual que ve el administrador en pantalla.
+ */
+async function syncContactCustomFields(clubId, contactId, customFields) {
+  if (!Array.isArray(customFields)) return;
+
+  const clubFields = await db.whatsAppCustomField.findMany({
+    where: { clubId },
+    select: { id: true }
+  });
+  const clubFieldIds = new Set(clubFields.map((field) => field.id));
+
+  const submitted = [];
+  for (const item of customFields) {
+    const fieldId = item?.fieldId ? String(item.fieldId) : '';
+    if (!fieldId || !clubFieldIds.has(fieldId)) continue;
+    if (item.value === undefined || item.value === null || item.value === '') continue;
+    submitted.push({ fieldId, value: String(item.value) });
+  }
+
+  const submittedIds = new Set(submitted.map((item) => item.fieldId));
+  const toDelete = [...clubFieldIds].filter((fieldId) => !submittedIds.has(fieldId));
+
+  await db.$transaction(async (tx) => {
+    for (const item of submitted) {
+      await tx.crmCustomFieldValue.upsert({
+        where: { contactId_fieldId: { contactId, fieldId: item.fieldId } },
+        update: { value: item.value },
+        create: { contactId, fieldId: item.fieldId, value: item.value }
+      });
+    }
+    if (toDelete.length) {
+      await tx.crmCustomFieldValue.deleteMany({
+        where: { contactId, fieldId: { in: toDelete } }
+      });
+    }
+  });
+}
 
 export const getContacts = async (req, res) => {
   try {
@@ -8,7 +91,7 @@ export const getContacts = async (req, res) => {
     const { search, tags, lists, status, page = 1, limit = 50 } = req.query;
 
     const where = { clubId };
-    
+
     if (search) {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
@@ -16,7 +99,7 @@ export const getContacts = async (req, res) => {
         { phone: { contains: search, mode: 'insensitive' } },
       ];
     }
-    
+
     if (status) {
       where.status = status;
     }
@@ -33,46 +116,71 @@ export const getContacts = async (req, res) => {
       };
     }
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    let institutionalIds = null;
+    if (hasInstitutionalFilters(req.query)) {
+      await ensureInstitutionalSchema();
+
+      const idSets = [];
+      const filters = { ...req.query };
+      const segmentKey = filters.institutionalSegment;
+      delete filters.institutionalSegment;
+
+      if (segmentKey) {
+        const segment = await resolveInstitutionalSegment(clubId, String(segmentKey));
+        if (segment.error) return res.status(400).json({ error: segment.error });
+        idSets.push(new Set(segment.contacts.map((contact) => contact.id)));
+      }
+      if (hasInstitutionalFilters(filters)) {
+        const filtered = await filterInstitutionalContactIds(clubId, filters);
+        idSets.push(new Set(filtered.ids));
+      }
+
+      if (idSets.length === 1) {
+        institutionalIds = [...idSets[0]];
+      } else if (idSets.length > 1) {
+        institutionalIds = [...idSets[0]].filter((id) => idSets[1].has(id));
+      } else {
+        institutionalIds = [];
+      }
+
+      if (!institutionalIds.length) {
+        return res.json({
+          contacts: [],
+          total: 0,
+          page: parseInt(page),
+          totalPages: 0,
+        });
+      }
+      where.id = { in: institutionalIds };
+    }
+
+    const pageNumber = Math.max(1, parseInt(page) || 1);
+    const pageSize = Math.max(1, Math.min(parseInt(limit) || 50, 200));
+    const skip = (pageNumber - 1) * pageSize;
 
     const [contacts, total] = await Promise.all([
       db.crmContact.findMany({
         where,
         skip,
-        take: parseInt(limit),
+        take: pageSize,
         orderBy: { createdAt: 'desc' },
-        include: {
-          listMemberships: { include: { list: true } },
-          club: { select: { id: true, name: true } }
-        }
+        include: contactInclude
       }),
       db.crmContact.count({ where })
     ]);
 
-    // Fetch tags settings to map colors correctly
-    const settings = await db.setting.findFirst({
-      where: { clubId, key: 'crm_tags' }
-    });
-    let explicitTags = [];
-    if (settings && settings.value) {
-      try { explicitTags = JSON.parse(settings.value); } catch (e) {}
-    }
-
-    // Map to a cleaner structure for the frontend
-    const mappedContacts = contacts.map(c => ({
-      ...c,
-      tags: c.tags ? c.tags.map(t => {
-         const explicit = explicitTags.find(et => et.name === t);
-         return { id: t, name: t, color: explicit ? explicit.color : '#3B82F6' };
-      }) : [],
-      lists: c.listMemberships ? c.listMemberships.map(lm => lm.list) : [],
-    }));
+    // La completitud y el estado de plataforma vienen del Directorio; nunca se
+    // recalculan en el CRM. El tenant del contacto se devuelve como `origin`.
+    await ensureInstitutionalSchema();
+    const enriched = await enrichContactPage(clubId, contacts);
+    const explicitTags = await getExplicitTags(clubId);
+    const mappedContacts = enriched.map((contact) => serializeContact(contact, explicitTags));
 
     res.json({
       contacts: mappedContacts,
       total,
-      page: parseInt(page),
-      totalPages: Math.ceil(total / parseInt(limit))
+      page: pageNumber,
+      totalPages: Math.ceil(total / pageSize)
     });
   } catch (error) {
     console.error('Error fetching CRM contacts:', error);
@@ -85,21 +193,25 @@ export const getContactById = async (req, res) => {
     const { id } = req.params;
     const clubId = await resolveClubId(req);
 
-    const contact = await db.crmContact.findFirst({
-      where: { id, clubId },
-      include: {
-        listMemberships: { include: { list: true } },
-      }
-    });
-
-    if (!contact) {
+    await ensureInstitutionalSchema();
+    const detail = await getInstitutionalContactDetail(clubId, id);
+    if (!detail) {
       return res.status(404).json({ error: 'Contacto no encontrado' });
     }
 
+    const explicitTags = await getExplicitTags(clubId);
     const mapped = {
-      ...contact,
-      tags: contact.tags ? contact.tags.map(t => ({ id: t, name: t, color: '#3B82F6' })) : [],
-      lists: contact.listMemberships ? contact.listMemberships.map(lm => lm.list) : [],
+      ...serializeContact(detail.contact, explicitTags),
+      // La ficha inteligente consume estos bloques sin tener que hacer una
+      // segunda petición. `contact.institutional` sigue siendo la fuente.
+      institutionalDetail: {
+        candidates: detail.candidates,
+        audit: detail.audit,
+        profile: detail.profile,
+        completion: detail.completion,
+        platformStatus: detail.platformStatus,
+        alerts: detail.alerts,
+      },
     };
 
     res.json(mapped);
@@ -166,18 +278,19 @@ export const createContact = async (req, res) => {
         }),
         tags: tags && tags.length > 0 ? tags : []
       },
-      include: {
-        listMemberships: { include: { list: true } }
-      }
+      include: contactInclude
     });
 
-    const mapped = {
-      ...newContact,
-      tags: newContact.tags ? newContact.tags.map(t => ({ id: t, name: t, color: '#3B82F6' })) : [],
-      lists: newContact.listMemberships ? newContact.listMemberships.map(lm => lm.list) : [],
-    };
+    await syncContactCustomFields(clubId, newContact.id, customFields);
 
-    res.status(201).json(mapped);
+    await ensureInstitutionalSchema();
+    const fresh = await db.crmContact.findFirst({
+      where: { id: newContact.id, clubId },
+      include: contactInclude
+    });
+    const [enriched] = await enrichContactPage(clubId, [fresh]);
+    const explicitTags = await getExplicitTags(clubId);
+    res.status(201).json(serializeContact(enriched || fresh || newContact, explicitTags));
   } catch (error) {
     console.error('Error creating CRM contact:', error);
     res.status(500).json({ error: error.message });
@@ -238,27 +351,33 @@ export const updateContact = async (req, res) => {
       delete updates.lists;
     }
 
-    // Removed hallucinated customFields operations
-    if (updates.customFields) {
-      delete updates.customFields;
-    }
+    const customFields = updates.customFields;
+    delete updates.customFields;
+    // El club del contacto es el tenant de origen; no se cambia desde la ficha
+    // ni desde un payload arbitrario.
+    delete updates.clubId;
+    delete updates.id;
+    delete updates.createdAt;
+    delete updates.updatedAt;
 
     // Update basic info
-    const updated = await db.crmContact.update({
+    await db.crmContact.update({
       where: { id },
       data: updates,
-      include: {
-        listMemberships: { include: { list: true } }
-      }
+      include: contactInclude
     });
 
-    const mapped = {
-      ...updated,
-      tags: updated.tags ? updated.tags.map(t => ({ id: t, name: t, color: '#3B82F6' })) : [],
-      lists: updated.listMemberships ? updated.listMemberships.map(lm => lm.list) : [],
-    };
+    await syncContactCustomFields(clubId, id, customFields);
 
-    res.json(mapped);
+    await ensureInstitutionalSchema();
+    const fresh = await db.crmContact.findFirst({
+      where: { id, clubId },
+      include: contactInclude
+    });
+    const [enriched] = await enrichContactPage(clubId, [fresh]);
+    const explicitTags = await getExplicitTags(clubId);
+
+    res.json(serializeContact(enriched || fresh, explicitTags));
   } catch (error) {
     console.error('Error updating CRM contact:', error);
     res.status(500).json({ error: error.message });

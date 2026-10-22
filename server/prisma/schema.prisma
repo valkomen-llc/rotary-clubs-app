@@ -783,6 +783,7 @@ model EmailCampaign {
   listId          String?   // id de CrmList cuando audience='list' (compat.; se conserva el primero de listIds)
   listIds         String[]  @default([]) // varias listas del CRM cuando audience='list' (v4.575)
   segmentTag      String?   // etiqueta del CRM cuando audience='tag'
+  institutionalSegment String? // segmento dinámico del CRM institucional (v4.1234)
   status          String    @default("draft") // draft | scheduled | sending | sent | failed
   scheduledAt     DateTime? // fecha/hora programada de envío cuando status='scheduled'
   totalRecipients Int       @default(0)

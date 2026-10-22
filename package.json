@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1233.0",
-  "cache_bust": "4.1233.0",
+  "version": "4.1234.0",
+  "cache_bust": "4.1234.0",
   "type": "module",
-  "//": "UI V4.1233.0 | 2026-10-22 (Optimización del Formulario de Registro de Clubes a 6 Pasos, Selección Dinámica de Patrocinador Rotario para Rotaract e Interact, y Barra de Navegación Adaptable Escritorio y Móvil)",
+  "//": "UI V4.1234.0 | 2026-10-22 (CRM Institucional: conciliación con el Directorio Oficial, vínculos club/cargo/período, ficha 360°, segmentos dinámicos y analítica institucional)",
   "scripts": {
     "dev": "vite",
     "bundle:server-blocks": "npx esbuild src/lib/emailBlocks.ts --bundle --platform=node --format=esm --target=node18 --outfile=server/lib/emailBlocks.js",

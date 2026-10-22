@@ -18,7 +18,7 @@ import CampaignAnalytics from '../../components/admin/email-marketing/CampaignAn
 
 // El super administrador (rol 'administrator') gestiona el proveedor de correo (config de plataforma).
 const isSuperAdmin = (() => { try { return JSON.parse(localStorage.getItem('rotary_user') || '{}').role === 'administrator'; } catch { return false; } })();
-import { EmailDesign, DEFAULT_DESIGN, DEFAULT_SETTINGS, parseDesign, renderDesignToHtml, newId } from '../../lib/emailBlocks';
+import { type EmailDesign, DEFAULT_DESIGN, DEFAULT_SETTINGS, parseDesign, renderDesignToHtml, newId } from '../../lib/emailBlocks';
 
 interface Campaign {
     id: string;
@@ -27,10 +27,11 @@ interface Campaign {
     fromName?: string | null;
     preheader?: string | null;
     content: string;
-    audience: 'all' | 'list' | 'tag';
+    audience: 'all' | 'list' | 'tag' | 'institutional';
     listId?: string | null;
     listIds?: string[] | null;
     segmentTag?: string | null;
+    institutionalSegment?: string | null;
     status: 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed';
     scheduledAt?: string | null;
     totalRecipients: number;
@@ -109,10 +110,11 @@ const emptyForm = {
     fromName: '',
     preheader: '',
     content: '<h2>Hola 👋</h2>\n<p>Escribe aquí el contenido de tu campaña.</p>',
-    audience: 'all' as 'all' | 'list' | 'tag',
+    audience: 'all' as 'all' | 'list' | 'tag' | 'institutional',
     listId: '',
     listIds: [] as string[],
     segmentTag: '',
+    institutionalSegment: '',
     scheduleEnabled: false,
     scheduledAt: '',
     abEnabled: false,
@@ -148,6 +150,7 @@ const EmailMarketing: React.FC = () => {
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);
     const [lists, setLists] = useState<CrmList[]>([]);
     const [tags, setTags] = useState<string[]>([]);
+    const [institutionalSegments, setInstitutionalSegments] = useState<Array<{ key: string; label: string; description?: string }>>([]);
     const [templates, setTemplates] = useState<EmailTemplate[]>([]);
     const [stats, setStats] = useState<Stats | null>(null);
     const [loading, setLoading] = useState(true);
@@ -204,6 +207,16 @@ const EmailMarketing: React.FC = () => {
         } catch { /* las etiquetas son opcionales */ }
     }, []);
 
+    const fetchInstitutionalSegments = useCallback(async () => {
+        try {
+            const res = await fetch(`${API}/crm/institutional/catalog`, { headers: authHeaders() });
+            if (res.ok) {
+                const data = await res.json();
+                setInstitutionalSegments(data.segments || []);
+            }
+        } catch { /* el segmento institucional es opcional */ }
+    }, []);
+
     const fetchTemplates = useCallback(async () => {
         // Biblioteca central versionada (v4.1166/67): la misma que Campañas de
         // Contenido. `/communications` queda solo como respaldo de lectura.
@@ -235,8 +248,9 @@ const EmailMarketing: React.FC = () => {
         fetchStats();
         fetchLists();
         fetchTags();
+        fetchInstitutionalSegments();
         fetchTemplates();
-    }, [fetchCampaigns, fetchStats, fetchLists, fetchTags, fetchTemplates]);
+    }, [fetchCampaigns, fetchStats, fetchLists, fetchTags, fetchInstitutionalSegments, fetchTemplates]);
 
     const loadTemplate = async (id: string) => {
         // Lee el snapshot versionado central (no la lista resumida): lo que se
@@ -308,12 +322,13 @@ const EmailMarketing: React.FC = () => {
         const params = new URLSearchParams({ audience: form.audience });
         if (form.audience === 'list' && form.listIds.length) params.set('listIds', form.listIds.join(','));
         if (form.audience === 'tag' && form.segmentTag) params.set('segmentTag', form.segmentTag);
+        if (form.audience === 'institutional' && form.institutionalSegment) params.set('institutionalSegment', form.institutionalSegment);
         fetch(`${API}/email-marketing/audience?${params.toString()}`, { headers: authHeaders() })
             .then(r => r.ok ? r.json() : { count: 0 })
             .then(d => { if (!cancelled) setAudienceCount(d.count ?? 0); })
             .catch(() => { if (!cancelled) setAudienceCount(0); });
         return () => { cancelled = true; };
-    }, [isModalOpen, form.audience, form.listIds, form.segmentTag]);
+    }, [isModalOpen, form.audience, form.listIds, form.segmentTag, form.institutionalSegment]);
 
     const openModal = (c?: Campaign) => {
         setPreview(false);
@@ -330,6 +345,7 @@ const EmailMarketing: React.FC = () => {
                 listId: c.listId || '',
                 listIds: (c.listIds && c.listIds.length ? c.listIds : (c.listId ? [c.listId] : [])),
                 segmentTag: c.segmentTag || '',
+                institutionalSegment: c.institutionalSegment || '',
                 scheduleEnabled: c.status === 'scheduled',
                 scheduledAt: toLocalInput(c.scheduledAt),
                 abEnabled: !!c.abEnabled,
@@ -617,7 +633,9 @@ const EmailMarketing: React.FC = () => {
                                     : (lists.find(l => l.id === campaignListIds[0])?.name || 'Lista'))
                                 : c.audience === 'tag'
                                     ? `Etiqueta: ${c.segmentTag || '—'}`
-                                    : 'Todos los contactos';
+                                    : c.audience === 'institutional'
+                                        ? `Institucional: ${institutionalSegments.find(s => s.key === c.institutionalSegment)?.label || c.institutionalSegment || '—'}`
+                                        : 'Todos los contactos';
                             return (
                                 <tr key={c.id} className="hover:bg-gray-50 transition-colors">
                                     <td className="px-6 py-4">
@@ -773,11 +791,12 @@ const EmailMarketing: React.FC = () => {
                                     <select
                                         className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none bg-white"
                                         value={form.audience}
-                                        onChange={(e) => setForm({ ...form, audience: e.target.value as 'all' | 'list' | 'tag' })}
+                                        onChange={(e) => setForm({ ...form, audience: e.target.value as 'all' | 'list' | 'tag' | 'institutional' })}
                                     >
                                         <option value="all">Todos los contactos</option>
                                         <option value="list">Una lista específica</option>
                                         <option value="tag">Por etiqueta</option>
+                                        <option value="institutional">Segmento institucional (Directorio)</option>
                                     </select>
                                 </div>
                                 {form.audience === 'tag' && (
@@ -796,6 +815,25 @@ const EmailMarketing: React.FC = () => {
                                     </div>
                                 )}
                             </div>
+
+                            {form.audience === 'institutional' && (
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">Segmento institucional</label>
+                                    <select
+                                        className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none bg-white"
+                                        value={form.institutionalSegment}
+                                        onChange={(e) => setForm({ ...form, institutionalSegment: e.target.value })}
+                                    >
+                                        <option value="">— Seleccionar segmento —</option>
+                                        {institutionalSegments.map((segment) => (
+                                            <option key={segment.key} value={segment.key}>{segment.label}</option>
+                                        ))}
+                                    </select>
+                                    <p className="text-[11px] text-gray-400 mt-1">
+                                        Se recalcula al enviar: club confirmado, cargo, distrito, estado Club Platform o completitud del Directorio. No se guarda una lista fija de contactos.
+                                    </p>
+                                </div>
+                            )}
 
                             {form.audience === 'list' && (
                                 <div>

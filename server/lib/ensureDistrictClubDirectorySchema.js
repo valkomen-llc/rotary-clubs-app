@@ -7,6 +7,12 @@
 import db from './db.js';
 import { CLUBS_4281 } from './rotaryClubs.js';
 import { norm } from './publicClubs.js';
+import { calculateProfileCompletion } from './profileCompletion.js';
+
+// Se conserva el export histórico: media docena de módulos lo importa desde
+// acá. La fórmula vive ahora en `profileCompletion.js` para que el CRM pueda
+// describir las categorías pendientes sin duplicar pesos.
+export { calculateProfileCompletion };
 
 let _ready = false;
 
@@ -19,41 +25,6 @@ export function slugifyClub(name) {
     .replace(/^(club\s+rotario|rotary\s+club|rotary\s+e-club|rotary|club\s+rotaract|rotaract|club\s+interact|interact)\s+/gi, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '') || 'club';
-}
-
-/** Calcula el porcentaje de completitud institucional del perfil (0 a 100%) */
-export function calculateProfileCompletion(data) {
-  let score = 0;
-  // 1. Identidad básica (25 pts)
-  if (data.officialName || data.clubName) score += 5;
-  if (data.description && data.description.length > 20) score += 5;
-  if (data.history && data.history.length > 20) score += 5;
-  if (data.logoUrl) score += 5;
-  if (data.coverImageUrl) score += 5;
-
-  // 2. Nuestro club y ubicación (20 pts)
-  if (data.city) score += 5;
-  if (data.foundationYear || data.foundationDate) score += 5;
-  if (data.meetingAddress) score += 5;
-  if (data.meetingSchedule) score += 5;
-
-  // 3. Liderazgo y membresía (20 pts)
-  if (data.currentPresident) score += 10;
-  if (data.rotaryPeriod) score += 5;
-  if (Array.isArray(data.boardMembers) && data.boardMembers.length > 0) score += 5;
-
-  // 4. Proyectos e impacto (15 pts)
-  if (Array.isArray(data.featuredProjects) && data.featuredProjects.length > 0) score += 10;
-  if (Array.isArray(data.serviceAreas) && data.serviceAreas.length > 0) score += 5;
-
-  // 5. Galería multimedia (10 pts)
-  if (Array.isArray(data.gallery) && data.gallery.length > 0) score += 10;
-
-  // 6. Contacto y canales (10 pts)
-  if (data.contactEmail || data.contactPhone) score += 5;
-  if (data.websiteUrl || (data.socialMedia && Object.keys(data.socialMedia).length > 0)) score += 5;
-
-  return Math.min(100, Math.max(0, score));
 }
 
 /**
