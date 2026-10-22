@@ -1247,11 +1247,27 @@ export const normalizeInstitutionalDesign = (rawDesign?: EmailDesign | null): Em
             : "'Open Sans', Helvetica, Arial, sans-serif",
     };
 
-    const headerIdx = base.blocks.findIndex((b) => b.globalKey === 'rotary_header');
     let newBlocks = [...base.blocks];
 
-    if (headerIdx !== -1) {
-        const hdr = base.blocks[headerIdx] as GlobalBlockItem;
+    // 1. Garantizar Cabecera Institucional en el índice 0
+    const headerIdx = newBlocks.findIndex((b) => b.type === 'global' && (b as GlobalBlockItem).globalKey === 'rotary_header');
+    if (headerIdx === -1) {
+        newBlocks.unshift({
+            id: newId(),
+            type: 'global',
+            globalKey: 'rotary_header',
+            label: 'Cabecera Institucional Adaptable',
+            isProtected: true,
+            isLocked: false,
+            logoUrl: '',
+            logoMaxWidth: 400,
+            logoMaxHeight: 92,
+            align: 'center',
+            bgColor: '#ffffff',
+            padding: '24px 20px',
+        });
+    } else {
+        const hdr = newBlocks[headerIdx] as GlobalBlockItem;
         const oldTitle = hdr.title ? String(hdr.title).replace(/<br\s*\/?>/gi, '\n').trim() : '';
 
         const cleanedHeader: GlobalBlockItem = {
@@ -1261,8 +1277,8 @@ export const normalizeInstitutionalDesign = (rawDesign?: EmailDesign | null): Em
             bgColor: hdr.bgColor || hdr.bgGradient || '#ffffff',
             bgGradient: hdr.bgGradient || undefined,
             padding: hdr.padding || '24px 20px',
-            logoMaxWidth: typeof hdr.logoMaxWidth === 'number' && hdr.logoMaxWidth > 0 ? hdr.logoMaxWidth : 240,
-            logoMaxHeight: typeof hdr.logoMaxHeight === 'number' && hdr.logoMaxHeight > 0 ? hdr.logoMaxHeight : 60,
+            logoMaxWidth: typeof hdr.logoMaxWidth === 'number' && hdr.logoMaxWidth > 0 ? hdr.logoMaxWidth : 400,
+            logoMaxHeight: typeof hdr.logoMaxHeight === 'number' && hdr.logoMaxHeight > 0 ? hdr.logoMaxHeight : 92,
             title: undefined,
             subtitle: undefined,
             badge: undefined,
@@ -1287,7 +1303,7 @@ export const normalizeInstitutionalDesign = (rawDesign?: EmailDesign | null): Em
         }
     }
 
-    // Normalizar bloques de contenido (categorías y botón CTA)
+    // 2. Normalizar bloques de contenido (categorías, botones, tipografías, cta y footer)
     newBlocks = newBlocks.map((b) => {
         if (b.globalKey === 'rotary_areas_focus' || b.globalKey === 'rotary_categories') {
             const gb = b as GlobalBlockItem;
@@ -1332,16 +1348,12 @@ export const normalizeInstitutionalDesign = (rawDesign?: EmailDesign | null): Em
                 title: cp.title || '¡Activa el ecosistema digital de tu club!',
                 subtitle: cp.subtitle !== undefined ? cp.subtitle : 'Conecta, comunica y potencia el impacto de tu club con Club Platform.',
                 buttonText: cp.buttonText || 'ACTIVAR MI CLUB',
-                buttonHref: cp.buttonHref || 'https://clubplatform.org?utm_source=email_marketing&utm_medium=campaign&utm_campaign=cta_club_platform',
+                buttonHref: cp.buttonHref || 'https://rotary4281.org/activar-mi-club',
                 buttonBg: cp.buttonBg || '#f7a81b',
                 buttonColor: cp.buttonColor || '#0c2340',
-                buttonRadius: cp.buttonRadius ?? 24,
-                bgType: cp.bgType || 'gradient',
-                bgGradientStart: cp.bgGradientStart || '#013388',
-                bgGradientEnd: cp.bgGradientEnd || '#0c2340',
-                bgGradientAngle: typeof cp.bgGradientAngle === 'number' ? cp.bgGradientAngle : 180,
-                bgGradientType: cp.bgGradientType || 'linear',
-                bgColor: cp.bgColor || '#0c2340',
+                buttonRadius: cp.buttonRadius ?? 20,
+                bgType: cp.bgType || 'solid',
+                bgColor: cp.bgColor || '#0C3C7C',
                 textColor: cp.textColor || '#ffffff',
                 titleColor: cp.titleColor || cp.textColor || '#ffffff',
                 subtitleColor: cp.subtitleColor || cp.textColor || '#ffffff',
@@ -1353,28 +1365,152 @@ export const normalizeInstitutionalDesign = (rawDesign?: EmailDesign | null): Em
                 ...rf,
                 label: 'Pie de Página Institucional Protegido',
                 bgType: rf.bgType || 'solid',
-                bgColor: rf.bgColor || '#0c2340',
-                bgGradientStart: rf.bgGradientStart || rf.bgColor || '#0c2340',
-                bgGradientEnd: rf.bgGradientEnd || rf.bgColor || '#0c2340',
+                bgColor: rf.bgColor || '#28354B',
+                bgGradientStart: rf.bgGradientStart || rf.bgColor || '#28354B',
+                bgGradientEnd: rf.bgGradientEnd || rf.bgColor || '#28354B',
                 bgGradientAngle: typeof rf.bgGradientAngle === 'number' ? rf.bgGradientAngle : 180,
                 textColor: rf.textColor || '#94a3b8',
                 titleColor: rf.titleColor || '#ffffff',
                 linkColor: rf.linkColor || '#cbd5e1',
                 socialIconStyle: rf.socialIconStyle || 'white',
-                socialIconSize: rf.socialIconSize || 28,
+                socialIconSize: rf.socialIconSize || 30,
                 socialIconGap: rf.socialIconGap || 12,
                 socialLinks: Array.isArray(rf.socialLinks) && rf.socialLinks.length > 0 ? rf.socialLinks : DEFAULT_FOOTER_SOCIAL_LINKS,
                 showWhatsapp: rf.showWhatsapp !== false,
                 showWhatsappIcon: rf.showWhatsappIcon !== false,
                 whatsappColor: rf.whatsappColor || '#ffffff',
                 whatsappText: rf.whatsappText || 'Asistencia directa a través de WhatsApp',
-                whatsappUrl: rf.whatsappUrl !== undefined ? rf.whatsappUrl : 'https://wa.me/573108520231',
-                whatsappFontSize: rf.whatsappFontSize || 13,
-                whatsappFontWeight: rf.whatsappFontWeight || '600',
+                whatsappUrl: rf.whatsappUrl !== undefined ? rf.whatsappUrl : 'https://wa.me/573114308882',
+                whatsappFontSize: rf.whatsappFontSize || 12,
+                whatsappFontWeight: rf.whatsappFontWeight || '400',
+                logoUrl: rf.logoUrl || 'https://rotaryd4281.s3.amazonaws.com/media/poa_horizontallockup_rev_es-1.png',
+                footerText: rf.footerText || 'Copyright © 2026 Rotary Distrito 4281. Todos los derechos reservados.<br/><a href="{{unsubscribe_url}}" target="_blank" style="color:#cbd5e1;text-decoration:underline">Preferencias de comunicación y cancelar suscripción</a>',
             };
         }
         return b;
     });
+
+    // 3. Garantizar Botón CTA Oficial si la plantilla carece de él
+    if (!newBlocks.some((b) => b.type === 'button')) {
+        const insertIdx = newBlocks.findIndex((b) =>
+            b.type === 'global' && ['rotary_signature', 'club_platform_cta', 'rotary_footer'].includes((b as GlobalBlockItem).globalKey || '')
+        );
+        const defaultBtn: ButtonBlock = {
+            id: newId(),
+            type: 'button',
+            text: 'ACTUALIZAR EL PERFIL DE MI CLUB',
+            href: '{{club.update_form_url|https://app.clubplatform.org/clubes/registro}}',
+            bg: '#0C3C7C',
+            color: '#ffffff',
+            align: 'center',
+            radius: 12,
+            fontFamily: "'Open Sans', Helvetica, Arial, sans-serif",
+            fontWeight: '700',
+            fontSize: 15,
+            label: 'Botón CTA Oficial',
+            isProtected: false,
+        };
+        if (insertIdx !== -1) {
+            newBlocks.splice(insertIdx, 0, defaultBtn);
+        } else {
+            newBlocks.push(defaultBtn);
+        }
+    }
+
+    // 4. Garantizar Firma Oficial Distrital si la plantilla carece de ella
+    if (!newBlocks.some((b) => b.type === 'global' && (b as GlobalBlockItem).globalKey === 'rotary_signature')) {
+        const footerOrCtaIdx = newBlocks.findIndex((b) =>
+            b.type === 'global' && ['club_platform_cta', 'rotary_footer'].includes((b as GlobalBlockItem).globalKey || '')
+        );
+        const defaultSig: GlobalBlockItem = {
+            id: newId(),
+            type: 'global',
+            globalKey: 'rotary_signature',
+            label: 'Firma Oficial Distrital',
+            isProtected: true,
+            isLocked: false,
+            title: 'Comité Distrital de Imagen Pública y Comunicaciones',
+            subtitle: 'Distrito 4281 de Rotary International',
+            motto: '«Dar de sí antes de pensar en sí»',
+            bgColor: '#f8fafc',
+            borderColor: '#013388',
+        };
+        if (footerOrCtaIdx !== -1) {
+            newBlocks.splice(footerOrCtaIdx, 0, defaultSig);
+        } else {
+            newBlocks.push(defaultSig);
+        }
+    }
+
+    // 5. Garantizar CTA Promocional Club Platform si la plantilla carece de él
+    if (!newBlocks.some((b) => b.type === 'global' && (b as GlobalBlockItem).globalKey === 'club_platform_cta')) {
+        const footerIdx = newBlocks.findIndex((b) =>
+            b.type === 'global' && (b as GlobalBlockItem).globalKey === 'rotary_footer'
+        );
+        const defaultCta: GlobalBlockItem = {
+            id: newId(),
+            type: 'global',
+            globalKey: 'club_platform_cta',
+            label: 'CTA Promocional Club Platform',
+            isProtected: true,
+            isLocked: true,
+            enabled: true,
+            title: '¡Activa el ecosistema digital de tu club!',
+            subtitle: 'Conecta, comunica y potencia el impacto de tu club con Club Platform.',
+            buttonText: 'ACTIVAR MI CLUB',
+            buttonHref: 'https://rotary4281.org/activar-mi-club',
+            buttonBg: '#f7a81b',
+            buttonColor: '#0c2340',
+            buttonRadius: 20,
+            bgType: 'solid',
+            bgColor: '#0C3C7C',
+            textColor: '#ffffff',
+            titleColor: '#ffffff',
+            subtitleColor: '#ffffff',
+            padTop: 0,
+            padBottom: 0,
+        };
+        if (footerIdx !== -1) {
+            newBlocks.splice(footerIdx, 0, defaultCta);
+        } else {
+            newBlocks.push(defaultCta);
+        }
+    }
+
+    // 6. Garantizar Pie de Página Institucional Protegido si la plantilla carece de él
+    if (!newBlocks.some((b) => b.type === 'global' && (b as GlobalBlockItem).globalKey === 'rotary_footer')) {
+        newBlocks.push({
+            id: newId(),
+            type: 'global',
+            globalKey: 'rotary_footer',
+            label: 'Pie de Página Institucional Protegido',
+            isProtected: true,
+            isLocked: false,
+            title: '¡SÍGUENOS Y COMPARTE EL ORGULLO ROTARIO!',
+            bgType: 'solid',
+            bgColor: '#28354B',
+            titleColor: '#ffffff',
+            textColor: '#94a3b8',
+            linkColor: '#cbd5e1',
+            showAreas: false,
+            showSocial: true,
+            socialIconStyle: 'white',
+            socialIconSize: 30,
+            socialIconGap: 12,
+            socialLinks: DEFAULT_FOOTER_SOCIAL_LINKS,
+            showWhatsapp: true,
+            showWhatsappIcon: true,
+            whatsappColor: '#ffffff',
+            whatsappText: 'Asistencia directa a través de WhatsApp',
+            whatsappUrl: 'https://wa.me/573114308882',
+            whatsappFontSize: 12,
+            whatsappFontWeight: '400',
+            logoUrl: 'https://rotaryd4281.s3.amazonaws.com/media/poa_horizontallockup_rev_es-1.png',
+            footerText: 'Copyright © 2026 Rotary Distrito 4281. Todos los derechos reservados.<br/><a href="{{unsubscribe_url}}" target="_blank" style="color:#cbd5e1;text-decoration:underline">Preferencias de comunicación y cancelar suscripción</a>',
+            padTop: 0,
+            padBottom: 0,
+        });
+    }
 
     return {
         ...base,

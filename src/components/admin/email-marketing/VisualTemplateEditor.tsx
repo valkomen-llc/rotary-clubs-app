@@ -2034,7 +2034,7 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
           <div className="hidden lg:flex items-center bg-slate-100 rounded-xl p-0.5 border border-slate-200 text-xs">
             <button
               onClick={() => setZoomLevel((z) => Math.max(z - 15, 60))}
-              className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-white rounded-lg transition-colors"
+              className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-white rounded-lg transition-colors cursor-pointer"
               title="Reducir Zoom"
             >
               <ZoomOut className="w-3.5 h-3.5" />
@@ -2044,10 +2044,23 @@ export const VisualTemplateEditor: React.FC<VisualTemplateEditorProps> = ({
             </span>
             <button
               onClick={() => setZoomLevel((z) => Math.min(z + 15, 140))}
-              className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-white rounded-lg transition-colors"
+              className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-white rounded-lg transition-colors cursor-pointer"
               title="Aumentar Zoom"
             >
               <ZoomIn className="w-3.5 h-3.5" />
+            </button>
+            <div className="w-px h-3.5 bg-slate-300 mx-0.5" />
+            <button
+              type="button"
+              onClick={() => setZoomLevel((z) => (z === 100 ? 65 : 100))}
+              className={`px-2 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                zoomLevel !== 100
+                  ? 'bg-rotary-blue text-white shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+              }`}
+              title={zoomLevel === 100 ? 'Ajustar para ver plantilla completa en pantalla (65%)' : 'Restaurar tamaño de edición al 100%'}
+            >
+              {zoomLevel === 100 ? 'Ver Completa' : '100%'}
             </button>
           </div>
         </div>

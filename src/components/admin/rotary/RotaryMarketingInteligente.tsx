@@ -20,6 +20,7 @@ import { useClub } from '../../../contexts/ClubContext';
 import {
   renderDesignToHtml, parseDesign, getActiveSiteBrandingContext,
   cleanUnresolvedVariables, createChannelCampaignDesign,
+  normalizeInstitutionalDesign,
   type SiteBrandingContext
 } from '../../../lib/emailBlocks';
 import { APP_VERSION } from '../../../lib/appVersion';
@@ -4009,11 +4010,16 @@ export const RotaryMarketingInteligente: React.FC<RotaryMarketingInteligenteProp
         <VisualTemplateEditor
           campaignContext={visualEditorCampaign}
           initialDesign={
-            visualEditorCampaign.design
-              ? (typeof visualEditorCampaign.design === 'string'
-                  ? JSON.parse(visualEditorCampaign.design)
-                  : visualEditorCampaign.design)
-              : null
+            normalizeInstitutionalDesign(
+              visualEditorCampaign.design
+                ? (typeof visualEditorCampaign.design === 'string'
+                    ? JSON.parse(visualEditorCampaign.design)
+                    : visualEditorCampaign.design)
+                : createChannelCampaignDesign(
+                    visualEditorCampaign.initiative || 'rotary_en_accion',
+                    visualEditorCampaign
+                  )
+            )
           }
           initialName={`[${visualEditorCampaign.code?.toUpperCase() || 'ROTARY'}] ${visualEditorCampaign.name}`}
           initialSubject={visualEditorCampaign.subject}

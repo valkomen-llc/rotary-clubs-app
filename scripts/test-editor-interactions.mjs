@@ -162,3 +162,57 @@ test('RotaryMarketingInteligente: Modal de previsualización ampliado para campa
     'El contenedor de la plantilla debe estar centrado con max-w-[620px]'
   );
 });
+
+test('emailBlocks: normalizeInstitutionalDesign garantiza siempre el formato de plantilla completo (cabecera, botón, firma, cta, footer)', async () => {
+  const { normalizeInstitutionalDesign } = await import('../server/lib/emailBlocks.js');
+
+  // Caso: Un diseño parcial o incompleto con solo texto y encabezado
+  const incompleteDesign = {
+    version: 1,
+    settings: { bg: '#e6e6e6', width: 600 },
+    blocks: [
+      { id: 'b1', type: 'heading', text: 'Título de Prueba' },
+      { id: 'b2', type: 'text', text: 'Cuerpo de prueba' }
+    ]
+  };
+
+  const complete = normalizeInstitutionalDesign(incompleteDesign);
+
+  assert.ok(
+    complete.blocks.some((b) => b.type === 'global' && b.globalKey === 'rotary_header'),
+    'Debe garantizar la presencia de la Cabecera Institucional (rotary_header)'
+  );
+  assert.ok(
+    complete.blocks.some((b) => b.type === 'button'),
+    'Debe garantizar la presencia del Botón CTA Oficial'
+  );
+  assert.ok(
+    complete.blocks.some((b) => b.type === 'global' && b.globalKey === 'rotary_signature'),
+    'Debe garantizar la presencia de la Firma Distrital (rotary_signature)'
+  );
+  assert.ok(
+    complete.blocks.some((b) => b.type === 'global' && b.globalKey === 'club_platform_cta'),
+    'Debe garantizar la presencia del CTA Promocional Club Platform (club_platform_cta)'
+  );
+  assert.ok(
+    complete.blocks.some((b) => b.type === 'global' && b.globalKey === 'rotary_footer'),
+    'Debe garantizar la presencia del Pie de Página Institucional (rotary_footer)'
+  );
+  assert.ok(
+    complete.blocks.length >= 7,
+    'La plantilla completa debe tener al menos 7 bloques con todos los componentes requeridos'
+  );
+});
+
+test('VisualTemplateEditor: Botón Ver Completa (65% / 100%) en controles de zoom', () => {
+  const code = fs.readFileSync(visualEditorPath, 'utf8');
+
+  assert.ok(
+    code.includes('onClick={() => setZoomLevel((z) => (z === 100 ? 65 : 100))}'),
+    'Debe existir el toggle para ver la plantilla completa al 65%'
+  );
+  assert.ok(
+    code.includes('Ver Completa'),
+    'Debe mostrar la etiqueta "Ver Completa" en el botón de zoom'
+  );
+});

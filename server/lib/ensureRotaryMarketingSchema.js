@@ -7,7 +7,8 @@ import {
   createRotaryMasterDesign,
   createDirectorioMasterDesign,
   createFeriaMasterDesign,
-  renderDesignToHtml
+  renderDesignToHtml,
+  normalizeInstitutionalDesign
 } from './emailBlocks.js';
 
 let _ready = false;
@@ -361,27 +362,24 @@ for (const c of PILOT_CAMPAIGNS) {
   if (!c.design) {
     c.design = createRotaryMasterDesign(c);
   }
-  if (!c.contentHtml) {
-    c.contentHtml = renderDesignToHtml(c.design);
-  }
+  c.design = normalizeInstitutionalDesign(c.design);
+  c.contentHtml = renderDesignToHtml(c.design);
 }
 
 for (const c of DIRECTORIO_CAMPAIGNS) {
   if (!c.design) {
     c.design = createDirectorioMasterDesign(c);
   }
-  if (!c.contentHtml) {
-    c.contentHtml = renderDesignToHtml(c.design);
-  }
+  c.design = normalizeInstitutionalDesign(c.design);
+  c.contentHtml = renderDesignToHtml(c.design);
 }
 
 for (const c of FERIA_CAMPAIGNS) {
   if (!c.design) {
     c.design = createFeriaMasterDesign(c);
   }
-  if (!c.contentHtml) {
-    c.contentHtml = renderDesignToHtml(c.design);
-  }
+  c.design = normalizeInstitutionalDesign(c.design);
+  c.contentHtml = renderDesignToHtml(c.design);
 }
 
 export async function ensureRotaryMarketingSchema() {

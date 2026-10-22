@@ -16,7 +16,9 @@ import {
   createDirectorioMasterDesign,
   createFeriaMasterDesign,
   renderDesignToHtml,
-  cleanUnresolvedVariables
+  cleanUnresolvedVariables,
+  normalizeInstitutionalDesign,
+  createChannelCampaignDesign
 } from '../lib/emailBlocks.js';
 
 const fail = (res, e) => {
@@ -486,6 +488,18 @@ export const getCampaigns = async (req, res) => {
       } else if (defaultIdentity) {
         c.senderIdentity = defaultIdentity;
       }
+
+      // Asegurar formato institucional completo (cabecera, contenido, botón, firma, cta, footer)
+      const ch = c.initiative || 'rotary_en_accion';
+      let campDesign = c.design;
+      if (typeof campDesign === 'string') {
+        try { campDesign = JSON.parse(campDesign); } catch { campDesign = null; }
+      }
+      if (!campDesign) {
+        campDesign = createChannelCampaignDesign(ch, c);
+      }
+      c.design = normalizeInstitutionalDesign(campDesign);
+      c.contentHtml = renderDesignToHtml(c.design);
 
       if (c.emailCampaignId) {
         try {
