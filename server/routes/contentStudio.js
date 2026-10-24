@@ -115,7 +115,8 @@ import {
     getStudioFeatures,
     updateStudioFeatures,
     getAllClubsStudioFeatures,
-    requireStudioTool
+    requireStudioTool,
+    OUTRO_READ_TOOLS
 } from '../lib/contentStudioFeatures.js';
 
 const router = express.Router();
@@ -285,11 +286,14 @@ router.post('/outros/speech/summary', authMiddleware, requireStudioTool('outro')
 router.post('/outros/import/preflight', authMiddleware, requireStudioTool('outro'), preflightImport);
 router.post('/outros/import', authMiddleware, requireStudioTool('outro'), importOutro);
 router.get('/outros/music/library', authMiddleware, requireStudioTool('outro'), listOutroMusic);
-router.get('/outros/default', authMiddleware, requireStudioTool('outro'), getDefaultOutro);
+// Las dos LECTURAS que usa el selector «Elegir outro» de los Reels y de la
+// Biblioteca aceptan cualquier herramienta de video (v4.1241): usar un outro
+// guardado no es generarlo. Todo lo que crea, edita o borra sigue en 'outro'.
+router.get('/outros/default', authMiddleware, requireStudioTool(OUTRO_READ_TOOLS), getDefaultOutro);
 router.put('/outros/default', authMiddleware, requireStudioTool('outro'), setDefaultOutro);
 router.delete('/outros/default', authMiddleware, requireStudioTool('outro'), clearDefaultOutro);
 router.post('/outros', authMiddleware, requireStudioTool('outro'), createOutro);
-router.get('/outros', authMiddleware, requireStudioTool('outro'), listOutros);
+router.get('/outros', authMiddleware, requireStudioTool(OUTRO_READ_TOOLS), listOutros);
 router.get('/outros/:id', authMiddleware, requireStudioTool('outro'), getOutro);
 router.patch('/outros/:id', authMiddleware, requireStudioTool('outro'), renameOutro);
 router.get('/outros/:id/sync', authMiddleware, requireStudioTool('outro'), syncOutro);

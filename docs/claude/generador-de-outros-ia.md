@@ -340,3 +340,24 @@ pantalla no se pudo mostrar». Prueba: la sección 5 de
   clave a la respuesta del preflight, hay que agregarla en los tres sitios o la
   prueba dice cuál falta. **La última clave de un objeto no lleva coma**: la
   expresión que las extrae admite fin de línea, o `costs` sale como faltante.
+
+
+## Usar un outro no es generarlo — v4.1241
+
+Reporte: en la ficha de un Reel de rotary4281.org, «Elegir outro» mostraba
+«La herramienta 'outro' no está disponible para este sitio» y no dejaba poner
+el outro guardado desde el Generador. `GET /outros` y `GET /outros/default`
+exigían `requireStudioTool('outro')` —el GENERADOR, apagado en ese sitio desde
+el Control Central de Capacidades— aunque los Reels y la Biblioteca estaban
+habilitados.
+
+- **`requireStudioTool` acepta una lista** y deja pasar si UNA está habilitada
+  (`anyStudioToolEnabled`).
+- **Las dos lecturas del selector** (`GET /outros`, `GET /outros/default`)
+  usan `OUTRO_READ_TOOLS` = `outro`, `video`, `ai_reels`, `library`,
+  `video_library`. Las usa `SavedOutroPicker` (ficha del Reel, Biblioteca) y
+  el Creador de Reels.
+- **Todo lo que crea, importa, edita, predetermina o borra sigue exigiendo
+  `'outro'`.** Poner el outro en un Reel (`PUT /reels/:id/outro`) nunca
+  dependió del generador.
+- Prueba: `npm run test:outro:picker`.

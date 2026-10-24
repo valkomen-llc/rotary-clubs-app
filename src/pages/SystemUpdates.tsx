@@ -42,6 +42,20 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1241.0',
+        title: 'Reels: el outro guardado se puede elegir aunque el Generador de Outros esté apagado en el sitio 🎬✅',
+        description: 'En la ficha de un Reel, «Elegir outro» mostraba «La herramienta \'outro\' no está disponible para este sitio» y no dejaba integrar el outro creado y guardado desde la herramienta de outros. La lista de outros guardados y el outro predeterminado exigían que el Generador de Outros (Outro IA) estuviera habilitado en el sitio, aunque usar un outro ya guardado es parte de los Reels y de la Biblioteca, no del generador. Ahora esas dos lecturas se permiten con cualquier herramienta de video habilitada; crear, importar, editar, predeterminar o borrar outros sigue dependiendo del Generador.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'outro', 'content-studio', 'permisos', 'fix'],
+        type: 'hotfix',
+        impact: 'Alta: el outro guardado se integra al Reel desde su ficha en todos los sitios con Reels habilitados.',
+        changes: [
+            { type: 'fixed', text: 'GET /outros y GET /outros/default aceptan Outro IA, Creador de Video, Reels IA o Biblioteca (antes sólo Outro IA).' },
+            { type: 'changed', text: 'requireStudioTool admite una lista de herramientas: pasa si una está habilitada.' },
+            { type: 'added', text: 'Prueba npm run test:outro:picker: el selector entra con el generador apagado y lo que modifica outros sigue protegido.' },
+        ],
+    },
+    {
         version: '4.1240.0',
         title: 'Voz en off con Google Gemini como respaldo de KIE, y acento colombiano 🎙️🇨🇴',
         description: 'En producción, KIE aceptó la tarea de voz (credencial y créditos en orden) pero su pasarela la terminó con «Error interno, intente más tarde». Ahora KIE reintenta una vez con su otro modelo de voz (ElevenLabs Multilingual v2) y, si vuelve a fallar, la voz se genera automáticamente con Google Gemini TTS, usando la misma clave de Google con la que la plataforma ya escribe los guiones. Gemini habla español y recibe la instrucción de acento: con «Español · Colombia» la locución sale con acento colombiano, con 30 voces a elegir. El audio de Google se convierte a MP3 y se mide como el de cualquier otro motor, sin regenerar escenas.',
