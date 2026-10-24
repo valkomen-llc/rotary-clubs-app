@@ -50,6 +50,8 @@ interface DistributionTabProps {
     club: any;
     user: any;
     targets: DistributionTarget[];
+    /** El sitio de COLROTARIOS, que se ofrece por defecto junto al distrito (v4.1243). */
+    colrotariosId?: string | null;
     aiSuggestions: SuggestedDestination[];
     onSuggestWithAI: () => void;
     isSuggestingAI: boolean;
@@ -61,6 +63,7 @@ export const DistributionTab: React.FC<DistributionTabProps> = ({
     club,
     user,
     targets,
+    colrotariosId = null,
     aiSuggestions,
     onSuggestWithAI,
     isSuggestingAI
@@ -220,6 +223,10 @@ export const DistributionTab: React.FC<DistributionTabProps> = ({
         };
     }, [targets, club?.id, selectedDistrict, formData.targetClubIds]);
 
+    const colrotariosTarget = colrotariosId && colrotariosId !== club?.id
+        ? targets.find(t => t.id === colrotariosId) || null
+        : null;
+
     const isCentral = !club?.id || club.id === 'loading';
     const districtName = isCentral
         ? 'Sistema Central (Club Platform)'
@@ -299,6 +306,30 @@ export const DistributionTab: React.FC<DistributionTabProps> = ({
                         </p>
                     </div>
                 </label>
+
+                {colrotariosTarget && (
+                    <label className="mt-3 flex items-start gap-3.5 p-4 rounded-2xl border border-teal-100 bg-teal-50/50 hover:bg-teal-50 transition-colors cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={formData.targetClubIds.includes(colrotariosTarget.id)}
+                            onChange={() => handleToggleTarget(colrotariosTarget.id)}
+                            className="w-5 h-5 rounded-md text-rotary-blue focus:ring-rotary-blue border-gray-300 mt-0.5 cursor-pointer"
+                        />
+                        <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                                <span className="font-bold text-sm text-gray-900">
+                                    Publicar también en {colrotariosTarget.name}
+                                </span>
+                                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-teal-100 text-teal-800">
+                                    Por defecto
+                                </span>
+                            </div>
+                            <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+                                Lo que se publica en el distrito y en los clubes con el ecosistema activo también se publica en COLROTARIOS{colrotariosTarget.domain ? ` (${colrotariosTarget.domain})` : ''}.
+                            </p>
+                        </div>
+                    </label>
+                )}
             </div>
 
             {/* SECCIÓN 2: DESTINOS SUGERIDOS POR IA O DETECCIÓN */}

@@ -42,6 +42,24 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1243.0',
+        title: 'Noticias: distribuir una noticia ya publicada al distrito y a COLROTARIOS 📰🌐',
+        description: 'En Noticias, el botón «Gestionar destinos de distribución» abría la Trazabilidad con «Este artículo no tiene sitios de distribución asignados» y no ofrecía ningún sitio. Ahora el modal dice quién publicó la noticia y desde qué distrito, muestra su sitio de origen (por ejemplo, el sitio activo de Rotary E-Club Origen) y ofrece por defecto el sitio del distrito y COLROTARIOS, más los demás sitios activos del ecosistema. Se marcan, se pulsa «Guardar distribución» y la noticia queda publicada también allí. El club que publicó la noticia también puede hacerlo, limitado a su distrito y a COLROTARIOS.',
+        date: new Date().toISOString(),
+        tags: ['noticias', 'distribucion', 'colrotarios', 'distrito', 'ecosistema', 'fix'],
+        type: 'hotfix',
+        impact: 'Alta: lo que se publica en el distrito y en los clubes con el ecosistema activo se puede publicar en el distrito y en COLROTARIOS desde el listado de Noticias.',
+        changes: [
+            { type: 'fixed', text: 'El modal de distribución lista los sitios donde se puede publicar la noticia, en vez de decir que no tiene destinos.' },
+            { type: 'added', text: '«Publicado por» con el sitio y el distrito de origen; el sitio de origen aparece fijo, con su enlace.' },
+            { type: 'added', text: 'El sitio del distrito y COLROTARIOS aparecen «Por defecto» y vienen marcados en las noticias que todavía no tienen destinos.' },
+            { type: 'added', text: 'GET y PUT /admin/posts/:id/distribution: el servidor decide qué puede elegir cada cuenta (Club Platform, distrito o el club dueño) y no borra destinos que la cuenta no ve.' },
+            { type: 'added', text: 'En el editor, COLROTARIOS aparece junto al distrito en «Publicación Principal», marcado por defecto en noticias nuevas de un sitio.' },
+            { type: 'fixed', text: '«Retirar» en la tabla de réplicas quita de verdad la noticia de ese sitio (antes sólo marcaba un estado que la página pública no miraba).' },
+            { type: 'added', text: 'Prueba npm run test:posts:distribution (66 comprobaciones).' },
+        ],
+    },
+    {
         version: '4.1242.0',
         title: 'Rotary en Acción: fotos de hasta 50 MB y videos de hasta 2 GB 📸🎥',
         description: 'El formulario de aportes de contenido rechazaba fotos de más de 5 MB y videos de más de 300 MB, lo que dejaba afuera las fotos de cualquier teléfono actual en máxima calidad o de una cámara. Ahora acepta fotos de hasta 50 MB y videos de hasta 2 GB. Los archivos siguen subiendo directo del navegador al almacenamiento, sin pasar por el servidor; la subida espera lo que haga falta según el tamaño del archivo, y el análisis del artículo y la creación de Reels manejan las fotos pesadas: el Reel usa una copia reducida para el motor de video, sin tocar el original.',

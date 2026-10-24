@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1242.0",
-  "cache_bust": "4.1242.0",
+  "version": "4.1243.0",
+  "cache_bust": "4.1243.0",
   "type": "module",
   "//": "UI V4.1235.0 | 2026-10-22 (Editor Visual de Plantillas: persistencia real; las semillas del arranque ya no pisan lo guardado, estado de guardado, autoguardado y protección al salir)",
   "scripts": {
@@ -136,6 +136,7 @@
     "test:payment-methods:ui": "node scripts/test-payment-methods-ui.mjs",
     "test:paypal": "node scripts/test-paypal.mjs",
     "test:posts": "node scripts/test-posts.mjs",
+    "test:posts:distribution": "node scripts/test-post-distribution-plan.mjs",
     "test:rbac": "node scripts/test-rbac.mjs",
     "test:institutional": "node scripts/test-institutional.mjs",
     "test:registrar-pools": "node scripts/test-registrar-pools.mjs",
