@@ -42,6 +42,20 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1246.0',
+        title: 'Reels: «Volver a montar con el outro» funciona en los sitios sin el Creador de Video 🎬🔓',
+        description: 'En rotary4281.org, «Volver a montar con el outro» respondía «La herramienta \'video\' no está disponible para este sitio»: volver a montar exigía el Creador de Video, que es la herramienta para crear Reels nuevos y está apagada en ese sitio. Volver a montar no crea nada ni gasta créditos, así que ahora basta con tener habilitados los Reels, la Biblioteca o la Videoteca. Además, si un Reel no tiene un video base al día (por ejemplo, porque cambió la voz en off), el remontaje se hace en dos pasos automáticos: primero el Reel sin outro y enseguida el outro encima, para que ninguno de los dos se quede sin tiempo.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'outro', 'montaje', 'permisos', 'fix'],
+        type: 'hotfix',
+        impact: 'Alta: el outro se integra al Reel con un clic en todos los sitios con Reels habilitados.',
+        changes: [
+            { type: 'fixed', text: 'POST /reels/:id/render acepta Creador de Video, Reels IA, Biblioteca, Videoteca u Outro IA (antes sólo el Creador). Crear un Reel sigue exigiendo el Creador.' },
+            { type: 'added', text: 'Sin base al día, el remontaje con outro va en dos pasos: la base sin outro y, en la llamada siguiente que la ficha hace sola, el outro encima.' },
+            { type: 'added', text: 'npm run test:reels:outro:append pasa a 60 comprobaciones.' },
+        ],
+    },
+    {
         version: '4.1245.0',
         title: 'Reels: el outro se integra sin agotar el tiempo — se pega sobre el video ya montado 🎬⏱️',
         description: 'Al pulsar «Volver a montar con el outro», el Reel terminaba en «Ningún proveedor de montaje pudo completar el Reel — ffmpeg: montaje del Reel: se agotó el tiempo (224s)». Poner el outro rehacía el Reel entero desde las escenas (clips, rótulos, música y voz), y eso no entraba en el tiempo del servidor. Ahora el video montado sin outro se guarda como base y el outro se pega encima en una sola pasada: medido en las mismas condiciones, 30 s en lugar de 70 s. Cambiar la transición o el outro vuelve a partir de la base, y quitarlo restaura la base sin volver a codificar. No se regenera ninguna escena ni se gastan créditos.',

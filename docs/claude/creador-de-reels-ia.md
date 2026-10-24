@@ -3244,3 +3244,39 @@ ffmpeg empaquetado; se salta sin binario). La sección 11 de
   único cambio audible y está declarado.
 - **NADA DE ESTO REGENERA UNA ESCENA NI GASTA CRÉDITOS.** Una prueba lee el
   cuerpo de `montarAtajoDelOutro` y falla si aparece un motor de video.
+
+### Volver a montar no exige el Creador; sin base, dos pasos — v4.1246
+
+Séptimo reporte, con v4.1245 ya desplegada: al pulsar «Volver a montar con el
+outro», el toast rojo **«La herramienta 'video' no está disponible para este
+sitio»**. El cuadro rojo de la ficha seguía mostrando el «224 s» del intento
+ANTERIOR: ese texto es `statusDetail` y sólo cambia cuando un montaje termina.
+
+- **⚠️ `POST /reels/:id/render` EXIGÍA EL CREADOR DE VIDEO** (`video`), que es
+  la herramienta de CREAR Reels y gastar créditos. En rotary4281.org el Creador
+  está apagado y los Reels encendidos: es el mismo defecto que v4.1241 corrigió
+  en el selector de outros, por otra puerta. Volver a montar sólo reúne
+  escenas que ya existen, así que acepta `REEL_REMOUNT_TOOLS` (=
+  `OUTRO_READ_TOOLS`: outro, video, ai_reels, library, video_library).
+  `POST /reels` (crear) sigue exigiendo `video`. **Ante un «la herramienta X no
+  está disponible», preguntarse si el gesto CREA algo o sólo opera sobre lo
+  que ya existe.**
+- **⚠️ SIN BASE AL DÍA, EL REMONTAJE CON OUTRO VA EN DOS PASOS** (sólo en la vía
+  de volver a montar: `remountReel` → `submitAssembly(…, { outroEnDosPasos:
+  true })`). Si `pickMontagePath` dice `full` —la voz cambió después del
+  montaje, una escena se regeneró, el máster no sirve de base—, montar todo
+  junto volvería al «se agotó el tiempo». Se monta la BASE (`specWithoutOutro`),
+  que es lo que ya entraba en el tiempo; queda sellada como base y el
+  desenlace es `base_lista` con `next: 'outro'`. La ficha
+  (`pegarOutroSiFalta`) pide en seguida el segundo paso, que es el atajo de
+  v4.1245. Para quien pulsa es un solo gesto; el segundo paso se pide UNA vez.
+- **⚠️ SE GUARDA EL SPEC QUE SE MONTA** (`guardarSpec(specMontaje)`): el sello
+  del máster sale de `renderSpec` (v4.1049). Guardar el spec con outro y montar
+  la base sellaría un archivo sin cierre como si lo llevara.
+- **`base_lista` NO ES ÉXITO NI FALLO** (`remountOutcome` con `baseReady`): un
+  `error` en el primer paso sigue siendo `fallo`.
+- **LA CREACIÓN NO CAMBIA**: el Reel nuevo con outro se sigue montando de una
+  vez. Si algún día también se queda sin tiempo, la palanca es la misma
+  (`outroEnDosPasos`) más un segundo paso desde el cron.
+
+Pruebas: `npm run test:reels:outro:append` (60).

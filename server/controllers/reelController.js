@@ -77,7 +77,7 @@ import {
     buildEditSpec, submitRender, pollRender, fetchRenderBuffer
 } from '../lib/reelRenderProviders.js';
 import { normalizeOutroConfig, outroClipFor, outroView, outroSyncState, remountOutcome, OUTRO_TRANSITIONS, OUTRO_TRANSITION_SEC } from '../lib/reelOutro.js';
-import { pickMontagePath, appendOutroToBase, baseRecord, baseMontageKey, fetchBufferWithTimeout } from '../lib/reelOutroAppend.js';
+import { pickMontagePath, appendOutroToBase, baseRecord, baseMontageKey, fetchBufferWithTimeout, specWithoutOutro } from '../lib/reelOutroAppend.js';
 import { extractFrames, isFfmpegAvailable, checkFfmpegEnvironment, renderStillMotion, renderCardClip } from '../lib/reelFfmpeg.js';
 import {
     EXPANSION_PROVIDERS, DEFAULT_EXPANSION_PROVIDER, isExpansionProviderAvailable,
@@ -119,9 +119,9 @@ import {
     USAGE_PROVIDERS, USAGE_OPERATIONS, CREDIT_ESTIMATES
 } from '../lib/reelUsage.js';
 
-export const REEL_MODULE_VERSION = '4.1245.0';
+export const REEL_MODULE_VERSION = '4.1246.0';
 
-console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: presets de pieza [${Object.keys(REEL_PRESETS).join(', ')}], 3-5 fotos → una escena por foto (motor ${DEFAULT_ENGINE}), dirección con visión y estructura narrativa, preservación estricta de personas con recuento corroborado, recuperación por escena con escalera automática (${STRATEGY_LADDER.join(' → ')}; tope ${ABSOLUTE_PAID_CAP} generaciones pagadas) SIN respaldo Ken Burns automático, fotografía normalizada (EXIF) antes de gastar, control de composición (una foto, derecha, sin collage ni franjas), escenas guardadas en la Biblioteca al nacer, control de datos en campañas de emergencia, texto en pantalla y cierre institucional, música generativa, voz en off con diagnóstico por proveedor [${availableTtsProviders().join(', ') || 'ninguno'}] y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]; el outro se pega sobre el Reel ya montado (base) en vez de rehacer las escenas`);
+console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: presets de pieza [${Object.keys(REEL_PRESETS).join(', ')}], 3-5 fotos → una escena por foto (motor ${DEFAULT_ENGINE}), dirección con visión y estructura narrativa, preservación estricta de personas con recuento corroborado, recuperación por escena con escalera automática (${STRATEGY_LADDER.join(' → ')}; tope ${ABSOLUTE_PAID_CAP} generaciones pagadas) SIN respaldo Ken Burns automático, fotografía normalizada (EXIF) antes de gastar, control de composición (una foto, derecha, sin collage ni franjas), escenas guardadas en la Biblioteca al nacer, control de datos en campañas de emergencia, texto en pantalla y cierre institucional, música generativa, voz en off con diagnóstico por proveedor [${availableTtsProviders().join(', ') || 'ninguno'}] y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]; el outro se pega sobre el Reel ya montado (base) y, sin base, se remonta en dos pasos`);
 
 // La disponibilidad real de FFmpeg se comprueba una vez al arrancar, sin
 // bloquear la carga del módulo: hasta que responda, el registro lo da por
@@ -2862,9 +2862,8 @@ const buildClosingClip = async (project) => {
 const OUTRO_SHORTCUT_FALLBACK_MS = 30_000;
 const OUTRO_APPEND_TIMEOUT_MS = Number(process.env.REEL_OUTRO_APPEND_TIMEOUT_MS) || 200_000;
 
-const montarAtajoDelOutro = async (project, spec, narration) => {
-    const camino = pickMontagePath({ spec, project, narration });
-    if (camino.mode === 'full') {
+const montarAtajoDelOutro = async (project, spec, camino) => {
+    if (!camino || camino.mode === 'full') {
         if (spec.outro?.src) console.log(`[REEL] ${project.id} outro: montaje completo — ${camino.reason}`);
         return null;
     }
@@ -2906,7 +2905,7 @@ const montarAtajoDelOutro = async (project, spec, narration) => {
     }
 };
 
-const submitAssembly = async (project, scenes) => {
+const submitAssembly = async (project, scenes, { outroEnDosPasos = false } = {}) => {
     // El montaje acepta `ready`, `needs_review` y `fallback_ready` (v4.1028):
     // lo que decide es el ESTADO, no que haya una URL — una escena en `error`
     // con un clip viejo colgado no entra.
@@ -3060,25 +3059,50 @@ const submitAssembly = async (project, scenes) => {
     // 350 KB de imagen en una fila que se lee en cada listado de la Biblioteca.
     // Lo que hace falta para diagnosticar es CUÁNDO aparece cada rótulo y qué
     // dice, no sus píxeles.
-    const specForStorage = {
-        ...spec,
-        textOverlays: (spec.textOverlays || []).map(o => ({
+    const paraGuardar = (sp) => ({
+        ...sp,
+        textOverlays: (sp.textOverlays || []).map(o => ({
             startSec: o.startSec, endSec: o.endSec, text: o.text || null
         }))
-    };
-
-    await db.query(
+    });
+    const guardarSpec = (sp) => db.query(
         `UPDATE "ReelProject" SET status = 'assembling', "statusDetail" = NULL, "renderSpec" = $2, "updatedAt" = NOW() WHERE id = $1`,
-        [project.id, JSON.stringify(specForStorage)]
+        [project.id, JSON.stringify(paraGuardar(sp))]
     );
+
+    // ── El outro, sin rehacer la pieza entera (v4.1245-v4.1246) ──
+    //
+    // Con una base al día (el Reel montado sin outro), el outro se PEGA encima.
+    // Sin ella, el remontaje se hace en DOS PASOS: primero la base —la pieza
+    // sin outro, que es lo que ya entraba en el tiempo— y, en la llamada
+    // siguiente, el outro encima. Montar todo junto no entra en el vCPU de la
+    // función: es el «se agotó el tiempo (224s)» del reporte.
+    //
+    // ⚠️ El spec que se GUARDA es el que se va a montar: el sello del máster
+    // sale de él (v4.1049). Guardar el spec con outro y montar la base
+    // sellaría un archivo sin cierre como si lo llevara.
+    const camino = spec.outro?.src || project.config?.base ? pickMontagePath({ spec, project, narration }) : null;
+    let specMontaje = spec;
+    let baseLista = false;
+    const pasarABase = () => {
+        if (outroEnDosPasos && spec.outro?.src) {
+            specMontaje = specWithoutOutro(spec);
+            baseLista = true;
+        }
+    };
+    if (camino?.mode === 'full') pasarABase();
+    await guardarSpec(specMontaje);
 
     let submitted;
     const renderStartedAt = Date.now();
     try {
-        // Con una base al día, el outro se pega encima en vez de rehacer la
-        // pieza entera (v4.1245). Sin ella, el camino de siempre.
-        submitted = await montarAtajoDelOutro(project, spec, narration)
-            || await submitRender(spec, project.config?.renderProvider || null);
+        submitted = await montarAtajoDelOutro(project, spec, camino);
+        if (!submitted && camino && camino.mode !== 'full' && !baseLista) {
+            // El atajo falló rápido: base primero, si esta vía lo admite.
+            pasarABase();
+            if (baseLista) await guardarSpec(specMontaje);
+        }
+        if (!submitted) submitted = await submitRender(specMontaje, project.config?.renderProvider || null);
         // Con montaje local el trabajo YA está hecho cuando esto vuelve, así
         // que el tiempo medido es el del render completo. Con un proveedor
         // alojado es sólo el de crear el trabajo, y se dice en el detalle.
@@ -3138,7 +3162,14 @@ const submitAssembly = async (project, scenes) => {
             [project.id, submitted.provider]
         );
         const { rows: fresh } = await db.query('SELECT * FROM "ReelProject" WHERE id = $1', [project.id]);
-        return ingestLocalReel(fresh[0], submitted.output);
+        const fila = await ingestLocalReel(fresh[0], submitted.output);
+        // Primer paso de dos: la base quedó montada y falta pegar el outro.
+        // No es una columna: describe ESTA operación (`remountOutcome`).
+        if (baseLista && fila) {
+            await appendNote(project.id, 'Primer paso: el Reel se montó sin outro y quedó guardado como base. El outro se pega encima en el paso siguiente.');
+            return { ...fila, __baseLista: true };
+        }
+        return fila;
     }
 
     // ── Montaje alojado: crea el trabajo y se sondea ──
@@ -4590,13 +4621,13 @@ const remountReel = async (project) => {
 
     await db.query('UPDATE "ReelProject" SET "renderJobId" = NULL WHERE id = $1', [project.id]);
 
-    const resultado = await submitAssembly(project, scenes);
+    const resultado = await submitAssembly(project, scenes, { outroEnDosPasos: true });
 
     // ⚠️ EL DESENLACE SE LEE DE LA FILA RESULTANTE, NO DE HABER LLEGADO ACÁ
     // (v4.1050). `submitAssembly` devuelve una fila TAMBIÉN cuando el montaje
     // terminó en `error`, cuando faltan escenas y cuando otro proceso tenía el
     // candado: sin releer, las tres se contestaban como un montaje logrado.
-    return { ...remountOutcome({ ...remountReading(resultado) }), project: resultado };
+    return { ...remountOutcome({ ...remountReading(resultado), baseReady: Boolean(resultado?.__baseLista) }), project: resultado };
 };
 
 // Lo que hay que leer de una fila para saber qué pasó con su archivo. Vive en
@@ -4640,7 +4671,7 @@ export const renderReel = async (req, res) => {
         // motivo cuando no. Es ADITIVO: un cliente que no lo lea se comporta
         // como antes.
         await respondProject(res, montado.project, 200, {
-            remount: { ok: montado.ok, state: montado.state, reason: montado.reason }
+            remount: { ok: montado.ok, state: montado.state, reason: montado.reason, next: montado.next || null }
         });
     } catch (e) {
         console.error('[REEL] render:', e);
@@ -6198,7 +6229,7 @@ const respondOutroChange = async (res, row) => {
         await appendNote(row.id, `El outro se guardó y el video final todavía no lo refleja: ${montado.reason}`);
     }
     return respondProject(res, montado.project, 200, {
-        remount: { ok: montado.ok, state: montado.state, reason: montado.reason }
+        remount: { ok: montado.ok, state: montado.state, reason: montado.reason, next: montado.next || null }
     });
 };
 

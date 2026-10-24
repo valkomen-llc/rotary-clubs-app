@@ -436,7 +436,7 @@ export const outroSyncState = ({
 // está resolviendo solo.
 export const REMOUNT_WORKING_STATUSES = ['assembling', 'validating'];
 
-export const REMOUNT_STATES = ['montado', 'en_curso', 'bloqueado', 'incompleto', 'fallo', 'sin_cambio'];
+export const REMOUNT_STATES = ['montado', 'en_curso', 'bloqueado', 'incompleto', 'fallo', 'sin_cambio', 'base_lista'];
 
 export const remountOutcome = ({
     // `null` = no se llegó a lanzar; entonces manda `blockedReason`.
@@ -447,7 +447,9 @@ export const remountOutcome = ({
     statusDetail = null,
     // El `outroSyncState` de la fila RESULTANTE. Es lo único que sabe si el
     // ARCHIVO quedó llevando lo que la configuración pide.
-    sync = null
+    sync = null,
+    // Primer paso de dos (v4.1246): se montó la BASE sin outro y falta pegarlo.
+    baseReady = false
 } = {}) => {
     if (!launched) {
         return {
@@ -479,6 +481,16 @@ export const remountOutcome = ({
         return {
             ok: false, state: 'fallo',
             reason: statusDetail || 'El montaje no se pudo completar.'
+        };
+    }
+
+    // Primer paso de dos (v4.1246): la base quedó montada y el outro todavía
+    // no. No es un fallo ni un éxito: la pantalla pide el segundo paso sola
+    // (`next: 'outro'`) y entonces sí se dice el desenlace.
+    if (baseReady && sync?.stale) {
+        return {
+            ok: false, state: 'base_lista', next: 'outro',
+            reason: 'Primer paso listo: el Reel quedó montado sin outro y guardado como base. Ahora se pega el outro encima.'
         };
     }
 
