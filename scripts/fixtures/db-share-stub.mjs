@@ -108,6 +108,13 @@ export const query = async (sql, params = []) => {
         return { rows: p ? [{ ...p }] : [] };
     }
 
+    // La imagen para redes de un artículo (v4.1244).
+    if (/^UPDATE "Post" SET "seoImage" = \$1/i.test(q)) {
+        const p = tablas.Post.find(x => x.id === params[1]);
+        if (p) p.seoImage = params[0];
+        return { rows: [], rowCount: p ? 1 : 0 };
+    }
+
     // ── Club ────────────────────────────────────────────────────────
     if (/FROM "Club" WHERE id = \$1/i.test(q)) {
         const c = tablas.Club.find(x => x.id === params[0]);

@@ -67,6 +67,7 @@ import {
     getShareTargets,
     shareContent,
     regenerateShareCopy,
+    setShareImage,
     getShareHistory,
     getShareSummary,
     getShareGroupTargets,
@@ -164,6 +165,9 @@ router.post('/share/group-status', authMiddleware, updateGroupDistributionStatus
 // image-to-video. Va ANTES de `/share` porque una literal debajo de su
 // paramétrica es inalcanzable (`check:routes`).
 router.post('/share/copy', authMiddleware, regenerateShareCopy);
+// La imagen con la que se comparte un artículo (v4.1244): la elige quien
+// publica, de la Biblioteca o subida desde el equipo. Literal, antes de `/share`.
+router.post('/share/image', authMiddleware, setShareImage);
 router.post('/share', authMiddleware, shareContent);
 
 // ── Insights / métricas ───────────────────────────────────────────────────────

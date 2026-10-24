@@ -21,7 +21,7 @@
 import db from './db.js';
 import { decryptToken } from './tokenCrypto.js';
 import { auditSocial } from './socialAudit.js';
-import { publishContentToTarget } from '../services/socialPublishService.js';
+import { publishContentToTarget, refreshLinkPreview } from '../services/socialPublishService.js';
 import { ensureContentDistributionSchema } from './ensureContentDistributionSchema.js';
 import { publicUrlForPost } from './postPublicUrl.js';
 import { adminScopeFor, isVisibleTo } from './postScope.js';
@@ -119,6 +119,8 @@ const resolvePost = async ({ id, user, siteId = null, publicUrl = null }) => {
             title: cleanQuotesAndSymbols(post.title || ''),
             published: !!post.published,
             image: post.seoImage || post.image || null,
+            // La imagen para redes se eligió aparte de la portada (v4.1244).
+            imageCustom: !!post.seoImage && post.seoImage !== post.image,
             excerpt: cleanQuotesAndSymbols(extracto),
             socialCopy: post.socialCopy ? cleanQuotesAndSymbols(post.socialCopy).replace(/\b(?:https?:\/\/|www\.)\S+/gi, '').replace(/:\s*$/, '.').trim() : '',
             slug: post.slug || null,
@@ -487,6 +489,29 @@ export const shareEntity = async ({
         }
     }
 
+    // ⚠️ FACEBOOK RELEE LA PÁGINA ANTES DE PUBLICAR (v4.1244). La imagen de la
+    // tarjeta sale del Open Graph que Facebook tiene en caché; si se acaba de
+    // cambiar desde el modal, sin esto saldría la vieja. Una vez por
+    // publicación, con el token de una de las Páginas elegidas, y sin
+    // bloquear: si falla, se publica igual y se informa.
+    let preview = null;
+    if (kind === 'link') {
+        const fb = elegidas.find(a => a.platform === 'facebook' && accountReadiness(a, { kind }).ok);
+        let link = ent.publicUrl || '';
+        if (publicUrl && typeof publicUrl === 'string' && publicUrl.startsWith('http')
+            && (!publicUrl.includes('.clubplatform.org') || link.includes('.clubplatform.org'))) {
+            link = publicUrl;
+        }
+        if (fb && link) {
+            try {
+                preview = await refreshLinkPreview({ link, accessToken: decryptToken(await tokenOf(fb.id)) });
+            } catch (e) {
+                preview = { ok: false, error: e?.message || 'error desconocido' };
+            }
+            if (!preview.ok) console.warn('[share] no se pudo refrescar la vista previa de Facebook:', preview.error);
+        }
+    }
+
     const outcomes = await Promise.all(elegidas.map(async (acc) => {
         const base = {
             accountId: acc.id, network: acc.platform,
@@ -592,6 +617,8 @@ export const shareEntity = async ({
         outcomes,
         ajenas,
         publicUrl: ent.publicUrl,
+        // Si Facebook releyó la imagen de la tarjeta. `null` = no aplicaba.
+        previewRefreshed: preview ? !!preview.ok : null,
     };
 };
 

@@ -213,7 +213,7 @@ es **rotar la credencial en Neon**, no sólo borrar el archivo.
 | Aportes de contenido a una campaña — v4.968 (participación y difusión: v4.972; topes 50 MB / 2 GB: v4.1242) | `docs/claude/aportes-de-contenido-a-una-campana.md` |
 | Solicitud → artículo de noticia — v4.1003 | `docs/claude/solicitud-articulo-de-noticia.md` |
 | Analítica de Redes Sociales — v4.1053 | `docs/claude/analitica-de-redes-sociales.md` |
-| Publicar una noticia en Facebook — v4.1013 | `docs/claude/publicar-una-noticia-en-facebook.md` |
+| Publicar una noticia en Facebook — v4.1013 (cambiar la imagen de la publicación: v4.1244) | `docs/claude/publicar-una-noticia-en-facebook.md` |
 | Solicitud → Reel para redes — v4.1010 | `docs/claude/solicitud-reel-para-redes.md` |
 | Solicitudes de contenido: la BANDEJA — v4.999 | `docs/claude/solicitudes-de-contenido-la-bandeja.md` |
 | El tablero de campañas — v4.990 | `docs/claude/el-tablero-de-campanas.md` |

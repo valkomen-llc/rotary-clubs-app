@@ -27,6 +27,7 @@ import { createPortal } from 'react-dom';
 import {
     X, Facebook, Instagram, Linkedin, Twitter, Share2, ExternalLink, AlertCircle,
     CheckCircle2, Loader2, Globe, History, RefreshCw, Info, Send, Users, Sparkles, Eraser,
+    ImageIcon, Upload, RotateCcw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ShareTargetsResponse, ShareOutcome, ShareHistoryEntry, ShareKind, ShareCopyNotes } from '../../../lib/socialShare';
@@ -42,6 +43,8 @@ import type { CopyPolicy } from '../../../lib/reelShareCopy';
 import { canonicalPostUrl } from '../../../lib/postSlug';
 import { useClub } from '../../../contexts/ClubContext';
 import GroupDistributionSection from './GroupDistributionSection';
+import MediaPicker from '../content-studio/MediaPicker';
+import { uploadMediaFiles, IMAGE_ACCEPT } from '../../../lib/mediaUpload';
 
 const api = () => (import.meta.env.VITE_API_URL || '/api');
 const authHeaders = () => ({
@@ -178,6 +181,12 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
     /** Qué hubo que hacerle al copy para que cumpliera, sea al proponerlo o al
      *  regenerarlo. Se dice; no se calla. */
     const [notasCopy, setNotasCopy] = useState<string[]>([]);
+    /** Cambiar la imagen con la que se comparte el artículo (v4.1244): de la
+     *  Biblioteca o subida desde el equipo. Se guarda en el servidor como la
+     *  imagen para redes (`seoImage`), que es la que lee Facebook. */
+    const [pickerAbierto, setPickerAbierto] = useState(false);
+    const [cambiandoImagen, setCambiandoImagen] = useState<string | null>(null);
+    const inputImagen = useRef<HTMLInputElement | null>(null);
 
     // La clave de la operación se fija al ABRIR y sólo cambia si se pide
     // publicar de nuevo a propósito. Es lo que absorbe el doble clic.
@@ -232,7 +241,8 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
 
     // Escape cierra. Un modal que sólo se cierra con su propia cruz atrapa.
     useEffect(() => {
-        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !publicando) cerrar(); };
+        // Con la Biblioteca abierta encima, Escape la cierra a ella, no al modal.
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !publicando && !pickerAbierto) cerrar(); };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
     });
@@ -582,6 +592,46 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
     const publicarDeNuevo = () => {
         opKey.current = newOperationKey();
         setResultados(null);
+    };
+
+    /** Guarda la imagen para redes del artículo. `null` vuelve a la portada. */
+    const aplicarImagen = async (url: string | null, etiqueta: string) => {
+        setCambiandoImagen(etiqueta);
+        try {
+            const r = await fetch(
+                `${api()}/social/share/image${effectiveClubId ? `?clubId=${encodeURIComponent(effectiveClubId)}` : ''}`,
+                { method: 'POST', headers: authHeaders(), body: JSON.stringify({ entityType, entityId, imageUrl: url }) }
+            );
+            const d = await leerJson(r);
+            if (!r.ok) throw new Error(d.error || `No se pudo cambiar la imagen (HTTP ${r.status}).`);
+            setDatos(prev => prev ? { ...prev, entity: { ...prev.entity, image: d.image || null, imageCustom: !!d.custom } } : prev);
+            toast.success(url
+                ? 'Imagen cambiada. Facebook la volverá a leer al publicar.'
+                : 'Se volvió a usar la portada del artículo.');
+        } catch (e: any) {
+            toast.error(e?.message || 'No se pudo cambiar la imagen.');
+        } finally {
+            setCambiandoImagen(null);
+        }
+    };
+
+    const subirImagen = async (files: FileList | null) => {
+        const file = files?.[0];
+        if (inputImagen.current) inputImagen.current.value = '';
+        if (!file) return;
+        if (!file.type.startsWith('image/') && !/\.(heic|heif)$/i.test(file.name)) {
+            toast.error('Elegí un archivo de imagen (JPG, PNG, WebP o HEIC).');
+            return;
+        }
+        setCambiandoImagen('Subiendo imagen…');
+        // El mismo camino de subida que la Biblioteca: queda guardada allí también.
+        const res = await uploadMediaFiles([file], { clubId: effectiveClubId });
+        if (!res.uploaded.length) {
+            setCambiandoImagen(null);
+            toast.error(`No se pudo subir la imagen: ${res.failed[0]?.reason || 'error desconocido'}.`);
+            return;
+        }
+        await aplicarImagen(res.uploaded[0].url, 'Guardando imagen…');
     };
 
     /** Reintentar SÓLO lo que falló. Una plataforma que no salió no obliga a
@@ -1126,6 +1176,10 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
                                             )
                                         ) : datos.entity.image ? (
                                             <img src={datos.entity.image} alt="" className="w-full aspect-[1.91/1] object-cover" />
+                                        ) : entityType === 'post' ? (
+                                            <div className="w-full aspect-[1.91/1] bg-gray-50 flex items-center justify-center text-[11px] text-gray-400">
+                                                Sin imagen: elegí una abajo
+                                            </div>
                                         ) : null}
                                         {!esVideo && (
                                             <div className="px-3 py-2.5 bg-gray-50 border-t border-gray-100">
@@ -1134,6 +1188,60 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
                                             </div>
                                         )}
                                     </div>
+
+                                    {/* Cambiar la imagen del artículo (v4.1244). Sólo para un
+                                        artículo: un Reel publica su propio archivo. */}
+                                    {!esVideo && entityType === 'post' && (
+                                        <div className="p-3 rounded-xl border border-gray-100 bg-white space-y-2">
+                                            <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest flex items-center gap-1">
+                                                <ImageIcon className="w-3 h-3" /> Imagen de la publicación
+                                            </p>
+                                            <div className="flex flex-wrap gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setPickerAbierto(true)}
+                                                    disabled={!!cambiandoImagen || publicando}
+                                                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-rotary-blue/5 text-rotary-blue border border-rotary-blue/20 hover:bg-rotary-blue/10 flex items-center gap-1.5 disabled:opacity-50"
+                                                >
+                                                    <ImageIcon className="w-3.5 h-3.5" /> Biblioteca de medios
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => inputImagen.current?.click()}
+                                                    disabled={!!cambiandoImagen || publicando}
+                                                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100 flex items-center gap-1.5 disabled:opacity-50"
+                                                >
+                                                    <Upload className="w-3.5 h-3.5" /> Subir desde el equipo
+                                                </button>
+                                                {datos.entity.imageCustom && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => aplicarImagen(null, 'Restaurando portada…')}
+                                                        disabled={!!cambiandoImagen || publicando}
+                                                        className="px-3 py-1.5 rounded-lg text-xs font-bold text-gray-500 hover:text-gray-800 flex items-center gap-1.5 disabled:opacity-50"
+                                                    >
+                                                        <RotateCcw className="w-3.5 h-3.5" /> Usar la portada
+                                                    </button>
+                                                )}
+                                                <input
+                                                    ref={inputImagen}
+                                                    type="file"
+                                                    accept={IMAGE_ACCEPT}
+                                                    className="hidden"
+                                                    onChange={(e) => subirImagen(e.target.files)}
+                                                />
+                                            </div>
+                                            {cambiandoImagen ? (
+                                                <p className="text-[11px] text-gray-500 flex items-center gap-1.5">
+                                                    <Loader2 className="w-3 h-3 animate-spin" /> {cambiandoImagen}
+                                                </p>
+                                            ) : (
+                                                <p className="text-[10px] text-gray-400 leading-relaxed">
+                                                    Cambia la imagen con la que se comparte este artículo en redes. La portada de la noticia en el sitio no cambia.
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
 
                                     {/* ⚠️ La dirección se enseña ENTERA: es lo que hay que
                                         poder comprobar antes de mandarla, y recortarla
@@ -1322,6 +1430,20 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
                     </div>
                 )}
             </div>
+            {/* La Biblioteca, encima del modal (v4.1244). Se monta sólo abierta. */}
+            {pickerAbierto && (
+                <MediaPicker
+                    isOpen={pickerAbierto}
+                    mediaType="image"
+                    maxSelection={1}
+                    allowUpload
+                    onClose={() => setPickerAbierto(false)}
+                    onSelect={(items) => {
+                        setPickerAbierto(false);
+                        if (items && items.length > 0) aplicarImagen(items[0].url, 'Guardando imagen…');
+                    }}
+                />
+            )}
         </div>,
         document.body
     );

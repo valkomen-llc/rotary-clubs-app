@@ -12,10 +12,12 @@
 // ════════════════════════════════════════════════════════════════════
 
 export const llamadas = [];
+/** Las relecturas del Open Graph (v4.1244), aparte: no son publicaciones. */
+export const relecturas = [];
 let guion = [];
 let seq = 0;
 
-export const reset = () => { llamadas.length = 0; guion = []; seq = 0; };
+export const reset = () => { llamadas.length = 0; relecturas.length = 0; guion = []; seq = 0; };
 
 /** Qué va a contestar Meta, en orden. Sin guion, todo sale bien. */
 export const responder = (respuestas) => { guion = [...respuestas]; };
@@ -40,5 +42,9 @@ export const publishContentToTarget = async ({ account, decryptedToken, content 
 /** Lo demás del módulo real, para que los otros consumidores no se rompan. */
 export const publishToAccount = async () => ({ ok: true, externalId: 'x', externalUrl: null });
 export const listPagePosts = async () => [];
+export const refreshLinkPreview = async ({ link, accessToken }) => {
+    relecturas.push({ link, token: accessToken });
+    return { ok: true, image: null };
+};
 
-export default { publishContentToTarget, publishToAccount, listPagePosts };
+export default { publishContentToTarget, publishToAccount, listPagePosts, refreshLinkPreview };
