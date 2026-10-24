@@ -77,6 +77,7 @@ import {
     buildEditSpec, submitRender, pollRender, fetchRenderBuffer
 } from '../lib/reelRenderProviders.js';
 import { normalizeOutroConfig, outroClipFor, outroView, outroSyncState, remountOutcome, OUTRO_TRANSITIONS, OUTRO_TRANSITION_SEC } from '../lib/reelOutro.js';
+import { pickMontagePath, appendOutroToBase, baseRecord, baseMontageKey, fetchBufferWithTimeout } from '../lib/reelOutroAppend.js';
 import { extractFrames, isFfmpegAvailable, checkFfmpegEnvironment, renderStillMotion, renderCardClip } from '../lib/reelFfmpeg.js';
 import {
     EXPANSION_PROVIDERS, DEFAULT_EXPANSION_PROVIDER, isExpansionProviderAvailable,
@@ -118,9 +119,9 @@ import {
     USAGE_PROVIDERS, USAGE_OPERATIONS, CREDIT_ESTIMATES
 } from '../lib/reelUsage.js';
 
-export const REEL_MODULE_VERSION = '4.1240.0';
+export const REEL_MODULE_VERSION = '4.1245.0';
 
-console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: presets de pieza [${Object.keys(REEL_PRESETS).join(', ')}], 3-5 fotos → una escena por foto (motor ${DEFAULT_ENGINE}), dirección con visión y estructura narrativa, preservación estricta de personas con recuento corroborado, recuperación por escena con escalera automática (${STRATEGY_LADDER.join(' → ')}; tope ${ABSOLUTE_PAID_CAP} generaciones pagadas) SIN respaldo Ken Burns automático, fotografía normalizada (EXIF) antes de gastar, control de composición (una foto, derecha, sin collage ni franjas), escenas guardadas en la Biblioteca al nacer, control de datos en campañas de emergencia, texto en pantalla y cierre institucional, música generativa, voz en off con diagnóstico por proveedor [${availableTtsProviders().join(', ') || 'ninguno'}] y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
+console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: presets de pieza [${Object.keys(REEL_PRESETS).join(', ')}], 3-5 fotos → una escena por foto (motor ${DEFAULT_ENGINE}), dirección con visión y estructura narrativa, preservación estricta de personas con recuento corroborado, recuperación por escena con escalera automática (${STRATEGY_LADDER.join(' → ')}; tope ${ABSOLUTE_PAID_CAP} generaciones pagadas) SIN respaldo Ken Burns automático, fotografía normalizada (EXIF) antes de gastar, control de composición (una foto, derecha, sin collage ni franjas), escenas guardadas en la Biblioteca al nacer, control de datos en campañas de emergencia, texto en pantalla y cierre institucional, música generativa, voz en off con diagnóstico por proveedor [${availableTtsProviders().join(', ') || 'ninguno'}] y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]; el outro se pega sobre el Reel ya montado (base) en vez de rehacer las escenas`);
 
 // La disponibilidad real de FFmpeg se comprueba una vez al arrancar, sin
 // bloquear la carga del módulo: hasta que responda, el registro lo da por
@@ -2848,6 +2849,63 @@ const buildClosingClip = async (project) => {
 };
 
 // Lanza el montaje. Sólo se llama con todas las escenas terminadas.
+/**
+ * El atajo del outro (v4.1245): pegarlo sobre el Reel ya montado sin outro
+ * —la BASE— en vez de rehacer la pieza entera desde las escenas. Decide
+ * `pickMontagePath` (puro, en `reelOutroAppend.js`); devuelve `null` cuando
+ * hay que montar entero, y entonces sigue el camino de siempre.
+ *
+ * Si el atajo falla RÁPIDO (una descarga, un archivo ilegible) se monta
+ * entero y se anota; si falla después de gastar tiempo, el error se dice: un
+ * montaje completo ya no entraría en lo que queda de la invocación.
+ */
+const OUTRO_SHORTCUT_FALLBACK_MS = 30_000;
+const OUTRO_APPEND_TIMEOUT_MS = Number(process.env.REEL_OUTRO_APPEND_TIMEOUT_MS) || 200_000;
+
+const montarAtajoDelOutro = async (project, spec, narration) => {
+    const camino = pickMontagePath({ spec, project, narration });
+    if (camino.mode === 'full') {
+        if (spec.outro?.src) console.log(`[REEL] ${project.id} outro: montaje completo — ${camino.reason}`);
+        return null;
+    }
+    console.log(`[REEL] ${project.id} outro: ${camino.mode} — ${camino.reason}`);
+    const empezo = Date.now();
+    const fetchBuffer = fetchBufferWithTimeout();
+    try {
+        let output;
+        if (camino.mode === 'restore') {
+            const buffer = await fetchBuffer(camino.base.url, 'el video base del Reel');
+            output = {
+                buffer, posterBuffer: null,
+                expectedDurationSec: camino.base.durationSec,
+                hasMusic: camino.base.hasAudio !== false,
+                notes: ['Outro quitado: el video vuelve a ser el montaje sin outro, sin volver a codificar ninguna escena.'],
+            };
+        } else {
+            output = await appendOutroToBase({
+                baseUrl: camino.base.url, outro: spec.outro, fetchBuffer, timeoutMs: OUTRO_APPEND_TIMEOUT_MS,
+            });
+            // Un máster usado como base queda guardado como tal, con su huella:
+            // la próxima vez la comparación es exacta.
+            if (camino.base.source !== 'base') {
+                output.baseStamp = baseRecord({
+                    url: camino.base.url, s3Key: camino.base.s3Key,
+                    probe: { durationSec: camino.base.durationSec, width: project.width, height: project.height, hasAudio: project.hasAudio },
+                    key: baseMontageKey(spec), stampedAt: camino.base.stampedAt,
+                });
+            }
+        }
+        return { mode: 'local', provider: 'ffmpeg', output, attempted: [] };
+    } catch (e) {
+        if (Date.now() - empezo < OUTRO_SHORTCUT_FALLBACK_MS) {
+            console.warn(`[REEL] ${project.id} el atajo del outro falló (${e.message}); se monta entero.`);
+            await appendNote(project.id, `No se pudo pegar el outro sobre el video ya montado (${e.message}). Se montó el Reel entero.`);
+            return null;
+        }
+        throw e;
+    }
+};
+
 const submitAssembly = async (project, scenes) => {
     // El montaje acepta `ready`, `needs_review` y `fallback_ready` (v4.1028):
     // lo que decide es el ESTADO, no que haya una URL — una escena en `error`
@@ -3017,7 +3075,10 @@ const submitAssembly = async (project, scenes) => {
     let submitted;
     const renderStartedAt = Date.now();
     try {
-        submitted = await submitRender(spec, project.config?.renderProvider || null);
+        // Con una base al día, el outro se pega encima en vez de rehacer la
+        // pieza entera (v4.1245). Sin ella, el camino de siempre.
+        submitted = await montarAtajoDelOutro(project, spec, narration)
+            || await submitRender(spec, project.config?.renderProvider || null);
         // Con montaje local el trabajo YA está hecho cuando esto vuelve, así
         // que el tiempo medido es el del render completo. Con un proveedor
         // alojado es sólo el de crear el trabajo, y se dice en el detalle.
@@ -3179,14 +3240,26 @@ const foldSubstitutedScenes = async (projectId, quality) => {
  * compositor recibió. `totalSec` y `durationSec` quedan al lado para poder
  * contrastar después lo que se pidió con lo que se midió.
  */
-const masterStamp = (renderSpec, probe) => JSON.stringify({
-    master: {
-        stampedAt: new Date().toISOString(),
-        outro: renderSpec?.outro?.src ? renderSpec.outro : null,
-        totalSec: renderSpec?.totalSec ?? null,
-        durationSec: probe?.durationSec ?? null
-    }
-});
+const masterStamp = (renderSpec, probe, { upload = null, base = null } = {}) => {
+    // La huella de lo que va ANTES del outro (v4.1245). Un máster sin outro
+    // ES una base: se guarda como tal, y poner el outro después lo pega encima
+    // en vez de rehacer la pieza entera. `base` explícita = un máster anterior
+    // que se acaba de usar como base.
+    const baseKey = baseMontageKey(renderSpec);
+    const sinOutro = !renderSpec?.outro?.src;
+    const nuevaBase = base
+        || (sinOutro && upload?.url && baseKey ? baseRecord({ url: upload.url, s3Key: upload.key || null, probe: probe || {}, key: baseKey }) : null);
+    return JSON.stringify({
+        master: {
+            stampedAt: new Date().toISOString(),
+            outro: renderSpec?.outro?.src ? renderSpec.outro : null,
+            totalSec: renderSpec?.totalSec ?? null,
+            durationSec: probe?.durationSec ?? null,
+            baseKey
+        },
+        ...(nuevaBase ? { base: nuevaBase } : {})
+    });
+};
 
 // Guarda el resultado de un montaje LOCAL. Mismo destino que `ingestReel` pero
 // sin descarga: el buffer ya está en memoria.
@@ -3242,7 +3315,7 @@ const ingestLocalReel = async (project, output) => {
             upload.url, upload.key, posterUrl,
             probe.durationSec, probe.width, probe.height, probe.bitrateKbps,
             probe.sizeBytes, probe.hasAudio, JSON.stringify(verdict),
-            masterStamp(project.renderSpec, probe)
+            masterStamp(project.renderSpec, probe, { upload, base: output.baseStamp || null })
         ]
     );
 
@@ -3322,7 +3395,7 @@ const ingestReel = async (project, providerUrl, posterUrl = null) => {
             upload.url, upload.key, posterUrl,
             probe.durationSec, probe.width, probe.height, probe.bitrateKbps,
             probe.sizeBytes, probe.hasAudio, JSON.stringify(verdict),
-            masterStamp(project.renderSpec, probe)
+            masterStamp(project.renderSpec, probe, { upload })
         ]
     );
 

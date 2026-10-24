@@ -863,7 +863,8 @@ console.log('\n10. Un outro APAGADO no es un outro puesto, y se dice (v4.1048)')
     // ── 11f. El cableado: el sello se escribe CON el archivo ──
     check('⚠️ el sello va en el MISMO UPDATE que `videoUrl` (atómico con el archivo)',
         (reelCtl.match(/config = \(COALESCE\(config, '\{\}'::jsonb\) - 'renderClaimAt'\) \|\| \$14::jsonb/g) || []).length === 2
-        && (reelCtl.match(/masterStamp\(project\.renderSpec, probe\)/g) || []).length === 2);
+        // v4.1245: el sello lleva además la subida y, si la hay, la base usada.
+        && (reelCtl.match(/masterStamp\(project\.renderSpec, probe[,)]/g) || []).length === 2);
     check('el sello lo arma UNA sola función', (reelCtl.match(/const masterStamp = /g) || []).length === 1);
     check('⚠️ el DTO y la publicación pasan el sello y la duración MEDIDA',
         /master: row\.config\?\.master[\s\S]{0,120}?masterDurationSec: row\.durationSec/.test(reelCtl)

@@ -3179,3 +3179,68 @@ En producción la tarea de KIE se CREÓ (credencial y créditos bien) y terminó
 - `fallbackProviderFor` ignora estados en caché vencidos o contradictorios
   (`not_configured` de un motor que hoy sí está configurado).
 - `ReelUsage`: proveedor `gemini` con alcance `voice`.
+
+### El outro se PEGA sobre el Reel montado — v4.1245
+
+Sexto reporte sobre el outro, con la ficha delante en rotary4281.org: «Volver a
+montar con el outro» → **«Ningún proveedor de montaje pudo completar el Reel —
+ffmpeg: montaje del Reel: se agotó el tiempo (224s)»**. El Reel sin outro
+estaba montado (18 s, 20,9 MB). Esta vez no era memoria (v4.1051): era
+**tiempo**.
+
+| Pieza | Qué es |
+|---|---|
+| `server/lib/reelOutroAppend.js` | `baseMontageKey`, `baseTotalSec`, `pickMontagePath` (**puros**) y `appendOutroToBase` (la composición) |
+| `montarAtajoDelOutro` (`reelController.js`) | El atajo, ANTES de `submitRender` en `submitAssembly` |
+| `masterStamp` | Ahora guarda `master.baseKey` y, si el máster no lleva outro, `config.base` |
+
+Pruebas: `npm run test:reels:outro:append` (43, con composiciones REALES del
+ffmpeg empaquetado; se salta sin binario). La sección 11 de
+`test:reels:outro` se ajustó a la llamada nueva del sello.
+
+- **⚠️ PONER EL OUTRO REHACÍA EL REEL ENTERO.** `remountReel` →
+  `submitAssembly` → `composeReel` con las cuatro escenas, los rótulos, la
+  música, la voz con ducking y, por la memoria, en dos pasadas. Medido con el
+  mismo ffmpeg en **1 núcleo**: montaje completo de 4 escenas + outro + música +
+  voz + rótulos **70,4 s**; el Reel ya montado + el outro en una pasada
+  **29,8 s** (1080×1920, 23,4 s de pieza). Producción corre en **1 vCPU estándar
+  con Fluid compute**, compartida con el tráfico del sitio, y allí el completo
+  pasó de 224 s. **Ante un «se agotó el tiempo», preguntarse primero si hace
+  falta rehacer todo lo que se está rehaciendo.**
+- **⚠️ CAMBIAR EL OUTRO NO CAMBIA NADA DE LO QUE VA ANTES.** El video montado
+  sin outro se guarda como **BASE** (`config.base`: url, clave, duración,
+  medidas, audio, huella) y poner, cambiar o ajustar el outro es UNA
+  composición base + outro. Cambiar el outro de un Reel que ya lleva uno
+  vuelve a partir de la BASE, nunca del máster con outro (pegaría dos cierres).
+- **⚠️ NO HAY UN SEGUNDO GRAFO DE OUTRO.** Se usa el compositor de «Outro sobre
+  un video de la Biblioteca» (`planLibraryOutro`, `buildLibraryOutroGraph`,
+  `buildLibraryOutroArgs`, `validateComposedOutro`, v4.1039): misma geometría
+  del máster, `xfade` en `base − T`, cuatro escenarios de audio y la
+  validación de la duración. El catálogo de transiciones es el mismo
+  (`OUTRO_TRANSITIONS`). Una prueba falla si `reelOutroAppend.js` escribe un
+  `xfade` propio.
+- **⚠️ LA BASE SE RECONOCE POR SU HUELLA** (`baseMontageKey`): clips (fuente,
+  inicio, duración, transición), música y volumen, voz (fuente, entrada,
+  estiramiento), rótulos (inicio, fin, texto) y medidas. El outro NO entra. Lee
+  igual el spec del montaje (rótulos con búfer) y el guardado en la fila (sin
+  él): lo fija una prueba. Si algo de eso cambió, se monta entero como siempre.
+- **⚠️ UN MÁSTER DE ANTES DE v4.1245 NO TIENE HUELLA** —el del reporte—. Se
+  acepta como base sólo si su sello (`config.master`) dice que no lleva outro,
+  si su duración medida está a ≤ 1 s de las escenas (`baseTotalSec`) y si la
+  locución vigente no es posterior al sello. Al usarlo queda guardado como base
+  con su huella (`output.baseStamp`): la vez siguiente es exacto. Es una
+  heurística DECLARADA y de un solo uso por Reel.
+- **⚠️ `renderSpec` YA NO SIRVE PARA ESTO**, y por eso la huella va en el SELLO:
+  `submitAssembly` lo escribe ANTES de montar (v4.1049), así que tras el
+  intento fallido el spec ya decía «con outro» y no describía el archivo.
+- **QUITAR EL OUTRO, CON LA BASE AL DÍA, NO CODIFICA NADA** (`restore`): la base
+  vuelve a ser el máster (se baja, se mide y se sube con la ingesta de siempre).
+- **SI EL ATAJO FALLA RÁPIDO** (< 30 s: una descarga, un archivo ilegible), se
+  anota y se monta entero; si falla después, el error se dice — un montaje
+  completo ya no entraría en lo que queda de la invocación.
+- **OUTRO MUDO**: la música de la base se desvanece durante la transición y el
+  outro va en silencio (`main_fade_out`), y se anota. El montaje completo dejaba
+  la música debajo del outro; con el atajo la base ya terminó su pista. Es el
+  único cambio audible y está declarado.
+- **NADA DE ESTO REGENERA UNA ESCENA NI GASTA CRÉDITOS.** Una prueba lee el
+  cuerpo de `montarAtajoDelOutro` y falla si aparece un motor de video.
