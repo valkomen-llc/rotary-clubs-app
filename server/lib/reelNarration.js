@@ -456,7 +456,13 @@ export const classifyTtsFailure = (provider, httpStatus, bodyText = '', { model 
     const tail = providerMsg ? ` Detalle del proveedor: «${providerMsg}».` : '';
 
     let code;
-    if (httpStatus === 402 || has('quota_exceeded', 'insufficient_quota', 'payment_required', 'exceeds your quota', 'billing_hard_limit')) code = 'quota';
+    // ⚠️ OpenAI contesta la cuenta SIN SALDO con un 429 —el mismo estado que
+    // el límite de solicitudes— y sólo el texto los distingue («You have no
+    // credits remaining. Add credits…»). Leído como 429 a secas, la pantalla
+    // decía «esperá unos segundos y reintentá» a una cuenta que no se va a
+    // recuperar sola (v4.1237).
+    if (httpStatus === 402 || has('quota_exceeded', 'insufficient_quota', 'payment_required', 'exceeds your quota',
+        'billing_hard_limit', 'no credits', 'add credits', 'credits remaining', 'out of credits', 'not enough credits', 'credit balance')) code = 'quota';
     else if (has('detected_unusual_activity')) code = 'auth';
     else if (has('voice_not_found', 'invalid_voice', "value for 'voice'", 'voice id', 'voice_id')) code = 'voice_not_found';
     else if (has('model_not_found', 'unsupported_model', 'model_not_supported', 'does not support', 'does not have access to model', 'invalid_model')) code = 'model_unsupported';
@@ -560,7 +566,7 @@ const ELEVENLABS_LANGUAGE_CODE_MODELS = /^eleven_(turbo|flash)_v2_5$/;
 
 const synthesizeWithElevenLabs = async ({ text, gender, speed, language, voiceId }) => {
     const model = ttsModelFor('elevenlabs');
-    const voice = voiceId || voiceIdFor('elevenlabs', gender);
+    const voice = voiceId || await resolveElevenLabsVoice(gender, language);
     const lang = NARRATION_LANGUAGES[language] || NARRATION_LANGUAGES[DEFAULT_LANGUAGE];
 
     const body = {
@@ -719,12 +725,18 @@ const elevenLabsVoices = async () => {
         const voices = Array.isArray(data?.voices) ? data.voices : [];
         return voices.slice(0, 120).map(v => {
             const labels = v.labels || {};
+            // Las voces de la biblioteca declaran sus idiomas verificados con
+            // acento y locale («es» · «colombian» · «es-CO»): es el dato más
+            // fiable para elegir una voz colombiana.
+            const verified = Array.isArray(v.verified_languages) ? v.verified_languages : [];
+            const es = verified.find(l => String(l?.language || '').toLowerCase() === 'es');
             return {
                 id: v.voice_id,
                 label: v.name,
                 gender: labels.gender === 'male' || labels.gender === 'female' ? labels.gender : 'neutral',
-                accent: labels.accent || null,
-                language: labels.language || v.fine_tuning?.language || null,
+                accent: labels.accent || es?.accent || null,
+                language: labels.language || es?.language || verified[0]?.language || v.fine_tuning?.language || null,
+                locales: verified.map(l => l?.locale).filter(Boolean),
                 category: v.category || null
             };
         }).filter(v => v.id && v.label);
@@ -734,6 +746,71 @@ const elevenLabsVoices = async () => {
 };
 
 const LATIN_ACCENT_RE = /(colombi|latin|mexic|argentin|chile|peru|venezol|spanish|español|castil|es-)/i;
+
+// ─── La voz automática de ElevenLabs (v4.1237) ─────────────────────────────
+//
+// ⚠️ SIN VOZ CONFIGURADA, LA VOZ SALE DE LA CUENTA, no de un id fijo. Hasta
+// v4.1236 «Automática» era Rachel / Daniel del catálogo público: dos voces
+// angloparlantes que además ya no están en las cuentas nuevas (`/v1/voices`
+// no las lista), así que pedir ElevenLabs sin elegir voz podía fallar o sonar
+// a inglés. Ahora se elige la voz de la cuenta que mejor encaja: el idioma
+// del Reel, el acento de la región pedida y el género.
+const REGION_ACCENT = {
+    'es-CO': /colombi/i,
+    'es-419': /(latin|neutral|colombi|mexic)/i,
+    'es-MX': /mexic/i,
+    'es-AR': /(argentin|rioplat)/i,
+    'es-ES': /(castil|spain|peninsular|european|españa)/i,
+    'en-US': /(american|us)/i,
+    'pt-BR': /(brazil|brasil)/i
+};
+const TONGUE_CODE = { Spanish: 'es', English: 'en', Portuguese: 'pt', French: 'fr', Italian: 'it' };
+
+export const pickAccountVoice = (voices, { gender = 'female', language = DEFAULT_LANGUAGE } = {}) => {
+    if (!Array.isArray(voices) || !voices.length) return null;
+    const lang = NARRATION_LANGUAGES[language] || NARRATION_LANGUAGES[DEFAULT_LANGUAGE];
+    const code = TONGUE_CODE[lang.tongue] || 'es';
+    const accentRe = REGION_ACCENT[lang.locale] || null;
+    const score = (v) => {
+        const text = `${v.accent || ''} ${v.language || ''} ${(v.locales || []).join(' ')}`.toLowerCase();
+        let s = 0;
+        const speaks = (v.locales || []).some(l => String(l).toLowerCase().startsWith(code))
+            || String(v.language || '').toLowerCase().startsWith(code)
+            || (code === 'es' && LATIN_ACCENT_RE.test(text));
+        if (speaks) s += 4;
+        if (accentRe && accentRe.test(text)) s += 3;
+        if ((v.locales || []).some(l => String(l).toLowerCase() === lang.locale.toLowerCase())) s += 2;
+        if (v.gender === gender) s += 2;
+        else if (v.gender === 'neutral') s += 0.5;
+        // El género pedido manda sobre el acento: una voz femenina colombiana
+        // no reemplaza a una masculina pedida.
+        else s -= 10;
+        return s;
+    };
+    return voices.map(v => ({ v, s: score(v) })).sort((a, b) => b.s - a.s)[0].v;
+};
+
+const VOICES_TTL_MS = 5 * 60_000;
+let accountVoicesCache = { at: 0, list: null };
+const accountVoices = async () => {
+    if (accountVoicesCache.list && Date.now() - accountVoicesCache.at < VOICES_TTL_MS) return accountVoicesCache.list;
+    const list = await elevenLabsVoices();
+    if (list && list.length) accountVoicesCache = { at: Date.now(), list };
+    return list;
+};
+
+// Sólo para las pruebas: vacía las cachés de estado y de voces.
+export const resetTtsCaches = () => { statusCache.clear(); accountVoicesCache = { at: 0, list: null }; };
+
+// La voz que usa ElevenLabs cuando nadie eligió una: la del entorno si está
+// configurada; si no, la mejor de la cuenta; y sólo si la cuenta no se pudo
+// leer, la del catálogo público.
+export const resolveElevenLabsVoice = async (gender = 'female', language = DEFAULT_LANGUAGE) => {
+    const fromEnv = process.env[`ELEVENLABS_VOICE_${String(gender || 'female').toUpperCase()}`] || process.env.ELEVENLABS_VOICE_ID;
+    if (fromEnv) return fromEnv;
+    const picked = pickAccountVoice(await accountVoices(), { gender, language });
+    return picked?.id || voiceIdFor('elevenlabs', gender);
+};
 
 const checkElevenLabs = async (base) => {
     const resp = await callProvider('elevenlabs', 'https://api.elevenlabs.io/v1/user/subscription',
@@ -773,15 +850,20 @@ const checkElevenLabs = async (base) => {
         }
     }
 
-    const voices = await elevenLabsVoices();
+    const voices = await accountVoices();
     const defaults = { female: voiceIdFor('elevenlabs', 'female'), male: voiceIdFor('elevenlabs', 'male') };
     if (voices) {
         // Las voces latinas primero: es lo que se busca para un Reel en español.
         voices.sort((a, b) => Number(LATIN_ACCENT_RE.test(`${b.accent} ${b.language}`)) - Number(LATIN_ACCENT_RE.test(`${a.accent} ${a.language}`)));
         out.voices = voices;
-        const missing = Object.entries(defaults).filter(([, id]) => !voices.some(v => v.id === id));
-        if (missing.length) {
-            out.warnings.push(`La voz por defecto ${missing.map(([g]) => g === 'male' ? 'masculina' : 'femenina').join(' y ')} no está en la cuenta: elegí una voz de la lista.`);
+        // Qué voz usa «Automática», por género, para la región por defecto.
+        // Una voz fijada por entorno manda; si no está en la cuenta, se avisa.
+        out.autoVoices = {};
+        for (const g of ['female', 'male']) {
+            const fromEnv = process.env[`ELEVENLABS_VOICE_${g.toUpperCase()}`] || process.env.ELEVENLABS_VOICE_ID;
+            const v = fromEnv ? voices.find(x => x.id === fromEnv) : pickAccountVoice(voices, { gender: g, language: DEFAULT_LANGUAGE });
+            if (v) out.autoVoices[g] = { id: v.id, label: v.label, accent: v.accent || null };
+            else if (fromEnv) out.warnings.push(`La voz ${g === 'male' ? 'masculina' : 'femenina'} configurada en el despliegue (${fromEnv}) no está en la cuenta: elegí una voz de la lista.`);
         }
         const latin = voices.filter(v => LATIN_ACCENT_RE.test(`${v.accent} ${v.language}`));
         out.accentNote = latin.length
@@ -789,6 +871,7 @@ const checkElevenLabs = async (base) => {
             : 'La cuenta no tiene voces con acento latino: el español sale con la voz multilingüe por defecto, sin acento colombiano.';
     } else {
         out.voices = Object.entries(defaults).map(([g, id]) => ({ id, label: `Voz por defecto (${g === 'male' ? 'masculina' : 'femenina'})`, gender: g, accent: null, language: null, category: 'default' }));
+        out.autoVoices = null;
     }
     return out;
 };
@@ -830,7 +913,7 @@ export const checkTtsProvider = async (id, { force = false } = {}) => {
         note: p.note || null,
         isDefault: id === activeTtsProvider(),
         state: 'unknown', message: null,
-        quota: null, voices: [], warnings: [], accentNote: null,
+        quota: null, voices: [], autoVoices: null, warnings: [], accentNote: null, lastFailure: null,
         checkedAt: new Date().toISOString(), latencyMs: null
     };
 

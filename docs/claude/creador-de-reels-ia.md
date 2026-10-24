@@ -3072,3 +3072,27 @@ llamada de voz tenía tope de tiempo.
 Pruebas: `npm run test:reels:voice` (sin base, credenciales ni red: `fetch`
 simulado con los cuerpos de error reales y un MP3 fabricado por ffmpeg-static
 y medido de verdad).
+
+### v4.1237 — OpenAI sin saldo y la voz automática de ElevenLabs
+
+Con el diagnóstico de v4.1236 la captura de producción mostró la causa real:
+OpenAI respondía **HTTP 429 «You have no credits remaining. Add credits…»**.
+La cuenta de OpenAI no tiene saldo; no es un fallo del código y se resuelve
+recargando créditos en platform.openai.com. Lo que sí era del código:
+
+- **OpenAI usa el 429 para dos cosas**: límite de solicitudes y cuenta sin
+  saldo. Sólo el texto las distingue. `classifyTtsFailure` lee «no credits»,
+  «add credits», «insufficient_quota» como `quota` (no reintentable).
+- **«Conectado» no es «con saldo».** El chequeo de lectura de OpenAI
+  (`/v1/models`) sale bien con la cuenta en cero. `getNarrationProviders`
+  cruza el estado con el ÚLTIMO intento real de cada motor en `ReelUsage`
+  (`withRecentOutcome`): un fallo de `quota`/`auth` en las últimas 12 h sin un
+  éxito posterior pone la tarjeta en ese estado.
+- **La voz automática de ElevenLabs sale de la CUENTA**
+  (`resolveElevenLabsVoice` → `pickAccountVoice`): manda
+  `ELEVENLABS_VOICE_FEMALE/MALE` si está; si no, la voz de `/v1/voices` que
+  mejor encaja por idioma verificado (`verified_languages`), acento de la
+  región y género (el género manda: nunca una mujer por un hombre pedido). Las
+  voces se cachean 5 min. Rachel/Daniel sólo si la cuenta no se puede leer.
+- **El panel no arranca en un motor bloqueado** si el otro está conectado, y
+  lo dice.

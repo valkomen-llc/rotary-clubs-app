@@ -42,6 +42,22 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1237.0',
+        title: 'Voz en off: OpenAI sin saldo se dice como tal y ElevenLabs usa una voz de la cuenta 🎙️💳',
+        description: 'Con el diagnóstico de v4.1236 apareció la causa real en producción: la cuenta de OpenAI no tiene saldo («You have no credits remaining»). OpenAI lo devuelve con el mismo HTTP 429 que el límite de solicitudes, y el panel lo leía como «Demasiadas solicitudes, esperá y reintentá». Además, al probar con ElevenLabs sin elegir voz se usaba una voz fija del catálogo público (Rachel) que la cuenta ya no tiene. Ahora la falta de saldo se informa como «Límite de consumo alcanzado», la tarjeta de OpenAI deja de decir «Conectado» cuando el último intento falló por saldo o credencial, el panel arranca en el motor que funciona, y ElevenLabs elige sola la mejor voz de la cuenta según el idioma, la región (acento colombiano primero) y el género.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'content-studio', 'narration', 'tts', 'elevenlabs', 'openai-tts', 'fix'],
+        type: 'hotfix',
+        impact: 'Alta: la voz en off se genera con ElevenLabs aunque OpenAI no tenga saldo, con una voz hispana de la cuenta.',
+        changes: [
+            { type: 'fixed', text: 'El 429 «no credits remaining» de OpenAI se clasifica como cuota agotada (sin «Reintentar»), no como límite de solicitudes.' },
+            { type: 'fixed', text: 'ElevenLabs sin voz elegida usa la mejor voz de la cuenta (idioma verificado, acento de la región y género), no Rachel/Daniel del catálogo público.' },
+            { type: 'added', text: 'La opción «Automática» del selector de voz muestra qué voz se va a usar.' },
+            { type: 'fixed', text: 'La tarjeta de un motor muestra «Sin cuota» o «Credencial inválida» si el último intento real falló por eso, aunque la conexión responda.' },
+            { type: 'changed', text: 'Si la preferencia guardada apunta a un motor bloqueado y el otro está conectado, el panel arranca en el que funciona y lo avisa.' },
+        ],
+    },
+    {
         version: '4.1236.0',
         title: 'Voz en off de los Reels: diagnóstico real, selector de motor y aplicar después de escuchar 🎙️✅',
         description: 'Auditoría y corrección de la Voz en off del Estudio de Contenido. Causa raíz del «No se pudo generar la narración. Revisá los avisos del Reel»: al generar la voz desde la ficha, el servidor la encendía con jsonb_set sobre config.narration, que NO crea la clave cuando el Reel se montó sin ella; la narración quedaba apagada, no se intentaba nada y no había ningún aviso que revisar. Además, cualquier fallo real de un motor (credencial, cuota, voz, modelo, conexión, almacenamiento) terminaba en ese mismo mensaje genérico, y la llamada a ElevenLabs mandaba language_code a eleven_multilingual_v2, que no lo admite. Ahora cada fallo dice qué pasó y qué hacer, el panel muestra el estado real de cada motor y la voz se genera, se escucha y recién después se aplica al Reel.',

@@ -432,8 +432,31 @@ const ReelNarrationPanel: React.FC<{
             const v = voices.find(x => x.id === form.voiceId);
             list.unshift({ id: form.voiceId, label: v ? v.label : `Voz ${form.voiceId}` });
         }
-        return [{ id: '', label: 'Automática según el género' }, ...list];
+        const auto = selectedProvider?.autoVoices?.[form.gender as 'female' | 'male'];
+        return [{
+            id: '',
+            label: auto ? `Automática: ${auto.label}${auto.accent ? ` · ${auto.accent}` : ''}` : 'Automática según el género'
+        }, ...list];
     }, [selectedProvider, form.gender, form.voiceId]);
+
+    // ⚠️ UN MOTOR BLOQUEADO NO QUEDA ELEGIDO POR DEFECTO (v4.1237). Si la
+    // preferencia guardada apunta a un motor sin saldo, sin credencial o sin
+    // configurar y el otro está conectado, el panel arranca en el que sirve y
+    // lo dice. Sólo al cargar el estado: si el administrador vuelve a elegir
+    // el bloqueado a mano, se respeta.
+    const autoSwitched = useRef(false);
+    const [switchNote, setSwitchNote] = useState<string | null>(null);
+    useEffect(() => {
+        if (!providers || autoSwitched.current) return;
+        autoSwitched.current = true;
+        const current = providers.find(p => p.id === form.provider);
+        const blocked = !current || !current.configured || ['quota', 'auth', 'not_configured', 'model_unsupported'].includes(current.state);
+        const usable = providers.find(p => p.id !== form.provider && p.configured && p.state === 'ok');
+        if (blocked && usable) {
+            setForm(f => ({ ...f, provider: usable.id, voiceId: '' }));
+            setSwitchNote(`Se eligió ${usable.label} porque ${current?.label || form.provider} no está disponible${current?.state ? ` (${stateMeta(current.state).label.toLowerCase()})` : ''}.`);
+        }
+    }, [providers, form.provider]);
 
     const fallbackTarget = providerCards.find(p => p.id !== form.provider && p.configured) || null;
 
@@ -733,6 +756,11 @@ const ReelNarrationPanel: React.FC<{
                         />
                     ))}
                 </div>
+                {switchNote && (
+                    <p className="mt-3 text-[11px] font-bold text-indigo-700 flex items-start gap-1.5">
+                        <ArrowRightLeft className="w-3.5 h-3.5 mt-px shrink-0" /> {switchNote}
+                    </p>
+                )}
                 {fallbackTarget && (
                     <label className="mt-3 flex items-start gap-2 text-[11px] font-bold text-gray-600 cursor-pointer">
                         <input
