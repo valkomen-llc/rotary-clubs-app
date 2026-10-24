@@ -117,7 +117,7 @@ import {
     USAGE_PROVIDERS, USAGE_OPERATIONS, CREDIT_ESTIMATES
 } from '../lib/reelUsage.js';
 
-export const REEL_MODULE_VERSION = '4.1236.0';
+export const REEL_MODULE_VERSION = '4.1237.0';
 
 console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: presets de pieza [${Object.keys(REEL_PRESETS).join(', ')}], 3-5 fotos → una escena por foto (motor ${DEFAULT_ENGINE}), dirección con visión y estructura narrativa, preservación estricta de personas con recuento corroborado, recuperación por escena con escalera automática (${STRATEGY_LADDER.join(' → ')}; tope ${ABSOLUTE_PAID_CAP} generaciones pagadas) SIN respaldo Ken Burns automático, fotografía normalizada (EXIF) antes de gastar, control de composición (una foto, derecha, sin collage ni franjas), escenas guardadas en la Biblioteca al nacer, control de datos en campañas de emergencia, texto en pantalla y cierre institucional, música generativa, voz en off con diagnóstico por proveedor [${availableTtsProviders().join(', ') || 'ninguno'}] y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
 
@@ -5208,10 +5208,54 @@ export const applyNarration = async (req, res) => {
 
 // Estado de los motores de voz: credencial, conexión, cuota, modelo y voces.
 // Llamadas de LECTURA a cada proveedor —no sintetizan ni consumen cuota—.
+// ⚠️ «CONECTADO» NO ES «CON SALDO» (v4.1237). OpenAI no expone el saldo por
+// API: su chequeo de lectura (`/v1/models`) sale bien con la cuenta en cero, y
+// la tarjeta decía «Conectado» a un motor que rechazaba toda síntesis. Lo que
+// sí se sabe es cómo terminó el ÚLTIMO intento real con cada motor, y está en
+// el registro de consumo: si fue un fallo de cuota o de credencial y no hubo
+// un éxito después, la tarjeta lo dice. Un éxito posterior lo borra solo.
+const BLOCKING_FAILURES = new Set(['quota', 'auth']);
+const recentVoiceOutcomes = async () => {
+    try {
+        await ensureReelSchema();
+        const { rows } = await db.query(
+            `SELECT DISTINCT ON (meta->>'ttsProvider')
+                    meta->>'ttsProvider' AS provider, status, meta->>'errorCode' AS code, detail, "createdAt"
+               FROM "ReelUsage"
+              WHERE operation = 'voice.synthesize'
+                AND meta->>'ttsProvider' IS NOT NULL
+                AND "createdAt" > NOW() - INTERVAL '12 hours'
+              ORDER BY meta->>'ttsProvider', "createdAt" DESC`
+        );
+        return rows;
+    } catch (e) {
+        console.warn('[REEL] últimos intentos de voz no disponibles:', e.message);
+        return [];
+    }
+};
+
+export const withRecentOutcome = (status, outcome) => {
+    if (!outcome || outcome.status !== 'error') return status;
+    // Los intentos registrados por v4.1236 anotaron «sin saldo» de OpenAI como
+    // `rate_limit` (el 429 que comparte con el límite de solicitudes).
+    const code = outcome.code === 'rate_limit' && /(no credits|add credits|insufficient_quota|exceeded your current quota)/i.test(outcome.detail || '')
+        ? 'quota' : outcome.code;
+    if (!BLOCKING_FAILURES.has(code)) return status;
+    if (status.state !== 'ok' && status.state !== 'unknown') return status;
+    const message = String(outcome.detail || '').replace(/^[a-z_]+:\s*/, '');
+    return {
+        ...status,
+        state: code,
+        lastFailure: { code, at: outcome.createdAt, message },
+        message: `La conexión responde, pero el último intento de generar voz falló: ${message}`
+    };
+};
+
 export const getNarrationProviders = async (req, res) => {
     try {
         const force = req.query.refresh === '1' || req.query.refresh === 'true';
-        const providers = await ttsProvidersStatus({ force });
+        const [statuses, outcomes] = await Promise.all([ttsProvidersStatus({ force }), recentVoiceOutcomes()]);
+        const providers = statuses.map(p => withRecentOutcome(p, outcomes.find(o => o.provider === p.id)));
         res.json({
             providers,
             activeProvider: activeTtsProvider(),

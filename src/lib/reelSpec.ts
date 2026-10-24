@@ -430,6 +430,11 @@ export interface TtsProviderStatus {
     voices: TtsVoiceOption[];
     warnings: string[];
     accentNote: string | null;
+    // Qué voz usa «Automática» por género (ElevenLabs: la mejor de la cuenta).
+    autoVoices?: Partial<Record<'female' | 'male', { id: string; label: string; accent: string | null }>> | null;
+    // El último intento REAL de sintetizar falló por cuota o credencial
+    // (v4.1237): el chequeo de lectura no lo ve, el registro de consumo sí.
+    lastFailure?: { code: string; at: string; message: string } | null;
     checkedAt: string;
     latencyMs: number | null;
 }

@@ -52,6 +52,8 @@ globalThis.fetch = async (url, init = {}) => {
     throw new TypeError(`fetch failed (sin ruta para ${u})`);
 };
 const reset = (...r) => { calls = []; routes = r; };
+// La llamada de SÍNTESIS (ElevenLabs puede leer antes las voces de la cuenta).
+const ttsCall = () => calls.find(c => /text-to-speech|audio\/speech/.test(c.url));
 const audio = Buffer.alloc(4096, 7);
 const OK_EL = { match: u => u.includes('api.elevenlabs.io/v1/text-to-speech'), reply: () => respond(200, audio, 'audio/mpeg') };
 const OK_OA = { match: u => u.includes('api.openai.com/v1/audio/speech'), reply: () => respond(200, audio, 'audio/mpeg') };
@@ -64,6 +66,9 @@ console.log('\n▸ Clasificación de los errores reales de cada proveedor');
     check('OpenAI 401 → el mensaje NO lleva el fragmento de la clave',
         !/sk-proj-abcd/.test(c('openai', 401, { error: { message: 'Incorrect API key provided: sk-proj-abcd****wxyz.', code: 'invalid_api_key' } }).message));
     check('OpenAI 429 insufficient_quota → quota (no «demasiadas solicitudes»)', c('openai', 429, { error: { message: 'You exceeded your current quota', type: 'insufficient_quota', code: 'insufficient_quota' } }).code === 'quota');
+    check('OpenAI 429 «no credits remaining» → quota, no «esperá y reintentá» (el caso de producción, v4.1237)',
+        c('openai', 429, { error: { message: 'You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.', type: 'insufficient_quota' } }).code === 'quota'
+        && c('openai', 429, { error: { message: 'You have no credits remaining. Add credits to continue using the API.' } }).code === 'quota');
     check('OpenAI 429 rate_limit_exceeded → rate_limit', c('openai', 429, { error: { message: 'Rate limit reached', code: 'rate_limit_exceeded' } }).code === 'rate_limit');
     check('OpenAI 404 modelo → model_unsupported', c('openai', 404, { error: { message: 'The model `tts-9` does not exist', code: 'model_not_found' } }).code === 'model_unsupported');
     check('OpenAI 400 voz inválida → voice_not_found', c('openai', 400, { error: { message: "Invalid value for 'voice': 'xyz'." } }).code === 'voice_not_found');
@@ -85,12 +90,12 @@ console.log('\n▸ La petición a ElevenLabs');
 {
     reset(OK_EL);
     await N.synthesize({ text: 'Hola comunidad.', provider: 'elevenlabs', language: 'es-CO' });
-    check('con eleven_multilingual_v2 NO manda language_code (el modelo no lo admite)', calls[0] && !('language_code' in calls[0].body));
-    check('pide MP3 explícito y codifica el id de la voz', /output_format=mp3_44100_128/.test(calls[0].url));
+    check('con eleven_multilingual_v2 NO manda language_code (el modelo no lo admite)', ttsCall() && !('language_code' in ttsCall().body));
+    check('pide MP3 explícito y codifica el id de la voz', /output_format=mp3_44100_128/.test(ttsCall().url));
     process.env.ELEVENLABS_MODEL = 'eleven_turbo_v2_5';
     reset(OK_EL);
     await N.synthesize({ text: 'Hola comunidad.', provider: 'elevenlabs', language: 'es-CO' });
-    check('con eleven_turbo_v2_5 SÍ manda language_code = es', calls[0]?.body?.language_code === 'es');
+    check('con eleven_turbo_v2_5 SÍ manda language_code = es', ttsCall()?.body?.language_code === 'es');
     delete process.env.ELEVENLABS_MODEL;
 }
 
@@ -219,6 +224,7 @@ console.log('\n▸ Estado de los proveedores (llamadas de lectura, sin síntesis
     check('OpenAI con credencial rechazada: estado auth y voces del catálogo', oa.state === 'auth' && oa.voices.length === 9);
     check('ninguna llamada de estado sintetiza', !calls.some(c => /text-to-speech|audio\/speech/.test(c.url)));
 
+    N.resetTtsCaches();
     reset({ match: u => u.endsWith('/v1/user/subscription'), reply: () => respond(200, { character_count: 10000, character_limit: 10000 }) },
         { match: u => u.endsWith('/v1/voices'), reply: () => respond(401, { detail: { status: 'missing_permissions' } }) });
     const q = await N.checkTtsProvider('elevenlabs', { force: true });
@@ -233,6 +239,51 @@ console.log('\n▸ Estado de los proveedores (llamadas de lectura, sin síntesis
 
     const cached = await N.checkTtsProvider('elevenlabs');
     check('el estado se cachea (abrir diez fichas no son veinte llamadas)', cached === q);
+}
+
+console.log('\n▸ La voz automática de ElevenLabs sale de la cuenta (v4.1237)');
+{
+    const cuenta = [
+        { id: 'enMale00001', label: 'Daniel', gender: 'male', accent: 'british', language: 'en', locales: [] },
+        { id: 'esFem000001', label: 'Lucía', gender: 'female', accent: 'castilian', language: 'es', locales: ['es-ES'] },
+        { id: 'coFem000001', label: 'Valentina', gender: 'female', accent: 'colombian', language: 'es', locales: ['es-CO'] },
+        { id: 'mxMale00001', label: 'Mateo', gender: 'male', accent: 'mexican', language: 'es', locales: ['es-MX'] }
+    ];
+    check('femenina + Español · Colombia → la voz colombiana', N.pickAccountVoice(cuenta, { gender: 'female', language: 'es-CO' })?.id === 'coFem000001');
+    check('femenina + Español · España → la castellana', N.pickAccountVoice(cuenta, { gender: 'female', language: 'es-ES' })?.id === 'esFem000001');
+    check('masculina + Colombia → un hombre hispanohablante, nunca una mujer por el acento', N.pickAccountVoice(cuenta, { gender: 'male', language: 'es-CO' })?.id === 'mxMale00001');
+    check('sin voces → null', N.pickAccountVoice([], { gender: 'female' }) === null);
+
+    // Sin elegir voz, ElevenLabs tiene que pedir la colombiana de la cuenta,
+    // no la Rachel fija de v4.1236.
+    N.resetTtsCaches();
+    const VOCES = { match: u => u.endsWith('/v1/voices'), reply: () => respond(200, { voices: [
+        { voice_id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel', labels: { accent: 'american', gender: 'female' } },
+        { voice_id: 'abcColombia1', name: 'Sara', labels: { gender: 'female' }, verified_languages: [{ language: 'es', accent: 'colombian', locale: 'es-CO' }] }
+    ] }) };
+    reset(VOCES, OK_EL);
+    const out = await N.synthesize({ text: 'Hola.', provider: 'elevenlabs', gender: 'female', language: 'es-CO', fallback: false });
+    check('sin voz elegida, ElevenLabs usa la mejor voz de la CUENTA (idioma verificado es-CO)', /text-to-speech\/abcColombia1\?/.test(ttsCall()?.url || '') && out.voiceId === 'abcColombia1', ttsCall()?.url);
+    reset(VOCES, OK_EL);
+    await N.synthesize({ text: 'Hola.', provider: 'elevenlabs', gender: 'female', language: 'es-CO', fallback: false });
+    check('las voces de la cuenta se cachean: la segunda síntesis no las vuelve a pedir', !calls.some(c => c.url.endsWith('/v1/voices')));
+    process.env.ELEVENLABS_VOICE_FEMALE = 'envVoice0001';
+    reset(OK_EL);
+    await N.synthesize({ text: 'Hola.', provider: 'elevenlabs', gender: 'female', fallback: false });
+    check('una voz fijada por entorno manda sobre la elección automática', /text-to-speech\/envVoice0001\?/.test(ttsCall()?.url || ''));
+    delete process.env.ELEVENLABS_VOICE_FEMALE;
+}
+
+console.log('\n▸ «Conectado» no es «con saldo»: el último intento real cuenta (v4.1237)');
+{
+    const C = await import('../server/controllers/reelController.js');
+    const ok = { id: 'openai', state: 'ok', message: 'Conectado (modelo tts-1).' };
+    const sinSaldo = C.withRecentOutcome(ok, { status: 'error', code: 'quota', detail: 'quota: OpenAI TTS rechazó la locución por límite de consumo', createdAt: new Date().toISOString() });
+    check('un fallo de cuota reciente vuelve la tarjeta «Sin cuota»', sinSaldo.state === 'quota' && sinSaldo.lastFailure?.code === 'quota' && !/^quota:/.test(sinSaldo.lastFailure.message));
+    const viejo429 = C.withRecentOutcome(ok, { status: 'error', code: 'rate_limit', detail: 'rate_limit: … «You have no credits remaining. Add credits…»', createdAt: new Date().toISOString() });
+    check('los intentos que v4.1236 anotó como rate_limit por «no credits» también cuentan', viejo429.state === 'quota');
+    check('un éxito posterior lo borra', C.withRecentOutcome(ok, { status: 'ok', code: null }).state === 'ok');
+    check('un fallo transitorio (timeout) no bloquea la tarjeta', C.withRecentOutcome(ok, { status: 'error', code: 'timeout', detail: 'x' }).state === 'ok');
 }
 
 console.log('\n▸ Cableado: el servidor y la pantalla hablan el mismo idioma');
