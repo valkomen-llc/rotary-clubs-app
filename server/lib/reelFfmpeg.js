@@ -319,6 +319,25 @@ export const measureAudioDuration = async (buffer) => withTempDir(async (dir) =>
     throw new Error('No se pudo determinar la duración del audio.');
 });
 
+// ─── Audio a MP3 (v4.1240) ─────────────────────────────────────────────────
+//
+// Gemini TTS devuelve WAV (modelos 3.8) o PCM crudo de 16 bits sin cabecera
+// (modelos anteriores, `audio/L16;rate=24000`). El resto del módulo —la
+// medición, el almacenamiento y la mezcla— trabaja con MP3, así que se
+// convierte acá, una vez, con el mismo ffmpeg del montaje.
+export const encodeAudioToMp3 = async (buffer, mimeType = 'audio/wav') => withTempDir(async (dir) => {
+    const mime = String(mimeType || '').toLowerCase();
+    const input = path.join(dir, 'voz.in');
+    const output = path.join(dir, 'voz.mp3');
+    await writeFile(input, buffer);
+    const raw = /l16|pcm/.test(mime) && !/wav/.test(mime);
+    const rate = Number((mime.match(/rate=(\d+)/) || [])[1]) || 24000;
+    const inputArgs = raw ? ['-f', 's16le', '-ar', String(rate), '-ac', '1', '-i', input] : ['-i', input];
+    await runFfmpeg(['-y', ...inputArgs, '-codec:a', 'libmp3lame', '-b:a', '128k', '-ar', '44100', output],
+        { timeoutMs: 30_000, label: 'voz a mp3' });
+    return readFile(output);
+});
+
 // ─── Normalización ─────────────────────────────────────────────────────────
 //
 // Sólo se llama cuando el clip NO coincide con el destino. Un clip que ya viene

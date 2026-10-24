@@ -689,7 +689,8 @@ presupuesto del prompt—, separado de la orquestación, por el mismo motivo que
 | `CRON_SECRET` | Protege `/api/cron/reels-tick`, igual que el resto de los crons |
 | `REEL_TTS_PROVIDER` | `kie` \| `elevenlabs` \| `openai` (por defecto: KIE si tiene credencial) |
 | `KIE_TTS_MODEL` | Modelo de voz en KIE (default `elevenlabs/text-to-speech-turbo-2-5`; `…-multilingual-v2` no admite fijar idioma) |
-| `KIE_TTS_VOICE_FEMALE/MALE`, `KIE_TTS_MAX_WAIT_MS` | Voz por defecto en KIE (de su lista cerrada) y tope de espera de la tarea (75 000) |
+| `KIE_TTS_VOICE_FEMALE/MALE`, `KIE_TTS_MAX_WAIT_MS` | Voz por defecto en KIE (de su lista cerrada) y tope de espera de cada tarea (40 000) |
+| `GEMINI_TTS_MODEL`, `GEMINI_TTS_VOICE_FEMALE/MALE` | Modelo de voz de Google (default `gemini-3.8-flash-tts`) y voces por defecto (Kore / Charon). Usa `GEMINI_API_KEY` |
 | `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_FEMALE/MALE`, `ELEVENLABS_MODEL` | Voz con acento latino real |
 | `OPENAI_TTS_MODEL`, `OPENAI_TTS_VOICE` | Voz con la credencial que la plataforma ya tiene |
 | `REEL_TTS_AUTO_FALLBACK` | `off` apaga el respaldo automático entre motores de voz del montaje automático (encendido por defecto). El panel decide con su casilla |
@@ -3151,3 +3152,30 @@ escenas y compone la música.
 - En `reelUsage.js`, KIE admite el alcance `voice`.
 - Limitación: con KIE cada síntesis es una tarea asíncrona (~5-20 s). El
   Narrative Timing Engine del montaje automático puede hacer hasta 3.
+
+### v4.1240 — Google Gemini TTS como respaldo de KIE
+
+En producción la tarea de KIE se CREÓ (credencial y créditos bien) y terminó en
+`fail` con «Internal error, please try again later»: un fallo de la pasarela.
+
+- **KIE reintenta UNA vez con `elevenlabs/text-to-speech-multilingual-v2`**
+  (sin `language_code`) ante `provider_down`/`timeout`/`empty_audio` de Turbo.
+  Tope de 40 s por tarea para que reintento + respaldo quepan en 120 s.
+- **Motor `gemini`** (segundo del registro → respaldo de KIE), con
+  `GEMINI_API_KEY`, la misma credencial que escribe guiones:
+  - `gemini-3.8-*`: `POST /v1beta/interactions`, header `x-goog-api-key`,
+    `input[0].content[0].annotations[0] = { type: 'speech_metadata', style }`,
+    `response_format { type: 'audio', mime_type: 'audio/wav' }`,
+    `generation_config.speech_config = [{ voice }]`. El audio viene en
+    `output_audio.data` o en el último `steps[].content[]` de tipo `audio`.
+  - Modelos anteriores: `:generateContent` con
+    `responseModalities: ['AUDIO']` y `speechConfig.voiceConfig.prebuiltVoiceConfig`;
+    devuelven PCM L16 de 24 kHz sin cabecera en `inlineData`.
+  - Cadena de modelos: el configurado → 3.8 Flash → 3.8 Flash-Lite → 2.5 Flash
+    preview. Sólo un `model_unsupported` (404) pasa al siguiente.
+  - **El acento lo pone la instrucción** (`geminiStyleFor`: «Native neutral
+    Colombian Spanish speaker…»), no la voz: cualquiera de las 30 sirve.
+  - `encodeAudioToMp3` (`reelFfmpeg.js`) convierte WAV/PCM a MP3 128 kbps.
+- `fallbackProviderFor` ignora estados en caché vencidos o contradictorios
+  (`not_configured` de un motor que hoy sí está configurado).
+- `ReelUsage`: proveedor `gemini` con alcance `voice`.

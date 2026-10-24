@@ -28,6 +28,8 @@ delete process.env.REEL_TTS_AUTO_FALLBACK;
 // KIE se prueba en su propia sección: fuera de ella no hay credencial, para
 // que las secciones de ElevenLabs/OpenAI no dependan del orden del registro.
 delete process.env.KIE_API_KEY;
+delete process.env.GEMINI_API_KEY;
+delete process.env.GEMINI_TTS_MODEL;
 process.env.KIE_TTS_MAX_WAIT_MS = '4000';
 delete process.env.KIE_TTS_MODEL;
 
@@ -399,6 +401,74 @@ console.log('\n▸ KIE: la voz por el proveedor de IA integrado (v4.1239)');
     const fb = await N.synthesize({ text: 'Hola.', provider: 'openai', fallback: true });
     check('OpenAI sin saldo + respaldo → la voz sale por KIE', fb.provider === 'kie' && fb.fallbackFrom === 'openai');
     delete process.env.KIE_API_KEY;
+}
+
+console.log('\n▸ Google Gemini TTS y el reintento de KIE (v4.1240)');
+{
+    const ffmpegBin = (await import('ffmpeg-static')).default;
+    const { measureAudioDuration } = await import('../server/lib/reelFfmpeg.js');
+    const dirG = mkdtempSync(path.join(tmpdir(), 'gem-'));
+    spawnSync(ffmpegBin, ['-y', '-f', 'lavfi', '-i', 'sine=frequency=330:duration=2.4', '-ac', '1', '-ar', '24000', path.join(dirG, 'g.wav')]);
+    spawnSync(ffmpegBin, ['-y', '-f', 'lavfi', '-i', 'sine=frequency=330:duration=1.6', '-ac', '1', '-ar', '24000', '-f', 's16le', path.join(dirG, 'g.pcm')]);
+    const WAV64 = readFileSync(path.join(dirG, 'g.wav')).toString('base64');
+    const PCM64 = readFileSync(path.join(dirG, 'g.pcm')).toString('base64');
+    rmSync(dirG, { recursive: true, force: true });
+
+    process.env.GEMINI_API_KEY = 'gem-test-key';
+    N.resetTtsCaches();
+    const INTERACTIONS_OK = { match: u => u.endsWith('/v1beta/interactions'), reply: () => respond(200, { steps: [{ type: 'model_output', content: [{ type: 'audio', mime_type: 'audio/wav', data: WAV64 }] }] }) };
+    reset(INTERACTIONS_OK);
+    const g = await N.synthesize({ text: 'En Ibagué, los clubes se unieron.', provider: 'gemini', gender: 'female', language: 'es-CO', style: 'institucional', fallback: false });
+    const req = calls.find(c => c.url.endsWith('/interactions'));
+    check('Gemini 3.8 por la API de Interacciones con la credencial de Google', req?.body?.model === 'gemini-3.8-flash-tts' && req?.headers?.['x-goog-api-key'] === 'gem-test-key');
+    check('pide el acento colombiano en el estilo y la voz femenina por defecto (Kore)', /Colombian/.test(req?.body?.input?.[0]?.content?.[0]?.annotations?.[0]?.style || '') && req?.body?.generation_config?.speech_config?.[0]?.voice === 'Kore');
+    const durG = await measureAudioDuration(g.buffer);
+    check('el WAV de Google se convierte a MP3 medible (2,4 s)', g.provider === 'gemini' && Math.abs(durG - 2.4) < 0.2 && g.buffer.subarray(0, 3).toString() !== 'RIF', String(durG));
+
+    reset(
+        { match: u => u.endsWith('/v1beta/interactions'), reply: () => respond(404, { error: { code: 404, message: 'models/gemini-3.8-flash-tts is not found for API version v1beta', status: 'NOT_FOUND' } }) },
+        { match: u => u.includes('gemini-2.5-flash-preview-tts:generateContent'), reply: () => respond(200, { candidates: [{ content: { parts: [{ inlineData: { mimeType: 'audio/L16;codec=pcm;rate=24000', data: PCM64 } }] } }] }) }
+    );
+    const g2 = await N.synthesize({ text: 'Hola.', provider: 'gemini', gender: 'male', language: 'es-CO', fallback: false });
+    const gc = calls.find(c => c.url.includes(':generateContent'));
+    check('si el modelo 3.8 no existe para la clave, pasa a 2.5 por generateContent', g2.model === 'gemini-2.5-flash-preview-tts' && gc?.body?.generationConfig?.responseModalities?.[0] === 'AUDIO');
+    check('…con la voz masculina (Charon) y el estilo delante del texto', gc?.body?.generationConfig?.speechConfig?.voiceConfig?.prebuiltVoiceConfig?.voiceName === 'Charon' && /Colombian/.test(gc?.body?.contents?.[0]?.parts?.[0]?.text || ''));
+    check('el PCM crudo de 24 kHz se convierte a MP3 medible (1,6 s)', Math.abs((await measureAudioDuration(g2.buffer)) - 1.6) < 0.2);
+
+    reset({ match: u => u.endsWith('/v1beta/interactions'), reply: () => respond(429, { error: { code: 429, message: 'You exceeded your current quota, please check your plan and billing details.', status: 'RESOURCE_EXHAUSTED' } }) });
+    check('Google sin cuota → quota', (await expectError(() => N.synthesize({ text: 'Hola.', provider: 'gemini', fallback: false })))?.code === 'quota');
+    reset({ match: u => u.endsWith('/v1beta/interactions'), reply: () => respond(400, { error: { code: 400, message: 'API key not valid. Please pass a valid API key.', status: 'INVALID_ARGUMENT' } }) });
+    check('clave de Google inválida → auth', (await expectError(() => N.synthesize({ text: 'Hola.', provider: 'gemini', fallback: false })))?.code === 'auth');
+
+    reset({ match: u => u.includes('/v1beta/models/gemini-3.8-flash-tts'), reply: () => respond(200, { name: 'models/gemini-3.8-flash-tts' }) });
+    const gs = await N.checkTtsProvider('gemini', { force: true });
+    check('estado de Gemini: conectado, 30 voces y voz automática', gs.state === 'ok' && gs.voices.length === 30 && gs.autoVoices?.female?.id === 'Kore');
+
+    // KIE: «error interno» con Turbo → reintento con multilingual-v2.
+    process.env.KIE_API_KEY = 'kie-test-key';
+    let createdModels = [];
+    reset(
+        { match: u => u.endsWith('/jobs/createTask'), reply: ({ body }) => { createdModels.push(body.model); return respond(200, { code: 200, data: { taskId: body.model.includes('turbo') ? 'tTurbo' : 'tMulti' } }); } },
+        { match: u => u.includes('taskId=tTurbo'), reply: () => respond(200, { code: 200, data: { state: 'fail', failMsg: 'Internal error, please try again later.' } }) },
+        { match: u => u.includes('taskId=tMulti'), reply: () => respond(200, { code: 200, data: { state: 'success', resultJson: JSON.stringify({ resultUrls: ['https://tempfile.kie.ai/m.mp3'] }) } }) },
+        { match: u => u === 'https://tempfile.kie.ai/m.mp3', reply: () => respond(200, audio, 'audio/mpeg') }
+    );
+    const k = await N.synthesize({ text: 'Hola.', provider: 'kie', fallback: false });
+    check('KIE «Internal error» con Turbo 2.5 → reintenta UNA vez con multilingual-v2 y sale', k.provider === 'kie' && k.model === 'elevenlabs/text-to-speech-multilingual-v2' && createdModels.length === 2);
+    check('el reintento no manda language_code (multilingual-v2 lo rechaza)', !('language_code' in (calls.filter(c => c.url.endsWith('/jobs/createTask'))[1]?.body?.input || {})));
+
+    // El caso de la captura: KIE falla con los dos modelos → la voz sale por Gemini.
+    reset(
+        { match: u => u.endsWith('/jobs/createTask'), reply: () => respond(200, { code: 200, data: { taskId: 'tX' } }) },
+        { match: u => u.includes('/jobs/recordInfo'), reply: () => respond(200, { code: 200, data: { state: 'fail', failMsg: 'Internal error, please try again later.' } }) },
+        INTERACTIONS_OK
+    );
+    const fbG = await N.synthesize({ text: 'Hola.', provider: 'kie', gender: 'female', language: 'es-CO', fallback: true });
+    check('KIE caído + respaldo encendido → la voz sale por Google Gemini', fbG.provider === 'gemini' && fbG.fallbackFrom === 'kie');
+    check('el respaldo de KIE es Gemini (antes que ElevenLabs y OpenAI)', N.fallbackProviderFor('kie') === 'gemini');
+    delete process.env.KIE_API_KEY;
+    delete process.env.GEMINI_API_KEY;
+    N.resetTtsCaches();
 }
 
 console.log('\n▸ Cableado: el servidor y la pantalla hablan el mismo idioma');

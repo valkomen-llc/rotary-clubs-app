@@ -434,7 +434,7 @@ const ReelNarrationPanel: React.FC<{
     // Sin estado de los proveedores todavía, las tarjetas salen del catálogo.
     const providerCards: TtsProviderStatus[] = useMemo(() => {
         if (providers) return providers.filter(p => p.implemented);
-        return (catalogo?.providers || []).filter(p => ['kie', 'elevenlabs', 'openai'].includes(p.id)).map(p => ({
+        return (catalogo?.providers || []).filter(p => ['kie', 'gemini', 'elevenlabs', 'openai'].includes(p.id)).map(p => ({
             id: p.id, label: p.label, model: null, implemented: true, configured: p.available,
             accentControl: p.accentControl, voiceChoice: false, languages: null, billing: null,
             note: p.note || null, isDefault: p.isDefault, state: p.available ? 'unknown' : 'not_configured',
@@ -831,7 +831,9 @@ const ReelNarrationPanel: React.FC<{
                         disabled={ocupado}
                         onChange={v => setForm(f => ({ ...f, voiceId: v }))}
                         options={voiceOptions}
-                        hint={selectedProvider.accentControl
+                        hint={selectedProvider.id === 'gemini'
+                            ? 'Gemini dirige el acento con una instrucción: con «Español · Colombia» cualquier voz habla con acento colombiano.'
+                            : selectedProvider.accentControl
                             ? 'En ElevenLabs el acento lo pone la voz: para acento colombiano elegí una voz latina de la cuenta.'
                             : selectedProvider.id === 'kie'
                                 ? 'KIE fija el idioma del Reel en la síntesis; sus voces no traen acento colombiano.'

@@ -42,6 +42,21 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1240.0',
+        title: 'Voz en off con Google Gemini como respaldo de KIE, y acento colombiano 🎙️🇨🇴',
+        description: 'En producción, KIE aceptó la tarea de voz (credencial y créditos en orden) pero su pasarela la terminó con «Error interno, intente más tarde». Ahora KIE reintenta una vez con su otro modelo de voz (ElevenLabs Multilingual v2) y, si vuelve a fallar, la voz se genera automáticamente con Google Gemini TTS, usando la misma clave de Google con la que la plataforma ya escribe los guiones. Gemini habla español y recibe la instrucción de acento: con «Español · Colombia» la locución sale con acento colombiano, con 30 voces a elegir. El audio de Google se convierte a MP3 y se mide como el de cualquier otro motor, sin regenerar escenas.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'content-studio', 'narration', 'tts', 'kie', 'gemini', 'google', 'fix'],
+        type: 'hotfix',
+        impact: 'Alta: la voz en off se genera aunque KIE falle, con acento colombiano dirigido.',
+        changes: [
+            { type: 'added', text: 'Motor «Google Gemini TTS» (gemini-3.8-flash-tts por la API de Interacciones; gemini-2.5-flash-preview-tts por generateContent si el 3.8 no está disponible para la clave), con acento por instrucción y 30 voces.' },
+            { type: 'fixed', text: 'KIE: un «error interno» de la tarea se reintenta una vez con elevenlabs/text-to-speech-multilingual-v2 antes de pasar al respaldo.' },
+            { type: 'changed', text: 'Orden de respaldo: KIE → Google Gemini → ElevenLabs → OpenAI; se saltean motores que se saben bloqueados.' },
+            { type: 'added', text: 'Conversión del audio de Google (WAV o PCM de 24 kHz) a MP3 con el ffmpeg del montaje.' },
+        ],
+    },
+    {
         version: '4.1239.0',
         title: 'Voz en off con KIE, el proveedor de IA integrado de la plataforma 🎙️⚡',
         description: 'La voz en off de los Reels ahora se genera con KIE, el mismo proveedor de IA que ya anima las escenas y compone la música, usando los modelos de voz de ElevenLabs que KIE ofrece en su pasarela (ElevenLabs Turbo 2.5, con el español fijado en la síntesis). Se cobra en créditos de KIE: no depende de la suscripción propia de ElevenLabs (que figura con un pago pendiente) ni del saldo de OpenAI (agotado). KIE es el motor por defecto y el primero del respaldo; su tarjeta muestra el saldo de créditos, y «Verificar conexión» sintetiza una palabra para confirmarlo. Además se corrige la consulta del contexto de la campaña que fallaba en silencio (columna inexistente) y dejaba el guion con IA sin la información de la solicitud.',
