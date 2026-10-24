@@ -3096,3 +3096,28 @@ recargando créditos en platform.openai.com. Lo que sí era del código:
   voces se cachean 5 min. Rachel/Daniel sólo si la cuenta no se puede leer.
 - **El panel no arranca en un motor bloqueado** si el otro está conectado, y
   lo dice.
+
+### v4.1238 — Un motor que no puede generar no se puede elegir
+
+En v4.1237 el panel avisaba «Se eligió ElevenLabs porque OpenAI TTS no está
+disponible» pero la tarjeta de OpenAI seguía seleccionable, y el respaldo
+automático estaba apagado por defecto: el administrador elegía OpenAI, pulsaba
+«Generar» y volvía el mismo error de saldo.
+
+- **`BLOCKED_STATES` / `isUsable` en el panel**: `quota`, `auth`,
+  `not_configured`, `not_implemented` y `model_unsupported` no se pueden
+  elegir. Si el elegido queda bloqueado y hay otro usable, el panel cambia
+  (siempre, no sólo al cargar).
+- **Respaldo automático encendido por defecto.** Las preferencias pasaron a
+  `rotary.reelVoicePrefs.v2`: la v1 guardaba `allowFallback: false` a todos.
+- **«Verificar conexión» sintetiza** (`probeTtsProvider`: «Hola.», 5
+  caracteres, sin respaldo, voz automática) con `?refresh=1&reelId=…`. El
+  resultado (`withProbe`) manda sobre la lectura y sobre el último intento, y
+  se registra en `ReelUsage` del Reel (el registro exige proyecto): así un
+  éxito tras recargar saldo desbloquea el motor también en otras instancias.
+- **ElevenLabs y las voces de la Biblioteca**: un plan que no las admite por
+  API responde `payment_required` «library voices». Se clasifica como
+  `voice_not_found` (no `quota`), y si la voz era la AUTOMÁTICA se reintenta
+  una vez con la mejor voz propia (`premade`/`cloned`/`generated`); desde ahí
+  la automática elige sólo entre propias. Una voz elegida a mano no se cambia:
+  se informa.

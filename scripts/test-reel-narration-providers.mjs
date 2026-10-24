@@ -274,6 +274,45 @@ console.log('\n▸ La voz automática de ElevenLabs sale de la cuenta (v4.1237)'
     delete process.env.ELEVENLABS_VOICE_FEMALE;
 }
 
+console.log('\n▸ Voz de la Biblioteca que el plan no admite → voz propia de la cuenta (v4.1238)');
+{
+    const lib = N.classifyTtsFailure('elevenlabs', 402, JSON.stringify({ detail: { status: 'payment_required', message: 'Free users cannot use library voices via the API. Please upgrade your subscription to use this voice.' } }), { voiceId: 'libCO0000001' });
+    check('se clasifica como voz no disponible, no como «sin saldo»', lib.code === 'voice_not_found' && /Biblioteca de voces/.test(lib.message));
+
+    N.resetTtsCaches();
+    const VOCES = { match: u => u.endsWith('/v1/voices'), reply: () => respond(200, { voices: [
+        { voice_id: 'libCO0000001', name: 'Sara', category: 'professional', labels: { gender: 'female' }, verified_languages: [{ language: 'es', accent: 'colombian', locale: 'es-CO' }] },
+        { voice_id: 'ownES0000001', name: 'Lucía', category: 'generated', labels: { gender: 'female', language: 'es', accent: 'latin american' } },
+        { voice_id: 'premadeEN001', name: 'Rachel', category: 'premade', labels: { gender: 'female', accent: 'american' } }
+    ] }) };
+    const LIB_REJECT = { match: u => u.includes('/text-to-speech/libCO0000001'), reply: () => respond(402, { detail: { status: 'payment_required', message: 'Free users cannot use library voices via the API.' } }) };
+    reset(VOCES, LIB_REJECT, OK_EL);
+    const out = await N.synthesize({ text: 'Hola.', provider: 'elevenlabs', gender: 'female', language: 'es-CO', fallback: false });
+    check('la automática rechazada se reintenta UNA vez con la mejor voz propia hispana', out.voiceId === 'ownES0000001'
+        && calls.filter(c => c.url.includes('/text-to-speech/')).length === 2, calls.map(c => c.url).join(' '));
+    reset(VOCES, LIB_REJECT, OK_EL);
+    await N.synthesize({ text: 'Hola.', provider: 'elevenlabs', gender: 'female', language: 'es-CO', fallback: false });
+    check('desde ahí «Automática» va directo a las propias (no vuelve a gastar un intento fallido)', calls.filter(c => c.url.includes('/text-to-speech/')).length === 1 && /ownES0000001/.test(ttsCall()?.url || ''));
+    reset(VOCES, LIB_REJECT, OK_EL);
+    const elegida = await expectError(() => N.synthesize({ text: 'Hola.', provider: 'elevenlabs', voiceId: 'libCO0000001', fallback: false }));
+    check('una voz elegida A MANO no se cambia en silencio: se informa', elegida?.code === 'voice_not_found');
+}
+
+console.log('\n▸ «Verificar conexión» sintetiza de verdad (v4.1238)');
+{
+    N.resetTtsCaches();
+    reset({ match: u => u.includes('openai'), reply: () => respond(429, { error: { message: 'You have no credits remaining. Add credits to continue using the API.' } }) });
+    const p1 = await N.probeTtsProvider('openai');
+    check('OpenAI sin saldo → la prueba falla con quota', !p1.ok && p1.code === 'quota');
+    check('la prueba cuesta 5 caracteres y una sola llamada', p1.chars === 5 && calls.length === 1 && calls[0].body.input === 'Hola.');
+    reset(OK_OA);
+    const p2 = await N.probeTtsProvider('openai');
+    check('con saldo → ok, con modelo y voz', p2.ok && p2.model === 'tts-1' && p2.voiceId === 'nova');
+    reset({ match: u => u.includes('openai'), reply: () => respond(429, { error: { message: 'no credits' } }) }, OK_EL);
+    await N.probeTtsProvider('openai');
+    check('la prueba nunca usa el respaldo (probaría el otro motor)', !calls.some(c => c.url.includes('elevenlabs')));
+}
+
 console.log('\n▸ «Conectado» no es «con saldo»: el último intento real cuenta (v4.1237)');
 {
     const C = await import('../server/controllers/reelController.js');
@@ -284,6 +323,10 @@ console.log('\n▸ «Conectado» no es «con saldo»: el último intento real cu
     check('los intentos que v4.1236 anotó como rate_limit por «no credits» también cuentan', viejo429.state === 'quota');
     check('un éxito posterior lo borra', C.withRecentOutcome(ok, { status: 'ok', code: null }).state === 'ok');
     check('un fallo transitorio (timeout) no bloquea la tarjeta', C.withRecentOutcome(ok, { status: 'error', code: 'timeout', detail: 'x' }).state === 'ok');
+    const recargado = C.withProbe(sinSaldo, { ok: true, provider: 'openai', model: 'tts-1', voiceId: 'nova' });
+    check('una prueba exitosa borra el «Sin cuota» (después de recargar saldo)', recargado.state === 'ok' && recargado.lastFailure === null);
+    const caido = C.withProbe(ok, { ok: false, provider: 'openai', code: 'quota', message: 'sin saldo' });
+    check('una prueba fallida bloquea aunque la lectura diga «Conectado»', caido.state === 'quota' && caido.lastFailure?.code === 'quota');
 }
 
 console.log('\n▸ Cableado: el servidor y la pantalla hablan el mismo idioma');
@@ -301,6 +344,9 @@ console.log('\n▸ Cableado: el servidor y la pantalla hablan el mismo idioma');
     check('el panel genera como BORRADOR y aplica aparte', /apply: false/.test(panel) && /\/narration\/\$\{version\.id\}\/apply/.test(panel));
     check('el panel muestra la oferta de respaldo del servidor', /failure\.fallback/.test(panel) && /Intentarlo con/.test(panel));
     check('el panel no lee .json() a ciegas', !/\.json\(\)/.test(panel));
+    check('una tarjeta que no puede generar no se puede elegir', /const selectable = isUsable\(p\)/.test(panel) && /BLOCKED_STATES = new Set\(\['quota', 'auth'/.test(panel));
+    check('el respaldo automático arranca encendido', /allowFallback: prefs\.allowFallback \?\? true/.test(panel));
+    check('«Verificar conexión» manda el Reel para la síntesis de prueba', /refresh=1&reelId=/.test(panel));
 }
 
 globalThis.fetch = realFetch;

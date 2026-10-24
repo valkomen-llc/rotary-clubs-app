@@ -56,7 +56,9 @@ const authHeaders = (): Record<string, string> => ({
 // Preferencias del administrador en ESTE navegador: con qué motor, voz y
 // región arranca el panel cuando el Reel todavía no tiene voz. Es una
 // comodidad; la voz APLICADA queda guardada en el Reel por el servidor.
-const PREFS_KEY = 'rotary.reelVoicePrefs.v1';
+// v2 (v4.1238): el respaldo automático pasó a estar encendido por defecto, y
+// la v1 guardaba `allowFallback: false` para todos los que abrieron el panel.
+const PREFS_KEY = 'rotary.reelVoicePrefs.v2';
 type VoicePrefs = Partial<{
     provider: string; language: string; style: string; gender: string;
     speed: number; voiceId: string; allowFallback: boolean;
@@ -85,6 +87,13 @@ const STATE_META: Record<string, { label: string; cls: string }> = {
     unknown: { label: 'Sin verificar', cls: 'bg-gray-100 text-gray-500 border-gray-200' }
 };
 const stateMeta = (state: string) => STATE_META[state] || STATE_META.unknown;
+
+// ⚠️ UN MOTOR QUE NO PUEDE GENERAR NO SE PUEDE ELEGIR (v4.1238). Con OpenAI
+// sin saldo, la tarjeta decía «Sin cuota» y seguía siendo seleccionable: se
+// elegía, se pulsaba «Generar» y volvía el mismo error. Se desbloquea sola
+// cuando «Verificar conexión» consigue sintetizar con él.
+const BLOCKED_STATES = new Set(['quota', 'auth', 'not_configured', 'not_implemented', 'model_unsupported']);
+const isUsable = (p: TtsProviderStatus | undefined | null) => Boolean(p && p.configured && !BLOCKED_STATES.has(p.state));
 
 const Select: React.FC<{
     label: string;
@@ -117,7 +126,7 @@ const ProviderCard: React.FC<{
     onSelect: () => void;
 }> = ({ p, selected, disabled, onSelect }) => {
     const meta = stateMeta(p.state);
-    const selectable = p.configured && !disabled;
+    const selectable = isUsable(p) && !disabled;
     return (
         <button
             type="button"
@@ -162,6 +171,11 @@ const ProviderCard: React.FC<{
             {p.warnings.map(w => (
                 <p key={w} className="mt-1 text-[11px] font-bold text-amber-700 leading-snug">{w}</p>
             ))}
+            {p.configured && BLOCKED_STATES.has(p.state) && (
+                <p className="mt-2 text-[11px] font-black text-gray-600 leading-snug">
+                    No se puede elegir hasta resolverlo. Después pulsá «Verificar conexión»: si genera voz, se habilita sola.
+                </p>
+            )}
         </button>
     );
 };
@@ -317,7 +331,9 @@ const ReelNarrationPanel: React.FC<{
             gender: n?.gender || prefs.gender || 'female',
             speed: n?.speed ?? prefs.speed ?? 1,
             voiceId: (n ? (n.ttsProvider === cfgNarration?.provider ? cfgNarration?.voiceId : '') : prefs.voiceId) || '',
-            allowFallback: prefs.allowFallback ?? false
+            // Encendido por defecto (v4.1238): un intento con el otro motor
+            // cuando el elegido falla, una sola vez.
+            allowFallback: prefs.allowFallback ?? true
         };
     });
 
@@ -366,20 +382,27 @@ const ReelNarrationPanel: React.FC<{
     const loadProviders = useCallback(async (force = false) => {
         setChecking(true);
         try {
-            const r = await fetch(`${API}/content-studio/reels/narration/providers${force ? '?refresh=1' : ''}`, { headers: authHeaders() });
+            // Con `refresh`, el servidor SINTETIZA «Hola.» con cada motor: es la
+            // única prueba que detecta una cuenta sin saldo.
+            const r = await fetch(`${API}/content-studio/reels/narration/providers${force ? `?refresh=1&reelId=${encodeURIComponent(reel.id)}` : ''}`, { headers: authHeaders() });
             const { data, crudo } = await leerJson<{ providers?: TtsProviderStatus[]; error?: string }>(r);
             if (!r.ok || !data?.providers) {
                 if (force) toast.error(data?.error || describirNoJson(r, crudo));
                 return;
             }
             setProviders(data.providers);
-            if (force) toast.success('Conexión de los motores de voz verificada.');
+            if (force) {
+                const listos = data.providers.filter(p => p.implemented && isUsable(p)).map(p => p.label);
+                const caidos = data.providers.filter(p => p.implemented && p.configured && !isUsable(p)).map(p => `${p.label} (${stateMeta(p.state).label.toLowerCase()})`);
+                if (listos.length) toast.success(`Genera voz: ${listos.join(', ')}.${caidos.length ? ` No disponible: ${caidos.join(', ')}.` : ''}`);
+                else toast.error(`Ningún motor de voz puede generar ahora: ${caidos.join(', ') || 'sin motores configurados'}.`);
+            }
         } catch {
             if (force) toast.error('No se pudo verificar la conexión de los motores de voz.');
         } finally {
             setChecking(false);
         }
-    }, []);
+    }, [reel.id]);
 
     useEffect(() => { if (!premontado) loadProviders(false); }, [loadProviders, premontado]);
 
@@ -439,26 +462,24 @@ const ReelNarrationPanel: React.FC<{
         }, ...list];
     }, [selectedProvider, form.gender, form.voiceId]);
 
-    // ⚠️ UN MOTOR BLOQUEADO NO QUEDA ELEGIDO POR DEFECTO (v4.1237). Si la
-    // preferencia guardada apunta a un motor sin saldo, sin credencial o sin
-    // configurar y el otro está conectado, el panel arranca en el que sirve y
-    // lo dice. Sólo al cargar el estado: si el administrador vuelve a elegir
-    // el bloqueado a mano, se respeta.
-    const autoSwitched = useRef(false);
+    // ⚠️ UN MOTOR BLOQUEADO NUNCA QUEDA ELEGIDO (v4.1237, v4.1238). Si el
+    // elegido no puede generar (sin saldo, sin credencial, sin configurar) y
+    // hay otro que sí, el panel pasa al que sirve y lo dice. Antes sólo se
+    // hacía una vez al cargar y la tarjeta bloqueada seguía seleccionable:
+    // quedaba OpenAI elegido con el aviso «se eligió ElevenLabs» al lado.
     const [switchNote, setSwitchNote] = useState<string | null>(null);
     useEffect(() => {
-        if (!providers || autoSwitched.current) return;
-        autoSwitched.current = true;
+        if (!providers) return;
         const current = providers.find(p => p.id === form.provider);
-        const blocked = !current || !current.configured || ['quota', 'auth', 'not_configured', 'model_unsupported'].includes(current.state);
-        const usable = providers.find(p => p.id !== form.provider && p.configured && p.state === 'ok');
+        const blocked = !isUsable(current);
+        const usable = providers.find(p => p.id !== form.provider && p.implemented && isUsable(p));
         if (blocked && usable) {
             setForm(f => ({ ...f, provider: usable.id, voiceId: '' }));
             setSwitchNote(`Se eligió ${usable.label} porque ${current?.label || form.provider} no está disponible${current?.state ? ` (${stateMeta(current.state).label.toLowerCase()})` : ''}.`);
         }
     }, [providers, form.provider]);
 
-    const fallbackTarget = providerCards.find(p => p.id !== form.provider && p.configured) || null;
+    const fallbackTarget = providerCards.find(p => p.id !== form.provider && isUsable(p)) || null;
 
     // Acción: Generar / Regenerar únicamente el texto del guion con IA (sin tocar video ni escenas)
     const generateScriptWithAi = useCallback(async () => {
@@ -650,7 +671,7 @@ const ReelNarrationPanel: React.FC<{
         || generos.find(g => g.id === (n?.gender || form.gender))?.label
         || null;
     const ocupado = generating || generatingScript || Boolean(applying);
-    const providerReady = Boolean(providerCards.find(p => p.id === form.provider)?.configured);
+    const providerReady = isUsable(providerCards.find(p => p.id === form.provider));
 
     // Métricas de presupuesto de palabras según duración real del Reel
     const wordsCount = scriptText.trim() ? scriptText.trim().split(/\s+/).filter(Boolean).length : 0;
@@ -752,7 +773,7 @@ const ReelNarrationPanel: React.FC<{
                             p={p}
                             selected={form.provider === p.id}
                             disabled={ocupado}
-                            onSelect={() => setForm(f => (f.provider === p.id ? f : { ...f, provider: p.id, voiceId: '' }))}
+                            onSelect={() => { setSwitchNote(null); setForm(f => (f.provider === p.id ? f : { ...f, provider: p.id, voiceId: '' })); }}
                         />
                     ))}
                 </div>
@@ -856,7 +877,11 @@ const ReelNarrationPanel: React.FC<{
                     Escuchar muestra de la voz
                 </button>
                 {!providerReady && (
-                    <span className="text-[11px] font-bold text-amber-700">El motor elegido requiere configuración.</span>
+                    <span className="text-[11px] font-bold text-amber-700">
+                        {providerCards.some(p => isUsable(p))
+                            ? 'El motor elegido no puede generar voz ahora: elegí otro.'
+                            : 'Ningún motor de voz puede generar ahora: revisá el saldo o las credenciales y pulsá «Verificar conexión».'}
+                    </span>
                 )}
             </div>
             {previewUrl && (
