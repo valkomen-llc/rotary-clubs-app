@@ -42,6 +42,22 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1239.0',
+        title: 'Voz en off con KIE, el proveedor de IA integrado de la plataforma 🎙️⚡',
+        description: 'La voz en off de los Reels ahora se genera con KIE, el mismo proveedor de IA que ya anima las escenas y compone la música, usando los modelos de voz de ElevenLabs que KIE ofrece en su pasarela (ElevenLabs Turbo 2.5, con el español fijado en la síntesis). Se cobra en créditos de KIE: no depende de la suscripción propia de ElevenLabs (que figura con un pago pendiente) ni del saldo de OpenAI (agotado). KIE es el motor por defecto y el primero del respaldo; su tarjeta muestra el saldo de créditos, y «Verificar conexión» sintetiza una palabra para confirmarlo. Además se corrige la consulta del contexto de la campaña que fallaba en silencio (columna inexistente) y dejaba el guion con IA sin la información de la solicitud.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'content-studio', 'narration', 'tts', 'kie', 'elevenlabs', 'fix'],
+        type: 'hotfix',
+        impact: 'Alta: la voz en off se genera con la cuenta de KIE de la plataforma, sin depender de ElevenLabs ni de OpenAI.',
+        changes: [
+            { type: 'added', text: 'Motor de voz «KIE · ElevenLabs»: tarea en KIE, sondeo del estado y descarga del MP3, con tope de tiempo; voces institucionales seleccionables (Bella y Brian por defecto).' },
+            { type: 'changed', text: 'KIE es el motor por defecto y el primero del respaldo; el respaldo saltea motores que se saben sin saldo.' },
+            { type: 'added', text: 'La tarjeta de KIE muestra el saldo de créditos de la cuenta.' },
+            { type: 'fixed', text: 'El guion con IA vuelve a recibir el contexto de la campaña y la solicitud (la consulta pedía una columna que no existe).' },
+            { type: 'fixed', text: 'ElevenLabs con la suscripción impaga se informa como falta de pago, no como credencial inválida.' },
+        ],
+    },
+    {
         version: '4.1238.0',
         title: 'Voz en off: un motor sin saldo ya no se puede elegir y «Verificar conexión» sintetiza de verdad 🎙️🔒',
         description: 'En v4.1237 el panel avisaba «Se eligió ElevenLabs porque OpenAI TTS no está disponible», pero la tarjeta de OpenAI seguía siendo seleccionable: quedaba elegida, se pulsaba «Generar» y volvía el mismo error de saldo; además el respaldo automático estaba apagado por defecto, así que nunca se intentaba con ElevenLabs. Ahora un motor que no puede generar (sin saldo, sin credencial, sin configurar) no se puede elegir y el panel pasa siempre al que funciona; el respaldo automático arranca encendido; y «Verificar conexión» hace una síntesis real de una palabra con cada motor —la única forma de saber si una cuenta tiene saldo— y desbloquea el motor en cuanto vuelve a generar voz. Si el plan de ElevenLabs no admite por API una voz de la Biblioteca, la voz automática pasa sola a la mejor voz propia de la cuenta.',

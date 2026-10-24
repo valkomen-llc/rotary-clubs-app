@@ -118,7 +118,7 @@ import {
     USAGE_PROVIDERS, USAGE_OPERATIONS, CREDIT_ESTIMATES
 } from '../lib/reelUsage.js';
 
-export const REEL_MODULE_VERSION = '4.1238.0';
+export const REEL_MODULE_VERSION = '4.1239.0';
 
 console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: presets de pieza [${Object.keys(REEL_PRESETS).join(', ')}], 3-5 fotos → una escena por foto (motor ${DEFAULT_ENGINE}), dirección con visión y estructura narrativa, preservación estricta de personas con recuento corroborado, recuperación por escena con escalera automática (${STRATEGY_LADDER.join(' → ')}; tope ${ABSOLUTE_PAID_CAP} generaciones pagadas) SIN respaldo Ken Burns automático, fotografía normalizada (EXIF) antes de gastar, control de composición (una foto, derecha, sin collage ni franjas), escenas guardadas en la Biblioteca al nacer, control de datos en campañas de emergencia, texto en pantalla y cierre institucional, música generativa, voz en off con diagnóstico por proveedor [${availableTtsProviders().join(', ') || 'ninguno'}] y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
 
@@ -4739,7 +4739,11 @@ const resolveReelSourceContext = async (project) => {
             `SELECT r."submissionId", r."campaignId", r."articleId",
                     s.title AS "submissionTitle", s.description AS "submissionDescription",
                     s.story, s.location, s.city, s."participatingClubs", s.club,
-                    c.name AS "campaignName", c.description AS "campaignDescription",
+                    c.name AS "campaignName",
+                    -- ContributionCampaign no tiene columna description: el texto de la
+                    -- campaña vive en content (v4.1239; antes la consulta entera fallaba
+                    -- y el guion se escribía sin el contexto de la solicitud).
+                    COALESCE(c.content->>'intro', c.content->>'subtitle') AS "campaignDescription",
                     a.generated AS "articleGenerated"
                FROM "SubmissionReel" r
                LEFT JOIN "ContributionSubmission" s ON s.id = r."submissionId"
@@ -4774,7 +4778,7 @@ const resolveReelSourceContext = async (project) => {
 // El proveedor del registro de consumo. El panel de auditoría agrupa por quién
 // DEBÍA atender cada operación: OpenAI se registra como modelo de lenguaje
 // (su credencial es la del texto) y el motor real queda en `meta.ttsProvider`.
-const usageProviderForTts = (tts) => (tts === 'openai' ? 'llm' : 'elevenlabs');
+const usageProviderForTts = (tts) => (tts === 'openai' ? 'llm' : tts === 'kie' ? 'kie' : 'elevenlabs');
 
 // Genera guion + voz y la deja lista para el montaje.
 //
