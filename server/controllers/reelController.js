@@ -103,7 +103,8 @@ import {
     computeWordBudget, fitNarrationToDuration, describeTiming,
     NARRATION_TOLERANCE_SEC, generateScript,
     TtsError, TTS_ERRORS, asTtsError, FALLBACK_CODES, fallbackProviderFor,
-    ttsModelFor, ttsProvidersStatus, previewVoice, autoFallbackEnabled
+    ttsModelFor, ttsProvidersStatus, previewVoice, autoFallbackEnabled,
+    probeTtsProvider
 } from '../lib/reelNarration.js';
 import { measureAudioDuration } from '../lib/reelFfmpeg.js';
 import {
@@ -117,7 +118,7 @@ import {
     USAGE_PROVIDERS, USAGE_OPERATIONS, CREDIT_ESTIMATES
 } from '../lib/reelUsage.js';
 
-export const REEL_MODULE_VERSION = '4.1237.0';
+export const REEL_MODULE_VERSION = '4.1238.0';
 
 console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: presets de pieza [${Object.keys(REEL_PRESETS).join(', ')}], 3-5 fotos → una escena por foto (motor ${DEFAULT_ENGINE}), dirección con visión y estructura narrativa, preservación estricta de personas con recuento corroborado, recuperación por escena con escalera automática (${STRATEGY_LADDER.join(' → ')}; tope ${ABSOLUTE_PAID_CAP} generaciones pagadas) SIN respaldo Ken Burns automático, fotografía normalizada (EXIF) antes de gastar, control de composición (una foto, derecha, sin collage ni franjas), escenas guardadas en la Biblioteca al nacer, control de datos en campañas de emergencia, texto en pantalla y cierre institucional, música generativa, voz en off con diagnóstico por proveedor [${availableTtsProviders().join(', ') || 'ninguno'}] y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
 
@@ -5251,11 +5252,54 @@ export const withRecentOutcome = (status, outcome) => {
     };
 };
 
+// El resultado de una síntesis de prueba MANDA sobre todo lo demás: es lo
+// único que dice si el motor genera voz hoy. Un éxito borra el «Sin cuota» de
+// un intento anterior (por ejemplo, después de recargar el saldo).
+export const withProbe = (status, probe) => {
+    if (!probe) return status;
+    if (probe.ok) {
+        return {
+            ...status, state: 'ok', lastFailure: null,
+            message: `Síntesis verificada ahora (${probe.model}${probe.voiceId ? ` · voz ${probe.voiceId}` : ''}).`,
+            probe: { ok: true, at: new Date().toISOString() }
+        };
+    }
+    return {
+        ...status, state: probe.code, message: probe.message,
+        lastFailure: { code: probe.code, at: new Date().toISOString(), message: probe.message },
+        probe: { ok: false, code: probe.code, at: new Date().toISOString() }
+    };
+};
+
 export const getNarrationProviders = async (req, res) => {
     try {
         const force = req.query.refresh === '1' || req.query.refresh === 'true';
         const [statuses, outcomes] = await Promise.all([ttsProvidersStatus({ force }), recentVoiceOutcomes()]);
-        const providers = statuses.map(p => withRecentOutcome(p, outcomes.find(o => o.provider === p.id)));
+        let providers = statuses.map(p => withRecentOutcome(p, outcomes.find(o => o.provider === p.id)));
+
+        // «Verificar conexión» desde la ficha de un Reel: síntesis de prueba
+        // con cada motor configurado. Se registra en el consumo de ESE Reel
+        // —el registro exige un proyecto—, y así el «último intento» que leen
+        // las demás instancias también queda al día.
+        const project = force && req.query.reelId ? await fetchProject(String(req.query.reelId), req.user) : null;
+        if (project) {
+            const probes = await Promise.all(providers
+                .filter(p => p.configured && p.implemented)
+                .map(p => probeTtsProvider(p.id)));
+            for (const probe of probes) {
+                await recordUsage({
+                    projectId: project.id, clubId: project.clubId,
+                    operation: 'voice.synthesize', provider: usageProviderForTts(probe.provider),
+                    model: probe.model || ttsModelFor(probe.provider),
+                    units: probe.chars, unit: 'characters', ms: probe.ms,
+                    status: probe.ok ? 'ok' : 'error',
+                    target: 'Locución',
+                    detail: probe.ok ? 'Prueba de síntesis (Verificar conexión)' : `${probe.code}: ${probe.message}`,
+                    meta: { ttsProvider: probe.provider, probe: true, voiceId: probe.voiceId || null, errorCode: probe.ok ? null : probe.code }
+                });
+            }
+            providers = providers.map(p => withProbe(p, probes.find(x => x.provider === p.id)));
+        }
         res.json({
             providers,
             activeProvider: activeTtsProvider(),

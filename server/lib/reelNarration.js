@@ -456,12 +456,18 @@ export const classifyTtsFailure = (provider, httpStatus, bodyText = '', { model 
     const tail = providerMsg ? ` Detalle del proveedor: «${providerMsg}».` : '';
 
     let code;
+    // Un plan de ElevenLabs que no admite voces de la Biblioteca por API lo
+    // dice con `payment_required`: no es falta de saldo, es ESA voz. Va antes
+    // de la cuota para no mandar a recargar a quien sólo tiene que cambiar de
+    // voz (v4.1238).
+    const libraryVoice = has('library voice', 'library voices');
+    if (libraryVoice) code = 'voice_not_found';
     // ⚠️ OpenAI contesta la cuenta SIN SALDO con un 429 —el mismo estado que
     // el límite de solicitudes— y sólo el texto los distingue («You have no
     // credits remaining. Add credits…»). Leído como 429 a secas, la pantalla
     // decía «esperá unos segundos y reintentá» a una cuenta que no se va a
     // recuperar sola (v4.1237).
-    if (httpStatus === 402 || has('quota_exceeded', 'insufficient_quota', 'payment_required', 'exceeds your quota',
+    else if (httpStatus === 402 || has('quota_exceeded', 'insufficient_quota', 'payment_required', 'exceeds your quota',
         'billing_hard_limit', 'no credits', 'add credits', 'credits remaining', 'out of credits', 'not enough credits', 'credit balance')) code = 'quota';
     else if (has('detected_unusual_activity')) code = 'auth';
     else if (has('voice_not_found', 'invalid_voice', "value for 'voice'", 'voice id', 'voice_id')) code = 'voice_not_found';
@@ -480,7 +486,9 @@ export const classifyTtsFailure = (provider, httpStatus, bodyText = '', { model 
             : has('detected_unusual_activity')
                 ? `${name} bloqueó el uso de la cuenta por actividad inusual (pasa con planes gratuitos). Hace falta un plan pago o usar otro proveedor.${tail}`
                 : `${name} rechazó la credencial (HTTP ${httpStatus}). Revisá que la clave configurada en el despliegue sea válida y no esté vencida.${tail}`,
-        voice_not_found: `${name} no encontró la voz ${voiceId ? `«${voiceId}»` : 'configurada'}. Elegí otra voz o corregí la voz por defecto del despliegue.${tail}`,
+        voice_not_found: libraryVoice
+            ? `El plan de ${name} no permite usar por API la voz ${voiceId ? `«${voiceId}» ` : ''}de la Biblioteca de voces. Elegí una voz propia o predeterminada de la cuenta, o mejorá el plan.${tail}`
+            : `${name} no encontró la voz ${voiceId ? `«${voiceId}»` : 'configurada'}. Elegí otra voz o corregí la voz por defecto del despliegue.${tail}`,
         model_unsupported: `${name} no reconoce el modelo de voz «${model || 'configurado'}» o la cuenta no tiene acceso a él.${tail}`,
         rate_limit: `${name} está limitando las solicitudes (HTTP 429). Esperá unos segundos y reintentá.${tail}`,
         provider_down: `${name} no está disponible en este momento (HTTP ${httpStatus}). Reintentá en unos minutos o usá otro proveedor.${tail}`,
@@ -565,8 +573,26 @@ const synthesizeWithOpenAI = async ({ text, gender, speed, language, style, voic
 const ELEVENLABS_LANGUAGE_CODE_MODELS = /^eleven_(turbo|flash)_v2_5$/;
 
 const synthesizeWithElevenLabs = async ({ text, gender, speed, language, voiceId }) => {
+    if (voiceId) return synthesizeElevenLabsVoice({ text, speed, language, voice: voiceId });
+    // Voz AUTOMÁTICA: la mejor de la cuenta. Si ElevenLabs la rechaza (una voz
+    // de la Biblioteca que el plan no admite por API, o una que ya no está),
+    // se intenta UNA vez con la mejor voz propia o predeterminada de la cuenta
+    // —que el plan siempre admite— y esas quedan preferidas desde entonces.
+    const auto = await resolveElevenLabsVoice(gender, language);
+    try {
+        return await synthesizeElevenLabsVoice({ text, speed, language, voice: auto });
+    } catch (e) {
+        if (e?.code !== 'voice_not_found') throw e;
+        const own = pickAccountVoice((await accountVoices() || []).filter(v => v.id !== auto && OWN_VOICE_CATEGORIES.has(v.category)), { gender, language });
+        if (!own) throw e;
+        restrictToOwnVoices = true;
+        console.warn(`[REEL NARRATION] ElevenLabs rechazó la voz ${auto} (${e.message}). Se usa ${own.label} (${own.id}), voz propia de la cuenta.`);
+        return synthesizeElevenLabsVoice({ text, speed, language, voice: own.id });
+    }
+};
+
+const synthesizeElevenLabsVoice = async ({ text, speed, language, voice }) => {
     const model = ttsModelFor('elevenlabs');
-    const voice = voiceId || await resolveElevenLabsVoice(gender, language);
     const lang = NARRATION_LANGUAGES[language] || NARRATION_LANGUAGES[DEFAULT_LANGUAGE];
 
     const body = {
@@ -800,15 +826,26 @@ const accountVoices = async () => {
 };
 
 // Sólo para las pruebas: vacía las cachés de estado y de voces.
-export const resetTtsCaches = () => { statusCache.clear(); accountVoicesCache = { at: 0, list: null }; };
+export const resetTtsCaches = () => { statusCache.clear(); accountVoicesCache = { at: 0, list: null }; restrictToOwnVoices = false; };
 
 // La voz que usa ElevenLabs cuando nadie eligió una: la del entorno si está
 // configurada; si no, la mejor de la cuenta; y sólo si la cuenta no se pudo
 // leer, la del catálogo público.
+// Categorías de voz que cualquier plan puede usar por API: las del catálogo
+// predeterminado y las creadas en la propia cuenta. Las de la Biblioteca
+// ('professional', 'famous', 'high_quality') dependen del plan.
+const OWN_VOICE_CATEGORIES = new Set(['premade', 'cloned', 'generated']);
+// Se enciende la primera vez que ElevenLabs rechaza una voz de la Biblioteca:
+// desde ahí «Automática» elige entre las propias, sin volver a gastar un
+// intento fallido por síntesis. Vive lo que vive la instancia.
+let restrictToOwnVoices = false;
+
 export const resolveElevenLabsVoice = async (gender = 'female', language = DEFAULT_LANGUAGE) => {
     const fromEnv = process.env[`ELEVENLABS_VOICE_${String(gender || 'female').toUpperCase()}`] || process.env.ELEVENLABS_VOICE_ID;
     if (fromEnv) return fromEnv;
-    const picked = pickAccountVoice(await accountVoices(), { gender, language });
+    const all = await accountVoices();
+    const usable = restrictToOwnVoices && all ? all.filter(v => OWN_VOICE_CATEGORIES.has(v.category)) : all;
+    const picked = pickAccountVoice(usable && usable.length ? usable : all, { gender, language });
     return picked?.id || voiceIdFor('elevenlabs', gender);
 };
 
@@ -934,6 +971,22 @@ export const checkTtsProvider = async (id, { force = false } = {}) => {
     }
     statusCache.set(id, { at: Date.now(), value });
     return value;
+};
+
+// ⚠️ LA ÚNICA PRUEBA QUE NO MIENTE ES SINTETIZAR (v4.1238). Una llamada de
+// lectura sale bien con la cuenta de OpenAI sin saldo, y con una clave de
+// ElevenLabs sin permiso de voz. «Verificar conexión» sintetiza una palabra
+// («Hola.», 5 caracteres) con cada motor configurado, con la voz automática y
+// sin respaldo: lo que conteste es el estado real.
+export const probeTtsProvider = async (id, { gender = 'female', language = DEFAULT_LANGUAGE } = {}) => {
+    const startedAt = Date.now();
+    try {
+        const out = await synthesize({ text: 'Hola.', provider: id, gender, language, fallback: false });
+        return { ok: true, provider: id, model: out.model, voiceId: out.voiceId, chars: 5, ms: Date.now() - startedAt };
+    } catch (e) {
+        const err = asTtsError(e, id);
+        return { ok: false, provider: id, code: err.code, message: err.message, chars: 5, ms: Date.now() - startedAt };
+    }
 };
 
 export const ttsProvidersStatus = async ({ force = false } = {}) => {

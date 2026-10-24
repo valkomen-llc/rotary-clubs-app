@@ -42,6 +42,21 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1238.0',
+        title: 'Voz en off: un motor sin saldo ya no se puede elegir y «Verificar conexión» sintetiza de verdad 🎙️🔒',
+        description: 'En v4.1237 el panel avisaba «Se eligió ElevenLabs porque OpenAI TTS no está disponible», pero la tarjeta de OpenAI seguía siendo seleccionable: quedaba elegida, se pulsaba «Generar» y volvía el mismo error de saldo; además el respaldo automático estaba apagado por defecto, así que nunca se intentaba con ElevenLabs. Ahora un motor que no puede generar (sin saldo, sin credencial, sin configurar) no se puede elegir y el panel pasa siempre al que funciona; el respaldo automático arranca encendido; y «Verificar conexión» hace una síntesis real de una palabra con cada motor —la única forma de saber si una cuenta tiene saldo— y desbloquea el motor en cuanto vuelve a generar voz. Si el plan de ElevenLabs no admite por API una voz de la Biblioteca, la voz automática pasa sola a la mejor voz propia de la cuenta.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'content-studio', 'narration', 'tts', 'elevenlabs', 'openai-tts', 'fix'],
+        type: 'hotfix',
+        impact: 'Alta: con OpenAI sin saldo, la voz en off se genera con ElevenLabs sin que el administrador tenga que adivinar qué motor funciona.',
+        changes: [
+            { type: 'fixed', text: 'Las tarjetas de motores sin saldo, sin credencial o sin configurar no se pueden elegir; si el motor elegido queda bloqueado, el panel pasa al que funciona.' },
+            { type: 'changed', text: 'El respaldo automático entre motores arranca encendido (una sola vez por generación).' },
+            { type: 'added', text: '«Verificar conexión» sintetiza «Hola.» con cada motor (5 caracteres) y muestra el estado real; un éxito desbloquea el motor tras recargar saldo.' },
+            { type: 'fixed', text: 'ElevenLabs: una voz de la Biblioteca que el plan no admite por API se informa como tal (no como falta de saldo) y la voz automática pasa a una propia de la cuenta.' },
+        ],
+    },
+    {
         version: '4.1237.0',
         title: 'Voz en off: OpenAI sin saldo se dice como tal y ElevenLabs usa una voz de la cuenta 🎙️💳',
         description: 'Con el diagnóstico de v4.1236 apareció la causa real en producción: la cuenta de OpenAI no tiene saldo («You have no credits remaining»). OpenAI lo devuelve con el mismo HTTP 429 que el límite de solicitudes, y el panel lo leía como «Demasiadas solicitudes, esperá y reintentá». Además, al probar con ElevenLabs sin elegir voz se usaba una voz fija del catálogo público (Rachel) que la cuenta ya no tiene. Ahora la falta de saldo se informa como «Límite de consumo alcanzado», la tarjeta de OpenAI deja de decir «Conectado» cuando el último intento falló por saldo o credencial, el panel arranca en el motor que funciona, y ElevenLabs elige sola la mejor voz de la cuenta según el idioma, la región (acento colombiano primero) y el género.',
