@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1235.0",
-  "cache_bust": "4.1235.0",
+  "version": "4.1236.0",
+  "cache_bust": "4.1236.0",
   "type": "module",
   "//": "UI V4.1235.0 | 2026-10-22 (Editor Visual de Plantillas: persistencia real; las semillas del arranque ya no pisan lo guardado, estado de guardado, autoguardado y protección al salir)",
   "scripts": {
@@ -35,6 +35,7 @@
     "test:reels:presets": "node scripts/test-reel-presets.mjs",
     "test:video:ready": "node scripts/test-video-ready.mjs",
     "test:reels:wiring": "node scripts/test-reel-wiring.mjs",
+    "test:reels:voice": "node scripts/test-reel-narration-providers.mjs",
     "test:reels:ficha:ui": "node scripts/test-reel-ficha-ui.mjs",
     "test:reels:outro": "node scripts/test-reel-outro.mjs",
     "test:library:outro": "node scripts/test-library-outro.mjs",

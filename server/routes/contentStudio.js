@@ -75,6 +75,9 @@ import {
     exportReel,
     getReelNarration,
     regenerateNarration,
+    applyNarration,
+    getNarrationProviders,
+    previewNarrationVoice,
     generateNarrationScript,
     listReelLibrary,
     updateReelInfo,
@@ -218,6 +221,11 @@ router.delete('/projects/:id', authMiddleware, deleteVideoProject);
 // El orden importa: las rutas fijas van antes que /reels/:id para que
 // "options" no se lea como un id.
 router.get('/reels/options', authMiddleware, getReelOptions);
+// Voz en off (v4.1236): estado de los motores de voz (credencial, conexión,
+// cuota, voces) y una muestra corta de la voz elegida. Literales: van antes
+// de las paramétricas `/reels/:id/...`.
+router.get('/reels/narration/providers', authMiddleware, getNarrationProviders);
+router.post('/reels/narration/preview', authMiddleware, previewNarrationVoice);
 router.get('/reels/library', authMiddleware, requireStudioTool('library'), listReelLibrary);
 // Reels en curso: lo consume el aviso de recuperación del creador.
 router.get('/reels/active', authMiddleware, getActiveReels);
@@ -257,6 +265,8 @@ router.get('/reels/:id/export', authMiddleware, exportReel);
 router.get('/reels/:id/narration', authMiddleware, getReelNarration);
 router.post('/reels/:id/narration/script', authMiddleware, generateNarrationScript);
 router.post('/reels/:id/narration', authMiddleware, regenerateNarration);
+// Aplicar una versión ya generada (borrador o historial): rehace la mezcla, no sintetiza.
+router.post('/reels/:id/narration/:narrationId/apply', authMiddleware, applyNarration);
 router.post('/reels/:id/scenes/:sceneId/regenerate', authMiddleware, regenerateScene);
 // «Usar imagen con movimiento cinematográfico» para una escena: sin IA, sin créditos.
 router.post('/reels/:id/scenes/:sceneId/fallback', authMiddleware, fallbackScene);

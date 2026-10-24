@@ -378,6 +378,13 @@ export interface ReelNarration {
     // null = el proveedor no controla el acento. Se muestra, porque prometer
     // «acento colombiano» con un motor que no lo elige sería falso.
     accentControlled: boolean | null;
+    voiceId?: string | null;
+    // Con qué modelo de voz salió y, si fue un respaldo, de qué proveedor
+    // venía y por qué (v4.1236).
+    ttsModel?: string | null;
+    fallbackFrom?: string | null;
+    fallbackFromLabel?: string | null;
+    fallbackReason?: string | null;
     actualSec: number | null;
     targetSec: number | null;
     driftSec: number | null;
@@ -386,6 +393,57 @@ export interface ReelNarration {
     source: string;
     createdAt: string;
     summary: string;
+}
+
+// ─── Estado de un motor de voz (v4.1236) ───
+// Lo devuelve `GET /reels/narration/providers`: llamadas de lectura a cada
+// proveedor, que no sintetizan ni consumen cuota.
+export type TtsProviderState =
+    | 'ok' | 'not_configured' | 'not_implemented' | 'auth' | 'quota' | 'rate_limit'
+    | 'model_unsupported' | 'voice_not_found' | 'provider_down' | 'timeout' | 'network'
+    | 'bad_request' | 'unknown';
+
+export interface TtsVoiceOption {
+    id: string;
+    label: string;
+    gender: 'female' | 'male' | 'neutral' | string;
+    accent?: string | null;
+    language?: string | null;
+    category?: string | null;
+}
+
+export interface TtsProviderStatus {
+    id: string;
+    label: string;
+    model: string | null;
+    implemented: boolean;
+    configured: boolean;
+    accentControl: boolean;
+    voiceChoice: boolean;
+    languages: string | null;
+    billing: string | null;
+    note: string | null;
+    isDefault: boolean;
+    state: TtsProviderState;
+    message: string | null;
+    quota: { used: number; limit: number; remaining: number; unit: string; resetsAt: string | null; tier: string | null } | null;
+    voices: TtsVoiceOption[];
+    warnings: string[];
+    accentNote: string | null;
+    checkedAt: string;
+    latencyMs: number | null;
+}
+
+/** El error de la voz tal como lo devuelve el servidor (v4.1236). */
+export interface TtsFailure {
+    error: string;
+    code?: string;
+    codeLabel?: string;
+    provider?: string | null;
+    providerLabel?: string | null;
+    retryable?: boolean;
+    fallbackError?: { provider: string; code: string; message: string } | null;
+    fallback?: { provider: string; label: string } | null;
 }
 
 export interface PublicationContext {

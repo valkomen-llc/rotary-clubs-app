@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Creador de Reels IA — narración y Narrative Timing Engine
-// v4.667.0
+// v4.667.0 · diagnóstico por proveedor, respaldo como política y estado de los motores: v4.1236.0
 //
 // Genera un guion pensado para SER HABLADO y lo sintetiza con una voz que dure
 // lo que dura el Reel.
@@ -72,25 +72,41 @@ export {
 // `accentControl` dice si el proveedor puede REALMENTE hacer el acento pedido.
 // Es el dato honesto del registro: OpenAI tiene voces excelentes pero no
 // seleccionables por acento —hablan español con un deje anglosajón—, mientras
-// ElevenLabs tiene voces colombianas de verdad. Prometer «acento colombiano»
-// con un motor que no lo hace es exactamente el tipo de afirmación que este
-// módulo no hace.
+// en ElevenLabs el acento lo pone LA VOZ: con una voz colombiana de la cuenta
+// sale colombiano; con la voz por defecto del catálogo (Rachel / Daniel), que
+// es angloparlante, sale neutro. Prometer «acento colombiano» con un motor o
+// una voz que no lo hace es exactamente el tipo de afirmación que este módulo
+// no hace.
+//
+// `model` es el modelo de SÍNTESIS DE VOZ. Un proveedor de texto (Gemini,
+// Anthropic) no entra acá aunque tenga credencial: generar guion no es
+// generar audio (v4.1236).
 export const TTS_PROVIDERS = {
     elevenlabs: {
         id: 'elevenlabs',
         label: 'ElevenLabs',
         envKey: 'ELEVENLABS_API_KEY',
+        modelEnv: 'ELEVENLABS_MODEL',
+        defaultModel: 'eleven_multilingual_v2',
         accentControl: true,
+        voiceChoice: true,
         implemented: true,
         isDefault: true,
-        note: 'Voces con acento latino real, incluido colombiano. Es la mejor opción para una pieza institucional en español.'
+        languages: 'Multilingüe (español incluido). El acento lo pone la voz elegida.',
+        billing: 'Cobra por carácter sintetizado contra la cuota mensual de la cuenta de ElevenLabs.',
+        note: 'Voces con acento latino real cuando la cuenta tiene una voz latina. Es la mejor opción para una pieza institucional en español.'
     },
     openai: {
         id: 'openai',
-        label: 'OpenAI',
+        label: 'OpenAI TTS',
         envKey: 'OPENAI_API_KEY',
+        modelEnv: 'OPENAI_TTS_MODEL',
+        defaultModel: 'tts-1',
         accentControl: false,
+        voiceChoice: true,
         implemented: true,
+        languages: 'Multilingüe (español incluido). El acento no se puede elegir: suena neutro.',
+        billing: 'Cobra por carácter sintetizado contra el saldo de la cuenta de OpenAI.',
         note: 'Funciona con la credencial que la plataforma ya tiene. Voces naturales, pero el acento no se puede elegir: el español suena neutro con deje anglosajón.'
     },
     azure: { id: 'azure', label: 'Azure Speech', envKey: 'AZURE_SPEECH_KEY', accentControl: true, implemented: false, note: 'Próximamente — requiere adaptador propio.' },
@@ -113,20 +129,58 @@ export const activeTtsProvider = () => {
     return availableTtsProviders()[0] || null;
 };
 
+export const ttsModelFor = (id) => {
+    const p = TTS_PROVIDERS[id];
+    if (!p?.implemented) return null;
+    return process.env[p.modelEnv] || p.defaultModel;
+};
+
+// Las voces de OpenAI que admiten `tts-1` y `tts-1-hd`. Es una lista cerrada
+// del proveedor: no hay catálogo que consultar, y una voz fuera de ella
+// devuelve un 400.
+export const OPENAI_TTS_VOICES = [
+    { id: 'nova', label: 'Nova', gender: 'female' },
+    { id: 'shimmer', label: 'Shimmer', gender: 'female' },
+    { id: 'coral', label: 'Coral', gender: 'female' },
+    { id: 'sage', label: 'Sage', gender: 'female' },
+    { id: 'alloy', label: 'Alloy', gender: 'neutral' },
+    { id: 'ash', label: 'Ash', gender: 'male' },
+    { id: 'echo', label: 'Echo', gender: 'male' },
+    { id: 'fable', label: 'Fable', gender: 'male' },
+    { id: 'onyx', label: 'Onyx', gender: 'male' }
+];
+
+// Voces multilingües del catálogo público de ElevenLabs, por si la cuenta no
+// configuró las suyas. Son angloparlantes: leen español, sin acento latino.
+const ELEVENLABS_FALLBACK_VOICES = { female: '21m00Tcm4TlvDq8ikWAM', male: 'onwK4e9ZLuTAKqWW03F9' };
+
 // Voces por defecto de cada proveedor, por género. Configurables por entorno
 // porque un cliente puede tener su propia voz clonada en ElevenLabs.
-const voiceIdFor = (provider, gender) => {
+export const voiceIdFor = (provider, gender) => {
     if (provider === 'elevenlabs') {
-        return process.env[`ELEVENLABS_VOICE_${gender.toUpperCase()}`]
+        return process.env[`ELEVENLABS_VOICE_${String(gender || 'female').toUpperCase()}`]
             || process.env.ELEVENLABS_VOICE_ID
-            // Voces multilingües del catálogo público de ElevenLabs.
-            || (gender === 'male' ? 'onwK4e9ZLuTAKqWW03F9' : '21m00Tcm4TlvDq8ikWAM');
+            || (gender === 'male' ? ELEVENLABS_FALLBACK_VOICES.male : ELEVENLABS_FALLBACK_VOICES.female);
     }
     if (provider === 'openai') {
         return process.env.OPENAI_TTS_VOICE
             || (gender === 'male' ? 'onyx' : gender === 'neutral' ? 'alloy' : 'nova');
     }
     return null;
+};
+
+// La voz que alguien eligió A MANO en el panel. Se valida acá y no en la
+// pantalla: un id que el proveedor no conoce le costaría al usuario un viaje
+// de red para recibir un 400 sin explicación.
+const ELEVENLABS_VOICE_ID_RE = /^[A-Za-z0-9]{8,64}$/;
+export const normalizeVoiceId = (provider, voiceId) => {
+    if (voiceId == null || voiceId === '') return null;
+    const v = String(voiceId).trim();
+    if (provider === 'openai' && OPENAI_TTS_VOICES.some(o => o.id === v)) return v;
+    if (provider === 'elevenlabs' && ELEVENLABS_VOICE_ID_RE.test(v)) return v;
+    throw new TtsError('voice_not_found',
+        `La voz «${v.slice(0, 40)}» no es una voz válida de ${TTS_PROVIDERS[provider]?.label || provider}. Elegí otra de la lista.`,
+        { provider });
 };
 
 // ─── Guion ─────────────────────────────────────────────────────────────────
@@ -325,100 +379,483 @@ export const generateScript = async ({
     return last;
 };
 
+// ─── Diagnóstico de fallos de voz (v4.1236) ────────────────────────────────
+//
+// ⚠️ UN FALLO DE VOZ SE NOMBRA, NO SE RESUME. Hasta v4.1235 cualquier fallo
+// —credencial vencida, cuota agotada, voz inexistente, S3 caído— terminaba en
+// «No se pudo generar la narración. Revisá los avisos del Reel», y el aviso no
+// siempre existía. Cada fallo lleva ahora un `code` que la pantalla traduce y
+// que el registro de consumo guarda, y el mensaje dice qué hacer.
+export const TTS_ERRORS = {
+    empty_script:      { label: 'Guion vacío',                          retryable: false, status: 400 },
+    not_configured:    { label: 'Proveedor no configurado',             retryable: false, status: 503 },
+    auth:              { label: 'Credencial inválida o vencida',        retryable: false, status: 502 },
+    quota:             { label: 'Límite de consumo alcanzado',          retryable: false, status: 502 },
+    rate_limit:        { label: 'Demasiadas solicitudes',               retryable: true,  status: 502 },
+    voice_not_found:   { label: 'Voz no disponible',                    retryable: false, status: 502 },
+    model_unsupported: { label: 'Modelo incompatible',                  retryable: false, status: 502 },
+    bad_request:       { label: 'Solicitud rechazada por el proveedor', retryable: false, status: 502 },
+    provider_down:     { label: 'Proveedor caído',                      retryable: true,  status: 502 },
+    timeout:           { label: 'Tiempo de espera agotado',             retryable: true,  status: 504 },
+    network:           { label: 'Error de conexión',                    retryable: true,  status: 502 },
+    empty_audio:       { label: 'Audio vacío',                          retryable: true,  status: 502 },
+    script_failed:     { label: 'No se pudo escribir el guion',         retryable: true,  status: 502 },
+    measure_failed:    { label: 'No se pudo medir el audio',            retryable: true,  status: 500 },
+    storage:           { label: 'Fallo en el almacenamiento',           retryable: true,  status: 502 },
+    mix:               { label: 'Error durante la mezcla',              retryable: true,  status: 500 },
+    unsupported_reel:  { label: 'Pieza sin voz editable',               retryable: false, status: 409 },
+    unknown:           { label: 'Error inesperado',                     retryable: true,  status: 500 }
+};
+
+export class TtsError extends Error {
+    constructor(code, message, { provider = null, httpStatus = null, detail = null } = {}) {
+        super(message);
+        this.name = 'TtsError';
+        this.code = TTS_ERRORS[code] ? code : 'unknown';
+        this.provider = provider;
+        this.httpStatus = httpStatus;
+        this.detail = detail;
+        this.retryable = TTS_ERRORS[this.code].retryable;
+    }
+}
+
+export const asTtsError = (err, provider = null, fallbackCode = 'unknown') => {
+    if (err instanceof TtsError) return err;
+    return new TtsError(fallbackCode, err?.message || String(err), { provider });
+};
+
+const providerLabel = (id) => TTS_PROVIDERS[id]?.label || id || 'el proveedor de voz';
+
+// Un 401 de OpenAI devuelve un fragmento de la clave («sk-proj-****abcd»). No
+// es la clave, pero no tiene por qué llegar a la pantalla ni al registro.
+const scrubSecrets = (s) => String(s || '')
+    .replace(/\b(sk|xi|key)[-_][A-Za-z0-9_\-*]{4,}/gi, '$1-…')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+// Lee el cuerpo de error de cada proveedor y decide qué PASÓ.
+//   OpenAI:     { error: { message, type, code } }
+//   ElevenLabs: { detail: { status, message } } | { detail: [{ msg }] } | { detail: '…' }
+export const classifyTtsFailure = (provider, httpStatus, bodyText = '', { model = null, voiceId = null } = {}) => {
+    let parsed = null;
+    try { parsed = JSON.parse(bodyText); } catch { /* cuerpo no JSON */ }
+    const oe = parsed?.error;
+    const ed = parsed?.detail;
+    const providerCode = String(
+        (oe && (oe.code || oe.type))
+        || (ed && typeof ed === 'object' && !Array.isArray(ed) ? (ed.status || ed.code) : '')
+        || ''
+    ).toLowerCase();
+    const rawMsg = (oe && oe.message)
+        || (typeof ed === 'string' ? ed : Array.isArray(ed) ? ed.map(d => d?.msg).filter(Boolean).join('; ') : ed?.message)
+        || (parsed ? '' : bodyText);
+    const providerMsg = scrubSecrets(rawMsg).slice(0, 220);
+    const haystack = `${providerCode} ${providerMsg}`.toLowerCase();
+    const has = (...keys) => keys.some(k => haystack.includes(k));
+    const name = providerLabel(provider);
+    const tail = providerMsg ? ` Detalle del proveedor: «${providerMsg}».` : '';
+
+    let code;
+    if (httpStatus === 402 || has('quota_exceeded', 'insufficient_quota', 'payment_required', 'exceeds your quota', 'billing_hard_limit')) code = 'quota';
+    else if (has('detected_unusual_activity')) code = 'auth';
+    else if (has('voice_not_found', 'invalid_voice', "value for 'voice'", 'voice id', 'voice_id')) code = 'voice_not_found';
+    else if (has('model_not_found', 'unsupported_model', 'model_not_supported', 'does not support', 'does not have access to model', 'invalid_model')) code = 'model_unsupported';
+    else if (httpStatus === 401 || httpStatus === 403 || has('invalid_api_key', 'missing_permissions', 'unauthorized', 'incorrect api key')) code = 'auth';
+    else if (httpStatus === 429) code = 'rate_limit';
+    else if (httpStatus === 404) code = provider === 'elevenlabs' ? 'voice_not_found' : 'model_unsupported';
+    else if (httpStatus >= 500) code = 'provider_down';
+    else if (httpStatus === 400 || httpStatus === 422) code = 'bad_request';
+    else code = 'unknown';
+
+    const messages = {
+        quota: `${name} rechazó la locución por límite de consumo: la cuenta no tiene saldo o cuota suficiente. Recargá el plan o generala con otro proveedor.${tail}`,
+        auth: has('missing_permissions')
+            ? `La credencial de ${name} no tiene permiso de síntesis de voz. Habilitá el permiso «Text to Speech» de la clave configurada en el despliegue.${tail}`
+            : has('detected_unusual_activity')
+                ? `${name} bloqueó el uso de la cuenta por actividad inusual (pasa con planes gratuitos). Hace falta un plan pago o usar otro proveedor.${tail}`
+                : `${name} rechazó la credencial (HTTP ${httpStatus}). Revisá que la clave configurada en el despliegue sea válida y no esté vencida.${tail}`,
+        voice_not_found: `${name} no encontró la voz ${voiceId ? `«${voiceId}»` : 'configurada'}. Elegí otra voz o corregí la voz por defecto del despliegue.${tail}`,
+        model_unsupported: `${name} no reconoce el modelo de voz «${model || 'configurado'}» o la cuenta no tiene acceso a él.${tail}`,
+        rate_limit: `${name} está limitando las solicitudes (HTTP 429). Esperá unos segundos y reintentá.${tail}`,
+        provider_down: `${name} no está disponible en este momento (HTTP ${httpStatus}). Reintentá en unos minutos o usá otro proveedor.${tail}`,
+        bad_request: `${name} rechazó la solicitud (HTTP ${httpStatus}).${tail}`,
+        unknown: `${name} respondió HTTP ${httpStatus}.${tail}`
+    };
+
+    return new TtsError(code, messages[code], { provider, httpStatus, detail: providerMsg || null });
+};
+
+// ⚠️ NINGÚN FETCH A UN TERCERO SIN TOPE DE TIEMPO (regla del proyecto). Hasta
+// v4.1235 la síntesis no tenía ninguno: un proveedor colgado agotaba los 120 s
+// de la función y la pantalla recibía un error del borde, en texto plano.
+const TTS_TIMEOUT_MS = Number(process.env.REEL_TTS_TIMEOUT_MS) || 45_000;
+const STATUS_TIMEOUT_MS = 8_000;
+
+const callProvider = async (provider, url, init = {}, timeoutMs = TTS_TIMEOUT_MS) => {
+    try {
+        return await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+    } catch (e) {
+        if (e?.name === 'TimeoutError' || e?.name === 'AbortError') {
+            throw new TtsError('timeout',
+                `${providerLabel(provider)} no respondió en ${Math.round(timeoutMs / 1000)} s. Reintentá o usá otro proveedor.`,
+                { provider });
+        }
+        throw new TtsError('network',
+            `No se pudo conectar con ${providerLabel(provider)} (${scrubSecrets(e?.cause?.code || e?.message || 'sin detalle')}).`,
+            { provider, detail: e?.cause?.code || null });
+    }
+};
+
+// Un MP3 de una frase pesa decenas de KB. Menos que esto es una respuesta 200
+// sin audio, que ffmpeg no sabría medir y el montaje no podría mezclar.
+const MIN_AUDIO_BYTES = 512;
+const readAudio = async (provider, resp) => {
+    const buffer = Buffer.from(await resp.arrayBuffer());
+    if (buffer.length < MIN_AUDIO_BYTES) {
+        throw new TtsError('empty_audio',
+            `${providerLabel(provider)} respondió sin audio (${buffer.length} bytes). Reintentá.`, { provider });
+    }
+    return buffer;
+};
+
+const clampSpeed = (speed) => Math.min(1.15, Math.max(0.85, Number(speed) || 1));
+
 // ─── Síntesis ──────────────────────────────────────────────────────────────
 
-const synthesizeWithOpenAI = async ({ text, gender, speed }) => {
-    const resp = await fetch('https://api.openai.com/v1/audio/speech', {
+const synthesizeWithOpenAI = async ({ text, gender, speed, language, style, voiceId }) => {
+    const model = ttsModelFor('openai');
+    const voice = voiceId || voiceIdFor('openai', gender);
+    const lang = NARRATION_LANGUAGES[language] || NARRATION_LANGUAGES[DEFAULT_LANGUAGE];
+    const body = { model, voice, input: text, response_format: 'mp3' };
+    if (/^gpt-4o/.test(model)) {
+        // Los modelos gpt-4o-*-tts aceptan instrucciones de locución: es la
+        // única forma de pedirle a OpenAI un acento. `tts-1` no las admite.
+        const st = NARRATION_STYLES[style] || NARRATION_STYLES[DEFAULT_STYLE];
+        body.instructions = `Speak in ${lang.accent}, with a ${st.descriptor} delivery.`;
+    } else {
+        // `speed` es la única palanca de ritmo del proveedor. Se mantiene
+        // dentro de un rango imperceptible: el ajuste fino lo hace el motor
+        // de tiempos reescribiendo el texto, no acelerando la voz.
+        body.speed = clampSpeed(speed);
+    }
+    const resp = await callProvider('openai', 'https://api.openai.com/v1/audio/speech', {
         method: 'POST',
         headers: {
             'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-            model: process.env.OPENAI_TTS_MODEL || 'tts-1',
-            voice: voiceIdFor('openai', gender),
-            input: text,
-            // `speed` es la única palanca de ritmo del proveedor. Se mantiene
-            // dentro de un rango imperceptible: el ajuste fino lo hace el motor
-            // de tiempos reescribiendo el texto, no acelerando la voz.
-            speed: Math.min(1.15, Math.max(0.85, speed || 1)),
-            response_format: 'mp3'
-        })
+        body: JSON.stringify(body)
     });
     if (!resp.ok) {
-        const body = await resp.text().catch(() => '');
-        throw new Error(`OpenAI TTS: HTTP ${resp.status} ${body.slice(0, 300)}`);
+        const raw = await resp.text().catch(() => '');
+        throw classifyTtsFailure('openai', resp.status, raw, { model, voiceId: voice });
     }
-    return Buffer.from(await resp.arrayBuffer());
+    return { buffer: await readAudio('openai', resp), model, voiceId: voice };
 };
 
-const synthesizeWithElevenLabs = async ({ text, gender, speed, language }) => {
-    const voiceId = voiceIdFor('elevenlabs', gender);
+// ⚠️ `language_code` SÓLO PARA LOS MODELOS QUE LO ADMITEN (v4.1236). Se mandaba
+// siempre, y la documentación de ElevenLabs dice que `eleven_multilingual_v2`
+// —el modelo por defecto— no lo admite. Los que sí: Turbo y Flash v2.5.
+const ELEVENLABS_LANGUAGE_CODE_MODELS = /^eleven_(turbo|flash)_v2_5$/;
+
+const synthesizeWithElevenLabs = async ({ text, gender, speed, language, voiceId }) => {
+    const model = ttsModelFor('elevenlabs');
+    const voice = voiceId || voiceIdFor('elevenlabs', gender);
     const lang = NARRATION_LANGUAGES[language] || NARRATION_LANGUAGES[DEFAULT_LANGUAGE];
 
-    const resp = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-        method: 'POST',
-        headers: {
-            'xi-api-key': process.env.ELEVENLABS_API_KEY,
-            'Content-Type': 'application/json',
-            'Accept': 'audio/mpeg'
-        },
-        body: JSON.stringify({
-            text,
-            model_id: process.env.ELEVENLABS_MODEL || 'eleven_multilingual_v2',
-            // El código de idioma es lo que evita que una voz multilingüe lea
-            // español con fonética inglesa.
-            language_code: lang.locale.split('-')[0],
-            voice_settings: {
-                stability: 0.5,
-                similarity_boost: 0.75,
-                style: 0.3,
-                use_speaker_boost: true,
-                speed: Math.min(1.15, Math.max(0.85, speed || 1))
-            }
-        })
-    });
+    const body = {
+        text,
+        model_id: model,
+        voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.75,
+            style: 0.3,
+            use_speaker_boost: true,
+            speed: clampSpeed(speed)
+        }
+    };
+    // El código de idioma es lo que evita que una voz multilingüe lea
+    // español con fonética inglesa, en los modelos que lo aceptan.
+    if (ELEVENLABS_LANGUAGE_CODE_MODELS.test(model)) body.language_code = lang.locale.split('-')[0];
+
+    const resp = await callProvider('elevenlabs',
+        `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voice)}?output_format=mp3_44100_128`, {
+            method: 'POST',
+            headers: {
+                'xi-api-key': process.env.ELEVENLABS_API_KEY,
+                'Content-Type': 'application/json',
+                'Accept': 'audio/mpeg'
+            },
+            body: JSON.stringify(body)
+        });
     if (!resp.ok) {
-        const body = await resp.text().catch(() => '');
-        throw new Error(`ElevenLabs: HTTP ${resp.status} ${body.slice(0, 300)}`);
+        const raw = await resp.text().catch(() => '');
+        throw classifyTtsFailure('elevenlabs', resp.status, raw, { model, voiceId: voice });
     }
-    return Buffer.from(await resp.arrayBuffer());
+    return { buffer: await readAudio('elevenlabs', resp), model, voiceId: voice };
 };
 
 const TTS_ADAPTERS = { openai: synthesizeWithOpenAI, elevenlabs: synthesizeWithElevenLabs };
 
-export const synthesize = async ({ text, provider = null, gender = 'female', speed = 1, language = DEFAULT_LANGUAGE }) => {
-    const requested = provider && isTtsAvailable(provider) ? provider : activeTtsProvider();
+// ─── Respaldo entre proveedores ────────────────────────────────────────────
+//
+// ⚠️ EL RESPALDO AUTOMÁTICO ES UNA POLÍTICA, NO UN REFLEJO (v4.1236). Hasta
+// v4.1235 todo fallo de ElevenLabs saltaba a OpenAI sin preguntar, y una
+// elección EXPLÍCITA de proveedor que no estaba configurado se cambiaba en
+// silencio por otro. Ahora:
+//   · `fallback: true`  → si el pedido falla, se intenta UNA vez con el otro.
+//   · `fallback: false` → se devuelve el fallo, con el respaldo como OFERTA.
+//   · `fallback: null`  → manda `REEL_TTS_AUTO_FALLBACK` (encendido por
+//     defecto, para que el Reel que se monta solo no salga mudo).
+// Un solo intento de respaldo y nunca un bucle: cada síntesis se cobra.
+export const autoFallbackEnabled = () => !/^(0|false|off|no)$/i.test(String(process.env.REEL_TTS_AUTO_FALLBACK || '').trim());
+
+// Fallos del PROVEEDOR, en los que otro motor puede salir bien. Un guion vacío
+// o un fallo de almacenamiento no se arreglan cambiando de voz.
+export const FALLBACK_CODES = new Set([
+    'not_configured', 'auth', 'quota', 'rate_limit', 'voice_not_found',
+    'model_unsupported', 'bad_request', 'provider_down', 'timeout', 'network', 'empty_audio'
+]);
+
+export const fallbackProviderFor = (id) => availableTtsProviders().find(p => p !== id) || null;
+
+const notConfiguredError = (id) => {
+    const p = TTS_PROVIDERS[id];
+    if (!p) return new TtsError('not_configured', `«${id}» no es un proveedor de voz.`, { provider: id });
+    if (!p.implemented) return new TtsError('not_configured', `${p.label} todavía no está integrado como motor de voz.`, { provider: id });
+    return new TtsError('not_configured',
+        `${p.label} no está configurado: falta la variable ${p.envKey} en el despliegue.`, { provider: id });
+};
+
+export const synthesize = async ({
+    text, provider = null, gender = 'female', speed = 1, language = DEFAULT_LANGUAGE,
+    style = null, voiceId = null, fallback = null
+}) => {
+    const clean = String(text || '').trim();
+    if (!clean) {
+        throw new TtsError('empty_script', 'El texto de la voz en off está vacío: escribí o generá un guion antes de sintetizar.');
+    }
+    const allowFallback = fallback == null ? autoFallbackEnabled() : Boolean(fallback);
+    const requested = provider || activeTtsProvider();
     if (!requested) {
-        const err = new Error('No hay proveedor de voz disponible. Configurar ELEVENLABS_API_KEY o OPENAI_API_KEY.');
-        err.code = 'NO_TTS_PROVIDER';
-        throw err;
+        throw new TtsError('not_configured', 'No hay ningún proveedor de voz configurado: falta ELEVENLABS_API_KEY u OPENAI_API_KEY en el despliegue.');
     }
 
+    const run = async (id, chosenVoice) => {
+        if (!isTtsAvailable(id)) throw notConfiguredError(id);
+        const out = await TTS_ADAPTERS[id]({ text: clean, gender, speed, language, style, voiceId: chosenVoice });
+        return { buffer: out.buffer, provider: id, model: out.model, voiceId: out.voiceId };
+    };
+
+    let first;
     try {
-        const buffer = await TTS_ADAPTERS[requested]({ text, gender, speed, language });
-        return { buffer, provider: requested, voiceId: voiceIdFor(requested, gender) };
+        // La voz elegida a mano es de ESE proveedor: en el respaldo no sirve.
+        return await run(requested, normalizeVoiceId(requested, voiceId));
     } catch (err) {
-        // Respaldo automático: si ElevenLabs falla por cuota/créditos (401/429/quota_exceeded) o caída de red
-        // y OpenAI TTS está disponible, se conmuta automáticamente para no bloquear el Reel.
-        if (requested === 'elevenlabs' && isTtsAvailable('openai')) {
-            console.warn(`[REEL NARRATION] ElevenLabs falló (${err.message}). Activando respaldo automático a OpenAI TTS...`);
-            try {
-                const buffer = await TTS_ADAPTERS.openai({ text, gender, speed, language });
-                return {
-                    buffer,
-                    provider: 'openai',
-                    voiceId: voiceIdFor('openai', gender),
-                    fallbackFrom: 'elevenlabs',
-                    fallbackReason: err.message
-                };
-            } catch (fallbackErr) {
-                console.error(`[REEL NARRATION] Respaldo a OpenAI TTS también falló:`, fallbackErr.message);
-                throw new Error(`Falló ElevenLabs (${err.message}) y el respaldo de OpenAI TTS (${fallbackErr.message})`);
-            }
-        }
-        throw err;
+        first = asTtsError(err, requested);
     }
+
+    const alt = allowFallback && FALLBACK_CODES.has(first.code) ? fallbackProviderFor(requested) : null;
+    if (!alt) throw first;
+
+    console.warn(`[REEL NARRATION] ${providerLabel(requested)} falló (${first.code}: ${first.message}). Respaldo con ${providerLabel(alt)}…`);
+    try {
+        const out = await run(alt, null);
+        return { ...out, fallbackFrom: requested, fallbackReason: first.message, fallbackCode: first.code };
+    } catch (err2) {
+        const second = asTtsError(err2, alt);
+        // Se informa el fallo del proveedor PEDIDO —es lo que hay que corregir—
+        // con el del respaldo al lado.
+        const combined = new TtsError(first.code,
+            `${first.message} El respaldo con ${providerLabel(alt)} también falló: ${second.message}`,
+            { provider: requested, httpStatus: first.httpStatus, detail: first.detail });
+        combined.fallbackError = { provider: alt, code: second.code, message: second.message };
+        throw combined;
+    }
+};
+
+// ─── Muestra de la voz ─────────────────────────────────────────────────────
+//
+// Una frase fija y corta (~90 caracteres) para escuchar la voz ANTES de
+// sintetizar el guion entero. Sin respaldo: una muestra de otro proveedor
+// no muestra la voz que se eligió.
+const SAMPLE_TEXT = {
+    Spanish: 'Hola. Así suena la voz que va a narrar este Reel: clara, cercana y al servicio de la comunidad.',
+    English: 'Hello. This is the voice that will narrate this Reel: clear, warm and at the service of the community.',
+    Portuguese: 'Olá. Esta é a voz que vai narrar este Reel: clara, próxima e a serviço da comunidade.',
+    French: 'Bonjour. Voici la voix qui racontera ce Reel : claire, chaleureuse et au service de la communauté.',
+    Italian: 'Ciao. Questa è la voce che racconterà questo Reel: chiara, vicina e al servizio della comunità.'
+};
+
+export const sampleTextFor = (language) => {
+    const lang = NARRATION_LANGUAGES[language] || NARRATION_LANGUAGES[DEFAULT_LANGUAGE];
+    return SAMPLE_TEXT[lang.tongue] || SAMPLE_TEXT.Spanish;
+};
+
+export const previewVoice = ({ provider, gender = 'female', language = DEFAULT_LANGUAGE, style = null, speed = 1, voiceId = null }) =>
+    synthesize({ text: sampleTextFor(language), provider, gender, language, style, speed, voiceId, fallback: false });
+
+// ─── Estado de los proveedores ─────────────────────────────────────────────
+//
+// Lo que el panel muestra en cada tarjeta: si la credencial existe, si el
+// proveedor la ACEPTA, cuánta cuota queda (cuando el proveedor la informa) y
+// qué voces tiene la cuenta. Se consulta con llamadas de LECTURA, que no
+// sintetizan nada ni consumen cuota. Cinco minutos de caché por instancia:
+// abrir la ficha de diez Reels no son veinte llamadas a cada proveedor.
+const STATUS_TTL_MS = 5 * 60_000;
+const statusCache = new Map();
+
+const readJson = async (resp) => {
+    const raw = await resp.text().catch(() => '');
+    try { return { raw, data: JSON.parse(raw) }; } catch { return { raw, data: null }; }
+};
+
+const elevenLabsVoices = async () => {
+    try {
+        const resp = await callProvider('elevenlabs', 'https://api.elevenlabs.io/v1/voices',
+            { headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY } }, STATUS_TIMEOUT_MS);
+        if (!resp.ok) return null;
+        const { data } = await readJson(resp);
+        const voices = Array.isArray(data?.voices) ? data.voices : [];
+        return voices.slice(0, 120).map(v => {
+            const labels = v.labels || {};
+            return {
+                id: v.voice_id,
+                label: v.name,
+                gender: labels.gender === 'male' || labels.gender === 'female' ? labels.gender : 'neutral',
+                accent: labels.accent || null,
+                language: labels.language || v.fine_tuning?.language || null,
+                category: v.category || null
+            };
+        }).filter(v => v.id && v.label);
+    } catch {
+        return null;
+    }
+};
+
+const LATIN_ACCENT_RE = /(colombi|latin|mexic|argentin|chile|peru|venezol|spanish|español|castil|es-)/i;
+
+const checkElevenLabs = async (base) => {
+    const resp = await callProvider('elevenlabs', 'https://api.elevenlabs.io/v1/user/subscription',
+        { headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY } }, STATUS_TIMEOUT_MS);
+    const { raw, data } = await readJson(resp);
+    const out = { ...base };
+
+    if (resp.ok && data) {
+        const used = Number(data.character_count) || 0;
+        const limit = Number(data.character_limit) || 0;
+        out.quota = {
+            used, limit,
+            remaining: Math.max(0, limit - used),
+            unit: 'caracteres',
+            resetsAt: data.next_character_count_reset_unix ? new Date(data.next_character_count_reset_unix * 1000).toISOString() : null,
+            tier: data.tier || null
+        };
+        if (limit > 0 && used >= limit) {
+            out.state = 'quota';
+            out.message = `La cuenta agotó su cuota mensual (${used.toLocaleString('es-CO')} de ${limit.toLocaleString('es-CO')} caracteres).`;
+        } else {
+            out.state = 'ok';
+            out.message = limit > 0
+                ? `Conectado. Quedan ${out.quota.remaining.toLocaleString('es-CO')} de ${limit.toLocaleString('es-CO')} caracteres este ciclo.`
+                : 'Conectado.';
+        }
+    } else {
+        const err = classifyTtsFailure('elevenlabs', resp.status, raw);
+        if (err.code === 'auth' && /missing_permissions/i.test(raw)) {
+            // La clave existe y el proveedor la reconoce: sólo no puede leer la
+            // cuenta. La síntesis puede funcionar igual (permiso distinto).
+            out.state = 'ok';
+            out.message = 'Credencial reconocida, sin permiso para leer la cuota: el consumo se verá al generar.';
+        } else {
+            out.state = err.code;
+            out.message = err.message;
+        }
+    }
+
+    const voices = await elevenLabsVoices();
+    const defaults = { female: voiceIdFor('elevenlabs', 'female'), male: voiceIdFor('elevenlabs', 'male') };
+    if (voices) {
+        // Las voces latinas primero: es lo que se busca para un Reel en español.
+        voices.sort((a, b) => Number(LATIN_ACCENT_RE.test(`${b.accent} ${b.language}`)) - Number(LATIN_ACCENT_RE.test(`${a.accent} ${a.language}`)));
+        out.voices = voices;
+        const missing = Object.entries(defaults).filter(([, id]) => !voices.some(v => v.id === id));
+        if (missing.length) {
+            out.warnings.push(`La voz por defecto ${missing.map(([g]) => g === 'male' ? 'masculina' : 'femenina').join(' y ')} no está en la cuenta: elegí una voz de la lista.`);
+        }
+        const latin = voices.filter(v => LATIN_ACCENT_RE.test(`${v.accent} ${v.language}`));
+        out.accentNote = latin.length
+            ? `${latin.length === 1 ? 'Una voz' : `${latin.length} voces`} con acento hispano en la cuenta.`
+            : 'La cuenta no tiene voces con acento latino: el español sale con la voz multilingüe por defecto, sin acento colombiano.';
+    } else {
+        out.voices = Object.entries(defaults).map(([g, id]) => ({ id, label: `Voz por defecto (${g === 'male' ? 'masculina' : 'femenina'})`, gender: g, accent: null, language: null, category: 'default' }));
+    }
+    return out;
+};
+
+const checkOpenAI = async (base) => {
+    const model = ttsModelFor('openai');
+    const resp = await callProvider('openai', `https://api.openai.com/v1/models/${encodeURIComponent(model)}`,
+        { headers: { 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` } }, STATUS_TIMEOUT_MS);
+    const out = { ...base, voices: OPENAI_TTS_VOICES.map(v => ({ ...v, accent: null, language: null, category: 'catalog' })) };
+    if (resp.ok) {
+        out.state = 'ok';
+        // OpenAI no expone el saldo por API: decirlo es mejor que mostrar un
+        // «disponible» que la primera síntesis puede desmentir.
+        out.message = `Conectado (modelo ${model}). OpenAI no informa el saldo por API: un límite de consumo se detecta al generar.`;
+    } else {
+        const { raw } = await readJson(resp);
+        const err = classifyTtsFailure('openai', resp.status, raw, { model });
+        out.state = err.code;
+        out.message = err.message;
+    }
+    return out;
+};
+
+export const checkTtsProvider = async (id, { force = false } = {}) => {
+    const p = TTS_PROVIDERS[id];
+    if (!p) return null;
+    const cached = statusCache.get(id);
+    if (!force && cached && Date.now() - cached.at < STATUS_TTL_MS) return cached.value;
+
+    const base = {
+        id, label: p.label,
+        model: ttsModelFor(id),
+        implemented: Boolean(p.implemented),
+        configured: isTtsAvailable(id),
+        accentControl: p.accentControl,
+        voiceChoice: Boolean(p.voiceChoice),
+        languages: p.languages || null,
+        billing: p.billing || null,
+        note: p.note || null,
+        isDefault: id === activeTtsProvider(),
+        state: 'unknown', message: null,
+        quota: null, voices: [], warnings: [], accentNote: null,
+        checkedAt: new Date().toISOString(), latencyMs: null
+    };
+
+    let value;
+    if (!p.implemented) {
+        value = { ...base, state: 'not_implemented', message: p.note };
+    } else if (!base.configured) {
+        value = { ...base, state: 'not_configured', message: notConfiguredError(id).message };
+    } else {
+        const startedAt = Date.now();
+        try {
+            value = id === 'elevenlabs' ? await checkElevenLabs(base) : await checkOpenAI(base);
+        } catch (e) {
+            const err = asTtsError(e, id);
+            value = { ...base, state: err.code, message: err.message };
+        }
+        value.latencyMs = Date.now() - startedAt;
+    }
+    statusCache.set(id, { at: Date.now(), value });
+    return value;
+};
+
+export const ttsProvidersStatus = async ({ force = false } = {}) => {
+    const ids = Object.keys(TTS_PROVIDERS).filter(id => TTS_PROVIDERS[id].implemented);
+    return Promise.all(ids.map(id => checkTtsProvider(id, { force })));
 };
 
 // ─── Narrative Timing Engine ───────────────────────────────────────────────
@@ -447,7 +884,10 @@ export const fitNarrationToDuration = async ({
     // una campaña de emergencia y NO es una emergencia: su cláusula y su brief
     // los arma su propio módulo. Sin esto, la pieza sigue exactamente igual.
     facts = null,
-    sourceContext = null
+    sourceContext = null,
+    // La voz elegida a mano y la política de respaldo (v4.1236). Ver
+    // `synthesize`: `fallback: null` deja decidir a la configuración.
+    voiceId = null, fallback = null
 }) => {
     const budget = computeWordBudget({ durationSec, language, style, speed });
     const target = budget.availableSec;
@@ -470,13 +910,26 @@ export const fitNarrationToDuration = async ({
                 scenes, durationSec, language, style, speed, context,
                 clubName, clubCity, wordAdjustment, provider,
                 emergencyContext, narrativeRoles, facts, sourceContext
+            }).catch(e => {
+                throw new TtsError('script_failed', `No se pudo escribir el guion con IA: ${e.message} Podés escribirlo a mano y generar la voz igual.`);
             });
 
-        const voice = await synthesize({ text: written.script, provider: currentTtsProvider, gender, speed, language });
+        // La voz elegida a mano es del proveedor pedido: si un intento anterior
+        // ya conmutó al respaldo, se sigue con la voz por defecto del respaldo.
+        const voice = await synthesize({
+            text: written.script, provider: currentTtsProvider, gender, speed, language, style,
+            voiceId: currentTtsProvider === ttsProvider ? voiceId : null,
+            fallback
+        });
         if (voice.provider && voice.provider !== currentTtsProvider) {
             currentTtsProvider = voice.provider;
         }
-        const actualSec = await measureAudio(voice.buffer);
+        let actualSec;
+        try {
+            actualSec = await measureAudio(voice.buffer);
+        } catch (e) {
+            throw new TtsError('measure_failed', `El audio se generó pero no se pudo medir su duración: ${e.message}`, { provider: voice.provider });
+        }
 
         const drift = actualSec - target;
         attempts.push({
@@ -521,9 +974,11 @@ export const fitNarrationToDuration = async ({
         charsSynthesized: attempts.reduce((s, a) => s + (a.chars || 0), 0),
         audioBuffer: best.voice.buffer,
         ttsProvider: best.voice.provider,
+        ttsModel: best.voice.model || null,
         voiceId: best.voice.voiceId,
         fallbackFrom: best.voice.fallbackFrom || null,
         fallbackReason: best.voice.fallbackReason || null,
+        fallbackCode: best.voice.fallbackCode || null,
         actualSec: Number(best.actualSec.toFixed(2)),
         targetSec: Number(target.toFixed(2)),
         driftSec: Number(best.drift.toFixed(2)),

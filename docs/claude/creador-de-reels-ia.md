@@ -690,6 +690,8 @@ presupuesto del prompt—, separado de la orquestación, por el mismo motivo que
 | `REEL_TTS_PROVIDER` | `elevenlabs` \| `openai` (por defecto: el que tenga credencial) |
 | `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_FEMALE/MALE`, `ELEVENLABS_MODEL` | Voz con acento latino real |
 | `OPENAI_TTS_MODEL`, `OPENAI_TTS_VOICE` | Voz con la credencial que la plataforma ya tiene |
+| `REEL_TTS_AUTO_FALLBACK` | `off` apaga el respaldo automático entre motores de voz del montaje automático (encendido por defecto). El panel decide con su casilla |
+| `REEL_TTS_TIMEOUT_MS` | Tope de cada síntesis (45 000 por defecto) |
 | `EXPANSION_PROVIDER`, `EXPANSION_MODEL_*` | Motor de la Expansión Inteligente y sus ids |
 | `EXPANSION_MIN_PRESERVATION` | Conservación mínima del original (0-1, default 0.82) |
 | `EXPANSION_CREATIVITY`, `EXPANSION_MAX_GROWTH`, `EXPANSION_TOLERANCE` | Cuánto puede inventar, cuánto crecer y cuándo no tocar la foto |
@@ -3007,3 +3009,66 @@ el nivel de audio del final; se salta sin binario).
   la pista se pide para la línea de tiempo REAL —escenas + outro,
   `timelineSecFor`—, no para `config.timing.finalDurationSec`, que no cuenta
   el outro. Ninguna de las dos crea tareas de video; una prueba lo fija.
+
+
+## Voz en off: diagnóstico, selector de motor y borrador → aplicar — v4.1236
+
+Reporte: al pulsar «Generar voz en off» en la ficha de un Reel, el panel decía
+**«No se pudo generar la narración. Revisá los avisos del Reel»** y no había
+ningún aviso que revisar.
+
+**Causa raíz.** `regenerateNarration` encendía la voz con
+`jsonb_set(config, '{narration,enabled}', 'true', true)`. `jsonb_set` sólo crea
+la ÚLTIMA clave del camino: si `config.narration` no existe —Reels de «Video
+listo», Reels creados antes de la narración, `config` nula— devuelve la
+`config` **sin cambios**. `produceNarration` leía `enabled` vacío, devolvía
+`null` sin llamar a ningún proveedor y el endpoint contestaba el 502 genérico.
+Reproducido contra Postgres 16. Y para los Reels que sí tenían el objeto,
+**cualquier** fallo real (credencial, cuota, voz, modelo, red, S3) se anotaba y
+salía con el mismo mensaje genérico, así que desde la pantalla no había forma
+de distinguirlos. Además ElevenLabs recibía `language_code` con
+`eleven_multilingual_v2`, que según su documentación no lo admite, y ninguna
+llamada de voz tenía tope de tiempo.
+
+**Reglas durables:**
+
+- **La voz se enciende FUSIONANDO el objeto** (`enableNarrationConfig`:
+  `COALESCE(config,'{}') || jsonb_build_object('narration', … || $prefs)`),
+  nunca con `jsonb_set` sobre un camino que puede no existir. La misma trampa
+  vale para cualquier `jsonb_set` de dos niveles en la plataforma.
+- **Un fallo de voz se NOMBRA.** `TtsError` lleva `code` (`TTS_ERRORS` en
+  `reelNarration.js`: `not_configured`, `auth`, `quota`, `rate_limit`,
+  `voice_not_found`, `model_unsupported`, `bad_request`, `provider_down`,
+  `timeout`, `network`, `empty_audio`, `script_failed`, `measure_failed`,
+  `storage`, `mix`, `unsupported_reel`). `classifyTtsFailure` lee los cuerpos
+  de error reales de OpenAI (`error.code`) y ElevenLabs (`detail.status`), y
+  borra los fragmentos de clave (`sk-…`) antes de mostrarlos o registrarlos.
+- **El camino manual lanza; el automático no.** `produceNarration` con
+  `throwOnError` (el panel) propaga el `TtsError` y no deja notas; sin él (el
+  Reel que se monta solo) anota y sigue con música sola, como siempre.
+- **El respaldo entre motores es una POLÍTICA.** `synthesize({ fallback })`:
+  `true` intenta UNA vez con el otro motor, `false` devuelve el fallo con la
+  oferta (`fallback: { provider, label }` en la respuesta), `null` obedece a
+  `REEL_TTS_AUTO_FALLBACK`. Elegir un motor sin credencial ya no se cambia en
+  silencio por otro: es `not_configured` (salvo respaldo permitido).
+- **Generar no es aplicar.** `POST /reels/:id/narration` con `apply:false`
+  inserta la versión como **borrador** (`isCurrent = false`); `POST
+  /reels/:id/narration/:narrationId/apply` la vuelve vigente, guarda las
+  preferencias en `config.narration` y rehace sólo la mezcla. Sin `apply`, el
+  endpoint conserva el comportamiento anterior (aplica y remonta).
+- **El estado de los motores se consulta con llamadas de LECTURA**
+  (`GET /reels/narration/providers`: `/v1/user/subscription` y `/v1/voices` de
+  ElevenLabs, `/v1/models/{modelo}` de OpenAI), con 5 min de caché por
+  instancia. OpenAI no informa saldo por API: se dice.
+- **La muestra de voz** (`POST /reels/narration/preview`) sintetiza una frase
+  fija de ~90 caracteres, sin respaldo, con un freno de 4 s por usuario.
+- **«Video listo» no recibe voz desde la ficha** (`unsupported_reel`): ya trae
+  música y outro adentro y remontarlo los duplicaría.
+- En ElevenLabs **el acento lo pone la voz**: las voces por defecto
+  (Rachel/Daniel) son angloparlantes. Para acento colombiano hay que elegir o
+  configurar (`ELEVENLABS_VOICE_FEMALE/MALE`) una voz latina de la cuenta; el
+  panel lista las de la cuenta con las latinas primero.
+
+Pruebas: `npm run test:reels:voice` (sin base, credenciales ni red: `fetch`
+simulado con los cuerpos de error reales y un MP3 fabricado por ffmpeg-static
+y medido de verdad).

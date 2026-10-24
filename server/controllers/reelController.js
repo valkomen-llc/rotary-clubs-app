@@ -101,7 +101,9 @@ import {
     DEFAULT_STYLE as NARRATION_DEFAULT_STYLE,
     isTtsAvailable, activeTtsProvider, availableTtsProviders,
     computeWordBudget, fitNarrationToDuration, describeTiming,
-    NARRATION_TOLERANCE_SEC, generateScript
+    NARRATION_TOLERANCE_SEC, generateScript,
+    TtsError, TTS_ERRORS, asTtsError, FALLBACK_CODES, fallbackProviderFor,
+    ttsModelFor, ttsProvidersStatus, previewVoice, autoFallbackEnabled
 } from '../lib/reelNarration.js';
 import { measureAudioDuration } from '../lib/reelFfmpeg.js';
 import {
@@ -115,9 +117,9 @@ import {
     USAGE_PROVIDERS, USAGE_OPERATIONS, CREDIT_ESTIMATES
 } from '../lib/reelUsage.js';
 
-export const REEL_MODULE_VERSION = '4.1108.0';
+export const REEL_MODULE_VERSION = '4.1236.0';
 
-console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: presets de pieza [${Object.keys(REEL_PRESETS).join(', ')}], 3-5 fotos → una escena por foto (motor ${DEFAULT_ENGINE}), dirección con visión y estructura narrativa, preservación estricta de personas con recuento corroborado, recuperación por escena con escalera automática (${STRATEGY_LADDER.join(' → ')}; tope ${ABSOLUTE_PAID_CAP} generaciones pagadas) SIN respaldo Ken Burns automático, fotografía normalizada (EXIF) antes de gastar, control de composición (una foto, derecha, sin collage ni franjas), escenas guardadas en la Biblioteca al nacer, control de datos en campañas de emergencia, texto en pantalla y cierre institucional, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
+console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: presets de pieza [${Object.keys(REEL_PRESETS).join(', ')}], 3-5 fotos → una escena por foto (motor ${DEFAULT_ENGINE}), dirección con visión y estructura narrativa, preservación estricta de personas con recuento corroborado, recuperación por escena con escalera automática (${STRATEGY_LADDER.join(' → ')}; tope ${ABSOLUTE_PAID_CAP} generaciones pagadas) SIN respaldo Ken Burns automático, fotografía normalizada (EXIF) antes de gastar, control de composición (una foto, derecha, sin collage ni franjas), escenas guardadas en la Biblioteca al nacer, control de datos en campañas de emergencia, texto en pantalla y cierre institucional, música generativa, voz en off con diagnóstico por proveedor [${availableTtsProviders().join(', ') || 'ninguno'}] y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
 
 // La disponibilidad real de FFmpeg se comprueba una vez al arrancar, sin
 // bloquear la carga del módulo: hasta que responda, el registro lo da por
@@ -4668,7 +4670,12 @@ const resolveSoundtrack = async (project, { style, durationSec }) => {
 // sintetiza, MIDE el archivo real con FFmpeg y corrige el presupuesto de
 // palabras hasta que la locución entra en el hueco disponible.
 
-const insertNarrationVersion = async (project, fitted, meta) => {
+// ⚠️ UNA VERSIÓN NUEVA PUEDE NACER COMO BORRADOR (v4.1236). El panel genera,
+// se escucha y recién después se APLICA: hasta aplicarla, la versión vigente
+// —la que el montaje mezcla— sigue siendo la anterior. `current: false` la
+// inserta sin tocar la vigente; el índice único parcial sólo restringe las
+// vigentes, así que los borradores conviven sin conflicto.
+const insertNarrationVersion = async (project, fitted, meta, { current = true } = {}) => {
     const client = await db.pool.connect();
     try {
         await client.query('BEGIN');
@@ -4676,10 +4683,12 @@ const insertNarrationVersion = async (project, fitted, meta) => {
             'SELECT COALESCE(MAX(version), 0) AS v FROM "ReelNarration" WHERE "projectId" = $1',
             [project.id]
         );
-        await client.query(
-            'UPDATE "ReelNarration" SET "isCurrent" = FALSE WHERE "projectId" = $1 AND "isCurrent"',
-            [project.id]
-        );
+        if (current) {
+            await client.query(
+                'UPDATE "ReelNarration" SET "isCurrent" = FALSE WHERE "projectId" = $1 AND "isCurrent"',
+                [project.id]
+            );
+        }
         const { rows } = await client.query(
             `INSERT INTO "ReelNarration" (
                 id, "projectId", "clubId", version, "isCurrent",
@@ -4687,7 +4696,7 @@ const insertNarrationVersion = async (project, fitted, meta) => {
                 "audioUrl", "audioS3Key", "ttsProvider", "voiceId",
                 timing, "actualSec", "targetSec", "driftSec", "withinTolerance",
                 source, "scriptProvider", "scriptModel", "createdBy", "createdAt"
-             ) VALUES ($1,$2,$3,$4,TRUE,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,NOW())
+             ) VALUES ($1,$2,$3,$4,$25,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,NOW())
              RETURNING *`,
             [
                 randomUUID(), project.id, project.clubId, Number(prev[0].v) + 1,
@@ -4696,11 +4705,19 @@ const insertNarrationVersion = async (project, fitted, meta) => {
                 meta.audioUrl, meta.audioS3Key, fitted.ttsProvider, fitted.voiceId,
                 JSON.stringify({
                     attempts: fitted.attempts, budget: fitted.budget,
-                    leadInSec: fitted.leadInSec, stretch: fitted.stretch
+                    leadInSec: fitted.leadInSec, stretch: fitted.stretch,
+                    // Con qué modelo y por qué proveedor salió (v4.1236). Va en
+                    // el JSONB y no en columnas nuevas: no hace falta un ALTER.
+                    ttsModel: fitted.ttsModel || null,
+                    voiceChosen: meta.voiceChosen || null,
+                    fallbackFrom: fitted.fallbackFrom || null,
+                    fallbackCode: fitted.fallbackCode || null,
+                    fallbackReason: fitted.fallbackReason || null
                 }),
                 fitted.actualSec, fitted.targetSec, fitted.driftSec, fitted.withinTolerance,
                 meta.source || 'ai', fitted.scriptProvider, fitted.scriptModel,
-                meta.createdBy || null
+                meta.createdBy || null,
+                Boolean(current)
             ]
         );
         await client.query('COMMIT');
@@ -4753,20 +4770,40 @@ const resolveReelSourceContext = async (project) => {
     return null;
 };
 
-// Genera guion + voz y la deja lista para el montaje. Nunca lanza hacia arriba:
-// un fallo de la narración no puede tumbar un Reel que se está renderizando
-// bien — se anota y el Reel sale con música sola.
+// El proveedor del registro de consumo. El panel de auditoría agrupa por quién
+// DEBÍA atender cada operación: OpenAI se registra como modelo de lenguaje
+// (su credencial es la del texto) y el motor real queda en `meta.ttsProvider`.
+const usageProviderForTts = (tts) => (tts === 'openai' ? 'llm' : 'elevenlabs');
+
+// Genera guion + voz y la deja lista para el montaje.
+//
+// En el camino AUTOMÁTICO (el Reel que se monta solo) nunca lanza hacia
+// arriba: un fallo de la narración no puede tumbar un Reel que se está
+// renderizando bien — se anota y el Reel sale con música sola.
+//
+// En el camino MANUAL (el panel «Voz en off», `throwOnError`) lanza un
+// `TtsError` con su código: la pantalla tiene que poder decir QUÉ falló. Hasta
+// v4.1235 los dos caminos devolvían `null` y el panel sólo podía mostrar
+// «No se pudo generar la narración».
 const produceNarration = async (project, scenes, opts = {}) => {
     const cfg = project.config?.narration || {};
-    if (!cfg.enabled) return null;
+    // `force`: la pidió alguien a mano. No depende de que la configuración del
+    // Reel tenga la voz encendida —un Reel montado sin locución no la tiene—.
+    if (!cfg.enabled && !opts.force) return null;
 
     const language = NARRATION_LANGUAGES[opts.language || cfg.language] ? (opts.language || cfg.language) : NARRATION_DEFAULT_LANGUAGE;
     const style = NARRATION_STYLES[opts.style || cfg.style] ? (opts.style || cfg.style) : NARRATION_DEFAULT_STYLE;
     const gender = NARRATION_GENDERS[opts.gender || cfg.gender] ? (opts.gender || cfg.gender) : 'female';
     const speed = Number(opts.speed ?? cfg.speed ?? 1);
     const ttsProvider = opts.ttsProvider || cfg.provider || null;
+    // La voz guardada en la configuración es del proveedor guardado: con otro
+    // proveedor pedido a mano no se arrastra.
+    const voiceId = opts.voiceId !== undefined
+        ? (opts.voiceId || null)
+        : (cfg.voiceId && (!opts.ttsProvider || opts.ttsProvider === cfg.provider) ? cfg.voiceId : null);
 
     const narrationStartedAt = Date.now();
+    let stage = 'synthesize';
     try {
         const entity = await entityFor(project);
         const context = resolveContext({
@@ -4781,6 +4818,8 @@ const produceNarration = async (project, scenes, opts = {}) => {
             language, style, speed, gender, context,
             clubName: entity.clubName, clubCity: entity.clubCity,
             ttsProvider,
+            voiceId,
+            fallback: opts.fallback ?? null,
             measureAudio: measureAudioDuration,
             // ⚠️ EL GUION APROBADO A MANO GANA, y por eso se lee también de la
             // `config`: sin esta línea, el texto que alguien revisó y aprobó en
@@ -4803,26 +4842,39 @@ const produceNarration = async (project, scenes, opts = {}) => {
             sourceContext
         });
 
-        const upload = await uploadBuffer(
-            fitted.audioBuffer,
-            `clubs/${project.clubId || 'global'}/reels/narration/${project.id}-${Date.now()}.mp3`,
-            'audio/mpeg'
-        );
+        stage = 'storage';
+        let upload;
+        try {
+            upload = await uploadBuffer(
+                fitted.audioBuffer,
+                `clubs/${project.clubId || 'global'}/reels/narration/${project.id}-${Date.now()}.mp3`,
+                'audio/mpeg'
+            );
+        } catch (e) {
+            throw new TtsError('storage', `La voz se generó pero no se pudo guardar el audio en el almacenamiento: ${e.message}`, { provider: fitted.ttsProvider });
+        }
 
+        stage = 'save';
         const saved = await insertNarrationVersion(project, fitted, {
             language, style, gender, speed,
             audioUrl: upload.url, audioS3Key: upload.key,
             source: (opts.scriptOverride || cfg.script) ? 'manual' : 'ai',
+            voiceChosen: voiceId,
             createdBy: opts.createdBy || null
-        });
+        }, { current: !opts.asDraft });
 
-        if (!fitted.withinTolerance) {
-            await appendNote(project.id,
-                `${describeTiming(fitted)} Se puede regenerar el guion o ajustar la velocidad desde la ficha.`);
-        }
-        if (fitted.fallbackFrom) {
-            await appendNote(project.id,
-                `Voz sintetizada con OpenAI TTS (${fitted.voiceId}) como respaldo automático (${fitted.fallbackFrom} no estuvo disponible: ${fitted.fallbackReason}).`);
+        // Los avisos del Reel son para el camino automático. En el manual la
+        // pantalla ya muestra el resultado al lado del botón, y cada intento
+        // dejaría una nota más en la ficha.
+        if (!opts.throwOnError) {
+            if (!fitted.withinTolerance) {
+                await appendNote(project.id,
+                    `${describeTiming(fitted)} Se puede regenerar el guion o ajustar la velocidad desde la ficha.`);
+            }
+            if (fitted.fallbackFrom) {
+                await appendNote(project.id,
+                    `Voz sintetizada con ${TTS_PROVIDERS[fitted.ttsProvider]?.label || fitted.ttsProvider} como respaldo automático (${TTS_PROVIDERS[fitted.fallbackFrom]?.label || fitted.fallbackFrom} no estuvo disponible: ${fitted.fallbackReason}).`);
+            }
         }
 
         // Dos filas, porque son dos proveedores distintos: el guion lo escribe
@@ -4832,36 +4884,52 @@ const produceNarration = async (project, scenes, opts = {}) => {
         // Los caracteres son los de TODOS los intentos del Narrative Timing
         // Engine, no los del texto final: el motor de voz cobra cada síntesis,
         // y contar sólo la última haría parecer más barato de lo que fue.
-        await recordUsage({
-            projectId: project.id, clubId: project.clubId,
-            operation: 'script.generate', provider: 'llm',
-            model: fitted.scriptModel || null,
-            units: tokensOf(fitted.scriptRaw), unit: 'tokens',
-            target: 'Guion de la locución',
-            detail: `${fitted.words} palabras · ${(fitted.attempts || []).length} intento/s`
-        });
+        if (fitted.scriptProvider || fitted.scriptModel) {
+            await recordUsage({
+                projectId: project.id, clubId: project.clubId,
+                operation: 'script.generate', provider: 'llm',
+                model: fitted.scriptModel || null,
+                units: tokensOf(fitted.scriptRaw), unit: 'tokens',
+                target: 'Guion de la locución',
+                detail: `${fitted.words} palabras · ${(fitted.attempts || []).length} intento/s`
+            });
+        }
         await recordUsage({
             projectId: project.id, clubId: project.clubId,
             operation: 'voice.synthesize',
-            provider: fitted.ttsProvider === 'openai' ? 'llm' : 'elevenlabs',
-            model: fitted.voiceId || fitted.ttsProvider || null,
+            provider: usageProviderForTts(fitted.ttsProvider),
+            model: fitted.ttsModel || fitted.voiceId || fitted.ttsProvider || null,
             units: fitted.charsSynthesized || 0, unit: 'characters',
             ms: Date.now() - narrationStartedAt,
             target: 'Locución',
-            detail: `${language} · ${fitted.actualSec}s de ${fitted.targetSec}s`
+            detail: `${language} · ${fitted.actualSec}s de ${fitted.targetSec}s${fitted.fallbackFrom ? ` · respaldo de ${fitted.fallbackFrom}` : ''}${opts.asDraft ? ' · borrador' : ''}`,
+            meta: {
+                ttsProvider: fitted.ttsProvider, ttsModel: fitted.ttsModel || null,
+                voiceId: fitted.voiceId || null, audioSec: fitted.actualSec,
+                narrationId: saved?.id || null, draft: Boolean(opts.asDraft),
+                fallbackFrom: fitted.fallbackFrom || null, fallbackCode: fitted.fallbackCode || null
+            }
         });
 
-        console.log(`[REEL] ${project.id} narración lista: ${fitted.words} palabras, ${fitted.actualSec}s de ${fitted.targetSec}s (desvío ${fitted.driftSec}s, ${fitted.attempts.length} intento/s)`);
+        console.log(`[REEL] ${project.id} narración lista (${fitted.ttsProvider}/${fitted.ttsModel || '?'}${opts.asDraft ? ', borrador' : ''}): ${fitted.words} palabras, ${fitted.actualSec}s de ${fitted.targetSec}s (desvío ${fitted.driftSec}s, ${fitted.attempts.length} intento/s)`);
         return saved;
     } catch (e) {
-        console.error(`[REEL] ${project.id} narración falló:`, e.message);
+        const err = asTtsError(e, ttsProvider || activeTtsProvider(), stage === 'synthesize' ? 'unknown' : 'storage');
+        console.error(`[REEL] ${project.id} narración falló [${err.code}${err.provider ? ` · ${err.provider}` : ''} · etapa ${stage}]:`, err.message);
         await recordUsage({
             projectId: project.id, clubId: project.clubId,
-            operation: 'voice.synthesize', provider: 'elevenlabs',
-            ms: Date.now() - narrationStartedAt, status: 'error', detail: e.message,
-            target: 'Locución'
+            operation: 'voice.synthesize', provider: usageProviderForTts(err.provider),
+            model: err.provider ? ttsModelFor(err.provider) : null,
+            ms: Date.now() - narrationStartedAt, status: 'error',
+            detail: `${err.code}: ${err.message}`,
+            target: 'Locución',
+            meta: {
+                ttsProvider: err.provider || null, errorCode: err.code, httpStatus: err.httpStatus || null,
+                stage, fallbackError: err.fallbackError || null
+            }
         });
-        await appendNote(project.id, `La narración no se pudo generar: ${e.message} El Reel se monta con la música sola.`);
+        if (opts.throwOnError) throw err;
+        await appendNote(project.id, `La narración no se pudo generar (${TTS_ERRORS[err.code]?.label || err.code}): ${err.message} El Reel se monta con la música sola.`);
         return null;
     }
 };
@@ -4902,6 +4970,11 @@ const narrationToDto = (row) => row && ({
     // afirmación que este módulo no hace.
     accentControlled: TTS_PROVIDERS[row.ttsProvider]?.accentControl ?? null,
     voiceId: row.voiceId,
+    ttsModel: row.timing?.ttsModel || null,
+    // Si salió del respaldo, se dice: el usuario eligió otro proveedor.
+    fallbackFrom: row.timing?.fallbackFrom || null,
+    fallbackFromLabel: row.timing?.fallbackFrom ? (TTS_PROVIDERS[row.timing.fallbackFrom]?.label || row.timing.fallbackFrom) : null,
+    fallbackReason: row.timing?.fallbackReason || null,
     actualSec: row.actualSec,
     targetSec: row.targetSec,
     driftSec: row.driftSec,
@@ -4934,58 +5007,258 @@ export const getReelNarration = async (req, res) => {
     }
 };
 
-// Regenera la voz: otro idioma, otro acento, otro estilo, otra velocidad — o un
-// guion escrito a mano. NO vuelve a renderizar el video: sólo relanza el
-// montaje, que es lo que permite probar voces sin gastar créditos de video.
+// ─── Errores de la voz hacia la pantalla (v4.1236) ─────────────────────────
+//
+// Todo fallo del panel de voz sale con la misma forma: el mensaje concreto, el
+// código que la pantalla traduce, el proveedor que falló y —si tiene sentido—
+// la OFERTA de intentarlo con el otro. La oferta no se ejecuta sola: cada
+// síntesis se cobra, y decidir gastar en otro proveedor es del administrador.
+const sendTtsError = (res, e, fallbackProvider = null) => {
+    const err = asTtsError(e);
+    const offer = !err.fallbackError && FALLBACK_CODES.has(err.code)
+        ? (fallbackProvider || (err.provider ? fallbackProviderFor(err.provider) : null))
+        : null;
+    return res.status(TTS_ERRORS[err.code]?.status || 500).json({
+        error: err.message,
+        code: err.code,
+        codeLabel: TTS_ERRORS[err.code]?.label || err.code,
+        provider: err.provider || null,
+        providerLabel: err.provider ? (TTS_PROVIDERS[err.provider]?.label || err.provider) : null,
+        httpStatus: err.httpStatus || null,
+        retryable: Boolean(err.retryable),
+        fallbackError: err.fallbackError || null,
+        fallback: offer ? { provider: offer, label: TTS_PROVIDERS[offer]?.label || offer } : null
+    });
+};
+
+// ⚠️ ENCENDER LA VOZ CON `jsonb_set` NO ALCANZABA (causa del fallo de v4.1235).
+// `jsonb_set(config, '{narration,enabled}', 'true', true)` sólo crea la ÚLTIMA
+// clave: si `config.narration` no existe —un Reel de «Video listo», uno creado
+// antes de la narración, o una `config` nula— devuelve la `config` SIN
+// CAMBIOS. `produceNarration` leía `enabled` vacío, devolvía `null` sin
+// intentar nada y la pantalla mostraba «No se pudo generar la narración.
+// Revisá los avisos del Reel» sin ningún aviso que revisar. Se fusiona el
+// objeto entero, exista o no.
+//
+// Además guarda las PREFERENCIAS de la voz aplicada (proveedor, voz, región,
+// estilo, género, velocidad y el guion aprobado): un montaje posterior que
+// tenga que rehacer la locución usa lo que el administrador eligió.
+const enableNarrationConfig = async (projectId, prefs = {}) => {
+    const clean = Object.fromEntries(Object.entries({ enabled: true, ...prefs }).filter(([, v]) => v !== undefined));
+    const { rows } = await db.query(
+        `UPDATE "ReelProject"
+            SET config = COALESCE(config, '{}'::jsonb) || jsonb_build_object(
+                    'narration',
+                    COALESCE(CASE WHEN jsonb_typeof(config->'narration') = 'object' THEN config->'narration' END, '{}'::jsonb)
+                    || $2::jsonb
+                ),
+                "renderJobId" = NULL,
+                "updatedAt" = NOW()
+          WHERE id = $1
+          RETURNING *`,
+        [projectId, JSON.stringify(clean)]
+    );
+    return rows[0] || null;
+};
+
+const narrationPrefsFrom = (row) => ({
+    language: row.language,
+    style: row.style,
+    gender: row.gender,
+    speed: Number(row.speed) || 1,
+    provider: row.ttsProvider || null,
+    voiceId: row.timing?.voiceChosen || null,
+    script: typeof row.script === 'string' && row.script.trim() ? row.script.trim().slice(0, 1200) : null
+});
+
+// Un «Video listo» se importó ya montado, con su música y su outro adentro:
+// remontarlo para sumarle voz los duplicaría. Su voz se elige en su propio flujo.
+const isPremountedReel = (project) => project.config?.preset === 'video_listo' || project.publicationType === 'video_ready';
+
+// Aplica una versión: la vuelve vigente, enciende la voz en la `config` y
+// rehace la MEZCLA con las escenas que ya existen. El video no se regenera.
+const applyNarrationVersion = async (project, row, { remount = true } = {}) => {
+    const client = await db.pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query('UPDATE "ReelNarration" SET "isCurrent" = FALSE WHERE "projectId" = $1 AND "isCurrent"', [project.id]);
+        await client.query('UPDATE "ReelNarration" SET "isCurrent" = TRUE WHERE id = $1', [row.id]);
+        await client.query('COMMIT');
+    } catch (e) {
+        await client.query('ROLLBACK').catch(() => { });
+        throw e;
+    } finally {
+        client.release();
+    }
+
+    const updated = await enableNarrationConfig(project.id, narrationPrefsFrom(row));
+    if (!remount) return updated;
+    const scenes = await fetchScenes(project.id);
+    try {
+        return await submitAssembly(updated, scenes);
+    } catch (e) {
+        throw new TtsError('mix', `La voz quedó aplicada, pero el montaje no pudo arrancar: ${e.message} Probá «Volver a montar» desde la sección Audio.`);
+    }
+};
+
+// Genera la voz: otro idioma, otro acento, otro estilo, otra velocidad, otra
+// voz — o un guion escrito a mano. NO vuelve a renderizar el video.
+//
+// Dos modos (v4.1236):
+//   · `apply: false` (el panel) → la versión nace como BORRADOR: se escucha,
+//     y se aplica con `POST /reels/:id/narration/:narrationId/apply`.
+//   · `apply` ausente o `true` → compatibilidad: se aplica y se remonta al
+//     toque, como hasta v4.1235.
 export const regenerateNarration = async (req, res) => {
+    let project = null;
+    try {
+        await ensureReelSchema();
+        project = await fetchProject(req.params.id, req.user);
+        if (!project) return res.status(404).json({ error: 'Reel no encontrado' });
+        const body = req.body || {};
+
+        if (isPremountedReel(project)) {
+            throw new TtsError('unsupported_reel', 'Este video se importó ya montado («Video listo para publicar»): sumarle voz acá duplicaría su música y su outro. La voz en off se elige en ese flujo.');
+        }
+
+        const requested = body.ttsProvider || null;
+        if (requested && !TTS_PROVIDERS[requested]?.implemented) {
+            throw new TtsError('not_configured', `«${String(requested).slice(0, 30)}» no es un motor de voz disponible.`, { provider: requested });
+        }
+        if (!requested && !activeTtsProvider()) {
+            throw new TtsError('not_configured', 'No hay ningún proveedor de voz configurado: falta ELEVENLABS_API_KEY u OPENAI_API_KEY en el despliegue.');
+        }
+
+        const script = typeof body.script === 'string' && body.script.trim() ? body.script.trim() : null;
+        // El panel siempre manda el guion. Sin guion y sin uno aprobado en la
+        // configuración, el motor lo escribe con IA (camino histórico).
+        const apply = body.apply !== false;
+        const scenes = await fetchScenes(project.id);
+
+        const saved = await produceNarration(project, scenes, {
+            language: body.language,
+            style: body.style,
+            gender: body.gender,
+            speed: body.speed,
+            ttsProvider: requested,
+            voiceId: body.voiceId === undefined ? undefined : (body.voiceId || null),
+            // true / false explícitos desde el panel; ausente = configuración.
+            fallback: typeof body.allowFallback === 'boolean' ? body.allowFallback : null,
+            scriptOverride: script,
+            createdBy: req.user?.id || null,
+            force: true,
+            asDraft: !apply,
+            throwOnError: true
+        });
+
+        if (!apply) {
+            return res.json({
+                ok: true,
+                draft: narrationToDto(saved),
+                summary: describeTiming({
+                    actualSec: saved.actualSec, targetSec: saved.targetSec, driftSec: saved.driftSec,
+                    withinTolerance: saved.withinTolerance, attempts: saved.timing?.attempts || []
+                })
+            });
+        }
+
+        const updated = await applyNarrationVersion(project, saved, { remount: body.remount !== false });
+        await respondProject(res, updated);
+    } catch (e) {
+        console.error('[REEL] regenerate narration:', e?.code || '', e?.message);
+        if (res.headersSent) return;
+        sendTtsError(res, e);
+    }
+};
+
+// Aplica al Reel una versión ya generada (el borrador que se escuchó, o una
+// anterior del historial). Rehace la mezcla; no regenera escenas ni sintetiza.
+export const applyNarration = async (req, res) => {
     try {
         await ensureReelSchema();
         const project = await fetchProject(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Reel no encontrado' });
-
-        if (!activeTtsProvider() && !req.body?.ttsProvider) {
-            return res.status(503).json({
-                error: 'No hay proveedor de voz disponible. Configurar ELEVENLABS_API_KEY o OPENAI_API_KEY.'
-            });
+        if (isPremountedReel(project)) {
+            throw new TtsError('unsupported_reel', 'Este video se importó ya montado («Video listo para publicar»): sumarle voz acá duplicaría su música y su outro.');
         }
-
-        // Si la narración estaba apagada, pedirla la enciende.
-        const { rows: enabled } = await db.query(
-            `UPDATE "ReelProject"
-             SET config = jsonb_set(config, '{narration,enabled}', 'true'::jsonb, true), "updatedAt" = NOW()
-             WHERE id = $1 RETURNING *`,
-            [project.id]
+        const { rows } = await db.query(
+            'SELECT * FROM "ReelNarration" WHERE id = $1 AND "projectId" = $2',
+            [req.params.narrationId, project.id]
         );
+        const row = rows[0];
+        if (!row) return res.status(404).json({ error: 'Esa versión de la voz no existe en este Reel.' });
+        if (!row.audioUrl) return res.status(409).json({ error: 'Esa versión no tiene audio guardado: generala de nuevo.', code: 'storage' });
 
-        const scenes = await fetchScenes(project.id);
-        const saved = await produceNarration(enabled[0], scenes, {
-            language: req.body?.language,
-            style: req.body?.style,
-            gender: req.body?.gender,
-            speed: req.body?.speed,
-            ttsProvider: req.body?.ttsProvider,
-            scriptOverride: typeof req.body?.script === 'string' && req.body.script.trim()
-                ? req.body.script.trim() : null,
-            createdBy: req.user?.id || null
+        const updated = await applyNarrationVersion(project, row, { remount: req.body?.remount !== false });
+        await recordUsage({
+            projectId: project.id, clubId: project.clubId,
+            operation: 'voice.synthesize', provider: usageProviderForTts(row.ttsProvider),
+            model: row.timing?.ttsModel || row.ttsProvider || null,
+            units: 0, unit: 'characters', target: 'Locución',
+            detail: `Versión v${row.version} aplicada al Reel (sin nueva síntesis)`,
+            meta: { ttsProvider: row.ttsProvider, narrationId: row.id, applied: true, audioSec: row.actualSec }
         });
-
-        if (!saved) return res.status(502).json({ error: 'No se pudo generar la narración. Revisá los avisos del Reel.' });
-
-        // El montaje anterior no lleva esta voz: se limpia el job para que el
-        // siguiente sondeo rehaga la mezcla. El VIDEO no se regenera.
-        const { rows: proj } = await db.query(
-            `UPDATE "ReelProject" SET "renderJobId" = NULL, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
-            [project.id]
-        );
-
-        if (req.body?.remount !== false) {
-            const updated = await submitAssembly(proj[0], scenes);
-            return respondProject(res, updated);
-        }
-        await respondProject(res, proj[0]);
+        await respondProject(res, updated);
     } catch (e) {
-        console.error('[REEL] regenerate narration:', e);
+        console.error('[REEL] apply narration:', e?.code || '', e?.message);
+        if (res.headersSent) return;
+        sendTtsError(res, e);
+    }
+};
+
+// Estado de los motores de voz: credencial, conexión, cuota, modelo y voces.
+// Llamadas de LECTURA a cada proveedor —no sintetizan ni consumen cuota—.
+export const getNarrationProviders = async (req, res) => {
+    try {
+        const force = req.query.refresh === '1' || req.query.refresh === 'true';
+        const providers = await ttsProvidersStatus({ force });
+        res.json({
+            providers,
+            activeProvider: activeTtsProvider(),
+            autoFallback: autoFallbackEnabled()
+        });
+    } catch (e) {
+        console.error('[REEL] narration providers:', e);
         res.status(500).json({ error: e.message });
+    }
+};
+
+// Muestra de la voz elegida: una frase fija de ~90 caracteres, sin respaldo.
+// Un tope por usuario evita que un doble clic sean dos cobros.
+const PREVIEW_MIN_INTERVAL_MS = 4_000;
+const lastPreviewByUser = new Map();
+
+export const previewNarrationVoice = async (req, res) => {
+    try {
+        const who = req.user?.id || req.ip || 'anon';
+        const last = lastPreviewByUser.get(who) || 0;
+        if (Date.now() - last < PREVIEW_MIN_INTERVAL_MS) {
+            return res.status(429).json({ error: 'Esperá unos segundos antes de pedir otra muestra.', code: 'rate_limit' });
+        }
+        lastPreviewByUser.set(who, Date.now());
+
+        const body = req.body || {};
+        const provider = body.ttsProvider || activeTtsProvider();
+        if (!provider || !TTS_PROVIDERS[provider]?.implemented) {
+            throw new TtsError('not_configured', 'No hay un motor de voz disponible para la muestra.', { provider });
+        }
+        const voice = await previewVoice({
+            provider,
+            gender: NARRATION_GENDERS[body.gender] ? body.gender : 'female',
+            language: NARRATION_LANGUAGES[body.language] ? body.language : NARRATION_DEFAULT_LANGUAGE,
+            style: NARRATION_STYLES[body.style] ? body.style : NARRATION_DEFAULT_STYLE,
+            speed: Number(body.speed) || 1,
+            voiceId: body.voiceId || null
+        });
+        res.set('Content-Type', 'audio/mpeg');
+        res.set('Cache-Control', 'no-store');
+        res.set('X-Tts-Provider', voice.provider);
+        res.set('X-Tts-Voice', String(voice.voiceId || ''));
+        res.send(voice.buffer);
+    } catch (e) {
+        console.error('[REEL] narration preview:', e?.code || '', e?.message);
+        if (res.headersSent) return;
+        sendTtsError(res, e);
     }
 };
 

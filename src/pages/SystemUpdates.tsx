@@ -42,6 +42,25 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1236.0',
+        title: 'Voz en off de los Reels: diagnóstico real, selector de motor y aplicar después de escuchar 🎙️✅',
+        description: 'Auditoría y corrección de la Voz en off del Estudio de Contenido. Causa raíz del «No se pudo generar la narración. Revisá los avisos del Reel»: al generar la voz desde la ficha, el servidor la encendía con jsonb_set sobre config.narration, que NO crea la clave cuando el Reel se montó sin ella; la narración quedaba apagada, no se intentaba nada y no había ningún aviso que revisar. Además, cualquier fallo real de un motor (credencial, cuota, voz, modelo, conexión, almacenamiento) terminaba en ese mismo mensaje genérico, y la llamada a ElevenLabs mandaba language_code a eleven_multilingual_v2, que no lo admite. Ahora cada fallo dice qué pasó y qué hacer, el panel muestra el estado real de cada motor y la voz se genera, se escucha y recién después se aplica al Reel.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'content-studio', 'narration', 'tts', 'elevenlabs', 'openai-tts', 'fix'],
+        type: 'hotfix',
+        impact: 'Alta: la voz en off se puede generar, escuchar, descargar y aplicar a cualquier Reel sin regenerar escenas, con el motivo exacto de cada fallo y sin perder el guion.',
+        changes: [
+            { type: 'fixed', text: 'La voz se enciende fusionando config.narration exista o no (antes jsonb_set no la creaba y la generación se abandonaba en silencio).' },
+            { type: 'fixed', text: 'Diagnóstico por código: proveedor no configurado, credencial inválida, cuota agotada, voz o modelo incompatible, límite de solicitudes, tiempo agotado, conexión, audio vacío, almacenamiento y mezcla. Los fragmentos de claves no llegan a la pantalla.' },
+            { type: 'fixed', text: 'ElevenLabs sólo recibe language_code con los modelos que lo admiten; toda llamada a un motor de voz tiene tope de tiempo.' },
+            { type: 'added', text: 'Tarjetas por motor con estado de conexión, modelo, idiomas, voces de la cuenta y cuota restante (ElevenLabs), con «Verificar conexión».' },
+            { type: 'added', text: 'Selección de voz específica, velocidad y «Escuchar muestra de la voz» antes de sintetizar el guion.' },
+            { type: 'added', text: 'Generar crea un borrador que se escucha y descarga; «Aplicar al Reel» rehace sólo la mezcla. Historial de versiones con «Volver a aplicar».' },
+            { type: 'changed', text: 'El respaldo entre motores es una política: si ElevenLabs falla se ofrece «¿Intentarlo con OpenAI TTS?»; el automático se activa con una casilla (y REEL_TTS_AUTO_FALLBACK para el montaje automático). Una sola vez, nunca en bucle.' },
+            { type: 'added', text: 'Registro de cada operación con proveedor, modelo, voz, duración, estado y código de error; las preferencias de la voz aplicada quedan guardadas en el Reel.' },
+        ],
+    },
+    {
         version: '4.1235.0',
         title: 'Editor Visual de Plantillas: lo guardado se queda guardado 💾✅',
         description: 'Corrección de la causa raíz por la que los cambios del Editor Visual de Plantillas desaparecían al recargar o volver a entrar: cada vez que el servidor arrancaba en frío (Vercel levanta instancias nuevas sin aviso), las semillas de campañas reescribían el diseño de toda campaña en borrador —y en Directorio de Clubes y Feria de Proyectos también el asunto, el preheader y los textos— y el diseño de las tres plantillas maestras. «Guardar y Sincronizar» sí escribía en la base, pero la siguiente instancia lo pisaba. Ahora una campaña editada queda marcada como personalizada y ninguna semilla vuelve a tocarla; las maestras sólo se refrescan mientras nadie las haya guardado. Además el editor muestra el estado del guardado, autoguarda las campañas, protege la salida con cambios pendientes y envía el correo de prueba con la versión persistida.',
