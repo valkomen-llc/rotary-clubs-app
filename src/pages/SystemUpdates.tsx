@@ -42,6 +42,21 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1244.0',
+        title: 'Compartir publicación: cambiar la imagen desde la Biblioteca o desde el equipo 🖼️📤',
+        description: 'En «Compartir publicación» la imagen que queda enlazada con la publicación era siempre la del artículo, sin forma de cambiarla. Ahora, bajo la vista previa, «Imagen de la publicación» ofrece elegir una de la Biblioteca de medios o subir una desde el equipo (queda guardada también en la Biblioteca). La imagen elegida es la que se usa al compartir el artículo en redes; la portada de la noticia en el sitio no cambia, y «Usar la portada» vuelve a la original. Antes de publicar, la plataforma le pide a Facebook que vuelva a leer la página, para que la tarjeta salga con la imagen nueva y no con la que tenía guardada.',
+        date: new Date().toISOString(),
+        tags: ['noticias', 'compartir', 'facebook', 'imagen', 'biblioteca', 'feature'],
+        type: 'feature',
+        impact: 'Alta: se elige con qué imagen sale la noticia en Facebook sin tocar la portada del artículo.',
+        changes: [
+            { type: 'added', text: '«Biblioteca de medios» y «Subir desde el equipo» en el modal de Compartir; «Usar la portada» para volver a la original.' },
+            { type: 'added', text: 'POST /api/social/share/image: guarda la imagen para redes del artículo (seoImage, la que lee el Open Graph) con el mismo permiso que editarlo.' },
+            { type: 'fixed', text: 'Antes de publicar un enlace, Facebook relee la página (scrape), así la tarjeta no sale con una imagen vieja en caché.' },
+            { type: 'added', text: 'npm run test:social:share suma 28 comprobaciones.' },
+        ],
+    },
+    {
         version: '4.1243.0',
         title: 'Noticias: distribuir una noticia ya publicada al distrito y a COLROTARIOS 📰🌐',
         description: 'En Noticias, el botón «Gestionar destinos de distribución» abría la Trazabilidad con «Este artículo no tiene sitios de distribución asignados» y no ofrecía ningún sitio. Ahora el modal dice quién publicó la noticia y desde qué distrito, muestra su sitio de origen (por ejemplo, el sitio activo de Rotary E-Club Origen) y ofrece por defecto el sitio del distrito y COLROTARIOS, más los demás sitios activos del ecosistema. Se marcan, se pulsa «Guardar distribución» y la noticia queda publicada también allí. El club que publicó la noticia también puede hacerlo, limitado a su distrito y a COLROTARIOS.',

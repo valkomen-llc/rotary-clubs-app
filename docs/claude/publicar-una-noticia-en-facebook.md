@@ -157,3 +157,42 @@ consume nadie: se reintenta a mano desde el modal); las **métricas** de la
 publicación en Facebook no se leen —`SocialMetricSnapshot` existe y cuelga de
 `SocialPublication`, no de `ContentDistribution`—; y **Eventos y Proyectos**
 están declarados sin resolutor, así que su botón «Compartir» todavía no existe.
+
+## La imagen de la publicación — v4.1244
+
+Pedido con captura (rotaryecluborigen.org, «Compartir publicación»): poder
+**reemplazar la imagen que queda enlazada con la publicación**, eligiéndola de
+la Biblioteca de medios o subiéndola desde el equipo.
+
+| Archivo | Qué es |
+|---|---|
+| `setShareImage` / `validateShareImageUrl` en `contentShareController.js` | `POST /api/social/share/image` `{ entityType:'post', entityId, imageUrl }` |
+| `refreshLinkPreview` en `services/socialPublishService.js` | La relectura del Open Graph (`POST graph/?id=…&scrape=true`) |
+| `ShareModal.tsx` | «Imagen de la publicación»: Biblioteca (`MediaPicker`), equipo (`uploadMediaFiles`) y «Usar la portada» |
+
+Pruebas: en `npm run test:social:share` (grupo «La imagen de la publicación»).
+
+**Reglas durables:**
+
+- **⚠️ SIGUE VIAJANDO COMO ENLACE.** No se publica la foto por `/photos`: la
+  imagen de la tarjeta la sigue poniendo Facebook desde el Open Graph. Lo que
+  cambia es el Open Graph.
+- **⚠️ SE GUARDA EN `seoImage`, NO EN `image`.** El Open Graph ya sale de
+  `seoImage || image` (`seoEntities.js`) y el modal de `seoImage || image`.
+  Tocar `image` cambiaría la portada de la noticia en el sitio, que no es lo
+  que se pidió. `imageUrl` vacío vuelve a la portada («Usar la portada»).
+  `Post` no gana columnas: `seoImage` ya existía.
+- **⚠️ FACEBOOK RELEE ANTES DE PUBLICAR.** Facebook guarda en caché el Open
+  Graph de un enlace: sin la relectura, la tarjeta saldría con la imagen
+  VIEJA aunque la página ya tenga la nueva. Se hace UNA vez por publicación,
+  con el token de una de las Páginas elegidas, con tope de 8 s y **sin
+  bloquear**: si falla, se publica igual (`previewRefreshed: false`).
+- **NO HAY UN SEGUNDO MOTOR DE META.** `refreshLinkPreview` vive en
+  `socialPublishService.js`, junto a `publishContentToTarget`, y lo llama sólo
+  `shareEntity`.
+- **EL PERMISO ES EL DE EDITAR EL ARTÍCULO** (`canEditPost`), y el tenant sale
+  del token (`resolveEntity`): un artículo de otro sitio responde 404.
+- **SÓLO https.** Facebook no lee imágenes por http; se rechaza con su motivo.
+- **SUBIR DESDE EL EQUIPO ES EL CAMINO DE LA BIBLIOTECA** (`uploadMediaFiles`:
+  presigned → S3 → `/media/save`), así que la imagen queda también en la
+  Biblioteca, convertida si era HEIC.

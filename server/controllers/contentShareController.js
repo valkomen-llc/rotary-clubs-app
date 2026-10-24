@@ -26,8 +26,11 @@ import { describeShareCopy } from '../lib/reelShareCopy.js';
 import { clientIp } from '../lib/socialAudit.js';
 import { getDefaultAccounts, resolveDefaults } from '../lib/socialDefaults.js';
 import { fetchPageGroups } from '../services/metaService.js';
+import { canEditPost, originOf } from '../lib/postScope.js';
 
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
+
+console.log('[contentShareController] v4.1244.0 cargado — Compartir publicación: la imagen se cambia desde el modal (Biblioteca o equipo) y Facebook relee la página antes de publicar');
 
 /**
  * El estado de la integración de Meta, dicho con palabras (v4.1042).
@@ -247,6 +250,74 @@ export const shareContent = async (req, res) => {
     } catch (e) {
         console.error('[share] shareContent:', e);
         return res.status(500).json({ error: e.message });
+    }
+};
+
+// ============================================================================
+// POST /api/social/share/image   { entityType, entityId, imageUrl }
+//
+// Cambia la imagen con la que se comparte un artículo (v4.1244).
+//
+// ⚠️ SE GUARDA EN `seoImage`, NO EN `image`. Un artículo viaja como ENLACE y
+// la imagen de la tarjeta la pone Facebook leyendo el Open Graph, que ya sale
+// de `seoImage || image` (`seoEntities.js`). Cambiar la portada (`image`)
+// cambiaría también la noticia en el sitio, que no es lo que se pidió: se
+// pidió cambiar la imagen que queda enlazada con la PUBLICACIÓN. `imageUrl`
+// vacío vuelve a la portada.
+//
+// El tenant sale del TOKEN (`resolveEntity`): un artículo ajeno es 404. Y se
+// exige el MISMO permiso que para editar el artículo (`canEditPost`): la
+// imagen para redes es un campo del artículo, no de la difusión.
+// ============================================================================
+const SHARE_IMAGE_MAX_LEN = 2048;
+
+export const validateShareImageUrl = (raw) => {
+    const url = str(raw);
+    if (!url) return { ok: true, url: null };
+    if (url.length > SHARE_IMAGE_MAX_LEN) return { ok: false, error: 'La dirección de la imagen es demasiado larga.' };
+    let parsed;
+    try { parsed = new URL(url); } catch { return { ok: false, error: 'La dirección de la imagen no es válida.' }; }
+    if (parsed.protocol !== 'https:') {
+        return { ok: false, error: 'La imagen tiene que estar en una dirección https: Facebook no lee imágenes por http.' };
+    }
+    return { ok: true, url };
+};
+
+export const setShareImage = async (req, res) => {
+    try {
+        const clubId = str(req.query?.clubId || req.user?.clubId);
+        const { entityType = 'post', entityId, imageUrl } = req.body || {};
+        if (str(entityType) !== 'post') {
+            return res.status(400).json({ error: 'Por ahora sólo se puede cambiar la imagen de un artículo.' });
+        }
+        if (!str(entityId)) return res.status(400).json({ error: 'entityId requerido' });
+        const valid = validateShareImageUrl(imageUrl);
+        if (!valid.ok) return res.status(400).json({ error: valid.error });
+
+        const ent = await resolveEntity({ entityType: 'post', entityId: str(entityId), user: req.user, siteId: clubId });
+        if (!ent.ok) return res.status(ent.code || 404).json({ error: ent.error });
+
+        const { rows } = await db.query('SELECT id, "clubId", "targetClubIds", image FROM "Post" WHERE id = $1', [ent.entity.id]);
+        const post = rows[0];
+        if (!post) return res.status(404).json({ error: 'Artículo no encontrado.' });
+        const siteId = clubId || null;
+        if (!canEditPost(req.user, post, siteId)) {
+            return res.status(403).json({
+                error: 'Tu cuenta no puede editar esta noticia, así que tampoco cambiar su imagen.',
+                origin: originOf(post, siteId),
+            });
+        }
+
+        await db.query('UPDATE "Post" SET "seoImage" = $1, "updatedAt" = NOW() WHERE id = $2', [valid.url, post.id]);
+        console.log(`[share] imagen para redes de ${post.id}: ${valid.url ? 'reemplazada' : 'vuelve a la portada'}`);
+        return res.json({
+            ok: true,
+            image: valid.url || post.image || null,
+            custom: !!valid.url,
+        });
+    } catch (e) {
+        console.error('[share] setShareImage:', e);
+        return res.status(500).json({ error: 'No se pudo cambiar la imagen.', details: e.message });
     }
 };
 
@@ -2101,6 +2172,7 @@ export const sync36Groups = async (req, res) => {
 };
 
 export default {
+    setShareImage,
     getShareTargets,
     shareContent,
     regenerateShareCopy,

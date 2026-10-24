@@ -100,6 +100,8 @@ export interface ShareSummary {
 
 export interface ShareEntity {
     id: string; title: string; published: boolean; image: string | null;
+    /** La imagen para redes es distinta de la portada (v4.1244). */
+    imageCustom?: boolean;
     excerpt: string; socialCopy: string; slug: string | null;
     /** Sólo cuando la forma es `video` (un Reel). */
     kind?: ShareKind;

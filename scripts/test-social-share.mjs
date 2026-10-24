@@ -822,6 +822,80 @@ check('⚠️ Ningún componente se declara DENTRO de ShareModal (v4.971)',
       !/^\s{4}const [A-Z]\w*:\s*React\.FC/m.test(dentroDelComponente));
 
 // ════════════════════════════════════════════════════════════════════
+grupo('La imagen de la publicación — v4.1244');
+// Reporte: en «Compartir publicación» no había forma de cambiar la imagen que
+// queda enlazada con la publicación. Ahora se elige de la Biblioteca o se sube
+// desde el equipo, se guarda como imagen para redes (`seoImage`, que es la que
+// lee el Open Graph) y Facebook relee la página antes de publicar.
+
+eq('una dirección https vale', CTRL.validateShareImageUrl('https://cdn.x.org/a.jpg'), { ok: true, url: 'https://cdn.x.org/a.jpg' });
+eq('vacía vuelve a la portada', CTRL.validateShareImageUrl(''), { ok: true, url: null });
+check('http se rechaza: Facebook no lee imágenes por http', !CTRL.validateShareImageUrl('http://x.org/a.jpg').ok);
+check('una dirección inválida se rechaza', !CTRL.validateShareImageUrl('no es una url').ok);
+check('una dirección enorme se rechaza', !CTRL.validateShareImageUrl('https://x.org/' + 'a'.repeat(3000)).ok);
+
+sembrar();
+res = fakeRes();
+await CTRL.setShareImage({ user: ADMIN_A, query: {}, body: { entityType: 'post', entityId: 'p1', imageUrl: 'https://cdn/nueva.jpg' } }, res);
+eq('el sitio dueño cambia la imagen', res.statusCode, 200);
+eq('…se guarda como imagen para redes (seoImage), no como portada', [db.tablas.Post.find(p => p.id === 'p1').seoImage, db.tablas.Post.find(p => p.id === 'p1').image], ['https://cdn/nueva.jpg', 'https://cdn/foto.jpg']);
+eq('…y la respuesta trae la imagen nueva', [res.body.image, res.body.custom], ['https://cdn/nueva.jpg', true]);
+res = fakeRes();
+await CTRL.getShareTargets({ user: ADMIN_A, query: { entityType: 'post', entityId: 'p1' } }, res);
+eq('al reabrir el modal, la vista previa usa la imagen nueva', [res.body.entity.image, res.body.entity.imageCustom], ['https://cdn/nueva.jpg', true]);
+res = fakeRes();
+await CTRL.setShareImage({ user: ADMIN_A, query: {}, body: { entityType: 'post', entityId: 'p1', imageUrl: null } }, res);
+eq('«Usar la portada» vuelve a la imagen del artículo', [res.statusCode, res.body.image, res.body.custom], [200, 'https://cdn/foto.jpg', false]);
+
+sembrar();
+res = fakeRes();
+await CTRL.setShareImage({ user: ADMIN_B, query: {}, body: { entityType: 'post', entityId: 'p1', imageUrl: 'https://cdn/x.jpg' } }, res);
+eq('⚠️ otro sitio no puede cambiarla: 404, como al compartir', res.statusCode, 404);
+check('…y no se escribió nada', !db.tablas.Post.find(p => p.id === 'p1').seoImage);
+res = fakeRes();
+await CTRL.setShareImage({ user: ADMIN_A, query: {}, body: { entityType: 'post', entityId: 'p1', imageUrl: 'http://cdn/x.jpg' } }, res);
+eq('una imagen por http se rechaza con 400', res.statusCode, 400);
+res = fakeRes();
+await CTRL.setShareImage({ user: ADMIN_A, query: {}, body: { entityType: 'reel', entityId: 'p1', imageUrl: 'https://cdn/x.jpg' } }, res);
+eq('un Reel no cambia de imagen: publica su propio archivo', res.statusCode, 400);
+
+sembrar();
+meta.reset();
+r = await SVC.shareEntity({ entityType: 'post', entityId: 'p1', accountIds: ['acc-a'], message: 'Hola', operationKey: 'op-img', user: ADMIN_A });
+eq('⚠️ antes de publicar, Facebook relee la página UNA vez', meta.relecturas.length, 1);
+eq('…la misma dirección que se publica', meta.relecturas[0]?.link, meta.llamadas[0]?.link);
+eq('…con el token descifrado de la Página', meta.relecturas[0]?.token, 'TOKEN-A');
+check('…y la respuesta lo dice', r.previewRefreshed === true);
+check('⚠️ el token no viaja en la respuesta', !JSON.stringify(r).includes('TOKEN-A'));
+sembrar();
+meta.reset();
+r = await SVC.shareEntity({ entityType: 'post', entityId: 'p1', accountIds: ['acc-a', 'acc-a2'], message: 'Hola', operationKey: 'op-img2', user: ADMIN_A });
+eq('con dos Páginas se relee una sola vez', meta.relecturas.length, 1);
+
+const REAL = await import('../server/services/socialPublishService.js?real');
+const fetchOriginal = globalThis.fetch;
+let pedido = null;
+globalThis.fetch = async (url, init) => {
+    pedido = { url: String(url), body: String(init?.body || ''), signal: !!init?.signal };
+    return new Response(JSON.stringify({ id: 'https://x.org/blog/a', image: [{ url: 'https://cdn/nueva.jpg' }] }), { status: 200 });
+};
+const rel = await REAL.refreshLinkPreview({ link: 'https://x.org/blog/a', accessToken: 'T' });
+check('la relectura es un POST al Graph con scrape=true', /graph\.facebook\.com/.test(pedido.url) && /scrape=true/.test(pedido.body) && /id=https%3A%2F%2Fx\.org/.test(pedido.body));
+check('…con tope de tiempo', pedido.signal);
+eq('…y devuelve la imagen que leyó Facebook', rel, { ok: true, image: 'https://cdn/nueva.jpg' });
+globalThis.fetch = async () => { const e = new Error('t'); e.name = 'TimeoutError'; throw e; };
+const relLenta = await REAL.refreshLinkPreview({ link: 'https://x.org/blog/a', accessToken: 'T' });
+check('si Facebook no contesta, NO lanza: se publica igual', relLenta.ok === false && /a tiempo/.test(relLenta.error));
+globalThis.fetch = fetchOriginal;
+
+const modalImg = leer('src/components/admin/social/ShareModal.tsx');
+check('el modal ofrece la Biblioteca de medios', /<MediaPicker/.test(modalImg) && /Biblioteca de medios/.test(modalImg));
+check('…y subir desde el equipo por el camino compartido', /uploadMediaFiles\(\[file\]/.test(modalImg) && /Subir desde el equipo/.test(modalImg));
+check('…y guarda en /social/share/image', /\/social\/share\/image/.test(modalImg));
+const rutas = leer('server/routes/social.js');
+check('la ruta literal va antes de /share', rutas.indexOf("'/share/image'") > -1 && rutas.indexOf("'/share/image'") < rutas.indexOf("router.post('/share', "));
+
+// ════════════════════════════════════════════════════════════════════
 console.log(`\n${'─'.repeat(60)}`);
 if (malos.length) {
     console.log(`✗ ${malos.length} de ${ok + malos.length} fallaron:`);

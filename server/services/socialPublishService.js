@@ -235,6 +235,32 @@ const postToGraph = async (url, params) => {
     return { ok: true, data };
 };
 
+/**
+ * Pide a Facebook que vuelva a leer el Open Graph de un enlace (v4.1244).
+ *
+ * Un artículo viaja como ENLACE y la imagen de la tarjeta la pone Facebook
+ * leyendo `og:image`. Facebook guarda esa lectura en caché: si se cambia la
+ * imagen de la noticia desde el modal de Compartir y se publica en seguida,
+ * la tarjeta saldría con la imagen VIEJA. Esto fuerza la relectura antes de
+ * publicar. Nunca lanza: si falla, se publica igual y se dice.
+ */
+export const refreshLinkPreview = async ({ link, accessToken, timeoutMs = 8000 }) => {
+    if (!link || !accessToken) return { ok: false, error: 'Falta el enlace o el token.' };
+    try {
+        const resp = await fetch(`${GRAPH_BASE}/`, {
+            method: 'POST',
+            body: new URLSearchParams({ id: link, scrape: 'true', access_token: accessToken }),
+            signal: AbortSignal.timeout(timeoutMs),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || data.error) return { ok: false, error: data?.error?.message || `HTTP ${resp.status}` };
+        const img = Array.isArray(data.image) ? data.image[0] : data.image;
+        return { ok: true, image: (img && (img.url || img)) || null };
+    } catch (e) {
+        return { ok: false, error: e?.name === 'TimeoutError' ? 'Facebook no contestó a tiempo.' : (e?.message || 'error desconocido') };
+    }
+};
+
 /** Texto suelto o texto + enlace en una Página. Los dos van por /feed. */
 const publishFeedToPage = async ({ pageId, pageAccessToken, message, link }) => {
     const params = { access_token: pageAccessToken };
