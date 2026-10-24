@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import Navbar from '../../sections/Navbar';
 import Footer from '../../sections/Footer';
 import { PublicPageHeader } from '../common/PublicInstitutionalComponents';
-import { ACCEPT_ATTR, MIN_PHOTOS, MAX_PHOTOS, MAX_VIDEOS, checkFileMeta, overweightMessage, DUPLICATE_MESSAGE, duplicateKey, partialFileHash, countValidPhotos } from '../../lib/contentSubmissionSpec';
+import { ACCEPT_ATTR, MIN_PHOTOS, MAX_PHOTOS, MAX_VIDEOS, IMAGE_MAX_BYTES, VIDEO_MAX_BYTES, formatLimit, LIMITS_LABEL, checkFileMeta, overweightMessage, DUPLICATE_MESSAGE, duplicateKey, partialFileHash, countValidPhotos } from '../../lib/contentSubmissionSpec';
 import {
   fieldsForTipo, IMPACT_META, EXTRA_LABELS, photoAdvice,
   DEFAULT_TIPOS, DEFAULT_AREAS, DEFAULT_PROGRAMAS, DEFAULT_TEMAS,
@@ -684,8 +684,11 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
 
     const xhr = new XMLHttpRequest();
     xhrMapRef.current.set(item.id, xhr);
-    // Timeout: 300s (5 min) para videos, 90s para fotos
-    xhr.timeout = item.kind === 'video' ? 300000 : 90000;
+    // ⚠️ EL TIEMPO DE ESPERA CRECE CON EL ARCHIVO (v4.1242). Con topes fijos
+    // de 90 s (foto) y 5 min (video), una foto de 40 MB o un video de 1 GB
+    // por una conexión móvil se cortaban a mitad de camino. Se calcula para
+    // una subida lenta (~128 KB/s), con un mínimo de 2 min.
+    xhr.timeout = Math.max(120000, Math.ceil((item.file.size || 0) / (128 * 1024)) * 1000);
 
     xhr.open('PUT', presignData.uploadUrl);
     xhr.setRequestHeader('Content-Type', item.file.type || 'application/octet-stream');
@@ -1019,7 +1022,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
         return `Hay ${dupes.length} archivo(s) duplicado(s): ya están agregados. Eliminalos de la lista para poder continuar.`;
       }
       if (heavy.length > 0) {
-        return `Hay ${heavy.length} archivo(s) que superan el peso máximo (5 MB por foto, 300 MB por video). Eliminalos o reemplazalos para poder continuar.`;
+        return `Hay ${heavy.length} archivo(s) que superan el peso máximo (${LIMITS_LABEL}). Eliminalos o reemplazalos para poder continuar.`;
       }
       if (failed.length > 0) {
         return 'Uno o más archivos no se pudieron cargar. Tocá "Reintentar" en la tarjeta o elimínalos para poder continuar.';
@@ -1967,7 +1970,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
             >
               <Upload className="w-8 h-8 mx-auto text-gray-400" />
               <div className="text-sm font-bold text-gray-700 mt-2">{isEn ? 'Tap here to choose, or drag photos or video' : 'Tocá acá para elegir, o arrastrá las fotos o video'}</div>
-              <div className="text-xs text-gray-400 mt-1">{isEn ? 'From your phone, the camera or gallery will open (Min 5 photos, max 10 photos and 1 video · max 5 MB per photo, 300 MB video).' : 'Desde el teléfono se abre la cámara o la galería (Mínimo 5 fotos, máx 10 fotos y 1 video · máx 5 MB por foto, 300 MB el video).'}</div>
+              <div className="text-xs text-gray-400 mt-1">{isEn ? `From your phone, the camera or gallery will open (Min 5 photos, max 10 photos and 1 video · max ${formatLimit(IMAGE_MAX_BYTES)} per photo, ${formatLimit(VIDEO_MAX_BYTES)} video).` : `Desde el teléfono se abre la cámara o la galería (Mínimo 5 fotos, máx 10 fotos y 1 video · máx ${formatLimit(IMAGE_MAX_BYTES)} por foto, ${formatLimit(VIDEO_MAX_BYTES)} el video).`}</div>
             </button>
             <input
               ref={inputRef}

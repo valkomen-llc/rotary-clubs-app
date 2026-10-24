@@ -509,3 +509,28 @@ guarda y hoy se comunica a mano; y las CONSULTAS que la estructura de v4.972
 habilita —participación por distrito y club, actividades ya difundidas, cruce de
 publicaciones por `host` para no repetir difusión— **todavía no tienen pantalla**:
 los datos están indexados y falta el informe.
+
+
+## Topes de peso de las evidencias — v4.1242
+
+El cliente pidió quitar el tope de 5 MB por foto: el formulario rechazaba las
+fotos de cualquier teléfono actual en máxima calidad («Hay 5 archivo(s) que
+superan el peso máximo»).
+
+- **Topes nuevos: 50 MB por foto, 2 GB el video** (`IMAGE_MAX_BYTES` /
+  `VIDEO_MAX_BYTES`, en `server/lib/contentSubmissionSpec.js` y su espejo
+  `src/lib/contentSubmissionSpec.ts`). Los archivos van DIRECTO del navegador a
+  S3 con URL prefirmada: el tope es una regla nuestra, no del borde de Vercel.
+  Un PUT único de S3 admite hasta 5 GB.
+- **Los mensajes salen de las constantes** (`formatLimit`, `LIMITS_LABEL`):
+  hasta v4.1241 el texto decía «5 MB / 300 MB» escrito a mano en tres sitios.
+- **El tiempo de espera del PUT crece con el archivo** (~128 KB/s, mínimo
+  2 min). Con 90 s / 5 min fijos, un archivo grande por móvil se cortaba.
+- **La URL prefirmada dura una hora** (S3 valida la firma al empezar).
+- **`readStagingObject`** lee hasta el tope de la foto (antes 30 MB fijos: una
+  foto de 40 MB se subía y el artículo no la podía analizar). La descarga
+  desde la Biblioteca para el análisis espera hasta 60 s.
+- **Los motores de video no reciben la foto pesada**: `normalizePhoto`
+  (`server/lib/photoNormalize.js`) reduce la COPIA que se anima a 4096 px de
+  lado mayor y JPEG si pasa de 9 MB o de 4096 px (Kling vía KIE rechaza
+  imágenes de más de ~10 MB). El original queda intacto en la Biblioteca.

@@ -328,5 +328,29 @@ console.log('\n▸ 7. De punta a punta con FFmpeg: una foto con EXIF → clip de
     }
 }
 
+// ─── Una foto pesada se reduce antes del motor (v4.1242) ───────────────────
+// El formulario de aportes acepta fotos de hasta 50 MB; los motores de video
+// rechazan las de más de ~10 MB. La copia que se anima se reduce; una foto
+// normal sigue intacta.
+if (sharp) {
+    console.log('\n▸ Foto pesada de cámara → copia apta para el motor');
+    const { ENGINE_MAX_BYTES, ENGINE_MAX_SIDE } = await import('../server/lib/photoNormalize.js');
+    // 6000×4000 con ruido: un JPEG de cámara pesado de verdad (~20+ MB a q100).
+    const W = 6000, H = 4000;
+    const raw = Buffer.alloc(W * H * 3);
+    for (let i = 0; i < raw.length; i++) raw[i] = (i * 2654435761 >>> 24) & 255;
+    const pesada = await sharp(raw, { raw: { width: W, height: H, channels: 3 } })
+        .jpeg({ quality: 100, chromaSubsampling: '4:4:4' }).withMetadata({ orientation: 6 }).toBuffer();
+    const n = await normalizePhoto(pesada, { sharp });
+    check(`la foto de prueba es realmente pesada (${(pesada.length / 1048576).toFixed(1)} MB > tope del motor)`, pesada.length > ENGINE_MAX_BYTES);
+    check('se reduce: lado mayor ≤ 4096 px', n.ok && n.changed && Math.max(n.width, n.height) <= ENGINE_MAX_SIDE, `${n.width}x${n.height}`);
+    check('…y queda DERECHA: la EXIF 6 hace vertical una toma apaisada (4000×6000 → vertical)', n.height > n.width && Math.abs(n.width / n.height - 4000 / 6000) < 0.02, `${n.width}x${n.height}`);
+    check(`…y pesa menos que el original (${(n.buffer.length / 1048576).toFixed(1)} MB)`, n.buffer.length < pesada.length);
+    check('…sale JPEG y el motivo dice que se redujo', n.format === 'jpeg' && /reducida/.test(n.reason || ''), n.reason);
+    const chica = await sharp({ create: { width: 1200, height: 800, channels: 3, background: '#335577' } }).jpeg().toBuffer();
+    const nc = await normalizePhoto(chica, { sharp });
+    check('una foto normal (1200×800, derecha, JPEG) se usa tal cual', nc.ok && nc.changed === false && nc.buffer === chica);
+}
+
 console.log(`\n${fail === 0 ? '✓' : '✗'} ${pass} pruebas pasan, ${fail} fallan\n`);
 process.exit(fail ? 1 : 0);

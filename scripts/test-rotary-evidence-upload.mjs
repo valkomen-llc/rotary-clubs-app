@@ -20,8 +20,8 @@ assert.equal(MIN_PHOTOS, 5, 'Mínimo de fotos debe ser 5');
 assert.equal(MAX_PHOTOS, 10, 'Máximo de fotos debe ser 10');
 assert.equal(MAX_VIDEOS, 1, 'Máximo de videos debe ser 1');
 assert.equal(MAX_FILES, 11, 'Máximo de archivos totales debe ser 11 (10 fotos + 1 video)');
-assert.equal(IMAGE_MAX_BYTES, 25 * 1024 * 1024, 'Tope de fotos debe ser 25 MB');
-assert.equal(VIDEO_MAX_BYTES, 200 * 1024 * 1024, 'Tope de videos debe ser 200 MB');
+assert.equal(IMAGE_MAX_BYTES, 50 * 1024 * 1024, 'Tope de fotos debe ser 50 MB (v4.1242)');
+assert.equal(VIDEO_MAX_BYTES, 2048 * 1024 * 1024, 'Tope de videos debe ser 2 GB (v4.1242)');
 console.log('✓ Límites correctamente establecidos');
 
 console.log('\n--- TEST 2: checkFileMeta con ambas firmas (móvil y servidor) ---');
@@ -45,13 +45,16 @@ const metaTxt = checkFileMeta({ name: 'documento.pdf', type: 'application/pdf', 
 assert.equal(metaTxt.ok, false, 'PDF debe ser rechazado');
 assert.equal(metaTxt.kind, null);
 
-// Video > 200 MB
-const metaVideoGigante = checkFileMeta({ name: 'pesado.mp4', type: 'video/mp4', size: 201 * 1024 * 1024 });
-assert.equal(metaVideoGigante.ok, false, 'Video > 200 MB debe ser rechazado');
+// Video > 2 GB (v4.1242)
+const metaVideoGigante = checkFileMeta({ name: 'pesado.mp4', type: 'video/mp4', size: 2049 * 1024 * 1024 });
+assert.equal(metaVideoGigante.ok, false, 'Video > 2 GB debe ser rechazado');
 
-// Foto > 25 MB
-const metaFotoGigante = checkFileMeta({ name: 'pesada.jpg', type: 'image/jpeg', size: 26 * 1024 * 1024 });
-assert.equal(metaFotoGigante.ok, false, 'Foto > 25 MB debe ser rechazada');
+// Foto > 50 MB (v4.1242)
+const metaFotoGigante = checkFileMeta({ name: 'pesada.jpg', type: 'image/jpeg', size: 51 * 1024 * 1024 });
+assert.equal(metaFotoGigante.ok, false, 'Foto > 50 MB debe ser rechazada');
+
+// Una foto de 26 MB —rechazada con los topes anteriores— ahora pasa.
+assert.equal(checkFileMeta({ name: 'camara.jpg', type: 'image/jpeg', size: 26 * 1024 * 1024 }).ok, true, 'Foto de 26 MB debe pasar');
 console.log('✓ checkFileMeta valida tipos y pesos correctamente');
 
 console.log('\n--- TEST 3: Simulación de selección y acumulación incremental ---');
