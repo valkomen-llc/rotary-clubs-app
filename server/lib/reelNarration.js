@@ -82,6 +82,28 @@ export {
 // Anthropic) no entra acá aunque tenga credencial: generar guion no es
 // generar audio (v4.1236).
 export const TTS_PROVIDERS = {
+    // ⚠️ KIE ES EL PROVEEDOR DE IA INTEGRADO DE LA PLATAFORMA (v4.1239): anima
+    // las fotos, adapta el lienzo, compone la música — y desde acá también
+    // sintetiza la voz, con los modelos de ElevenLabs que expone su pasarela.
+    // Cobra en créditos de KIE, no contra una cuenta propia de ElevenLabs:
+    // con la suscripción de ElevenLabs impaga y OpenAI sin saldo, es el motor
+    // que sí genera. Va primero: es el principal y el primero del respaldo.
+    kie: {
+        id: 'kie',
+        label: 'KIE · ElevenLabs',
+        envKey: 'KIE_API_KEY',
+        modelEnv: 'KIE_TTS_MODEL',
+        // Turbo 2.5 es el que acepta `language_code`: fija el español y evita
+        // que una voz angloparlante lea con fonética inglesa.
+        defaultModel: 'elevenlabs/text-to-speech-turbo-2-5',
+        accentControl: false,
+        voiceChoice: true,
+        implemented: true,
+        isDefault: true,
+        languages: 'Multilingüe; el idioma del Reel se fija en la síntesis. Las voces del catálogo de KIE no traen acento colombiano.',
+        billing: 'Cobra en créditos de KIE, la misma cuenta que anima las escenas.',
+        note: 'El proveedor de IA integrado de la plataforma: voces de ElevenLabs a través de KIE, con la credencial que ya genera los videos.'
+    },
     elevenlabs: {
         id: 'elevenlabs',
         label: 'ElevenLabs',
@@ -91,7 +113,6 @@ export const TTS_PROVIDERS = {
         accentControl: true,
         voiceChoice: true,
         implemented: true,
-        isDefault: true,
         languages: 'Multilingüe (español incluido). El acento lo pone la voz elegida.',
         billing: 'Cobra por carácter sintetizado contra la cuota mensual de la cuenta de ElevenLabs.',
         note: 'Voces con acento latino real cuando la cuenta tiene una voz latina. Es la mejor opción para una pieza institucional en español.'
@@ -124,8 +145,8 @@ export const availableTtsProviders = () => Object.keys(TTS_PROVIDERS).filter(isT
 export const activeTtsProvider = () => {
     const wanted = process.env.REEL_TTS_PROVIDER;
     if (wanted && isTtsAvailable(wanted)) return wanted;
-    // ElevenLabs primero por el acento; OpenAI como el que siempre está.
-    if (isTtsAvailable('elevenlabs')) return 'elevenlabs';
+    // KIE primero: es el proveedor integrado de la plataforma. Después
+    // ElevenLabs directo (acento por voz) y OpenAI.
     return availableTtsProviders()[0] || null;
 };
 
@@ -150,6 +171,26 @@ export const OPENAI_TTS_VOICES = [
     { id: 'onyx', label: 'Onyx', gender: 'male' }
 ];
 
+// Las voces que acepta KIE para sus modelos de ElevenLabs: una lista CERRADA
+// de su documentación (un id fuera de ella es un 422). Se eligieron las que
+// sirven para una locución institucional, con su género; las demás del
+// catálogo de KIE (piratas, villanos, locutores de radio) no aportan acá.
+export const KIE_TTS_VOICES = [
+    { id: 'hpp4J3VqNfWAUOO0d1Us', label: 'Bella · profesional, cálida', gender: 'female' },
+    { id: 'wJqPPQ618aTW29mptyoc', label: 'Ana Rita · expresiva, luminosa', gender: 'female' },
+    { id: '5l5f8iK3YPeGga21rQIX', label: 'Adeline · conversacional', gender: 'female' },
+    { id: 'FGY2WhTYpPnrIDTdsKH5', label: 'Laura · entusiasta', gender: 'female' },
+    { id: '1wGbFxmAM3Fgw63G1zZJ', label: 'Allison · calma', gender: 'female' },
+    { id: '6aDn1KB0hjpdcocrUkmq', label: 'Tiffany · natural, cercana', gender: 'female' },
+    { id: 'BZgkqPqms7Kj9ulSkVzn', label: 'Eve · enérgica', gender: 'female' },
+    { id: 'nPczCjzI2devNBz1zQrb', label: 'Brian · grave, cálida', gender: 'male' },
+    { id: '8JVbfL6oEdmuxKn5DK2C', label: 'Johnny Kid · narrador sereno', gender: 'male' },
+    { id: 'LruHrtVF6PSyGItzMNHS', label: 'Benjamin · grave, tranquila', gender: 'male' },
+    { id: '6F5Zhi321D3Oq7v1oNT4', label: 'Hank · narrador', gender: 'male' },
+    { id: 'MJ0RnG71ty4LH3dvNfSd', label: 'Leon · serena', gender: 'male' },
+    { id: 'UgBBYS2sOqTuMpoF3BR0', label: 'Mark · natural', gender: 'male' }
+];
+
 // Voces multilingües del catálogo público de ElevenLabs, por si la cuenta no
 // configuró las suyas. Son angloparlantes: leen español, sin acento latino.
 const ELEVENLABS_FALLBACK_VOICES = { female: '21m00Tcm4TlvDq8ikWAM', male: 'onwK4e9ZLuTAKqWW03F9' };
@@ -166,6 +207,10 @@ export const voiceIdFor = (provider, gender) => {
         return process.env.OPENAI_TTS_VOICE
             || (gender === 'male' ? 'onyx' : gender === 'neutral' ? 'alloy' : 'nova');
     }
+    if (provider === 'kie') {
+        return process.env[`KIE_TTS_VOICE_${String(gender || 'female').toUpperCase()}`]
+            || (gender === 'male' ? 'nPczCjzI2devNBz1zQrb' : 'hpp4J3VqNfWAUOO0d1Us');
+    }
     return null;
 };
 
@@ -177,6 +222,7 @@ export const normalizeVoiceId = (provider, voiceId) => {
     if (voiceId == null || voiceId === '') return null;
     const v = String(voiceId).trim();
     if (provider === 'openai' && OPENAI_TTS_VOICES.some(o => o.id === v)) return v;
+    if (provider === 'kie' && ELEVENLABS_VOICE_ID_RE.test(v)) return v;
     if (provider === 'elevenlabs' && ELEVENLABS_VOICE_ID_RE.test(v)) return v;
     throw new TtsError('voice_not_found',
         `La voz «${v.slice(0, 40)}» no es una voz válida de ${TTS_PROVIDERS[provider]?.label || provider}. Elegí otra de la lista.`,
@@ -468,7 +514,9 @@ export const classifyTtsFailure = (provider, httpStatus, bodyText = '', { model 
     // decía «esperá unos segundos y reintentá» a una cuenta que no se va a
     // recuperar sola (v4.1237).
     else if (httpStatus === 402 || has('quota_exceeded', 'insufficient_quota', 'payment_required', 'exceeds your quota',
-        'billing_hard_limit', 'no credits', 'add credits', 'credits remaining', 'out of credits', 'not enough credits', 'credit balance')) code = 'quota';
+        'billing_hard_limit', 'no credits', 'add credits', 'credits remaining', 'out of credits', 'not enough credits', 'credit balance',
+        // ElevenLabs con la suscripción impaga (v4.1239): no es la clave, es el pago.
+        'incomplete payment', 'failed payment', 'payment_issue', 'latest invoice', 'credits insufficient', 'insufficient credits')) code = 'quota';
     else if (has('detected_unusual_activity')) code = 'auth';
     else if (has('voice_not_found', 'invalid_voice', "value for 'voice'", 'voice id', 'voice_id')) code = 'voice_not_found';
     else if (has('model_not_found', 'unsupported_model', 'model_not_supported', 'does not support', 'does not have access to model', 'invalid_model')) code = 'model_unsupported';
@@ -627,7 +675,107 @@ const synthesizeElevenLabsVoice = async ({ text, speed, language, voice }) => {
     return { buffer: await readAudio('elevenlabs', resp), model, voiceId: voice };
 };
 
-const TTS_ADAPTERS = { openai: synthesizeWithOpenAI, elevenlabs: synthesizeWithElevenLabs };
+// ─── KIE: la voz por la pasarela integrada (v4.1239) ───────────────────────
+//
+// Mismo protocolo que el resto de KIE en la plataforma (`kieService.js`):
+// `POST /jobs/createTask` → `GET /jobs/recordInfo?taskId=` hasta `success` →
+// descargar `resultJson.resultUrls[0]`. KIE contesta los errores con HTTP 200 y
+// un `code` en el cuerpo (401 credencial, 402 sin créditos, 429 límite, 422
+// parámetros), así que se lee el `code`, no el estado HTTP.
+const KIE_API_BASE = 'https://api.kie.ai/api/v1';
+const KIE_TTS_MAX_WAIT_MS = Number(process.env.KIE_TTS_MAX_WAIT_MS) || 75_000;
+const KIE_TTS_POLL_MS = 1_500;
+
+const kieHeaders = () => ({
+    'Authorization': `Bearer ${process.env.KIE_API_KEY}`,
+    'Content-Type': 'application/json'
+});
+
+// Un cuerpo de KIE con `code` distinto de 200 es un fallo aunque el HTTP sea 200.
+const kieFailure = (status, data, raw, ctx) => {
+    const code = Number(data?.code) || status;
+    const msg = data?.msg || data?.message || raw || '';
+    return classifyTtsFailure('kie', code, JSON.stringify({ error: { message: String(msg) } }), ctx);
+};
+
+const readKieJson = async (resp) => {
+    const raw = await resp.text().catch(() => '');
+    let data = null;
+    try { data = JSON.parse(raw); } catch { /* cuerpo no JSON */ }
+    return { raw, data };
+};
+
+const kieResultUrl = (record) => {
+    let result = {};
+    const rj = record?.resultJson ?? record?.result;
+    if (typeof rj === 'string' && rj) { try { result = JSON.parse(rj); } catch { result = {}; } }
+    else if (rj && typeof rj === 'object') result = rj;
+    const urls = result.resultUrls || result.audio_urls || result.audioUrls
+        || (result.audio_url ? [result.audio_url] : null) || (result.audioUrl ? [result.audioUrl] : null)
+        || (result.url ? [result.url] : null);
+    return Array.isArray(urls) ? urls[0] : (urls || null);
+};
+
+const synthesizeWithKie = async ({ text, gender, speed, language, voiceId }) => {
+    const model = ttsModelFor('kie');
+    const voice = voiceId || voiceIdFor('kie', gender);
+    const lang = NARRATION_LANGUAGES[language] || NARRATION_LANGUAGES[DEFAULT_LANGUAGE];
+    const input = {
+        text,
+        voice,
+        stability: 0.5,
+        similarity_boost: 0.75,
+        style: 0.3,
+        speed: clampSpeed(speed)
+    };
+    // Sólo Turbo/Flash 2.5 aceptan fijar el idioma; a multilingual_v2 le da error.
+    if (/turbo-2-5|flash-2-5/.test(model)) input.language_code = lang.locale.split('-')[0];
+
+    const created = await callProvider('kie', `${KIE_API_BASE}/jobs/createTask`, {
+        method: 'POST', headers: kieHeaders(),
+        body: JSON.stringify({ model, input })
+    }, 20_000);
+    const { raw, data } = await readKieJson(created);
+    if (!created.ok || (data?.code && Number(data.code) !== 200)) {
+        throw kieFailure(created.status, data, raw, { model, voiceId: voice });
+    }
+    const taskId = data?.data?.taskId || data?.data?.task_id || data?.taskId;
+    if (!taskId) throw new TtsError('provider_down', `KIE no devolvió el número de tarea de la voz: ${scrubSecrets(raw).slice(0, 200)}`, { provider: 'kie' });
+
+    const deadline = Date.now() + KIE_TTS_MAX_WAIT_MS;
+    let state = 'waiting';
+    while (Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, KIE_TTS_POLL_MS));
+        const polled = await callProvider('kie', `${KIE_API_BASE}/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`,
+            { headers: kieHeaders() }, 15_000);
+        const info = await readKieJson(polled);
+        if (!polled.ok || (info.data?.code && Number(info.data.code) !== 200)) {
+            throw kieFailure(polled.status, info.data, info.raw, { model, voiceId: voice });
+        }
+        const record = info.data?.data || {};
+        state = String(record.state || record.status || '').toLowerCase();
+        if (state === 'success' || state === 'completed') {
+            const url = kieResultUrl(record);
+            if (!url) throw new TtsError('empty_audio', 'KIE terminó la voz pero no devolvió el archivo de audio.', { provider: 'kie' });
+            const audio = await callProvider('kie', url, {}, 30_000);
+            if (!audio.ok) throw new TtsError('provider_down', `No se pudo descargar el audio de KIE (HTTP ${audio.status}).`, { provider: 'kie', httpStatus: audio.status });
+            return { buffer: await readAudio('kie', audio), model, voiceId: voice, taskId };
+        }
+        if (['fail', 'failed', 'error', 'cancelled', 'canceled', 'timeout', 'expired'].includes(state)) {
+            const reason = record.failMsg || record.fail_msg || record.failCode || 'sin detalle';
+            const err = classifyTtsFailure('kie', 422, JSON.stringify({ error: { message: String(reason) } }), { model, voiceId: voice });
+            // Un fallo de la tarea sin pista conocida no es un 422 de parámetros
+            // nuestro: se trata como caída del proveedor (reintentable).
+            if (err.code === 'bad_request') {
+                throw new TtsError('provider_down', `KIE no pudo generar la voz: ${scrubSecrets(reason)}.`, { provider: 'kie', detail: String(reason) });
+            }
+            throw err;
+        }
+    }
+    throw new TtsError('timeout', `KIE no terminó la voz en ${Math.round(KIE_TTS_MAX_WAIT_MS / 1000)} s (último estado: ${state}). Reintentá.`, { provider: 'kie' });
+};
+
+const TTS_ADAPTERS = { kie: synthesizeWithKie, openai: synthesizeWithOpenAI, elevenlabs: synthesizeWithElevenLabs };
 
 // ─── Respaldo entre proveedores ────────────────────────────────────────────
 //
@@ -649,7 +797,14 @@ export const FALLBACK_CODES = new Set([
     'model_unsupported', 'bad_request', 'provider_down', 'timeout', 'network', 'empty_audio'
 ]);
 
-export const fallbackProviderFor = (id) => availableTtsProviders().find(p => p !== id) || null;
+// El respaldo prefiere un motor que no se sepa bloqueado (sin saldo, sin
+// credencial) según el último estado consultado: ofrecer —o intentar— uno que
+// ya se sabe que no genera gasta el único intento de respaldo en vano.
+const BLOCKED_STATUS = new Set(['quota', 'auth', 'not_configured', 'model_unsupported']);
+export const fallbackProviderFor = (id) => {
+    const others = availableTtsProviders().filter(p => p !== id);
+    return others.find(p => !BLOCKED_STATUS.has(statusCache.get(p)?.value?.state)) || others[0] || null;
+};
 
 const notConfiguredError = (id) => {
     const p = TTS_PROVIDERS[id];
@@ -932,6 +1087,36 @@ const checkOpenAI = async (base) => {
     return out;
 };
 
+const checkKie = async (base) => {
+    const out = { ...base, voices: KIE_TTS_VOICES.map(v => ({ ...v, accent: null, language: null, category: 'catalog' })) };
+    out.autoVoices = {
+        female: { id: voiceIdFor('kie', 'female'), label: KIE_TTS_VOICES.find(v => v.id === voiceIdFor('kie', 'female'))?.label || voiceIdFor('kie', 'female'), accent: null },
+        male: { id: voiceIdFor('kie', 'male'), label: KIE_TTS_VOICES.find(v => v.id === voiceIdFor('kie', 'male'))?.label || voiceIdFor('kie', 'male'), accent: null }
+    };
+    const resp = await callProvider('kie', `${KIE_API_BASE}/chat/credit`, { headers: kieHeaders() }, STATUS_TIMEOUT_MS);
+    const { raw, data } = await readKieJson(resp);
+    if (resp.ok && data && Number(data.code) === 200) {
+        const credits = Number(data.data);
+        out.quota = Number.isFinite(credits)
+            ? { used: 0, limit: 0, remaining: credits, unit: 'créditos de KIE', resetsAt: null, tier: null }
+            : null;
+        if (Number.isFinite(credits) && credits <= 0) {
+            out.state = 'quota';
+            out.message = 'La cuenta de KIE no tiene créditos: recargala en kie.ai.';
+        } else {
+            out.state = 'ok';
+            out.message = Number.isFinite(credits)
+                ? `Conectado. Saldo de KIE: ${credits.toLocaleString('es-CO')} créditos.`
+                : 'Conectado.';
+        }
+    } else {
+        const err = kieFailure(resp.status, data, raw, { model: base.model });
+        out.state = err.code;
+        out.message = err.message;
+    }
+    return out;
+};
+
 export const checkTtsProvider = async (id, { force = false } = {}) => {
     const p = TTS_PROVIDERS[id];
     if (!p) return null;
@@ -962,7 +1147,9 @@ export const checkTtsProvider = async (id, { force = false } = {}) => {
     } else {
         const startedAt = Date.now();
         try {
-            value = id === 'elevenlabs' ? await checkElevenLabs(base) : await checkOpenAI(base);
+            value = id === 'kie' ? await checkKie(base)
+                : id === 'elevenlabs' ? await checkElevenLabs(base)
+                    : await checkOpenAI(base);
         } catch (e) {
             const err = asTtsError(e, id);
             value = { ...base, state: err.code, message: err.message };

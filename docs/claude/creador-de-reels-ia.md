@@ -687,7 +687,9 @@ presupuesto del prompt—, separado de la orquestación, por el mismo motivo que
 | `REEL_PROMPT_MAX_CHARS` | Tope de caracteres del prompt de escena (2500, el que declara Kling) |
 | `REEL_RATE_KIE_CREDIT_USD` y compañía | Tarifas del panel de auditoría. Sin ellas no hay costo en dinero, a propósito |
 | `CRON_SECRET` | Protege `/api/cron/reels-tick`, igual que el resto de los crons |
-| `REEL_TTS_PROVIDER` | `elevenlabs` \| `openai` (por defecto: el que tenga credencial) |
+| `REEL_TTS_PROVIDER` | `kie` \| `elevenlabs` \| `openai` (por defecto: KIE si tiene credencial) |
+| `KIE_TTS_MODEL` | Modelo de voz en KIE (default `elevenlabs/text-to-speech-turbo-2-5`; `…-multilingual-v2` no admite fijar idioma) |
+| `KIE_TTS_VOICE_FEMALE/MALE`, `KIE_TTS_MAX_WAIT_MS` | Voz por defecto en KIE (de su lista cerrada) y tope de espera de la tarea (75 000) |
 | `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_FEMALE/MALE`, `ELEVENLABS_MODEL` | Voz con acento latino real |
 | `OPENAI_TTS_MODEL`, `OPENAI_TTS_VOICE` | Voz con la credencial que la plataforma ya tiene |
 | `REEL_TTS_AUTO_FALLBACK` | `off` apaga el respaldo automático entre motores de voz del montaje automático (encendido por defecto). El panel decide con su casilla |
@@ -3121,3 +3123,31 @@ automático estaba apagado por defecto: el administrador elegía OpenAI, pulsaba
   una vez con la mejor voz propia (`premade`/`cloned`/`generated`); desde ahí
   la automática elige sólo entre propias. Una voz elegida a mano no se cambia:
   se informa.
+
+### v4.1239 — La voz sale por KIE, el proveedor de IA integrado
+
+En producción, ElevenLabs directo respondía 401 «Your subscription has a
+failed or incomplete payment» y OpenAI 429 «no credits remaining». El cliente
+pidió que la voz salga con el proveedor integrado: **KIE**, que ya anima las
+escenas y compone la música.
+
+- **Motor `kie` en `TTS_PROVIDERS`, primero del registro**: es el activo por
+  defecto y el primero del respaldo. Usa `KIE_API_KEY` (la misma credencial).
+- **Protocolo** (igual al resto de KIE): `POST /jobs/createTask` con
+  `model: elevenlabs/text-to-speech-turbo-2-5` e `input { text, voice,
+  stability, similarity_boost, style, speed, language_code }` →
+  `GET /jobs/recordInfo?taskId=` cada 1,5 s hasta `success` → descargar
+  `resultJson.resultUrls[0]`. **KIE responde los errores con HTTP 200 y un
+  `code` en el cuerpo** (401, 402 sin créditos, 429, 422): se lee el `code`.
+- **`language_code` sólo con Turbo/Flash 2.5**: multilingual-v2 lo rechaza.
+- **Voces**: `voice` es un enum CERRADO de KIE; `KIE_TTS_VOICES` lista las que
+  sirven para locución institucional. No hay voces colombianas: el panel lo dice.
+- **Estado**: `GET /chat/credit` da el saldo; 0 → `quota`.
+- **El respaldo saltea motores que se saben bloqueados** (`fallbackProviderFor`
+  mira el último estado consultado).
+- `resolveReelSourceContext` pedía `c.description`, que `ContributionCampaign`
+  no tiene: la consulta entera fallaba y el guion perdía el contexto de la
+  solicitud. Ahora lee `content->>'intro'` / `'subtitle'`.
+- En `reelUsage.js`, KIE admite el alcance `voice`.
+- Limitación: con KIE cada síntesis es una tarea asíncrona (~5-20 s). El
+  Narrative Timing Engine del montaje automático puede hacer hasta 3.

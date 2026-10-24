@@ -207,7 +207,7 @@ es **rotar la credencial en Neon**, no sólo borrar el archivo.
 | Persistencia del Editor Visual de Plantillas (Email Marketing) — v4.1235 | `docs/claude/persistencia-del-editor-visual-de-plantillas.md` |
 | Generador de Outros IA — v4.647 | `docs/claude/generador-de-outros-ia.md` |
 | Outro sobre un video de la Biblioteca — v4.1039 | `docs/claude/outro-sobre-un-video-de-la-biblioteca.md` |
-| Creador de Reels IA — v4.797 (voz en off con diagnóstico y borrador → aplicar: v4.1236–v4.1238) | `docs/claude/creador-de-reels-ia.md` |
+| Creador de Reels IA — v4.797 (voz en off con diagnóstico y borrador → aplicar: v4.1236–v4.1238; motor KIE: v4.1239) | `docs/claude/creador-de-reels-ia.md` |
 | «Maneras de Contribuir» en el Generador de Publicaciones — v4.967 | `docs/claude/maneras-de-contribuir-en-el-generador-de-publicaciones.md` |
 | El directorio de socios se deja encontrar — v4.985 | `docs/claude/el-directorio-de-socios-se-deja-encontrar.md` |
 | Aportes de contenido a una campaña — v4.968 (participación y difusión: v4.972) | `docs/claude/aportes-de-contenido-a-una-campana.md` |

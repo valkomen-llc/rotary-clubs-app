@@ -41,11 +41,11 @@ export const USAGE_PROVIDERS = {
     kie: {
         id: 'kie',
         label: 'KIE.AI',
-        role: 'Imagen y video',
-        allows: ['video', 'image'],
+        role: 'Imagen, video y voz',
+        allows: ['video', 'image', 'voice'],
         unit: 'credits',
         unitLabel: 'créditos',
-        note: 'Anima las fotos y adapta el lienzo. No genera voz, música, copy ni texto.'
+        note: 'Anima las fotos, adapta el lienzo y —desde v4.1239— sintetiza la voz en off con los modelos de ElevenLabs de su pasarela. No genera copy ni texto.'
     },
     elevenlabs: {
         id: 'elevenlabs',

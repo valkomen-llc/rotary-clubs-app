@@ -154,11 +154,11 @@ const ProviderCard: React.FC<{
                 {p.configured && p.voices.length > 0 && (
                     <div><dt className="inline font-bold text-gray-600">Voces: </dt><dd className="inline">{p.voices.length} disponibles{p.accentNote ? ` · ${p.accentNote}` : ''}</dd></div>
                 )}
-                {p.quota && p.quota.limit > 0 && (
+                {p.quota && (p.quota.limit > 0 || p.quota.remaining > 0) && (
                     <div>
-                        <dt className="inline font-bold text-gray-600">Cuota: </dt>
+                        <dt className="inline font-bold text-gray-600">{p.quota.limit > 0 ? 'Cuota: ' : 'Saldo: '}</dt>
                         <dd className="inline">
-                            {p.quota.remaining.toLocaleString('es-CO')} de {p.quota.limit.toLocaleString('es-CO')} {p.quota.unit}
+                            {p.quota.remaining.toLocaleString('es-CO')}{p.quota.limit > 0 ? ` de ${p.quota.limit.toLocaleString('es-CO')}` : ''} {p.quota.unit}
                             {p.quota.resetsAt ? ` · se renueva el ${new Date(p.quota.resetsAt).toLocaleDateString('es-CO')}` : ''}
                         </dd>
                     </div>
@@ -434,7 +434,7 @@ const ReelNarrationPanel: React.FC<{
     // Sin estado de los proveedores todavía, las tarjetas salen del catálogo.
     const providerCards: TtsProviderStatus[] = useMemo(() => {
         if (providers) return providers.filter(p => p.implemented);
-        return (catalogo?.providers || []).filter(p => p.id === 'elevenlabs' || p.id === 'openai').map(p => ({
+        return (catalogo?.providers || []).filter(p => ['kie', 'elevenlabs', 'openai'].includes(p.id)).map(p => ({
             id: p.id, label: p.label, model: null, implemented: true, configured: p.available,
             accentControl: p.accentControl, voiceChoice: false, languages: null, billing: null,
             note: p.note || null, isDefault: p.isDefault, state: p.available ? 'unknown' : 'not_configured',
@@ -833,7 +833,9 @@ const ReelNarrationPanel: React.FC<{
                         options={voiceOptions}
                         hint={selectedProvider.accentControl
                             ? 'En ElevenLabs el acento lo pone la voz: para acento colombiano elegí una voz latina de la cuenta.'
-                            : 'Las voces de OpenAI no eligen acento: el español sale neutro.'}
+                            : selectedProvider.id === 'kie'
+                                ? 'KIE fija el idioma del Reel en la síntesis; sus voces no traen acento colombiano.'
+                                : `Las voces de ${selectedProvider.label} no eligen acento: el español sale neutro.`}
                     />
                 ) : (
                     <div className="text-[11px] text-gray-400 font-medium self-end pb-1">

@@ -25,6 +25,11 @@ delete process.env.ELEVENLABS_MODEL;
 delete process.env.OPENAI_TTS_MODEL;
 delete process.env.REEL_TTS_PROVIDER;
 delete process.env.REEL_TTS_AUTO_FALLBACK;
+// KIE se prueba en su propia sección: fuera de ella no hay credencial, para
+// que las secciones de ElevenLabs/OpenAI no dependan del orden del registro.
+delete process.env.KIE_API_KEY;
+process.env.KIE_TTS_MAX_WAIT_MS = '4000';
+delete process.env.KIE_TTS_MODEL;
 
 const N = await import('../server/lib/reelNarration.js');
 
@@ -69,6 +74,8 @@ console.log('\n▸ Clasificación de los errores reales de cada proveedor');
     check('OpenAI 429 «no credits remaining» → quota, no «esperá y reintentá» (el caso de producción, v4.1237)',
         c('openai', 429, { error: { message: 'You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.', type: 'insufficient_quota' } }).code === 'quota'
         && c('openai', 429, { error: { message: 'You have no credits remaining. Add credits to continue using the API.' } }).code === 'quota');
+    check('ElevenLabs 401 «subscription has a failed or incomplete payment» → quota (es el pago, no la clave)',
+        c('elevenlabs', 401, { detail: { status: 'payment_issue', message: 'Your subscription has a failed or incomplete payment. Complete the latest invoice to continue usage.' } }).code === 'quota');
     check('OpenAI 429 rate_limit_exceeded → rate_limit', c('openai', 429, { error: { message: 'Rate limit reached', code: 'rate_limit_exceeded' } }).code === 'rate_limit');
     check('OpenAI 404 modelo → model_unsupported', c('openai', 404, { error: { message: 'The model `tts-9` does not exist', code: 'model_not_found' } }).code === 'model_unsupported');
     check('OpenAI 400 voz inválida → voice_not_found', c('openai', 400, { error: { message: "Invalid value for 'voice': 'xyz'." } }).code === 'voice_not_found');
@@ -217,7 +224,8 @@ console.log('\n▸ Estado de los proveedores (llamadas de lectura, sin síntesis
         ] }) },
         FAIL('api.openai.com/v1/models', 401, { error: { message: 'Incorrect API key provided', code: 'invalid_api_key' } })
     );
-    const [el, oa] = await N.ttsProvidersStatus({ force: true });
+    const todos = await N.ttsProvidersStatus({ force: true });
+    const el = todos.find(x => x.id === 'elevenlabs'), oa = todos.find(x => x.id === 'openai');
     check('ElevenLabs: conectado con la cuota que informa', el.state === 'ok' && el.quota?.remaining === 500 && el.quota?.limit === 10000);
     check('ElevenLabs: lista las voces de la cuenta, latinas primero', el.voices[0]?.id === 'abcColombia1' && el.voices.length === 3);
     check('ElevenLabs: dice cuántas voces hispanas hay', /Una voz con acento hispano/.test(el.accentNote || ''));
@@ -327,6 +335,70 @@ console.log('\n▸ «Conectado» no es «con saldo»: el último intento real cu
     check('una prueba exitosa borra el «Sin cuota» (después de recargar saldo)', recargado.state === 'ok' && recargado.lastFailure === null);
     const caido = C.withProbe(ok, { ok: false, provider: 'openai', code: 'quota', message: 'sin saldo' });
     check('una prueba fallida bloquea aunque la lectura diga «Conectado»', caido.state === 'quota' && caido.lastFailure?.code === 'quota');
+}
+
+console.log('\n▸ KIE: la voz por el proveedor de IA integrado (v4.1239)');
+{
+    process.env.KIE_API_KEY = 'kie-test-key';
+    check('con KIE configurado, es el motor activo', N.activeTtsProvider() === 'kie');
+    check('y el primero del respaldo', N.fallbackProviderFor('openai') === 'kie' && N.fallbackProviderFor('elevenlabs') === 'kie');
+
+    const kieOk = () => {
+        let polls = 0;
+        return [
+            { match: u => u.endsWith('/jobs/createTask'), reply: () => respond(200, { code: 200, msg: 'success', data: { taskId: 'task_elevenlabs_1', recordId: 'elevenlabs_1' } }) },
+            { match: u => u.includes('/jobs/recordInfo'), reply: () => respond(200, { code: 200, msg: 'success', data: { taskId: 'task_elevenlabs_1', state: ++polls < 2 ? 'generating' : 'success', resultJson: JSON.stringify({ resultUrls: ['https://tempfile.kie.ai/voz.mp3'] }) } }) },
+            { match: u => u === 'https://tempfile.kie.ai/voz.mp3', reply: () => respond(200, audio, 'audio/mpeg') }
+        ];
+    };
+    reset(...kieOk());
+    const out = await N.synthesize({ text: 'Hola comunidad.', provider: 'kie', gender: 'female', language: 'es-CO', speed: 1, fallback: false });
+    const created = calls.find(c => c.url.endsWith('/jobs/createTask'));
+    check('crea la tarea con el modelo Turbo 2.5 de ElevenLabs', created?.body?.model === 'elevenlabs/text-to-speech-turbo-2-5');
+    check('fija el español (language_code=es) y la voz femenina por defecto (Bella)', created?.body?.input?.language_code === 'es' && created?.body?.input?.voice === 'hpp4J3VqNfWAUOO0d1Us');
+    check('usa la credencial de KIE de la plataforma', created?.headers?.Authorization === 'Bearer kie-test-key');
+    check('sondea recordInfo hasta success y descarga el MP3', out.provider === 'kie' && Buffer.compare(out.buffer, audio) === 0 && calls.filter(c => c.url.includes('recordInfo')).length === 2);
+
+    process.env.KIE_TTS_MODEL = 'elevenlabs/text-to-speech-multilingual-v2';
+    reset(...kieOk());
+    await N.synthesize({ text: 'Hola.', provider: 'kie', gender: 'male', fallback: false });
+    const c2 = calls.find(c => c.url.endsWith('/jobs/createTask'));
+    check('con multilingual-v2 NO manda language_code (KIE lo rechaza) y usa la voz masculina (Brian)', !('language_code' in c2.body.input) && c2.body.input.voice === 'nPczCjzI2devNBz1zQrb');
+    delete process.env.KIE_TTS_MODEL;
+
+    reset({ match: u => u.endsWith('/jobs/createTask'), reply: () => respond(200, { code: 402, msg: 'Credits insufficient' }) });
+    const e402 = await expectError(() => N.synthesize({ text: 'Hola.', provider: 'kie', fallback: false }));
+    check('HTTP 200 con code 402 → quota (KIE responde los errores en el cuerpo)', e402?.code === 'quota' && e402?.provider === 'kie');
+    reset({ match: u => u.endsWith('/jobs/createTask'), reply: () => respond(200, { code: 401, msg: 'You do not have access permissions' }) });
+    check('code 401 → auth', (await expectError(() => N.synthesize({ text: 'Hola.', provider: 'kie', fallback: false })))?.code === 'auth');
+
+    reset(
+        { match: u => u.endsWith('/jobs/createTask'), reply: () => respond(200, { code: 200, data: { taskId: 't2' } }) },
+        { match: u => u.includes('/jobs/recordInfo'), reply: () => respond(200, { code: 200, data: { state: 'fail', failMsg: 'internal error' } }) }
+    );
+    const fail = await expectError(() => N.synthesize({ text: 'Hola.', provider: 'kie', fallback: false }));
+    check('tarea fallida → provider_down con el motivo de KIE (reintentable)', fail?.code === 'provider_down' && /internal error/.test(fail.message) && fail.retryable);
+
+    reset(
+        { match: u => u.endsWith('/jobs/createTask'), reply: () => respond(200, { code: 200, data: { taskId: 't3' } }) },
+        { match: u => u.includes('/jobs/recordInfo'), reply: () => respond(200, { code: 200, data: { state: 'generating' } }) }
+    );
+    const slow = await expectError(() => N.synthesize({ text: 'Hola.', provider: 'kie', fallback: false }));
+    check('una tarea que no termina corta por tiempo → timeout', slow?.code === 'timeout');
+
+    reset({ match: u => u.endsWith('/chat/credit'), reply: () => respond(200, { code: 200, msg: 'success', data: 1250.5 }) });
+    const st = await N.checkTtsProvider('kie', { force: true });
+    check('estado: conectado con el saldo de créditos de KIE', st.state === 'ok' && st.quota?.remaining === 1250.5, st.message);
+    check('estado: voces del catálogo de KIE y la automática por género', st.voices.length >= 10 && st.autoVoices?.female?.id === 'hpp4J3VqNfWAUOO0d1Us');
+    reset({ match: u => u.endsWith('/chat/credit'), reply: () => respond(200, { code: 200, data: 0 }) });
+    check('sin créditos → quota antes de gastar', (await N.checkTtsProvider('kie', { force: true })).state === 'quota');
+
+    check('el respaldo saltea un motor que se sabe sin créditos', N.fallbackProviderFor('openai') === 'elevenlabs');
+    N.resetTtsCaches();
+    reset({ match: u => u.includes('api.openai.com'), reply: () => respond(429, { error: { message: 'You have no credits remaining.' } }) }, ...kieOk());
+    const fb = await N.synthesize({ text: 'Hola.', provider: 'openai', fallback: true });
+    check('OpenAI sin saldo + respaldo → la voz sale por KIE', fb.provider === 'kie' && fb.fallbackFrom === 'openai');
+    delete process.env.KIE_API_KEY;
 }
 
 console.log('\n▸ Cableado: el servidor y la pantalla hablan el mismo idioma');
