@@ -104,6 +104,25 @@ export const TTS_PROVIDERS = {
         billing: 'Cobra en créditos de KIE, la misma cuenta que anima las escenas.',
         note: 'El proveedor de IA integrado de la plataforma: voces de ElevenLabs a través de KIE, con la credencial que ya genera los videos.'
     },
+    // ⚠️ GOOGLE GEMINI TTS (v4.1240), con la credencial de Google que la
+    // plataforma ya usa para escribir guiones y copies (GEMINI_API_KEY). Es el
+    // respaldo de KIE: cuando la pasarela de KIE falla por un error interno,
+    // la voz sale igual. Y es el único motor que dirige el ACENTO con una
+    // instrucción («acento colombiano neutro»), sin depender de qué voces
+    // tenga una cuenta.
+    gemini: {
+        id: 'gemini',
+        label: 'Google Gemini TTS',
+        envKey: 'GEMINI_API_KEY',
+        modelEnv: 'GEMINI_TTS_MODEL',
+        defaultModel: 'gemini-3.8-flash-tts',
+        accentControl: true,
+        voiceChoice: true,
+        implemented: true,
+        languages: 'Más de 100 idiomas. El acento de la región (colombiano incluido) se dirige con la instrucción de estilo.',
+        billing: 'Cobra por uso contra el proyecto de Google AI de la clave GEMINI_API_KEY, la misma que escribe los guiones.',
+        note: 'Voces de Google con acento dirigido por instrucción. Respaldo del proveedor integrado.'
+    },
     elevenlabs: {
         id: 'elevenlabs',
         label: 'ElevenLabs',
@@ -191,6 +210,42 @@ export const KIE_TTS_VOICES = [
     { id: 'UgBBYS2sOqTuMpoF3BR0', label: 'Mark · natural', gender: 'male' }
 ];
 
+// Las 30 voces predefinidas de Gemini TTS (las mismas en todos sus modelos).
+// El género es el que declara Google en su catálogo; el acento NO viene de la
+// voz sino de la instrucción de estilo, así que cualquiera habla «colombiano».
+export const GEMINI_TTS_VOICES = [
+    { id: 'Kore', label: 'Kore · firme', gender: 'female' },
+    { id: 'Sulafat', label: 'Sulafat · cálida', gender: 'female' },
+    { id: 'Aoede', label: 'Aoede · ligera', gender: 'female' },
+    { id: 'Vindemiatrix', label: 'Vindemiatrix · amable', gender: 'female' },
+    { id: 'Achernar', label: 'Achernar · suave', gender: 'female' },
+    { id: 'Despina', label: 'Despina · fluida', gender: 'female' },
+    { id: 'Leda', label: 'Leda · juvenil', gender: 'female' },
+    { id: 'Zephyr', label: 'Zephyr · luminosa', gender: 'female' },
+    { id: 'Callirrhoe', label: 'Callirrhoe · tranquila', gender: 'female' },
+    { id: 'Laomedeia', label: 'Laomedeia · animada', gender: 'female' },
+    { id: 'Gacrux', label: 'Gacrux · madura', gender: 'female' },
+    { id: 'Pulcherrima', label: 'Pulcherrima · enérgica', gender: 'female' },
+    { id: 'Erinome', label: 'Erinome · clara', gender: 'female' },
+    { id: 'Autonoe', label: 'Autonoe · brillante', gender: 'female' },
+    { id: 'Charon', label: 'Charon · informativa', gender: 'male' },
+    { id: 'Orus', label: 'Orus · firme', gender: 'male' },
+    { id: 'Achird', label: 'Achird · amigable', gender: 'male' },
+    { id: 'Iapetus', label: 'Iapetus · clara', gender: 'male' },
+    { id: 'Algieba', label: 'Algieba · fluida', gender: 'male' },
+    { id: 'Schedar', label: 'Schedar · serena', gender: 'male' },
+    { id: 'Sadaltager', label: 'Sadaltager · experta', gender: 'male' },
+    { id: 'Rasalgethi', label: 'Rasalgethi · informativa', gender: 'male' },
+    { id: 'Alnilam', label: 'Alnilam · firme', gender: 'male' },
+    { id: 'Puck', label: 'Puck · animada', gender: 'male' },
+    { id: 'Fenrir', label: 'Fenrir · enérgica', gender: 'male' },
+    { id: 'Enceladus', label: 'Enceladus · susurrada', gender: 'male' },
+    { id: 'Umbriel', label: 'Umbriel · relajada', gender: 'male' },
+    { id: 'Algenib', label: 'Algenib · grave', gender: 'male' },
+    { id: 'Zubenelgenubi', label: 'Zubenelgenubi · casual', gender: 'male' },
+    { id: 'Sadachbia', label: 'Sadachbia · vivaz', gender: 'male' }
+];
+
 // Voces multilingües del catálogo público de ElevenLabs, por si la cuenta no
 // configuró las suyas. Son angloparlantes: leen español, sin acento latino.
 const ELEVENLABS_FALLBACK_VOICES = { female: '21m00Tcm4TlvDq8ikWAM', male: 'onwK4e9ZLuTAKqWW03F9' };
@@ -211,6 +266,10 @@ export const voiceIdFor = (provider, gender) => {
         return process.env[`KIE_TTS_VOICE_${String(gender || 'female').toUpperCase()}`]
             || (gender === 'male' ? 'nPczCjzI2devNBz1zQrb' : 'hpp4J3VqNfWAUOO0d1Us');
     }
+    if (provider === 'gemini') {
+        return process.env[`GEMINI_TTS_VOICE_${String(gender || 'female').toUpperCase()}`]
+            || (gender === 'male' ? 'Charon' : 'Kore');
+    }
     return null;
 };
 
@@ -223,6 +282,8 @@ export const normalizeVoiceId = (provider, voiceId) => {
     const v = String(voiceId).trim();
     if (provider === 'openai' && OPENAI_TTS_VOICES.some(o => o.id === v)) return v;
     if (provider === 'kie' && ELEVENLABS_VOICE_ID_RE.test(v)) return v;
+    // Las predefinidas de Gemini, o una voz diseñada/replicada del proyecto.
+    if (provider === 'gemini' && (GEMINI_TTS_VOICES.some(g => g.id === v) || /^voice(key)?_[A-Za-z0-9_-]{4,80}$/.test(v))) return v;
     if (provider === 'elevenlabs' && ELEVENLABS_VOICE_ID_RE.test(v)) return v;
     throw new TtsError('voice_not_found',
         `La voz «${v.slice(0, 40)}» no es una voz válida de ${TTS_PROVIDERS[provider]?.label || provider}. Elegí otra de la lista.`,
@@ -516,11 +577,13 @@ export const classifyTtsFailure = (provider, httpStatus, bodyText = '', { model 
     else if (httpStatus === 402 || has('quota_exceeded', 'insufficient_quota', 'payment_required', 'exceeds your quota',
         'billing_hard_limit', 'no credits', 'add credits', 'credits remaining', 'out of credits', 'not enough credits', 'credit balance',
         // ElevenLabs con la suscripción impaga (v4.1239): no es la clave, es el pago.
-        'incomplete payment', 'failed payment', 'payment_issue', 'latest invoice', 'credits insufficient', 'insufficient credits')) code = 'quota';
+        'incomplete payment', 'failed payment', 'payment_issue', 'latest invoice', 'credits insufficient', 'insufficient credits',
+        // Google: «You exceeded your current quota, please check your plan and billing details».
+        'exceeded your current quota', 'billing details')) code = 'quota';
     else if (has('detected_unusual_activity')) code = 'auth';
     else if (has('voice_not_found', 'invalid_voice', "value for 'voice'", 'voice id', 'voice_id')) code = 'voice_not_found';
     else if (has('model_not_found', 'unsupported_model', 'model_not_supported', 'does not support', 'does not have access to model', 'invalid_model')) code = 'model_unsupported';
-    else if (httpStatus === 401 || httpStatus === 403 || has('invalid_api_key', 'missing_permissions', 'unauthorized', 'incorrect api key')) code = 'auth';
+    else if (httpStatus === 401 || httpStatus === 403 || has('invalid_api_key', 'missing_permissions', 'unauthorized', 'incorrect api key', 'api key not valid', 'api_key_invalid', 'permission_denied')) code = 'auth';
     else if (httpStatus === 429) code = 'rate_limit';
     else if (httpStatus === 404) code = provider === 'elevenlabs' ? 'voice_not_found' : 'model_unsupported';
     else if (httpStatus >= 500) code = 'provider_down';
@@ -683,7 +746,9 @@ const synthesizeElevenLabsVoice = async ({ text, speed, language, voice }) => {
 // un `code` en el cuerpo (401 credencial, 402 sin créditos, 429 límite, 422
 // parámetros), así que se lee el `code`, no el estado HTTP.
 const KIE_API_BASE = 'https://api.kie.ai/api/v1';
-const KIE_TTS_MAX_WAIT_MS = Number(process.env.KIE_TTS_MAX_WAIT_MS) || 75_000;
+// 40 s por intento: con el reintento de modelo y el respaldo a Gemini, todo
+// tiene que caber en los 120 s de la función.
+const KIE_TTS_MAX_WAIT_MS = Number(process.env.KIE_TTS_MAX_WAIT_MS) || 40_000;
 const KIE_TTS_POLL_MS = 1_500;
 
 const kieHeaders = () => ({
@@ -716,8 +781,31 @@ const kieResultUrl = (record) => {
     return Array.isArray(urls) ? urls[0] : (urls || null);
 };
 
-const synthesizeWithKie = async ({ text, gender, speed, language, voiceId }) => {
+// ⚠️ UN «ERROR INTERNO» DE KIE SE REINTENTA UNA VEZ CON EL OTRO MODELO
+// (v4.1240). En producción la tarea de Turbo 2.5 terminó en `fail` con
+// «Internal error, please try again later»: la tarea se creó (la credencial y
+// los créditos están bien) y la pasarela no la pudo completar. Multilingual
+// v2 es el otro modelo de voz de ElevenLabs en KIE; si también falla, el
+// respaldo entre motores (Gemini) se encarga.
+const KIE_TTS_ALT_MODEL = 'elevenlabs/text-to-speech-multilingual-v2';
+
+const synthesizeWithKie = async (opts) => {
     const model = ttsModelFor('kie');
+    try {
+        return await runKieTts({ ...opts, model });
+    } catch (e) {
+        if (!['provider_down', 'timeout', 'empty_audio'].includes(e?.code) || model === KIE_TTS_ALT_MODEL) throw e;
+        console.warn(`[REEL NARRATION] KIE ${model} falló (${e.code}: ${e.message}). Reintento con ${KIE_TTS_ALT_MODEL}.`);
+        try {
+            return await runKieTts({ ...opts, model: KIE_TTS_ALT_MODEL });
+        } catch (e2) {
+            const err = asTtsError(e2, 'kie');
+            throw new TtsError(err.code, `${e.message} El reintento con ${KIE_TTS_ALT_MODEL} también falló: ${err.message}`, { provider: 'kie', detail: err.detail });
+        }
+    }
+};
+
+const runKieTts = async ({ text, gender, speed, language, voiceId, model }) => {
     const voice = voiceId || voiceIdFor('kie', gender);
     const lang = NARRATION_LANGUAGES[language] || NARRATION_LANGUAGES[DEFAULT_LANGUAGE];
     const input = {
@@ -775,7 +863,116 @@ const synthesizeWithKie = async ({ text, gender, speed, language, voiceId }) => 
     throw new TtsError('timeout', `KIE no terminó la voz en ${Math.round(KIE_TTS_MAX_WAIT_MS / 1000)} s (último estado: ${state}). Reintentá.`, { provider: 'kie' });
 };
 
-const TTS_ADAPTERS = { kie: synthesizeWithKie, openai: synthesizeWithOpenAI, elevenlabs: synthesizeWithElevenLabs };
+// ─── Google Gemini TTS (v4.1240) ───────────────────────────────────────────
+//
+// Con la misma credencial que ya escribe los guiones (GEMINI_API_KEY). Dos
+// superficies de Google:
+//   · Modelos 3.8 (`gemini-3.8-flash-tts`): API de Interacciones
+//     (`POST /v1beta/interactions`), con el estilo y el ACENTO en
+//     `speech_metadata.style` y salida WAV.
+//   · Modelos anteriores (`gemini-2.5-flash-preview-tts`): `generateContent`
+//     con `responseModalities: ['AUDIO']`, la instrucción delante del texto y
+//     salida PCM de 16 bits sin cabecera.
+// Si el modelo configurado no existe para la clave (404), se prueba el
+// siguiente de la cadena. El audio se convierte a MP3 con el ffmpeg del
+// montaje: la medición y la mezcla trabajan con MP3.
+const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+const GEMINI_TTS_FALLBACK_MODELS = ['gemini-3.8-flash-tts', 'gemini-3.8-flash-lite-tts', 'gemini-2.5-flash-preview-tts'];
+
+const geminiHeaders = () => ({
+    'x-goog-api-key': process.env.GEMINI_API_KEY,
+    'Content-Type': 'application/json'
+});
+
+// La dirección de la locución: idioma, acento de la región y carácter.
+export const geminiStyleFor = (language, style, speed = 1) => {
+    const lang = NARRATION_LANGUAGES[language] || NARRATION_LANGUAGES[DEFAULT_LANGUAGE];
+    const st = NARRATION_STYLES[style] || NARRATION_STYLES[DEFAULT_STYLE];
+    const pace = speed > 1.05 ? 'a slightly brisk pace' : speed < 0.95 ? 'a slightly slower pace' : 'a natural, unhurried pace';
+    return `Native ${lang.accent} speaker. ${st.descriptor} delivery, warm and human, ${pace}. Voice-over for a short social video.`;
+};
+
+const geminiAudioFromInteraction = (data) => {
+    if (data?.output_audio?.data) return { b64: data.output_audio.data, mime: data.output_audio.mime_type || 'audio/wav' };
+    const steps = Array.isArray(data?.steps) ? data.steps : [];
+    for (let i = steps.length - 1; i >= 0; i--) {
+        const step = steps[i];
+        if (step?.type !== 'model_output') continue;
+        const audio = (step.content || []).filter(c => c?.type === 'audio' && c.data).pop();
+        if (audio) return { b64: audio.data, mime: audio.mime_type || 'audio/wav' };
+    }
+    return null;
+};
+
+const geminiAudioFromGenerate = (data) => {
+    const parts = data?.candidates?.[0]?.content?.parts || [];
+    const part = parts.find(p => p?.inlineData?.data || p?.inline_data?.data);
+    if (!part) return null;
+    const inline = part.inlineData || part.inline_data;
+    return { b64: inline.data, mime: inline.mimeType || inline.mime_type || 'audio/L16;rate=24000' };
+};
+
+const geminiRequest = async (model, { text, voice, styleText }) => {
+    const interactions = /^gemini-3\.8/.test(model);
+    const url = interactions ? `${GEMINI_API_BASE}/interactions` : `${GEMINI_API_BASE}/models/${encodeURIComponent(model)}:generateContent`;
+    const body = interactions
+        ? {
+            model,
+            input: [{ type: 'user_input', content: [{ type: 'text', text, annotations: [{ type: 'speech_metadata', style: styleText }] }] }],
+            response_format: { type: 'audio', mime_type: 'audio/wav' },
+            generation_config: { speech_config: [{ voice }] }
+        }
+        : {
+            contents: [{ role: 'user', parts: [{ text: `${styleText} Read the following text aloud exactly as written, without adding anything:\n\n${text}` }] }],
+            generationConfig: {
+                responseModalities: ['AUDIO'],
+                speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } }
+            }
+        };
+    const resp = await callProvider('gemini', url, { method: 'POST', headers: geminiHeaders(), body: JSON.stringify(body) });
+    const raw = await resp.text().catch(() => '');
+    if (!resp.ok) throw classifyTtsFailure('gemini', resp.status, raw, { model, voiceId: voice });
+    let data = null;
+    try { data = JSON.parse(raw); } catch { /* sigue */ }
+    const audio = interactions ? geminiAudioFromInteraction(data) : geminiAudioFromGenerate(data);
+    if (!audio) {
+        const reason = data?.candidates?.[0]?.finishReason || data?.promptFeedback?.blockReason || data?.status || 'sin audio';
+        throw new TtsError('empty_audio', `Gemini no devolvió audio (${reason}).`, { provider: 'gemini' });
+    }
+    return audio;
+};
+
+const synthesizeWithGemini = async ({ text, gender, speed, language, style, voiceId }) => {
+    const voice = voiceId || voiceIdFor('gemini', gender);
+    const styleText = geminiStyleFor(language, style, speed);
+    const configured = ttsModelFor('gemini');
+    const chain = [...new Set([configured, ...GEMINI_TTS_FALLBACK_MODELS])];
+    let lastErr = null;
+    for (const model of chain) {
+        try {
+            const audio = await geminiRequest(model, { text, voice, styleText });
+            const source = Buffer.from(audio.b64, 'base64');
+            if (source.length < MIN_AUDIO_BYTES) throw new TtsError('empty_audio', `Gemini respondió un audio vacío (${source.length} bytes).`, { provider: 'gemini' });
+            const { encodeAudioToMp3 } = await import('./reelFfmpeg.js');
+            let buffer;
+            try {
+                buffer = await encodeAudioToMp3(source, audio.mime);
+            } catch (e) {
+                throw new TtsError('measure_failed', `Gemini generó la voz pero no se pudo convertir a MP3: ${e.message}`, { provider: 'gemini' });
+            }
+            return { buffer, model, voiceId: voice };
+        } catch (e) {
+            lastErr = asTtsError(e, 'gemini');
+            // Sólo un modelo que no existe para esta clave pasa al siguiente:
+            // una cuota agotada o una clave inválida fallan igual con todos.
+            if (lastErr.code !== 'model_unsupported') throw lastErr;
+            console.warn(`[REEL NARRATION] Gemini ${model} no disponible para esta clave (${lastErr.message}). Pruebo el siguiente.`);
+        }
+    }
+    throw lastErr;
+};
+
+const TTS_ADAPTERS = { kie: synthesizeWithKie, gemini: synthesizeWithGemini, openai: synthesizeWithOpenAI, elevenlabs: synthesizeWithElevenLabs };
 
 // ─── Respaldo entre proveedores ────────────────────────────────────────────
 //
@@ -803,7 +1000,15 @@ export const FALLBACK_CODES = new Set([
 const BLOCKED_STATUS = new Set(['quota', 'auth', 'not_configured', 'model_unsupported']);
 export const fallbackProviderFor = (id) => {
     const others = availableTtsProviders().filter(p => p !== id);
-    return others.find(p => !BLOCKED_STATUS.has(statusCache.get(p)?.value?.state)) || others[0] || null;
+    const knownBlocked = (p) => {
+        const cached = statusCache.get(p);
+        if (!cached || Date.now() - cached.at > STATUS_TTL_MS) return false;
+        // «No configurado» en la caché contradice a `availableTtsProviders`,
+        // que ya lo encontró configurado: es un estado viejo, no un bloqueo.
+        const state = cached.value?.state;
+        return state !== 'not_configured' && BLOCKED_STATUS.has(state);
+    };
+    return others.find(p => !knownBlocked(p)) || others[0] || null;
 };
 
 const notConfiguredError = (id) => {
@@ -1117,6 +1322,32 @@ const checkKie = async (base) => {
     return out;
 };
 
+const checkGemini = async (base) => {
+    const out = { ...base, voices: GEMINI_TTS_VOICES.map(v => ({ ...v, accent: null, language: null, category: 'catalog' })) };
+    const auto = (g) => { const id = voiceIdFor('gemini', g); return { id, label: GEMINI_TTS_VOICES.find(v => v.id === id)?.label || id, accent: null }; };
+    out.autoVoices = { female: auto('female'), male: auto('male') };
+    out.accentNote = 'El acento se dirige por instrucción: «Español · Colombia» habla con acento colombiano.';
+    // Lectura del modelo: confirma la clave y que el modelo existe para ella.
+    // Google no informa el saldo por API; la prueba de síntesis lo confirma.
+    const chain = [...new Set([ttsModelFor('gemini'), ...GEMINI_TTS_FALLBACK_MODELS])];
+    let last = null;
+    for (const model of chain) {
+        const resp = await callProvider('gemini', `${GEMINI_API_BASE}/models/${encodeURIComponent(model)}`, { headers: geminiHeaders() }, STATUS_TIMEOUT_MS);
+        if (resp.ok) {
+            out.state = 'ok';
+            out.model = model;
+            out.message = `Conectado (modelo ${model}). Google no informa el saldo por API: «Verificar conexión» lo confirma sintetizando.`;
+            return out;
+        }
+        const raw = await resp.text().catch(() => '');
+        last = classifyTtsFailure('gemini', resp.status, raw, { model });
+        if (last.code !== 'model_unsupported') break;
+    }
+    out.state = last?.code || 'unknown';
+    out.message = last?.message || 'No se pudo consultar Gemini.';
+    return out;
+};
+
 export const checkTtsProvider = async (id, { force = false } = {}) => {
     const p = TTS_PROVIDERS[id];
     if (!p) return null;
@@ -1148,8 +1379,9 @@ export const checkTtsProvider = async (id, { force = false } = {}) => {
         const startedAt = Date.now();
         try {
             value = id === 'kie' ? await checkKie(base)
-                : id === 'elevenlabs' ? await checkElevenLabs(base)
-                    : await checkOpenAI(base);
+                : id === 'gemini' ? await checkGemini(base)
+                    : id === 'elevenlabs' ? await checkElevenLabs(base)
+                        : await checkOpenAI(base);
         } catch (e) {
             const err = asTtsError(e, id);
             value = { ...base, state: err.code, message: err.message };

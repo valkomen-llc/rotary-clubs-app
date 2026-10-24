@@ -56,6 +56,15 @@ export const USAGE_PROVIDERS = {
         unitLabel: 'caracteres / segundos',
         note: 'Locución y banda sonora instrumental.'
     },
+    gemini: {
+        id: 'gemini',
+        label: 'Google Gemini TTS',
+        role: 'Voz',
+        allows: ['voice'],
+        unit: 'characters',
+        unitLabel: 'caracteres',
+        note: 'Voz en off con la credencial de Google de la plataforma (v4.1240). Respaldo de KIE.'
+    },
     stability: {
         id: 'stability',
         label: 'Stability · Stable Audio',
