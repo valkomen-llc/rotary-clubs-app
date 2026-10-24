@@ -110,8 +110,16 @@ export const MIN_PHOTOS = 5;
 export const MAX_PHOTOS = 10;
 export const MAX_VIDEOS = 1;
 export const MAX_FILES = 11;
-export const IMAGE_MAX_BYTES = 5 * 1024 * 1024;   // tope operativo del formulario
-export const VIDEO_MAX_BYTES = 300 * 1024 * 1024;  // un clip largo de teléfono
+// ⚠️ LOS TOPES SUBIERON (v4.1242): 5 MB por foto dejaba afuera cualquier foto
+// de un teléfono actual en máxima calidad o de una cámara, y el formulario
+// las rechazaba. Los archivos van DIRECTO del navegador a S3 con una URL
+// prefirmada —nunca pasan por la función, cuyo cuerpo tiene un tope de
+// ~4,5 MB—, así que el tope es una regla nuestra, no un límite técnico. Una
+// subida PUT única a S3 admite hasta 5 GB. Lo que viene después tampoco se
+// rompe: el artículo mide las fotos con sharp una por una y el Reel reduce la
+// foto (`normalizePhoto`) antes de dársela a un motor de video.
+export const IMAGE_MAX_BYTES = 50 * 1024 * 1024;    // una foto de cámara o de teléfono en máxima calidad
+export const VIDEO_MAX_BYTES = 2048 * 1024 * 1024;  // 2 GB: minutos de video 4K de teléfono
 
 const EXTENSIONS = {
     'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp',
@@ -172,10 +180,17 @@ export const checkFileMeta = ({ contentType, filename, size, type, name } = {}) 
 /** "4.6 MB" — una sola forma de decir el peso en todo el flujo. */
 export const formatMB = (bytes) => `${(Number(bytes) / 1048576).toFixed(1)} MB`;
 
+/** El TOPE dicho como se lee: "50 MB", "2 GB". Sale de la constante, así que
+ *  el mensaje no se separa del número al cambiarlo (v4.1242). */
+export const formatLimit = (bytes) => {
+    const mb = Number(bytes) / 1048576;
+    return mb >= 1024 ? `${+(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`;
+};
+
 /** El motivo de rechazo por peso, con nombre, peso real y tope. */
 export const overweightMessage = ({ filename, size, kind } = {}) => {
     const esVideo = kind === 'video';
-    return `${esVideo ? 'El video' : 'La imagen'} ${String(filename || 'El archivo')} pesa ${formatMB(Number(size) || 0)}. El tamaño máximo permitido es de ${esVideo ? '300' : '5'} MB.`;
+    return `${esVideo ? 'El video' : 'La imagen'} ${String(filename || 'El archivo')} pesa ${formatMB(Number(size) || 0)}. El tamaño máximo permitido es de ${formatLimit(esVideo ? VIDEO_MAX_BYTES : IMAGE_MAX_BYTES)}.`;
 };
 
 /** Aviso de duplicado: se muestra, no se reintenta (nada que reintentar). */

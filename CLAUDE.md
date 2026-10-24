@@ -210,7 +210,7 @@ es **rotar la credencial en Neon**, no sólo borrar el archivo.
 | Creador de Reels IA — v4.797 (voz en off con diagnóstico y borrador → aplicar: v4.1236–v4.1238; motor KIE: v4.1239; Google Gemini: v4.1240) | `docs/claude/creador-de-reels-ia.md` |
 | «Maneras de Contribuir» en el Generador de Publicaciones — v4.967 | `docs/claude/maneras-de-contribuir-en-el-generador-de-publicaciones.md` |
 | El directorio de socios se deja encontrar — v4.985 | `docs/claude/el-directorio-de-socios-se-deja-encontrar.md` |
-| Aportes de contenido a una campaña — v4.968 (participación y difusión: v4.972) | `docs/claude/aportes-de-contenido-a-una-campana.md` |
+| Aportes de contenido a una campaña — v4.968 (participación y difusión: v4.972; topes 50 MB / 2 GB: v4.1242) | `docs/claude/aportes-de-contenido-a-una-campana.md` |
 | Solicitud → artículo de noticia — v4.1003 | `docs/claude/solicitud-articulo-de-noticia.md` |
 | Analítica de Redes Sociales — v4.1053 | `docs/claude/analitica-de-redes-sociales.md` |
 | Publicar una noticia en Facebook — v4.1013 | `docs/claude/publicar-una-noticia-en-facebook.md` |

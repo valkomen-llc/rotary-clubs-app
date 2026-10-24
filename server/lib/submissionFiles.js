@@ -92,7 +92,9 @@ export const presignSubmissionUpload = async ({ campaignId, contentType, filenam
                 ContentType: contentType || 'application/octet-stream',
                 CacheControl: 'no-store',
             }),
-            { expiresIn: 600 }
+            // Una hora (v4.1242): un video de 2 GB por una conexión lenta tarda;
+            // S3 valida la firma al EMPEZAR la subida, no al terminar.
+            { expiresIn: 3600 }
         );
         return { ok: true, key, uploadUrl, kind: juicio.kind, contentType: contentType || 'application/octet-stream' };
     } catch (e) {
@@ -140,7 +142,9 @@ export const signedSubmissionUrl = async (key, { seconds = 900 } = {}) => {
  * de staging —una clave de fuera del prefijo no se lee por acá— y acotado en
  * peso: una foto de móvil entra; un video no se lee entero para nada.
  */
-export const readStagingObject = async (key, { maxBytes = 30 * 1024 * 1024 } = {}) => {
+// El tope de lectura acompaña al de la foto (v4.1242): con 30 MB fijos, una
+// foto de 40 MB se subía bien y después el artículo no la podía analizar.
+export const readStagingObject = async (key, { maxBytes = IMAGE_MAX_BYTES + 1024 * 1024 } = {}) => {
     try {
         const value = String(key || '');
         if (!value.startsWith(`${STAGING_PREFIX}/`) || value.includes('..')) return null;

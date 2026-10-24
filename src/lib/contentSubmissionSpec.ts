@@ -49,8 +49,10 @@ export const MIN_PHOTOS = 5;
 export const MAX_PHOTOS = 10;
 export const MAX_VIDEOS = 1;
 export const MAX_FILES = 11;
-export const IMAGE_MAX_BYTES = 5 * 1024 * 1024;
-export const VIDEO_MAX_BYTES = 300 * 1024 * 1024;
+// Espejo de los topes del servidor (v4.1242: 50 MB por foto, 2 GB el video).
+// Los archivos van directo a S3 con URL prefirmada: no pasan por la función.
+export const IMAGE_MAX_BYTES = 50 * 1024 * 1024;
+export const VIDEO_MAX_BYTES = 2048 * 1024 * 1024;
 
 export const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
 export const VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/webm'];
@@ -109,10 +111,19 @@ export const checkFileMeta = ({
 /** "4.6 MB" — una sola forma de decir el peso en todo el formulario. */
 export const formatMB = (bytes: number): string => `${(Number(bytes) / 1048576).toFixed(1)} MB`;
 
+/** El TOPE dicho como se lee: "50 MB", "2 GB" (v4.1242). */
+export const formatLimit = (bytes: number): string => {
+    const mb = Number(bytes) / 1048576;
+    return mb >= 1024 ? `${+(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`;
+};
+
+/** "máx 50 MB por foto, 2 GB el video" — para el texto de ayuda y los avisos. */
+export const LIMITS_LABEL = `${formatLimit(IMAGE_MAX_BYTES)} por foto, ${formatLimit(VIDEO_MAX_BYTES)} por video`;
+
 /** El motivo de rechazo por peso, con nombre, peso real y tope. */
 export const overweightMessage = ({ filename, size, kind }: { filename?: string; size?: number; kind?: string | null }): string => {
     const esVideo = kind === 'video';
-    return `${esVideo ? 'El video' : 'La imagen'} ${String(filename || 'El archivo')} pesa ${formatMB(Number(size) || 0)}. El tamaño máximo permitido es de ${esVideo ? '300' : '5'} MB.`;
+    return `${esVideo ? 'El video' : 'La imagen'} ${String(filename || 'El archivo')} pesa ${formatMB(Number(size) || 0)}. El tamaño máximo permitido es de ${formatLimit(esVideo ? VIDEO_MAX_BYTES : IMAGE_MAX_BYTES)}.`;
 };
 
 /** Aviso de duplicado: se muestra, no se reintenta (nada que reintentar). */
@@ -255,6 +266,6 @@ export default {
     POST_PLATFORMS, POST_PLATFORM_IDS, POST_PLATFORM_OTHER, postPlatformLabel,
     normalizePostUrl, MAX_POSTS, MAX_PARTICIPATING_CLUBS, POST_URL_MAX,
     activityDateLabel,
-    formatMB, overweightMessage, DUPLICATE_MESSAGE, duplicateKey,
+    formatMB, formatLimit, LIMITS_LABEL, overweightMessage, DUPLICATE_MESSAGE, duplicateKey,
     partialFileHash, countValidPhotos,
 };

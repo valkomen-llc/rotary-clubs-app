@@ -85,7 +85,17 @@ export const isEngineReadable = (format) => ENGINE_READABLE_FORMATS.includes(Str
  *             width:number, height:number, format:string, contentType:string,
  *             extension:string, reason:string|null }}
  */
-export const normalizePhoto = async (buffer, { sharp = null, quality = 92 } = {}) => {
+// ⚠️ UNA FOTO PESADA SE REDUCE ANTES DE DÁRSELA A UN MOTOR (v4.1242). Desde
+// que el formulario de aportes acepta fotos de hasta 50 MB, una foto de
+// cámara puede llegar a un Reel con 30 MB y 8000 px; los motores de video
+// (Kling vía KIE) rechazan imágenes de más de ~10 MB. Se reduce al lado mayor
+// de `maxSide` y se re-codifica JPEG, sólo si pasa de `maxBytes` o de
+// `maxSide`: una foto normal se sigue usando tal cual. El ORIGINAL queda
+// intacto en la Biblioteca; esto es la copia que se anima.
+export const ENGINE_MAX_BYTES = 9 * 1024 * 1024;
+export const ENGINE_MAX_SIDE = 4096;
+
+export const normalizePhoto = async (buffer, { sharp = null, quality = 92, maxBytes = ENGINE_MAX_BYTES, maxSide = ENGINE_MAX_SIDE } = {}) => {
     const fail = (reason) => ({
         ok: false, buffer, changed: false, orientation: 1,
         width: null, height: null, format: null, contentType: null, extension: null, reason
@@ -104,7 +114,8 @@ export const normalizePhoto = async (buffer, { sharp = null, quality = 92 } = {}
     const format = String(meta.format || '').toLowerCase();
     const expected = orientedDimensions({ width: meta.width, height: meta.height, orientation });
     const fix = needsOrientationFix(orientation);
-    const reencode = !isEngineReadable(format);
+    const tooBig = (maxBytes && buffer.length > maxBytes) || (maxSide && Math.max(meta.width, meta.height) > maxSide);
+    const reencode = !isEngineReadable(format) || tooBig;
 
     if (!fix && !reencode) {
         return {
@@ -119,12 +130,20 @@ export const normalizePhoto = async (buffer, { sharp = null, quality = 92 } = {}
     try {
         // `rotate()` sin argumento aplica la orientación EXIF y deja la
         // etiqueta en 1. PNG conserva el alfa; todo lo demás sale JPEG.
-        const keepPng = format === 'png';
+        // Una foto demasiado grande sale siempre JPEG: un PNG de cámara
+        // reducido seguiría pesando más que el tope.
+        const keepPng = format === 'png' && !tooBig;
         let pipeline = lib(buffer, { failOn: 'none' }).rotate();
-        pipeline = keepPng ? pipeline.png() : pipeline.jpeg({ quality, mozjpeg: true });
+        if (tooBig) pipeline = pipeline.resize({ width: maxSide, height: maxSide, fit: 'inside', withoutEnlargement: true });
+        pipeline = keepPng ? pipeline.png() : pipeline.jpeg({ quality: tooBig ? Math.min(quality, 88) : quality, mozjpeg: true });
         const out = await pipeline.toBuffer();
         const after = await lib(out, { failOn: 'none' }).metadata();
-        const upright = isUpright({ orientation: after.orientation || 1, width: after.width, height: after.height }, expected);
+        // Reducida, las medidas cambian a propósito: lo que se comprueba es
+        // que quedó derecha y con la MISMA proporción que la orientada.
+        const sameShape = Math.abs(after.width / after.height - expected.width / expected.height) < 0.02;
+        const upright = tooBig
+            ? !needsOrientationFix(after.orientation || 1) && sameShape
+            : isUpright({ orientation: after.orientation || 1, width: after.width, height: after.height }, expected);
         if (!upright) {
             return fail(`La normalización no dejó la imagen derecha (${after.width}x${after.height}, orientación ${after.orientation || 1}; se esperaba ${expected.width}x${expected.height}).`);
         }
@@ -134,9 +153,11 @@ export const normalizePhoto = async (buffer, { sharp = null, quality = 92 } = {}
             format: keepPng ? 'png' : 'jpeg',
             contentType: keepPng ? 'image/png' : 'image/jpeg',
             extension: keepPng ? 'png' : 'jpg',
-            reason: fix
-                ? `Orientación EXIF ${orientation} aplicada físicamente (${meta.width}x${meta.height} → ${after.width}x${after.height}).`
-                : `Formato ${format} re-codificado a ${keepPng ? 'PNG' : 'JPEG'} para que el motor lo lea.`
+            reason: [
+                fix ? `Orientación EXIF ${orientation} aplicada físicamente (${meta.width}x${meta.height} → ${after.width}x${after.height}).` : null,
+                tooBig ? `Foto de ${(buffer.length / 1048576).toFixed(1)} MB y ${meta.width}x${meta.height} reducida a ${after.width}x${after.height} (${(out.length / 1048576).toFixed(1)} MB) para el motor.` : null,
+                !fix && !tooBig ? `Formato ${format} re-codificado a ${keepPng ? 'PNG' : 'JPEG'} para que el motor lo lea.` : null
+            ].filter(Boolean).join(' ')
         };
     } catch (e) {
         return fail(`No se pudo normalizar la imagen: ${e.message}`);

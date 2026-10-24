@@ -42,6 +42,21 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1242.0',
+        title: 'Rotary en Acción: fotos de hasta 50 MB y videos de hasta 2 GB 📸🎥',
+        description: 'El formulario de aportes de contenido rechazaba fotos de más de 5 MB y videos de más de 300 MB, lo que dejaba afuera las fotos de cualquier teléfono actual en máxima calidad o de una cámara. Ahora acepta fotos de hasta 50 MB y videos de hasta 2 GB. Los archivos siguen subiendo directo del navegador al almacenamiento, sin pasar por el servidor; la subida espera lo que haga falta según el tamaño del archivo, y el análisis del artículo y la creación de Reels manejan las fotos pesadas: el Reel usa una copia reducida para el motor de video, sin tocar el original.',
+        date: new Date().toISOString(),
+        tags: ['rotary-en-accion', 'aportes', 'evidencias', 'subida', 'fix'],
+        type: 'hotfix',
+        impact: 'Alta: se pueden subir las fotos y videos de un teléfono o una cámara sin reducirlos antes.',
+        changes: [
+            { type: 'changed', text: 'Tope por foto: 5 MB → 50 MB. Tope del video: 300 MB → 2 GB. Los mensajes y el texto de ayuda salen de los topes.' },
+            { type: 'fixed', text: 'La subida ya no se corta a los 90 s (foto) o 5 min (video): el tiempo de espera crece con el archivo, y la URL de subida dura una hora.' },
+            { type: 'fixed', text: 'El análisis del artículo lee fotos del tamaño nuevo (antes se cortaba en 30 MB).' },
+            { type: 'added', text: 'Los Reels reducen la copia de una foto pesada (más de 9 MB o 4096 px) antes del motor de video; el original queda intacto.' },
+        ],
+    },
+    {
         version: '4.1241.0',
         title: 'Reels: el outro guardado se puede elegir aunque el Generador de Outros esté apagado en el sitio 🎬✅',
         description: 'En la ficha de un Reel, «Elegir outro» mostraba «La herramienta \'outro\' no está disponible para este sitio» y no dejaba integrar el outro creado y guardado desde la herramienta de outros. La lista de outros guardados y el outro predeterminado exigían que el Generador de Outros (Outro IA) estuviera habilitado en el sitio, aunque usar un outro ya guardado es parte de los Reels y de la Biblioteca, no del generador. Ahora esas dos lecturas se permiten con cualquier herramienta de video habilitada; crear, importar, editar, predeterminar o borrar outros sigue dependiendo del Generador.',

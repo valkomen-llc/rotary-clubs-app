@@ -480,7 +480,8 @@ const stageValidar = async (row, ctx) => {
 const bytesOf = async (f) => {
     if (f.mediaUrl) {
         try {
-            const r = await fetch(f.mediaUrl, { signal: AbortSignal.timeout(15000) });
+            // 60 s (v4.1242): una foto de hasta 50 MB tiene que poder bajarse.
+            const r = await fetch(f.mediaUrl, { signal: AbortSignal.timeout(60000) });
             if (r.ok) return Buffer.from(await r.arrayBuffer());
         } catch (e) { console.warn('[articles] no pude leer de la Biblioteca:', e.message); }
     }
