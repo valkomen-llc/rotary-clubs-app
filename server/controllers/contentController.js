@@ -22,8 +22,12 @@ import { publicUrlsForPosts, publicUrlsForTargets } from '../lib/postPublicUrl.j
 import { articleStats } from '../lib/articleAnalytics.js';
 import { parseDistrictTags } from '../lib/districtEcosystem.js';
 import { isDistrictSiteType } from '../lib/districtSite.js';
+import {
+    buildDistributionPlan, mergeTargetSelection, nextDistributionStatus, loadDistributionContext,
+    isColrotariosSite, pickColrotarios,
+} from '../lib/postDistributionPlan.js';
 
-console.log('[contentController] v4.1107.0 cargado — Distribución Jerárquica y Replicación Editorial Multi-Sitio (Destinos Distritales y Central)');
+console.log('[contentController] v4.1243.0 cargado — Distribución Jerárquica y Replicación Editorial Multi-Sitio (Destinos Distritales y Central) · el modal de distribución ofrece el sitio de origen, el distrito y COLROTARIOS por defecto');
 
 // Normaliza el contenido para que el texto fluya y corte entre palabras (no a
 // mitad de palabra). La causa principal del texto "mocho" es que los espacios
@@ -145,6 +149,17 @@ export const resolveAllowedTargets = async (user, targetClubIds, requestedSource
         [rawTargets, district.id || '', district.number != null ? String(district.number) : '']
     );
     const allowedIds = allowedClubs.rows.map(r => r.id);
+
+    // COLROTARIOS es destino de TODO el ecosistema, no de un distrito: el
+    // distrito publica también allí por defecto (v4.1243).
+    const outside = rawTargets.filter(id => !allowedIds.includes(id));
+    if (outside.length > 0) {
+        const extra = await db.query(
+            `SELECT id, name, type, "organizationType", category, status, domain, subdomain FROM "Club" WHERE id = ANY($1)`,
+            [outside]
+        );
+        for (const c of extra.rows) if (isColrotariosSite(c)) allowedIds.push(c.id);
+    }
 
     if (allowedIds.length === 0) {
         return { targets: [], sourceDistrictId: district.id, unauthorized: true, reason: 'Ningún club destino pertenece a su distrito.' };
@@ -1895,10 +1910,45 @@ export const getDistrictDistributionTargets = async (req, res) => {
             };
         });
 
+        // COLROTARIOS va siempre en la lista, aunque no pertenezca al distrito,
+        // y se dice cuál es para que el editor lo proponga por defecto (v4.1243).
+        let colrotarios = targets.find(t => isColrotariosSite(t)) || null;
+        if (!colrotarios) {
+            const colRes = await db.query(
+                `SELECT id, name, type, "organizationType", category, status, domain, subdomain, city, country, logo, "districtId", district FROM "Club"`
+            );
+            const pick = pickColrotarios(colRes.rows);
+            if (pick && pick.id !== emitterClub?.id) {
+                colrotarios = {
+                    id: pick.id,
+                    name: pick.name,
+                    category: pick.category || 'colrotarios',
+                    organizationType: pick.organizationType || 'Colrotarios',
+                    city: pick.city || '',
+                    country: pick.country || '',
+                    domain: pick.domain || null,
+                    subdomain: pick.subdomain || null,
+                    logo: pick.logo || null,
+                    status: pick.status || 'active',
+                    type: pick.type || 'colrotarios',
+                    districtId: pick.districtId,
+                    districtName: null,
+                    districtNumber: null,
+                    group: 'satelites',
+                    groupLabel: 'Programas y Eventos',
+                };
+                targets.push(colrotarios);
+            }
+        } else {
+            const best = pickColrotarios(rows);
+            if (best) colrotarios = targets.find(t => t.id === best.id) || colrotarios;
+        }
+
         res.json({
             district,
             targets,
             total: targets.length,
+            colrotariosId: colrotarios?.id || null,
         });
     } catch (e) {
         console.error('[NOTICIAS] getDistrictDistributionTargets error:', e);
@@ -2091,6 +2141,102 @@ export const retryTargetDistribution = async (req, res) => {
     }
 };
 
+/**
+ * Dónde se puede publicar una noticia que ya existe (v4.1243).
+ *
+ * Lo que pinta el modal de Trazabilidad: quién la publicó y desde qué
+ * distrito, su sitio de origen, el distrito y COLROTARIOS por defecto, los
+ * demás sitios activos que esta sesión puede elegir y lo que ya tiene. Hasta
+ * v4.1242 el modal sólo pintaba `targetClubIds` y, con una noticia propia de
+ * un club, decía «no tiene sitios de distribución asignados» sin ofrecer
+ * ninguno. El criterio vive en `postDistributionPlan.js`, puro.
+ */
+export const getPostDistributionPlan = async (req, res) => {
+    try {
+        await ensureDistributionColumns();
+        const ctx = await loadDistributionContext((sql, params) => db.query(sql, params), req.params.id);
+        if (!ctx.post) return res.status(404).json({ error: 'Noticia no encontrada.' });
+        const plan = buildDistributionPlan({ ...ctx, user: req.user });
+        res.json(plan);
+    } catch (e) {
+        console.error('[NOTICIAS] getPostDistributionPlan:', e?.message);
+        res.status(500).json({ error: 'No pudimos cargar los sitios donde se puede publicar esta noticia.', details: e?.message });
+    }
+};
+
+/**
+ * Guarda los sitios donde se publica una noticia que ya existe (v4.1243).
+ *
+ * ⚠️ El `clubId` NO se toca: el sitio de origen sigue siéndolo. Sólo cambian
+ * los destinos, y lo que esta sesión no podía elegir se conserva tal cual
+ * (`mergeTargetSelection`).
+ */
+export const savePostDistribution = async (req, res) => {
+    try {
+        await ensureDistributionColumns();
+        const ctx = await loadDistributionContext((sql, params) => db.query(sql, params), req.params.id);
+        if (!ctx.post) return res.status(404).json({ error: 'Noticia no encontrada.' });
+        const plan = buildDistributionPlan({ ...ctx, user: req.user });
+        if (!plan.canManage) return res.status(403).json({ error: plan.reason });
+
+        const merged = mergeTargetSelection(plan, ctx.post, req.body?.targetClubIds);
+        if (!merged.ok) return res.status(merged.status).json({ error: merged.error });
+        if (merged.rejected.length > 0) {
+            return res.status(403).json({
+                error: 'Algunos de los sitios elegidos no están disponibles para tu cuenta.',
+                rejected: merged.rejected,
+            });
+        }
+
+        const status = nextDistributionStatus(ctx.post, merged.targets);
+        await db.query(
+            `UPDATE "Post"
+                SET "targetClubIds" = $1::text[],
+                    "distributionStatus" = $2::jsonb,
+                    "sourceDistrictId" = COALESCE("sourceDistrictId", $3),
+                    "updatedAt" = NOW()
+              WHERE id = $4`,
+            [merged.targets, JSON.stringify(status), plan.publisher.districtId, ctx.post.id]
+        );
+
+        if (merged.added.length > 0) {
+            const full = await db.query('SELECT id, title, content, category, published FROM "Post" WHERE id = $1', [ctx.post.id]);
+            const row = full.rows[0];
+            for (const cid of merged.added) {
+                ingestMemorySafe({
+                    clubId: cid,
+                    kind: 'POST',
+                    sourceType: 'Post',
+                    sourceId: ctx.post.id,
+                    title: row?.title,
+                    content: row?.content,
+                    metadata: { category: row?.category, published: row?.published, centralized: true },
+                });
+            }
+        }
+
+        const after = buildDistributionPlan({
+            ...ctx,
+            post: { ...ctx.post, targetClubIds: merged.targets, distributionStatus: status },
+            user: req.user,
+        });
+        console.log(`[NOTICIAS] distribución de ${ctx.post.id}: +${merged.added.length} −${merged.removed.length} (total ${merged.targets.length})`);
+        res.json({
+            ok: true,
+            message: merged.targets.length > 0
+                ? `La noticia quedó publicada también en ${merged.targets.length} sitio(s).`
+                : 'La noticia quedó sólo en su sitio de origen.',
+            added: merged.added,
+            removed: merged.removed,
+            kept: merged.kept,
+            plan: after,
+        });
+    } catch (e) {
+        console.error('[NOTICIAS] savePostDistribution:', e?.message);
+        res.status(500).json({ error: 'No pudimos guardar los sitios de distribución.', details: e?.message });
+    }
+};
+
 export default {
     getPublicPosts, getPublicPostById, getPublicProjects, getPublicProjectById, getClubPosts, getPostById, getPostStats, createPost, updatePost, deletePost, bulkDeletePosts,
     getClubProjects, getTrashedProjects, createProject, updateProject,
@@ -2099,5 +2245,6 @@ export default {
     deleteTestimonial, permanentDeleteTestimonial,
     getClubAgentContext, getPostComments, createPostComment,
     getDistrictDistributionTargets, syncDistributedPost, updateTargetDistributionStatus, retryTargetDistribution,
+    getPostDistributionPlan, savePostDistribution,
     ensureDistributionColumns, resolveAllowedTargets
 };

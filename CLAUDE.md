@@ -226,7 +226,7 @@ es **rotar la credencial en Neon**, no sólo borrar el archivo.
 | Aniversarios IA — v4.895 (motor multimodelo: v4.897; **FLUJO SIMPLE: v4.907**) | `docs/claude/aniversarios-ia.md` |
 | Cuentas institucionales como identidades de acceso — v4.932 | `docs/claude/cuentas-institucionales-como-identidades-de-acceso.md` |
 | El asistente de redacción de Noticias — v4.891 | `docs/claude/el-asistente-de-redaccion-de-noticias.md` |
-| Publicaciones fantasma: maestro y réplicas — v4.938 | `docs/claude/publicaciones-fantasma-maestro-y-replicas.md` |
+| Publicaciones fantasma: maestro y réplicas — v4.938 (dónde se publica una noticia que ya existe: distrito y COLROTARIOS por defecto, v4.1243) | `docs/claude/publicaciones-fantasma-maestro-y-replicas.md` |
 | La dirección de un artículo — v4.873 | `docs/claude/la-direccion-de-un-articulo.md` |
 | El estado «En construcción» de un sitio — v4.883 | `docs/claude/el-estado-en-construccion-de-un-sitio.md` |
 | Lo que el panel descarga para abrirse — v4.880 | `docs/claude/lo-que-el-panel-descarga-para-abrirse.md` |

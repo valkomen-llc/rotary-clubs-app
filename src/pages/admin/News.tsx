@@ -243,6 +243,7 @@ const NewsManagement: React.FC = () => {
     const canDistribute = isSuperAdmin || isDistrictAdmin;
 
     const [distributionTargets, setDistributionTargets] = useState<DistributionTarget[]>([]);
+    const [colrotariosId, setColrotariosId] = useState<string | null>(null);
     const [aiSuggestedDestinations, setAiSuggestedDestinations] = useState<SuggestedDestination[]>([]);
     const [isSuggestingDestinations, setIsSuggestingDestinations] = useState(false);
     const [trazabilidadPost, setTrazabilidadPost] = useState<Post | null>(null);
@@ -983,6 +984,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 if (targetsRes && targetsRes.ok) {
                     const data = await targetsRes.json();
                     setDistributionTargets(Array.isArray(data) ? data : (data.targets || []));
+                    setColrotariosId(Array.isArray(data) ? null : (data.colrotariosId || null));
                 }
                 if (clubsRes && clubsRes.ok) setAllClubs(await clubsRes.json());
                 if (distRes && distRes.ok) setDistricts(await distRes.json());
@@ -1179,7 +1181,12 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 videoUrl: '',
                 images: [],
                 videoGallery: [],
-                targetClubIds: [],
+                // COLROTARIOS por defecto, igual que el distrito (v4.1243). Sólo
+                // desde un sitio concreto: en Club Platform sin sitio, una noticia
+                // con un destino dejaría de ser global y se vería SÓLO allí.
+                targetClubIds: (canDistribute && colrotariosId && club?.id && club.id !== 'loading' && club.id !== colrotariosId)
+                    ? [colrotariosId]
+                    : [],
                 publishToDistrict: true,
                 canonicalUrl: '',
                 scheduledAt: '',
@@ -2235,8 +2242,9 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                     </span>
                                                 )}
 
-                                                {/* Distribuir / Trazabilidad */}
-                                                {canDistribute && (
+                                                {/* Distribuir / Trazabilidad. El club dueño de la noticia también
+                                                    elige dónde más se publica: su distrito y COLROTARIOS (v4.1243). */}
+                                                {(canDistribute || (post.origin === 'own' && !post.isStatic && post.canEdit !== false)) && (
                                                     <button
                                                         type="button"
                                                         onClick={() => setTrazabilidadPost(post)}
@@ -3294,6 +3302,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                             club={club}
                                             user={user}
                                             targets={distributionTargets}
+                                            colrotariosId={colrotariosId}
                                             aiSuggestions={aiSuggestedDestinations}
                                             onSuggestWithAI={handleSuggestDestinationsAI}
                                             isSuggestingAI={isSuggestingDestinations}

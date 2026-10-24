@@ -102,3 +102,68 @@ reproduce el reporte literal.
 proyectos le responde 400 al operador sin sitio elegido. Es **otro módulo** y no
 se tocó acá: corregirlo cambiaría una pantalla que hoy funciona para quien la
 usa con un sitio seleccionado, y merece su propia vuelta.
+
+## Dónde se publica una noticia que ya existe — v4.1243
+
+Reporte con captura: en `app.clubplatform.org/admin/noticias`, el botón
+«Gestionar destinos de distribución» sobre «E-Club Origen apoyó campaña Jaque
+Mate a la Polio» (Origen: Propia, 0 réplicas) abría la Trazabilidad con «Este
+artículo no tiene sitios de distribución asignados» y **no ofrecía ningún
+sitio**. El modal sólo pintaba `targetClubIds`; para elegir destinos había que
+abrir el editor, y su pestaña «Distribución» sólo la ven el operador y el
+distrito. Se pidió: decir quién la publicó y desde qué distrito, mostrar el
+sitio activo del club y ofrecer **por defecto el distrito y «con Rotarios»**,
+que es **COLROTARIOS** (`colrotarios.org`): «todo lo que se publique en el
+distrito y en los clubes Rotarios que tienen el ecosistema activo también se
+pueda publicar en con Rotarios».
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/postDistributionPlan.js` | El CRITERIO, **puro**: quién la publicó, el sitio de origen, los destinos por defecto, qué puede elegir cada cuenta y cómo se guarda. La lectura (`loadDistributionContext`) recibe la función de consulta |
+| `getPostDistributionPlan` / `savePostDistribution` en `contentController.js` | `GET` y `PUT /admin/posts/:id/distribution` |
+| `DistributionTraceabilityModal.tsx` | El modal: «Dónde se publica» arriba, las réplicas guardadas abajo |
+
+Prueba: `npm run test:posts:distribution` (66, sin base ni red).
+
+**Reglas durables:**
+
+- **«CON ROTARIOS» ES COLROTARIOS.** No hay ningún sitio «ConRotarios»: el
+  pedido llegó por voz. Hay **dos** filas `Club` llamadas COLROTARIOS (una sin
+  dominio); `pickColrotarios` elige la activa con dominio propio. El criterio
+  de reconocimiento es el de la bandeja (`submissionInbox.js`): tipo,
+  categoría, nombre o dominio.
+- **QUIÉN LA PUBLICÓ ES UN SITIO, NO UNA PERSONA.** `Post` no guarda autor, así
+  que «Publicado por» es el sitio de `clubId` y su distrito (o Club Platform +
+  `sourceDistrictId` para una central). No inventar un autor.
+- **EL SITIO DE ORIGEN NO ES UN DESTINO.** Ya se ve allí por `clubId`; aparece
+  primero, fijo y con su enlace, y `mergeTargetSelection` lo descarta si llega
+  en la lista. El `PUT` **no toca `clubId`**.
+- **POR DEFECTO = PRESELECCIONADO, NO PUBLICADO.** El distrito y COLROTARIOS
+  vienen marcados sólo cuando la noticia aún no tiene destinos; nada cambia
+  hasta pulsar «Guardar distribución». Una noticia del propio distrito no se
+  ofrece a sí misma.
+- **QUIÉN ELIGE QUÉ lo decide el servidor** (`distributionScopeFor`): el
+  operador, cualquier sitio activo; el administrador de distrito, los de su
+  distrito más COLROTARIOS; el administrador/editor **del club dueño**, sólo
+  su distrito y COLROTARIOS (por eso el botón también le aparece a él). El
+  resto, nada y con su motivo.
+- **⚠️ NINGÚN DESTINO AJENO SE BORRA EN SILENCIO.** Lo que ya tenía la noticia y
+  la cuenta que guarda no puede elegir se CONSERVA (`kept`): un club que
+  añade COLROTARIOS no le quita a la noticia el destino que puso el distrito.
+- **⚠️ UNA CENTRAL NO SE QUEDA SIN DESTINOS** (409): con `clubId` NULL y el array
+  vacío se leería como global y aparecería en TODOS los sitios. Es la regla de
+  `retirePlan`.
+- **«RETIRAR» QUITA EL DESTINO.** Hasta v4.1242 el botón de la tabla llamaba a
+  `distribution/target-status`, que sólo escribe `status: 'retired'` en
+  `distributionStatus` — un campo que la cláusula de visibilidad **no mira**:
+  la noticia seguía publicada en ese sitio. Ahora usa el mismo `PUT`.
+- **EL EDITOR TAMBIÉN LO OFRECE.** `distribution-targets` devuelve
+  `colrotariosId` (y lo añade a la lista aunque no sea del distrito), la
+  pestaña muestra «Publicar también en COLROTARIOS · Por defecto» junto al
+  distrito, y `resolveAllowedTargets` lo acepta para el distrito. Una noticia
+  **nueva** lo trae marcado sólo desde un sitio concreto: en Club Platform sin
+  sitio, un destino convertiría una noticia global en una visible SÓLO allí.
+
+**Pendiente conocido:** `retryTargetDistribution` (`POST
+/posts/:id/distribution/retry`) añade un destino sin comprobar permisos más allá
+del rol de contenido. El modal ya no lo usa; merece su propia vuelta.

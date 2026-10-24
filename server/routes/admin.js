@@ -31,7 +31,8 @@ import {
     bulkDeleteProjects, restoreProject, permanentDeleteProject,
     getTestimonials, createTestimonial, updateTestimonial, deleteTestimonial, permanentDeleteTestimonial,
     getClubAgentContext,
-    getDistrictDistributionTargets, syncDistributedPost, updateTargetDistributionStatus, retryTargetDistribution
+    getDistrictDistributionTargets, syncDistributedPost, updateTargetDistributionStatus, retryTargetDistribution,
+    getPostDistributionPlan, savePostDistribution
 } from '../controllers/contentController.js';
 import {
     getUsers, createUser, updateUser, deleteUser
@@ -289,6 +290,11 @@ router.get('/posts', requireRoleOrPermission(contentRoles, 'news.view'), getClub
 router.post('/posts', requireRoleOrPermission(contentRoles, 'news.create'), createPost);
 
 // Acciones de Distribución Editorial
+// Dónde se puede publicar una noticia que ya existe (v4.1243): quién la
+// publicó, su distrito, el distrito y COLROTARIOS por defecto. El permiso
+// fino (operador / distrito / club dueño) lo decide `postDistributionPlan.js`.
+router.get('/posts/:id/distribution', roleMiddleware(contentRoles), getPostDistributionPlan);
+router.put('/posts/:id/distribution', roleMiddleware(contentRoles), savePostDistribution);
 router.post('/posts/:id/distribution/sync', roleMiddleware(contentRoles), syncDistributedPost);
 router.post('/posts/:id/distribution/target-status', roleMiddleware(contentRoles), updateTargetDistributionStatus);
 router.post('/posts/:id/distribution/retry', roleMiddleware(contentRoles), retryTargetDistribution);
