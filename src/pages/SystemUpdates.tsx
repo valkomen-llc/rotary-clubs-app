@@ -42,6 +42,22 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1245.0',
+        title: 'Reels: el outro se integra sin agotar el tiempo — se pega sobre el video ya montado 🎬⏱️',
+        description: 'Al pulsar «Volver a montar con el outro», el Reel terminaba en «Ningún proveedor de montaje pudo completar el Reel — ffmpeg: montaje del Reel: se agotó el tiempo (224s)». Poner el outro rehacía el Reel entero desde las escenas (clips, rótulos, música y voz), y eso no entraba en el tiempo del servidor. Ahora el video montado sin outro se guarda como base y el outro se pega encima en una sola pasada: medido en las mismas condiciones, 30 s en lugar de 70 s. Cambiar la transición o el outro vuelve a partir de la base, y quitarlo restaura la base sin volver a codificar. No se regenera ninguna escena ni se gastan créditos.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'outro', 'montaje', 'ffmpeg', 'fix'],
+        type: 'hotfix',
+        impact: 'Alta: el Reel y el outro salen unificados en un solo video, listo para publicar.',
+        changes: [
+            { type: 'fixed', text: 'El outro se pega sobre el Reel ya montado (base) en vez de rehacer las escenas: el montaje deja de agotar el tiempo.' },
+            { type: 'added', text: 'Cada montaje sin outro se guarda como base con su huella (escenas, música, voz y rótulos); si algo de eso cambia, se monta entero como antes.' },
+            { type: 'added', text: 'Los Reels montados antes de esta versión usan su video actual como base si no lleva outro y dura lo que sus escenas.' },
+            { type: 'changed', text: 'Quitar el outro restaura la base sin volver a codificar.' },
+            { type: 'added', text: 'Prueba npm run test:reels:outro:append (43 comprobaciones, con composiciones reales de ffmpeg).' },
+        ],
+    },
+    {
         version: '4.1244.0',
         title: 'Compartir publicación: cambiar la imagen desde la Biblioteca o desde el equipo 🖼️📤',
         description: 'En «Compartir publicación» la imagen que queda enlazada con la publicación era siempre la del artículo, sin forma de cambiarla. Ahora, bajo la vista previa, «Imagen de la publicación» ofrece elegir una de la Biblioteca de medios o subir una desde el equipo (queda guardada también en la Biblioteca). La imagen elegida es la que se usa al compartir el artículo en redes; la portada de la noticia en el sitio no cambia, y «Usar la portada» vuelve a la original. Antes de publicar, la plataforma le pide a Facebook que vuelva a leer la página, para que la tarjeta salga con la imagen nueva y no con la que tenía guardada.',
