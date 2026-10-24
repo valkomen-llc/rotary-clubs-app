@@ -412,11 +412,22 @@ export const resolveTenantScope = async (req) => {
     };
 };
 
+/** ¿Alguna de estas herramientas está habilitada? (Una ausente cuenta como habilitada.) */
+export const anyStudioToolEnabled = (features, keys) => keys.some(k => (features || {})[k] !== false);
+
 /**
  * Middleware para proteger rutas según la disponibilidad de la herramienta en el tenant.
  * Los administradores de la plataforma (isGlobalAdmin) SIEMPRE tienen acceso irrestricto.
+ *
+ * Acepta una herramienta o una LISTA (v4.1241): con una lista basta con que
+ * UNA esté habilitada. Es para las lecturas que comparten dos herramientas —
+ * la lista de outros guardados la usa el Generador de Outros y TAMBIÉN el
+ * selector «Elegir outro» de la ficha de un Reel—.
  */
-export const requireStudioTool = (toolKey) => {
+export const requireStudioTool = (toolKeyOrKeys) => {
+    const keys = Array.isArray(toolKeyOrKeys) ? toolKeyOrKeys : [toolKeyOrKeys];
+    const toolKey = keys[0];
+    const allowed = (features) => anyStudioToolEnabled(features, keys);
     return async (req, res, next) => {
         try {
             const scope = await resolveSocialScope(req);
@@ -430,7 +441,7 @@ export const requireStudioTool = (toolKey) => {
                 if (req.user?.role === 'administrator') return next();
                 // Si no hay clubId, verificar con la regla general
                 const globalFeatures = await getGlobalStudioFeatures();
-                if (globalFeatures[toolKey] === false) {
+                if (!allowed(globalFeatures)) {
                     return res.status(403).json({
                         error: `La herramienta '${toolKey}' no está disponible actualmente. Contacte al Administrador General de Club Platform.`,
                         code: 'STUDIO_TOOL_DISABLED',
@@ -441,7 +452,7 @@ export const requireStudioTool = (toolKey) => {
             }
 
             const features = await getClubStudioFeatures(clubId);
-            if (features[toolKey] === false) {
+            if (!allowed(features)) {
                 return res.status(403).json({
                     error: `La herramienta '${toolKey}' no está disponible para este sitio. Contacte al Administrador General de Club Platform.`,
                     code: 'STUDIO_TOOL_DISABLED',
@@ -451,11 +462,19 @@ export const requireStudioTool = (toolKey) => {
 
             next();
         } catch (err) {
-            console.error(`[requireStudioTool] Error evaluando herramienta '${toolKey}':`, err);
+            console.error(`[requireStudioTool] Error evaluando herramienta '${keys.join('|')}':`, err);
             next();
         }
     };
 };
+
+// ⚠️ USAR UN OUTRO NO ES GENERARLO (v4.1241). «Outro IA» habilita el
+// GENERADOR (crear, importar, editar, borrar). Elegir un outro ya guardado
+// para un Reel o un video de la Biblioteca es parte de esas herramientas, y
+// hasta v4.1240 la lista exigía «Outro IA»: con el generador apagado en un
+// sitio, la ficha del Reel decía «La herramienta 'outro' no está disponible»
+// y no dejaba poner el outro que el propio sitio había guardado.
+export const OUTRO_READ_TOOLS = ['outro', 'video', 'ai_reels', 'library', 'video_library'];
 
 /**
  * GET /api/content-studio/features
