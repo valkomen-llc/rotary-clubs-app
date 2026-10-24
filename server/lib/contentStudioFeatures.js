@@ -477,6 +477,19 @@ export const requireStudioTool = (toolKeyOrKeys) => {
 export const OUTRO_READ_TOOLS = ['outro', 'video', 'ai_reels', 'library', 'video_library'];
 
 /**
+ * Volver a montar un Reel que YA existe (v4.1246): `POST /reels/:id/render`.
+ *
+ * Exigía el «Creador de Video» (`video`), que es la herramienta de CREAR
+ * Reels y gastar créditos. Volver a montar no crea nada ni gasta créditos:
+ * reúne las escenas que ya existen y pega el outro. En rotary4281.org el
+ * Creador está apagado y los Reels encendidos, así que «Volver a montar con el
+ * outro» respondía «La herramienta 'video' no está disponible para este
+ * sitio» — el mismo defecto que v4.1241 corrigió en el selector de outros.
+ * Basta con cualquier herramienta desde la que se gestiona un Reel.
+ */
+export const REEL_REMOUNT_TOOLS = OUTRO_READ_TOOLS;
+
+/**
  * GET /api/content-studio/features
  * Consulta las herramientas activas.
  * Si es admin de plataforma y pasa ?clubId, devuelve las del club especificado (o 'global').

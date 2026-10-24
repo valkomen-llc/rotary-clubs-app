@@ -19,8 +19,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-    baseMontageKey, baseTotalSec, pickMontagePath, baseRecord, appendOutroToBase, LEGACY_BASE_TOLERANCE_SEC,
+    baseMontageKey, baseTotalSec, pickMontagePath, baseRecord, appendOutroToBase, LEGACY_BASE_TOLERANCE_SEC, specWithoutOutro,
 } from '../server/lib/reelOutroAppend.js';
+import { remountOutcome, REMOUNT_STATES } from '../server/lib/reelOutro.js';
+import { anyStudioToolEnabled, REEL_REMOUNT_TOOLS } from '../server/lib/contentStudioFeatures.js';
 import { probeMp4 } from '../server/lib/outroQuality.js';
 
 let total = 0, passed = 0;
@@ -141,7 +143,7 @@ console.log('\n▸ El cableado');
 const ctl = leer('server/controllers/reelController.js');
 const lib = leer('server/lib/reelOutroAppend.js');
 check('⚠️ el atajo va ANTES del montaje completo, y sin él se monta como siempre',
-    /submitted = await montarAtajoDelOutro\(project, spec, narration\)\s*\|\| await submitRender\(spec/.test(ctl));
+    /submitted = await montarAtajoDelOutro\(project, spec, camino\)[\s\S]{0,600}?if \(!submitted\) submitted = await submitRender\(specMontaje/.test(ctl));
 const cuerpo = ctl.slice(ctl.indexOf('const montarAtajoDelOutro'), ctl.indexOf('const submitAssembly'));
 check('⚠️ el atajo no regenera escenas ni llama a ningún motor de video',
     cuerpo.length > 100 && !/createKieVideoTask|dispatchScene|kieService|generateScene/.test(cuerpo));
@@ -154,6 +156,38 @@ check('⚠️ el sello del máster guarda la huella de la base', /baseKey/.test(
 check('…y un máster sin outro queda guardado como base', /sinOutro/.test(sello) && /base: nuevaBase/.test(sello));
 check('las dos ingestas pasan la subida al sello', (ctl.match(/masterStamp\(project\.renderSpec, probe, \{ upload/g) || []).length === 2);
 check('el máster usado como base queda guardado como base', /output\.baseStamp/.test(ctl));
+
+// ── v4.1246: el permiso y los dos pasos ─────────────────────────────
+console.log('\n▸ v4.1246 — Volver a montar no exige el Creador de Video');
+const sitio4281 = { video: false, post: true, outro: false, library: true, ai_reels: true, video_library: true };
+check('⚠️ con el Creador apagado y los Reels encendidos, volver a montar entra', anyStudioToolEnabled(sitio4281, REEL_REMOUNT_TOOLS));
+check('…y crear un Reel sigue cerrado', !anyStudioToolEnabled(sitio4281, ['video']));
+check('sin ninguna herramienta de video, tampoco se monta', !anyStudioToolEnabled({ video: false, outro: false, ai_reels: false, library: false, video_library: false }, REEL_REMOUNT_TOOLS));
+const rutas = leer('server/routes/contentStudio.js');
+check('POST /reels/:id/render acepta las herramientas de video', /router\.post\('\/reels\/:id\/render', authMiddleware, requireStudioTool\(REEL_REMOUNT_TOOLS\), renderReel\)/.test(rutas));
+check('POST /reels (crear) sigue exigiendo el Creador', /router\.post\('\/reels', authMiddleware, requireStudioTool\('video'\), createReel\)/.test(rutas));
+
+console.log('\n▸ v4.1246 — Sin base al día, el remontaje va en dos pasos');
+const sinOutro = specWithoutOutro(specCon);
+check('la base es el spec sin el clip del outro', sinOutro.clips.length === 4 && !sinOutro.clips.some((x) => x.isOutro) && sinOutro.outro === null);
+check('…con la duración de las escenas', sinOutro.totalSec === 17.3);
+check('…y la misma huella', baseMontageKey(sinOutro) === k);
+const paso1 = remountOutcome({ status: 'ready', sync: { stale: true, reason: 'falta el outro' }, baseReady: true });
+check('⚠️ el primer paso NO se canta como éxito ni como fallo: pide el segundo', paso1.state === 'base_lista' && paso1.ok === false && paso1.next === 'outro');
+check('base_lista es un estado declarado', REMOUNT_STATES.includes('base_lista'));
+check('sin el primer paso, un video sin outro sigue siendo «sin cambio»', remountOutcome({ status: 'ready', sync: { stale: true } }).state === 'sin_cambio');
+check('un error en el primer paso es un fallo, no un primer paso', remountOutcome({ status: 'error', statusDetail: 'x', baseReady: true }).state === 'fallo');
+const cuerpoSA = ctl.slice(ctl.indexOf('const submitAssembly'), ctl.indexOf('const foldSubstitutedScenes'));
+check('⚠️ el spec que se GUARDA es el que se monta (el sello sale de él)', /guardarSpec\(specMontaje\)/.test(cuerpoSA) && /submitRender\(specMontaje/.test(cuerpoSA));
+check('los dos pasos sólo en la vía de volver a montar', /submitAssembly\(project, scenes, \{ outroEnDosPasos: true \}\)/.test(ctl)
+    && (ctl.match(/outroEnDosPasos: true/g) || []).length === 1);
+check('el desenlace del remontaje lleva el siguiente paso', /baseReady: Boolean\(resultado\?\.__baseLista\)/.test(ctl)
+    && (ctl.match(/next: montado\.next \|\| null/g) || []).length === 2);
+const ficha = leer('src/components/admin/content-studio/ReelLibrary.tsx');
+check('⚠️ la ficha pide el segundo paso sola, desde «Volver a montar» y al guardar el outro',
+    (ficha.match(/await pegarOutroSiFalta\(reel\.id/g) || []).length === 2);
+const segundo = ficha.slice(ficha.indexOf('const pegarOutroSiFalta'), ficha.indexOf('const decirDesenlace'));
+check('…UNA vez: el segundo paso no vuelve a llamarse a sí mismo', (segundo.match(/pegarOutroSiFalta\(/g) || []).length === 0 && /\/render`/.test(segundo));
 
 console.log(`\n${passed}/${total} comprobaciones`);
 if (passed !== total) process.exitCode = 1;

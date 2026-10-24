@@ -59,6 +59,33 @@ const leerRespuestaDeMontaje = async (r: Response): Promise<Reel> => {
 };
 
 /**
+ * El SEGUNDO PASO del remontaje con outro (v4.1246).
+ *
+ * Sin una base al día, el servidor monta primero el Reel sin outro —lo que
+ * entra en el tiempo de la función— y contesta `next: 'outro'`. Acá se pide
+ * en seguida el segundo paso, que pega el outro encima de esa base: para
+ * quien pulsa es UN gesto. Una sola vez: si el segundo paso vuelve a pedir
+ * otro, se dice en vez de entrar en un bucle.
+ */
+const pegarOutroSiFalta = async (
+    reelId: string,
+    data: Reel,
+    onChanged: (r: Reel) => void,
+    setBusy: (s: string | null) => void
+): Promise<Reel> => {
+    const r0 = (data as { remount?: RemountOutcome } | null)?.remount;
+    if (r0?.next !== 'outro') return data;
+    toast.info(r0.reason);
+    setBusy('Pegando el outro sobre el video…');
+    const r = await fetch(`${API}/content-studio/reels/${reelId}/render`, {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify({})
+    });
+    const segundo = await leerRespuestaDeMontaje(r);
+    onChanged(segundo);
+    return segundo;
+};
+
+/**
  * ⚠️ LO QUE SE DICE AL TERMINAR SALE DEL DESENLACE DEL SERVIDOR (v4.1050).
  *
  * Volver a montar responde 200 con el proyecto también cuando el montaje
@@ -410,8 +437,9 @@ const OutroSection: React.FC<{
             const r = await fetch(`${API}/content-studio/reels/${reel.id}/outro`, {
                 method: 'PUT', headers: authHeaders(), body: JSON.stringify(body)
             });
-            const data = await leerRespuestaDeMontaje(r);
-            onChanged(data);
+            const primero = await leerRespuestaDeMontaje(r);
+            onChanged(primero);
+            const data = montando ? await pegarOutroSiFalta(reel.id, primero, onChanged, setBusy) : primero;
             // Lo que se dice al terminar sale del veredicto del servidor, no
             // de lo que se pidió: si el montaje no se pudo hacer, prometer
             // «outro integrado» sería falso y se publicaría creyendo que sí.
@@ -481,8 +509,9 @@ const OutroSection: React.FC<{
             const r = await fetch(`${API}/content-studio/reels/${reel.id}/render`, {
                 method: 'POST', headers: authHeaders(), body: JSON.stringify({})
             });
-            const data = await leerRespuestaDeMontaje(r);
-            onChanged(data);
+            const primero = await leerRespuestaDeMontaje(r);
+            onChanged(primero);
+            const data = await pegarOutroSiFalta(reel.id, primero, onChanged, setBusy);
             decirDesenlace(data, 'Montaje relanzado con las escenas existentes. No se regenera ninguna.');
         } catch (e) {
             toast.error(e instanceof Error ? e.message : 'No se pudo relanzar el montaje');

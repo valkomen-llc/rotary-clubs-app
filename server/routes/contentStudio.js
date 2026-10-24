@@ -116,7 +116,8 @@ import {
     updateStudioFeatures,
     getAllClubsStudioFeatures,
     requireStudioTool,
-    OUTRO_READ_TOOLS
+    OUTRO_READ_TOOLS,
+    REEL_REMOUNT_TOOLS
 } from '../lib/contentStudioFeatures.js';
 
 const router = express.Router();
@@ -235,7 +236,9 @@ router.post('/reels', authMiddleware, requireStudioTool('video'), createReel);
 router.get('/reels', authMiddleware, listReels);
 router.get('/reels/:id', authMiddleware, getReel);
 router.get('/reels/:id/sync', authMiddleware, syncReel);
-router.post('/reels/:id/render', authMiddleware, requireStudioTool('video'), renderReel);
+// Volver a montar NO crea ni gasta créditos: basta cualquier herramienta de
+// video (v4.1246). Crear un Reel (`POST /reels`) sigue exigiendo el Creador.
+router.post('/reels/:id/render', authMiddleware, requireStudioTool(REEL_REMOUNT_TOOLS), renderReel);
 router.post('/reels/:id/music', authMiddleware, changeMusic);
 router.post('/reels/:id/library', authMiddleware, saveReelToLibrary);
 router.patch('/reels/:id', authMiddleware, updateReelInfo);

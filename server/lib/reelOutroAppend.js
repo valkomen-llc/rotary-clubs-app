@@ -170,6 +170,17 @@ export const fetchBufferWithTimeout = (timeoutMs = Number(process.env.REEL_CLIP_
     return Buffer.from(await resp.arrayBuffer());
 };
 
+/**
+ * El mismo spec SIN el outro: la base. Es el primer paso del remontaje en dos
+ * pasos (v4.1246) cuando no hay base al día.
+ */
+export const specWithoutOutro = (spec) => ({
+    ...spec,
+    clips: (spec?.clips || []).filter((c) => !c?.isOutro),
+    outro: null,
+    totalSec: baseTotalSec(spec),
+});
+
 /** Lo que se guarda en `config.base`. */
 export const baseRecord = ({ url, s3Key = null, probe = {}, key, stampedAt = new Date().toISOString() }) => ({
     url, s3Key,
@@ -259,5 +270,5 @@ export const appendOutroToBase = async ({ baseUrl, outro, fetchBuffer, timeoutMs
 
 export default {
     OUTRO_APPEND_VERSION, LEGACY_BASE_TOLERANCE_SEC,
-    baseMontageKey, baseTotalSec, pickMontagePath, baseRecord, appendOutroToBase, fetchBufferWithTimeout,
+    baseMontageKey, baseTotalSec, pickMontagePath, baseRecord, appendOutroToBase, fetchBufferWithTimeout, specWithoutOutro,
 };

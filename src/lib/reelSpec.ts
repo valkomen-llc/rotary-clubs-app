@@ -534,12 +534,14 @@ export interface ReelOutro {
  * para poder pintarla. Es OPCIONAL — un servidor anterior no lo manda y la
  * pantalla se comporta como antes.
  */
-export type RemountState = 'montado' | 'en_curso' | 'bloqueado' | 'incompleto' | 'fallo' | 'sin_cambio';
+export type RemountState = 'montado' | 'en_curso' | 'bloqueado' | 'incompleto' | 'fallo' | 'sin_cambio' | 'base_lista';
 
 export interface RemountOutcome {
     ok: boolean;
     state: RemountState;
     reason: string;
+    /** `'outro'`: primer paso listo, la pantalla pide el segundo (v4.1246). */
+    next?: 'outro' | null;
 }
 
 export interface Reel {
