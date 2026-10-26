@@ -42,6 +42,25 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1250.0',
+        title: 'Eventos: conciliación de inscripciones y comprobantes de traslado, propios del evento (sin la Bóveda de Fondos) 🏦➡️📄',
+        description: 'Corrección de v4.1248–v4.1249: la conciliación de los eventos dependía de la Bóveda de Fondos (cada pago de inscripción se copiaba como movimiento de la Bóveda y la ficha pedía «Registrar movimiento en la Bóveda»). Ahora es una herramienta propia de Eventos. En la ficha de cada inscrito, «Conciliación y comprobante de traslado» muestra el pago por Stripe (valor, recargo de la pasarela, lo que le corresponde al evento, referencia de Stripe, verificación de la comisión real) y su traslado a la cuenta oficial del evento (Concorrotarios, configurable por evento). «Gestionar traslado y comprobante» registra el traslado, adjunta el PDF, lo confirma con evidencia, lo envía por correo y deja el historial. En la pestaña «Conciliación de inscripciones» se configuran el beneficiario y sus responsables, se ven los indicadores por moneda, se verifican los pagos con Stripe y se eligen varias inscripciones para un traslado consolidado, con un solo comprobante. La Bóveda queda exactamente como estaba antes de v4.1248.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'conciliación', 'traslados', 'comprobantes', 'stripe', 'fix'],
+        type: 'hotfix',
+        impact: 'Alta: los traslados de las inscripciones a Concorrotarios se documentan y comunican desde Eventos, sin tocar la Bóveda.',
+        changes: [
+            { type: 'removed', text: 'La dependencia de la Bóveda: confirmar un pago ya no crea un movimiento allá, la ficha ya no ofrece «Registrar movimiento en la Bóveda» y la Bóveda ya no tiene una vista por evento. Sus archivos quedan como en v4.1247.' },
+            { type: 'added', text: 'Módulo propio /api/event-funds, con siete tablas (EventFunds* y EventStripeCheck): beneficiario por evento, traslados individuales o consolidados, comprobantes PDF privados y versionados, envíos por correo e historial.' },
+            { type: 'added', text: 'Pago y traslado separados: un pago confirmado no es un traslado confirmado. Para confirmar un traslado hacen falta el PDF y la referencia, y lo confirma un administrador. Rechazar o revertir exige el motivo.' },
+            { type: 'added', text: 'Ninguna inscripción se puede trasladar dos veces: el control va en una transacción con candado por evento. COP y USD no se mezclan.' },
+            { type: 'added', text: 'El correo del comprobante usa la plantilla institucional y sólo dice «realizado» con el traslado confirmado. Pide confirmación explícita y no se duplica con un doble clic.' },
+            { type: 'added', text: '«Verificar con Stripe» trae la comisión real, el neto y la fecha de liberación de cada pago (sólo lectura).' },
+            { type: 'added', text: 'Auditoría de solo lectura de los movimientos que v4.1248–v4.1249 crearon en la Bóveda (GET /api/event-funds/admin/vault-audit). No se borró nada.' },
+            { type: 'added', text: 'npm run test:event-funds (71 comprobaciones, con el camino real y la independencia de la Bóveda).' },
+        ],
+    },
+    {
         version: '4.1249.0',
         title: 'Eventos: «Enviar comprobante de traslado» desde la ficha del inscrito, como en la Bóveda 📨',
         description: 'Reporte: no se encontraba la opción para enviar los comprobantes de traslado de las inscripciones. En la Bóveda cada aporte desplegado trae su traslado al beneficiario y el envío de la conciliación; en Eventos sólo se llegaba marcando una casilla en la pestaña «Conciliación de fondos». Ahora la ficha de cada inscrito tiene el bloque «Traslado al beneficiario y comprobante», con el botón «Enviar comprobante de traslado» (PDF por correo, con adjuntos, vista previa e historial), el desglose del pago, sus estados y los desembolsos para registrar el traslado con su comprobante PDF. Si el pago todavía no tiene movimiento en la Bóveda, la ficha ofrece registrarlo. En la pestaña «Conciliación de fondos», cada fila ya trasladada tiene su propio botón «Enviar comprobante».',

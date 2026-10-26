@@ -1136,31 +1136,6 @@ export const confirmPaidSession = async (session, stripeEvent = null) => {
         payload: { sessionId: session.id, paymentIntentId },
     });
 
-    // v4.1248 — EL MOVIMIENTO EN LA BÓVEDA, AL CONFIRMARSE EL PAGO. Hasta acá
-    // una inscripción pagada sólo llegaba a la Bóveda cuando alguien corría a
-    // mano «Reconstruir cobros», y mientras tanto no se podía trasladar ni
-    // conciliar. Es el MISMO constructor que usa la reconstrucción hacia atrás
-    // (y la Feria en `projectFairController`): con la aritmética en dos sitios,
-    // un cambio del recargo dejaría una copia atrás.
-    try {
-        const { siteForEventRegistration, buildDraftForEventRegistration, insertPayment } = await import('../lib/projectFairCollections.js');
-        const sitio = await siteForEventRegistration(updated);
-        const draft = buildDraftForEventRegistration(updated, { clubId: sitio.clubId });
-        if (!draft.ok) {
-            console.warn(`[event-registration] Sin movimiento para ${updated.registrationCode || updated.id}: ${draft.motivo}.`);
-        } else {
-            const paymentId = await insertPayment(draft);
-            if (paymentId) {
-                console.log(`[event-registration] 💰 Movimiento registrado en la Bóveda de ${sitio.clubId} `
-                    + `(neto ${draft.row.netAmount} ${draft.row.currency})`);
-            }
-        }
-    } catch (err) {
-        // Registrar el movimiento NUNCA puede costar la inscripción: el dinero
-        // ya entró. Lo que falte lo registra la pestaña «Conciliación de fondos».
-        console.error('[event-registration] No pude registrar el Payment del cobro:', err?.message);
-    }
-
     await notifyRegistration(updated, event, edition);
     return updated;
 };

@@ -256,6 +256,9 @@ const getProjectFair = async () => _projectFair || (({ default: _projectFair } =
 // catch-all del frontend y se quedaba colgado.
 let _eventRegistrations;
 const getEventRegistrations = async () => _eventRegistrations || (({ default: _eventRegistrations } = await import('../server/routes/event-registrations.js')), _eventRegistrations);
+// v4.1250 — Conciliación de inscripciones y traslados de un evento (dominio propio, sin la Bóveda).
+let _eventFunds;
+const getEventFunds = async () => _eventFunds || (({ default: _eventFunds } = await import('../server/routes/event-funds.js')), _eventFunds);
 // v4.720 — Plantillas IA. Perezoso como el resto: el catálogo y el compilador
 // sólo se cargan cuando alguien abre el módulo.
 let _designStudio;
@@ -376,6 +379,7 @@ app.use('/api/payouts', async (req, res, next) => { try { return (await getPayou
 app.use('/api/training', async (req, res, next) => { try { return (await getTraining())(req, res, next); } catch (e) { console.error('API Error [training]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/project-fair', async (req, res, next) => { try { return (await getProjectFair())(req, res, next); } catch (e) { console.error('API Error [project-fair]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/event-registrations', async (req, res, next) => { try { return (await getEventRegistrations())(req, res, next); } catch (e) { console.error('API Error [event-registrations]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/event-funds', async (req, res, next) => { try { return (await getEventFunds())(req, res, next); } catch (e) { console.error('API Error [event-funds]:', e); res.status(500).json({ error: e.message }); } });
 
 // SEO Inteligente (AI SEO Engine) — v4.703
 app.use('/api/seo-engine', async (req, res, next) => { try { return (await getSeoEngine())(req, res, next); } catch (e) { console.error('API Error [seo-engine]:', e); res.status(500).json({ error: e.message }); } });

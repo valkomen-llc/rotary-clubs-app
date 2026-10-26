@@ -52,7 +52,6 @@ import {
     receiptsForReconciliation, receiptsPublicos, reconciliationReceiptUrl,
 } from '../lib/reconciliationNotices.js';
 import { describeTransferScope } from '../lib/reconciliationSpec.js';
-import { eventPaymentIds } from '../lib/eventFunds.js';
 
 /** El sitio sobre el que se opera. Sólo el operador de la plataforma puede
  *  nombrar otro; para todos los demás es el suyo y punto. */
@@ -1143,16 +1142,12 @@ export const rebuildCollections = async (req, res) => {
         const clubId = clubDe(req);
         if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
         const aplicar = req.body?.apply === true;
-        // v4.1248 — Desde la pestaña «Conciliación de fondos» de un evento se
-        // registran SÓLO las inscripciones de ese evento.
-        const eventId = String(req.body?.eventId || '').trim() || null;
 
         const { rebuildProjectFairPayments } = await import('../lib/projectFairCollections.js');
         const informe = await rebuildProjectFairPayments({
             clubId, apply: aplicar,
             limit: Math.min(Number(req.body?.limit) || 200, 500),
             budgetMs: 60_000,
-            ...(eventId ? { eventId, source: 'event_registration' } : {}),
         });
         return res.json({ ok: true, ...informe });
     } catch (e) {
@@ -1187,24 +1182,15 @@ export const listClubNotices = async (req, res) => {
     try {
         const clubId = clubDe(req);
         if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
-        // v4.1248 — `eventId`: sólo los avisos que cubren pagos de ese evento.
-        const delEvento = req.query?.eventId
-            ? await eventPaymentIds({ clubId, eventId: req.query.eventId })
-            : null;
-        if (req.query?.eventId && delEvento === null) return res.status(404).json({ error: 'Evento no encontrado' });
-        if (delEvento && delEvento.length === 0) return res.json({ notices: [] });
         const { rows } = await db.query(
             `SELECT id, "clubId", "batchId", scope, "paymentIds", "disbursementIds", "batchIds",
                     "campaignId", beneficiary, currency, count, "netAmount",
-                    emails, phones, results, attachments, state, error, "sentAt", "createdAt"
+                    emails, phones, results, attachments, "sentAt", "createdAt"
              FROM "DisbursementNotice"
              WHERE "clubId" = $1
-                   ${delEvento ? `AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE("paymentIds", '[]'::jsonb)) AS pid WHERE pid = ANY($3::text[]))` : ''}
              ORDER BY "sentAt" DESC, "createdAt" DESC
              LIMIT $2`,
-            delEvento
-                ? [clubId, Math.min(Math.max(1, Number(req.query?.limit) || 100), 500), delEvento]
-                : [clubId, Math.min(Math.max(1, Number(req.query?.limit) || 100), 500)]
+            [clubId, Math.min(Math.max(1, Number(req.query?.limit) || 100), 500)]
         );
         return res.json({ notices: rows });
     } catch (e) {
@@ -1221,12 +1207,6 @@ export const listAuditEvents = async (req, res) => {
     try {
         const clubId = clubDe(req);
         if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
-        // v4.1248 — `eventId`: sólo la traza de los pagos de ese evento.
-        const delEvento = req.query?.eventId
-            ? await eventPaymentIds({ clubId, eventId: req.query.eventId })
-            : null;
-        if (req.query?.eventId && delEvento === null) return res.status(404).json({ error: 'Evento no encontrado' });
-        if (delEvento && delEvento.length === 0) return res.json({ events: [] });
         const { rows } = await db.query(
             `SELECT e.id, e."paymentId", e."clubId", e.kind, e."fromState", e."toState",
                     e."actorKind", e."actorId", e."actorLabel", e.reference, e.note, e.meta,
@@ -1235,12 +1215,9 @@ export const listAuditEvents = async (req, res) => {
              FROM "PaymentLifecycleEvent" e
              LEFT JOIN "Payment" p ON p.id = e."paymentId"
              WHERE e."clubId" = $1
-                   ${delEvento ? 'AND e."paymentId" = ANY($3::text[])' : ''}
              ORDER BY e."occurredAt" DESC, e."createdAt" DESC
              LIMIT $2`,
-            delEvento
-                ? [clubId, Math.min(Math.max(1, Number(req.query?.limit) || 100), 500), delEvento]
-                : [clubId, Math.min(Math.max(1, Number(req.query?.limit) || 100), 500)]
+            [clubId, Math.min(Math.max(1, Number(req.query?.limit) || 100), 500)]
         );
         const parsed = rows.map(r => {
             let metaPayload = {};

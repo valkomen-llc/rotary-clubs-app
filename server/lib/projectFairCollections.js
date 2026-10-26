@@ -28,17 +28,8 @@ import {
     resolveCollectionSite,
     splitCollectionAmounts,
 } from './collectionSources.js';
-import { PAID_REGISTRATION_STATUSES } from './eventFundsSpec.js';
 
 const FUENTE = COLLECTION_SOURCES.project_fair;
-
-/**
- * v4.1248 — Las inscripciones al evento cuyo cobro entró y sigue vigente.
- * Antes sólo `paid`: una inscripción ya ACREDITADA (o que asistió) dejaba de
- * contar como cobrada y su dinero no llegaba nunca a la Bóveda. Es la misma
- * lista que usa la pestaña «Conciliación de fondos» (`eventFundsSpec.js`).
- */
-const COLLECTABLE_REGISTRATION_STATUSES = PAID_REGISTRATION_STATUSES;
 
 /** Cuánto puede tardar una pasada de reconstrucción antes de ceder el turno. */
 const PRESUPUESTO_MS = Number(process.env.COLLECTION_REBUILD_BUDGET_MS) || 20000;
@@ -192,9 +183,7 @@ export const buildDraftForEventRegistration = (reg = {}, { clubId = null } = {})
                 companionsCount: Number(reg.companionsCount) || 0,
                 companionsAmount: Number(reg.companionsAmount) || 0,
                 sessionId: reg.stripeSessionId || null,
-                // v4.1248 — El evento de la inscripción (antes un «12-valledupar» fijo,
-                // falso para cualquier otro evento).
-                eventId: reg.eventId || null,
+                edition: '12-valledupar',
                 basis: reparto.basis,
                 surcharge: surchargeOf(reg),
             },
@@ -292,7 +281,7 @@ export const insertPayment = async (draft) => {
 /**
  * LAS POSTULACIONES E INSCRIPCIONES PAGADAS QUE TODAVÍA NO TIENEN MOVIMIENTO.
  */
-export const pendingCollections = async ({ limit = TOPE, source = 'all', eventId = null } = {}) => {
+export const pendingCollections = async ({ limit = TOPE, source = 'all' } = {}) => {
     const list = [];
     if (source === 'all' || source === 'project_fair') {
         const { rows: subRows } = await db.query(
@@ -324,18 +313,13 @@ export const pendingCollections = async ({ limit = TOPE, source = 'all', eventId
                FROM "EventRegistration" r
                LEFT JOIN "Payment" p
                       ON p.provider = 'stripe'
-                     -- v4.1248 — Cualquiera de las dos referencias: un cobro
-                     -- registrado con la Session cuando la inscripción todavía
-                     -- no tenía PaymentIntent YA tiene movimiento, y mirar sólo
-                     -- el PaymentIntent lo duplicaría.
-                     AND p."providerRef" IN (r."stripePaymentIntentId", r."stripeSessionId")
-              WHERE r.status = ANY($${eventId ? 3 : 2}::text[])
+                     AND p."providerRef" = COALESCE(r."stripePaymentIntentId", r."stripeSessionId")
+              WHERE r.status = 'paid'
                 AND COALESCE(r."stripePaymentIntentId", r."stripeSessionId") IS NOT NULL
                 AND p.id IS NULL
-                ${eventId ? 'AND r."eventId" = $2' : ''}
               ORDER BY r."paidAt" ASC NULLS LAST
               LIMIT $1`,
-            eventId ? [limit, eventId, COLLECTABLE_REGISTRATION_STATUSES] : [limit, COLLECTABLE_REGISTRATION_STATUSES]
+            [limit]
         );
         list.push(...(regRows || []));
     }
@@ -415,7 +399,6 @@ export const paymentsForSubmissions = async (submissions = []) => {
  */
 export const rebuildProjectFairPayments = async ({
     clubId = null, apply = false, budgetMs = PRESUPUESTO_MS, limit = TOPE,
-    source = 'all', eventId = null,
 } = {}) => {
     const arranque = Date.now();
     const resumen = {
@@ -426,7 +409,7 @@ export const rebuildProjectFairPayments = async ({
 
     let candidatos;
     try {
-        candidatos = await pendingCollections({ limit, source, eventId });
+        candidatos = await pendingCollections({ limit });
     } catch (e) {
         return { ...resumen, error: `No pude leer las inscripciones pagadas: ${e?.message}` };
     }

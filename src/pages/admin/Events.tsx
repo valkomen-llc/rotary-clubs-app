@@ -1589,7 +1589,7 @@ const EventsManagement = () => {
                                                         {{
                                                             inscripciones: '👥 Inscripciones',
                                                             completadas: '🧾 Inscripciones COLROTARIOS',
-                                                            conciliacion: '💰 Conciliación de fondos',
+                                                            conciliacion: '💰 Conciliación de inscripciones',
                                                             info: '📋 Información',
                                                             media: '🖼️ Multimedia',
                                                             html: '</> HTML',
@@ -1965,7 +1965,7 @@ const EventsManagement = () => {
                                                     Antes «Inscripciones completadas» dentro de Registro. El
                                                     cambio de nombre es SÓLO del rótulo: la clave interna, los
                                                     endpoints y el slug público no se tocan. */}
-                                                {/* ── Tab: Conciliación de fondos (v4.1248) ── */}
+                                                {/* ── Tab: Conciliación de inscripciones (v4.1248; dominio propio de Eventos desde v4.1250) ── */}
                                                 {getTab(event.id) === 'conciliacion' && (
                                                     <EventFundsTab eventId={event.id} eventTitle={event.title} clubId={event.clubId} />
                                                 )}
