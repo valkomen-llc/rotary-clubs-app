@@ -985,3 +985,61 @@ fuera de Prisma, en la lista del guardián).
   administrador de otro sitio recibe 404. Tope defensivo `IMPORT_MAX_ROWS`
   (2000) — miles de filas exigirían una cola, y decirlo es mejor que colgar la
   función.
+
+### PayPal de la plataforma por defecto en las inscripciones — v4.1251
+
+Pedido literal (Distrito 4281): *«el medio de pago de los eventos sea por
+defecto el que está conectado de PayPal en las pasarelas de pago, ya que
+aparece Stripe y debe ser el PayPal de COLROTARIOS»*.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/eventPaymentMethods.js` | El CRITERIO. **Puro**: qué vías se ofrecen, cuál va por defecto, la referencia `evreg:` y la clave de idempotencia |
+| `paymentOptionsFor` / `startPaypalCheckout` / `confirmPaypalCapture` / `captureRegistrationOrder` en `eventRegistrationController.js` | La I/O: opciones, pedido, captura y confirmación |
+| `handlePaypalRegistrationEvent` (llamado desde `paypalWebhook`) | El webhook compartido con los aportes |
+| `PaymentMethodPicker` en `src/pages/RegistroEvento.tsx` | El selector, con PayPal preseleccionado |
+
+Pruebas: `npm run test:event-payment` (28 casos, **sin base, credenciales ni red**).
+
+**Reglas durables:**
+
+- **PayPal va POR DEFECTO cuando se OFRECE**: credenciales cargadas, activado
+  en *Integraciones → Métodos de pago* y capaz de cobrar la moneda (directa o
+  convertida con la tasa del día). Es la MISMA cuenta de la plataforma que
+  cobra los aportes y la misma decisión (`resolvePaypalCharge`,
+  `isMethodOffered('paypal')`): no hay un segundo criterio.
+- **La tarjeta (Stripe) queda SIEMPRE como alternativa** y el interruptor de la
+  tarjeta en Métodos de pago sigue sin alcanzar a los eventos: apagarlo no
+  puede dejar a nadie sin inscribirse. `test:payment-methods` comprueba que el
+  controlador sólo consulta el interruptor de PayPal.
+- **Pedir PayPal cuando no se puede NO cae en silencio a la tarjeta**: el
+  checkout responde 409 `PAYMENT_METHOD_UNAVAILABLE` y la pantalla deja
+  elegida la tarjeta. Cobrar por otra vía distinta de la elegida es otro trato.
+- **La conversión se DICE antes de salir hacia PayPal** (regla de v4.870):
+  PayPal no procesa COP, así que una inscripción en pesos se cobra en la moneda
+  de la cuenta (`PAYPAL_CURRENCY`) con la tasa efectiva. Sin tasa, PayPal no se
+  ofrece y se cobra con tarjeta. La intención (fila `created` en
+  `EventRegistrationPayment`) guarda los tres datos de la conversión.
+- **El recargo se guarda EN LA MONEDA COBRADA** (`payload.surcharge`, convertido
+  con la misma tasa; el original al lado). La conciliación del evento y el panel
+  de ingresos restan el recargo de `amount` en `currency`: un recargo en pesos
+  restado de un cobro en dólares es el defecto de v4.845.
+- **`custom_id = evreg:<inscripción>`** separa, en el webhook compartido, una
+  inscripción de un aporte (los aportes llevan el id del sitio). El webhook las
+  despacha ANTES de leer un aporte: si no, se registraría una donación.
+- **Aprobar no es cobrar.** Al volver (`?pago=paypal&token=<pedido>`) la
+  pantalla llama a `POST /:id/paypal/capture`. Si la persona cierra la pestaña,
+  `CHECKOUT.ORDER.APPROVED` captura y `PAYMENT.CAPTURE.COMPLETED` confirma. Las
+  vías convergen en `confirmPaypalCapture`, idempotente por el índice único de
+  `stripeEventId` (`paypal:<captura>`) y por el UPDATE condicional. Un pedido de
+  otra inscripción no confirma ésta (`pedido_ajeno`).
+- **Sólo una captura `COMPLETED` confirma.** Una en `PENDING` (retenida por
+  PayPal) no ocupa cupo: se confirma cuando llega el webhook.
+- **Stripe y PayPal comparten el cierre** (`finalizePaidRegistration`: código,
+  cuenta de asistente, historial y correo).
+- **Un `expired`/`failed` de Stripe no deshace un pago confirmado**: con dos
+  vías, quien abrió la tarjeta, la canceló y pagó por PayPal recibe 24 h
+  después el vencimiento de la sesión que no usó. Sólo un reembolso mueve una
+  inscripción liquidada.
+- **Pendiente, a sabiendas**: los reembolsos de PayPal no llegan por webhook a
+  la inscripción (sí los de Stripe). Se reembolsa en PayPal y se marca a mano.

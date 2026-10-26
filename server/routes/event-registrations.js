@@ -129,6 +129,8 @@ router.get('/config/:clubId/:eventRef', registrations.getPublicRegistrationConfi
 router.post('/draft', json, registrations.saveDraft);
 router.post('/', json, registrations.createRegistration);
 router.post('/:id/checkout', json, registrations.createCheckout);
+// v4.1251 — La persona vuelve de PayPal: se captura el pedido y se confirma.
+router.post('/:id/paypal/capture', json, registrations.capturePaypalRegistration);
 router.get('/:id', registrations.getRegistration);
 
 export default router;

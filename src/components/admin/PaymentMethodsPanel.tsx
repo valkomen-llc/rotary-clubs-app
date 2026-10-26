@@ -153,8 +153,10 @@ export default function PaymentMethodsPanel() {
                         cobrar con tarjeta», y las inscripciones siguen. */}
                     <p className="text-xs text-gray-500 mt-2">
                         <b>Alcanza a los aportes:</b> el modal de donación, la membresía de un bloque de Aportes
-                        y PayPal. <b>No</b> alcanza a las inscripciones a eventos, a la Feria de Proyectos, a las
-                        capacitaciones ni a la tienda: ésos son cobros aparte y se siguen procesando con tarjeta.
+                        y PayPal. <b>PayPal activado</b> es además el medio de pago <b>por defecto de las
+                        inscripciones a eventos</b>, con la tarjeta como alternativa (apagar la tarjeta acá no la
+                        quita de los eventos). <b>No</b> alcanza a la Feria de Proyectos, a las capacitaciones ni a
+                        la tienda: ésos son cobros aparte y se siguen procesando con tarjeta.
                     </p>
                     <p className="text-xs text-gray-500 mt-2">
                         La configuración es de <b>toda la plataforma</b>, no por sitio: la cuenta de cobro es una

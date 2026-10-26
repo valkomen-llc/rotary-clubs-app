@@ -506,6 +506,21 @@ export const paypalWebhook = async (req, res) => {
             console.warn('[PAYPAL] webhook sin verificar (falta PAYPAL_WEBHOOK_ID o encabezados)');
         }
 
+        // v4.1251 — Las INSCRIPCIONES A EVENTOS también cobran por esta cuenta
+        // y llegan a este mismo webhook. Se separan ANTES de leerlas como
+        // aporte: su `custom_id` lleva `evreg:<inscripción>` y no el id de un
+        // sitio, y tratarlas como donación crearía un aporte que no existe.
+        try {
+            const { handlePaypalRegistrationEvent } = await import('./eventRegistrationController.js');
+            if (await handlePaypalRegistrationEvent(evento)) return res.json({ received: true, flow: 'event_registration' });
+        } catch (e) {
+            console.error('[PAYPAL] webhook de inscripción no procesado:', e?.message);
+            const unidad = evento?.resource?.purchase_units?.[0] || evento?.resource || {};
+            if (String(unidad.custom_id || '').startsWith('evreg:')) {
+                return res.json({ received: true, flow: 'event_registration', error: e?.message });
+            }
+        }
+
         if (evento?.event_type !== 'PAYMENT.CAPTURE.COMPLETED') {
             return res.json({ received: true, ignored: evento?.event_type || null });
         }

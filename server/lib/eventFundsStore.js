@@ -139,8 +139,8 @@ export const loadEventFunds = async (event, { canSeeAccount = false } = {}) => {
  */
 export const registrationHistory = async ({ eventId, registration, transferIds = [] }) => {
     const [payments, history] = await Promise.all([
-        safe(db.query(`SELECT status, currency, amount, "refundedAmount", "paymentIntentId", "checkoutSessionId", "occurredAt", "createdAt"
-                         FROM "EventRegistrationPayment" WHERE "registrationId" = $1`, [registration.id])),
+        safe(db.query(`SELECT status, provider, currency, amount, "refundedAmount", "paymentIntentId", "checkoutSessionId", "chargeId", "occurredAt", "createdAt"
+                         FROM "EventRegistrationPayment" WHERE "registrationId" = $1 AND status <> 'created'`, [registration.id])),
         safe(db.query(`SELECT * FROM "EventFundsHistory"
                         WHERE "eventId" = $1 AND ("registrationId" = $2 OR "transferId" = ANY($3::text[]))
                         ORDER BY "occurredAt" ASC`, [eventId, registration.id, transferIds])),
@@ -148,11 +148,15 @@ export const registrationHistory = async ({ eventId, registration, transferIds =
     const out = [];
     if (registration.createdAt) out.push({ at: registration.createdAt, kind: 'inscripcion', label: 'Inscripción registrada', actor: 'Sistema' });
     for (const p of payments) {
-        const label = p.status === 'succeeded' ? 'Pago confirmado por Stripe'
+        // v4.1251 — Desde que las inscripciones cobran por PayPal, el actor
+        // sale de la fila: «confirmado por Stripe» en un pago de PayPal manda
+        // a buscarlo al tablero equivocado.
+        const via = p.provider === 'paypal' ? 'PayPal' : 'Stripe';
+        const label = p.status === 'succeeded' ? `Pago confirmado por ${via}`
             : p.status === 'refunded' ? 'Pago reembolsado' : p.status === 'failed' ? 'Pago fallido' : `Pago: ${p.status}`;
         out.push({
-            at: p.occurredAt || p.createdAt, kind: `pago_${p.status}`, label, actor: 'Stripe',
-            reference: p.paymentIntentId || p.checkoutSessionId || null,
+            at: p.occurredAt || p.createdAt, kind: `pago_${p.status}`, label, actor: via,
+            reference: p.paymentIntentId || p.chargeId || p.checkoutSessionId || null,
             detail: `${Number(p.refundedAmount ?? p.amount) || 0} ${p.currency}`,
         });
     }

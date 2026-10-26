@@ -42,6 +42,24 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1251.0',
+        title: 'Eventos: el pago de las inscripciones va por defecto por el PayPal de COLROTARIOS 💳➡️🅿️',
+        description: 'Pedido del Distrito 4281: en las inscripciones a eventos aparecía Stripe y el medio de pago debía ser el PayPal de COLROTARIOS que ya está conectado en Métodos de pago. Ahora, cuando PayPal está activado allí, el asistente de inscripción lo trae preseleccionado («Recomendado») y la tarjeta queda como alternativa. Si la inscripción está en pesos, se avisa ANTES de salir cuánto se cobrará en dólares con la tasa del día. Al volver de PayPal el pago se captura y la inscripción se confirma con su código y su comprobante, igual que con tarjeta; si la persona cierra la pestaña, el webhook de PayPal termina el cobro. Si PayPal no está activado o no puede cobrar la moneda, todo sigue como antes, con tarjeta.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'paypal', 'pagos', 'distrito 4281'],
+        type: 'improvement',
+        impact: 'Alta: las inscripciones a eventos se cobran por el PayPal de la plataforma por defecto.',
+        changes: [
+            { type: 'added', text: 'Checkout de inscripciones con dos vías: PayPal (por defecto cuando está activado en Métodos de pago) y tarjeta (Stripe) como alternativa.' },
+            { type: 'added', text: 'Conversión a la vista: una inscripción en COP se cobra en la moneda de la cuenta de PayPal con la TRM del día, y se dice el importe antes de pagar. Sin tasa no se ofrece PayPal (nunca se inventa una).' },
+            { type: 'added', text: 'Captura al volver de PayPal (POST /api/event-registrations/:id/paypal/capture) y confirmación por webhook (PAYMENT.CAPTURE.COMPLETED y CHECKOUT.ORDER.APPROVED), idempotentes entre sí.' },
+            { type: 'improved', text: 'El webhook de PayPal separa las inscripciones de los aportes: una inscripción nunca se registra como donación.' },
+            { type: 'improved', text: 'La conciliación del evento muestra «Pago confirmado por PayPal» y guarda el recargo en la moneda cobrada, para que lo que le corresponde al evento cuadre.' },
+            { type: 'fix', text: 'Una sesión de Stripe que expira o falla ya no deshace una inscripción ya pagada (p. ej. quien abrió la tarjeta, la canceló y pagó por PayPal).' },
+            { type: 'added', text: 'npm run test:event-payment (28 comprobaciones, sin base ni red).' },
+        ],
+    },
+    {
         version: '4.1250.0',
         title: 'Eventos: conciliación de inscripciones y comprobantes de traslado, propios del evento (sin la Bóveda de Fondos) 🏦➡️📄',
         description: 'Corrección de v4.1248–v4.1249: la conciliación de los eventos dependía de la Bóveda de Fondos (cada pago de inscripción se copiaba como movimiento de la Bóveda y la ficha pedía «Registrar movimiento en la Bóveda»). Ahora es una herramienta propia de Eventos. En la ficha de cada inscrito, «Conciliación y comprobante de traslado» muestra el pago por Stripe (valor, recargo de la pasarela, lo que le corresponde al evento, referencia de Stripe, verificación de la comisión real) y su traslado a la cuenta oficial del evento (Concorrotarios, configurable por evento). «Gestionar traslado y comprobante» registra el traslado, adjunta el PDF, lo confirma con evidencia, lo envía por correo y deja el historial. En la pestaña «Conciliación de inscripciones» se configuran el beneficiario y sus responsables, se ven los indicadores por moneda, se verifican los pagos con Stripe y se eligen varias inscripciones para un traslado consolidado, con un solo comprobante. La Bóveda queda exactamente como estaba antes de v4.1248.',

@@ -50,7 +50,7 @@ export const PAYMENT_METHODS = [
         id: 'paypal',
         label: 'PayPal',
         provider: 'paypal',
-        help: 'El donante paga con su cuenta de PayPal. El dinero entra a la cuenta de la plataforma. PayPal no procesa pesos colombianos (COP): un aporte en pesos se cobra convertido con la TRM del día.',
+        help: 'El donante paga con su cuenta de PayPal. El dinero entra a la cuenta de la plataforma. Activado, es también el medio de pago por defecto de las inscripciones a eventos. PayPal no procesa pesos colombianos (COP): un cobro en pesos se hace convertido con la TRM del día.',
         env: ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET'],
         optionalEnv: ['PAYPAL_WEBHOOK_ID', 'PAYPAL_CURRENCY'],
         // Apagado hasta que alguien lo encienda a propósito, aunque las
@@ -77,8 +77,14 @@ export const PAYMENT_METHODS = [
  *
  * Se DECLARA en vez de deducirse, y el panel lo dice: un interruptor cuyo
  * alcance hay que adivinar se apaga esperando otra cosa.
+ *
+ * v4.1251 — UNA excepción, y es aditiva: el interruptor de PAYPAL también
+ * decide si las INSCRIPCIONES A EVENTOS ofrecen PayPal, y cuando lo ofrecen va
+ * POR DEFECTO (pedido del cliente: «debe ser el PayPal de COLROTARIOS»). El de
+ * la tarjeta sigue sin alcanzarlas: apagarlo no deja a nadie sin inscribirse,
+ * y la tarjeta queda siempre como alternativa en el evento.
  */
-export const METHODS_SCOPE = 'Aportes: el modal de donación, la membresía de un bloque de Aportes y PayPal. No alcanza a las inscripciones a eventos, a la Feria de Proyectos, a las capacitaciones ni a la tienda: ésos son cobros aparte y se siguen procesando con tarjeta.';
+export const METHODS_SCOPE = 'Aportes: el modal de donación, la membresía de un bloque de Aportes y PayPal. Además, PayPal activado se ofrece POR DEFECTO en las inscripciones a eventos, con la tarjeta como alternativa. No alcanza a la Feria de Proyectos, a las capacitaciones ni a la tienda: ésos son cobros aparte y se siguen procesando con tarjeta. Apagar la tarjeta acá no la quita de las inscripciones a eventos.';
 
 export const METHOD_IDS = PAYMENT_METHODS.map(m => m.id);
 
