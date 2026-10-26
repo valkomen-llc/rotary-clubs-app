@@ -178,6 +178,20 @@ grupo('3. Se reusa la Bóveda; no hay un segundo sistema');
 
     const disb = leer('server/controllers/disbursementController.js');
     check('Avisos y auditoría acotables por evento', (disb.match(/eventPaymentIds\(/g) || []).length >= 2);
+    // v4.1249 — «No encuentro la opción para enviar los comprobantes de
+    // traslados»: la puerta tiene que estar a la vista, como en la Bóveda.
+    const panel = leer('src/components/admin/events/RegistrationFundsPanel.tsx');
+    check('La ficha del inscrito ofrece «Enviar comprobante de traslado» (ResendNoticeModal)',
+        panel.includes('Enviar comprobante de traslado') && panel.includes('<ResendNoticeModal'));
+    check('La ficha del inscrito trae los desembolsos de la Bóveda (DisbursementSection)', panel.includes('<DisbursementSection'));
+    check('Sin movimiento, la ficha ofrece registrarlo', panel.includes('Registrar movimiento en la Bóveda'));
+    check('El comprobante sólo se ofrece con un traslado registrado', /disabled=\{!trasladado\}/.test(panel));
+    const manager = leer('src/components/admin/events/EventRegistrationsManager.tsx');
+    check('La ficha del listado monta el panel', manager.includes('<RegistrationFundsPanel') && manager.includes('{fundsPanel}'));
+    check('La tabla de la pestaña tiene el botón directo por fila', tab.includes("onClick={() => setResendIds([it.id])}"));
+    const fin = leer('server/controllers/financialController.js');
+    check('El índice por inscripción lleva el resumen del movimiento', /byRegistration[\s\S]{0,400}grossAmount[\s\S]{0,300}providerRef/.test(fin));
+
     const events = leer('src/pages/admin/Events.tsx');
     check('La pestaña la gobierna la capacidad sensible «payments»', /conciliacion:\s*'payments'/.test(events));
 }

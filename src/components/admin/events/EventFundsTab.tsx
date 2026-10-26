@@ -507,10 +507,21 @@ const EventFundsTab = ({ eventId, eventTitle, clubId }: { eventId: string; event
                                             </td>
                                             <td className="p-3"><StateChip group="comprobante" value={it.states.comprobante} /></td>
                                             <td className="whitespace-nowrap p-3 text-center">
-                                                <button type="button" onClick={() => setExpanded(expanded === it.id ? null : it.id)}
-                                                    className="rounded bg-gray-100 px-2 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-200">
-                                                    {expanded === it.id ? 'Ocultar' : 'Ver movimiento'}
-                                                </button>
+                                                <div className="flex flex-col items-center gap-1">
+                                                    {/* v4.1249 — La puerta directa al comprobante, como
+                                                        «Ver traslado y conciliación» en la Bóveda: marcar
+                                                        la casilla para ver la barra no se descubría. */}
+                                                    {(it.states.traslado === 'confirmado' || it.states.traslado === 'parcial') && (
+                                                        <button type="button" onClick={() => setResendIds([it.id])}
+                                                            className="inline-flex items-center gap-1 rounded border border-violet-200 bg-violet-50 px-2 py-1 text-[11px] font-semibold text-violet-800 hover:border-violet-400">
+                                                            <Send className="h-3 w-3" /> Enviar comprobante
+                                                        </button>
+                                                    )}
+                                                    <button type="button" onClick={() => setExpanded(expanded === it.id ? null : it.id)}
+                                                        className="rounded bg-gray-100 px-2 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-200">
+                                                        {expanded === it.id ? 'Ocultar' : it.states.traslado === 'no_registrado' ? 'Registrar traslado' : 'Ver movimiento'}
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     );
@@ -547,6 +558,15 @@ const EventFundsTab = ({ eventId, eventTitle, clubId }: { eventId: string; event
                             </div>
                             <button type="button" onClick={() => setExpanded(null)} className="text-xs font-semibold text-gray-400 hover:text-gray-600">Cerrar ✕</button>
                         </div>
+                        {(it.states.traslado === 'confirmado' || it.states.traslado === 'parcial') && (
+                            <div className="mb-3 rounded-lg border border-violet-100 bg-violet-50/60 p-3">
+                                <button type="button" onClick={() => setResendIds([it.id])}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-violet-300 bg-white px-3 py-2 text-xs font-bold text-violet-800 hover:border-violet-500">
+                                    <Send className="h-3.5 w-3.5" /> Enviar comprobante de traslado
+                                </button>
+                                <p className="mt-1.5 text-[11px] text-violet-900/80">El comprobante de la conciliación (PDF) por correo, con adjuntos opcionales, vista previa e historial.</p>
+                            </div>
+                        )}
                         <DisbursementSection paymentId={it.id} clubId={clubId} netAmount={it.amount} currency={it.currency} />
                     </div>
                 );

@@ -16,6 +16,7 @@
 // servidor antes de renderizar.
 // ════════════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 import {
     AlertCircle, BadgeCheck, CalendarDays, ChevronLeft, ChevronRight, Coins,
     Download, FileSpreadsheet, FileText, Filter, Globe2, Loader2, Mail, RefreshCw,
@@ -24,6 +25,7 @@ import {
 import { money, statusMeta, tagMeta, SYSTEM_TAG_KEYS, normalizeTag } from '../../../lib/eventRegistrationSpec';
 import { registrationFundBadge, PAID_REGISTRATION_STATUSES } from '../../../../server/lib/eventFundsSpec.js';
 import type { FundStates } from '../../../../server/lib/eventFundsSpec.js';
+import RegistrationFundsPanel, { type RegistrationFund } from './RegistrationFundsPanel';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
 const authHeaders = () => ({
@@ -169,11 +171,14 @@ const BarList = ({ title, rows, icon: Icon }: {
 
 // ── Ficha detallada ──────────────────────────────────────────────────
 
-const DetailSheet = ({ registrationId, statuses, onClose, onChanged }: {
+const DetailSheet = ({ registrationId, statuses, onClose, onChanged, fundsPanel }: {
     registrationId: string;
     statuses: { key: string; label: string }[];
     onClose: () => void;
     onChanged: () => void;
+    /** v4.1249 — El bloque de traslado y comprobante (lo arma el listado, que
+     *  ya tiene el estado financiero del evento). */
+    fundsPanel?: ReactNode;
 }) => {
     const [data, setData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
@@ -338,6 +343,8 @@ const DetailSheet = ({ registrationId, statuses, onClose, onChanged }: {
                                     </div>
                                 )}
                             </section>
+
+                            {fundsPanel}
 
                             {/* ── Etiquetas ───────────────────────── */}
                             <section className="rounded-xl border border-gray-100 bg-white p-5">
@@ -572,7 +579,11 @@ const EventRegistrationsManager = ({ eventId, eventTitle, categories, statuses, 
     const [exporting, setExporting] = useState('');
     // v4.1248 — inscripción → estados financieros. `null` = sin acceso a la
     // Bóveda (o todavía cargando): la columna simplemente no se pinta.
-    const [funds, setFunds] = useState<Record<string, { states: FundStates }> | null>(null);
+    const [funds, setFunds] = useState<Record<string, RegistrationFund> | null>(null);
+    // Las inscripciones pagadas por Stripe sin movimiento, y las pagadas por
+    // fuera de la pasarela (sin referencia de Stripe).
+    const [fundGaps, setFundGaps] = useState<{ missing: string[]; outside: string[] }>({ missing: [], outside: [] });
+    const [fundsTick, setFundsTick] = useState(0);
 
     /** Los filtros activos, en el formato que espera el servidor. */
     const query = useMemo(() => {
@@ -611,9 +622,16 @@ const EventRegistrationsManager = ({ eventId, eventTitle, categories, statuses, 
         if (clubId) qs.set('clubId', clubId);
         fetch(`${API}/financial/wallet?${qs}`, { headers: authHeaders() })
             .then(r => (r.ok ? r.json() : null))
-            .then(d => setFunds(d?.eventScope?.byRegistration || null))
+            .then(d => {
+                setFunds(d?.eventScope?.byRegistration || null);
+                const cov = d?.eventScope?.coverage;
+                setFundGaps({
+                    missing: (cov?.sinMovimiento || []).map((r: { id: string }) => r.id),
+                    outside: (cov?.sinReferencia || []).map((r: { id: string }) => r.id),
+                });
+            })
             .catch(() => setFunds(null));
-    }, [eventId, clubId]);
+    }, [eventId, clubId, fundsTick]);
 
     useEffect(() => { loadDashboard(); }, [loadDashboard]);
     useEffect(() => { loadRows(); }, [loadRows]);
@@ -969,7 +987,7 @@ const EventRegistrationsManager = ({ eventId, eventTitle, categories, statuses, 
                                 <td className="px-4 py-3">
                                     <StatusPill status={r.status} />
                                     {funds && PAID_REGISTRATION_STATUSES.includes(r.status) && (
-                                        <div><FundBadge states={funds[r.id]?.states || null} /></div>
+                                        <div><FundBadge states={(funds[r.id]?.states as FundStates | undefined) || null} /></div>
                                     )}
                                 </td>
                                 <td className="px-4 py-3 text-xs text-gray-500">{fmtDate(r.createdAt)}</td>
@@ -1002,7 +1020,18 @@ const EventRegistrationsManager = ({ eventId, eventTitle, categories, statuses, 
 
             {selected && (
                 <DetailSheet registrationId={selected} statuses={statuses}
-                    onClose={() => setSelected(null)} onChanged={refresh} />
+                    onClose={() => setSelected(null)} onChanged={refresh}
+                    fundsPanel={funds ? (
+                        <RegistrationFundsPanel
+                            key={`${selected}-${fundsTick}`}
+                            fund={funds[selected] || null}
+                            missing={fundGaps.missing.includes(selected)}
+                            outsideStripe={fundGaps.outside.includes(selected)}
+                            eventId={eventId}
+                            clubId={clubId}
+                            onChanged={() => setFundsTick(t => t + 1)}
+                        />
+                    ) : null} />
             )}
         </div>
     );
