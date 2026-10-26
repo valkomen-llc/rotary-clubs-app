@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1248.0",
-  "cache_bust": "4.1248.0",
+  "version": "4.1249.0",
+  "cache_bust": "4.1249.0",
   "type": "module",
-  "//": "UI V4.1248.0 | 2026-10-26 (Eventos: pestaña Conciliación de fondos — pagos de inscripción por Stripe con traslado, comprobante PDF y envío por correo, reutilizando la Bóveda)",
+  "//": "UI V4.1249.0 | 2026-10-26 (Eventos: enviar el comprobante de traslado desde la ficha del inscrito y desde cada fila de Conciliación de fondos, como en la Bóveda)",
   "scripts": {
     "dev": "vite",
     "bundle:server-blocks": "npx esbuild src/lib/emailBlocks.ts --bundle --platform=node --format=esm --target=node18 --outfile=server/lib/emailBlocks.js",

@@ -42,6 +42,21 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1249.0',
+        title: 'Eventos: «Enviar comprobante de traslado» desde la ficha del inscrito, como en la Bóveda 📨',
+        description: 'Reporte: no se encontraba la opción para enviar los comprobantes de traslado de las inscripciones. En la Bóveda cada aporte desplegado trae su traslado al beneficiario y el envío de la conciliación; en Eventos sólo se llegaba marcando una casilla en la pestaña «Conciliación de fondos». Ahora la ficha de cada inscrito tiene el bloque «Traslado al beneficiario y comprobante», con el botón «Enviar comprobante de traslado» (PDF por correo, con adjuntos, vista previa e historial), el desglose del pago, sus estados y los desembolsos para registrar el traslado con su comprobante PDF. Si el pago todavía no tiene movimiento en la Bóveda, la ficha ofrece registrarlo. En la pestaña «Conciliación de fondos», cada fila ya trasladada tiene su propio botón «Enviar comprobante».',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'conciliación', 'comprobantes', 'fix'],
+        type: 'improvement',
+        impact: 'Alta: el comprobante de traslado de una inscripción se envía desde donde se busca.',
+        changes: [
+            { type: 'added', text: 'Ficha del inscrito: bloque «Traslado al beneficiario y comprobante», con las mismas piezas de la Bóveda (ResendNoticeModal y DisbursementSection).' },
+            { type: 'added', text: 'Ficha del inscrito: «Registrar movimiento en la Bóveda» cuando el pago por Stripe todavía no lo tiene.' },
+            { type: 'added', text: 'Conciliación de fondos: botón «Enviar comprobante» en cada fila trasladada y en la ficha del movimiento; «Registrar traslado» en las que no lo tienen.' },
+            { type: 'changed', text: 'GET /financial/wallet?eventId= manda en byRegistration el resumen del movimiento (importes, referencias y fechas de Stripe).' },
+        ],
+    },
+    {
         version: '4.1248.0',
         title: 'Eventos: «Conciliación de fondos» — traslados, comprobantes PDF y envío por correo de los pagos de inscripción 💰📄',
         description: 'Cada evento tiene ahora la pestaña «Conciliación de fondos», con la misma herramienta de conciliación que usan las campañas de contribución (la del terremoto): los pagos de las inscripciones procesados por Stripe, cada uno atado a su inscripción por su referencia de Stripe, con su recaudo bruto, comisiones y neto por moneda (COP y USD nunca se suman). Por cada pago se ven cinco estados que no se confunden: el pago, su verificación en Stripe, la liquidación, el traslado al beneficiario y el comprobante. Desde ahí se registra el traslado con su comprobante PDF, se envía la conciliación por correo (con vista previa, adjuntos e historial) y se consulta el historial. Un pago confirmado ya no se lee como «trasladado»: eso sólo lo dice un traslado registrado. Además, la inscripción pagada entra a la Bóveda en el momento en que Stripe confirma el pago, y la tabla de Inscripciones muestra el estado del dinero de cada inscrito.',

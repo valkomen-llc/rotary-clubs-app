@@ -100,3 +100,25 @@ equipo, no de este módulo.
 404 de un evento ajeno y que no se leen los payouts del sitio) y lo que tiene
 que seguir siendo verdad en el código (que la pestaña reusa las cuatro piezas de
 la Bóveda y no llama a ningún endpoint nuevo).
+
+## El comprobante, a la vista — v4.1249
+
+Reporte: «No encuentro la opción para enviar los comprobantes de traslados»,
+con la Bóveda como referencia. En la Bóveda cada aporte desplegado trae su
+«Ver traslado y conciliación»; en Eventos la única puerta era marcar la casilla
+de la pestaña para que apareciera la barra, y eso no se descubría.
+
+- **La ficha del inscrito** (`RegistrationFundsPanel.tsx`, montado por
+  `EventRegistrationsManager` en `DetailSheet`) trae el bloque «Traslado al
+  beneficiario y comprobante»: «Enviar comprobante de traslado»
+  (`ResendNoticeModal` con ese pago), los cinco estados, el desglose y
+  `DisbursementSection` (registrar el traslado con su PDF). Sin movimiento,
+  ofrece «Registrar movimiento en la Bóveda» (la misma reconstrucción acotada
+  al evento). Pagada por fuera de Stripe, lo dice y no ofrece nada.
+- **El comprobante sólo se ofrece con un traslado registrado**: el botón está
+  deshabilitado y explica que primero hay que registrar el desembolso. Un
+  comprobante de traslado sobre dinero que no se trasladó afirmaría algo falso.
+- **La pestaña** tiene el botón «Enviar comprobante» en cada fila trasladada y
+  en la ficha del movimiento, además de la selección en bloque.
+- `byRegistration` lleva el resumen del movimiento: la ficha no hace otra
+  petición.

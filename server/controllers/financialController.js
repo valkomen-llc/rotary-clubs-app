@@ -1107,9 +1107,19 @@ export const getClubWallet = async (req, res) => {
                     sinMovimiento: evento.sinMovimiento.map(registrationSummary),
                     sinReferencia: evento.sinReferencia.map(registrationSummary),
                 },
+                // v4.1249 — Con el resumen del movimiento: la ficha del inscrito
+                // pinta su bloque de traslado y comprobante sin otra petición.
                 byRegistration: Object.fromEntries(conEstados
                     .filter(it => it.registration?.id)
-                    .map(it => [it.registration.id, { paymentId: it.id, states: it.states }])),
+                    .map(it => [it.registration.id, {
+                        paymentId: it.id, states: it.states,
+                        amount: it.amount, grossAmount: it.grossAmount, fee: it.fee,
+                        stripeFee: it.stripeFee, applicationFee: it.applicationFee,
+                        currency: it.currency, disbursedAmount: it.disbursedAmount,
+                        providerRef: it.providerRef, stripeBalanceTxId: it.stripeBalanceTxId,
+                        availableOn: it.availableOn, clubAvailableOn: it.clubAvailableOn,
+                        bucket: it.bucket, status: it.status, createdAt: it.createdAt,
+                    }])),
                 payoutsNote: 'Los retiros a la cuenta bancaria del sitio (payouts) son del sitio completo y no se reparten por evento.',
             };
         }
