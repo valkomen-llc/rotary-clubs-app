@@ -49,6 +49,22 @@ import {
 // de la categoría sino del flujo, así que una categoría nueva lo hereda sola.
 import { buildChargeLines, computeSurcharge, describeSurcharge, resolveSurchargeRates, surchargeEnabled } from '../lib/checkoutSurcharge.js';
 import { getSurchargeConfig } from '../lib/checkoutSurchargeStore.js';
+// v4.1251 — PayPal de la plataforma (COLROTARIOS) como vía POR DEFECTO, con la
+// tarjeta como alternativa. Se reutiliza lo de los aportes —el interruptor de
+// Métodos de pago, la cuenta, la conversión a la vista y la lectura de la
+// captura— en vez de escribir un segundo criterio.
+import { normalizeCurrency, roundMoney } from '../lib/money.js';
+import { resolvePaypalCharge, MOTIVOS_MONEDA, parseCapture } from '../lib/paypalSpec.js';
+import {
+    paypalConfigured, createPaypalOrder, capturePaypalOrder, getPaypalOrder, paypalEnv,
+} from '../lib/paypalService.js';
+import { isMethodOffered } from '../lib/paymentMethods.js';
+import { getPaymentMethods } from '../lib/paymentMethodsStore.js';
+import { getEffectiveRates } from '../lib/fxRatesStore.js';
+import {
+    resolveEventPaymentOptions, pickEventPaymentMethod, paypalCustomIdFor,
+    registrationIdFromCustomId, paypalPaymentKey,
+} from '../lib/eventPaymentMethods.js';
 import store, {
     clean, isEmail, loadEvent, ensureEdition, listCategories, findCategory,
     categoryUsage, findRegistration, listCompanions, replaceCompanions,
@@ -62,9 +78,38 @@ import {
     identityFromRequest, prefillForIdentity, linkAttendeeAccountTo,
 } from './eventAttendeeController.js';
 
+console.log('[eventRegistrationController] v4.1251.0 cargado — el pago de la inscripción va POR DEFECTO por el PayPal de la plataforma (COLROTARIOS) cuando está activado en Métodos de pago y puede cobrar la moneda —convertida a la vista con la tasa del día si hace falta—; la tarjeta (Stripe) queda como alternativa.');
 console.log('[eventRegistrationController] v4.709.0 cargado — inscripciones por categoría; el botón principal de la ficha lo decide el IDIOMA activo del sitio (es-CO → nacional, resto → internacional), CADRES siempre visible, formulario bloqueado por categoría, acompañantes, multimoneda y pago por Stripe. El formulario ya no pide el idioma y crea la cuenta de Asistente al Evento con la que se consulta la inscripción. El esquema se comprueba con 2 consultas en vez de ejecutar 62 sentencias en cada arranque en frío. Quien ya tiene cuenta (Gestor de Proyectos) se inscribe al Registro Nacional con esa misma sesión, sin crear otra contraseña; la audiencia de la categoría se deduce del botón que lleva a ella o de su clave cuando la categoría no la declara. El paso 1 pide ubicación y datos rotarios, con listas cuando el país declarado es Colombia y texto libre fuera; el rol EN LA FERIA reemplaza al cargo dentro de Rotary. Cada bloque del paso decide sus columnas: ubicación y club van a tres, como en Postular Proyecto.');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
+
+/** La moneda que la cuenta de PayPal puede recibir. VACÍA = la que venga: la
+ *  misma lectura que los aportes, para que las dos vías digan lo mismo. */
+const paypalSettlement = () => normalizeCurrency(process.env.PAYPAL_CURRENCY || '');
+
+/**
+ * Con qué se puede pagar un cobro en `currency`, y cuál va por defecto.
+ *
+ * NUNCA lanza: corre al abrir el formulario y al cobrar. Si no se puede saber
+ * si PayPal está disponible, se degrada a la tarjeta —no poder ofrecer PayPal
+ * es mucho menos grave que dejar a alguien sin poder pagar su inscripción—.
+ */
+export const paymentOptionsFor = async (currency) => {
+    let offered = false;
+    let plan = null;
+    try {
+        offered = paypalConfigured() && isMethodOffered('paypal', await getPaymentMethods(), process.env);
+        if (offered) {
+            plan = resolvePaypalCharge({
+                currency, settlement: paypalSettlement(), rates: await getEffectiveRates(),
+            });
+        }
+    } catch (err) {
+        console.warn('[event-registrations] disponibilidad de PayPal no resuelta:', err?.message);
+        offered = false;
+    }
+    return resolveEventPaymentOptions({ paypalOffered: offered, plan, env: paypalEnv() });
+};
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
 const PLATFORM_SENDER = '"Registro de eventos" <noreply@clubplatform.org>';
 
@@ -210,6 +255,16 @@ export const getPublicRegistrationConfig = async (req, res) => {
             console.warn('[event-registrations] No pude leer el recargo:', err?.message);
         }
         const decorated = await Promise.all(categories.map(c => decorateCategory(event.id, c, edition, surchargeConfig)));
+        // v4.1251 — Con qué se paga cada categoría. Va por categoría porque la
+        // nacional puede cobrar en pesos y la internacional en dólares, y si
+        // PayPal tiene que convertir depende de esa moneda. Se resuelve una vez
+        // por moneda, no por categoría.
+        const optionsByCurrency = {};
+        for (const c of decorated) {
+            const cur = c.charge?.currency || c.currency;
+            if (!optionsByCurrency[cur]) optionsByCurrency[cur] = await paymentOptionsFor(cur);
+            c.payment = optionsByCurrency[cur];
+        }
 
         // Los botones se calculan siempre sobre TODAS las categorías, aunque la
         // respuesta venga filtrada: son la navegación de la ficha, no del
@@ -816,6 +871,28 @@ export const createCheckout = async (req, res) => {
         const origin = resolveOrigin(req, req.body?.returnUrl);
         const path = `/eventos/${event.slug || event.id}/registro`;
         const label = `${registration.categoryLabel || 'Inscripción'} — ${event.title}`.slice(0, 250);
+
+        // ⚠️ v4.1251 — POR DÓNDE SE COBRA. PayPal de la plataforma por
+        // defecto cuando se puede; la tarjeta si se pide o si PayPal no está.
+        // Pedir PayPal cuando no se puede NO cae en silencio a la tarjeta: se
+        // dice, y la pantalla ofrece la otra vía.
+        const options = await paymentOptionsFor(currency);
+        const method = pickEventPaymentMethod(req.body?.method, options);
+        if (!method) {
+            const paypal = options.methods.find(m => m.id === 'paypal');
+            return res.status(409).json({
+                error: 'PayPal no está disponible para esta inscripción en este momento. Puedes pagar con tarjeta.',
+                code: 'PAYMENT_METHOD_UNAVAILABLE',
+                method: 'paypal',
+                reason: paypal?.reason || null,
+                payment: options,
+            });
+        }
+        if (method === 'paypal') {
+            return await startPaypalCheckout(req, res, {
+                registration, event, pricing, amount, currency, quote, charged, origin, path, label,
+            });
+        }
         // ⚠️ v4.981 — EL DESGLOSE LO PINTA STRIPE, línea por línea: la
         // inscripción primero y cada comisión con su porcentaje. Las líneas
         // suman EXACTAMENTE `charged`; si no se pudieran repartir se cobra en
@@ -920,6 +997,322 @@ export const createCheckout = async (req, res) => {
     }
 };
 
+// ── Pago por PayPal (v4.1251) ────────────────────────────────────────
+//
+// Espejo del camino de Stripe con lo que PayPal tiene de distinto: separa
+// APROBAR de COBRAR, así que al volver hay que capturar el pedido. La
+// confirmación converge en `confirmPaypalCapture`, a la que llegan el retorno
+// del navegador y el webhook — idempotente por el índice único del pago y por
+// el UPDATE condicional, igual que con Stripe.
+
+/**
+ * El recargo expresado en la moneda que cobró PayPal.
+ *
+ * ⚠️ La conciliación del evento y el panel de ingresos leen `payload.surcharge`
+ * EN LA MONEDA DEL PAGO (`currency`): restar un recargo en pesos de un cobro
+ * en dólares es el defecto que costó la v4.845. Si hubo conversión, el
+ * recargo se convierte con la MISMA tasa con la que se convirtió el cobro, y
+ * el original queda al lado.
+ */
+const surchargeInPaidCurrency = (quote, cobro) => {
+    if (!(quote?.surcharge > 0)) return null;
+    if (!cobro?.converted) {
+        return {
+            amount: quote.surcharge,
+            lines: quote.lines.map(l => `${l.key}:${l.amount}`).join(',').slice(0, 200),
+            charged: quote.total,
+        };
+    }
+    const per = Number(cobro.perUnit) || 0;
+    const conv = (v) => (per > 0 ? roundMoney(Number(v) / per, cobro.currency) : 0);
+    return {
+        amount: conv(quote.surcharge),
+        lines: quote.lines.map(l => `${l.key}:${conv(l.amount)}`).join(',').slice(0, 200),
+        charged: cobro.amount,
+        original: { currency: cobro.originalCurrency, amount: quote.surcharge, charged: quote.total },
+    };
+};
+
+const startPaypalCheckout = async (req, res, {
+    registration, event, pricing, amount, currency, quote, charged, origin, path, label,
+}) => {
+    // ⚠️ EL MISMO CRITERIO QUE PINTÓ EL BOTÓN, ahora con el importe: con dos,
+    // la pantalla podría prometer una cifra y el cobro salir por otra.
+    const cobro = resolvePaypalCharge({
+        amount: charged, currency, settlement: paypalSettlement(), rates: await getEffectiveRates(),
+    });
+    if (!cobro.ok) {
+        // Sin tasa NO se inventa una: se dice el motivo y se ofrece la tarjeta.
+        return res.status(409).json({
+            error: `${MOTIVOS_MONEDA[cobro.reason] || 'PayPal no puede cobrar en esta moneda.'} Puedes pagar con tarjeta.`,
+            code: 'PAYMENT_METHOD_UNAVAILABLE',
+            method: 'paypal',
+            reason: cobro.reason,
+        });
+    }
+
+    const back = `${origin}${path}?registro=${registration.id}&t=${registration.accessToken || ''}`;
+    const orden = await createPaypalOrder({
+        amount: cobro.amount,
+        currency: cobro.currency,
+        description: label,
+        // PayPal agrega `token=<pedido>` y `PayerID` a la dirección de regreso.
+        returnUrl: `${back}&pago=paypal`,
+        cancelUrl: `${back}&pago=cancelado`,
+        customId: paypalCustomIdFor(registration.id),
+    });
+    if (!orden?.id || !orden.approveUrl) {
+        return res.status(502).json({ error: 'PayPal no devolvió un pedido utilizable.' });
+    }
+
+    await db.query(
+        `UPDATE "EventRegistration"
+         SET status = $1, "lastActivityAt" = NOW(), "updatedAt" = NOW()
+         WHERE id = $2 AND status <> ALL($3)`,
+        [STATUS.PENDING, registration.id, SETTLED_STATUSES]);
+
+    // ⚠️ LA INTENCIÓN SE GUARDA ANTES de mandar a la persona a PayPal, como en
+    // los aportes: `custom_id` sólo lleva la inscripción, y al capturar hace
+    // falta saber con qué tasa se convirtió y qué parte fue recargo. Va sin
+    // `stripeEventId`, así que no compite con la fila del cobro confirmado.
+    const conversion = {
+        converted: !!cobro.converted,
+        originalAmount: cobro.originalAmount ?? charged,
+        originalCurrency: cobro.originalCurrency || currency,
+        perUnit: cobro.perUnit ?? null,
+        rateSource: cobro.rateSource ?? null,
+        rateUpdatedAt: cobro.rateUpdatedAt ?? null,
+    };
+    await recordPayment({
+        registrationId: registration.id, eventId: event.id,
+        provider: 'paypal',
+        checkoutSessionId: orden.id,
+        status: 'created',
+        baseCurrency: pricing.baseCurrency || registration.baseCurrency,
+        baseAmount: pricing.baseAmount ?? registration.baseAmount,
+        currency: cobro.currency,
+        amount: cobro.amount,
+        fxRate: pricing.fxRate ?? null,
+        paymentMethod: 'paypal',
+        payload: {
+            intent: true, orderId: orden.id, env: paypalEnv(),
+            conversion,
+            surcharge: surchargeInPaidCurrency(quote, cobro),
+        },
+    });
+
+    await recordHistory({
+        registrationId: registration.id, eventId: event.id, type: 'checkout_created',
+        fromStatus: registration.status, toStatus: STATUS.PENDING,
+        comment: [
+            `Cobro por PayPal: ${formatMoney(cobro.amount, cobro.currency)}`,
+            cobro.converted ? `(${formatMoney(charged, currency)} convertidos a la tasa del día)` : null,
+            quote.surcharge > 0
+                ? `— ${formatMoney(amount, currency)} de inscripción + ${formatMoney(quote.surcharge, currency)} de ${describeSurcharge(quote)}`
+                : null,
+        ].filter(Boolean).join(' '),
+        payload: {
+            provider: 'paypal', orderId: orden.id, amount, charged, currency,
+            paypal: { amount: cobro.amount, currency: cobro.currency, ...conversion },
+            fxRate: pricing.fxRate || null,
+            surcharge: quote.surcharge > 0
+                ? { amount: quote.surcharge, lines: quote.lines, total: quote.total }
+                : null,
+        },
+    });
+
+    return res.json({
+        url: orden.approveUrl, orderId: orden.id, provider: 'paypal', surcharge: quote,
+        paypal: { amount: cobro.amount, currency: cobro.currency, ...conversion },
+    });
+};
+
+/** La intención guardada al crear el pedido, si existe. */
+const readPaypalIntent = async (registrationId, orderId) => {
+    try {
+        const { rows } = await db.query(
+            `SELECT payload FROM "EventRegistrationPayment"
+             WHERE "registrationId" = $1 AND provider = 'paypal' AND "checkoutSessionId" = $2
+             ORDER BY "createdAt" DESC LIMIT 1`,
+            [registrationId, orderId]);
+        return rows[0] ? store.parseJson(rows[0].payload, {}) : null;
+    } catch (err) {
+        console.warn('[event-registrations] intención de PayPal no leída:', err?.message);
+        return null;
+    }
+};
+
+/**
+ * Confirma una inscripción a partir de una captura de PayPal.
+ *
+ * Sólo con la captura COMPLETADA: una en `PENDING` (PayPal la retiene para
+ * revisión) todavía no es dinero, y confirmarla ocuparía cupo por un pago que
+ * puede no llegar. El webhook avisa cuando se completa.
+ */
+export const confirmPaypalCapture = async ({ registrationId, orderId = null, captura, source = 'retorno' }) => {
+    if (!registrationId || !captura?.ok) return null;
+    if (String(captura.status || '').toUpperCase() !== 'COMPLETED') return null;
+
+    await ensureEventRegistrationSchema();
+    const registration = await findRegistration(registrationId);
+    if (!registration) return null;
+
+    const pricing = store.parseJson(registration.pricing, {});
+    const intent = orderId ? await readPaypalIntent(registrationId, orderId) : null;
+
+    const fresh = await recordPayment({
+        registrationId, eventId: registration.eventId,
+        provider: 'paypal',
+        stripeEventId: paypalPaymentKey(captura.captureId),
+        checkoutSessionId: orderId,
+        chargeId: captura.captureId,
+        customerId: captura.payer?.payerId || null,
+        status: 'succeeded',
+        baseCurrency: pricing.baseCurrency || registration.baseCurrency,
+        baseAmount: pricing.baseAmount ?? registration.baseAmount,
+        currency: captura.currency,
+        amount: captura.gross,
+        fxRate: pricing.fxRate ?? null,
+        paymentMethod: 'paypal',
+        payload: {
+            provider: 'paypal', source, orderId, captureId: captura.captureId,
+            captureStatus: captura.status, payer: captura.payer,
+            // La comisión de PayPal viene MEDIDA en la captura; `null` es «no
+            // se sabe», no cero.
+            processorFee: captura.processorFee, feeCurrency: captura.feeCurrency, feeBasis: captura.basis,
+            // LOS TRES DATOS de la conversión: qué se publicó, qué se cobró y
+            // con qué tasa. Sin ellos «¿por qué entró en dólares?» no se
+            // puede contestar dentro de un año.
+            conversion: intent?.conversion || null,
+            surcharge: intent?.surcharge || null,
+        },
+    });
+    if (!fresh) return registration; // la otra vía ya la confirmó
+
+    const { rows } = await db.query(
+        `UPDATE "EventRegistration"
+         SET status = $1, "paidAt" = COALESCE("paidAt", NOW()),
+             "stripeChargeId" = COALESCE("stripeChargeId", $2),
+             "paymentMethod" = 'paypal',
+             "lastActivityAt" = NOW(), "updatedAt" = NOW()
+         WHERE id = $3 AND status <> ALL($4) RETURNING *`,
+        [STATUS.PAID, captura.captureId, registrationId, SETTLED_STATUSES]);
+    if (!rows[0]) return registration;
+
+    return finalizePaidRegistration(rows[0], registration, {
+        comment: `Pago confirmado por PayPal — ${formatMoney(captura.gross, captura.currency)}`,
+        payload: { provider: 'paypal', orderId, captureId: captura.captureId, source },
+    });
+};
+
+/**
+ * Captura un pedido aprobado y confirma la inscripción que lo originó.
+ *
+ * Lo usan el retorno del navegador y el webhook `CHECKOUT.ORDER.APPROVED` —la
+ * persona puede aprobar y cerrar la pestaña antes de volver—. La captura es
+ * idempotente del lado de PayPal (`PayPal-Request-Id`); si el pedido ya estaba
+ * capturado se lee en vez de fallar.
+ */
+export const captureRegistrationOrder = async (orderId, { expectedRegistrationId = null, source = 'retorno' } = {}) => {
+    let orden;
+    try {
+        orden = await capturePaypalOrder(orderId);
+    } catch (err) {
+        // Ya capturado por la otra vía: se lee el pedido tal como quedó.
+        // Cualquier otro rechazo (tarjeta declinada, pedido sin aprobar) se
+        // propaga TEXTUAL: es lo que la persona y quien corrige necesitan leer.
+        const issue = err?.paypal?.details?.[0]?.issue || '';
+        if (issue !== 'ORDER_ALREADY_CAPTURED') throw err;
+        orden = await getPaypalOrder(orderId);
+    }
+    const unidad = orden?.purchase_units?.[0] || {};
+    const customId = unidad.custom_id || unidad.payments?.captures?.[0]?.custom_id || null;
+    const registrationId = registrationIdFromCustomId(customId);
+    // ⚠️ Un pedido de OTRA inscripción —o un aporte— no confirma ésta, aunque
+    // alguien arme la dirección de regreso a mano.
+    if (!registrationId || (expectedRegistrationId && registrationId !== expectedRegistrationId)) {
+        return { ok: false, reason: 'pedido_ajeno' };
+    }
+    const captura = parseCapture(orden);
+    if (!captura.ok) return { ok: false, reason: captura.reason };
+    const updated = await confirmPaypalCapture({ registrationId, orderId, captura, source });
+    return { ok: true, registrationId, captura, registration: updated };
+};
+
+// POST /api/event-registrations/:id/paypal/capture — la persona vuelve de PayPal.
+export const capturePaypalRegistration = async (req, res) => {
+    try {
+        await ensureEventRegistrationSchema();
+        const registration = await findRegistration(req.params.id);
+        if (!registration) return res.status(404).json({ error: 'Inscripción no encontrada' });
+        if (registration.accessToken && registration.accessToken !== clean(req.body?.accessToken, 48)) {
+            return res.status(403).json({ error: 'No pudimos verificar esta inscripción.' });
+        }
+        const orderId = clean(req.body?.orderId, 64);
+        if (!orderId) return res.status(400).json({ error: 'Falta el identificador del pedido de PayPal.' });
+
+        if (!SETTLED_STATUSES.includes(registration.status)) {
+            const r = await captureRegistrationOrder(orderId, { expectedRegistrationId: registration.id, source: 'retorno' });
+            if (!r.ok) {
+                return res.status(r.reason === 'pedido_ajeno' ? 403 : 502).json({
+                    error: r.reason === 'pedido_ajeno'
+                        ? 'Ese pago de PayPal no corresponde a esta inscripción.'
+                        : `PayPal no devolvió una captura utilizable (${r.reason}).`,
+                });
+            }
+            if (String(r.captura.status || '').toUpperCase() !== 'COMPLETED') {
+                await recordHistory({
+                    registrationId: registration.id, eventId: registration.eventId, type: 'payment_pending_review',
+                    fromStatus: registration.status, toStatus: registration.status,
+                    comment: `PayPal dejó el cobro en estado ${r.captura.status || 'desconocido'}: se confirmará cuando lo complete.`,
+                    payload: { orderId, captureId: r.captura.captureId },
+                });
+            }
+        }
+
+        const fresh = await findRegistration(registration.id);
+        res.json({
+            ...toPublicRegistration(fresh),
+            companions: await listCompanions(fresh.id),
+        });
+    } catch (error) {
+        // El error de PayPal se propaga TEXTUAL: convertirlo en «no se pudo
+        // cobrar» deja a quien corrige sin saber qué.
+        console.error('[event-registrations] capturePaypalRegistration:', error?.message, error?.paypal || '');
+        res.status(500).json({ error: error?.message || 'No pudimos confirmar el pago de PayPal.' });
+    }
+};
+
+/**
+ * Lo que el webhook de PayPal entrega cuando el pedido es de una inscripción.
+ * Devuelve `false` si no lo es, para que el webhook siga con los aportes.
+ */
+export const handlePaypalRegistrationEvent = async (evento) => {
+    const tipo = evento?.event_type;
+    const recurso = evento?.resource || {};
+
+    if (tipo === 'PAYMENT.CAPTURE.COMPLETED') {
+        const registrationId = registrationIdFromCustomId(recurso.custom_id);
+        if (!registrationId) return false;
+        const captura = parseCapture({ purchase_units: [{ payments: { captures: [recurso] } }] });
+        if (!captura.ok) return true;
+        const orderId = recurso?.supplementary_data?.related_ids?.order_id || null;
+        await confirmPaypalCapture({ registrationId, orderId, captura, source: 'webhook' });
+        return true;
+    }
+
+    if (tipo === 'CHECKOUT.ORDER.APPROVED') {
+        // Aprobó y quizá cerró la pestaña antes de volver: sin capturar, PayPal
+        // no cobra y la inscripción quedaría pendiente para siempre.
+        const registrationId = registrationIdFromCustomId(recurso?.purchase_units?.[0]?.custom_id);
+        if (!registrationId || !recurso?.id) return false;
+        await captureRegistrationOrder(recurso.id, { expectedRegistrationId: registrationId, source: 'webhook' });
+        return true;
+    }
+
+    return false;
+};
+
 // GET /api/event-registrations/:id?t=<accessToken>
 export const getRegistration = async (req, res) => {
     try {
@@ -934,6 +1327,11 @@ export const getRegistration = async (req, res) => {
         res.json({
             ...toPublicRegistration(registration),
             companions: await listCompanions(registration.id),
+            // v4.1251 — Con qué se puede reintentar el pago. Sólo mientras
+            // queda algo por cobrar: una inscripción pagada no lo necesita.
+            payment: SETTLED_STATUSES.includes(registration.status)
+                ? null
+                : await paymentOptionsFor(registration.chargeCurrency || 'USD'),
         });
     } catch (error) {
         console.error('[event-registrations] getRegistration:', error);
@@ -1108,6 +1506,20 @@ export const confirmPaidSession = async (session, stripeEvent = null) => {
         ]);
     if (!rows[0]) return registration;
 
+    return finalizePaidRegistration(rows[0], registration, {
+        comment: `Pago confirmado por Stripe — ${formatMoney(amount, session.currency?.toUpperCase() || pricing.chargeCurrency)}`,
+        payload: { sessionId: session.id, paymentIntentId },
+    });
+};
+
+/**
+ * Lo que sigue a un pago confirmado, sea cual sea la vía: código, cuenta,
+ * historial y correo. Uno solo para Stripe y PayPal — con dos, una inscripción
+ * pagada por PayPal podría quedarse sin código o sin comprobante.
+ */
+const finalizePaidRegistration = async (paidRow, registration, { comment, payload }) => {
+    const rows = [paidRow];
+
     const event = await loadEvent(rows[0].eventId, rows[0].clubId);
     if (!event) return rows[0];
     const edition = await ensureEdition(event);
@@ -1132,8 +1544,8 @@ export const confirmPaidSession = async (session, stripeEvent = null) => {
     await recordHistory({
         registrationId: updated.id, eventId: updated.eventId, type: 'payment_confirmed',
         fromStatus: registration.status, toStatus: STATUS.PAID,
-        comment: `Pago confirmado por Stripe — ${formatMoney(amount, session.currency?.toUpperCase() || pricing.chargeCurrency)}`,
-        payload: { sessionId: session.id, paymentIntentId },
+        comment,
+        payload,
     });
 
     await notifyRegistration(updated, event, edition);
@@ -1161,6 +1573,11 @@ export const applyStripeStatus = async (object, kind, stripeEvent = null) => {
             : { rows: [] };
     const registration = found[0];
     if (!registration) return null;
+    // ⚠️ v4.1251 — Una sesión de Stripe que expira o falla NO deshace un pago
+    // ya confirmado: con dos vías, quien abrió la tarjeta, la canceló y pagó
+    // por PayPal recibe 24 h después el «expired» de la sesión que no usó. Sólo
+    // un reembolso mueve una inscripción liquidada.
+    if (kind !== 'refunded' && SETTLED_STATUSES.includes(registration.status)) return registration;
 
     const refundedAmount = kind === 'refunded' && object?.amount_refunded != null
         ? object.amount_refunded / 100 : null;
@@ -1210,6 +1627,11 @@ export default {
     confirmPaidSession,
     applyStripeStatus,
     notifyRegistration,
+    capturePaypalRegistration,
+    confirmPaypalCapture,
+    captureRegistrationOrder,
+    handlePaypalRegistrationEvent,
+    paymentOptionsFor,
     STATUS,
     STATUSES,
 };

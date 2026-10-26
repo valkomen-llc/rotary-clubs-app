@@ -126,7 +126,9 @@ export const paymentOf = (reg = {}, payments = [], stripeCheck = null) => {
         checkoutSessionId: reg.stripeSessionId || exito?.checkoutSessionId || null,
         chargeId: exito?.chargeId || stripeCheck?.chargeId || null,
         receiptUrl: exito?.receiptUrl || null,
-        viaStripe: Boolean(reg.stripePaymentIntentId || reg.stripeSessionId || exito),
+        // v4.1251 — Un pago por PayPal no es «vía Stripe»: no hay nada que
+        // verificar contra Stripe y el botón no debe ofrecerlo.
+        viaStripe: Boolean(reg.stripePaymentIntentId || reg.stripeSessionId || (exito && exito.provider !== 'paypal')),
         stripe: stripeCheck ? {
             checkedAt: stripeCheck.checkedAt || null,
             status: stripeCheck.status || null,

@@ -68,6 +68,31 @@ export interface CompanionRules {
     requireDocument: boolean;
 }
 
+/**
+ * Con qué se puede pagar una inscripción y cuál va por defecto (v4.1251). Lo
+ * decide el SERVIDOR: PayPal de la plataforma cuando está activado y puede
+ * cobrar la moneda; si no, la tarjeta. Es ADITIVO: un servidor anterior no lo
+ * manda y la pantalla cobra con tarjeta como siempre.
+ */
+export interface PaymentMethodOption {
+    id: 'paypal' | 'card';
+    available: boolean;
+    reason: string | null;
+    /** La moneda en que cobra PayPal; puede no ser la de la inscripción. */
+    currency?: string | null;
+    converted?: boolean;
+    originalCurrency?: string | null;
+    /** Unidades de la moneda original por UNA de la de cobro. */
+    perUnit?: number | null;
+    rateSource?: string | null;
+    env?: string | null;
+}
+
+export interface PaymentOptions {
+    defaultMethod: 'paypal' | 'card';
+    methods: PaymentMethodOption[];
+}
+
 export interface PublicCategory {
     key: string;
     name: string;
@@ -102,6 +127,8 @@ export interface PublicCategory {
         enabled: boolean;
         lines: { key: string; label: string; percent: number; fixed: number }[];
     };
+    /** Con qué se paga esta categoría (v4.1251). */
+    payment?: PaymentOptions;
     form: FormSchema;
 }
 

@@ -371,8 +371,17 @@ ok('y el panel lo pinta',
 
 // ⚠️ NO ALCANZA A LOS OTROS COBROS. Si esto falla, apagar la tarjeta dejaría
 // sin inscribirse a quien va a la Feria o a un evento.
+// v4.1251 — La inscripción a un evento SÍ lee el interruptor, pero SÓLO el de
+// PayPal (que va por defecto cuando está activado). El de la tarjeta sigue sin
+// alcanzarla: apagarlo no puede dejar a nadie sin inscribirse.
+{
+    const evento = read('server/controllers/eventRegistrationController.js');
+    const consultas = evento.match(/isMethodOffered\(\s*'([a-z]+)'/g) || [];
+    ok('la inscripción a un evento sólo consulta el interruptor de PayPal',
+        consultas.length > 0 && consultas.every(c => c.includes("'paypal'")),
+        'apagar la tarjeta en los aportes no puede quitarla de los eventos');
+}
 for (const [archivo, que] of [
-    ['server/controllers/eventRegistrationController.js', 'la inscripción a un evento'],
     ['server/controllers/projectFairController.js', 'la postulación a la Feria'],
     ['server/controllers/trainingPublicController.js', 'las capacitaciones'],
 ]) {

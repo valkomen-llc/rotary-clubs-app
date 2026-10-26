@@ -20,6 +20,10 @@
 // - **La confirmación la da el webhook de Stripe.** Al volver del pago se
 //   consulta el estado real; si todavía no llegó, se dice que puede tardar unos
 //   segundos en vez de dar por bueno el retorno del navegador.
+// - **PayPal de la plataforma por defecto (v4.1251).** Si el servidor lo ofrece
+//   para la moneda de la inscripción, viene preseleccionado; la tarjeta queda
+//   como alternativa. PayPal separa aprobar de cobrar: al volver se CAPTURA el
+//   pedido, y el webhook es la red de seguridad si la persona cierra la pestaña.
 // ════════════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -38,8 +42,11 @@ import {
     money, validateStep, isFieldVisible, validateCredentials,
     optionsForField, CLUB_NOT_LISTED,
     type FormField, type FormStep, type PublicCategory, type Companion,
-    type FormCatalogs,
+    type FormCatalogs, type PaymentOptions,
 } from '../lib/eventRegistrationSpec';
+// v4.1251 — Convertir con la tasa que ya mandó el servidor, para DECIR antes de
+// salir hacia PayPal cuánto se cobrará en su moneda.
+import { convertWithRate } from '../lib/fxRates';
 // v4.980 — El desglose del recargo. Espejo del criterio del servidor: existe
 // para PINTAR mientras la persona agrega acompañantes, sin pagar un viaje de
 // red por pulsación. Lo que se COBRA lo calcula el servidor al abrir el pago.
@@ -110,7 +117,87 @@ interface Registration {
     pricing?: Record<string, any>;
     /** Cuenta de Asistente al Evento a la que quedó vinculada la inscripción. */
     account?: { email: string; portalPath: string; token?: string } | null;
+    /** Con qué se puede reintentar el pago (v4.1251). */
+    payment?: PaymentOptions | null;
 }
+
+type PayMethod = 'paypal' | 'card';
+
+/** La vía que se usará: la elegida si está disponible; si no, la de por
+ *  defecto del servidor; sin datos del servidor, la tarjeta de siempre. */
+const effectiveMethod = (options: PaymentOptions | null | undefined, chosen: PayMethod | null): PayMethod => {
+    const available = (id: PayMethod) => !!options?.methods?.find(m => m.id === id && m.available);
+    if (chosen && available(chosen)) return chosen;
+    return options?.defaultMethod && available(options.defaultMethod) ? options.defaultMethod : 'card';
+};
+
+/**
+ * Las dos vías de pago, con PayPal primero (v4.1251).
+ *
+ * ⚠️ Si PayPal convierte, lo DICE antes de salir: quien vio «$ 250.000» tiene
+ * que leer cuánto se le cobrará en dólares. Convertir en silencio sería
+ * cambiarle el trato a mitad de camino.
+ *
+ * Declarado FUERA del asistente: un componente declarado dentro es un tipo
+ * nuevo en cada render.
+ */
+const PaymentMethodPicker = ({ options, value, onChange, amount, currency }: {
+    options: PaymentOptions | null | undefined;
+    value: PayMethod;
+    onChange: (m: PayMethod) => void;
+    /** Lo que se cobra, en la moneda del cobro de la inscripción. */
+    amount: number;
+    currency: string;
+}) => {
+    const paypal = options?.methods?.find(m => m.id === 'paypal');
+    if (!paypal?.available) return null;
+    const conversion = paypal.converted && paypal.currency && paypal.perUnit
+        ? convertWithRate(amount, currency, paypal.currency, paypal.perUnit)
+        : null;
+    const choices: { id: PayMethod; title: string; hint: string }[] = [
+        {
+            id: 'paypal',
+            title: 'PayPal',
+            hint: 'Con tu cuenta de PayPal o con tarjeta a través de PayPal.',
+        },
+        { id: 'card', title: 'Tarjeta de débito o crédito', hint: 'Pago directo con tarjeta.' },
+    ];
+    return (
+        <fieldset className="mt-5">
+            <legend className="text-sm font-bold text-slate-700">Medio de pago</legend>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                {choices.map(c => {
+                    const active = value === c.id;
+                    return (
+                        <label key={c.id}
+                            className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition ${active ? 'border-[#17458F] bg-blue-50/60 ring-1 ring-[#17458F]' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+                            <input type="radio" name="pay-method" value={c.id} checked={active}
+                                onChange={() => onChange(c.id)} className="mt-1 accent-[#17458F]" />
+                            <span>
+                                <span className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                                    {c.title}
+                                    {c.id === options?.defaultMethod && (
+                                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700">Recomendado</span>
+                                    )}
+                                </span>
+                                <span className="mt-0.5 block text-xs text-slate-500">{c.hint}</span>
+                            </span>
+                        </label>
+                    );
+                })}
+            </div>
+            {value === 'paypal' && conversion?.ok && (
+                <p className="mt-2 text-xs leading-relaxed text-slate-600">
+                    PayPal cobra en {paypal.currency}: se te cobrarán <strong>{money(conversion.amount!, paypal.currency!)}</strong>
+                    {' '}({money(amount, currency)} a la tasa del día, {money(paypal.perUnit!, currency)} por 1 {paypal.currency}).
+                </p>
+            )}
+            {value === 'paypal' && paypal.env && paypal.env !== 'live' && (
+                <p className="mt-2 text-xs font-semibold text-amber-700">PayPal está en modo de pruebas: el pago no es real.</p>
+            )}
+        </fieldset>
+    );
+};
 
 type Answers = Record<string, any>;
 
@@ -441,6 +528,13 @@ const RegistroEvento = () => {
     const returningId = params.get('registro');
     const returningToken = params.get('t') || '';
     const paymentCancelled = params.get('pago') === 'cancelado';
+    // v4.1251 — PayPal devuelve a la persona con `token=<pedido>`. Es SU
+    // parámetro y no se confunde con `t`, que es el de la inscripción.
+    const paypalOrderId = params.get('pago') === 'paypal' ? (params.get('token') || '') : '';
+    /** La vía que eligió la persona; `null` = la que recomiende el servidor. */
+    const [payMethod, setPayMethod] = useState<PayMethod | null>(null);
+    const [confirmingPaypal, setConfirmingPaypal] = useState(false);
+    const paypalCaptureRef = useRef('');
     /**
      * Categoría fijada desde la ficha del evento. Cuando viene, este formulario
      * es el de ESA categoría y nada más: el servidor devuelve únicamente sus
@@ -509,10 +603,40 @@ const RegistroEvento = () => {
         if (paymentCancelled) {
             setNotice('El pago quedó pendiente. Tu inscripción está guardada: puedes reintentarlo cuando quieras.');
         }
-        fetch(`${API}/event-registrations/${returningId}?t=${encodeURIComponent(returningToken)}`)
+        const loadRegistration = () => fetch(`${API}/event-registrations/${returningId}?t=${encodeURIComponent(returningToken)}`)
             .then(r => r.json())
             .then(data => { if (!data?.error) setRegistration({ ...data, accessToken: returningToken }); })
             .catch(() => { /* la pantalla sigue usable */ });
+
+        // Vuelve de PayPal: aprobar no es cobrar, así que se CAPTURA el pedido.
+        // Una sola vez por pedido —el modo estricto de React corre los efectos
+        // dos veces—; el servidor además es idempotente.
+        if (paypalOrderId && !paymentCancelled && paypalCaptureRef.current !== paypalOrderId) {
+            paypalCaptureRef.current = paypalOrderId;
+            setConfirmingPaypal(true);
+            // Se pinta ya la inscripción («pago pendiente» con el aviso de que
+            // se está confirmando) en vez del formulario vacío.
+            loadRegistration();
+            fetch(`${API}/event-registrations/${returningId}/paypal/capture`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ orderId: paypalOrderId, accessToken: returningToken }),
+            })
+                .then(async r => {
+                    const data = await r.json().catch(() => ({}));
+                    if (!r.ok || data?.error) throw new Error(data?.error || 'No pudimos confirmar el pago de PayPal.');
+                    // Se vuelve a leer con el GET: trae las opciones de pago
+                    // por si el cobro quedó en revisión y hay que reintentar.
+                    return loadRegistration();
+                })
+                .catch(err => {
+                    setError(err?.message || 'No pudimos confirmar el pago de PayPal.');
+                    return loadRegistration();
+                })
+                .finally(() => setConfirmingPaypal(false));
+        } else {
+            loadRegistration();
+        }
 
         // Se vuelve de la pasarela, quizá en otro dispositivo o tras cerrar la
         // pestaña: si este navegador no tiene sesión de asistente, se canjea la
@@ -528,7 +652,7 @@ const RegistroEvento = () => {
                 .then(body => { if (openAttendeeSession(body?.token)) setAttendeeSessionOpen(true); })
                 .catch(() => { /* podrá entrar con su correo y contraseña */ });
         }
-    }, [returningId, returningToken, paymentCancelled]);
+    }, [returningId, returningToken, paymentCancelled, paypalOrderId]);
 
     const category = useMemo(
         () => config?.categories.find(c => c.key === categoryKey) || null,
@@ -717,14 +841,19 @@ const RegistroEvento = () => {
     };
 
     // ── Envío y pago ─────────────────────────────────────────────────
-    const startPayment = useCallback(async (id: string, accessToken: string) => {
+    const startPayment = useCallback(async (id: string, accessToken: string, method: PayMethod) => {
         const res = await fetch(`${API}/event-registrations/${id}/checkout`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ returnUrl: window.location.origin, accessToken }),
+            body: JSON.stringify({ returnUrl: window.location.origin, accessToken, method }),
         });
         const data = await res.json();
-        if (!res.ok || !data?.url) throw new Error(data?.error || 'No pudimos iniciar el pago.');
+        if (!res.ok || !data?.url) {
+            // PayPal no pudo cobrar esta vez: se deja elegida la tarjeta para
+            // que el siguiente intento no vuelva a fallar igual.
+            if (data?.code === 'PAYMENT_METHOD_UNAVAILABLE') setPayMethod('card');
+            throw new Error(data?.error || 'No pudimos iniciar el pago.');
+        }
         window.location.href = data.url;
     }, []);
 
@@ -791,8 +920,12 @@ const RegistroEvento = () => {
             // acaba de comprobar la credencial —la creó o la verificó—, así que
             // pedir el ingreso a continuación era pedir dos veces lo mismo.
             if (openAttendeeSession(data?.account?.token)) setAttendeeSessionOpen(true);
-            setRegistration(data);
-            if (Number(data.chargeAmount) > 0) await startPayment(data.id, data.accessToken);
+            // Las opciones de pago viajan con la categoría: si abrir el pago
+            // falla, la pantalla de «pago pendiente» las sigue ofreciendo.
+            setRegistration({ ...data, payment: data.payment ?? category.payment ?? null });
+            if (Number(data.chargeAmount) > 0) {
+                await startPayment(data.id, data.accessToken, effectiveMethod(category.payment, payMethod));
+            }
         } catch (err: any) {
             setError(err?.message || 'No pudimos registrar tu inscripción.');
         } finally {
@@ -805,7 +938,8 @@ const RegistroEvento = () => {
         setError('');
         setSubmitting(true);
         try {
-            await startPayment(registration.id, registration.accessToken || returningToken);
+            await startPayment(registration.id, registration.accessToken || returningToken,
+                effectiveMethod(registration.payment, payMethod));
         } catch (err: any) {
             setError(err?.message || 'No pudimos iniciar el pago.');
             setSubmitting(false);
@@ -864,6 +998,9 @@ const RegistroEvento = () => {
     }
 
     const confirmed = registration && ['paid', 'confirmed', 'accredited', 'attended'].includes(registration.status);
+    // v4.1251 — La vía con la que se cobrará en cada pantalla.
+    const summaryMethod = effectiveMethod(category?.payment, payMethod);
+    const pendingMethod = effectiveMethod(registration?.payment, payMethod);
     const awaitingPayment = registration && !confirmed;
 
     return (
@@ -969,6 +1106,11 @@ const RegistroEvento = () => {
                 ) : awaitingPayment ? (
                     /* ── Pago pendiente ───────────────────────────── */
                     <section className="rounded-2xl bg-white p-7 shadow-sm sm:p-9">
+                        {confirmingPaypal && (
+                            <p className="mb-4 flex items-center gap-2 rounded-xl bg-blue-50 px-4 py-3 text-sm font-semibold text-[#17458F]">
+                                <Loader2 size={16} className="animate-spin" /> Estamos confirmando tu pago con PayPal…
+                            </p>
+                        )}
                         <h2 className="text-xl font-bold text-slate-900">Pago pendiente</h2>
                         <p className="mt-2 text-sm leading-relaxed text-slate-600">
                             Tu inscripción <strong>{registration!.publicRef}</strong> está guardada. Si ya pagaste,
@@ -1001,10 +1143,17 @@ const RegistroEvento = () => {
                                 </p>
                             )}
                         </div>
-                        <button onClick={retryPayment} disabled={submitting}
+                        <PaymentMethodPicker
+                            options={registration!.payment}
+                            value={pendingMethod}
+                            onChange={setPayMethod}
+                            amount={pendingQuote?.total ?? Number(registration!.chargeAmount)}
+                            currency={registration!.chargeCurrency} />
+                        <button onClick={retryPayment} disabled={submitting || confirmingPaypal}
                             className="mt-6 inline-flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-60"
                             style={{ background: BLUE }}>
-                            {submitting ? <Loader2 size={16} className="animate-spin" /> : <CreditCard size={16} />} Pagar ahora
+                            {submitting ? <Loader2 size={16} className="animate-spin" /> : <CreditCard size={16} />}
+                            {pendingMethod === 'paypal' ? ' Pagar con PayPal' : ' Pagar ahora'}
                         </button>
                         <div className="mt-6">{backToEvent}</div>
                     </section>
@@ -1468,16 +1617,29 @@ const RegistroEvento = () => {
                                     )}
                                 </div>
 
+                                {totals.total > 0 && (
+                                    <PaymentMethodPicker
+                                        options={category.payment}
+                                        value={summaryMethod}
+                                        onChange={setPayMethod}
+                                        amount={category.charge.converted && category.charge.fxRate
+                                            ? totals.total * category.charge.fxRate
+                                            : totals.total}
+                                        currency={category.charge.converted ? category.charge.currency : category.currency} />
+                                )}
+
                                 <button type="button" onClick={handleSubmit} disabled={submitting}
                                     className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl px-7 py-3.5 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-60 sm:w-auto"
                                     style={{ background: BLUE }}>
                                     {submitting ? <Loader2 size={16} className="animate-spin" /> : <CreditCard size={16} />}
-                                    {totals.total > 0 ? 'Continuar al pago' : 'Confirmar inscripción'}
+                                    {totals.total > 0
+                                        ? (summaryMethod === 'paypal' ? 'Continuar al pago con PayPal' : 'Continuar al pago')
+                                        : 'Confirmar inscripción'}
                                 </button>
 
                                 {totals.total > 0 && (
                                     <p className="mt-4 flex items-center gap-1.5 text-xs text-slate-500">
-                                        <ShieldCheck size={14} /> Pago seguro procesado por Stripe. La inscripción se
+                                        <ShieldCheck size={14} /> Pago seguro procesado por {summaryMethod === 'paypal' ? 'PayPal' : 'Stripe'}. La inscripción se
                                         confirma cuando el pago se aprueba.
                                     </p>
                                 )}
