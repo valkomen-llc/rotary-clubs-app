@@ -855,8 +855,11 @@ const leer = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
     // Registro se queda con la configuración. Nada de esto lo ve otra prueba.
     const eventos = leer('src/pages/admin/Events.tsx');
     const barra = eventos.match(/\[(?:'[a-z]+', )+'registro'\] as [\w\[\]]+/)?.[0] || '';
-    check('la barra del evento va: inscripciones, completadas, info, …, registro',
-        barra.startsWith("['inscripciones', 'completadas', 'info',"));
+    // v4.1248 — «Conciliación de fondos» entra junto a las inscripciones: lo
+    // que se fija es que las DOS de inscripciones abran la barra y Registro la
+    // cierre, no qué pestaña va tercera.
+    check('la barra del evento va: inscripciones, completadas, …, info, …, registro',
+        barra.startsWith("['inscripciones', 'completadas',") && barra.includes("'info'"));
     // ⚠️ SOBRE LA INVARIANTE, NO SOBRE LA FORMA (lección de v4.984). Fijada al
     // texto exacto `activeTab[id] || 'inscripciones'`, esta comprobación falló
     // en v4.1093 con el criterio intacto y MÁS estricto: la pantalla pasó a

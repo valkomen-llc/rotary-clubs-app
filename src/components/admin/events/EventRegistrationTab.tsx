@@ -85,10 +85,12 @@ interface Props {
     eventId: string;
     eventSlug?: string | null;
     eventTitle?: string;
+    /** v4.1248 — El sitio del evento, para leer el estado financiero de cada inscripción. */
+    clubId?: string;
     view?: RegistrationView;
 }
 
-const EventRegistrationTab = ({ eventId, eventSlug, eventTitle, view = 'registro' }: Props) => {
+const EventRegistrationTab = ({ eventId, eventSlug, eventTitle, clubId, view = 'registro' }: Props) => {
     const [pane, setPane] = useState<Pane>('edicion');
     const [edition, setEdition] = useState<Edition | null>(null);
     const [categories, setCategories] = useState<AdminCategory[]>([]);
@@ -367,7 +369,7 @@ const EventRegistrationTab = ({ eventId, eventSlug, eventTitle, view = 'registro
 
             {/* ── Inscripciones ───────────────────────────────────── */}
             {contenido === 'inscripciones' && (
-                <EventRegistrationsManager eventId={eventId} eventTitle={eventTitle}
+                <EventRegistrationsManager eventId={eventId} eventTitle={eventTitle} clubId={clubId}
                     categories={categories.map(c => ({ key: c.key, name: c.name }))}
                     statuses={catalog?.statuses || []} />
             )}

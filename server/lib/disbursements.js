@@ -204,9 +204,13 @@ const publico = (r) => ({
  * sumarlas fuera: con un club grande serían cientos de filas por visita para
  * calcular dos números. Es el criterio de `getCentralOverview` (v4.853).
  */
-export const disbursedTotals = async (clubId) => {
+// v4.1248 — `paymentIds` acota a unos pagos (la Bóveda de un evento), con el
+// mismo criterio que `disbursedByPayment`. Sin él, el total del sitio.
+export const disbursedTotals = async (clubId, paymentIds = null) => {
     try {
         if (!clubId || !(await listo())) return {};
+        const acotar = Array.isArray(paymentIds);
+        if (acotar && paymentIds.length === 0) return {};
         const { rows } = await db.query(
             `SELECT currency,
                     COALESCE(SUM(amount), 0)::float8 AS total,
@@ -214,8 +218,9 @@ export const disbursedTotals = async (clubId) => {
                     MAX("disbursedAt") AS ultimo
                FROM "Disbursement"
               WHERE "clubId" = $1 AND status = 'confirmado'
+                    ${acotar ? 'AND "paymentId" = ANY($2::text[])' : ''}
               GROUP BY currency`,
-            [clubId]
+            acotar ? [clubId, paymentIds] : [clubId]
         );
         const salida = {};
         for (const r of rows) {

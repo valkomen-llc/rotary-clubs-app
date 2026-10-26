@@ -42,6 +42,24 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1248.0',
+        title: 'Eventos: «Conciliación de fondos» — traslados, comprobantes PDF y envío por correo de los pagos de inscripción 💰📄',
+        description: 'Cada evento tiene ahora la pestaña «Conciliación de fondos», con la misma herramienta de conciliación que usan las campañas de contribución (la del terremoto): los pagos de las inscripciones procesados por Stripe, cada uno atado a su inscripción por su referencia de Stripe, con su recaudo bruto, comisiones y neto por moneda (COP y USD nunca se suman). Por cada pago se ven cinco estados que no se confunden: el pago, su verificación en Stripe, la liquidación, el traslado al beneficiario y el comprobante. Desde ahí se registra el traslado con su comprobante PDF, se envía la conciliación por correo (con vista previa, adjuntos e historial) y se consulta el historial. Un pago confirmado ya no se lee como «trasladado»: eso sólo lo dice un traslado registrado. Además, la inscripción pagada entra a la Bóveda en el momento en que Stripe confirma el pago, y la tabla de Inscripciones muestra el estado del dinero de cada inscrito.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'stripe', 'conciliación', 'bóveda', 'comprobantes', 'feature'],
+        type: 'feature',
+        impact: 'Alta: los organizadores pueden demostrar con comprobante a los rotarios que el dinero de las inscripciones se trasladó.',
+        changes: [
+            { type: 'added', text: 'Pestaña «Conciliación de fondos» en cada evento, que reutiliza la barra de traslado, la de conciliación, el modal de reenvío y la ficha de desembolso de la Bóveda.' },
+            { type: 'added', text: 'GET /financial/wallet?eventId= — la Bóveda acotada a los pagos del evento, con la inscripción de cada pago, sus cinco estados y los totales por moneda. Avisos y auditoría también se pueden acotar por evento.' },
+            { type: 'added', text: 'Las inscripciones pagadas que todavía no tienen movimiento se informan y se registran con «Revisar» → «Registrar movimientos». Las pagadas por fuera de Stripe no se asocian automáticamente.' },
+            { type: 'fixed', text: 'El movimiento de una inscripción se registra en la Bóveda al confirmarse el pago. Antes sólo entraba si alguien reconstruía los cobros a mano.' },
+            { type: 'fixed', text: 'Al reconstruir los cobros se miran las dos referencias de Stripe (PaymentIntent y Session), así un pago ya registrado no se duplica. También entran las inscripciones acreditadas o que asistieron.' },
+            { type: 'added', text: 'La tabla de Inscripciones muestra el estado del dinero de cada inscrito: trasladado, disponible, en liquidación o sin movimiento.' },
+            { type: 'added', text: 'npm run test:event-funds (56 comprobaciones, con el camino real de la Bóveda y la base en memoria), en el prebuild.' },
+        ],
+    },
+    {
         version: '4.1247.0',
         title: 'Eventos: los que ya terminaron pasan solos a «Eventos anteriores» 📅✅',
         description: 'En rotary4281.org/eventos el «Instituto Rotary Cancún 2026» (17 al 19 de septiembre) seguía apareciendo como próximo en octubre: la página mostraba todos los eventos del sitio, sin mirar la fecha. Ahora cada evento se clasifica solo, con la hora del servidor y la zona horaria del evento: Próximo, En curso, Finalizado o Fecha por confirmar. /eventos muestra los eventos en curso (destacados) y los próximos, del más cercano al más lejano, y aparte los publicados sin fecha («Próximamente»). Los finalizados se conservan completos en «Eventos anteriores» (/eventos/anteriores), del más reciente al más antiguo, y su ficha sigue disponible con el aviso «Evento finalizado». El administrador ya no tiene que ocultar nada a mano: puede marcar un evento como Borrador o Cancelado, elegir su zona horaria, «Fecha por confirmar» o «Todo el día», y ver en vivo qué estado tendrá. Aplica a todos los sitios con eventos.',

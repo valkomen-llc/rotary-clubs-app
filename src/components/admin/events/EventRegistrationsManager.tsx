@@ -22,6 +22,8 @@ import {
     Search, Send, Users, X,
 } from 'lucide-react';
 import { money, statusMeta, tagMeta, SYSTEM_TAG_KEYS, normalizeTag } from '../../../lib/eventRegistrationSpec';
+import { registrationFundBadge, PAID_REGISTRATION_STATUSES } from '../../../../server/lib/eventFundsSpec.js';
+import type { FundStates } from '../../../../server/lib/eventFundsSpec.js';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
 const authHeaders = () => ({
@@ -531,9 +533,33 @@ interface Props {
     eventTitle?: string;
     categories: { key: string; name: string }[];
     statuses: { key: string; label: string }[];
+    clubId?: string;
 }
 
-const EventRegistrationsManager = ({ eventId, eventTitle, categories, statuses }: Props) => {
+/**
+ * v4.1248 — El estado financiero de una inscripción, en UNA etiqueta. El
+ * detalle (los cinco estados, el traslado, el comprobante) vive en la pestaña
+ * «Conciliación de fondos», que es donde se concilia en bloque.
+ */
+const FUND_BADGE_CLS: Record<string, string> = {
+    trasladado: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    parcial: 'bg-amber-50 text-amber-800 border-amber-200',
+    disponible: 'bg-sky-50 text-sky-700 border-sky-200',
+    en_transito: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+    reembolsado: 'bg-rose-50 text-rose-700 border-rose-200',
+    sin_movimiento: 'bg-gray-50 text-gray-500 border-gray-200',
+};
+const FundBadge = ({ states }: { states: FundStates | null }) => {
+    const b = registrationFundBadge(states);
+    return (
+        <span title="Estado del dinero en la Bóveda — detalle en «Conciliación de fondos»"
+            className={`mt-1 inline-flex whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-semibold ${FUND_BADGE_CLS[b.key] || FUND_BADGE_CLS.sin_movimiento}`}>
+            {b.label}
+        </span>
+    );
+};
+
+const EventRegistrationsManager = ({ eventId, eventTitle, categories, statuses, clubId }: Props) => {
     const [dashboard, setDashboard] = useState<any>(null);
     const [rows, setRows] = useState<Registration[]>([]);
     const [total, setTotal] = useState(0);
@@ -544,6 +570,9 @@ const EventRegistrationsManager = ({ eventId, eventTitle, categories, statuses }
     const [showFilters, setShowFilters] = useState(false);
     const [selected, setSelected] = useState<string | null>(null);
     const [exporting, setExporting] = useState('');
+    // v4.1248 — inscripción → estados financieros. `null` = sin acceso a la
+    // Bóveda (o todavía cargando): la columna simplemente no se pinta.
+    const [funds, setFunds] = useState<Record<string, { states: FundStates }> | null>(null);
 
     /** Los filtros activos, en el formato que espera el servidor. */
     const query = useMemo(() => {
@@ -576,6 +605,15 @@ const EventRegistrationsManager = ({ eventId, eventTitle, categories, statuses }
             .catch(err => setError(err?.message || 'No se pudieron cargar las inscripciones.'))
             .finally(() => setLoading(false));
     }, [query, offset]);
+
+    useEffect(() => {
+        const qs = new URLSearchParams({ eventId });
+        if (clubId) qs.set('clubId', clubId);
+        fetch(`${API}/financial/wallet?${qs}`, { headers: authHeaders() })
+            .then(r => (r.ok ? r.json() : null))
+            .then(d => setFunds(d?.eventScope?.byRegistration || null))
+            .catch(() => setFunds(null));
+    }, [eventId, clubId]);
 
     useEffect(() => { loadDashboard(); }, [loadDashboard]);
     useEffect(() => { loadRows(); }, [loadRows]);
@@ -928,7 +966,12 @@ const EventRegistrationsManager = ({ eventId, eventTitle, categories, statuses }
                                         </p>
                                     )}
                                 </td>
-                                <td className="px-4 py-3"><StatusPill status={r.status} /></td>
+                                <td className="px-4 py-3">
+                                    <StatusPill status={r.status} />
+                                    {funds && PAID_REGISTRATION_STATUSES.includes(r.status) && (
+                                        <div><FundBadge states={funds[r.id]?.states || null} /></div>
+                                    )}
+                                </td>
                                 <td className="px-4 py-3 text-xs text-gray-500">{fmtDate(r.createdAt)}</td>
                             </tr>
                         ))}

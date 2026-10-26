@@ -204,6 +204,7 @@ es **rotar la credencial en Neon**, no sólo borrar el archivo.
 
 | Módulo | Archivo |
 |---|---|
+| Conciliación de fondos de un evento (pagos de inscripción por Stripe → traslado, comprobante PDF y correo, con la Bóveda) — v4.1248 | `docs/claude/conciliacion-de-fondos-de-un-evento.md` |
 | El ciclo de vida de un evento (próximos, en curso, finalizados, por confirmar; historial en `/eventos/anteriores`) — v4.1247 | `docs/claude/el-ciclo-de-vida-de-un-evento.md` |
 | Persistencia del Editor Visual de Plantillas (Email Marketing) — v4.1235 | `docs/claude/persistencia-del-editor-visual-de-plantillas.md` |
 | Generador de Outros IA — v4.647 (el selector de outros con el generador apagado: v4.1241) | `docs/claude/generador-de-outros-ia.md` |
