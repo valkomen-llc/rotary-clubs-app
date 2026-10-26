@@ -15,6 +15,7 @@ import { sourceTraceOf } from '../lib/districtEcosystem';
 import { useClub } from '../contexts/ClubContext';
 import { useLang } from '../contexts/LanguageContext';
 import { useSEO } from '../hooks/useSEO';
+import { formatInZone, PLATFORM_TIMEZONE, TIMEZONE_OPTIONS } from '../../server/lib/eventLifecycle.js';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -67,7 +68,7 @@ const hasRegistrationPanel = (event: any): boolean => {
 // cualquier otro evento el panel muestra únicamente lo que el administrador
 // haya llenado, con el título y la sede del propio evento como respaldo — así
 // un evento nuevo nunca hereda los datos de la Conferencia.
-const EventRegistrationSidebar = ({ event }: { event: any }) => {
+const EventRegistrationSidebar = ({ event, showCountdown }: { event: any; showCountdown: boolean }) => {
     const cfg = event?.metadata?.latir || {};
     const isLatir = event?.id === LATIR_EVENT_ID;
     const { club } = useClub();
@@ -98,7 +99,10 @@ const EventRegistrationSidebar = ({ event }: { event: any }) => {
             headerLogo={cfg.headerLogo}
             title={cfg.title || (isLatir ? 'Distrito 4921,\nPatagonia\nArgentina' : event?.title || '')}
             subtitle={cfg.subtitle || (isLatir ? 'El destino de nuestras\nnuevas historias.' : event?.location || '')}
-            startDate={event?.startDate}
+            // v4.1247 — La cuenta regresiva sólo tiene sentido ANTES del inicio:
+            // en un evento en curso, finalizado, cancelado o sin fecha marcaría
+            // 00:00:00:00 (o una fecha de relleno).
+            startDate={showCountdown ? event?.startDate : undefined}
             buttonLabel={cfg.buttonLabel || 'Inscripciones'}
             buttonLink={cfg.buttonLink || selfRegistration || (isLatir ? 'https://forms.gle/CXWqMj5w335h4qm69' : '')}
             secondaryLabel={cfg.secondaryLabel}
@@ -167,16 +171,21 @@ const EventoDetalle = () => {
         path: `/eventos/${canonicalRef}`,
     });
 
+    // v4.1247 — Las fechas se escriben en la zona horaria DEL EVENTO (la que
+    // resolvió el servidor), no en la del visitante: el Instituto de Cancún
+    // empieza a las 07:30 de Cancún aunque se consulte desde Madrid.
+    const lifecycle = event?.lifecycle;
+    const eventTz: string = lifecycle?.timezone || PLATFORM_TIMEZONE;
     const formatDate = (dateStr: string) => {
         if (!dateStr) return '';
-        return new Date(dateStr).toLocaleDateString(locale, {
+        return formatInZone(dateStr, eventTz, locale, {
             weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
         });
     };
 
     const formatTime = (dateStr: string) => {
-        if (!dateStr) return '';
-        return new Date(dateStr).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+        if (!dateStr || lifecycle?.allDay) return '';
+        return formatInZone(dateStr, eventTz, locale, { hour: '2-digit', minute: '2-digit' });
     };
 
     if (loading) {
@@ -211,6 +220,25 @@ const EventoDetalle = () => {
         : [];
 
     const hasImages = event.images && event.images.length > 0;
+
+    // Estado del evento: lo calculó el servidor con SU hora al servir la ficha
+    // (no el reloj del visitante, que puede estar mal puesto).
+    const editorial: string = lifecycle?.editorial || 'published';
+    const temporal: string = lifecycle?.temporal || 'upcoming';
+    const isCancelled = editorial === 'cancelled';
+    const isTbd = temporal === 'tbd';
+    const isFinished = temporal === 'finished';
+    const showCountdown = !isCancelled && temporal === 'upcoming';
+    const tzLabel = TIMEZONE_OPTIONS.find(o => o.value === eventTz)?.label || eventTz;
+    const statusChip = isCancelled
+        ? { label: 'Cancelado', className: 'bg-red-600 text-white' }
+        : isFinished
+            ? { label: 'Evento finalizado', className: 'bg-gray-900/70 text-white' }
+            : temporal === 'ongoing'
+                ? { label: 'En curso', className: 'bg-emerald-600 text-white' }
+                : isTbd
+                    ? { label: 'Fecha por confirmar', className: 'bg-rotary-gold text-white' }
+                    : null;
     const coverImg = event.image || (event.images && event.images[0]) || null;
 
     return (
@@ -226,9 +254,16 @@ const EventoDetalle = () => {
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
                 <div className="absolute bottom-0 left-0 right-0 px-6 pb-10 max-w-7xl mx-auto">
-                    <span className="inline-block bg-white/20 backdrop-blur-md text-white text-[11px] font-black uppercase tracking-widest px-3 py-1 rounded-full mb-4">
-                        {TYPE_LABELS[event.type] || event.type || 'Evento'}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-2 mb-4">
+                        <span className="inline-block bg-white/20 backdrop-blur-md text-white text-[11px] font-black uppercase tracking-widest px-3 py-1 rounded-full">
+                            {TYPE_LABELS[event.type] || event.type || 'Evento'}
+                        </span>
+                        {statusChip && (
+                            <span className={`inline-block text-[11px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${statusChip.className}`}>
+                                {statusChip.label}
+                            </span>
+                        )}
+                    </div>
                     <h1 className="text-3xl md:text-5xl font-black text-white leading-tight max-w-4xl">
                         {event.title}
                     </h1>
@@ -238,13 +273,23 @@ const EventoDetalle = () => {
             {/* Content */}
             <div className="max-w-7xl mx-auto px-6 py-12">
 
-                {/* Back */}
+                {/* Back — v4.1247: un evento finalizado vuelve a su historial. */}
                 <Link
-                    to="/eventos"
+                    to={isFinished && !isCancelled ? '/eventos/anteriores' : '/eventos'}
                     className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-rotary-blue transition-colors mb-10"
                 >
-                    <ArrowLeft className="w-4 h-4" /> Volver a Eventos
+                    <ArrowLeft className="w-4 h-4" /> {isFinished && !isCancelled ? 'Volver a Eventos anteriores' : 'Volver a Eventos'}
                 </Link>
+
+                {/* v4.1247 — La ficha de un evento que ya pasó o se canceló sigue
+                    disponible (los enlaces compartidos no se rompen), pero lo dice. */}
+                {(isCancelled || isFinished) && (
+                    <div className={`mb-10 rounded-2xl border px-5 py-4 text-sm ${isCancelled ? 'border-red-100 bg-red-50 text-red-900' : 'border-gray-200 bg-gray-50 text-gray-700'}`}>
+                        {isCancelled
+                            ? <>Este evento fue <strong>cancelado</strong>. Conservamos su información como referencia.</>
+                            : <>Este evento <strong>ya finalizó</strong>. Conservamos su información, galería y materiales como memoria de la actividad.</>}
+                    </div>
+                )}
 
                 {/* v4.747 — Un evento traído de otro sitio del ecosistema ACREDITA a
                     su organizador y enlaza a su ficha original. Es lo que separa
@@ -325,21 +370,31 @@ const EventoDetalle = () => {
                     {/* Sidebar info */}
                     <div className="space-y-4">
                         {hasRegistrationPanel(event) && (
-                            <EventRegistrationSidebar event={event} />
+                            <EventRegistrationSidebar event={event} showCountdown={showCountdown} />
                         )}
 
                         <div className="bg-gray-50 rounded-2xl p-6 space-y-5 border border-gray-100">
 
-                            <div className="flex items-start gap-3">
-                                <Calendar className="w-5 h-5 text-rotary-blue mt-0.5 flex-shrink-0" />
-                                <div>
-                                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Inicio</p>
-                                    <p className="text-sm font-semibold text-gray-800 capitalize">{formatDate(event.startDate)}</p>
-                                    <p className="text-sm text-gray-500">{formatTime(event.startDate)}</p>
+                            {isTbd ? (
+                                <div className="flex items-start gap-3">
+                                    <Calendar className="w-5 h-5 text-rotary-blue mt-0.5 flex-shrink-0" />
+                                    <div>
+                                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Fecha</p>
+                                        <p className="text-sm font-semibold text-gray-800">Por confirmar</p>
+                                    </div>
                                 </div>
-                            </div>
+                            ) : (
+                                <div className="flex items-start gap-3">
+                                    <Calendar className="w-5 h-5 text-rotary-blue mt-0.5 flex-shrink-0" />
+                                    <div>
+                                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Inicio</p>
+                                        <p className="text-sm font-semibold text-gray-800 capitalize">{formatDate(event.startDate)}</p>
+                                        <p className="text-sm text-gray-500">{formatTime(event.startDate)}</p>
+                                    </div>
+                                </div>
+                            )}
 
-                            {event.endDate && (
+                            {!isTbd && event.endDate && (
                                 <div className="flex items-start gap-3">
                                     <Clock className="w-5 h-5 text-rotary-blue mt-0.5 flex-shrink-0" />
                                     <div>
@@ -348,6 +403,10 @@ const EventoDetalle = () => {
                                         <p className="text-sm text-gray-500">{formatTime(event.endDate)}</p>
                                     </div>
                                 </div>
+                            )}
+
+                            {!isTbd && !lifecycle?.allDay && lifecycle?.timezone && (
+                                <p className="text-xs text-gray-400 -mt-2 pl-8">Hora local del evento · {tzLabel}</p>
                             )}
 
                             {event.location && (

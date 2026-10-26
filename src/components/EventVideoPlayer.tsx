@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Play, X, Video as VideoIcon } from 'lucide-react';
-import { resolveEventVideo, EventVideoConfig } from '../lib/eventVideo';
+import { resolveEventVideo, type EventVideoConfig } from '../lib/eventVideo';
 
 export interface EventVideoPlayerProps {
     /** Configuración del video guardada en metadata.video */

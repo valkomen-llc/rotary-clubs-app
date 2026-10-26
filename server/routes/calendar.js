@@ -8,6 +8,8 @@ import { ingestMemorySafe } from '../services/brainService.js';
 import { assertEventCapability, allowedEventIdsFor, canCreateEventsFor, holdsCapability } from '../lib/eventAccess.js';
 import { attachGrant } from '../middleware/institutionalGuard.js';
 import { resourceCapabilitiesFor, isResourceRestricted, canCreateResource } from '../lib/rbacSpec.js';
+import { describeLifecycle, LIFECYCLE_METADATA_KEYS } from '../lib/eventLifecycle.js';
+import { resolveSiteEventTimezone } from '../lib/siteEventTimezone.js';
 
 const router = express.Router();
 
@@ -97,9 +99,10 @@ router.get('/', authMiddleware, async (req, res) => {
         }
         const whereClause = clubId ? `WHERE "clubId" = $1` : '';
         const params = clubId ? [clubId] : [];
-        const [publications, events] = await Promise.all([
+        const [publications, events, siteTz] = await Promise.all([
             db.query(`SELECT * FROM "Publication" ${whereClause} ORDER BY "publishDate" ASC`, params),
-            db.query(`SELECT * FROM "CalendarEvent" ${whereClause} ORDER BY "startDate" ASC`, params)
+            db.query(`SELECT * FROM "CalendarEvent" ${whereClause} ORDER BY "startDate" ASC`, params),
+            resolveSiteEventTimezone(clubId),
         ]);
         // v4.1090 — Tercer nivel (rol → módulo → recurso): un alcance acotado
         // a eventos concretos recibe SÓLO ésos. El filtro va acá, en el
@@ -108,9 +111,14 @@ router.get('/', authMiddleware, async (req, res) => {
         // por evento viajan RESUELTAS (`access`) para que la pantalla pinte y
         // no decida — es aditivo: un cliente anterior sigue leyendo `events`.
         const permitidos = await allowedEventIdsFor(req);
-        const filas = permitidos === null
+        // v4.1247 — Cada evento viaja con su ciclo de vida (Próximo, En curso,
+        // Finalizado, Por confirmar; Borrador, Cancelado) calculado con la hora
+        // del servidor: el panel muestra el MISMO estado que ve el público.
+        const nowMs = Date.now();
+        const filas = (permitidos === null
             ? events.rows
-            : events.rows.filter(e => permitidos.includes(String(e.id)));
+            : events.rows.filter(e => permitidos.includes(String(e.id))))
+            .map(e => ({ ...e, lifecycle: describeLifecycle(e, { nowMs, fallbackTz: siteTz }) }));
         const grant = await attachGrant(req);
         const decide = Boolean(grant) && grant.source !== 'none';
         const access = {
@@ -120,7 +128,9 @@ router.get('/', authMiddleware, async (req, res) => {
                 e.id, decide ? resourceCapabilitiesFor(grant, 'events', e.id) : null,
             ])),
         };
-        res.json({ publications: publications.rows, events: filas, access });
+        // `eventDefaults.timezone`: la zona con que el panel escribe y lee las
+        // horas de un evento que no eligió la suya.
+        res.json({ publications: publications.rows, events: filas, access, eventDefaults: { timezone: siteTz } });
     } catch (error) {
         console.error('Calendar Fetch Error:', error);
         res.status(500).json({ error: 'Error al cargar el calendario' });
@@ -162,6 +172,27 @@ const normalizeSlug = (value) => {
 const isDuplicateSlug = (error) => error?.code === '23505';
 const DUPLICATE_SLUG_MESSAGE = 'Ya hay otro evento de este sitio con esa dirección. Elige otra.';
 
+/**
+ * v4.1247 — «Fecha por confirmar». `startDate` es obligatorio en la tabla, así
+ * que un evento sin fecha guarda un valor de relleno que el ciclo de vida
+ * IGNORA (nunca se muestra ni lo clasifica). Se conserva el que ya tenía; si
+ * no hay ninguno, el instante de creación. Sin la marca, una fecha inválida
+ * devuelve null y la ruta responde 400 en vez de un 500 de la base.
+ */
+const isValidDate = (d) => d instanceof Date && Number.isFinite(d.getTime());
+const startDateFor = (value, metadata, actual) => {
+    const d = value ? new Date(value) : null;
+    if (isValidDate(d)) return d;
+    if (metadata?.dateTbd === true) return actual ? new Date(actual) : new Date();
+    return null;
+};
+/** Sin fecha confirmada tampoco hay fin. */
+const endDateFor = (value, metadata) => {
+    if (metadata?.dateTbd === true || !value) return null;
+    const d = new Date(value);
+    return isValidDate(d) ? d : null;
+};
+
 router.post('/events', authMiddleware, async (req, res) => {
     try {
         // v4.1090 — Crear exige `events.create` Y un alcance sin acotar: quien
@@ -170,10 +201,12 @@ router.post('/events', authMiddleware, async (req, res) => {
             return res.status(403).json({ error: 'No tienes permiso para crear eventos en este sitio.' });
         }
         const { title, description, htmlContent, startDate, endDate, location, type, image, images, metadata, slug } = req.body;
+        const inicio = startDateFor(startDate, metadata, null);
+        if (!inicio) return res.status(400).json({ error: 'Falta la fecha de inicio (o marca «Fecha por confirmar»).' });
         const result = await db.query(
             `INSERT INTO "CalendarEvent" (id, title, description, "htmlContent", "startDate", "endDate", location, type, image, images, "clubId", "createdAt", metadata, slug)
              VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), $11, $12) RETURNING *`,
-            [title, description, htmlContent || null, new Date(startDate), endDate ? new Date(endDate) : null, location, type, image || null, images || [], req.user.clubId, metadata || {}, normalizeSlug(slug)]
+            [title, description, htmlContent || null, inicio, endDateFor(endDate, metadata), location, type, image || null, images || [], req.user.clubId, metadata || {}, normalizeSlug(slug)]
         );
         const event = result.rows[0];
         if (event?.clubId) {
@@ -207,7 +240,9 @@ const EVENT_FIELDS_BY_CAPABILITY = {
     media: ['image', 'images'],
     html: ['htmlContent'],
 };
-const METADATA_KEYS_BY_CAPABILITY = { venue: ['venue'], registration_panel: ['latir'], media: ['video'] };
+// v4.1247 — El estado editorial, la zona horaria, «fecha por confirmar» y
+// «todo el día» son parte de la información del evento.
+const METADATA_KEYS_BY_CAPABILITY = { venue: ['venue'], registration_panel: ['latir'], media: ['video'], info: LIFECYCLE_METADATA_KEYS };
 
 const mergeEventUpdate = (actual, cuerpo, caps) => {
     const puede = (c) => caps === null || caps.includes(c);
@@ -255,12 +290,14 @@ router.put('/events/:id', authMiddleware, async (req, res) => {
         const { title, description, htmlContent, startDate, endDate, location, type, image, images, metadata, slug } = mergeEventUpdate(actual, req.body || {}, caps);
         // `slug` ausente en el cuerpo = no se toca; presente (aunque vacío) sí.
         const nextSlug = slug === undefined ? actual.slug : normalizeSlug(slug);
+        const inicio = startDateFor(startDate, metadata, actual.startDate);
+        if (!inicio) return res.status(400).json({ error: 'Falta la fecha de inicio (o marca «Fecha por confirmar»).' });
         const result = await db.query(
             `UPDATE "CalendarEvent"
              SET title=$1, description=$2, "htmlContent"=$3, "startDate"=$4, "endDate"=$5,
                  location=$6, type=$7, image=$8, images=$9, metadata=$10, slug=$12
              WHERE id=$11 RETURNING *`,
-            [title, description, htmlContent || null, new Date(startDate), endDate ? new Date(endDate) : null, location, type, image || null, images || [], metadata || {}, id, nextSlug]
+            [title, description, htmlContent || null, inicio, endDateFor(endDate, metadata), location, type, image || null, images || [], metadata || {}, id, nextSlug]
         );
         const updated = result.rows[0];
         if (updated?.clubId) {
