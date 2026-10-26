@@ -16,6 +16,8 @@ import { DISTRICT_SITE_SQL, districtSiteParams, pickDistrictSite, districtBrandi
 import { serverTiming } from '../lib/resilience.js';
 import { SITE_CONFIG_BUDGET, siteConfigCacheKey } from '../lib/documentBudget.js';
 import { siteConfigCache } from '../lib/siteConfigCache.js';
+import { describeLifecycle, isPubliclyVisible, partitionPublicEvents } from '../lib/eventLifecycle.js';
+import { resolveSiteEventTimezone } from '../lib/siteEventTimezone.js';
 
 const router = express.Router();
 
@@ -593,6 +595,7 @@ router.get('/:clubId/search', async (req, res) => {
             db.query(
                 `SELECT id, title, description, location, "startDate" FROM "CalendarEvent"
                  WHERE "clubId" = $1
+                 AND COALESCE(metadata->>'status', 'published') <> 'draft'
                  AND (LOWER(title) LIKE $2 OR LOWER(description) LIKE $2)
                  ORDER BY "startDate" DESC LIMIT 5`,
                 [clubId, query]
@@ -628,6 +631,11 @@ router.get('/:clubId/sections', getPublicSections);
 // v4.605 — El parámetro acepta el id o el slug del evento, para poder enlazarlo
 // con una dirección amigable (/eventos/mi-evento) desde botones y menús. Los
 // enlaces por id que ya estén publicados siguen funcionando igual.
+//
+// v4.1247 — La ficha de un evento FINALIZADO o CANCELADO se sigue sirviendo:
+// los enlaces compartidos no se rompen y el historial conserva su contenido.
+// Sólo un BORRADOR responde 404. Viaja con su `lifecycle` para que la ficha
+// diga «Evento finalizado» sin decidirlo con el reloj del navegador.
 router.get('/:clubId/events/:id', async (req, res) => {
     try {
         const { clubId, id } = req.params;
@@ -638,8 +646,11 @@ router.get('/:clubId/events/:id', async (req, res) => {
              LIMIT 1`,
             [id, clubId]
         );
-        if (!result.rows[0]) return res.status(404).json({ error: 'Evento no encontrado' });
-        res.json(result.rows[0]);
+        const event = result.rows[0];
+        if (!event || !isPubliclyVisible(event)) return res.status(404).json({ error: 'Evento no encontrado' });
+        const fallbackTz = await resolveSiteEventTimezone(clubId);
+        res.setHeader('Cache-Control', 'no-store');
+        res.json({ ...event, lifecycle: describeLifecycle(event, { fallbackTz }) });
     } catch (error) {
         console.error('Public event detail error:', error.message);
         res.status(500).json({ error: 'Error al cargar el evento' });
@@ -647,17 +658,44 @@ router.get('/:clubId/events/:id', async (req, res) => {
 });
 
 // Public events endpoint — returns CalendarEvent records for public pages
+//
+// v4.1247 — Hasta acá devolvía TODOS los eventos del sitio y la página los
+// pintaba tal cual: un evento terminado seguía promocionándose como próximo.
+// Ahora cada evento lleva su `lifecycle` (estado editorial + temporal, calculado
+// con la hora del SERVIDOR y la zona del evento) y los borradores no salen.
+//
+//   · Sin `scope` (lo que pide `/eventos`): todos los publicados y cancelados,
+//     con su `lifecycle`. La página los reparte con `partitionPublicEvents`,
+//     así el selector Próximos | Anteriores no vuelve a pedir nada.
+//   · `?scope=upcoming`: en curso + próximos + por confirmar (sin cancelados).
+//   · `?scope=past`: finalizados, del más reciente al más antiguo.
+//
+// `no-store`: el estado depende de la hora; una copia guardada en un caché
+// intermedio volvería a mostrar como próximo un evento que ya terminó.
 router.get('/:clubId/events', async (req, res) => {
     try {
         const { clubId } = req.params;
-        const result = await db.query(
-            `SELECT id, slug, title, description, "htmlContent", "startDate", "endDate", location, type, image, images, metadata, "createdAt"
-             FROM "CalendarEvent"
-             WHERE "clubId" = $1
-             ORDER BY "startDate" ASC`,
-            [clubId]
-        );
-        res.json(result.rows);
+        const [result, fallbackTz] = await Promise.all([
+            db.query(
+                `SELECT id, slug, title, description, "htmlContent", "startDate", "endDate", location, type, image, images, metadata, "createdAt"
+                 FROM "CalendarEvent"
+                 WHERE "clubId" = $1
+                 ORDER BY "startDate" ASC`,
+                [clubId]
+            ),
+            resolveSiteEventTimezone(clubId),
+        ]);
+        const nowMs = Date.now();
+        const events = result.rows
+            .filter(isPubliclyVisible)
+            .map(e => ({ ...e, lifecycle: describeLifecycle(e, { nowMs, fallbackTz }) }));
+        res.setHeader('Cache-Control', 'no-store');
+        const scope = String(req.query.scope || '').toLowerCase();
+        if (scope === 'upcoming' || scope === 'past') {
+            const { upcoming, tbd, past } = partitionPublicEvents(events, nowMs);
+            return res.json(scope === 'past' ? past : [...upcoming, ...tbd]);
+        }
+        res.json(events);
     } catch (error) {
         console.error('Public events error:', error.message);
         res.json([]);

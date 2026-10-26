@@ -713,6 +713,8 @@ function App() {
                 <Route path="/la-fundacion-rotaria" element={<FundacionRotaria />} />
                 <Route path="/involucrate" element={<Involucrate />} />
                 <Route path="/eventos" element={<Eventos />} />
+                {/* v4.1247 — El historial de eventos finalizados: la misma página, otra vista. */}
+                <Route path="/eventos/anteriores" element={<Eventos />} />
                 <Route path="/eventos/:id" element={<EventoDetalle />} />
                 {/* Registro de asistentes al evento (v4.606). El parámetro
                     acepta el id o la dirección amigable del evento. */}

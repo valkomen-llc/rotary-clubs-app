@@ -42,6 +42,23 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1247.0',
+        title: 'Eventos: los que ya terminaron pasan solos a «Eventos anteriores» 📅✅',
+        description: 'En rotary4281.org/eventos el «Instituto Rotary Cancún 2026» (17 al 19 de septiembre) seguía apareciendo como próximo en octubre: la página mostraba todos los eventos del sitio, sin mirar la fecha. Ahora cada evento se clasifica solo, con la hora del servidor y la zona horaria del evento: Próximo, En curso, Finalizado o Fecha por confirmar. /eventos muestra los eventos en curso (destacados) y los próximos, del más cercano al más lejano, y aparte los publicados sin fecha («Próximamente»). Los finalizados se conservan completos en «Eventos anteriores» (/eventos/anteriores), del más reciente al más antiguo, y su ficha sigue disponible con el aviso «Evento finalizado». El administrador ya no tiene que ocultar nada a mano: puede marcar un evento como Borrador o Cancelado, elegir su zona horaria, «Fecha por confirmar» o «Todo el día», y ver en vivo qué estado tendrá. Aplica a todos los sitios con eventos.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'calendario', 'zona horaria', 'historial', 'fix'],
+        type: 'feature',
+        impact: 'Alta: la página de eventos promociona sólo lo que está por venir, sin intervención manual, y el historial queda accesible.',
+        changes: [
+            { type: 'fixed', text: 'GET /clubs/:id/events devuelve cada evento con su ciclo de vida y sin borradores; /eventos ya no muestra eventos finalizados como próximos.' },
+            { type: 'added', text: 'Selector «Próximos eventos | Eventos anteriores», sección «Próximamente» para eventos sin fecha, etiquetas «En curso», «Finalizado» y «Fecha por confirmar», y mensaje cuando no hay eventos programados. Las categorías filtran en las dos vistas.' },
+            { type: 'added', text: 'Panel: estado editorial (Publicado, Borrador, Cancelado), zona horaria, «Fecha por confirmar», «Todo el día», vista previa del estado y filtros por estado con todos los eventos, también los históricos.' },
+            { type: 'fixed', text: 'Panel: las horas se escriben y se leen en la zona del evento. Antes el campo mostraba la hora en UTC y, al tocarla, la corría 5 horas.' },
+            { type: 'changed', text: 'Las fechas del sitio público se escriben en la zona del evento, no en la del visitante. La ficha de un evento finalizado o cancelado lo dice y no muestra la cuenta regresiva.' },
+            { type: 'added', text: 'npm run test:event-lifecycle (63 comprobaciones, incluido el caso real de Cancún), en el prebuild.' },
+        ],
+    },
+    {
         version: '4.1246.0',
         title: 'Reels: «Volver a montar con el outro» funciona en los sitios sin el Creador de Video 🎬🔓',
         description: 'En rotary4281.org, «Volver a montar con el outro» respondía «La herramienta \'video\' no está disponible para este sitio»: volver a montar exigía el Creador de Video, que es la herramienta para crear Reels nuevos y está apagada en ese sitio. Volver a montar no crea nada ni gasta créditos, así que ahora basta con tener habilitados los Reels, la Biblioteca o la Videoteca. Además, si un Reel no tiene un video base al día (por ejemplo, porque cambió la voz en off), el remontaje se hace en dos pasos automáticos: primero el Reel sin outro y enseguida el outro encima, para que ninguno de los dos se quede sin tiempo.',

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import type { Ref } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
     Plus, Trash2, Save, Calendar, ChevronDown, ChevronUp,
@@ -19,6 +20,11 @@ import { useAuth } from '../../hooks/useAuth';
 import { useSiteAccess } from '../../hooks/useSiteAccess';
 import { useClub } from '../../contexts/ClubContext';
 import { isDistrictSiteType, sourceTraceOf } from '../../lib/districtEcosystem';
+import {
+    describeLifecycle, toZonedInputValue, zonedInputToIso, formatInZone,
+    editorialStatusOf, TIMEZONE_OPTIONS, PLATFORM_TIMEZONE,
+} from '../../../server/lib/eventLifecycle.js';
+import type { EventLifecycle, EditorialStatus, TemporalStatus } from '../../../server/lib/eventLifecycle.js';
 
 interface CalendarEvent {
     id: string;
@@ -40,6 +46,8 @@ interface CalendarEvent {
     metadata?: Record<string, any>;
     /** Dirección amigable del evento: /eventos/mi-evento. Sin slug se entra por el id. */
     slug?: string | null;
+    /** v4.1247 — Estado editorial y temporal que calculó el servidor (lo que ve el público HOY). */
+    lifecycle?: EventLifecycle;
 }
 
 /**
@@ -145,6 +153,215 @@ const emptyForm = {
     image: '',
     images: [] as string[],
     slug: '',
+    // v4.1247 — `status`, `timezone`, `dateTbd` y `allDay` viven acá.
+    metadata: {} as Record<string, any>,
+};
+
+// ── Ciclo de vida del evento en el panel (v4.1247) ───────────────────────────
+//
+// El criterio vive en `server/lib/eventLifecycle.js` (el mismo archivo que usa
+// el servidor). El panel:
+//   · muestra en cada fila el estado que ve el público HOY (`event.lifecycle`,
+//     calculado con la hora del servidor);
+//   · edita estado editorial, zona horaria, «fecha por confirmar» y «todo el
+//     día», con una vista previa del estado que tendrá al guardar;
+//   · escribe y lee las horas EN LA ZONA DEL EVENTO. Antes el campo mostraba
+//     la hora en UTC (`toISOString`) y la re-interpretaba en la zona del
+//     navegador al escribir: en Colombia, tocar la hora la corría 5 horas.
+
+const EDITORIAL_BADGES: Record<EditorialStatus, { label: string; className: string }> = {
+    draft: { label: 'Borrador', className: 'bg-gray-100 text-gray-600 border border-gray-200' },
+    published: { label: 'Publicado', className: 'bg-blue-50 text-blue-700 border border-blue-100' },
+    cancelled: { label: 'Cancelado', className: 'bg-red-50 text-red-700 border border-red-200' },
+};
+const TEMPORAL_BADGES: Record<TemporalStatus, { label: string; className: string }> = {
+    upcoming: { label: 'Próximo', className: 'bg-sky-50 text-sky-700 border border-sky-200' },
+    ongoing: { label: 'En curso', className: 'bg-emerald-50 text-emerald-700 border border-emerald-200' },
+    finished: { label: 'Finalizado', className: 'bg-slate-100 text-slate-600 border border-slate-200' },
+    tbd: { label: 'Fecha por confirmar', className: 'bg-amber-50 text-amber-700 border border-amber-200' },
+};
+
+const LifecycleBadges = ({ lifecycle }: { lifecycle?: EventLifecycle }) => {
+    if (!lifecycle) return null;
+    const editorial = lifecycle.editorial !== 'published' ? EDITORIAL_BADGES[lifecycle.editorial] : null;
+    const temporal = TEMPORAL_BADGES[lifecycle.temporal];
+    return (
+        <>
+            {editorial && <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${editorial.className}`}>{editorial.label}</span>}
+            {temporal && <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${temporal.className}`}>{temporal.label}</span>}
+        </>
+    );
+};
+
+/** Filtros de la lista del panel. */
+type AdminLifecycleFilter = 'todos' | 'vigentes' | 'tbd' | 'finalizados' | 'borradores' | 'cancelados';
+const ADMIN_FILTERS: { key: AdminLifecycleFilter; label: string }[] = [
+    { key: 'todos', label: 'Todos' },
+    { key: 'vigentes', label: 'Próximos y en curso' },
+    { key: 'tbd', label: 'Fecha por confirmar' },
+    { key: 'finalizados', label: 'Finalizados' },
+    { key: 'borradores', label: 'Borradores' },
+    { key: 'cancelados', label: 'Cancelados' },
+];
+const matchesAdminFilter = (lc: EventLifecycle | undefined, filter: AdminLifecycleFilter): boolean => {
+    if (filter === 'todos') return true;
+    if (!lc) return filter === 'vigentes';
+    if (filter === 'borradores') return lc.editorial === 'draft';
+    if (filter === 'cancelados') return lc.editorial === 'cancelled';
+    if (lc.editorial !== 'published') return false;
+    if (filter === 'vigentes') return lc.temporal === 'upcoming' || lc.temporal === 'ongoing';
+    if (filter === 'tbd') return lc.temporal === 'tbd';
+    return lc.temporal === 'finished';
+};
+/** En curso → próximos (del más cercano) → por confirmar → finalizados (del más reciente). */
+const TEMPORAL_RANK: Record<TemporalStatus, number> = { ongoing: 0, upcoming: 1, tbd: 2, finished: 3 };
+const compareForAdmin = (a: CalendarEvent, b: CalendarEvent): number => {
+    const ra = TEMPORAL_RANK[a.lifecycle?.temporal || 'upcoming'];
+    const rb = TEMPORAL_RANK[b.lifecycle?.temporal || 'upcoming'];
+    if (ra !== rb) return ra - rb;
+    const ta = new Date(a.startDate).getTime();
+    const tb = new Date(b.startDate).getTime();
+    return ra === 3 ? tb - ta : ta - tb;
+};
+
+type ScheduleValue = { startDate: string; endDate?: string | null; metadata?: Record<string, any> };
+
+/** Copia de `metadata` con una clave puesta o, con `undefined`, quitada. */
+const withMetaKey = (meta: Record<string, any> | undefined, key: string, value: unknown) => {
+    const next = { ...(meta || {}) };
+    if (value === undefined || value === '' || value === false) delete next[key];
+    else next[key] = value;
+    return next;
+};
+
+/**
+ * Lo que se manda al guardar: las horas escritas en la zona del evento,
+ * convertidas al instante que se guarda. Un valor que ya es un instante
+ * (no se tocó) se respeta tal cual.
+ */
+const scheduleForSave = <T extends ScheduleValue>(ev: T, siteTz: string): T => {
+    const meta = ev.metadata || {};
+    const tz = meta.timezone || siteTz;
+    const norm = (v?: string | null) => {
+        if (!v) return null;
+        return zonedInputToIso(meta.allDay ? toZonedInputValue(v, tz, true) : v, tz) || null;
+    };
+    const out: any = { ...ev, startDate: norm(ev.startDate), endDate: meta.dateTbd ? null : norm(ev.endDate) };
+    delete out.lifecycle;
+    return out;
+};
+
+/**
+ * Fechas, zona horaria y estado de un evento, con la vista previa del estado
+ * temporal. Se usa en «Nuevo evento» y en la pestaña Información.
+ */
+const ScheduleFields = ({ value, siteTz, onChange, startRef }: {
+    value: ScheduleValue;
+    siteTz: string;
+    onChange: (patch: Partial<ScheduleValue>) => void;
+    startRef?: Ref<HTMLInputElement>;
+}) => {
+    const meta = value.metadata || {};
+    const tz: string = meta.timezone || siteTz;
+    const allDay = meta.allDay === true;
+    const dateTbd = meta.dateTbd === true;
+    const status = editorialStatusOf({ metadata: meta });
+    const siteLabel = TIMEZONE_OPTIONS.find(o => o.value === siteTz)?.label || siteTz;
+    const tzOptions = meta.timezone && !TIMEZONE_OPTIONS.some(o => o.value === meta.timezone)
+        ? [...TIMEZONE_OPTIONS, { value: meta.timezone, label: meta.timezone }]
+        : TIMEZONE_OPTIONS;
+
+    // Al cambiar de zona se conserva la hora de PARED que se ve en el campo
+    // («09:00»): se la fija como texto en la zona anterior y se guarda en la nueva.
+    const changeTimezone = (next: string) => onChange({
+        startDate: value.startDate ? toZonedInputValue(value.startDate, tz) : value.startDate,
+        endDate: value.endDate ? toZonedInputValue(value.endDate, tz) : value.endDate,
+        metadata: withMetaKey(meta, 'timezone', next || undefined),
+    });
+
+    const preview = describeLifecycle(scheduleForSave(value, siteTz), { fallbackTz: siteTz });
+    const finDe = preview.endsAt ? formatInZone(preview.endsAt, preview.timezone, 'es-ES', {
+        weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    }) : '';
+    const inicioDe = preview.startsAt ? formatInZone(preview.startsAt, preview.timezone, 'es-ES', {
+        weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    }) : '';
+    const explicacion = status === 'draft'
+        ? 'No aparece en el sitio público mientras sea borrador.'
+        : status === 'cancelled'
+            ? 'No aparece entre los próximos ni en el historial; su ficha avisa que fue cancelado.'
+            : preview.temporal === 'tbd'
+                ? 'Aparece en «Próximamente», sin fecha.'
+                : preview.temporal === 'upcoming'
+                    ? `Aparece en «Próximos eventos». Empieza el ${inicioDe} y pasa solo a «Eventos anteriores» el ${finDe}.`
+                    : preview.temporal === 'ongoing'
+                        ? `Aparece primero, como «En curso». Pasa solo a «Eventos anteriores» el ${finDe}.`
+                        : 'Ya terminó: aparece en «Eventos anteriores» y su ficha sigue disponible.';
+    const inputClass = 'w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none';
+
+    return (
+        <>
+            <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Estado editorial</label>
+                <select value={status}
+                    onChange={e => onChange({ metadata: withMetaKey(meta, 'status', e.target.value === 'published' ? undefined : e.target.value) })}
+                    className={`${inputClass} bg-white`}>
+                    <option value="published">Publicado</option>
+                    <option value="draft">Borrador (no aparece en el sitio)</option>
+                    <option value="cancelled">Cancelado</option>
+                </select>
+            </div>
+            <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Zona horaria</label>
+                <select value={meta.timezone || ''} onChange={e => changeTimezone(e.target.value)} className={`${inputClass} bg-white`}>
+                    <option value="">La del sitio — {siteLabel}</option>
+                    {tzOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+            </div>
+            <div className="md:col-span-2 flex flex-wrap gap-x-6 gap-y-2">
+                <label className="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                    <input type="checkbox" checked={dateTbd} className="w-4 h-4 rounded border-gray-300 text-blue-600"
+                        onChange={e => onChange({ metadata: withMetaKey(meta, 'dateTbd', e.target.checked) })} />
+                    Fecha por confirmar
+                </label>
+                {!dateTbd && (
+                    <label className="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                        <input type="checkbox" checked={allDay} className="w-4 h-4 rounded border-gray-300 text-blue-600"
+                            onChange={e => onChange({ metadata: withMetaKey(meta, 'allDay', e.target.checked) })} />
+                        Todo el día (sin hora)
+                    </label>
+                )}
+            </div>
+            {!dateTbd && (
+                <>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de inicio *</label>
+                        <input type={allDay ? 'date' : 'datetime-local'} ref={startRef}
+                            value={toZonedInputValue(value.startDate, tz, allDay)}
+                            onChange={e => onChange({ startDate: e.target.value })}
+                            className={inputClass} />
+                        {!allDay && <p className="mt-1 text-xs text-gray-400">Completa el día, la hora y el a. m. / p. m.: mientras falte alguno, la fecha se toma como vacía.</p>}
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de fin</label>
+                        <input type={allDay ? 'date' : 'datetime-local'}
+                            value={toZonedInputValue(value.endDate || '', tz, allDay)}
+                            onChange={e => onChange({ endDate: e.target.value })}
+                            className={inputClass} />
+                        <p className="mt-1 text-xs text-gray-400">Sin fecha de fin, el evento sigue vigente hasta el final de su día (hora local del evento).</p>
+                    </div>
+                </>
+            )}
+            <div className="md:col-span-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-600">
+                <div className="flex flex-wrap items-center gap-2 mb-1">
+                    <span className="font-semibold text-gray-700">Vista previa del estado:</span>
+                    <LifecycleBadges lifecycle={{ ...preview, editorial: status }} />
+                    {status === 'published' && <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${EDITORIAL_BADGES.published.className}`}>{EDITORIAL_BADGES.published.label}</span>}
+                </div>
+                <p>{explicacion} Las horas se escriben en la zona {TIMEZONE_OPTIONS.find(o => o.value === tz)?.label || tz}.</p>
+            </div>
+        </>
+    );
 };
 
 // ── Simple HTML Editor with preview ──────────────────────────────────────────
@@ -785,6 +1002,9 @@ const EventsManagement = () => {
     const startDateRef = useRef<HTMLInputElement>(null);
     const [activeTab, setActiveTab] = useState<Record<string, EventTab>>({});
     const [access, setAccess] = useState<EventAccess>(ACCESO_TOTAL);
+    // v4.1247 — Zona horaria de respaldo del sitio y filtro por ciclo de vida.
+    const [siteTz, setSiteTz] = useState<string>(PLATFORM_TIMEZONE);
+    const [lifecycleFilter, setLifecycleFilter] = useState<AdminLifecycleFilter>('todos');
     // v4.653 — A qué lleva /eventos en el sitio público: al calendario (vacío)
     // o directo a la ficha de un evento. Se guarda como sección de CMS
     // (page 'eventos', section 'redirect'), que es lo que ya lee esa página.
@@ -801,6 +1021,9 @@ const EventsManagement = () => {
             const res = await fetch(`${API}/calendar`, { headers });
             const data = await res.json();
             setEvents(data.events || []);
+            if (typeof data.eventDefaults?.timezone === 'string' && data.eventDefaults.timezone) {
+                setSiteTz(data.eventDefaults.timezone);
+            }
             setAccess(data.access && typeof data.access === 'object'
                 ? {
                     restricted: data.access.restricted === true,
@@ -937,7 +1160,7 @@ const EventsManagement = () => {
     const handleCreate = async () => {
         const missing: string[] = [];
         if (!newEvent.title.trim()) missing.push('el título');
-        if (!newEvent.startDate) {
+        if (!newEvent.startDate && newEvent.metadata?.dateTbd !== true) {
             missing.push(startDateRef.current?.validity?.badInput
                 ? 'la fecha de inicio completa — revisa la hora y el a. m. / p. m.'
                 : 'la fecha de inicio');
@@ -953,7 +1176,7 @@ const EventsManagement = () => {
             const res = await fetch(`${API}/calendar/events`, {
                 method: 'POST',
                 headers,
-                body: JSON.stringify(newEvent),
+                body: JSON.stringify(scheduleForSave(newEvent, siteTz)),
             });
             if (res.ok) {
                 setNewEvent(emptyForm);
@@ -976,7 +1199,7 @@ const EventsManagement = () => {
             const res = await fetch(`${API}/calendar/events/${event.id}`, {
                 method: 'PUT',
                 headers,
-                body: JSON.stringify(event),
+                body: JSON.stringify(scheduleForSave(event, siteTz)),
             });
             // Un guardado fallido pasaba desapercibido: la pantalla quedaba
             // igual y los cambios se perdían sin aviso.
@@ -1006,17 +1229,17 @@ const EventsManagement = () => {
     const updateEventField = (id: string, field: string, value: any) => {
         setEvents(prev => prev.map(e => e.id === id ? { ...e, [field]: value } : e));
     };
-
-    const formatDate = (dateStr: string) => {
-        if (!dateStr) return '';
-        return new Date(dateStr).toLocaleDateString('es-ES', {
-            weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
-        });
+    const updateEventFields = (id: string, patch: Partial<CalendarEvent>) => {
+        setEvents(prev => prev.map(e => e.id === id ? { ...e, ...patch } : e));
     };
 
-    const toInputDate = (dateStr: string) => {
-        if (!dateStr) return '';
-        return new Date(dateStr).toISOString().slice(0, 16);
+    // v4.1247 — En la zona del evento, no en la del navegador.
+    const formatDate = (event: CalendarEvent) => {
+        if (event.lifecycle?.dateTbd) return 'Fecha por confirmar';
+        if (!event.startDate) return '';
+        return formatInZone(event.startDate, event.lifecycle?.timezone || siteTz, 'es-ES', {
+            weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
+        });
     };
 
     if (loading) {
@@ -1138,19 +1361,12 @@ const EventsManagement = () => {
                                     placeholder="Nombre del evento"
                                 />
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de inicio *</label>
-                                <input type="datetime-local" value={newEvent.startDate} ref={startDateRef}
-                                    onChange={e => { setNewEvent({ ...newEvent, startDate: e.target.value }); setFormError(''); }}
-                                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-                                <p className="mt-1 text-xs text-gray-400">Completa el día, la hora y el a. m. / p. m.: mientras falte alguno, la fecha se toma como vacía.</p>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de fin</label>
-                                <input type="datetime-local" value={newEvent.endDate}
-                                    onChange={e => setNewEvent({ ...newEvent, endDate: e.target.value })}
-                                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-                            </div>
+                            <ScheduleFields
+                                value={newEvent}
+                                siteTz={siteTz}
+                                startRef={startDateRef}
+                                onChange={patch => { setNewEvent(prev => ({ ...prev, ...patch } as typeof prev)); setFormError(''); }}
+                            />
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Ubicación</label>
                                 <input type="text" value={newEvent.location}
@@ -1232,9 +1448,30 @@ const EventsManagement = () => {
                     </div>
                 ) : (
                     <div className="space-y-3">
+                        {/* v4.1247 — Todos los eventos, también los históricos, filtrables
+                            por su ciclo de vida. Ninguno hay que despublicarlo a mano al
+                            terminar: pasa solo a «Finalizados». */}
+                        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Filtrar eventos por estado">
+                            {ADMIN_FILTERS.map(f => {
+                                const count = events.filter(e => matchesAdminFilter(e.lifecycle, f.key)).length;
+                                if (f.key !== 'todos' && f.key !== 'vigentes' && f.key !== 'finalizados' && count === 0) return null;
+                                return (
+                                    <button key={f.key} type="button" role="tab" aria-selected={lifecycleFilter === f.key}
+                                        onClick={() => setLifecycleFilter(f.key)}
+                                        className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${lifecycleFilter === f.key
+                                            ? 'bg-rotary-blue text-white border-rotary-blue'
+                                            : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'}`}>
+                                        {f.label} <span className="opacity-70">({count})</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        {events.filter(e => matchesAdminFilter(e.lifecycle, lifecycleFilter)).length === 0 && (
+                            <p className="text-sm text-gray-400 bg-white rounded-xl border border-gray-200 px-5 py-6 text-center">No hay eventos con este estado.</p>
+                        )}
                         {events
-                            .slice()
-                            .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
+                            .filter(e => matchesAdminFilter(e.lifecycle, lifecycleFilter))
+                            .sort(compareForAdmin)
                             .map(event => (
                                 <div key={event.id} className="bg-white rounded-xl border border-gray-200 hover:border-blue-200 transition-all shadow-sm">
                                     {/* Row header */}
@@ -1257,6 +1494,8 @@ const EventsManagement = () => {
                                                 <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${TYPE_COLORS[event.type] || TYPE_COLORS.other}`}>
                                                     {EVENT_TYPES.find(t => t.value === event.type)?.label || event.type}
                                                 </span>
+                                                {/* v4.1247 — Lo que ve el público HOY: el estado lo calcula el servidor. */}
+                                                <LifecycleBadges lifecycle={event.lifecycle} />
                                                 {event.images && event.images.length > 0 && (
                                                     <span className="text-[11px] text-gray-400 flex items-center gap-0.5">
                                                         <Image className="w-3 h-3" /> {event.images.length}
@@ -1281,7 +1520,7 @@ const EventsManagement = () => {
                                             <div className="flex items-center gap-4 mt-1">
                                                 <span className="text-xs text-gray-400 flex items-center gap-1">
                                                     <Clock className="w-3 h-3" />
-                                                    {formatDate(event.startDate)}
+                                                    {formatDate(event)}
                                                 </span>
                                                 {event.location && (
                                                     <span className="text-xs text-gray-400 flex items-center gap-1">
@@ -1372,20 +1611,11 @@ const EventsManagement = () => {
                                                                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                                                             />
                                                         </div>
-                                                        <div>
-                                                            <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de inicio</label>
-                                                            <input type="datetime-local"
-                                                                value={toInputDate(event.startDate)}
-                                                                onChange={e => updateEventField(event.id, 'startDate', e.target.value)}
-                                                                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-                                                        </div>
-                                                        <div>
-                                                            <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de fin</label>
-                                                            <input type="datetime-local"
-                                                                value={toInputDate(event.endDate || '')}
-                                                                onChange={e => updateEventField(event.id, 'endDate', e.target.value)}
-                                                                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-                                                        </div>
+                                                        <ScheduleFields
+                                                            value={event}
+                                                            siteTz={siteTz}
+                                                            onChange={patch => updateEventFields(event.id, patch as Partial<CalendarEvent>)}
+                                                        />
                                                         <div>
                                                             <label className="block text-sm font-medium text-gray-700 mb-1">Ubicación</label>
                                                             <input type="text"
@@ -1858,7 +2088,7 @@ const EventsManagement = () => {
 
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
                     <p>
-                        <strong>💡 Tip:</strong> Los eventos aparecen en la página pública ordenados por fecha.
+                        <strong>💡 Tip:</strong> La página pública muestra los eventos en curso y próximos, del más cercano al más lejano; los que terminan pasan solos a «Eventos anteriores», sin despublicarlos.
                         Usa la pestaña <strong>Portada & Galería</strong> para subir imágenes directamente a S3,
                         y <strong>Contenido HTML</strong> para añadir detalles ricos como listas, enlaces e imágenes embebidas.
                     </p>
