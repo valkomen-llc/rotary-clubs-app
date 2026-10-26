@@ -12,6 +12,7 @@ import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
 import AdminLayout from '../../components/admin/AdminLayout';
 import EventRegistrationTab from '../../components/admin/events/EventRegistrationTab';
+import EventFundsTab from '../../components/admin/events/EventFundsTab';
 import EventVenueEditor from '../../components/admin/events/EventVenueEditor';
 import EventVideoEditor from '../../components/admin/events/EventVideoEditor';
 import EventWidgetsEditor from '../../components/admin/events/EventWidgetsEditor';
@@ -67,7 +68,7 @@ export const slugify = (value: string) =>
 // Registro: son las dos primeras pestañas del evento y la vista con la que
 // se abre. El contenido sigue siendo el MISMO componente (`EventRegistrationTab`
 // con su prop `view`): cero duplicación, una sola fuente de verdad.
-type EventTab = 'inscripciones' | 'completadas' | 'info' | 'media' | 'html' | 'social' | 'sede' | 'metadata' | 'registro' | 'widgets';
+type EventTab = 'inscripciones' | 'completadas' | 'conciliacion' | 'info' | 'media' | 'html' | 'social' | 'sede' | 'metadata' | 'registro' | 'widgets';
 
 // v4.1090 — Qué CAPACIDAD del alcance de acceso gobierna cada pestaña. Es el
 // mismo catálogo que `RESOURCE_MODULES.events` en `rbacSpec.js`; acá sólo se
@@ -75,6 +76,9 @@ type EventTab = 'inscripciones' | 'completadas' | 'info' | 'media' | 'html' | 's
 const TAB_CAPABILITY: Record<EventTab, string> = {
     inscripciones: 'registrations',
     completadas: 'completed',
+    // v4.1248 — La conciliación de fondos es dinero: la gobierna la capacidad
+    // SENSIBLE «Gestionar pagos». El servidor además exige el rol financiero.
+    conciliacion: 'payments',
     info: 'info',
     media: 'media',
     html: 'html',
@@ -1140,7 +1144,7 @@ const EventsManagement = () => {
     };
     const hasCap = (id: string, cap: string) => { const c = capsOf(id); return c === null || c.includes(cap); };
     const tabsFor = (id: string): EventTab[] =>
-        (['inscripciones', 'completadas', 'info', 'media', 'html', 'social', 'sede', 'widgets', 'metadata', 'registro'] as EventTab[])
+        (['inscripciones', 'completadas', 'conciliacion', 'info', 'media', 'html', 'social', 'sede', 'widgets', 'metadata', 'registro'] as EventTab[])
             .filter(tab => hasCap(id, TAB_CAPABILITY[tab]));
     const canEdit = (id: string) => EDITABLE_CAPABILITIES.some(cap => hasCap(id, cap));
     const getTab = (id: string): EventTab => {
@@ -1585,6 +1589,7 @@ const EventsManagement = () => {
                                                         {{
                                                             inscripciones: '👥 Inscripciones',
                                                             completadas: '🧾 Inscripciones COLROTARIOS',
+                                                            conciliacion: '💰 Conciliación de fondos',
                                                             info: '📋 Información',
                                                             media: '🖼️ Multimedia',
                                                             html: '</> HTML',
@@ -1951,6 +1956,7 @@ const EventsManagement = () => {
                                                         eventId={event.id}
                                                         eventSlug={event.slug}
                                                         eventTitle={event.title}
+                                                        clubId={event.clubId}
                                                         view="inscripciones"
                                                     />
                                                 )}
@@ -1959,6 +1965,11 @@ const EventsManagement = () => {
                                                     Antes «Inscripciones completadas» dentro de Registro. El
                                                     cambio de nombre es SÓLO del rótulo: la clave interna, los
                                                     endpoints y el slug público no se tocan. */}
+                                                {/* ── Tab: Conciliación de fondos (v4.1248) ── */}
+                                                {getTab(event.id) === 'conciliacion' && (
+                                                    <EventFundsTab eventId={event.id} eventTitle={event.title} clubId={event.clubId} />
+                                                )}
+
                                                 {getTab(event.id) === 'completadas' && (
                                                     <EventRegistrationTab
                                                         eventId={event.id}

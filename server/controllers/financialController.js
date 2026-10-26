@@ -9,6 +9,8 @@ import Stripe from 'stripe';
 // `bucketOf` escrito a mano acá volvería a separarse en silencio.
 import { bucketOf as bucketOfPuro, scheduleOf, bucketWithDisbursement } from '../lib/walletLifecycle.js';
 import { listDisbursementsFor, disbursedTotals, disbursedByPayment } from '../lib/disbursements.js';
+import { eventFundsScope, registrationSummary } from '../lib/eventFunds.js';
+import { fundStatesOf, eventFundTotals } from '../lib/eventFundsSpec.js';
 import { resolveDonationCurrency, blockAmountsApply } from '../lib/donationCurrency.js';
 import {
     normalizeCurrency, currencyMeta, roundMoney, fromStripeAmount,
@@ -870,20 +872,44 @@ export const getClubWallet = async (req, res) => {
 
         const now = new Date();
 
-        // pg directo (cold-start safe — ver v4.414)
-        const paymentsResult = await db.query(
-            `SELECT id, "providerRef", status, amount, currency, "applicationFee",
-                    "netAmount", "stripeBalanceTxId", "stripeStatus",
-                    "availableOn", "clubAvailableOn", "paymentMethod",
-                    "rawPayload", "createdAt"
-             FROM "Payment"
-             WHERE "clubId" = $1 AND "isPlatformCollection" = true
-             ORDER BY "createdAt" DESC
-             LIMIT 500`,
-            [clubId]
-        );
+        // v4.1248 — LA BÓVEDA DE UN EVENTO. Con `eventId`, la MISMA respuesta
+        // (y la misma aritmética) acotada a los pagos de las inscripciones de
+        // ese evento, emparejados por su identificador de Stripe. No es un
+        // segundo cálculo: es este, con otro `WHERE`.
+        const eventId = String(req.query.eventId || '').trim() || null;
+        const evento = eventId ? await eventFundsScope({ clubId, eventId }) : null;
+        if (eventId && !evento?.event) return res.status(404).json({ error: 'Evento no encontrado' });
 
-        const payoutsResult = await db.query(
+        // pg directo (cold-start safe — ver v4.414)
+        const paymentsResult = evento
+            ? (evento.paymentIds.length
+                ? await db.query(
+                    `SELECT id, "providerRef", status, amount, currency, "applicationFee",
+                            "netAmount", "stripeBalanceTxId", "stripeStatus",
+                            "availableOn", "clubAvailableOn", "paymentMethod",
+                            "rawPayload", "createdAt"
+                     FROM "Payment"
+                     WHERE "clubId" = $1 AND "isPlatformCollection" = true AND id = ANY($2::text[])
+                     ORDER BY "createdAt" DESC`,
+                    [clubId, evento.paymentIds]
+                )
+                : { rows: [] })
+            : await db.query(
+                `SELECT id, "providerRef", status, amount, currency, "applicationFee",
+                        "netAmount", "stripeBalanceTxId", "stripeStatus",
+                        "availableOn", "clubAvailableOn", "paymentMethod",
+                        "rawPayload", "createdAt"
+                 FROM "Payment"
+                 WHERE "clubId" = $1 AND "isPlatformCollection" = true
+                 ORDER BY "createdAt" DESC
+                 LIMIT 500`,
+                [clubId]
+            );
+
+        // Los retiros (payouts) son del SITIO, no de un evento: no hay forma
+        // honesta de repartirlos entre eventos, así que en la vista de un
+        // evento no se restan ni se muestran (lo dice `scope.payoutsNote`).
+        const payoutsResult = evento ? { rows: [] } : await db.query(
             `SELECT id, amount, currency, status, "createdAt"
              FROM "PayoutRequest"
              WHERE "clubId" = $1
@@ -963,7 +989,7 @@ export const getClubWallet = async (req, res) => {
         // v4.886 — Lo DESEMBOLSADO, agregado en la base y por moneda. Una sola
         // consulta para todo el sitio: dentro del map de monedas sería una por
         // cada una, y con `await` dentro de `.map` además no se esperarían.
-        const desembolsado = await disbursedTotals(clubId);
+        const desembolsado = await disbursedTotals(clubId, evento ? evento.paymentIds : null);
 
         // ⚠️ Las monedas salen de los aportes Y de lo desembolsado. Si sólo
         // salieran de los aportes, un sitio que desembolsó en una moneda cuyos
@@ -1048,6 +1074,46 @@ export const getClubWallet = async (req, res) => {
         // vez de la mezcla. `currency` dice cuál, en vez del literal 'USD'.
         const main = wallets.find(w => w.currency === primaryCurrency(grossTotals, preferred)) || wallets[0] || null;
 
+        // v4.1248 — Lo propio de la vista de un evento: a qué inscripción
+        // corresponde cada pago, sus cinco estados financieros, los totales por
+        // moneda y las inscripciones pagadas que todavía no tienen movimiento.
+        let eventScope;
+        if (evento) {
+            let notices = [];
+            try {
+                notices = (await db.query(
+                    `SELECT "paymentIds", state FROM "DisbursementNotice" WHERE "clubId" = $1`, [clubId]
+                )).rows;
+            } catch (e) {
+                if (e?.code !== '42P01') console.warn('[FINANCIAL] avisos del evento:', e?.message);
+            }
+            const conEstados = items.map(it => ({
+                ...it,
+                registration: registrationSummary(evento.byPayment[it.id]),
+                states: fundStatesOf(it, { notices }),
+            }));
+            const porId = Object.fromEntries(conEstados.map(it => [it.id, it]));
+            for (const w of wallets) {
+                for (const b of Object.values(w.buckets)) b.items = b.items.map(it => porId[it.id] || it);
+            }
+            eventScope = {
+                event: { id: evento.event.id, title: evento.event.title, slug: evento.event.slug },
+                items: conEstados,
+                totals: eventFundTotals(conEstados),
+                coverage: {
+                    registrations: evento.registrations.length,
+                    paid: evento.paidCount,
+                    withMovement: evento.paymentIds.length,
+                    sinMovimiento: evento.sinMovimiento.map(registrationSummary),
+                    sinReferencia: evento.sinReferencia.map(registrationSummary),
+                },
+                byRegistration: Object.fromEntries(conEstados
+                    .filter(it => it.registration?.id)
+                    .map(it => [it.registration.id, { paymentId: it.id, states: it.states }])),
+                payoutsNote: 'Los retiros a la cuenta bancaria del sitio (payouts) son del sitio completo y no se reparten por evento.',
+            };
+        }
+
         return res.json({
             wallets,
             currencies: wallets.map(w => w.currency),
@@ -1055,6 +1121,7 @@ export const getClubWallet = async (req, res) => {
             buckets: main?.buckets || {},
             summary: main?.summary || {},
             platformHoldingDays: PLATFORM_HOLDING_DAYS,
+            ...(eventScope ? { eventScope } : {}),
         });
     } catch (error) {
         console.error('[FINANCIAL] Error en wallet:', error);
