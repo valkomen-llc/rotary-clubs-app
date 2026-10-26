@@ -174,6 +174,10 @@ noticia (`SubmissionArticle`, `SubmissionArticleMedia`,
 (`SubmissionReel`, v4.1010), y las cuatro de la Analítica de Redes Sociales
 (`SocialDailyMetric`, `SocialContentItem`, `SocialContentMetric`,
 `SocialSyncRun`, v4.1053).
+Y las siete de la Conciliación de inscripciones y traslados de un evento
+(v4.1250, dominio propio de Eventos, sin la Bóveda): `EventFundsConfig`,
+`EventFundsTransfer`, `EventFundsAllocation`, `EventFundsDocument`,
+`EventFundsNotice`, `EventFundsHistory` y `EventStripeCheck`.
 (Más las del registro de eventos que enumera su propia sección:
 `EventEdition`, `EventRegistrationCategory`, `EventRegistrationCompanion`,
 `EventRegistrationPayment`, `EventRegistrationHistory`,
@@ -204,7 +208,7 @@ es **rotar la credencial en Neon**, no sólo borrar el archivo.
 
 | Módulo | Archivo |
 |---|---|
-| Conciliación de fondos de un evento (pagos de inscripción por Stripe → traslado, comprobante PDF y correo, con la Bóveda) — v4.1248 (el comprobante desde la ficha del inscrito: v4.1249) | `docs/claude/conciliacion-de-fondos-de-un-evento.md` |
+| Conciliación de inscripciones y traslados de un evento — **dominio PROPIO de Eventos, sin la Bóveda** (v4.1250; corrige v4.1248–v4.1249, que usaban la Bóveda) | `docs/claude/conciliacion-de-inscripciones-y-traslados-de-un-evento.md` |
 | El ciclo de vida de un evento (próximos, en curso, finalizados, por confirmar; historial en `/eventos/anteriores`) — v4.1247 | `docs/claude/el-ciclo-de-vida-de-un-evento.md` |
 | Persistencia del Editor Visual de Plantillas (Email Marketing) — v4.1235 | `docs/claude/persistencia-del-editor-visual-de-plantillas.md` |
 | Generador de Outros IA — v4.647 (el selector de outros con el generador apagado: v4.1241) | `docs/claude/generador-de-outros-ia.md` |

@@ -1,20 +1,19 @@
 // ════════════════════════════════════════════════════════════════════
-// Conciliación de fondos de un evento — pruebas — v4.1248
+// Conciliación de inscripciones y traslados de un evento — pruebas — v4.1250
 //
-// Sin Postgres, sin Stripe, sin red. Tres partes:
-//   1. El CRITERIO (`eventFundsSpec.js`): emparejar inscripción ↔ pago por
-//      identificador de Stripe y los cinco estados financieros.
-//   2. El CAMINO real de `GET /financial/wallet?eventId=` con la base
-//      sustituida en memoria.
-//   3. Lo que tiene que seguir siendo verdad en el código: que se REUSA la
-//      Bóveda y no se escribe un segundo sistema.
+// Sin Postgres, sin S3, sin Stripe, sin correo real. Tres partes:
+//   1. El CRITERIO (`eventFundsSpec.js`).
+//   2. El CAMINO real de los controladores con la base en memoria: registrar
+//      un traslado individual y uno consolidado, no trasladar dos veces,
+//      confirmar sólo con evidencia, enviar el comprobante (idempotente).
+//   3. La INDEPENDENCIA de la Bóveda de Fondos: ni una consulta a sus tablas.
 //
 //   npm run test:event-funds
 // ════════════════════════════════════════════════════════════════════
 import { readFileSync } from 'node:fs';
 import {
-    matchRegistrationsToPayments, fundStatesOf, eventFundTotals, registrationFundBadge,
-    PAID_REGISTRATION_STATUSES,
+    paymentOf, registrationTransferState, validateTransfer, canTransition, checkPdf, maskAccount,
+    transferEmail, eventFundTotals, allocatedOf, PAID_REGISTRATION_STATUSES,
 } from '../server/lib/eventFundsSpec.js';
 
 let pasadas = 0;
@@ -26,174 +25,224 @@ const check = (nombre, ok, detalle = '') => {
 const grupo = (t) => console.log(`\n${t}`);
 const leer = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 
+// Los dos casos reales de la captura: 265,63 USD cobrados a cada una por
+// Stripe (850.000 COP publicados), con su recargo de pasarela.
+const MARTHA = { id: 'r-martha', eventId: 'ev', registrationCode: 'RPF13-38QE9', firstName: 'Martha Isabel', lastName: 'Ballen Alarcón', status: 'paid', chargeCurrency: 'USD', chargeAmount: 278.91, stripePaymentIntentId: 'pi_3UJbA5', stripeSessionId: 'cs_live_b1', paidAt: '2026-09-25T15:36:00Z', createdAt: '2026-09-25T15:35:00Z' };
+const LAURA = { ...MARTHA, id: 'r-laura', registrationCode: 'RPF13-DMY77', firstName: 'Laura', lastName: 'Espinel Ballen', stripePaymentIntentId: 'pi_laura', stripeSessionId: 'cs_laura' };
+const DANIEL = { ...MARTHA, id: 'r-daniel', registrationCode: 'EV-VYU24Y', firstName: 'Daniel', lastName: 'Yazo', status: 'pending_payment', stripePaymentIntentId: null, paidAt: null };
+const COP = { ...MARTHA, id: 'r-cop', registrationCode: 'EV-COP', chargeCurrency: 'COP', chargeAmount: 850000, stripePaymentIntentId: 'pi_cop' };
+const pagoDe = (reg) => ({ registrationId: reg.id, status: 'succeeded', currency: reg.chargeCurrency, amount: reg.chargeAmount, payload: { surcharge: { amount: reg.chargeCurrency === 'USD' ? 13.28 : 0 } }, paymentIntentId: reg.stripePaymentIntentId, occurredAt: reg.paidAt });
+const PAGOS = [pagoDe(MARTHA), pagoDe(LAURA), pagoDe(COP)];
+
 // ── 1. El criterio ──────────────────────────────────────────────────
-grupo('1. Inscripción ↔ pago: por identificador de Stripe, nunca por nombre');
+grupo('Proceso A — el pago del participante (datos del propio módulo)');
 {
-    const regs = [
-        { id: 'r1', status: 'paid', stripePaymentIntentId: 'pi_1', stripeSessionId: 'cs_1', email: 'x@x' },
-        { id: 'r2', status: 'accredited', stripePaymentIntentId: null, stripeSessionId: 'cs_2' },
-        { id: 'r3', status: 'paid', stripePaymentIntentId: 'pi_3' },
-        { id: 'r4', status: 'paid' },
-        { id: 'r5', status: 'pending_payment', stripeSessionId: 'cs_5' },
-        { id: 'r6', status: 'refunded', stripePaymentIntentId: 'pi_6' },
-    ];
-    const pagos = [
-        { id: 'p1', providerRef: 'pi_1' },
-        { id: 'p2', providerRef: 'cs_2' },          // registrado con la Session
-        { id: 'pX', providerRef: 'pi_otro_evento' }, // de otro evento: no se toca
-    ];
-    const m = matchRegistrationsToPayments(regs, pagos);
-    check('Por PaymentIntent', m.byPayment.p1?.id === 'r1');
-    check('Por Checkout Session cuando no hay PaymentIntent', m.byPayment.p2?.id === 'r2');
-    check('Un pago de otro evento no se asocia', !m.paymentIds.includes('pX'));
-    check('Pagada con referencia y sin pago → «sin movimiento»', m.sinMovimiento.map(r => r.id).join() === 'r3');
-    check('Pagada SIN referencia → no se asocia a nada (revisión manual)', m.sinReferencia.map(r => r.id).join() === 'r4');
-    check('Una pendiente de pago no se reclama', ![...m.sinMovimiento, ...m.sinReferencia].some(r => r.id === 'r5'));
-    check('Una reembolsada sin pago no se reclama (no hay dinero que trasladar)', ![...m.sinMovimiento, ...m.sinReferencia].some(r => r.id === 'r6'));
-    const mismoCorreo = matchRegistrationsToPayments([{ id: 'a', status: 'paid', email: 'x@x' }], [{ id: 'p', providerRef: 'x@x' }]);
-    check('El correo nunca sirve de identificador', mismoCorreo.paymentIds.length === 0);
-    check('Acreditada y asistió cuentan como cobradas', ['accredited', 'attended', 'no_show', 'paid'].every(s => PAID_REGISTRATION_STATUSES.includes(s)));
+    const p = paymentOf(MARTHA, PAGOS);
+    check('Pagado 278,91 USD', p.charged === 278.91 && p.currency === 'USD');
+    check('El recargo de la pasarela no es del evento', p.surcharge === 13.28 && p.eventAmount === 265.63, JSON.stringify(p));
+    check('Pago confirmado con su referencia de Stripe', p.status === 'confirmado' && p.paymentIntentId === 'pi_3UJbA5' && p.viaStripe);
+    check('Pendiente de pago → no confirmado', paymentOf(DANIEL, PAGOS).status === 'pendiente');
+    const reemb = paymentOf({ ...MARTHA, status: 'refunded' }, [...PAGOS, { registrationId: MARTHA.id, status: 'refunded', refundedAmount: 278.91, currency: 'USD' }]);
+    check('Reembolsado → nada que trasladar', reemb.status === 'reembolsado' && reemb.eventAmount === 0);
+    check('Acreditada y asistió cuentan como pagadas', ['accredited', 'attended'].every(s => PAID_REGISTRATION_STATUSES.includes(s)));
 }
 
-grupo('6. Cinco estados que no se funden en un «Pagado»');
+grupo('Proceso B — el traslado: un pago confirmado NO es un traslado confirmado');
 {
-    const base = { id: 'p1', status: 'succeeded', amount: 800, grossAmount: 850, fee: 50, currency: 'COP' };
-    const enTransito = fundStatesOf({ ...base, financialBucket: 'in_transit', disbursedAmount: 0 });
-    check('Pago confirmado NO implica traslado', enTransito.pago === 'confirmado' && enTransito.traslado === 'no_registrado');
-    check('Pago confirmado en tránsito: liquidación pendiente', enTransito.liquidacion === 'pendiente');
-    check('Sin balance transaction: «Sin verificar» en Stripe', enTransito.stripe === 'pendiente');
-    check('Con balance transaction: verificado', fundStatesOf({ ...base, stripeBalanceTxId: 'txn' }).stripe === 'verificado');
-    check('Disponible antes de liberar → «Por liberar»', fundStatesOf({ ...base, financialBucket: 'available_soon' }).liquidacion === 'por_liberar');
-    const parcial = fundStatesOf({ ...base, financialBucket: 'available', disbursedAmount: 300 });
-    check('Traslado parcial', parcial.traslado === 'parcial' && parcial.liquidacion === 'disponible');
-    check('Traslado completo → confirmado', fundStatesOf({ ...base, financialBucket: 'disbursed', disbursedAmount: 800 }).traslado === 'confirmado');
-    check('Traslado sin comprobante enviado → comprobante pendiente', parcial.comprobante === 'pendiente');
-    check('Comprobante aceptado por el proveedor → «Enviado»',
-        fundStatesOf({ ...base, disbursedAmount: 800 }, { notices: [{ paymentIds: ['p1'], state: 'enviado' }] }).comprobante === 'enviado');
-    check('Comprobante rechazado → «Error de envío»',
-        fundStatesOf({ ...base, disbursedAmount: 800 }, { notices: [{ paymentIds: ['p1'], state: 'fallido' }] }).comprobante === 'error');
-    check('Un aviso de OTRO pago no cuenta',
-        fundStatesOf({ ...base, disbursedAmount: 800 }, { notices: [{ paymentIds: ['p9'], state: 'enviado' }] }).comprobante === 'pendiente');
-    const reemb = fundStatesOf({ ...base, status: 'refunded', financialBucket: 'refunded' });
-    check('Reembolso: pago y liquidación reembolsados, traslado no aplica', reemb.pago === 'reembolsado' && reemb.liquidacion === 'reembolsado' && reemb.traslado === 'no_aplica');
-    check('Etiqueta del listado: sin pago → «Sin movimiento en la Bóveda»', registrationFundBadge(null).key === 'sin_movimiento');
-    check('Etiqueta del listado: trasladado', registrationFundBadge(fundStatesOf({ ...base, disbursedAmount: 800 })).key === 'trasladado');
+    const p = paymentOf(MARTHA, PAGOS);
+    check('Pago confirmado sin traslado → «Pendiente de traslado»', registrationTransferState(p, []) === 'sin_traslado');
+    check('Con traslado registrado', registrationTransferState(p, [{ amount: 265.63, transferStatus: 'registrado' }]) === 'registrado');
+    check('Confirmado sólo si lo confirmado cubre lo del evento', registrationTransferState(p, [{ amount: 100, transferStatus: 'confirmado' }]) === 'parcial'
+        && registrationTransferState(p, [{ amount: 265.63, transferStatus: 'confirmado' }]) === 'confirmado');
+    check('Un traslado revertido no cuenta', registrationTransferState(p, [{ amount: 265.63, transferStatus: 'revertido' }]) === 'sin_traslado'
+        && allocatedOf([{ amount: 265.63, transferStatus: 'revertido' }]) === 0);
+    check('Sin pago confirmado no aplica', registrationTransferState(paymentOf(DANIEL, PAGOS), []) === 'no_aplica');
 }
 
-grupo('7. Totales por moneda (COP y USD nunca se suman)');
+grupo('Validar un traslado (individual y consolidado)');
 {
-    const items = [
-        { id: 'a', status: 'succeeded', currency: 'COP', amount: 800, grossAmount: 850, fee: 50, financialBucket: 'available', disbursedAmount: 300 },
-        { id: 'b', status: 'succeeded', currency: 'COP', amount: 400, grossAmount: 420, fee: 20, financialBucket: 'in_transit', disbursedAmount: 0 },
-        { id: 'c', status: 'refunded', currency: 'COP', amount: 100, grossAmount: 110, fee: 10, financialBucket: 'refunded' },
-        { id: 'd', status: 'succeeded', currency: 'USD', amount: 90, grossAmount: 100, fee: 10, financialBucket: 'available', disbursedAmount: 90 },
-    ];
-    const t = Object.fromEntries(eventFundTotals(items).map(x => [x.currency, x]));
-    check('Dos monedas, dos resúmenes', Object.keys(t).sort().join() === 'COP,USD');
-    check('COP: bruto y neto sin el reembolso', t.COP.bruto === 1270 && t.COP.neto === 1200, JSON.stringify(t.COP));
-    check('COP: reembolsado aparte', t.COP.reembolsado === 100);
-    check('COP: trasladado = sólo lo confirmado', t.COP.trasladado === 300);
-    check('COP: disponible descuenta lo trasladado; en liquidación aparte', t.COP.disponible === 500 && t.COP.enLiquidacion === 400);
-    check('COP: pendiente de traslado', t.COP.pendienteTraslado === 900);
-    check('USD no se contamina con COP', t.USD.bruto === 100 && t.USD.trasladado === 90 && t.USD.pendienteTraslado === 0);
+    const registrations = { [MARTHA.id]: MARTHA, [LAURA.id]: LAURA, [DANIEL.id]: DANIEL, [COP.id]: COP };
+    const paymentsByRegistration = Object.fromEntries(Object.values(registrations).map(r => [r.id, paymentOf(r, PAGOS)]));
+    const ctx = { registrations, paymentsByRegistration, allocationsByRegistration: {} };
+    const ok = validateTransfer({ kind: 'consolidado', currency: 'USD', amount: 531.26, allocations: [{ registrationId: MARTHA.id, amount: 265.63 }, { registrationId: LAURA.id, amount: 265.63 }] }, ctx);
+    check('Consolidado Martha + Laura: válido, sin diferencia', ok.ok && ok.asignado === 531.26 && ok.diferencia === 0, ok.errores.join(' '));
+    check('Individual con dos inscripciones: no', !validateTransfer({ kind: 'individual', currency: 'USD', amount: 1, allocations: [{ registrationId: MARTHA.id, amount: 1 }, { registrationId: LAURA.id, amount: 1 }] }, ctx).ok);
+    check('COP y USD no se mezclan', !validateTransfer({ kind: 'consolidado', currency: 'USD', amount: 10, allocations: [{ registrationId: COP.id, amount: 10 }] }, ctx).ok);
+    check('Sin pago confirmado no se traslada', !validateTransfer({ currency: 'USD', amount: 10, allocations: [{ registrationId: DANIEL.id, amount: 10 }] }, ctx).ok);
+    const doble = validateTransfer({ currency: 'USD', amount: 265.63, allocations: [{ registrationId: MARTHA.id, amount: 265.63 }] },
+        { ...ctx, allocationsByRegistration: { [MARTHA.id]: [{ transferId: 't1', amount: 265.63, transferStatus: 'registrado' }] } });
+    check('⚠️ No se traslada dos veces la misma inscripción', !doble.ok && /ya hay/.test(doble.errores.join(' ')));
+    const trasRevertir = validateTransfer({ currency: 'USD', amount: 265.63, allocations: [{ registrationId: MARTHA.id, amount: 265.63 }] },
+        { ...ctx, allocationsByRegistration: { [MARTHA.id]: [{ transferId: 't1', amount: 265.63, transferStatus: 'revertido' }] } });
+    check('…pero sí después de revertir el anterior', trasRevertir.ok);
+    const dif = validateTransfer({ currency: 'USD', amount: 520, allocations: [{ registrationId: MARTHA.id, amount: 265.63 }, { registrationId: LAURA.id, amount: 265.63 }], kind: 'consolidado' }, ctx);
+    check('Costos bancarios: la diferencia se guarda y se informa', dif.ok && dif.diferencia === -11.26);
+}
+
+grupo('Estados del traslado: no se confirma sin evidencia');
+{
+    check('Confirmar sin PDF: no', !canTransition('registrado', 'confirmado', { hasDocument: false, reference: 'x' }).ok);
+    check('Confirmar sin referencia: no', !canTransition('registrado', 'confirmado', { hasDocument: true, reference: '' }).ok);
+    check('Confirmar con PDF y referencia: sí', canTransition('pendiente_verificacion', 'confirmado', { hasDocument: true, reference: '17208637' }).ok);
+    check('De «pendiente» no se salta a confirmado', !canTransition('pendiente', 'confirmado', { hasDocument: true, reference: 'x' }).ok);
+    check('Revertir exige motivo', !canTransition('confirmado', 'revertido', { reason: '' }).ok && canTransition('confirmado', 'revertido', { reason: 'Transferencia devuelta por el banco' }).ok);
+    check('Un traslado revertido no revive', !canTransition('revertido', 'registrado').ok);
+}
+
+grupo('Comprobantes, cuenta y correo');
+{
+    check('PDF válido', checkPdf({ mime: 'application/pdf', bytes: 2000, head: '%PDF-' }).ok);
+    check('Una imagen no es comprobante', !checkPdf({ mime: 'image/png', bytes: 2000, head: '\x89PNG' }).ok);
+    check('Firma %PDF- obligatoria', !checkPdf({ mime: 'application/pdf', bytes: 2000, head: 'MZ' }).ok);
+    check('Más de 10 MB: no', !checkPdf({ mime: 'application/pdf', bytes: 11 * 1024 * 1024, head: '%PDF-' }).ok);
+    check('Cuenta enmascarada', maskAccount('123-456-789 4521') === '****4521');
+    const conf = transferEmail({ eventTitle: 'XIII Conferencia', beneficiary: 'Concorrotarios', transfer: { status: 'confirmado', amount: 531.26, currency: 'USD', reference: '17208637', transferDate: '2026-10-20' }, allocationsCount: 2 });
+    check('Asunto institucional', conf.subject === 'Comprobante de traslado de fondos — XIII Conferencia');
+    check('Confirmado: «traslado de fondos realizado a favor de Concorrotarios»', /realizado a favor de Concorrotarios/.test(conf.text) && /Inscripciones asociadas: 2/.test(conf.text));
+    const pend = transferEmail({ eventTitle: 'XIII Conferencia', beneficiary: 'Concorrotarios', transfer: { status: 'registrado', amount: 10, currency: 'USD' } });
+    check('⚠️ Sin confirmar NO dice «realizado»', !/realizado/.test(pend.text) && /todavía no ha sido confirmado/.test(pend.text));
+}
+
+grupo('Totales por moneda (COP y USD nunca se suman)');
+{
+    const rows = [MARTHA, LAURA, COP].map(r => ({ payment: paymentOf(r, PAGOS), allocated: r === MARTHA ? 265.63 : 0, confirmedAmount: r === MARTHA ? 265.63 : 0 }));
+    const t = Object.fromEntries(eventFundTotals(rows, []).map(x => [x.currency, x]));
+    check('Dos tarjetas', Object.keys(t).sort().join() === 'COP,USD');
+    check('USD: recaudado, recargos y neto', t.USD.cobrado === 557.82 && t.USD.recargos === 26.56 && t.USD.valorEvento === 531.26);
+    check('USD: confirmado y pendiente de traslado', t.USD.trasladoConfirmado === 265.63 && t.USD.pendienteTraslado === 265.63);
+    check('COP aparte', t.COP.valorEvento === 850000 && t.COP.pendienteTraslado === 850000);
 }
 
 // ── 2. El camino real, con la base en memoria ──────────────────────
-grupo('2. GET /financial/wallet?eventId= (camino real, base sustituida)');
+grupo('2. Camino real (controladores) con la base en memoria');
 {
     process.env.DATABASE_URL ||= 'postgres://x:y@127.0.0.1:1/z';
     const { default: db } = await import('../server/lib/db.js');
-    const vistos = [];
-    db.query = async (sql, params = []) => {
-        vistos.push(sql);
-        if (sql.includes('FROM "CalendarEvent" WHERE id = $1 AND "clubId" = $2')) {
-            return { rows: params[0] === 'ev1' && params[1] === 'c1' ? [{ id: 'ev1', title: 'Conferencia', slug: 'conf', clubId: 'c1' }] : [] };
+    const { s3 } = await import('../server/lib/storage.js');
+    const { default: EmailService } = await import('../server/services/EmailService.js');
+    const mem = { transfers: [], allocations: [], docs: [], notices: [], history: [], sql: [] };
+    const EVENT = { id: 'ev', slug: 'villavicencio2027', title: 'XIII Conferencia Rotaria del Distrito 4281', clubId: 'c1' };
+    const REGS = [MARTHA, LAURA, DANIEL, COP];
+    const query = async (sql, p = []) => {
+        mem.sql.push(sql);
+        const has = (s) => sql.includes(s);
+        if (has('information_schema.tables')) return { rows: Array.from({ length: 7 }, (_, i) => ({ table_name: `t${i}` })) };
+        if (has('FROM "CalendarEvent"')) return { rows: p[0] === 'ev' ? [EVENT] : [] };
+        if (/^\s*(BEGIN|COMMIT|ROLLBACK)/.test(sql) || has('pg_advisory_xact_lock')) return { rows: [] };
+        if (has('SELECT "beneficiaryName" FROM "EventFundsConfig"')) return { rows: [{ beneficiaryName: 'Concorrotarios' }] };
+        if (has('SELECT "beneficiaryName", recipients FROM "EventFundsConfig"')) return { rows: [{ beneficiaryName: 'Concorrotarios', recipients: [{ name: 'Tesorería', email: 'tesoreria@concorrotarios.org' }] }] };
+        if (has('FROM "EventRegistration" WHERE "eventId" = $1 AND id = ANY')) return { rows: REGS.filter(r => p[1].includes(r.id)) };
+        if (has('FROM "EventRegistrationPayment"')) return { rows: PAGOS.filter(x => !p[1] || p[1].includes(x.registrationId)) };
+        if (has('FROM "EventStripeCheck"')) return { rows: [] };
+        if (has('FROM "EventFundsAllocation" a JOIN "EventFundsTransfer" t')) {
+            return { rows: mem.allocations.filter(a => p[1].includes(a.registrationId)).map(a => ({ ...a, transferStatus: mem.transfers.find(t => t.id === a.transferId)?.status })) };
         }
-        if (sql.includes('FROM "EventRegistration"') && sql.includes('WHERE "eventId" = $1')) return { rows: [
-            { id: 'r1', registrationCode: 'EV-1', firstName: 'Ana', lastName: 'P', email: 'a@x', status: 'paid', stripePaymentIntentId: 'pi_1', clubName: 'Club A' },
-            { id: 'r2', registrationCode: 'EV-2', firstName: 'Beto', lastName: 'Q', status: 'paid', stripeSessionId: 'cs_2' },
-        ] };
-        if (sql.includes('"providerRef" = ANY($2::text[])')) return { rows: [{ id: 'p1', providerRef: 'pi_1' }] };
-        if (sql.includes('FROM "Payment"') && sql.includes('id = ANY($2::text[])')) return { rows: [{
-            id: 'p1', providerRef: 'pi_1', status: 'succeeded', amount: '850000', currency: 'COP', applicationFee: '20000',
-            netAmount: '800000', stripeBalanceTxId: 'txn_1', availableOn: '2026-09-01T00:00:00Z', clubAvailableOn: '2026-09-01T00:00:00Z',
-            rawPayload: '{"type":"event_registration","registrationId":"r1"}', createdAt: '2026-08-25T00:00:00Z',
-        }] };
-        if (sql.includes('"PayoutRequest"')) return { rows: [] };
-        if (sql.includes('FROM "Payment"') && sql.includes('LIMIT 500')) return { rows: [] };
-        if (sql.includes('FROM "Disbursement"') && sql.includes('GROUP BY "paymentId"')) return { rows: [{ paymentId: 'p1', cubierto: 300000, cuantos: 1 }] };
-        if (sql.includes('FROM "Disbursement"') && sql.includes('GROUP BY currency')) return { rows: [{ currency: 'COP', total: 300000, cuantos: 1, ultimo: null }] };
-        if (sql.includes('"DisbursementNotice"')) return { rows: [{ paymentIds: ['p1'], state: 'enviado' }] };
+        if (has('INSERT INTO "EventFundsTransfer"')) { mem.transfers.push({ id: p[0], eventId: p[1], kind: p[3], currency: p[5], amount: p[6], reference: p[8], status: p[11] }); return { rows: [] }; }
+        if (has('INSERT INTO "EventFundsAllocation"')) { mem.allocations.push({ transferId: p[0], registrationId: p[2], amount: p[3] }); return { rows: [] }; }
+        if (has('INSERT INTO "EventFundsHistory"')) { mem.history.push({ kind: p[3], transferId: p[1] }); return { rows: [] }; }
+        if (has('SELECT * FROM "EventFundsTransfer" WHERE id = $1')) return { rows: mem.transfers.filter(t => t.id === p[0] && t.eventId === p[1]) };
+        if (has('FROM "EventFundsDocument" WHERE "transferId" = $1 AND "isCurrent" = true')) return { rows: mem.docs.filter(d => d.transferId === p[0]) };
+        if (has('UPDATE "EventFundsTransfer"') && has('SET status')) {
+            const t = mem.transfers.find(x => x.id === p[5] && x.status === p[6]);
+            if (t) { t.status = p[0]; t.reference = p[2]; }
+            return { rows: [], rowCount: t ? 1 : 0 };
+        }
+        if (has('COUNT(*)::int AS n FROM "EventFundsAllocation"')) return { rows: [{ n: mem.allocations.filter(a => a.transferId === p[0]).length }] };
+        if (has('SELECT id, "fileName", version, "isCurrent" FROM "EventFundsDocument"')) return { rows: mem.docs.filter(d => d.transferId === p[0]) };
+        if (has('INSERT INTO "EventFundsNotice"')) {
+            if (p[2] && mem.notices.some(n => n.transferId === p[0] && n.operationKey === p[2])) return { rows: [] };
+            const n = { id: `n${mem.notices.length + 1}`, transferId: p[0], operationKey: p[2], state: 'enviando' };
+            mem.notices.push(n);
+            return { rows: [{ id: n.id }] };
+        }
+        if (has('SELECT id, state, error FROM "EventFundsNotice"')) return { rows: mem.notices.filter(n => n.transferId === p[0] && n.operationKey === p[1]) };
+        if (has('SELECT "s3Key" FROM "EventFundsDocument"')) return { rows: [{ s3Key: 'private/event-funds/c1/ev/t/x.pdf' }] };
+        if (has('UPDATE "EventFundsNotice"')) { const n = mem.notices.find(x => x.id === p[3]); if (n) n.state = p[0]; return { rows: [] }; }
         return { rows: [] };
     };
-    const { getClubWallet } = await import('../server/controllers/financialController.js');
-    const llamar = async (query, user = { role: 'president', clubId: 'c1' }) => {
-        const res = { code: 200, body: null, status(c) { this.code = c; return this; }, json(b) { this.body = b; return this; } };
-        await getClubWallet({ user, query }, res);
+    db.query = query;
+    db.pool = { connect: async () => ({ query, release: () => { } }) };
+    s3.send = async () => ({ Body: { transformToByteArray: async () => new Uint8Array([37, 80, 68, 70, 45]) } });
+    const correos = [];
+    EmailService.sendPlatformEmail = async (msg) => { correos.push(msg); return { success: true, messageId: 'msg_1' }; };
+
+    const ctl = await import('../server/controllers/eventFundsController.js');
+    const llamar = async (fn, { params = {}, body = {}, role = 'club_admin', file = null } = {}) => {
+        const req = { params: { eventId: 'ev', ...params }, body, file, query: {}, user: { id: 'u1', name: 'Daniel Yazo', role, clubId: 'c1' }, rbacGrantLoaded: true, rbacGrant: null };
+        const res = { code: 200, body: null, headersSent: false, setHeader() { }, status(c) { this.code = c; return this; }, json(b) { this.body = b; this.headersSent = true; return this; } };
+        await fn(req, res);
         return res;
     };
-    const r = await llamar({ eventId: 'ev1' });
-    const es = r.body?.eventScope;
-    check('Responde 200 con la vista del evento', r.code === 200 && !!es, `status ${r.code}`);
-    check('Sólo los pagos del evento (acotado por sitio y por id)', vistos.some(q => q.includes('"clubId" = $1') && q.includes('id = ANY($2::text[])')));
-    check('El pago trae su inscripción', es?.items?.[0]?.registration?.code === 'EV-1');
-    check('Los cinco estados viajan resueltos', es?.items?.[0]?.states?.traslado === 'parcial' && es?.items?.[0]?.states?.comprobante === 'enviado');
-    check('Totales del evento por moneda', es?.totals?.[0]?.currency === 'COP' && es.totals[0].trasladado === 300000);
-    check('Lo desembolsado se acota a los pagos del evento', vistos.some(q => q.includes('GROUP BY currency') && q.includes('"paymentId" = ANY($2::text[])')));
-    check('No lee ni resta los payouts del sitio', r.body?.summary?.transferred === 0 && !vistos.some(q => q.includes('"PayoutRequest"')));
-    check('Cobertura: la inscripción sin movimiento se informa', es?.coverage?.sinMovimiento?.[0]?.code === 'EV-2');
-    check('Índice por inscripción para el listado', es?.byRegistration?.r1?.paymentId === 'p1');
-    const ajeno = await llamar({ eventId: 'ev-de-otro-sitio' });
-    check('Un evento de otro sitio responde 404 (no 403)', ajeno.code === 404);
-    vistos.length = 0;
-    const sitio = await llamar({});
-    check('Sin eventId, la Bóveda del sitio sigue igual (lee sus payouts, sin eventScope)',
-        sitio.code === 200 && vistos.some(q => q.includes('"PayoutRequest"')) && !sitio.body?.eventScope);
+
+    const consolidado = await llamar(ctl.createTransfer, { body: {
+        kind: 'consolidado', currency: 'USD', amount: '531.26', status: 'registrado', reference: '17208637', transferDate: '2026-10-20', method: 'transferencia_bancaria',
+        allocations: JSON.stringify([{ registrationId: MARTHA.id, amount: 265.63 }, { registrationId: LAURA.id, amount: 265.63 }]),
+    } });
+    check('Traslado consolidado Martha + Laura → 201', consolidado.code === 201, JSON.stringify(consolidado.body));
+    check('Una sola operación con dos asignaciones', mem.transfers.length === 1 && mem.allocations.length === 2);
+    const tid = consolidado.body?.id;
+
+    const doble = await llamar(ctl.createTransfer, { body: { kind: 'individual', currency: 'USD', amount: '265.63', allocations: JSON.stringify([{ registrationId: MARTHA.id, amount: 265.63 }]) } });
+    check('⚠️ Martha no se puede trasladar otra vez (400)', doble.code === 400 && mem.transfers.length === 1, JSON.stringify(doble.body));
+
+    const ajeno = await llamar(ctl.createTransfer, { params: { eventId: 'otro' }, body: {} });
+    check('Un evento ajeno responde 404', ajeno.code === 404);
+
+    const sinPdf = await llamar(ctl.updateTransfer, { params: { transferId: tid }, body: { status: 'confirmado' }, role: 'club_admin' });
+    check('Confirmar sin comprobante → 409', sinPdf.code === 409 && /comprobante PDF/.test(sinPdf.body?.error || ''));
+    const editor = await llamar(ctl.updateTransfer, { params: { transferId: tid }, body: { status: 'confirmado' }, role: 'editor' });
+    check('Un editor no confirma (403)', editor.code === 403);
+    mem.docs.push({ id: 'd1', transferId: tid, fileName: 'comprobante.pdf', version: 1, isCurrent: true });
+    const conf = await llamar(ctl.updateTransfer, { params: { transferId: tid }, body: { status: 'confirmado' } });
+    check('Con PDF y referencia, el administrador confirma', conf.code === 200 && mem.transfers[0].status === 'confirmado', JSON.stringify(conf.body));
+
+    const sinConfirmar = await llamar(ctl.sendNotice, { params: { transferId: tid }, body: { to: ['tesoreria@concorrotarios.org'] } });
+    check('Enviar sin confirmación explícita → 428', sinConfirmar.code === 428);
+    const envio = await llamar(ctl.sendNotice, { params: { transferId: tid }, body: { to: ['tesoreria@concorrotarios.org'], confirm: true, operationKey: 'op-1' } });
+    check('Comprobante enviado con el PDF adjunto', envio.body?.ok === true && correos.length === 1 && correos[0].attachments?.[0]?.contentType === 'application/pdf', JSON.stringify(envio.body));
+    check('El correo dice «realizado a favor de Concorrotarios»', /realizado a favor de Concorrotarios/.test(correos[0]?.text || ''));
+    const repetido = await llamar(ctl.sendNotice, { params: { transferId: tid }, body: { to: ['tesoreria@concorrotarios.org'], confirm: true, operationKey: 'op-1' } });
+    check('Doble clic: no se envía dos veces', repetido.body?.repetida === true && correos.length === 1);
+    check('Todo queda en el historial', ['traslado_registrado', 'traslado_estado', 'comprobante_enviado'].every(k => mem.history.some(h => h.kind === k)));
+
+    const boveda = mem.sql.filter(q => /"(Payment|Disbursement|DisbursementNotice|DisbursementBatch|PaymentLifecycleEvent|Ledger\w*)"/.test(q));
+    check('⚠️ Ni una consulta a tablas de la Bóveda en todo el camino', boveda.length === 0, boveda[0]?.slice(0, 80));
 }
 
-// ── 3. Lo que tiene que seguir siendo verdad en el código ───────────
-grupo('3. Se reusa la Bóveda; no hay un segundo sistema');
+// ── 3. Independencia de la Bóveda (el código) ──────────────────────
+grupo('3. Eventos no depende de la Bóveda de Fondos');
 {
-    const tab = leer('src/components/admin/events/EventFundsTab.tsx');
-    for (const pieza of ['BulkDisbursementBar', 'BulkReconciliationBar', 'ResendNoticeModal', 'DisbursementSection']) {
-        check(`La pestaña usa ${pieza} de la Bóveda`, tab.includes(`import ${pieza}`) && tab.includes(`<${pieza}`));
+    const BOVEDA = /"(Payment|Disbursement|DisbursementNotice|DisbursementBatch|PaymentLifecycleEvent)"|\/financial\/|BulkDisbursementBar|BulkReconciliationBar|ResendNoticeModal|DisbursementSection/;
+    for (const f of [
+        'server/lib/eventFundsSpec.js', 'server/lib/eventFundsStore.js', 'server/lib/ensureEventFundsSchema.js',
+        'server/controllers/eventFundsController.js', 'server/routes/event-funds.js',
+        'src/components/admin/events/EventFundsTab.tsx', 'src/components/admin/events/RegistrationFundsPanel.tsx',
+        'src/components/admin/events/funds/TransferCard.tsx', 'src/components/admin/events/funds/TransferFormModal.tsx',
+        'src/components/admin/events/funds/SendTransferNoticeModal.tsx', 'src/components/admin/events/funds/BeneficiaryConfig.tsx',
+        'src/components/admin/events/funds/eventFundsApi.ts',
+    ]) {
+        const src = leer(f).split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+        check(`${f} no toca la Bóveda`, !BOVEDA.test(src), src.match(BOVEDA)?.[0]);
     }
-    const endpoints = [...tab.matchAll(/\/financial\/([a-z\-/]+)/g)].map(m => m[1]);
-    const conocidos = ['wallet', 'wallet/notices', 'wallet/audit-events', 'wallet/sync-stripe', 'wallet/rebuild-collections', 'wallet/notices/'];
-    check('Sólo endpoints que ya existían en la Bóveda', endpoints.every(e => conocidos.includes(e)), endpoints.join(', '));
-    check('Selección con el criterio de la Bóveda (selectionClassOf)', tab.includes('selectionClassOf('));
-    check('El CSV lleva BOM y punto y coma', tab.includes("'\\ufeff'") && tab.includes(".join(';')"));
-
-    const reg = leer('server/controllers/eventRegistrationController.js');
-    const confirm = reg.slice(reg.indexOf('export const confirmPaidSession'), reg.indexOf('export const applyStripeStatus'));
-    check('Al confirmarse el pago se registra el movimiento (mismo constructor)', confirm.includes('buildDraftForEventRegistration') && confirm.includes('insertPayment'));
-    check('Registrar el movimiento nunca tumba la confirmación', /try \{[\s\S]*insertPayment[\s\S]*\} catch/.test(confirm));
-
-    const col = leer('server/lib/projectFairCollections.js');
-    check('La reconstrucción mira las DOS referencias (no duplica)', col.includes('p."providerRef" IN (r."stripePaymentIntentId", r."stripeSessionId")'));
-    check('La reconstrucción usa la misma lista de estados cobrados', col.includes('PAID_REGISTRATION_STATUSES'));
-    check('Se puede acotar a un evento', col.includes('AND r."eventId" = $2'));
-    const draft = col.slice(col.indexOf('export const buildDraftForEventRegistration'), col.indexOf('export const paymentDraftFor'));
-    check('El movimiento de una inscripción ya no se rotula «12-valledupar»', !draft.includes("'12-valledupar'") && draft.includes('eventId: reg.eventId'));
-
-    const disb = leer('server/controllers/disbursementController.js');
-    check('Avisos y auditoría acotables por evento', (disb.match(/eventPaymentIds\(/g) || []).length >= 2);
-    // v4.1249 — «No encuentro la opción para enviar los comprobantes de
-    // traslados»: la puerta tiene que estar a la vista, como en la Bóveda.
     const panel = leer('src/components/admin/events/RegistrationFundsPanel.tsx');
-    check('La ficha del inscrito ofrece «Enviar comprobante de traslado» (ResendNoticeModal)',
-        panel.includes('Enviar comprobante de traslado') && panel.includes('<ResendNoticeModal'));
-    check('La ficha del inscrito trae los desembolsos de la Bóveda (DisbursementSection)', panel.includes('<DisbursementSection'));
-    check('Sin movimiento, la ficha ofrece registrarlo', panel.includes('Registrar movimiento en la Bóveda'));
-    check('El comprobante sólo se ofrece con un traslado registrado', /disabled=\{!trasladado\}/.test(panel));
+    check('Ya no existe «Registrar movimiento en la Bóveda»', !panel.includes('Registrar movimiento en la Bóveda'));
+    check('La ficha ofrece «Gestionar traslado y comprobante» y su historial', panel.includes('Gestionar traslado y comprobante') && panel.includes('Historial financiero y comprobantes'));
     const manager = leer('src/components/admin/events/EventRegistrationsManager.tsx');
-    check('La ficha del listado monta el panel', manager.includes('<RegistrationFundsPanel') && manager.includes('{fundsPanel}'));
-    check('La tabla de la pestaña tiene el botón directo por fila', tab.includes("onClick={() => setResendIds([it.id])}"));
+    check('El listado de inscripciones no lee la Bóveda', !manager.includes('/financial/'));
+    const reg = leer('server/controllers/eventRegistrationController.js');
+    check('Confirmar un pago ya NO crea un movimiento en la Bóveda', !reg.includes('insertPayment') && !reg.includes('buildDraftForEventRegistration'));
     const fin = leer('server/controllers/financialController.js');
-    check('El índice por inscripción lleva el resumen del movimiento', /byRegistration[\s\S]{0,400}grossAmount[\s\S]{0,300}providerRef/.test(fin));
-
-    const events = leer('src/pages/admin/Events.tsx');
-    check('La pestaña la gobierna la capacidad sensible «payments»', /conciliacion:\s*'payments'/.test(events));
+    check('La Bóveda ya no tiene vista por evento', !fin.includes('eventScope') && !fin.includes('eventFunds'));
+    const disb = leer('server/controllers/disbursementController.js');
+    check('Avisos y auditoría de la Bóveda, sin filtros de eventos', !disb.includes('eventPaymentIds'));
+    const col = leer('server/lib/projectFairCollections.js');
+    check('La reconstrucción de la Bóveda vuelve a su criterio de siempre', !col.includes('PAID_REGISTRATION_STATUSES') && col.includes("edition: '12-valledupar'"));
+    const audit = leer('server/lib/eventFundsVaultAudit.js');
+    check('La auditoría de v4.1248–v4.1249 sólo lee', !/\b(INSERT|UPDATE|DELETE)\b/.test(audit.replace(/\/\/.*$/gm, '')));
+    const schema = leer('server/lib/ensureEventFundsSchema.js');
+    check('Las siete tablas propias se declaran', ['EventFundsConfig', 'EventFundsTransfer', 'EventFundsAllocation', 'EventFundsDocument', 'EventFundsNotice', 'EventFundsHistory', 'EventStripeCheck'].every(t => schema.includes(`"${t}"`)));
+    const claude = leer('CLAUDE.md');
+    check('CLAUDE.md protege las tablas nuevas de db:push', claude.includes('EventFundsTransfer') && claude.includes('EventStripeCheck'));
 }
 
 console.log(`\n${pasadas} pasadas, ${fallos.length} fallidas`);

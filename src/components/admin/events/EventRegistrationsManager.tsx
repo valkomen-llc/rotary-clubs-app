@@ -23,9 +23,10 @@ import {
     Search, Send, Users, X,
 } from 'lucide-react';
 import { money, statusMeta, tagMeta, SYSTEM_TAG_KEYS, normalizeTag } from '../../../lib/eventRegistrationSpec';
-import { registrationFundBadge, PAID_REGISTRATION_STATUSES } from '../../../../server/lib/eventFundsSpec.js';
-import type { FundStates } from '../../../../server/lib/eventFundsSpec.js';
-import RegistrationFundsPanel, { type RegistrationFund } from './RegistrationFundsPanel';
+import { PAID_REGISTRATION_STATUSES, REGISTRATION_TRANSFER_LABELS } from '../../../../server/lib/eventFundsSpec.js';
+import type { RegistrationTransferState } from '../../../../server/lib/eventFundsSpec.js';
+import RegistrationFundsPanel from './RegistrationFundsPanel';
+import { fundsApi } from './funds/eventFundsApi';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
 const authHeaders = () => ({
@@ -544,29 +545,26 @@ interface Props {
 }
 
 /**
- * v4.1248 — El estado financiero de una inscripción, en UNA etiqueta. El
- * detalle (los cinco estados, el traslado, el comprobante) vive en la pestaña
- * «Conciliación de fondos», que es donde se concilia en bloque.
+ * v4.1250 — El estado del TRASLADO de una inscripción, en UNA etiqueta (módulo
+ * de Eventos, sin la Bóveda). El detalle vive en su ficha y en «Conciliación de
+ * inscripciones».
  */
-const FUND_BADGE_CLS: Record<string, string> = {
-    trasladado: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+const TRANSFER_BADGE_CLS: Record<string, string> = {
+    confirmado: 'bg-emerald-50 text-emerald-700 border-emerald-200',
     parcial: 'bg-amber-50 text-amber-800 border-amber-200',
-    disponible: 'bg-sky-50 text-sky-700 border-sky-200',
-    en_transito: 'bg-indigo-50 text-indigo-700 border-indigo-200',
-    reembolsado: 'bg-rose-50 text-rose-700 border-rose-200',
-    sin_movimiento: 'bg-gray-50 text-gray-500 border-gray-200',
+    pendiente_verificacion: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+    registrado: 'bg-sky-50 text-sky-700 border-sky-200',
+    pendiente: 'bg-gray-50 text-gray-600 border-gray-200',
+    sin_traslado: 'bg-amber-50 text-amber-800 border-amber-200',
 };
-const FundBadge = ({ states }: { states: FundStates | null }) => {
-    const b = registrationFundBadge(states);
-    return (
-        <span title="Estado del dinero en la Bóveda — detalle en «Conciliación de fondos»"
-            className={`mt-1 inline-flex whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-semibold ${FUND_BADGE_CLS[b.key] || FUND_BADGE_CLS.sin_movimiento}`}>
-            {b.label}
-        </span>
-    );
-};
+const TransferBadge = ({ state }: { state: RegistrationTransferState }) => (
+    <span title="Traslado al beneficiario del evento — detalle en la ficha"
+        className={`mt-1 inline-flex whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-semibold ${TRANSFER_BADGE_CLS[state] || TRANSFER_BADGE_CLS.pendiente}`}>
+        {REGISTRATION_TRANSFER_LABELS[state]}
+    </span>
+);
 
-const EventRegistrationsManager = ({ eventId, eventTitle, categories, statuses, clubId }: Props) => {
+const EventRegistrationsManager = ({ eventId, eventTitle, categories, statuses }: Props) => {
     const [dashboard, setDashboard] = useState<any>(null);
     const [rows, setRows] = useState<Registration[]>([]);
     const [total, setTotal] = useState(0);
@@ -579,10 +577,9 @@ const EventRegistrationsManager = ({ eventId, eventTitle, categories, statuses, 
     const [exporting, setExporting] = useState('');
     // v4.1248 — inscripción → estados financieros. `null` = sin acceso a la
     // Bóveda (o todavía cargando): la columna simplemente no se pinta.
-    const [funds, setFunds] = useState<Record<string, RegistrationFund> | null>(null);
-    // Las inscripciones pagadas por Stripe sin movimiento, y las pagadas por
-    // fuera de la pasarela (sin referencia de Stripe).
-    const [fundGaps, setFundGaps] = useState<{ missing: string[]; outside: string[] }>({ missing: [], outside: [] });
+    // v4.1250 — inscripción → estado de su traslado (módulo de Eventos). `null`
+    // = sin acceso a la información financiera: la etiqueta no se pinta.
+    const [funds, setFunds] = useState<Record<string, RegistrationTransferState> | null>(null);
     const [fundsTick, setFundsTick] = useState(0);
 
     /** Los filtros activos, en el formato que espera el servidor. */
@@ -618,20 +615,10 @@ const EventRegistrationsManager = ({ eventId, eventTitle, categories, statuses, 
     }, [query, offset]);
 
     useEffect(() => {
-        const qs = new URLSearchParams({ eventId });
-        if (clubId) qs.set('clubId', clubId);
-        fetch(`${API}/financial/wallet?${qs}`, { headers: authHeaders() })
-            .then(r => (r.ok ? r.json() : null))
-            .then(d => {
-                setFunds(d?.eventScope?.byRegistration || null);
-                const cov = d?.eventScope?.coverage;
-                setFundGaps({
-                    missing: (cov?.sinMovimiento || []).map((r: { id: string }) => r.id),
-                    outside: (cov?.sinReferencia || []).map((r: { id: string }) => r.id),
-                });
-            })
+        fundsApi.overview(eventId)
+            .then(d => setFunds(Object.fromEntries(d.registrations.map(r => [r.id, r.transferState]))))
             .catch(() => setFunds(null));
-    }, [eventId, clubId, fundsTick]);
+    }, [eventId, fundsTick]);
 
     useEffect(() => { loadDashboard(); }, [loadDashboard]);
     useEffect(() => { loadRows(); }, [loadRows]);
@@ -986,8 +973,8 @@ const EventRegistrationsManager = ({ eventId, eventTitle, categories, statuses, 
                                 </td>
                                 <td className="px-4 py-3">
                                     <StatusPill status={r.status} />
-                                    {funds && PAID_REGISTRATION_STATUSES.includes(r.status) && (
-                                        <div><FundBadge states={(funds[r.id]?.states as FundStates | undefined) || null} /></div>
+                                    {funds?.[r.id] && PAID_REGISTRATION_STATUSES.includes(r.status) && (
+                                        <div><TransferBadge state={funds[r.id]} /></div>
                                     )}
                                 </td>
                                 <td className="px-4 py-3 text-xs text-gray-500">{fmtDate(r.createdAt)}</td>
@@ -1023,12 +1010,8 @@ const EventRegistrationsManager = ({ eventId, eventTitle, categories, statuses, 
                     onClose={() => setSelected(null)} onChanged={refresh}
                     fundsPanel={funds ? (
                         <RegistrationFundsPanel
-                            key={`${selected}-${fundsTick}`}
-                            fund={funds[selected] || null}
-                            missing={fundGaps.missing.includes(selected)}
-                            outsideStripe={fundGaps.outside.includes(selected)}
                             eventId={eventId}
-                            clubId={clubId}
+                            registrationId={selected}
                             onChanged={() => setFundsTick(t => t + 1)}
                         />
                     ) : null} />
