@@ -195,7 +195,7 @@ const decorateCategory = async (eventId, category, edition, surchargeConfig = nu
             fxRate: charge.fxRate,
             fxMissing: charge.fxMissing === true,
         },
-        form: buildFormSchema(category),
+        form: buildFormSchema(category, edition?.settings),
     };
 };
 

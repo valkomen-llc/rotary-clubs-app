@@ -42,6 +42,19 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1258.0',
+        title: 'Registro internacional: ahora sí aparece la talla de camiseta 👕',
+        description: 'En v4.1257 la «Talla de camiseta» no aparecía en el registro internacional real: la categoría del Distrito («registro_internacional») se creó en el panel con audiencia «general» y el formulario no la reconocía como internacional. Ahora la talla se decide con la misma regla que el resto del módulo (lo que declara la categoría, luego su botón y, por último, su clave), así que aparece en el registro internacional y no en el nacional ni en el de CADRES.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'registro internacional'],
+        type: 'fix',
+        impact: 'Media: el registro internacional pide la talla de camiseta.',
+        changes: [
+            { type: 'fixed', text: 'La talla de camiseta aparece en el registro internacional aunque la categoría tenga audiencia «general».' },
+            { type: 'added', text: '5 comprobaciones nuevas en npm run test:event-form con la categoría tal como existe en el Distrito.' },
+        ],
+    },
+    {
         version: '4.1257.0',
         title: 'Inscripción al evento: detalle alimentario sólo con «Otra» y talla de camiseta para internacionales 👕',
         description: 'En el paso «Necesidades y condiciones» del registro al evento, el campo «Detalle de la necesidad alimentaria» ya no aparece con cualquier opción: sólo cuando se elige «Otra» (Other), en todas las categorías (nacional, internacional y CADRES). Además, el registro de rotarios internacionales pregunta la «Talla de camiseta» (XS, S, M, L, XL, 2XL), debajo de los comentarios y antes de aceptar los términos. La talla sale también en la exportación del panel.',
