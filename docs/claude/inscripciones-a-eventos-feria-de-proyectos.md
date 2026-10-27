@@ -1054,3 +1054,14 @@ Pruebas: `npm run test:event-payment` (28 casos, **sin base, credenciales ni red
   antes de `acceptTerms` (`buildFormSchema`). Vive en `answers` y sale en la
   exportación («Talla de camiseta»).
 - Pruebas: grupo «Necesidades y condiciones (v4.1257)» de `npm run test:event-form`.
+
+- **⚠️ v4.1258 — La talla se decide con `audienceOfCategory`, no con el
+  `audience` de `buildFormSchema`.** Las categorías reales del Distrito
+  (`registro_internacional`, …) se crearon en el panel con audiencia
+  'general', y `category.audience || AUDIENCE_BY_CATEGORY[key]` nunca llega a
+  la deducción por clave: en v4.1257 la talla no apareció en producción.
+  `buildFormSchema(category, settings)` y `flattenFields(category, settings)`
+  aceptan ahora los ajustes de la edición (para resolver por el botón). El
+  paso propio de la audiencia («Viaje y estadía») sigue resolviéndose como
+  antes, a propósito: corregirlo agregaría ese paso al registro internacional
+  del Distrito, y es una decisión del cliente.

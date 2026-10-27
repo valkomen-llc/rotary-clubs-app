@@ -194,6 +194,21 @@ check('las tallas van de XS a 2XL',
 check('el nacional no la pide', !camposNeeds(NACIONAL).some(f => f.key === 'tshirtSize'));
 check('ni el CADRES', !camposNeeds(CADRE).some(f => f.key === 'tshirtSize'));
 check('la talla es opcional: no impide inscribirse', camposNeeds(INTERNACIONAL).find(f => f.key === 'tshirtSize').required === false);
+// ⚠️ v4.1258 — LA CATEGORÍA REAL DEL DISTRITO. Se creó en el panel con clave
+// «registro_internacional» y audiencia 'general': en v4.1257 la talla no
+// apareció en producción por eso. Se decide con `audienceOfCategory`.
+const delPanel = (key, extra = {}) => normalizeCategory({ key, name: key, audience: 'general', ...extra });
+check('«registro_internacional» con audiencia general SÍ pide la talla',
+    camposNeeds(delPanel('registro_internacional')).some(f => f.key === 'tshirtSize'));
+check('«registro_nacional» con audiencia general NO la pide',
+    !camposNeeds(delPanel('registro_nacional')).some(f => f.key === 'tshirtSize'));
+check('«registro_cadres» con audiencia general NO la pide',
+    !camposNeeds(delPanel('registro_cadres')).some(f => f.key === 'tshirtSize'));
+check('una categoría sin clave conocida se reconoce por su BOTÓN internacional',
+    buildFormSchema(delPanel('otra_cosa'), { cta: { buttons: [{ categoryKey: 'otra_cosa', audience: 'international' }] } })
+        .steps.find(s => s.key === 'needs').fields.some(f => f.key === 'tshirtSize'));
+check('y la validación ve el mismo formulario (con los ajustes de la edición)',
+    flattenFields(delPanel('registro_internacional')).some(f => f.key === 'tshirtSize'));
 
 // ── 9. El catálogo se puede fijar por evento ─────────────────────────
 grupo('Catálogo por edición');

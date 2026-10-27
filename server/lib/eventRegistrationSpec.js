@@ -557,7 +557,7 @@ const audienceFields = (audience) =>
  * audiencia y los que el administrador haya agregado desde el panel.
  * Devuelve los pasos del asistente en el orden en que se muestran.
  */
-export const buildFormSchema = (category) => {
+export const buildFormSchema = (category, settings = {}) => {
     const audience = category?.audience || AUDIENCE_BY_CATEGORY[category?.key] || 'general';
     const extra = Array.isArray(category?.extraFields) ? category.extraFields : [];
     const requireClub = category?.requireClub !== false;
@@ -601,7 +601,15 @@ export const buildFormSchema = (category) => {
         steps.push({ key: 'extra', label: category?.extraFieldsLabel || 'Información adicional', fields: extra });
     }
 
-    const needsExtra = audience === 'international' ? [TSHIRT_FIELD] : [];
+    // ⚠️ v4.1258 — La talla se decide con `audienceOfCategory`, NO con el
+    // `audience` de arriba. Las categorías que el Distrito creó en el panel
+    // («registro_internacional») nacen con audiencia 'general', y el
+    // `category.audience || …` de arriba nunca llega a la deducción por clave
+    // (la trampa que documenta `audienceOfCategory`, v4.694): en v4.1257 la
+    // talla no apareció en el registro internacional real por eso. El paso
+    // propio de la audiencia sigue resolviéndose como antes, a propósito:
+    // cambiarlo agregaría a ese registro un paso que nadie pidió.
+    const needsExtra = audienceOfCategory(category, settings) === 'international' ? [TSHIRT_FIELD] : [];
     steps.push({ key: 'needs', label: 'Necesidades y condiciones', fields: [...CORE_NEEDS_FIELDS, ...needsExtra, TERMS_FIELD] });
     return { audience, steps };
 };
@@ -718,8 +726,8 @@ export const clubContradictsDistrict = (district, clubName, catalogs = {}) => {
 };
 
 /** Todos los campos de una categoría, aplanados, para validar. */
-export const flattenFields = (category) =>
-    buildFormSchema(category).steps.flatMap(s => s.fields);
+export const flattenFields = (category, settings = {}) =>
+    buildFormSchema(category, settings).steps.flatMap(s => s.fields);
 
 /** ¿Se debe pedir este campo, dadas las respuestas actuales? */
 export const isFieldVisible = (field, answers) => {
@@ -738,7 +746,7 @@ export const isFieldVisible = (field, answers) => {
  */
 export const validateAnswers = (category, answers = {}, settings = {}) => {
     const errors = {};
-    for (const field of flattenFields(category)) {
+    for (const field of flattenFields(category, settings)) {
         if (!isFieldVisible(field, answers)) continue;
         const raw = answers[field.key];
         const empty = raw === undefined || raw === null || raw === ''
