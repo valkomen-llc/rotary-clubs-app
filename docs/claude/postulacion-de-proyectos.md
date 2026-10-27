@@ -645,3 +645,21 @@ Pagos`) **no muestra todavía el historial de intentos** —los datos están y
 `listAttempts` está listo, falta la columna en la ficha—; y el correo que le
 avisa a un club que su pago quedó pendiente **no existe**: hoy se entera al
 entrar a su panel.
+
+### Fechas importantes del proceso, editables — v4.1252
+
+Pedido: quitar de `/postular-proyecto` las dos fechas ya cumplidas (1-sep-2026,
+Global Grants; 15-oct-2026, comunicación con los CADRES) y poder editar la
+lista sin un cambio de código.
+
+- **El editor vive en Convocatoria** (`ScheduleEditor` en
+  `src/components/admin/feria/ConvocatoriaConfig.tsx`): título del bloque y,
+  por fila, fecha, prefijo opcional («Hasta el») y texto; agregar, quitar y
+  reordenar. Una fila sin texto no se publica; la lista vacía oculta el bloque.
+- **⚠️ Una lista guardada SIN el editor cede al valor por defecto**
+  (`normalizeSavedConfig`). Hasta v4.1251 no había editor, pero el panel manda
+  la configuración entera al guardar y copiaba `content.schedule` en la fila:
+  sin descartarla, quitar una fecha de `DEFAULT_CONFIG` no la quitaría del
+  sitio. Lo editado en el panel lleva `content.scheduleEdited: true` y manda,
+  incluida la lista vacía.
+- Pruebas: `npm run test:fair-schedule`.

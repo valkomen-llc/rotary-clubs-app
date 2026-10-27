@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1251.0",
-  "cache_bust": "4.1251.0",
+  "version": "4.1252.0",
+  "cache_bust": "4.1252.0",
   "type": "module",
   "//": "UI V4.1250.0 | 2026-10-26 (Eventos: conciliación de inscripciones y traslados a Concorrotarios como dominio propio, sin la Bóveda de Fondos)",
   "scripts": {
@@ -139,6 +139,7 @@
     "test:payment-methods:ui": "node scripts/test-payment-methods-ui.mjs",
     "test:paypal": "node scripts/test-paypal.mjs",
     "test:event-payment": "node scripts/test-event-payment-methods.mjs",
+    "test:fair-schedule": "node scripts/test-fair-schedule.mjs",
     "test:posts": "node scripts/test-posts.mjs",
     "test:posts:distribution": "node scripts/test-post-distribution-plan.mjs",
     "test:rbac": "node scripts/test-rbac.mjs",

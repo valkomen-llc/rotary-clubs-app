@@ -70,7 +70,15 @@ export interface FairConfig {
     focusAreas: FocusArea[];
     redirect: { url: string; label: string; delaySeconds: number; name: string };
     trm: { provider: string; fallbackProviders: string[]; manualRate: number | null; refreshHours: number };
-    content: { title: string; subtitle: string; intro: string; requirements: string[]; note: string; priorityNote: string };
+    content: {
+        title: string; subtitle: string; intro: string; requirements: string[]; note: string; priorityNote: string;
+        /** v4.1252 — Fechas importantes del proceso, editables desde aquí. */
+        scheduleTitle?: string;
+        schedule?: ScheduleItem[];
+        /** Marca la lista como decidida en el panel: sin ella, el servidor
+         *  usa la de por defecto (la guardada sería una copia). */
+        scheduleEdited?: boolean;
+    };
     notifications: {
         adminEmails: string[]; sendReceipt: boolean;
         branding?: { headerLogoUrl?: string; footerLogoUrl?: string; footerText?: string };
@@ -80,6 +88,57 @@ export interface FairConfig {
     registrationPanel?: Partial<RegistrationPanelConfig>;
     clubId: string | null;
 }
+
+export interface ScheduleItem { date: string; label: string; prefix?: string }
+
+/**
+ * Las fechas importantes que ve el club en /postular-proyecto (v4.1252).
+ *
+ * Declarado FUERA de la pantalla: un componente declarado dentro es un tipo
+ * nuevo en cada render y el campo pierde el foco tras cada letra.
+ */
+const ScheduleEditor = ({ items, onChange }: { items: ScheduleItem[]; onChange: (next: ScheduleItem[]) => void }) => {
+    const set = (i: number, field: keyof ScheduleItem, value: string) =>
+        onChange(items.map((it, k) => (k === i ? { ...it, [field]: value } : it)));
+    const move = (i: number, d: -1 | 1) => {
+        const j = i + d;
+        if (j < 0 || j >= items.length) return;
+        const next = items.slice();
+        [next[i], next[j]] = [next[j], next[i]];
+        onChange(next);
+    };
+    return (
+        <div className="space-y-3">
+            {items.length === 0 && (
+                <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                    Sin fechas: el bloque «Fechas importantes» no se muestra en la página pública.
+                </p>
+            )}
+            {items.map((it, i) => (
+                <div key={i} className="grid gap-2 rounded-lg border border-slate-200 p-3 sm:grid-cols-[150px_110px_1fr_auto]">
+                    <Input label="Fecha" type="date" value={it.date} onChange={e => set(i, 'date', e.target.value)} />
+                    <Input label="Prefijo" placeholder="Hasta el" value={it.prefix || ''} onChange={e => set(i, 'prefix', e.target.value)} />
+                    <Input label="Texto" value={it.label} onChange={e => set(i, 'label', e.target.value)} />
+                    <div className="flex items-end gap-1 pb-0.5">
+                        <button type="button" onClick={() => move(i, -1)} disabled={i === 0} title="Subir"
+                            className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 disabled:opacity-30"><ArrowUp size={14} /></button>
+                        <button type="button" onClick={() => move(i, 1)} disabled={i === items.length - 1} title="Bajar"
+                            className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 disabled:opacity-30"><ArrowDown size={14} /></button>
+                        <button type="button" onClick={() => onChange(items.filter((_, k) => k !== i))} title="Quitar"
+                            className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50"><Trash2 size={14} /></button>
+                    </div>
+                </div>
+            ))}
+            <button type="button" onClick={() => onChange([...items, { date: '', label: '' }])}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                <Plus size={14} /> Agregar fecha
+            </button>
+            <p className="text-[11px] text-slate-400">
+                Se muestran en este orden. El prefijo es opcional (por ejemplo «Hasta el»). Una fila sin texto no se publica.
+            </p>
+        </div>
+    );
+};
 
 type CardProps = { title: string; icon: LucideIcon; children: React.ReactNode };
 const Card = ({ title, icon: Icon, children }: CardProps) => (
@@ -560,6 +619,20 @@ const ConvocatoriaConfig: React.FC<{ canEdit?: boolean; onSaved?: () => void }> 
                         onChange={(e: ChangeEvent) => patch('content.requirements', e.target.value.split('\n').map((x: string) => x.trim()).filter(Boolean))}
                     />
                     <Textarea label="Nota de prioridad" rows={3} value={config.content.priorityNote} onChange={(e: ChangeEvent) => patch('content.priorityNote', e.target.value)} />
+                </div>
+            </Card>
+
+            <Card title="Fechas importantes del proceso" icon={Calendar}>
+                <div className="space-y-4">
+                    <Input label="Título del bloque" value={config.content.scheduleTitle || ''}
+                        placeholder="Fechas importantes del proceso"
+                        onChange={(e: ChangeEvent) => patch('content.scheduleTitle', e.target.value)} />
+                    <ScheduleEditor
+                        items={config.content.schedule || []}
+                        onChange={next => {
+                            patch('content.schedule', next);
+                            patch('content.scheduleEdited', true);
+                        }} />
                 </div>
             </Card>
 
