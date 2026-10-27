@@ -23,7 +23,24 @@ export interface FieldDef {
     rows?: number | { key: string; label: string }[];
     maxLength?: number; columns?: { key: string; label: string; type: string }[];
     rowsLabel?: string; compute?: ComputeSpec; default?: unknown;
+    /**
+     * v4.1255 — A quién preguntarle por este campo. `whatsapp` va en formato
+     * internacional, sólo dígitos (573153813747); `message` es el texto con el
+     * que se abre la conversación y nombra el campo.
+     */
+    contact?: { text?: string; label?: string; whatsapp?: string; message?: string };
 }
+
+/**
+ * Enlace que abre WhatsApp (la aplicación en el móvil, WhatsApp Web en el
+ * computador) con el mensaje ya escrito. Sin número válido devuelve null:
+ * un enlace que no lleva a nadie es peor que ninguno.
+ */
+export const whatsappLink = (phone?: string, message?: string): string | null => {
+    const digits = String(phone || '').replace(/\D/g, '');
+    if (digits.length < 8) return null;
+    return `https://wa.me/${digits}${message ? `?text=${encodeURIComponent(message)}` : ''}`;
+};
 
 export interface SectionDef {
     key: string; title: string; description?: string;

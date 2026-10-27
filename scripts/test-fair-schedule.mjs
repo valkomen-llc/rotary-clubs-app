@@ -73,5 +73,34 @@ const propia = normalizeSavedConfig({ redirect: { url: 'https://otro.org/', name
 eq('un destino escrito a mano se respeta', propia.redirect, { url: 'https://otro.org/', name: 'Mi portal', label: 'Ir', delaySeconds: 5 });
 ok('ninguna pantalla conserva el 25A', !/grants25a|Grants 25A/.test(read('src/pages/MiProyecto.tsx') + read('src/pages/FeriaProyectos.tsx')));
 
+console.log('\n6. v4.1255 — FDD, paso «Aportes esperados»');
+const { DEFAULT_FDD_FORM } = await import('../server/lib/projectFairFddForm.js');
+const aportesDe = (form) => form.sections.find(x => x.key === 'aportes').fields;
+const campos = aportesDe(DEFAULT_FDD_FORM);
+ok('ya no está «distritos del exterior»', !campos.some(f => f.key === 'foreignDistrictsUsd'));
+ok('aportes del club y del exterior son opcionales',
+    campos.filter(f => ['clubsDistrictUsd', 'foreignClubsUsd'].includes(f.key)).every(f => !f.required));
+eq('el total suma sólo los dos que quedan', campos.find(f => f.key === 'expectedTotalUsd').compute.sources,
+    ['aportes.clubsDistrictUsd', 'aportes.foreignClubsUsd']);
+const fap = campos.find(f => f.key === 'fapContributionUsd');
+ok('el FAP sigue obligatorio y trae el WhatsApp de la presidenta',
+    fap.required === true && fap.contact?.whatsapp === '573153813747' && /aportes del club al FAP/.test(fap.contact.message));
+// Una convocatoria guardada con la copia VIEJA de la plantilla (versión 1,
+// con el campo retirado y todo obligatorio) se corrige al leerla.
+const vieja = JSON.parse(JSON.stringify(DEFAULT_FDD_FORM));
+const sec = vieja.sections.find(x => x.key === 'aportes');
+sec.fields = [
+    { key: 'clubsDistrictUsd', label: 'x', type: 'currency', required: true },
+    { key: 'foreignClubsUsd', label: 'x', type: 'currency', required: true },
+    { key: 'foreignDistrictsUsd', label: 'x', type: 'currency', required: true },
+];
+const leida = normalizeSavedConfig({ fddForm: vieja });
+ok('la copia guardada vieja toma el paso nuevo', JSON.stringify(aportesDe(leida.fddForm)) === JSON.stringify(campos));
+ok('y las demás secciones de la copia no se tocan',
+    JSON.stringify(leida.fddForm.sections.filter(x => x.key !== 'aportes')) === JSON.stringify(vieja.sections.filter(x => x.key !== 'aportes')));
+const campo = read('src/components/project-forms/FormFields.tsx');
+ok('el campo pinta el contacto con un enlace wa.me', /<FieldContact field=\{field\} \/>/.test(campo) && /wa\.me/.test(read('src/lib/projectForms.ts')));
+ok('el aviso está declarado fuera del campo', /^const FieldContact = /m.test(campo));
+
 console.log(`\n${pass} pasadas, ${fail} fallidas`);
 process.exit(fail ? 1 : 0);

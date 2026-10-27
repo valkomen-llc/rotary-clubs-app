@@ -42,6 +42,21 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1255.0',
+        title: 'Solicitud de Aportes del FDD: paso «Aportes esperados» simplificado y contacto por WhatsApp para el FAP 💬',
+        description: 'En el paso 11 del formulario «Solicitud de Aportes del FDD 2026-2027» se retiró el campo «Aportes esperados de distritos del exterior»; «Aportes del Club y otros clubes del Distrito» y «Aportes esperados de clubes del exterior» siguen disponibles pero ya no son obligatorios para completar el formulario, y el total de aportes esperados suma esos dos. El campo «Aportes del Club al FAP 2023-2024» trae un aviso para comunicarse con la presidenta del evento: el botón «Escribir por WhatsApp» abre la aplicación o WhatsApp Web con el mensaje «necesito información sobre los aportes del club al FAP» y el nombre del campo.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'fdd', 'formularios del proyecto', 'whatsapp'],
+        type: 'improvement',
+        impact: 'Media: el formulario del FDD se puede completar sin aportes externos y con ayuda directa para el FAP.',
+        changes: [
+            { type: 'removed', text: 'Campo «Aportes esperados de distritos del exterior (US$)».' },
+            { type: 'changed', text: '«Aportes del Club y otros clubes del Distrito» y «Aportes esperados de clubes del exterior» pasan a opcionales; el total suma esos dos.' },
+            { type: 'added', text: 'Aviso con enlace de WhatsApp (+57 315 381 3747) en «Aportes del Club al FAP 2023-2024», con el mensaje y el nombre del campo ya escritos.' },
+            { type: 'fixed', text: 'La copia de la plantilla guardada en la convocatoria se sincroniza al leerla, así que el cambio llega sin tocar la base.' },
+        ],
+    },
+    {
         version: '4.1254.0',
         title: 'Feria de Proyectos: el siguiente paso ahora es Rotary Grants 31A 🌐',
         description: 'El enlace del proceso internacional pasó de Rotary Grants 25A a Rotary Grants 31A (https://grants31a.org/): en el perfil del club («Cuando tengas tu proyecto formulado, continúa el proceso internacional en…» y su botón), en la confirmación del pago, en la redirección y en el correo del comprobante. Las convocatorias ya guardadas con el valor anterior se actualizan solas; un destino escrito a mano en Convocatoria se respeta.',
