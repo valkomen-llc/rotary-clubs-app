@@ -54,6 +54,7 @@ import {
     paymentStatusOf, paymentStatusLabel, paymentDeadlineOf, formsRequirePayment,
 } from '../lib/projectFairLifecycle.js';
 
+console.log('[projectFairController] v4.1254.0 cargado — El siguiente paso del proceso internacional es Rotary Grants 31A (grants31a.org); la copia guardada del destino 25A se actualiza sola.');
 console.log('[projectFairController] v4.1253.0 cargado — La postulación ya NO exige pagar: «Confirmar y postular proyecto» deja el proyecto Postulado con el pago Pendiente, se puede guardar un borrador, y el pago se hace después desde el perfil. Estado del proyecto y estado del pago separados: los webhooks ya no escriben en el del proyecto.');
 console.log('[projectFairController] v4.1252.0 cargado — Fechas importantes del proceso: sin las dos ya cumplidas (Global Grants, 1-sep; CADRES, 15-oct) y editables desde Convocatoria. Una lista guardada sin el editor cede al valor por defecto.');
 console.log('[projectFairController] v4.982.0 cargado — Postulación de Proyectos POR EDICIONES: cada edición es un evento del calendario, con su convocatoria, sus postulaciones y sus reportes aislados. Wizard agrupado + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria. Pago con reintento: mientras no haya pago CONFIRMADO, el club siempre tiene una ruta segura para completarlo. El recargo de pasarela y traslado se SUMA al precio publicado y lo desglosa la pasarela, en partidas separadas. El precio se fija Y SE COBRA en pesos: la conversión a dólares la hace la pasarela con su tasa, no nosotros con la TRM');
@@ -177,11 +178,12 @@ export const DEFAULT_CONFIG = {
         { key: 'economic_development', label: 'Desarrollo Económico Comunitario.' },
         { key: 'environment', label: 'Medio Ambiente.' },
     ],
+    // v4.1254 — La plataforma de subvenciones de la zona pasó de 25A a 31A.
     redirect: {
-        url: 'https://grants25a.org/',
-        label: 'Continuar hacia Rotary Grants 25A',
+        url: 'https://grants31a.org/',
+        label: 'Continuar hacia Rotary Grants 31A',
         delaySeconds: 8,
-        name: 'Rotary Grants 25A',
+        name: 'Rotary Grants 31A',
     },
     trm: {
         provider: 'superfinanciera',
@@ -1016,6 +1018,26 @@ export const normalizeSavedConfig = (saved) => {
             content: {
                 ...out.content,
                 schedule: out.content.schedule.map(i => (i?.label === LEGACY_CADRE_LABEL ? { ...i, label: CADRE_LABEL } : i)),
+            },
+        };
+    }
+
+    // ⚠️ v4.1254 — ROTARY GRANTS 25A → 31A. El panel guarda la convocatoria
+    // ENTERA, así que la fila lleva una copia del destino viejo y `deepMerge`
+    // la hace ganar sobre el valor por defecto: cambiar sólo el valor por
+    // defecto no movería nada en el sitio. Se reemplaza campo por campo SÓLO
+    // lo que sigue siendo exactamente el valor viejo; un destino que alguien
+    // escribió a mano en Convocatoria se respeta.
+    if (isPlainObject(out?.redirect)) {
+        const r = out.redirect;
+        const viejo = (v, ...legacy) => legacy.includes(String(v || '').trim());
+        out = {
+            ...out,
+            redirect: {
+                ...r,
+                url: viejo(r.url, 'https://grants25a.org/', 'https://grants25a.org', 'http://grants25a.org/', 'https://www.grants25a.org/') ? 'https://grants31a.org/' : r.url,
+                name: viejo(r.name, 'Rotary Grants 25A') ? 'Rotary Grants 31A' : r.name,
+                label: viejo(r.label, 'Continuar hacia Rotary Grants 25A') ? 'Continuar hacia Rotary Grants 31A' : r.label,
             },
         };
     }
@@ -3176,7 +3198,7 @@ export const buildReceiptHtml = (s, cfg) => {
       <div style="background:#f1f5f9;border-left:3px solid ${primary};padding:16px 18px;border-radius:8px">
         <p style="margin:0;font-size:14px;line-height:1.6;color:#334155">
           <strong>Siguiente paso:</strong> continúa tu registro internacional en
-          <a href="${esc(cfg.redirect?.url || 'https://grants25a.org/')}" style="color:${primary};font-weight:700">${esc(cfg.redirect?.name || 'Rotary Grants 25A')}</a>.
+          <a href="${esc(cfg.redirect?.url || 'https://grants31a.org/')}" style="color:${primary};font-weight:700">${esc(cfg.redirect?.name || 'Rotary Grants 31A')}</a>.
           Recuerda que la presentación del proyecto durante la feria tendrá una duración
           ${esc(presentationLabel(cfg.presentation))}.
         </p>

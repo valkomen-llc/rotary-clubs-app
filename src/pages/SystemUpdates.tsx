@@ -42,6 +42,20 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1254.0',
+        title: 'Feria de Proyectos: el siguiente paso ahora es Rotary Grants 31A 🌐',
+        description: 'El enlace del proceso internacional pasó de Rotary Grants 25A a Rotary Grants 31A (https://grants31a.org/): en el perfil del club («Cuando tengas tu proyecto formulado, continúa el proceso internacional en…» y su botón), en la confirmación del pago, en la redirección y en el correo del comprobante. Las convocatorias ya guardadas con el valor anterior se actualizan solas; un destino escrito a mano en Convocatoria se respeta.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'rotary grants', 'perfil del club'],
+        type: 'update',
+        impact: 'Baja: cambia el destino del botón «Continuar hacia Rotary Grants».',
+        changes: [
+            { type: 'changed', text: 'Rotary Grants 25A → Rotary Grants 31A, enlace https://grants31a.org/.' },
+            { type: 'fixed', text: 'La copia del destino viejo guardada en la convocatoria ya no tapa el cambio.' },
+            { type: 'added', text: '4 comprobaciones nuevas en npm run test:fair-schedule.' },
+        ],
+    },
+    {
         version: '4.1253.0',
         title: 'Feria de Proyectos: postular ya no exige pagar — el pago se hace después, desde el perfil 📝➡️💳',
         description: 'Los clubes pueden registrarse, formular y POSTULAR su proyecto a la XII Feria de Proyectos sin pagar en ese momento. El último paso del formulario pasó de «Confirmar y continuar al pago» a «Confirmar y postular proyecto»: el proyecto queda Postulado con el pago Pendiente, se muestra «¡Tu proyecto ha sido postulado exitosamente!» con el código, y llega el correo de confirmación. Pagar es opcional en ese momento («Realizar pago ahora») y queda disponible en el perfil, en la nueva sección «Inscripción a la Feria de Proyectos», con el valor, los cargos, el total (el mismo que cobra Stripe), el estado del pago, el historial y el comprobante. También se puede guardar un borrador y terminarlo desde el perfil. En el panel: estado del proyecto y estado del pago separados, vistas de participación y recaudo, indicadores y recordatorios de pago con tope.',
