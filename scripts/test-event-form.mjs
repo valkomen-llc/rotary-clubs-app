@@ -13,7 +13,7 @@ import {
     buildFormSchema, flattenFields, validateAnswers, defaultAnswersFor,
     optionsForField, rotaryCatalogFor, clubContradictsDistrict,
     FAIR_ROLES, COUNTRY_WITH_DIVISIONS, normalizeCategory,
-    accountLinkingFor,
+    accountLinkingFor, isFieldVisible,
 } from '../server/lib/eventRegistrationSpec.js';
 import { DISTRICT_CATALOG } from '../server/lib/rotaryClubs.js';
 import { readFileSync } from 'node:fs';
@@ -177,6 +177,23 @@ check('el internacional conserva el suyo, rotulado por lo que pide',
 check('y CADRES el suyo',
     buildFormSchema(CADRE).steps.find(s => s.key === 'rotary')?.label === 'Experiencia técnica');
 check('todos terminan en necesidades', pasosNac.at(-1) === 'needs');
+
+// ── v4.1257 — Detalle alimentario sólo con «Otra»; talla de camiseta sólo internacional
+grupo('Necesidades y condiciones (v4.1257)');
+const camposNeeds = (cat) => buildFormSchema(cat).steps.find(s => s.key === 'needs').fields;
+const detalle = camposNeeds(NACIONAL).find(f => f.key === 'dietaryDetail');
+for (const opcion of ['ninguna', 'vegetariana', 'vegana', 'sin_gluten', 'sin_lactosa', 'alergia']) {
+    check(`con «${opcion}» no se pide el detalle`, !isFieldVisible(detalle, { dietary: opcion }));
+}
+check('con «otra» sí se pide', isFieldVisible(detalle, { dietary: 'otra' }));
+const keysInt = camposNeeds(INTERNACIONAL).map(f => f.key);
+check('el internacional pide la talla, después de los comentarios y antes de los términos',
+    keysInt.indexOf('tshirtSize') === keysInt.indexOf('accessibility') + 1 && keysInt.at(-1) === 'acceptTerms', keysInt.join(', '));
+check('las tallas van de XS a 2XL',
+    JSON.stringify(camposNeeds(INTERNACIONAL).find(f => f.key === 'tshirtSize').options.map(o => o.value)) === JSON.stringify(['XS', 'S', 'M', 'L', 'XL', '2XL']));
+check('el nacional no la pide', !camposNeeds(NACIONAL).some(f => f.key === 'tshirtSize'));
+check('ni el CADRES', !camposNeeds(CADRE).some(f => f.key === 'tshirtSize'));
+check('la talla es opcional: no impide inscribirse', camposNeeds(INTERNACIONAL).find(f => f.key === 'tshirtSize').required === false);
 
 // ── 9. El catálogo se puede fijar por evento ─────────────────────────
 grupo('Catálogo por edición');

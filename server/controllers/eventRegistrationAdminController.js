@@ -953,6 +953,8 @@ const EXPORT_COLUMNS = [
     ['Cargo en Rotary', r => rotaryRoleLabel(r.rotaryRole)],
     ['Idioma', r => r.language],
     ['Alimentación', r => r.dietary],
+    // v4.1257 — Sólo la responde el registro internacional; vacía en el resto.
+    ['Talla de camiseta', r => r.answers?.tshirtSize || ''],
     ['Acompañantes', r => r.companionsCount],
     ['Valor', r => r.baseAmount],
     ['Moneda', r => r.baseCurrency],

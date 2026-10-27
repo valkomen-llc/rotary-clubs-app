@@ -291,13 +291,27 @@ export const CORE_ROTARY_FIELDS = [
 /** Necesidades y aceptación: cierran el formulario en todas las categorías. */
 export const CORE_NEEDS_FIELDS = [
     { key: 'dietary', label: 'Necesidades alimentarias', type: 'select', required: true, options: DIETARY },
-    { key: 'dietaryDetail', label: 'Detalle de la necesidad alimentaria', type: 'text', required: false, max: 300, showIf: { key: 'dietary', notIn: ['ninguna'] } },
+    // v4.1257 — El detalle sólo se pide con «Otra»: con «Vegetariana», «Sin
+    // gluten», etc. la opción ya lo dice todo, y pedir un detalle vacío en
+    // todas las categorías era ruido (pedido del cliente).
+    { key: 'dietaryDetail', label: 'Detalle de la necesidad alimentaria', type: 'text', required: false, max: 300, showIf: { key: 'dietary', in: ['otra'] } },
     // La clave sigue siendo `accessibility` a propósito: las inscripciones ya
     // enviadas guardan su respuesta ahí y renombrarla las dejaría huérfanas.
     // Lo que cambia es el alcance: además de movilidad y salud, invita a
     // escribir cualquier petición o comentario para el equipo.
     { key: 'accessibility', label: 'Comentarios o solicitudes especiales', type: 'textarea', required: false, max: 600, help: 'Opcional. Movilidad, salud, acompañamiento o cualquier cosa que necesites que el equipo sepa.' },
 ];
+
+/**
+ * v4.1257 — Talla de camiseta, SÓLO para el registro internacional (pedido del
+ * cliente). Va en el último paso, después de los comentarios y antes de los
+ * términos. Opcional: no impide inscribirse.
+ */
+export const TSHIRT_SIZES = ['XS', 'S', 'M', 'L', 'XL', '2XL'];
+export const TSHIRT_FIELD = {
+    key: 'tshirtSize', label: 'Talla de camiseta', type: 'select', required: false,
+    options: TSHIRT_SIZES.map(t => ({ value: t, label: t })),
+};
 
 export const TERMS_FIELD = {
     key: 'acceptTerms', label: 'Acepto los términos y el tratamiento de mis datos personales',
@@ -587,7 +601,8 @@ export const buildFormSchema = (category) => {
         steps.push({ key: 'extra', label: category?.extraFieldsLabel || 'Información adicional', fields: extra });
     }
 
-    steps.push({ key: 'needs', label: 'Necesidades y condiciones', fields: [...CORE_NEEDS_FIELDS, TERMS_FIELD] });
+    const needsExtra = audience === 'international' ? [TSHIRT_FIELD] : [];
+    steps.push({ key: 'needs', label: 'Necesidades y condiciones', fields: [...CORE_NEEDS_FIELDS, ...needsExtra, TERMS_FIELD] });
     return { audience, steps };
 };
 
@@ -1311,7 +1326,7 @@ export default {
     ZERO_DECIMAL, toStripeAmount, CURRENCIES, currencyMeta, roundMoney, formatMoney,
     STATUSES, STATUS, STATUS_KEYS, statusMeta, COMMITTED_STATUSES, SETTLED_STATUSES,
     SYSTEM_TAGS, SYSTEM_TAG_KEYS, normalizeTag, deriveSystemTags,
-    CORE_PERSONAL_FIELDS, CORE_ROTARY_FIELDS, CORE_NEEDS_FIELDS, TERMS_FIELD,
+    CORE_PERSONAL_FIELDS, CORE_ROTARY_FIELDS, CORE_NEEDS_FIELDS, TERMS_FIELD, TSHIRT_FIELD,
     INTERNATIONAL_FIELDS, NATIONAL_FIELDS, CADRE_FIELDS, AUDIENCES, AUDIENCE_BY_CATEGORY,
     buildFormSchema, flattenFields, isFieldVisible, validateAnswers,
     COMPANION_FIELDS, validateCompanion,
