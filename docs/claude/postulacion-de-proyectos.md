@@ -778,3 +778,22 @@ https://grants31a.org/**.
   exactamente el valor viejo (URL, nombre y texto del botón de 25A); un
   destino escrito a mano en Convocatoria se respeta. Misma regla que la lista
   de fechas de v4.1252. Pruebas: sección 5 de `npm run test:fair-schedule`.
+
+### FDD, paso «Aportes esperados» — v4.1255
+
+En `server/lib/projectFairFddForm.js`: sin «Aportes esperados de distritos del
+exterior» (`RETIRED_FDD_FIELDS`); `clubsDistrictUsd` y `foreignClubsUsd`
+opcionales; el total suma esos dos; y `fapContributionUsd` lleva
+`contact: { text, label, whatsapp, message }`, que `FormFields.tsx` pinta como
+un aviso con enlace `wa.me` (abre la app o WhatsApp Web con el mensaje y el
+nombre del campo). Cualquier campo de cualquier plantilla puede declarar
+`contact`.
+
+- **⚠️ La copia guardada de la plantilla taparía el cambio** (el panel guarda
+  la convocatoria entera y el merge reemplaza el array de secciones).
+  `syncFddAportes`, llamado en `normalizeSavedConfig`, reemplaza la sección
+  `aportes` guardada por la vigente; las demás secciones no se tocan. No hay
+  editor de esta plantilla en el panel, así que no se pisa nada decidido.
+- Las respuestas ya guardadas en `foreignDistrictsUsd` se conservan en el JSON
+  de respuestas; simplemente dejan de mostrarse y de sumar.
+- Pruebas: sección 6 de `npm run test:fair-schedule`.

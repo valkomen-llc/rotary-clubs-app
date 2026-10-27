@@ -10,8 +10,8 @@
 // Vivían dentro de `MiProyecto.tsx` cuando sólo existía un formulario.
 // ════════════════════════════════════════════════════════════════════
 import { useState } from 'react';
-import { Info, Plus, Trash2 } from 'lucide-react';
-import { computeValue, fieldError, fmtUsd, type Answers, type FieldDef } from '../../lib/projectForms';
+import { Info, MessageCircle, Plus, Trash2 } from 'lucide-react';
+import { computeValue, fieldError, fmtUsd, whatsappLink, type Answers, type FieldDef } from '../../lib/projectForms';
 
 export const BLUE = '#17458F';
 
@@ -142,6 +142,29 @@ export const FormField = ({ field, value, answers, onChange, disabled, focusArea
                 ? <p className="mt-1.5 text-[13px] font-medium text-red-600">{error}</p>
                 : field.help && field.type !== 'checkbox' && <p className="mt-1.5 text-[13px] text-slate-500">{field.help}</p>}
             {counter && <p className="mt-1 text-right text-[11px] text-slate-400">{counter}</p>}
+            <FieldContact field={field} />
+        </div>
+    );
+};
+
+/**
+ * v4.1255 — «¿Dudas con este campo?»: aviso con el contacto que la plantilla
+ * declara. Abre WhatsApp con el mensaje ya escrito y el nombre del campo, para
+ * que quien responde sepa de qué le preguntan. Se ve también en solo lectura:
+ * preguntar no edita nada.
+ */
+const FieldContact = ({ field }: { field: FieldDef }) => {
+    const href = whatsappLink(field.contact?.whatsapp,
+        field.contact?.message || `Hola, necesito información sobre el campo «${field.label}».`);
+    if (!field.contact || !href) return null;
+    return (
+        <div className="mt-2 flex flex-col gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[13px] text-amber-900 sm:flex-row sm:items-center">
+            <Info size={15} className="hidden shrink-0 text-amber-600 sm:block" />
+            <span className="flex-1">{field.contact.text || 'Para más información sobre este campo, comunícate con la organización.'}</span>
+            <a href={href} target="_blank" rel="noopener noreferrer"
+                className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg bg-[#25D366] px-3 py-1.5 font-semibold text-white transition hover:opacity-90">
+                <MessageCircle size={14} /> {field.contact.label || 'Escribir por WhatsApp'}
+            </a>
         </div>
     );
 };

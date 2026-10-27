@@ -37,6 +37,29 @@ export const FDD_FORM_VERSION = 1;
 
 export const FDD_FORM_KEY = 'fdd_2026_2027';
 
+/** Campos retirados de la plantilla (v4.1255). */
+export const RETIRED_FDD_FIELDS = ['foreignDistrictsUsd'];
+
+/**
+ * ⚠️ La convocatoria guarda una COPIA de la plantilla (el panel manda la
+ * configuración entera al guardar) y el merge reemplaza el array de secciones
+ * entero: cambiar la plantilla de arriba no llegaría nunca al sitio. No hay
+ * editor de esta plantilla en el panel, así que la sección «Aportes» guardada
+ * es un eco de la de por defecto: se reemplaza por la vigente al leerla, como
+ * `dropRetiredBudgetRows` hace con la Formulación. Devuelve la MISMA
+ * referencia si no hay nada que cambiar.
+ */
+export const syncFddAportes = (fddForm) => {
+    const sections = fddForm?.sections;
+    if (!Array.isArray(sections)) return fddForm;
+    const vigente = DEFAULT_FDD_FORM.sections.find(sec => sec.key === 'aportes');
+    const i = sections.findIndex(sec => sec?.key === 'aportes');
+    if (i < 0 || !vigente || JSON.stringify(sections[i]) === JSON.stringify(vigente)) return fddForm;
+    const next = sections.slice();
+    next[i] = vigente;
+    return { ...fddForm, sections: next };
+};
+
 export const DEFAULT_FDD_FORM = {
     version: FDD_FORM_VERSION,
     enabled: true,
@@ -211,14 +234,27 @@ export const DEFAULT_FDD_FORM = {
             title: 'Aportes esperados y fuentes de financiación',
             description: 'Aportes con los que el proyecto cuenta además del FDD.',
             fields: [
-                { key: 'clubsDistrictUsd', label: 'Aportes del Club y otros clubes del Distrito (US$)', type: 'currency', required: true, width: 'half' },
-                { key: 'foreignClubsUsd', label: 'Aportes esperados de clubes del exterior (US$)', type: 'currency', required: true, width: 'half' },
-                { key: 'foreignDistrictsUsd', label: 'Aportes esperados de distritos del exterior (US$)', type: 'currency', required: true, width: 'half' },
-                { key: 'expectedTotalUsd', label: 'Total de aportes esperados (US$)', type: 'computed', width: 'half',
-                  compute: { op: 'sum', sources: ['aportes.clubsDistrictUsd', 'aportes.foreignClubsUsd', 'aportes.foreignDistrictsUsd'] },
-                  help: 'Se calcula solo con los tres valores anteriores.' },
+                // v4.1255 — Los dos aportes quedan OPCIONALES (pedido del
+                // Distrito): pueden no existir todavía y no impiden enviar.
+                // «Aportes esperados de distritos del exterior» se retiró.
+                { key: 'clubsDistrictUsd', label: 'Aportes del Club y otros clubes del Distrito (US$)', type: 'currency', required: false, width: 'half',
+                  help: 'Opcional.' },
+                { key: 'foreignClubsUsd', label: 'Aportes esperados de clubes del exterior (US$)', type: 'currency', required: false, width: 'half',
+                  help: 'Opcional.' },
+                { key: 'expectedTotalUsd', label: 'Total de aportes esperados (US$)', type: 'computed', width: 'full',
+                  compute: { op: 'sum', sources: ['aportes.clubsDistrictUsd', 'aportes.foreignClubsUsd'] },
+                  help: 'Se calcula solo con los dos valores anteriores.' },
+                // v4.1255 — Con la duda resuelta por WhatsApp: el enlace abre
+                // la conversación con la presidenta del evento y el mensaje
+                // nombra el campo, para que sepa de qué le preguntan.
                 { key: 'fapContributionUsd', label: 'Aportes del Club al FAP 2023-2024 (US$)', type: 'currency', required: true, width: 'half',
-                  help: 'Lo aportado por el club al Fondo Anual Programas en el periodo 2023-2024.' },
+                  help: 'Lo aportado por el club al Fondo Anual Programas en el periodo 2023-2024.',
+                  contact: {
+                      text: 'Para más información sobre este campo, comunícate con la presidenta del evento.',
+                      label: 'Escribir por WhatsApp',
+                      whatsapp: '573153813747',
+                      message: 'Hola, necesito información sobre los aportes del club al FAP (campo «Aportes del Club al FAP 2023-2024 (US$)» de la Solicitud de Aportes del FDD 2026-2027).',
+                  } },
                 { key: 'fapMinimumUsd', label: '25% mín. del aporte al FAP 2023-2024 (US$)', type: 'computed', width: 'half',
                   compute: { op: 'percent', source: 'aportes.fapContributionUsd', factor: 0.25 },
                   help: 'Mínimo exigido por el reglamento del Distrito. Se calcula solo.' },
