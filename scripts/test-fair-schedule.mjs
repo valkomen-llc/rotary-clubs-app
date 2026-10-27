@@ -102,5 +102,13 @@ const campo = read('src/components/project-forms/FormFields.tsx');
 ok('el campo pinta el contacto con un enlace wa.me', /<FieldContact field=\{field\} \/>/.test(campo) && /wa\.me/.test(read('src/lib/projectForms.ts')));
 ok('el aviso está declarado fuera del campo', /^const FieldContact = /m.test(campo));
 
+console.log('\n7. v4.1256 — FDD, paso «Solicitud del FDD» sin justificación');
+const fddDe = (form) => form.sections.find(x => x.key === 'fdd').fields;
+eq('quedan la cantidad solicitada y la meta FAP', fddDe(DEFAULT_FDD_FORM).map(f => f.key), ['requestedUsd', 'fapGoalUsd']);
+const conJustificacion = JSON.parse(JSON.stringify(DEFAULT_FDD_FORM));
+fddDe(conJustificacion).push({ key: 'justification', label: 'Justificación de la solicitud', type: 'textarea', required: false });
+ok('una copia guardada que aún la trae la pierde al leerla',
+    !fddDe(normalizeSavedConfig({ fddForm: conJustificacion }).fddForm).some(f => f.key === 'justification'));
+
 console.log(`\n${pass} pasadas, ${fail} fallidas`);
 process.exit(fail ? 1 : 0);
