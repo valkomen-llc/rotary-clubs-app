@@ -42,6 +42,23 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1259.0',
+        title: 'Dashboard de la Feria: Centro de Gestión del Evento 🗂️',
+        description: 'El dashboard del comité organizador (Valledupar) tiene ahora, debajo de la cabecera, el «Centro de Gestión del Evento» con tres pestañas: Resumen, Proyectos postulados e Inscripciones y asistentes. El Resumen muestra dos tarjetas con sus indicadores (proyectos: total, postulados, en revisión, aprobados, pago pendiente; inscripciones: total, participantes esperados, pagos confirmados, pagos pendientes, personas acreditadas) y debajo siguen los indicadores y gráficos de siempre. Las otras dos pestañas abren, dentro del dashboard, los mismos módulos de Postulación de Proyectos y de Eventos: listado, búsqueda, filtros, ficha, acciones y exportaciones, con los mismos permisos. Filtros rápidos nuevos: en proyectos, En revisión / Requieren ajustes / Aprobados / Rechazados por separado; en inscripciones, Pago confirmado, Pago pendiente, Con y Sin acompañantes, Acreditados y Pendientes de acreditación.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'dashboard', 'eventos', 'postulación de proyectos'],
+        type: 'feature',
+        impact: 'Alta: el comité trabaja proyectos e inscripciones desde su panel principal, sin cambiar de módulo.',
+        changes: [
+            { type: 'added', text: 'Centro de Gestión del Evento en /admin/dashboard, con pestañas que viven en la URL (?panel=) y el botón «atrás».' },
+            { type: 'added', text: 'Tarjetas «Proyectos postulados» e «Inscripciones y asistentes» con indicadores tomados de los tableros de cada módulo.' },
+            { type: 'added', text: 'Postulación de Proyectos se puede montar embebida (misma pantalla, sin su marco de página).' },
+            { type: 'added', text: 'Vistas de proyectos: Requieren ajustes, Aprobados y Rechazados; «En revisión» ya no incluye «Requieren ajustes».' },
+            { type: 'added', text: 'Inscripciones: filtro por acreditación (también en el tablero y las exportaciones) y filtros rápidos de un clic.' },
+            { type: 'added', text: 'npm run test:management-center (29 comprobaciones).' },
+        ],
+    },
+    {
         version: '4.1258.0',
         title: 'Registro internacional: ahora sí aparece la talla de camiseta 👕',
         description: 'En v4.1257 la «Talla de camiseta» no aparecía en el registro internacional real: la categoría del Distrito («registro_internacional») se creó en el panel con audiencia «general» y el formulario no la reconocía como internacional. Ahora la talla se decide con la misma regla que el resto del módulo (lo que declara la categoría, luego su botón y, por último, su clave), así que aparece en el registro internacional y no en el nacional ni en el de CADRES.',

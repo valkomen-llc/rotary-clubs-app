@@ -95,12 +95,34 @@ interface Filters {
     q: string; status: string; category: string; country: string; district: string;
     club: string; currency: string; payment: string; companions: string;
     tags: string; from: string; to: string; includeDrafts: string;
+    /** v4.1259 — 'yes' acreditados, 'no' pendientes de acreditación. */
+    accredited: string;
 }
+
+/**
+ * v4.1259 — Filtros rápidos de un clic. Cada uno fija UNA de las tres
+ * dimensiones (pago, acompañantes, acreditación) y limpia las otras dos: son
+ * vistas, no una combinación. Los combinados siguen en «Filtros».
+ */
+const QUICK_FILTERS: { key: string; label: string; set: Partial<Filters> }[] = [
+    { key: 'all', label: 'Todos', set: {} },
+    { key: 'settled', label: 'Pago confirmado', set: { payment: 'settled' } },
+    { key: 'pending', label: 'Pago pendiente', set: { payment: 'pending' } },
+    { key: 'with', label: 'Con acompañantes', set: { companions: 'with' } },
+    { key: 'without', label: 'Sin acompañantes', set: { companions: 'without' } },
+    { key: 'accredited', label: 'Acreditados', set: { accredited: 'yes' } },
+    { key: 'not_accredited', label: 'Pendientes de acreditación', set: { accredited: 'no' } },
+];
+const quickKeyOf = (f: Filters) =>
+    QUICK_FILTERS.find(q => q.key !== 'all'
+        && (q.set.payment || '') === f.payment && (q.set.companions || '') === f.companions
+        && (q.set.accredited || '') === f.accredited)?.key
+    || (!f.payment && !f.companions && !f.accredited ? 'all' : null);
 
 const emptyFilters: Filters = {
     q: '', status: '', category: '', country: '', district: '',
     club: '', currency: '', payment: '', companions: '', tags: '',
-    from: '', to: '', includeDrafts: 'false',
+    from: '', to: '', includeDrafts: 'false', accredited: '',
 };
 
 const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100';
@@ -813,6 +835,21 @@ const EventRegistrationsManager = ({ eventId, eventTitle, categories, statuses }
                     {exporting === 'pdf' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
                     {exporting === 'pdf' ? 'Generando informe…' : 'PDF'}
                 </button>
+            </div>
+
+            {/* v4.1259 — Filtros rápidos */}
+            <div className="flex flex-wrap gap-2">
+                {QUICK_FILTERS.map(q => {
+                    const activo = quickKeyOf(filters) === q.key;
+                    return (
+                        <button key={q.key} type="button"
+                            onClick={() => setFilters({ ...filters, payment: '', companions: '', accredited: '', ...q.set })}
+                            className={`rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition ${activo
+                                ? 'bg-blue-700 text-white ring-transparent' : 'bg-white text-gray-600 ring-gray-300 hover:bg-gray-50'}`}>
+                            {q.label}
+                        </button>
+                    );
+                })}
             </div>
 
             {showFilters && (

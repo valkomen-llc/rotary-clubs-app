@@ -344,6 +344,11 @@ const buildFilters = (eventId, query) => {
     if (query.companions === 'with') where.push('"companionsCount" > 0');
     else if (query.companions === 'without') where.push('"companionsCount" = 0');
 
+    // v4.1259 — Acreditación (check-in del día del evento). Mismo dato que
+    // cuenta el tablero (`accredited`), así el filtro y la cifra coinciden.
+    if (query.accredited === 'yes') where.push('"checkedInAt" IS NOT NULL');
+    else if (query.accredited === 'no') where.push('"checkedInAt" IS NULL');
+
     const search = clean(query.q, 160);
     if (search) {
         values.push(`%${search}%`);

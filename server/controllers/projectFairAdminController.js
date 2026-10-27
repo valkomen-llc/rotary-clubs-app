@@ -405,7 +405,12 @@ const buildFilters = (query) => {
 export const VIEW_FILTERS = {
     postulados: SQL_APPLIED,
     borradores: SQL_DRAFT,
-    en_revision: `COALESCE("workflowStatus",'received') IN ('in_review','needs_changes')`,
+    // v4.1259 — «En revisión» y «Requieren ajustes» son vistas separadas (el
+    // Centro de Gestión del dashboard las ofrece por separado).
+    en_revision: `COALESCE("workflowStatus",'received') = 'in_review'`,
+    requieren_ajustes: `COALESCE("workflowStatus",'received') = 'needs_changes'`,
+    aprobados: `COALESCE("workflowStatus",'received') = 'approved'`,
+    rechazados: `COALESCE("workflowStatus",'received') = 'rejected'`,
     pago_pendiente: SQL_OWES,
     pago_confirmado: `status = 'paid'`,
     // «Postulaciones sin pago»: deben la inscripción y NUNCA intentaron
@@ -413,12 +418,15 @@ export const VIEW_FILTERS = {
     sin_intento_de_pago: `${SQL_OWES} AND NOT EXISTS (SELECT 1 FROM "ProjectFairPaymentAttempt" a WHERE a."submissionId" = "ProjectFairSubmission".id)`,
 };
 export const VIEW_OPTIONS = [
-    { key: 'postulados', label: 'Proyectos postulados' },
-    { key: 'borradores', label: 'Proyectos en borrador' },
-    { key: 'en_revision', label: 'Proyectos en revisión' },
-    { key: 'pago_pendiente', label: 'Clubes con pago pendiente' },
-    { key: 'pago_confirmado', label: 'Clubes con pago confirmado' },
-    { key: 'sin_intento_de_pago', label: 'Postulaciones sin ningún intento de pago' },
+    { key: 'postulados', label: 'Postulados' },
+    { key: 'en_revision', label: 'En revisión' },
+    { key: 'requieren_ajustes', label: 'Requieren ajustes' },
+    { key: 'aprobados', label: 'Aprobados' },
+    { key: 'rechazados', label: 'Rechazados' },
+    { key: 'pago_pendiente', label: 'Pago pendiente' },
+    { key: 'pago_confirmado', label: 'Pago confirmado' },
+    { key: 'borradores', label: 'En borrador' },
+    { key: 'sin_intento_de_pago', label: 'Sin ningún intento de pago' },
 ];
 
 const SORTABLE = {

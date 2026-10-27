@@ -208,6 +208,7 @@ es **rotar la credencial en Neon**, no sólo borrar el archivo.
 
 | Módulo | Archivo |
 |---|---|
+| Centro de Gestión del Evento (dashboard de la Feria: proyectos e inscripciones embebidos) — v4.1259 | `docs/claude/centro-de-gestion-del-evento.md` |
 | Conciliación de inscripciones y traslados de un evento — **dominio PROPIO de Eventos, sin la Bóveda** (v4.1250; corrige v4.1248–v4.1249, que usaban la Bóveda) | `docs/claude/conciliacion-de-inscripciones-y-traslados-de-un-evento.md` |
 | El ciclo de vida de un evento (próximos, en curso, finalizados, por confirmar; historial en `/eventos/anteriores`) — v4.1247 | `docs/claude/el-ciclo-de-vida-de-un-evento.md` |
 | Persistencia del Editor Visual de Plantillas (Email Marketing) — v4.1235 | `docs/claude/persistencia-del-editor-visual-de-plantillas.md` |
