@@ -1043,3 +1043,14 @@ Pruebas: `npm run test:event-payment` (28 casos, **sin base, credenciales ni red
   inscripción liquidada.
 - **Pendiente, a sabiendas**: los reembolsos de PayPal no llegan por webhook a
   la inscripción (sí los de Stripe). Se reembolsa en PayPal y se marca a mano.
+
+### Necesidades y condiciones: detalle alimentario y talla de camiseta — v4.1257
+
+- `dietaryDetail` se pide SÓLO con `dietary = 'otra'` (`showIf.in`), en todas
+  las categorías. Antes era `notIn: ['ninguna']` y aparecía con cualquier
+  opción.
+- `TSHIRT_FIELD` (`tshirtSize`, XS–2XL, opcional) entra en el paso `needs`
+  SÓLO cuando la audiencia es `international`, después de `accessibility` y
+  antes de `acceptTerms` (`buildFormSchema`). Vive en `answers` y sale en la
+  exportación («Talla de camiseta»).
+- Pruebas: grupo «Necesidades y condiciones (v4.1257)» de `npm run test:event-form`.

@@ -42,6 +42,21 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1257.0',
+        title: 'Inscripción al evento: detalle alimentario sólo con «Otra» y talla de camiseta para internacionales 👕',
+        description: 'En el paso «Necesidades y condiciones» del registro al evento, el campo «Detalle de la necesidad alimentaria» ya no aparece con cualquier opción: sólo cuando se elige «Otra» (Other), en todas las categorías (nacional, internacional y CADRES). Además, el registro de rotarios internacionales pregunta la «Talla de camiseta» (XS, S, M, L, XL, 2XL), debajo de los comentarios y antes de aceptar los términos. La talla sale también en la exportación del panel.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'feria de proyectos', 'registro internacional'],
+        type: 'improvement',
+        impact: 'Media: un formulario más limpio y la talla de camiseta de los internacionales para la logística.',
+        changes: [
+            { type: 'changed', text: '«Detalle de la necesidad alimentaria» sólo se muestra con «Otra».' },
+            { type: 'added', text: 'Campo «Talla de camiseta» (XS–2XL), sólo en el registro internacional, opcional.' },
+            { type: 'added', text: 'Columna «Talla de camiseta» en la exportación de inscripciones.' },
+            { type: 'added', text: '10 comprobaciones nuevas en npm run test:event-form.' },
+        ],
+    },
+    {
         version: '4.1256.0',
         title: 'Solicitud de Aportes del FDD: sin «Justificación de la solicitud» ✂️',
         description: 'En el paso 12 «Solicitud del FDD» del formulario «Solicitud de Aportes del FDD 2026-2027» se retiró el campo «Justificación de la solicitud». Quedan la cantidad solicitada al Distrito del FDD 2026-2027 y la meta de aportes al FAP 2026-2027.',

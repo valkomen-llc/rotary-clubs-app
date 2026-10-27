@@ -32,7 +32,7 @@ import {
     Check, CheckCircle2, Clock, CreditCard, FileText, Globe, Hotel, IdCard, KeyRound,
     LayoutDashboard, Loader2, Lock, LogIn, Mail, MapPin, MessageSquare, Plane, Plus, ShieldCheck,
     UserCheck,
-    Target, Trash2, User, Users, Utensils,
+    Shirt, Target, Trash2, User, Users, Utensils,
 } from 'lucide-react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
@@ -260,7 +260,7 @@ const FIELD_ICONS: Record<string, any> = {
     lodging: Hotel, lodgingDetail: Hotel,
     needsVisa: FileText, preferredLanguage: Globe,
     emergencyName: User, emergencyRelation: Users,
-    dietary: Utensils, dietaryDetail: Utensils, accessibility: MessageSquare,
+    dietary: Utensils, dietaryDetail: Utensils, accessibility: MessageSquare, tshirtSize: Shirt,
     technicalExperience: Target, specialties: Target, availability: CalendarDays,
     supportedClubs: Building2,
 };
