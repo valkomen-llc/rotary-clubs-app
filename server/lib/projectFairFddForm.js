@@ -37,27 +37,33 @@ export const FDD_FORM_VERSION = 1;
 
 export const FDD_FORM_KEY = 'fdd_2026_2027';
 
-/** Campos retirados de la plantilla (v4.1255). */
-export const RETIRED_FDD_FIELDS = ['foreignDistrictsUsd'];
+/** Campos retirados de la plantilla (v4.1255: distritos del exterior; v4.1256: justificación). */
+export const RETIRED_FDD_FIELDS = ['foreignDistrictsUsd', 'justification'];
+
+/** Secciones cuya copia guardada se reemplaza por la vigente al leerla. */
+export const SYNCED_FDD_SECTIONS = ['aportes', 'fdd'];
 
 /**
  * ⚠️ La convocatoria guarda una COPIA de la plantilla (el panel manda la
  * configuración entera al guardar) y el merge reemplaza el array de secciones
  * entero: cambiar la plantilla de arriba no llegaría nunca al sitio. No hay
- * editor de esta plantilla en el panel, así que la sección «Aportes» guardada
- * es un eco de la de por defecto: se reemplaza por la vigente al leerla, como
- * `dropRetiredBudgetRows` hace con la Formulación. Devuelve la MISMA
- * referencia si no hay nada que cambiar.
+ * editor de esta plantilla en el panel, así que las secciones que cambiaron
+ * (`SYNCED_FDD_SECTIONS`) son un eco de las de por defecto: se reemplazan por
+ * las vigentes al leerlas, como `dropRetiredBudgetRows` hace con la
+ * Formulación. Devuelve la MISMA referencia si no hay nada que cambiar.
  */
-export const syncFddAportes = (fddForm) => {
+export const syncFddSections = (fddForm) => {
     const sections = fddForm?.sections;
     if (!Array.isArray(sections)) return fddForm;
-    const vigente = DEFAULT_FDD_FORM.sections.find(sec => sec.key === 'aportes');
-    const i = sections.findIndex(sec => sec?.key === 'aportes');
-    if (i < 0 || !vigente || JSON.stringify(sections[i]) === JSON.stringify(vigente)) return fddForm;
-    const next = sections.slice();
-    next[i] = vigente;
-    return { ...fddForm, sections: next };
+    let tocado = false;
+    const next = sections.map((sec) => {
+        if (!SYNCED_FDD_SECTIONS.includes(sec?.key)) return sec;
+        const vigente = DEFAULT_FDD_FORM.sections.find(d => d.key === sec.key);
+        if (!vigente || JSON.stringify(sec) === JSON.stringify(vigente)) return sec;
+        tocado = true;
+        return vigente;
+    });
+    return tocado ? { ...fddForm, sections: next } : fddForm;
 };
 
 export const DEFAULT_FDD_FORM = {
@@ -268,9 +274,7 @@ export const DEFAULT_FDD_FORM = {
                 { key: 'requestedUsd', label: 'Cantidad solicitada al Distrito del FDD 2026-2027 (US$)', type: 'currency', required: true, width: 'half' },
                 { key: 'fapGoalUsd', label: 'Meta de aportes al FAP 2026-2027 (US$)', type: 'currency', required: true, width: 'half',
                   help: 'Meta de aportes del club al Fondo Anual Programas para el periodo 2026-2027.' },
-                { key: 'justification', label: 'Justificación de la solicitud', type: 'textarea', required: false,
-                  rows: 4, maxLength: lines(6), width: 'full',
-                  help: 'Opcional. Por qué el proyecto necesita este aporte. Máximo 6 líneas.' },
+                // v4.1256 — «Justificación de la solicitud» se retiró.
             ],
         },
         {

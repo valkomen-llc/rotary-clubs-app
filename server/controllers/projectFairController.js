@@ -43,7 +43,7 @@ import db from '../lib/db.js';
 import { TRM_PROVIDERS } from '../lib/trm.js';
 import EmailService from '../services/EmailService.js';
 import { DEFAULT_MASTER_FORM, dropRetiredBudgetRows } from '../lib/projectFairMasterForm.js';
-import { DEFAULT_FDD_FORM, syncFddAportes } from '../lib/projectFairFddForm.js';
+import { DEFAULT_FDD_FORM, syncFddSections } from '../lib/projectFairFddForm.js';
 import { seedDistrictClubs } from '../lib/rotaryClubs.js';
 // v4.1253 — La postulación y el pago son DOS estados independientes. El
 // criterio (puro) vive aparte: qué es un borrador, qué es una postulación
@@ -54,6 +54,7 @@ import {
     paymentStatusOf, paymentStatusLabel, paymentDeadlineOf, formsRequirePayment,
 } from '../lib/projectFairLifecycle.js';
 
+console.log('[projectFairController] v4.1256.0 cargado — FDD, paso «Solicitud del FDD»: sin «Justificación de la solicitud».');
 console.log('[projectFairController] v4.1255.0 cargado — FDD, paso «Aportes esperados»: sin «distritos del exterior», aportes del club y del exterior opcionales, y el FAP con contacto por WhatsApp a la presidenta del evento.');
 console.log('[projectFairController] v4.1254.0 cargado — El siguiente paso del proceso internacional es Rotary Grants 31A (grants31a.org); la copia guardada del destino 25A se actualiza sola.');
 console.log('[projectFairController] v4.1253.0 cargado — La postulación ya NO exige pagar: «Confirmar y postular proyecto» deja el proyecto Postulado con el pago Pendiente, se puede guardar un borrador, y el pago se hace después desde el perfil. Estado del proyecto y estado del pago separados: los webhooks ya no escriben en el del proyecto.');
@@ -1093,10 +1094,11 @@ export const normalizeSavedConfig = (saved) => {
     }
 
     // v4.1255 — El paso «Aportes esperados» del FDD cambió (sin «distritos del
-    // exterior», aportes opcionales, contacto por WhatsApp para el FAP). La
-    // copia guardada de la plantilla lo taparía: se sincroniza al leer.
+    // exterior», aportes opcionales, contacto por WhatsApp para el FAP), y en
+    // v4.1256 «Solicitud del FDD» perdió la justificación. La copia guardada
+    // de la plantilla lo taparía: se sincroniza al leer.
     if (isPlainObject(out?.fddForm)) {
-        const sincronizado = syncFddAportes(out.fddForm);
+        const sincronizado = syncFddSections(out.fddForm);
         if (sincronizado !== out.fddForm) out = { ...out, fddForm: sincronizado };
     }
 

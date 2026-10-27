@@ -797,3 +797,8 @@ nombre del campo). Cualquier campo de cualquier plantilla puede declarar
 - Las respuestas ya guardadas en `foreignDistrictsUsd` se conservan en el JSON
   de respuestas; simplemente dejan de mostrarse y de sumar.
 - Pruebas: sección 6 de `npm run test:fair-schedule`.
+
+- **v4.1256** — Del paso «Solicitud del FDD» se retiró «Justificación de la
+  solicitud». `syncFddAportes` pasó a ser `syncFddSections` y sincroniza las
+  secciones de `SYNCED_FDD_SECTIONS` (`aportes`, `fdd`); al cambiar otra
+  sección de esta plantilla, agregar su clave ahí o el cambio no llega.
