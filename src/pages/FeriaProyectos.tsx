@@ -1,6 +1,10 @@
 // ════════════════════════════════════════════════════════════════════
 // Postulación de Proyectos — Feria de Proyectos Rotary Colombia
 // v4.592.0 — Wizard público de inscripción (3 pasos + pago + confirmación).
+// v4.1253 — POSTULAR NO EXIGE PAGAR. El paso final es «Confirmar y postular
+// proyecto»: deja el proyecto Postulado con el pago Pendiente y muestra la
+// confirmación. Pagar es una acción opcional («Realizar pago ahora») o
+// posterior, desde el perfil. También se puede guardar un borrador.
 //
 // Ruta pública: /postular-proyecto (los slugs anteriores redirigen aquí).
 //
@@ -18,7 +22,7 @@ import { computeSurcharge, percentLabel } from '../lib/checkoutSurcharge';
 import {
     ArrowLeft, ArrowRight, Building2, CheckCircle2, ClipboardList,
     CreditCard, ExternalLink, Loader2, Mail, MapPin,
-    ShieldCheck, Target, User, Wallet, AlertCircle, Clock, FileText, KeyRound, LayoutDashboard, CalendarDays,
+    ShieldCheck, Target, User, Wallet, AlertCircle, Clock, FileText, KeyRound, LayoutDashboard, CalendarDays, Save,
     Globe, IdCard, Award,
 } from 'lucide-react';
 // La lista de países es la MISMA del selector de indicativo telefónico: una
@@ -26,6 +30,10 @@ import {
 import { COUNTRIES } from '../lib/countryPhones';
 import { DEPARTMENT_LABEL, DEPARTMENT_OPTIONS, departmentPlaceholder, hasDepartmentList } from '../lib/colombiaGeo';
 import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
+// v4.1253 — Quien acaba de crear su cuenta al postular entra a su perfil sin
+// volver a escribir la contraseña: el servidor devuelve el token del perfil.
+import { PROJECT_FAIR_PORTAL_TOKEN_KEY } from '../lib/ctaLinks';
+import { emitSessionChange } from '../lib/siteSession';
 // Los campos son los del módulo compartido: el formulario de inscripción a
 // un evento usa estos mismos componentes, no una copia parecida.
 import { Field, PhoneField, SummaryRow, PASSWORD_MIN } from '../components/forms/FairField';
@@ -63,7 +71,7 @@ interface FairConfig {
     edition: { number: number; ordinal: string; name: string; city: string; country: string; year: number; dates?: string; key: string };
     deadline: string | null;
     presentation: { minMinutes?: number; maxMinutes: number };
-    registration: { priceMode?: 'COP' | 'USD'; amountCop: number; amountUsd?: number; currency: string; concept: string; maxProjectsPerClub: number };
+    registration: { priceMode?: 'COP' | 'USD'; amountCop: number; amountUsd?: number; currency: string; concept: string; maxProjectsPerClub: number; paymentDeadline?: string | null };
     /** Las TASAS del recargo que se suma al valor al pagar (v4.980). Aditivo:
      *  ausente, el paso de pago se ve como antes. */
     surcharge?: { enabled: boolean; currency: string; lines: { key: string; label: string; percent: number; fixed: number }[] } | null;
@@ -79,6 +87,12 @@ interface FairConfig {
         schedule?: { date: string; label: string; prefix?: string }[];
     };
     portal?: { path?: string; redirectAfterPayment?: boolean };
+}
+
+/** El estado de la postulación como lo resuelve el servidor (v4.1253). */
+interface ApplicationView {
+    projectState: string; projectStateLabel: string; applied: boolean; appliedAt: string | null;
+    paymentStatus: string; paymentStatusLabel: string; owes: boolean;
 }
 
 interface Trm {
@@ -101,6 +115,7 @@ interface Submission {
     amountCop: number | null; amountUsd: number | null; amountReceived?: number | null;
     trmRate: number | null; trmDate: string | null; trmSource: string | null; trmFetchedAt: string | null;
     paidAt: string | null;
+    createdAt?: string | null;
 }
 
 type FormState = {
@@ -238,7 +253,12 @@ const FeriaProyectos = () => {
     useLang();
     const [config, setConfig] = useState<FairConfig | null>(null);
     const [loadingConfig, setLoadingConfig] = useState(true);
-    const [stage, setStage] = useState<'form' | 'payment' | 'confirmed'>('form');
+    // v4.1253 — 'applied' (postulado, pago pendiente) y 'draft_saved' son las
+    // dos salidas del wizard; 'payment' es opcional y 'confirmed' es el pago
+    // ya confirmado.
+    const [stage, setStage] = useState<'form' | 'applied' | 'draft_saved' | 'payment' | 'confirmed'>('form');
+    const [application, setApplication] = useState<ApplicationView | null>(null);
+    const [savingDraft, setSavingDraft] = useState(false);
     const [step, setStep] = useState(1);
     const [form, setForm] = useState<FormState>(EMPTY_FORM);
     const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -445,14 +465,27 @@ const FeriaProyectos = () => {
     };
     const goBack = () => { setStep(s => Math.max(1, s - 1)); scrollToCard(); };
 
-    // Paso final del wizard: registra la inscripción y abre la pantalla de pago.
-    const handleSubmit = async () => {
-        if (!stepValid(1) || !stepValid(2)) {
+    /**
+     * Envía el wizard al servidor. Dos modos (v4.1253):
+     *   - 'apply' → «Confirmar y postular proyecto». Exige todo y deja el
+     *     proyecto Postulado con el pago Pendiente. NO abre la pasarela.
+     *   - 'draft' → «Guardar borrador». Exige la identidad (para poder volver
+     *     a su perfil) y el nombre del proyecto; lo demás puede faltar.
+     */
+    const sendWizard = async (mode: 'apply' | 'draft') => {
+        if (mode === 'apply' && (!stepValid(1) || !stepValid(2))) {
             setStep(!stepValid(1) ? 1 : 2);
             setTouched(Object.fromEntries(Object.keys(form).map(k => [k, true])));
             return;
         }
-        setSubmitting(true);
+        if (mode === 'draft' && (!stepValid(1) || !form.projectName.trim())) {
+            setTouched(prev => ({ ...prev, ...Object.fromEntries(STEP_FIELDS[1].map(f => [f, true])), projectName: true }));
+            if (!stepValid(1)) setStep(1);
+            setGlobalError('Para guardar un borrador completa tus datos (paso 1) y escribe al menos el nombre del proyecto.');
+            scrollToCard();
+            return;
+        }
+        if (mode === 'apply') setSubmitting(true); else setSavingDraft(true);
         setGlobalError(null);
         try {
             const res = await fetch(`${API}/project-fair/submissions`, {
@@ -463,9 +496,10 @@ const FeriaProyectos = () => {
                 body: JSON.stringify({
                     ...form, clubNotListed: undefined,
                     budgetUsd: form.budgetUsd.replace(/[^\d.]/g, ''),
+                    mode,
                 }),
             });
-            const data = await res.json();
+            const data = await res.json().catch(() => ({}));
             if (!res.ok) {
                 if (data?.fields) {
                     setTouched(Object.fromEntries(Object.keys(form).map(k => [k, true])));
@@ -474,19 +508,28 @@ const FeriaProyectos = () => {
                 // Correo ya registrado: se ofrece entrar al panel en vez de
                 // dejar al club atascado en el formulario.
                 if (res.status === 409) setPortalPath(data?.portalPath || '/mi-proyecto');
-                throw new Error(data?.error || 'No pudimos registrar la inscripción.');
+                throw new Error(data?.error || 'No pudimos registrar la postulación.');
             }
             setSubmission(data.submission);
+            setApplication(data.application || null);
+            setPortalPath(null);
             if (data.trm) setTrm(data.trm);
-            else loadTrm();
-            setStage('payment');
+            if (data.portalToken) {
+                try { localStorage.setItem(PROJECT_FAIR_PORTAL_TOKEN_KEY, data.portalToken); emitSessionChange(); } catch { /* sin almacenamiento: entrará con su contraseña */ }
+            }
+            // Lo escrito ya está en el servidor: el borrador local sobra.
+            try { localStorage.removeItem(DRAFT_KEY); } catch { /* nada que limpiar */ }
+            setStage(mode === 'apply' ? 'applied' : 'draft_saved');
             scrollToCard();
         } catch (err: any) {
-            setGlobalError(err?.message || 'No pudimos registrar la inscripción.');
+            setGlobalError(err?.message || 'No pudimos registrar la postulación.');
         } finally {
             setSubmitting(false);
+            setSavingDraft(false);
         }
     };
+    const handleSubmit = () => sendWizard('apply');
+    const handleSaveDraft = () => sendWizard('draft');
 
     // Pago: usa la pasarela Stripe ya integrada en la plataforma.
     const handlePay = async () => {
@@ -615,18 +658,29 @@ const FeriaProyectos = () => {
                     </div>
                 )}
 
-                {/* ── Confirmación + redirección ───────────────────────── */}
-                {stage === 'confirmed' && submission ? (
+                {/* ── v4.1253 — Postulado, con el pago pendiente ─────────── */}
+                {stage === 'applied' && submission ? (
+                    <AppliedScreen
+                        submission={submission}
+                        application={application}
+                        editionName={config?.edition?.name || ''}
+                        portalHref={config?.portal?.path || '/mi-proyecto'}
+                        paymentDeadline={config?.registration?.paymentDeadline || null}
+                        onPayNow={() => { setStage('payment'); scrollToCard(); }}
+                        cardRef={cardRef}
+                    />
+                ) : stage === 'draft_saved' && submission ? (
+                    <DraftSavedScreen submission={submission} portalHref={config?.portal?.path || '/mi-proyecto'} cardRef={cardRef} />
+                ) : stage === 'confirmed' && submission ? (
                     <section className="rounded-2xl bg-white p-7 shadow-sm sm:p-10">
                         <div className="text-center">
                             <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50">
                                 <CheckCircle2 size={38} className="text-emerald-600" />
                             </div>
-                            <h2 className="text-2xl font-bold text-slate-900 sm:text-3xl">¡Inscripción realizada con éxito!</h2>
+                            <h2 className="text-2xl font-bold text-slate-900 sm:text-3xl">¡Pago de inscripción confirmado!</h2>
                             <p className="mx-auto mt-3 max-w-xl text-[15px] leading-relaxed text-slate-600">
-                                Registramos la postulación del proyecto <strong>{submission.projectName}</strong> y
-                                confirmamos el pago de la inscripción. Enviamos el comprobante a{' '}
-                                <strong>{submission.email}</strong>.
+                                Tu proyecto <strong>{submission.projectName}</strong> está postulado y confirmamos el
+                                pago de la inscripción. Enviamos el comprobante a <strong>{submission.email}</strong>.
                             </p>
 
                             <div className="mx-auto mt-6 max-w-sm rounded-xl px-6 py-4" style={{ background: `${GOLD}1f` }}>
@@ -790,10 +844,23 @@ const FeriaProyectos = () => {
                             {payLoading ? <><Loader2 size={18} className="animate-spin" /> Redirigiendo a Stripe…</> : <><CreditCard size={18} /> Pagar con Stripe</>}
                         </button>
 
-                        <p className="mt-3 flex items-center justify-center gap-1.5 text-[13px] text-slate-500">
-                            <ShieldCheck size={14} /> Pago seguro procesado por Stripe. La inscripción se confirma
+                        <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[13px] text-slate-500">
+                            <ShieldCheck size={14} className="shrink-0" /> Pago seguro procesado por Stripe. El pago se confirma
                             únicamente cuando Stripe reporta la transacción exitosa.
                         </p>
+                        {/* v4.1253 — PAGAR ES OPCIONAL. La postulación ya quedó
+                            registrada; el club puede irse y pagar después desde
+                            su perfil sin perder nada. */}
+                        <div className="mt-6 rounded-xl bg-slate-50 px-4 py-4 text-center text-[14px] text-slate-600">
+                            Tu proyecto <strong>ya está postulado</strong>. Si prefieres, puedes pagar la inscripción más
+                            tarde desde tu perfil: tu postulación permanece registrada.
+                            <div className="mt-3">
+                                <a href={config?.portal?.path || '/mi-proyecto'}
+                                    className="inline-flex items-center gap-1.5 font-bold" style={{ color: BLUE }}>
+                                    Pagar más tarde desde mi perfil <ArrowRight size={14} />
+                                </a>
+                            </div>
+                        </div>
                     </section>
                 ) : (
                     /* ── Introducción + wizard ──────────────────────────── */
@@ -1019,8 +1086,9 @@ const FeriaProyectos = () => {
                                                 <KeyRound size={15} className="text-slate-400" /> Crea tu clave de acceso
                                             </p>
                                             <p className="mb-4 text-[13px] leading-relaxed text-slate-500">
-                                                Con este correo y tu contraseña entrarás a tu panel para formular el proyecto
-                                                después del pago. Podrás guardarlo y editarlo cuantas veces necesites.
+                                                Con este correo y tu contraseña entrarás a tu perfil para consultar tu postulación,
+                                                formular el proyecto y pagar la inscripción cuando estés listo. Podrás guardarlo y
+                                                editarlo cuantas veces necesites.
                                             </p>
                                             <div className="grid gap-4 sm:grid-cols-2">
                                                 <Field label="Contraseña" name="password" type="password" value={form.password} onChange={handleChange} onBlur={handleBlur} error={errors.password} touched={touched.password} placeholder="Mínimo 8 caracteres" />
@@ -1134,24 +1202,43 @@ const FeriaProyectos = () => {
                                     <ArrowLeft size={16} /> Anterior
                                 </button>
 
-                                {step < 3 ? (
-                                    <button
-                                        type="button" onClick={goNext}
-                                        className="inline-flex items-center gap-1.5 rounded-xl px-7 py-3 text-[15px] font-bold text-white shadow-sm transition hover:opacity-90"
-                                        style={{ background: BLUE }}
-                                    >
-                                        Siguiente <ArrowRight size={16} />
-                                    </button>
-                                ) : (
-                                    <button
-                                        type="button" onClick={handleSubmit} disabled={submitting}
-                                        className="inline-flex items-center gap-2 rounded-xl px-7 py-3 text-[15px] font-bold text-white shadow-sm transition hover:opacity-90 disabled:opacity-60"
-                                        style={{ background: BLUE }}
-                                    >
-                                        {submitting ? <><Loader2 size={17} className="animate-spin" /> Registrando…</> : <>Confirmar y continuar al pago <ArrowRight size={16} /></>}
-                                    </button>
-                                )}
+                                <div className="flex flex-wrap items-center justify-end gap-2">
+                                    {/* v4.1253 — Guardar un borrador: el club puede dejar
+                                        el proyecto a medias y terminarlo desde su perfil.
+                                        Se ofrece desde el paso 2, cuando ya hay con qué
+                                        crear su cuenta. */}
+                                    {step >= 2 && (
+                                        <button
+                                            type="button" onClick={handleSaveDraft} disabled={savingDraft || submitting}
+                                            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 px-5 py-3 text-[15px] font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+                                        >
+                                            {savingDraft ? <><Loader2 size={16} className="animate-spin" /> Guardando…</> : <><Save size={16} /> Guardar borrador</>}
+                                        </button>
+                                    )}
+                                    {step < 3 ? (
+                                        <button
+                                            type="button" onClick={goNext}
+                                            className="inline-flex items-center gap-1.5 rounded-xl px-7 py-3 text-[15px] font-bold text-white shadow-sm transition hover:opacity-90"
+                                            style={{ background: BLUE }}
+                                        >
+                                            Siguiente <ArrowRight size={16} />
+                                        </button>
+                                    ) : (
+                                        <button
+                                            type="button" onClick={handleSubmit} disabled={submitting || savingDraft}
+                                            className="inline-flex items-center gap-2 rounded-xl px-7 py-3 text-[15px] font-bold text-white shadow-sm transition hover:opacity-90 disabled:opacity-60"
+                                            style={{ background: BLUE }}
+                                        >
+                                            {submitting ? <><Loader2 size={17} className="animate-spin" /> Postulando…</> : <>Confirmar y postular proyecto <ArrowRight size={16} /></>}
+                                        </button>
+                                    )}
+                                </div>
                             </div>
+                            {step === 3 && (
+                                <p className="mt-3 text-right text-[13px] text-slate-500">
+                                    Postular no requiere pagar ahora: podrás pagar la inscripción después, desde tu perfil.
+                                </p>
+                            )}
                         </section>
                     </>
                 )}
@@ -1161,5 +1248,96 @@ const FeriaProyectos = () => {
         </div>
     );
 };
+
+// ── Pantallas de salida del wizard (v4.1253) ─────────────────────────
+// Van en el ámbito del MÓDULO: declaradas dentro de la página serían un tipo
+// nuevo en cada render (la lección de v4.971).
+
+/**
+ * «¡Tu proyecto ha sido postulado exitosamente!». Dice los DOS estados por
+ * separado —el del proyecto y el de la inscripción— y ofrece pagar como una
+ * acción opcional. Cerrar la página aquí no pierde nada.
+ */
+const AppliedScreen = ({ submission, application, editionName, portalHref, paymentDeadline, onPayNow, cardRef }: {
+    submission: Submission; application: ApplicationView | null; editionName: string; portalHref: string;
+    paymentDeadline: string | null; onPayNow: () => void; cardRef: React.RefObject<HTMLElement | null>;
+}) => (
+    <section ref={cardRef} className="scroll-mt-32 rounded-2xl bg-white p-6 shadow-sm sm:p-10">
+        <div className="text-center">
+            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50">
+                <CheckCircle2 size={38} className="text-emerald-600" />
+            </div>
+            <h2 className="text-2xl font-bold text-slate-900 sm:text-3xl">¡Tu proyecto ha sido postulado exitosamente!</h2>
+            <p className="mx-auto mt-3 max-w-xl text-[15px] leading-relaxed text-slate-600">
+                Hemos recibido la postulación de tu proyecto para la <strong>{editionName || 'Feria de Proyectos'}</strong>.
+                Tu proyecto ha quedado registrado en nuestra plataforma y podrás consultar su estado desde tu perfil.
+            </p>
+            <div className="mx-auto mt-6 max-w-sm rounded-xl px-6 py-4" style={{ background: `${GOLD}1f` }}>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Código de postulación</p>
+                <p className="mt-1 text-3xl font-extrabold tracking-wider" style={{ color: BLUE }}>{submission.publicRef}</p>
+            </div>
+        </div>
+
+        <div className="mt-8 rounded-xl border border-slate-200 p-5">
+            <SummaryRow label="Nombre del proyecto" value={submission.projectName} />
+            <SummaryRow label="Club Rotario" value={submission.clubName} />
+            <SummaryRow label="Responsable" value={`${submission.firstName} ${submission.lastName}`} />
+            <SummaryRow label="Fecha de postulación" value={fmtDateTime(application?.appliedAt || submission.createdAt || null)} />
+            <SummaryRow label="Estado del proyecto" value={<span style={{ color: BLUE }}>{application?.projectStateLabel || 'Postulado'}</span>} />
+            <SummaryRow label="Estado de inscripción" value={<span className="text-amber-700">Pago pendiente</span>} />
+            {paymentDeadline ? <SummaryRow label="Fecha límite de pago" value={fmtDate(paymentDeadline)} /> : null}
+        </div>
+
+        <p className="mt-5 rounded-xl bg-slate-50 px-4 py-3 text-[14px] leading-relaxed text-slate-600">
+            Enviamos la confirmación a <strong>{submission.email}</strong>. El pago de la inscripción es independiente de
+            la postulación: puedes realizarlo ahora o más tarde desde tu perfil. Tu postulación permanece registrada
+            aunque todavía no hayas pagado.
+        </p>
+
+        <div className="mt-6 grid gap-3 sm:grid-cols-3">
+            <a href={portalHref}
+                className="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-[15px] font-bold text-white shadow-sm transition hover:opacity-90"
+                style={{ background: BLUE }}>
+                <LayoutDashboard size={17} /> Ir a mi perfil
+            </a>
+            <a href={portalHref}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border-2 px-5 py-3 text-[15px] font-bold transition hover:bg-slate-50"
+                style={{ borderColor: BLUE, color: BLUE }}>
+                <FileText size={17} /> Ver mi proyecto
+            </a>
+            <button type="button" onClick={onPayNow}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-5 py-3 text-[15px] font-semibold text-slate-700 transition hover:bg-slate-50">
+                <CreditCard size={17} /> Realizar pago ahora
+            </button>
+        </div>
+        <p className="mt-3 text-center text-[13px] text-slate-500">
+            Realizar el pago ahora es opcional. Puedes cerrar esta página: tu postulación queda guardada.
+        </p>
+    </section>
+);
+
+/** El borrador quedó guardado: se termina y se envía desde el perfil. */
+const DraftSavedScreen = ({ submission, portalHref, cardRef }: {
+    submission: Submission; portalHref: string; cardRef: React.RefObject<HTMLElement | null>;
+}) => (
+    <section ref={cardRef} className="scroll-mt-32 rounded-2xl bg-white p-6 text-center shadow-sm sm:p-10">
+        <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full" style={{ background: `${BLUE}14` }}>
+            <Save size={30} style={{ color: BLUE }} />
+        </div>
+        <h2 className="text-2xl font-bold text-slate-900">Borrador guardado</h2>
+        <p className="mx-auto mt-3 max-w-xl text-[15px] leading-relaxed text-slate-600">
+            Guardamos el borrador del proyecto <strong>{submission.projectName}</strong>. Todavía <strong>no está
+            postulado</strong>: entra a tu perfil cuando quieras para completarlo y enviarlo.
+        </p>
+        <p className="mt-4 text-[13px] text-slate-500">
+            Código: <strong>{submission.publicRef}</strong> · Ingresas con <strong>{submission.email}</strong> y la contraseña que creaste.
+        </p>
+        <a href={portalHref}
+            className="mt-6 inline-flex items-center gap-2 rounded-xl px-7 py-3.5 text-[15px] font-bold text-white shadow-sm transition hover:opacity-90"
+            style={{ background: BLUE }}>
+            Ir a mi perfil y continuar <ArrowRight size={17} />
+        </a>
+    </section>
+);
 
 export default FeriaProyectos;

@@ -42,6 +42,27 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1253.0',
+        title: 'Feria de Proyectos: postular ya no exige pagar — el pago se hace después, desde el perfil 📝➡️💳',
+        description: 'Los clubes pueden registrarse, formular y POSTULAR su proyecto a la XII Feria de Proyectos sin pagar en ese momento. El último paso del formulario pasó de «Confirmar y continuar al pago» a «Confirmar y postular proyecto»: el proyecto queda Postulado con el pago Pendiente, se muestra «¡Tu proyecto ha sido postulado exitosamente!» con el código, y llega el correo de confirmación. Pagar es opcional en ese momento («Realizar pago ahora») y queda disponible en el perfil, en la nueva sección «Inscripción a la Feria de Proyectos», con el valor, los cargos, el total (el mismo que cobra Stripe), el estado del pago, el historial y el comprobante. También se puede guardar un borrador y terminarlo desde el perfil. En el panel: estado del proyecto y estado del pago separados, vistas de participación y recaudo, indicadores y recordatorios de pago con tope.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'postulación', 'pagos', 'stripe', 'perfil del club'],
+        type: 'feature',
+        impact: 'Alta: la postulación deja de depender del pago; el recaudo se gestiona después sin perder postulaciones.',
+        changes: [
+            { type: 'changed', text: '«Confirmar y continuar al pago» → «Confirmar y postular proyecto». Postular no abre Stripe ni pide tarjeta.' },
+            { type: 'added', text: 'Pantalla «¡Tu proyecto ha sido postulado exitosamente!» con código, proyecto, club, responsable, fecha, estado del proyecto y estado de inscripción; acciones Ir a mi perfil, Ver mi proyecto y Realizar pago ahora (opcional).' },
+            { type: 'added', text: 'Correo de confirmación de postulación al club (y aviso al comité), sin esperar al pago.' },
+            { type: 'added', text: 'Guardar borrador: desde el paso 2 del formulario; se termina y se envía desde el perfil («En formulación» → «Postulado»).' },
+            { type: 'added', text: 'Perfil: sección «Inscripción a la Feria de Proyectos» con valor, cargos (2,9 % pasarela + 2,1 % traslado), total, estado del pago, fecha límite si existe, historial, transacción y comprobante descargable. «Pagar inscripción» sólo aparece si falta pagar.' },
+            { type: 'changed', text: 'Estado del proyecto y estado del pago separados: los webhooks de Stripe ya no escriben «Pago confirmado / fallido / pendiente» en el estado del proyecto. Los valores heredados se migran a «Postulado» sin tocar ningún pago.' },
+            { type: 'changed', text: 'Los formularios del proyecto (Formulación, FDD) ya no esperan al pago. Exigirlo es un interruptor de la Convocatoria, apagado por defecto.' },
+            { type: 'added', text: 'Panel: vistas Proyectos postulados / en borrador / en revisión / con pago pendiente / con pago confirmado / sin ningún intento de pago; indicadores de participación y recaudo (el pendiente sólo cuenta obligaciones válidas).' },
+            { type: 'added', text: 'Recordatorios de pago desde el panel, con plan previo, intervalo mínimo de 7 días y máximo 3 por postulación (configurables).' },
+            { type: 'added', text: 'npm run test:fair:lifecycle (78 comprobaciones) y 11 casos nuevos en test:fair:payment:path.' },
+        ],
+    },
+    {
         version: '4.1252.0',
         title: 'Feria de Proyectos: fechas importantes al día y editables desde el panel 📅',
         description: 'En Postular Proyecto se quitaron de «Fechas importantes del proceso» las dos fechas ya cumplidas: el 1 de septiembre de 2026 (plazo para subir proyectos a Global Grants) y el 15 de octubre de 2026 (comunicación de los clubes con los CADRES). Además, la lista ahora se edita desde Convocatoria → «Fechas importantes del proceso»: agregar, quitar, reordenar y cambiar fecha, prefijo («Hasta el») y texto, sin pedir un cambio de código.',

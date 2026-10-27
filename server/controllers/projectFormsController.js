@@ -33,8 +33,10 @@
 import db from '../lib/db.js';
 // El criterio del pago vive aparte y es PURO (v4.978): una sola pregunta
 // —«¿existe un pago confirmado?»— para el cobro y para esta puerta.
-import { hasConfirmedPayment } from '../lib/projectFairPayment.js';
-import { ensureTables, logEvent, readConfigForAdmin, APPLICANT_ROLES } from './projectFairController.js';
+// v4.1253 — La puerta de los formularios: postulación enviada y, SÓLO si la
+// Convocatoria lo exige expresamente, pago confirmado.
+import { formAccessOf } from '../lib/projectFairLifecycle.js';
+import { ensureTables, logEvent, readConfigForSubmission, APPLICANT_ROLES } from './projectFairController.js';
 import { withAccess, actorFrom } from './projectFairAdminController.js';
 import {
     completionOf, missingRequired, validateAnswers, stripProtected,
@@ -256,11 +258,21 @@ export const seedAnswersFor = (template, submission, cfg, relatedAnswers = {}) =
  *
  * Por eso la puerta se decide con el CRITERIO DEL PAGO, no con `canEdit`.
  */
-export const formIsAvailable = (submission) => hasConfirmedPayment(submission);
+//
+// ⚠️ v4.1253 — EL PAGO DEJÓ DE SER LA PUERTA POR DEFECTO. El pedido es «no
+// bloquear proyectos por pagos pendientes»: un club postulado formula su
+// proyecto aunque todavía no haya pagado. Si la organización quiere exigir el
+// pago para esta etapa, lo enciende en la Convocatoria
+// (`registration.requirePaymentForForms`) y entonces vuelve a regir el
+// criterio de v4.979 — el MISMO `hasConfirmedPayment`, vía `formAccessOf`.
+// Lo que sí se exige siempre es que la postulación se haya ENVIADO: un
+// borrador se termina en el propio perfil.
+export const formIsAvailable = (submission, cfg = null) => formAccessOf(submission, cfg).available;
 
 export const editability = (submission, form, cfg, account = null) => {
-    if (submission?.status !== 'paid') {
-        return { canEdit: false, reason: 'Tu formulario se habilita cuando se confirme el pago de la inscripción.' };
+    const puerta = formAccessOf(submission, cfg);
+    if (!puerta.available) {
+        return { canEdit: false, reason: puerta.reason };
     }
     // Rol suspendido (reembolso): conserva consulta y descarga, pierde edición.
     if (account?.role === APPLICANT_ROLES.SUSPENDED) {
@@ -282,10 +294,13 @@ export const editability = (submission, form, cfg, account = null) => {
 // ── Contexto común de las peticiones del panel del club ──────────────
 const portalContext = async (req) => {
     await ensureTables();
-    const cfg = await readConfigForAdmin();
     const { rows } = await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = $1 LIMIT 1', [req.portal.submissionId]);
     const submission = rows[0];
     if (!submission) return { error: { code: 404, message: 'No encontramos tu inscripción.' } };
+    // v4.1253 — La convocatoria de SU edición (regla de v4.691): desde que el
+    // pago puede exigirse o no por edición, leer la abierta podría abrirle o
+    // cerrarle los formularios a un club con la regla de otra feria.
+    const cfg = await readConfigForSubmission(submission.eventId || null);
     const { rows: accRows } = await db.query('SELECT * FROM "ProjectFairAccount" WHERE "submissionId" = $1 LIMIT 1', [submission.id]);
     return { cfg, submission, account: accRows[0] || null };
 };
@@ -320,7 +335,7 @@ export const cardFor = (form, record, { submission, cfg, account }) => {
         // reembolso o un plazo vencido dejan el formulario en solo lectura y
         // el club sigue pudiendo consultarlo. Sin pago confirmado no hay nada
         // que consultar, y la tarjeta deja de ser un enlace.
-        available: formIsAvailable(submission),
+        available: formIsAvailable(submission, cfg),
         ...approvalState(form.template, record),
     };
 };
@@ -383,10 +398,14 @@ export const getForm = async (req, res) => {
         // ha completado el pago puede acceder a los formularios», y es exacto.
         // Va en el SERVIDOR y no en la tarjeta: esconder un control no protege
         // un endpoint de quien lo conoce (v4.868).
-        if (!formIsAvailable(submission)) {
-            return res.status(402).json({
-                error: 'Tu formulario se habilita cuando se confirme el pago de la inscripción.',
-                needsPayment: true,
+        const puerta = formAccessOf(submission, cfg);
+        if (!puerta.available) {
+            // 402 sólo cuando lo que falta es el pago (y la Convocatoria lo
+            // exige); 409 cuando falta enviar la postulación.
+            return res.status(puerta.code === 'needs_payment' ? 402 : 409).json({
+                error: puerta.reason,
+                needsPayment: puerta.code === 'needs_payment',
+                needsApplication: puerta.code === 'not_applied',
             });
         }
 

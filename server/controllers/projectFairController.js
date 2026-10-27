@@ -45,7 +45,16 @@ import EmailService from '../services/EmailService.js';
 import { DEFAULT_MASTER_FORM, dropRetiredBudgetRows } from '../lib/projectFairMasterForm.js';
 import { DEFAULT_FDD_FORM } from '../lib/projectFairFddForm.js';
 import { seedDistrictClubs } from '../lib/rotaryClubs.js';
+// v4.1253 — La postulación y el pago son DOS estados independientes. El
+// criterio (puro) vive aparte: qué es un borrador, qué es una postulación
+// enviada, qué cuenta como obligación de pago y cuándo se abren los
+// formularios.
+import {
+    isApplied, projectStateOf, projectStateMeta, owesRegistration, LEGACY_PAYMENT_WORKFLOW,
+    paymentStatusOf, paymentStatusLabel, paymentDeadlineOf, formsRequirePayment,
+} from '../lib/projectFairLifecycle.js';
 
+console.log('[projectFairController] v4.1253.0 cargado — La postulación ya NO exige pagar: «Confirmar y postular proyecto» deja el proyecto Postulado con el pago Pendiente, se puede guardar un borrador, y el pago se hace después desde el perfil. Estado del proyecto y estado del pago separados: los webhooks ya no escriben en el del proyecto.');
 console.log('[projectFairController] v4.1252.0 cargado — Fechas importantes del proceso: sin las dos ya cumplidas (Global Grants, 1-sep; CADRES, 15-oct) y editables desde Convocatoria. Una lista guardada sin el editor cede al valor por defecto.');
 console.log('[projectFairController] v4.982.0 cargado — Postulación de Proyectos POR EDICIONES: cada edición es un evento del calendario, con su convocatoria, sus postulaciones y sus reportes aislados. Wizard agrupado + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria. Pago con reintento: mientras no haya pago CONFIRMADO, el club siempre tiene una ruta segura para completarlo. El recargo de pasarela y traslado se SUMA al precio publicado y lo desglosa la pasarela, en partidas separadas. El precio se fija Y SE COBRA en pesos: la conversión a dólares la hace la pasarela con su tasa, no nosotros con la TRM');
 
@@ -104,6 +113,13 @@ export const DEFAULT_CONFIG = {
         currency: 'COP',
         concept: 'Inscripción de proyecto',
         maxProjectsPerClub: 1,
+        // v4.1253 — ¿Exigir el pago para diligenciar los formularios del
+        // proyecto? APAGADO: la postulación y la formulación no esperan al
+        // pago. Encenderlo es una decisión expresa de la Convocatoria.
+        requirePaymentForForms: false,
+        // v4.1253 — Fecha límite de PAGO (AAAA-MM-DD). Vacía = no hay: el
+        // perfil no muestra ninguna y los recordatorios no hablan de plazos.
+        paymentDeadline: '',
     },
     // El orden es el que ve el postulante en la lista desplegable. Se puede
     // reordenar desde la pestaña Convocatoria.
@@ -202,6 +218,12 @@ export const DEFAULT_CONFIG = {
     notifications: {
         adminEmails: [],
         sendReceipt: true,
+        // v4.1253 — Correo «Tu proyecto ha sido postulado» al enviar la
+        // postulación, sin esperar al pago.
+        sendApplicationConfirmation: true,
+        // v4.1253 — Recordatorios de pago que manda el comité desde el panel.
+        // Con tope: un intervalo mínimo entre dos y un máximo por postulación.
+        paymentReminders: { enabled: true, minDays: 7, max: 3 },
         // v4.618 — Plantilla del correo, editable desde el panel.
         branding: {
             headerLogoUrl: '',   // logo sobre "Comprobante de inscripción"
@@ -266,6 +288,7 @@ export const DEFAULT_CONFIG = {
         // Tras confirmarse el pago el club entra aquí a formular su proyecto;
         // el enlace a Rotary Grants queda dentro del panel como paso siguiente.
         redirectAfterPayment: true,
+        // v4.1253 — Tras POSTULAR (sin pagar) también se ofrece el perfil.
         welcome: 'Tu inscripción está confirmada. Ahora formula tu proyecto: puedes guardar y volver cuantas veces necesites hasta la fecha límite.',
     },
     // Umbrales del panel de alertas.
@@ -504,17 +527,22 @@ const ensureTables = async () => {
         addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "manualPaymentAt" TIMESTAMPTZ`),
         addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "paymentFailureCode" VARCHAR(80)`),
         addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "paymentFailureMessage" TEXT`),
+        // v4.1253 — Cuándo se ENVIÓ la postulación. Un borrador no la tiene;
+        // `createdAt` es cuándo se creó la fila, que con borradores deja de
+        // ser lo mismo.
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "appliedAt" TIMESTAMPTZ`),
     ]);
     // El listado excluye lo archivado por defecto, así que el índice es
     // parcial: sólo indexa lo poco que hay archivado, no la tabla entera.
     await db.query(`CREATE INDEX IF NOT EXISTS "ProjectFairSubmission_archived_idx" ON "ProjectFairSubmission" ("archivedAt") WHERE "archivedAt" IS NOT NULL;`).catch(() => {});
-    // Postulaciones anteriores al módulo: se les da el estado de proceso que
-    // corresponde a su estado de pago (sólo donde aún está vacío).
+    // Postulaciones anteriores al módulo: quedan como Postuladas (sólo donde
+    // aún está vacío). v4.1253 — ya no se deduce del pago: son dos estados.
     await db.query(`
         UPDATE "ProjectFairSubmission"
-        SET "workflowStatus" = CASE WHEN status = 'paid' THEN 'payment_confirmed' ELSE 'pending_payment' END
+        SET "workflowStatus" = 'received'
         WHERE "workflowStatus" IS NULL
     `).catch(() => {});
+    await migrateDecoupledStates();
 
     // Línea de tiempo + auditoría. Un solo registro cronológico por
     // postulación: eventos del formulario, de Stripe y de la gestión interna
@@ -708,6 +736,62 @@ const ensureTables = async () => {
     await bindLegacyEdition();
 
     _tablesReady = true;
+};
+
+/**
+ * Migración de v4.1253 — el estado del proyecto deja de llevar el del pago.
+ *
+ * Hasta v4.1252 `workflowStatus` recibía `pending_payment`,
+ * `payment_confirmed`, `payment_failed` y `refunded`: el pago escrito en el
+ * lugar del proyecto. Toda fila con esos valores es una postulación que el
+ * club YA ENVIÓ —sólo existía si había pulsado «Confirmar y continuar al
+ * pago»—, así que pasa a «Postulado» (`received`).
+ *
+ * LO QUE NO HACE: no toca `status` (el pago), ni `paidAt`, ni ningún dato de
+ * Stripe — un pago confirmado sigue confirmado y uno pendiente sigue
+ * pendiente. No borra ni duplica filas. No inventa una confirmación: la fecha
+ * de postulación que se rellena es la de la propia fila (`createdAt`), que es
+ * cuándo el club envió el formulario. Es idempotente (después de correr, ya no
+ * casa ninguna fila) y deja una entrada en el historial de cada postulación
+ * que movió, para que «¿por qué cambió este estado?» tenga respuesta.
+ */
+export const migrateDecoupledStates = async () => {
+    try {
+        const legacy = LEGACY_PAYMENT_WORKFLOW.map(k => `'${k}'`).join(',');
+        const { rows } = await db.query(`
+            UPDATE "ProjectFairSubmission" s
+            SET "workflowStatus" = 'received',
+                "appliedAt" = COALESCE(s."appliedAt", s."createdAt"),
+                "updatedAt" = NOW()
+            FROM (SELECT id, "workflowStatus" AS antes FROM "ProjectFairSubmission"
+                  WHERE "workflowStatus" IN (${legacy})
+                     -- Un «Borrador» anterior a v4.1253 no puede ser un borrador
+                     -- de verdad: el wizard sólo creaba la fila al ENVIAR el
+                     -- formulario completo. Lo puso un administrador a mano, y
+                     -- dejarlo así le quitaría a ese club su postulación. Los
+                     -- borradores reales nacen con metadata.createdAs = 'draft'.
+                     OR ("workflowStatus" = 'draft' AND COALESCE(metadata->>'createdAs','') <> 'draft')) prev
+            WHERE s.id = prev.id
+            RETURNING s.id, prev.antes
+        `);
+        for (const r of rows) {
+            await logEvent(r.id, {
+                type: 'state_migrated',
+                title: 'Estado del proyecto separado del pago',
+                detail: `El estado «${r.antes}» describía el pago; el proyecto queda como Postulado y el pago conserva su propio estado.`,
+                actor: { name: 'Sistema', role: 'system' },
+                metadata: { from: r.antes, to: 'received', version: '4.1253' },
+            }).catch(() => {});
+        }
+        if (rows.length) console.log(`[project-fair] v4.1253 — ${rows.length} postulación(es) pasan a «Postulado»; su pago no se tocó.`);
+        // Fecha de postulación de las que ya estaban enviadas y no la tienen.
+        await db.query(`
+            UPDATE "ProjectFairSubmission" SET "appliedAt" = "createdAt"
+            WHERE "appliedAt" IS NULL AND COALESCE("workflowStatus",'received') NOT IN ('draft','formulating')
+        `);
+    } catch (err) {
+        console.warn('[project-fair] No pude separar los estados heredados:', err?.message);
+    }
 };
 
 /**
@@ -1202,7 +1286,10 @@ const toPublicConfig = (cfg, surcharge = null) => ({
         currency: cfg.registration?.currency || 'COP',
         concept: cfg.registration?.concept || 'Inscripción de proyecto',
         maxProjectsPerClub: cfg.registration?.maxProjectsPerClub ?? 1,
+        // v4.1253 — Sólo si la Convocatoria la definió; vacía no se publica.
+        paymentDeadline: paymentDeadlineOf(cfg),
     },
+    portal: { path: cfg.portal?.path || '/mi-proyecto' },
     districts: Array.isArray(cfg.districts) ? cfg.districts : [],
     idTypes: Array.isArray(cfg.idTypes) ? cfg.idTypes : [],
     clubRoles: Array.isArray(cfg.clubRoles) ? cfg.clubRoles : [],
@@ -1724,7 +1811,15 @@ const mapSubmission = (row, { includeInternal = false } = {}) => {
     return base;
 };
 
-const validateSubmission = (body, cfg) => {
+/**
+ * Campos del proyecto que un BORRADOR puede dejar a medias (v4.1253). La
+ * identidad —quién es, de qué club, con qué correo y contraseña entra a su
+ * perfil— se exige siempre: es lo que permite volver a retomarlo. Del
+ * proyecto basta el nombre, para que el borrador se pueda reconocer.
+ */
+export const DRAFT_OPTIONAL_FIELDS = ['projectDescription', 'focusArea', 'budgetUsd'];
+
+export const validateSubmission = (body, cfg, { draft = false, skipPassword = false } = {}) => {
     const errors = {};
     const firstName = clean(body.firstName, 120);
     const lastName = clean(body.lastName, 120);
@@ -1812,11 +1907,16 @@ const validateSubmission = (body, cfg) => {
 
     if (!budgetUsd || !isFinite(budgetUsd) || budgetUsd <= 0) errors.budgetUsd = 'Indica el presupuesto total del proyecto en USD.';
 
+    // Un borrador puede guardarse con el proyecto a medio escribir: lo que
+    // falte se exige al ENVIAR la postulación, no al guardarla.
+    if (draft) for (const f of DRAFT_OPTIONAL_FIELDS) delete errors[f];
+
     // v4.608 — La cuenta del club se crea con la postulación: la contraseña
     // se pide aquí, cuando el club ya está escribiendo su correo, y no
     // después del pago (donde el abandono es mucho más caro).
     const password = String(body.password || '');
-    if (cfg.portal?.enabled !== false && cfg.masterForm?.enabled !== false) {
+    // (Al enviar un borrador desde el perfil la cuenta ya existe: no se pide.)
+    if (!skipPassword && cfg.portal?.enabled !== false && cfg.masterForm?.enabled !== false) {
         if (!password) errors.password = 'Crea una contraseña para acceder a tu panel.';
         else if (password.length < 8) errors.password = 'La contraseña debe tener al menos 8 caracteres.';
         else if (body.passwordConfirm !== undefined && String(body.passwordConfirm) !== password) {
@@ -1839,16 +1939,29 @@ const validateSubmission = (body, cfg) => {
             idTypeLabel: idTypeMatch?.label || null,
             idNumber, notes,
             projectName, projectDescription,
-            focusArea: area?.key || focusArea,
+            focusArea: area?.key || (draft ? null : focusArea),
             focusAreaLabel: area?.label || null,
-            budgetUsd: isFinite(budgetUsd) ? Math.round(budgetUsd * 100) / 100 : null,
+            budgetUsd: isFinite(budgetUsd) && budgetUsd > 0 ? Math.round(budgetUsd * 100) / 100 : null,
         },
     };
 };
 
 // POST /api/project-fair/submissions  (público)
-// Registra oficialmente la inscripción en estado 'pending_payment' y devuelve
-// el resumen con la TRM vigente para la pantalla de pago.
+//
+// ⚠️ v4.1253 — POSTULAR NO EXIGE PAGAR. Hasta v4.1252 esto devolvía la
+// inscripción en 'pending_payment' y la pantalla saltaba directo a la pasarela
+// («Confirmar y continuar al pago»): un club sin los recursos ese día se iba
+// sin saber que su proyecto SÍ había quedado registrado. Ahora hay dos modos:
+//
+//   - `mode: 'apply'` (por defecto) → la postulación queda ENVIADA: estado del
+//     proyecto «Postulado», fecha de postulación, correo de confirmación. El
+//     pago queda «Pendiente» y es una acción aparte, cuando el club quiera.
+//   - `mode: 'draft'` → se guarda un BORRADOR con la cuenta del club: puede
+//     volver a su perfil, terminarlo y enviarlo desde ahí. Un borrador no es
+//     deuda ni se cobra.
+//
+// En los dos casos se devuelve un token del perfil: quien acaba de crear su
+// cuenta con su contraseña entra a su perfil sin escribirla otra vez.
 export const createSubmission = async (req, res) => {
     try {
         const { eventId, cfg } = await readOpenEdition();
@@ -1856,7 +1969,11 @@ export const createSubmission = async (req, res) => {
             return res.status(403).json({ error: 'La convocatoria no está disponible en este momento.' });
         }
 
-        const { errors, data, password } = validateSubmission(req.body || {}, cfg);
+        const draft = String(req.body?.mode || '').toLowerCase() === 'draft';
+        const { errors, data, password } = validateSubmission(req.body || {}, cfg, { draft });
+        // Un borrador sin contraseña no se podría retomar: sin cuenta no hay
+        // perfil al que volver.
+        if (draft && !password && !errors.password) errors.password = 'Crea una contraseña para poder volver a tu borrador.';
         if (Object.keys(errors).length) {
             return res.status(400).json({ error: 'Revisa los campos marcados.', fields: errors });
         }
@@ -1889,8 +2006,9 @@ export const createSubmission = async (req, res) => {
                  "clubRole", "clubRoleLabel", "clubRoleOther",
                  "projectName", "projectDescription", "focusArea", "focusAreaLabel", "budgetUsd",
                  status, "amountCop", "amountUsd", "trmRate", "trmDate", "trmSource", "trmFetchedAt", "clubId",
-                 "priceMode", metadata)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34::jsonb)
+                 "priceMode", metadata, "workflowStatus", "appliedAt")
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34::jsonb,$35,
+                    ${draft ? 'NULL' : 'NOW()'})
             RETURNING *
         `, [
             buildPublicRef(),
@@ -1899,38 +2017,108 @@ export const createSubmission = async (req, res) => {
             eventId,
             data.country, data.department, data.city, data.idType, data.idTypeLabel, data.idNumber, data.notes || null,
             data.clubRole, data.clubRoleLabel, data.clubRoleOther,
-            data.projectName, data.projectDescription, data.focusArea, data.focusAreaLabel, data.budgetUsd,
+            data.projectName, data.projectDescription || null, data.focusArea, data.focusAreaLabel, data.budgetUsd,
+            // El PAGO nace pendiente en los dos modos; lo que distingue a un
+            // borrador es el estado del PROYECTO, no el del cobro.
             'pending_payment', pricing.amountCop, pricing.amountUsd,
             trm?.rate ?? null, trm?.date ?? null, trm?.source ?? null, trm?.fetchedAt ?? null,
             cfg.clubId || null,
             pricing.mode,
             JSON.stringify({
                 edition: cfg.edition,
-                submittedAt: new Date().toISOString(),
+                submittedAt: draft ? null : new Date().toISOString(),
+                // Marca de nacimiento: la migración de v4.1253 usa esto para no
+                // confundir un borrador real con un «Borrador» puesto a mano.
+                createdAs: draft ? 'draft' : 'application',
+                // El sitio desde el que postuló: los correos (confirmación,
+                // recordatorios) enlazan a SU perfil en ese dominio, también
+                // cuando los manda el comité desde el panel de la plataforma.
+                origin: resolveOrigin(req, null),
                 userAgent: clean(req.headers['user-agent'], 300),
             }),
+            draft ? 'draft' : 'received',
         ]);
+        const created = rows[0];
 
         // Cuenta del club (identidad propia del módulo, no de la plataforma).
-        if (password) {
-            const { createAccountFor } = await import('./projectFairPortalController.js');
-            await createAccountFor(rows[0], password);
-        }
+        const { createAccountFor, issuePortalToken } = await import('./projectFairPortalController.js');
+        let account = null;
+        if (password) account = await createAccountFor(created, password);
 
-        await logEvent(rows[0].id, {
-            type: 'form_submitted',
-            title: 'Formulario enviado',
+        await logEvent(created.id, draft ? {
+            type: 'draft_saved',
+            title: 'Borrador guardado',
             detail: `${data.projectName} — ${data.clubName} (${data.district})`,
-            metadata: { focusArea: data.focusArea, budgetUsd: data.budgetUsd, publicRef: rows[0].publicRef },
+            metadata: { publicRef: created.publicRef },
+        } : {
+            type: 'form_submitted',
+            title: 'Proyecto postulado',
+            detail: `${data.projectName} — ${data.clubName} (${data.district}). Pago de inscripción pendiente.`,
+            metadata: { focusArea: data.focusArea, budgetUsd: data.budgetUsd, publicRef: created.publicRef },
         });
 
+        if (!draft) await notifyApplication(created, cfg);
+
         res.status(201).json({
-            submission: mapSubmission(rows[0]),
+            submission: mapSubmission(created),
+            application: applicationViewOf(created),
             trm: trm ? { ...trm, priceMode: pricing.mode, amountCop: pricing.amountCop, amountUsd: pricing.amountUsd } : null,
+            portalToken: account ? issuePortalToken(account) : null,
+            portalPath: cfg.portal?.path || '/mi-proyecto',
         });
     } catch (error) {
         console.error('[project-fair] createSubmission:', error);
         res.status(500).json({ error: 'No pudimos registrar la inscripción. Intenta nuevamente.' });
+    }
+};
+
+/**
+ * El estado de la postulación como se le explica al club: los DOS estados,
+ * cada uno con su rótulo, y la fecha en que se postuló. Lo arma el servidor;
+ * la pantalla lo pinta.
+ */
+export const applicationViewOf = (row, { openAttempt = false } = {}) => {
+    const state = projectStateOf(row);
+    const pay = paymentStatusOf(row, { openAttempt });
+    return {
+        projectState: state,
+        projectStateLabel: projectStateMeta(state).label,
+        applied: isApplied(row),
+        appliedAt: row?.appliedAt || null,
+        paymentStatus: pay,
+        paymentStatusLabel: paymentStatusLabel(pay),
+        owes: owesRegistration(row),
+    };
+};
+
+/**
+ * Correo «Tu proyecto ha sido postulado» al club y aviso al comité. Nunca
+ * lanza: la postulación ya quedó guardada y un correo caído no puede
+ * deshacerla.
+ */
+export const notifyApplication = async (submission, cfg) => {
+    try {
+        if (cfg.notifications?.sendApplicationConfirmation !== false && isEmail(submission.email)) {
+            const r = await sendFairEmail({
+                to: submission.email,
+                subject: `Tu proyecto ha sido postulado ${submission.publicRef} — ${cfg.edition?.name || 'Feria de Proyectos Rotary Colombia'}`,
+                html: buildApplicationHtml(submission, cfg),
+                cfg,
+            });
+            if (r?.success) console.log(`[project-fair] ✉️ Confirmación de postulación enviada a ${submission.email}`);
+            else console.error('[project-fair] Confirmación de postulación NO enviada:', r?.error || 'desconocido');
+        }
+        const admins = Array.isArray(cfg.notifications?.adminEmails) ? cfg.notifications.adminEmails.filter(isEmail) : [];
+        if (admins.length) {
+            await sendFairEmail({
+                to: admins.join(','),
+                subject: `Nueva postulación — ${submission.publicRef} · ${submission.clubName} (pago pendiente)`,
+                html: buildAdminApplicationHtml(submission, cfg),
+                cfg,
+            }).catch(() => {});
+        }
+    } catch (err) {
+        console.error('[project-fair] Error enviando la confirmación de postulación:', err?.message);
     }
 };
 
@@ -2010,7 +2198,34 @@ const expireSessionQuietly = async (sessionId) => {
  *   { blocked, error }           no corresponde cobrar (reembolsada, sin TRM…)
  *   { url, reused, attemptId }   a dónde mandar al usuario
  */
-export const beginCheckout = async (submissionId, { req = null, returnUrl = null, sessionId = null, actor = null } = {}) => {
+/**
+ * El precio y el cobro de una inscripción, como los calcula el servidor
+ * (v4.1253). Es lo ÚNICO que decide cuánto se cobra: lo usan `beginCheckout`
+ * —que crea la sesión de Stripe— y `paymentStateFor` —que se lo muestra al
+ * club en su perfil—, así que el total del perfil y el de la pasarela no se
+ * pueden separar. El recargo se resuelve acá y nunca viene del navegador.
+ */
+export const priceSubmission = async (submission) => {
+    const cfg = await readConfigForSubmission(submission?.eventId || null);
+    let trm = null;
+    if (resolvePriceMode(cfg) === 'COP') {
+        try { trm = await resolveTrm(cfg); } catch { /* pricing.ready quedará en false */ }
+    }
+    const pricing = computePricing(cfg, trm);
+    if (!pricing.ready) {
+        return {
+            blocked: 'pricing',
+            status: pricing.needsTrm && pricing.amountCop > 0 ? 503 : 400,
+            error: pricing.error,
+            cfg,
+        };
+    }
+    const surchargeConfig = await getSurchargeConfig();
+    const quote = quoteCheckout(pricing, surchargeConfig, trm);
+    return { cfg, trm, pricing, quote };
+};
+
+export const beginCheckout = async (submissionId, { req = null, returnUrl = null, sessionId = null, actor = null, returnPath = null } = {}) => {
     await ensureTables();
 
     const { rows } = await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = $1 LIMIT 1', [submissionId]);
@@ -2026,6 +2241,15 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
         return {
             blocked: 'refunded', status: 409,
             error: 'Esta inscripción fue reembolsada. Escríbenos si necesitas volver a inscribir el proyecto.',
+        };
+    }
+    // v4.1253 — Un BORRADOR no se cobra: la inscripción se paga sobre una
+    // postulación enviada. Se dice qué hacer en vez de abrir un cobro sobre
+    // un proyecto que el club todavía no ha presentado.
+    if (!isApplied(submission)) {
+        return {
+            blocked: 'draft', status: 409,
+            error: 'Tu proyecto todavía es un borrador. Envía tu postulación y después podrás pagar la inscripción.',
         };
     }
 
@@ -2066,25 +2290,12 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
 
     // 3. El monto NUNCA viene del cliente: sale de la configuración de SU
     //    edición, y con el precio en pesos, de la TRM del momento del pago.
-    const cfg = await readConfigForSubmission(submission.eventId || null);
-    let trm = null;
-    if (resolvePriceMode(cfg) === 'COP') {
-        try { trm = await resolveTrm(cfg); } catch { /* pricing.ready quedará en false */ }
-    }
-    const pricing = computePricing(cfg, trm);
-    if (!pricing.ready) {
-        return {
-            blocked: 'pricing',
-            status: pricing.needsTrm && pricing.amountCop > 0 ? 503 : 400,
-            error: pricing.error,
-        };
-    }
-    // El recargo se resuelve ACÁ, con el precio que acaba de calcular el
-    // servidor: nunca viene del navegador. `amountCop`/`amountUsd` siguen
-    // siendo el PRECIO publicado —es lo que se le anunció al club y lo que
-    // guarda su inscripción—; `chargeUsd` es lo que se le cobra.
-    const surchargeConfig = await getSurchargeConfig();
-    const quote = quoteCheckout(pricing, surchargeConfig, trm);
+    //    v4.1253 — Lo calcula `priceSubmission`, el MISMO que usa el perfil
+    //    del club para mostrar el total: lo que se anuncia ahí es lo que se
+    //    cobra acá, sin una segunda aritmética que se pueda separar.
+    const priced = await priceSubmission(submission);
+    if (priced.blocked) return priced;
+    const { cfg, trm, pricing, quote } = priced;
     const { amountCop, amountUsd } = pricing;
     // ⚠️ v4.982 — LO QUE SE COBRA VA CON SU MONEDA. `chargeUsd` se conserva
     // como equivalente informativo para la metadata y la traza; el cobro sale
@@ -2153,7 +2364,10 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
     }
 
     // 4. No hay nada que reutilizar: se crea una sesión nueva.
-    const formPath = normalizeFormPath(cfg.formPath);
+    // v4.1253 — El pago que se inicia desde el PERFIL vuelve al perfil; el que
+    // se inicia desde el wizard, al wizard. Mandar al club de vuelta a un
+    // formulario que ya envió lo deja sin saber dónde está.
+    const formPath = returnPath ? normalizeFormPath(returnPath) : normalizeFormPath(cfg.formPath);
     const base = resolveOrigin(req || { headers: {} }, returnUrl);
     const edition = cfg.edition?.name || 'Feria de Proyectos Rotary Colombia';
 
@@ -2310,22 +2524,90 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
  */
 export const paymentStateFor = async (submission) => {
     const attempts = await listAttempts(submission.id);
-    const view = paymentViewOf(submission, { lastFailure: lastFailureOf(attempts) });
+    const applied = isApplied(submission);
+    const view = paymentViewOf(submission, { lastFailure: lastFailureOf(attempts), applied });
 
-    // ⚠️ v4.981 — EL RECARGO NO VIAJA AL PANEL, y su ausencia es deliberada:
-    // el desglose lo pinta la pasarela (decisión expresa del cliente). Un campo
-    // que nadie lee es la clase de silencio que este repositorio documenta, así
-    // que se quitó en vez de dejarlo colgando. Lo que sí viaja es el precio
-    // PUBLICADO, que es lo que la banda anuncia.
     const priceMode = String(submission.priceMode || 'COP').toUpperCase() === 'USD' ? 'USD' : 'COP';
+    const openAttempt = attempts.some(a => a?.status === 'open');
+    const payKey = paymentStatusOf(submission, { openAttempt });
+
+    // ⚠️ v4.1253 — EL DESGLOSE VUELVE AL PERFIL, Y SALE DEL MISMO CÁLCULO DEL
+    // COBRO. v4.981 lo había quitado del panel («lo pinta la pasarela»); el
+    // pedido de v4.1253 pide expresamente que la sección de inscripción del
+    // perfil muestre valor, cargos y total, y que coincida con lo que se envía
+    // a Stripe. Por eso no se recalcula aparte: es `priceSubmission`, la misma
+    // función con la que `beginCheckout` arma la sesión.
+    //   - Pagada → lo que de verdad se cobró, con su moneda y el recargo que
+    //     quedó guardado con el cobro. No se recalcula con tarifas de hoy.
+    //   - Sin pagar → lo que se cobraría AHORA.
+    let charge = null;
+    try {
+        if (hasConfirmedPayment(submission) || submission.status === 'refunded') {
+            // El recargo guardado con el cobro es { clave: importe }; el
+            // rótulo se toma del catálogo vigente sólo para NOMBRAR la línea
+            // (el importe es el que se cobró, no se recalcula).
+            const sc = submission.metadata?.payment?.surcharge || null;
+            const currency = String(submission.chargeCurrency || priceMode).toUpperCase();
+            let nombres = {};
+            try {
+                nombres = Object.fromEntries(resolveSurchargeRates(await getSurchargeConfig(), { currency })
+                    .map(r => [r.key, { label: r.label, percent: r.percent }]));
+            } catch { /* sin rótulos: se muestra la clave */ }
+            charge = {
+                currency,
+                base: priceMode === 'USD' ? Number(submission.amountUsd ?? 0) : Number(submission.amountCop ?? 0),
+                lines: sc?.lines && typeof sc.lines === 'object'
+                    ? Object.entries(sc.lines).filter(([, a]) => Number(a) > 0)
+                        .map(([key, amount]) => ({ key, label: nombres[key]?.label || key, percent: nombres[key]?.percent ?? null, amount: Number(amount) }))
+                    : [],
+                total: submission.amountReceived != null ? Number(submission.amountReceived) : null,
+                final: true,
+            };
+        } else if (applied) {
+            const priced = await priceSubmission(submission);
+            if (!priced.blocked) {
+                const q = priced.quote;
+                charge = {
+                    currency: q.chargeCurrency,
+                    base: q.surcharge?.base ?? (q.chargeCurrency === 'USD' ? q.amountUsd : q.amountCop),
+                    lines: (q.surcharge?.lines || []).filter(l => l.amount > 0)
+                        .map(l => ({ key: l.key, label: l.label, percent: l.percent, amount: l.amount })),
+                    total: q.chargeAmount,
+                    approxUsd: q.chargeCurrency === 'COP' ? q.chargeUsd : null,
+                    final: false,
+                };
+            }
+        }
+    } catch (err) {
+        console.warn('[project-fair] No pude calcular el desglose del cobro para el perfil:', err?.message);
+    }
+
+    let deadline = null;
+    try { deadline = paymentDeadlineOf(await readConfigForSubmission(submission.eventId || null)); } catch { /* sin fecha */ }
 
     return {
         ...view,
+        applied,
         priceMode,
+        status: payKey,
+        statusLabel: paymentStatusLabel(payKey),
         amountCop: submission.amountCop === null || submission.amountCop === undefined ? null : Number(submission.amountCop),
         amountUsd: submission.amountUsd === null || submission.amountUsd === undefined ? null : Number(submission.amountUsd),
+        charge,
+        deadline,
         paidAt: submission.paidAt || null,
         receiptUrl: submission.receiptUrl || null,
+        // La transacción, para «consultar la transacción»: la referencia
+        // corta (los últimos caracteres, como en el comprobante), el medio y
+        // lo cobrado. Los identificadores completos de Stripe se quedan en el
+        // panel administrativo.
+        transaction: hasConfirmedPayment(submission) ? {
+            reference: String(submission.stripePaymentIntentId || submission.manualPaymentRef || submission.stripeSessionId || '').slice(-18) || null,
+            method: submission.paymentMethod || (submission.paymentConfirmationOrigin === 'manual_admin' ? 'Confirmación administrativa' : null),
+            amount: submission.amountReceived != null ? Number(submission.amountReceived) : null,
+            currency: submission.chargeCurrency || priceMode,
+            refundedAmount: submission.refundedAmount != null ? Number(submission.refundedAmount) : null,
+        } : null,
         attempts: attemptHistoryOf(attempts),
     };
 };
@@ -2400,8 +2682,10 @@ export const confirmPaidSession = async (session) => {
     const { rows: updated } = await db.query(`
         UPDATE "ProjectFairSubmission"
         SET status = 'paid',
-            "workflowStatus" = CASE WHEN "workflowStatus" IN ('received','pending_payment','draft') OR "workflowStatus" IS NULL
-                                    THEN 'payment_confirmed' ELSE "workflowStatus" END,
+            -- v4.1253 — El pago NO mueve el estado del proyecto. Sólo se
+            -- normaliza un valor heredado que describía el pago.
+            "workflowStatus" = CASE WHEN "workflowStatus" IN ('pending_payment','payment_confirmed','payment_failed','refunded') OR "workflowStatus" IS NULL
+                                    THEN 'received' ELSE "workflowStatus" END,
             "stripeSessionId" = COALESCE($1, "stripeSessionId"),
             "stripePaymentIntentId" = COALESCE($2, "stripePaymentIntentId"),
             "stripeChargeId" = COALESCE($3, "stripeChargeId"),
@@ -2606,8 +2890,10 @@ export const handlePaymentIntentSucceeded = async (paymentIntent, event = null) 
     const { rows: updated } = await db.query(`
         UPDATE "ProjectFairSubmission"
         SET status = 'paid',
-            "workflowStatus" = CASE WHEN "workflowStatus" IN ('received','pending_payment','draft') OR "workflowStatus" IS NULL
-                                    THEN 'payment_confirmed' ELSE "workflowStatus" END,
+            -- v4.1253 — El pago NO mueve el estado del proyecto. Sólo se
+            -- normaliza un valor heredado que describía el pago.
+            "workflowStatus" = CASE WHEN "workflowStatus" IN ('pending_payment','payment_confirmed','payment_failed','refunded') OR "workflowStatus" IS NULL
+                                    THEN 'received' ELSE "workflowStatus" END,
             "stripePaymentIntentId" = COALESCE($1, "stripePaymentIntentId"),
             "stripeChargeId" = COALESCE($2, "stripeChargeId"),
             "stripeCustomerId" = COALESCE($3, "stripeCustomerId"),
@@ -2686,7 +2972,7 @@ export const handlePaymentFailed = async (paymentIntent) => {
 
     await db.query(`
         UPDATE "ProjectFairSubmission"
-        SET status = 'failed', "workflowStatus" = 'payment_failed',
+        SET status = 'failed',
             "stripePaymentIntentId" = COALESCE($1, "stripePaymentIntentId"),
             "lastPaymentError" = $2, "updatedAt" = NOW()
         WHERE id = $3
@@ -2720,7 +3006,7 @@ export const handleCheckoutExpired = async (session) => {
 
     await db.query(`
         UPDATE "ProjectFairSubmission"
-        SET status = 'pending_payment', "workflowStatus" = 'pending_payment', "updatedAt" = NOW()
+        SET status = CASE WHEN status = 'refunded' THEN status ELSE 'pending_payment' END, "updatedAt" = NOW()
         WHERE id = $1
     `, [submission.id]);
 
@@ -2750,14 +3036,15 @@ export const handleRefund = async (charge) => {
 
     await db.query(`
         UPDATE "ProjectFairSubmission"
-        SET status = $1, "workflowStatus" = $2,
-            "refundedAmount" = $3, "refundedAt" = NOW(),
-            "stripeChargeId" = COALESCE($4, "stripeChargeId"),
+        SET status = $1,
+            "refundedAmount" = $2, "refundedAt" = NOW(),
+            "stripeChargeId" = COALESCE($3, "stripeChargeId"),
             "updatedAt" = NOW()
-        WHERE id = $5
+        WHERE id = $4
     `, [
+        // v4.1253 — El reembolso cambia el PAGO, no el proyecto: el comité
+        // decide aparte si el proyecto queda retirado.
         isFull ? 'refunded' : 'paid',
-        isFull ? 'refunded' : submission.workflowStatus || 'payment_confirmed',
         refunded,
         charge?.id || null,
         submission.id,
@@ -2846,7 +3133,7 @@ const footerBrandingHtml = (cfg) => {
     </div>`;
 };
 
-const buildReceiptHtml = (s, cfg) => {
+export const buildReceiptHtml = (s, cfg) => {
     const primary = '#17458F';
     const accent = '#F7A81B';
     const edition = cfg.edition?.name || 'Feria de Proyectos Rotary Colombia';
@@ -2903,6 +3190,121 @@ const buildReceiptHtml = (s, cfg) => {
   </div>
 </div>`;
 };
+
+/** Enlace al perfil del club, en el sitio desde el que postuló. */
+export const portalLinkFor = (s, cfg) => {
+    const origin = String(s?.metadata?.origin || '').replace(/\/$/, '');
+    const base = /^https?:\/\//.test(origin) ? origin : DEFAULT_FRONTEND_URL;
+    return `${base}${cfg?.portal?.path || '/mi-proyecto'}`;
+};
+
+const fmtDateLong = (d) => (d
+    ? new Date(d).toLocaleString('es-CO', { dateStyle: 'long', timeStyle: 'short', timeZone: 'America/Bogota' })
+    : '');
+
+/**
+ * Correo de postulación (v4.1253). Dice lo que el club necesita saber sin
+ * alarma: su proyecto quedó postulado, el pago está pendiente y se hace
+ * después desde su perfil. No es un comprobante de pago y no lo parece.
+ */
+export const buildApplicationHtml = (s, cfg) => {
+    const primary = '#17458F';
+    const accent = '#F7A81B';
+    const edition = cfg.edition?.name || 'Feria de Proyectos Rotary Colombia';
+    const link = portalLinkFor(s, cfg);
+    const row = (k, v) => `<tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;font-size:14px">${k}</td><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600;font-size:14px">${v}</td></tr>`;
+    return `
+<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1f2937;max-width:620px;margin:0 auto;background:#f8fafc;padding:24px 0">
+  <div style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.06)">
+    <div style="background:${primary};color:#fff;padding:32px;text-align:center">
+      ${headerLogoHtml(cfg)}
+      <div style="font-size:12px;letter-spacing:.18em;text-transform:uppercase;opacity:.8;margin-bottom:8px">Postulación de proyecto</div>
+      <h1 style="margin:0;font-size:22px;font-weight:700;color:#fff">¡Tu proyecto ha sido postulado exitosamente!</h1>
+    </div>
+    <div style="padding:32px">
+      <p style="font-size:15px;line-height:1.6;margin:0 0 14px">Estimado/a ${esc(s.firstName)} ${esc(s.lastName)}:</p>
+      <p style="font-size:15px;line-height:1.6;margin:0 0 14px">
+        Hemos recibido la postulación de tu proyecto <strong>«${esc(s.projectName)}»</strong> para la <strong>${esc(edition)}</strong>.
+        Tu proyecto ha quedado registrado en nuestra plataforma y podrás consultar su estado desde tu perfil.
+      </p>
+      <div style="background:linear-gradient(135deg,${accent}14,${accent}26);border-radius:12px;padding:18px;margin:20px 0;text-align:center">
+        <div style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#64748b;margin-bottom:6px">Código de postulación</div>
+        <div style="font-size:28px;font-weight:800;color:${primary};letter-spacing:.06em">${esc(s.publicRef)}</div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:22px">
+        ${row('Proyecto', esc(s.projectName))}
+        ${row('Club Rotario', esc(s.clubName))}
+        ${row('Responsable', `${esc(s.firstName)} ${esc(s.lastName)}`)}
+        ${row('Fecha de postulación', esc(fmtDateLong(s.appliedAt || s.createdAt)))}
+        ${row('Estado del proyecto', '<span style="color:#17458F">Postulado</span>')}
+        ${row('Estado de inscripción', '<span style="color:#b45309">Pago pendiente</span>')}
+      </table>
+      <div style="background:#f1f5f9;border-left:3px solid ${primary};padding:16px 18px;border-radius:8px;margin-bottom:22px">
+        <p style="margin:0;font-size:14px;line-height:1.6;color:#334155">
+          El pago de la inscripción está pendiente y podrás realizarlo posteriormente ingresando a tu perfil.
+          Tu postulación permanece registrada aunque todavía no hayas realizado el pago.
+        </p>
+      </div>
+      <p style="text-align:center;margin:0">
+        <a href="${esc(link)}" style="display:inline-block;background:${primary};color:#fff;padding:12px 26px;border-radius:8px;text-decoration:none;font-weight:bold">Ir a mi perfil</a>
+      </p>
+    </div>
+    ${footerBrandingHtml(cfg)}
+    <div style="background:#f8fafc;padding:16px 32px;text-align:center;font-size:12px;color:#94a3b8;border-top:1px solid #e5e7eb">
+      Equipo organizador · ${esc(edition)}
+    </div>
+  </div>
+</div>`;
+};
+
+/**
+ * Recordatorio de pago (v4.1253). Lo manda el comité desde el panel; el texto
+ * es el que pidió el cliente: el proyecto YA está postulado y el pago se hace
+ * cuando el club esté listo. Si la Convocatoria fijó una fecha límite de
+ * pago, se menciona; si no, no se inventa ninguna.
+ */
+export const buildPaymentReminderHtml = (s, cfg) => {
+    const primary = '#17458F';
+    const edition = cfg.edition?.name || 'Feria de Proyectos Rotary Colombia';
+    const link = portalLinkFor(s, cfg);
+    const deadline = paymentDeadlineOf(cfg);
+    const deadlineText = deadline
+        ? `<p style="font-size:15px;line-height:1.6;margin:0 0 14px">La fecha límite para el pago de la inscripción es el <strong>${esc(new Date(`${deadline}T12:00:00`).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' }))}</strong>.</p>`
+        : '';
+    return `
+<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1f2937;max-width:620px;margin:0 auto;padding:24px 0">
+  <div style="background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb">
+    <div style="background:${primary};color:#fff;padding:26px 32px">
+      ${headerLogoHtml(cfg)}
+      <div style="font-size:18px;font-weight:700">${esc(edition)}</div>
+    </div>
+    <div style="padding:30px 32px">
+      <p style="font-size:15px;line-height:1.6;margin:0 0 14px">Estimado/a ${esc(s.firstName)} ${esc(s.lastName)}:</p>
+      <p style="font-size:15px;line-height:1.6;margin:0 0 14px">Hemos recibido correctamente la postulación del proyecto <strong>«${esc(s.projectName)}»</strong> (código ${esc(s.publicRef)}) para la ${esc(edition)}.</p>
+      <p style="font-size:15px;line-height:1.6;margin:0 0 14px">Tu proyecto se encuentra registrado en nuestra plataforma.</p>
+      <p style="font-size:15px;line-height:1.6;margin:0 0 14px">El pago de inscripción está pendiente y podrás realizarlo posteriormente ingresando a tu perfil. Puedes consultar tu postulación y acceder a la opción de pago desde tu cuenta.</p>
+      ${deadlineText}
+      <p style="margin:22px 0"><a href="${esc(link)}" style="display:inline-block;background:${primary};color:#fff;padding:12px 26px;border-radius:8px;text-decoration:none;font-weight:bold">Ir a mi perfil</a></p>
+      <p style="font-size:15px;line-height:1.6;margin:0">Cordialmente,<br>Equipo organizador<br>${esc(edition)}</p>
+    </div>
+    ${footerBrandingHtml(cfg)}
+  </div>
+</div>`;
+};
+
+const buildAdminApplicationHtml = (s, cfg) => `
+<div style="font-family:Arial,sans-serif;color:#1f2937;max-width:600px;margin:0 auto">
+  <h2 style="color:#17458F">Nueva postulación — ${esc(cfg.edition?.name || 'Feria de Proyectos')}</h2>
+  <p style="font-size:14px">Proyecto postulado. <strong>El pago de la inscripción está pendiente.</strong></p>
+  <ul style="font-size:14px;line-height:1.8;padding-left:18px">
+    <li><strong>Código:</strong> ${esc(s.publicRef)}</li>
+    <li><strong>Proyecto:</strong> ${esc(s.projectName)}</li>
+    <li><strong>Club:</strong> ${esc(s.clubName)} (${esc(s.district)})</li>
+    <li><strong>Responsable:</strong> ${esc(s.firstName)} ${esc(s.lastName)} — ${esc(s.email)} · ${esc(s.phone)}</li>
+    <li><strong>Área de enfoque:</strong> ${esc(s.focusAreaLabel || s.focusArea)}</li>
+    <li><strong>Presupuesto:</strong> ${fmtUsd(s.budgetUsd)}</li>
+  </ul>
+</div>`;
 
 const buildAdminNotificationHtml = (s, cfg) => `
 <div style="font-family:Arial,sans-serif;color:#1f2937;max-width:600px;margin:0 auto">

@@ -16,7 +16,7 @@ import {
     CreditCard, Download, ExternalLink, Eye, FileSpreadsheet, FileText, Filter,
     Loader2, Mail, MessageSquarePlus, RefreshCw, Search,
     TrendingUp, Wallet, X, ShieldCheck, Paperclip, Settings, FileSignature, Lock, Unlock,
-    Archive, ArchiveRestore, CheckSquare, Square, Trash2, TagIcon, Banknote, ArrowRight, History,
+    Archive, ArchiveRestore, CheckSquare, Square, Trash2, TagIcon, Banknote, ArrowRight, History, Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -76,7 +76,9 @@ interface Access {
     // `edit`: sólo la tiene el rol admin.
     remove?: boolean;
 }
-interface StateDef { key: string; label: string; color: string; group?: string }
+interface StateDef { key: string; label: string; color: string; group?: string; legacy?: boolean }
+/** v4.1253 — Los estados heredados del pago se LEEN pero no se ofrecen al elegir. */
+const elegibles = (list?: StateDef[]) => (list || []).filter(st => !st.legacy);
 interface Tag { id: string; label: string; color: string; usage?: number; isSystem?: boolean }
 
 interface Submission {
@@ -89,6 +91,9 @@ interface Submission {
     notes?: string | null;
     focusArea: string; focusAreaLabel: string | null; budgetUsd: number | null;
     paymentStatus: string; workflowStatus: string; priority: string;
+    // v4.1253 — Estado del proyecto y del pago, por separado.
+    projectStateLabel?: string; applied?: boolean; appliedAt?: string | null;
+    paymentView?: string; paymentViewLabel?: string; owesRegistration?: boolean;
     internalCategory: string | null; assigneeName: string | null;
     reviewedAt: string | null; reviewedBy: string | null;
     priceMode?: 'COP' | 'USD' | null; chargeCurrency?: string | null;
@@ -266,6 +271,8 @@ const PostulacionesPagos: React.FC = () => {
     const [filters, setFilters] = useState({
         search: '', paymentStatus: 'all', workflowStatus: 'all', district: 'all',
         focusArea: 'all', priority: 'all', tagId: '', from: '', to: '', budgetMin: '', budgetMax: '',
+        // v4.1253 — Vista de participación / recaudo (catálogo del servidor).
+        vista: 'all',
         // v4.1024 — Lo archivado no se ve por defecto: es lo que significa
         // archivar. El valor viaja al servidor, que es quien filtra.
         archivadas: 'activas',
@@ -296,6 +303,9 @@ const PostulacionesPagos: React.FC = () => {
     const [bulkTagRemove, setBulkTagRemove] = useState(false);
     const [bulkBusy, setBulkBusy] = useState(false);
     const [bulkResult, setBulkResult] = useState<any>(null);
+    // v4.1253 — Recordatorios de pago.
+    const [reminderBusy, setReminderBusy] = useState(false);
+    const [reminderMsg, setReminderMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
     // v4.1026 — El traslado de lo cobrado. `plan` lo resuelve el SERVIDOR: qué
     // inscripciones tienen movimiento en la Bóveda, cuáles se pueden girar hoy
     // y cuáles no, con su motivo y su salida. Acá no se deduce nada — con dos
@@ -374,6 +384,53 @@ const PostulacionesPagos: React.FC = () => {
             .catch(e => { setRows([]); setLoadError(e?.message || 'No se pudieron cargar las postulaciones'); })
             .finally(() => setTableLoading(false));
     }, [queryString, pagination.pageSize]);
+
+    /**
+     * Recordatorios de pago (v4.1253). Primero se pide el PLAN —a quién le
+     * llega y a quién no, con su motivo— y la confirmación dice el hecho; sólo
+     * entonces se envía. Con selección, alcanza a las marcadas; sin ella, a
+     * todas las que deben la inscripción en esta edición. El tope (intervalo y
+     * máximo por postulación) lo aplica el servidor.
+     */
+    const sendReminders = useCallback(async () => {
+        if (reminderBusy) return;
+        setReminderBusy(true);
+        setReminderMsg(null);
+        const ids = selectMode ? selected.map(r => r.id) : [];
+        const call = async (confirm: boolean) => {
+            const r = await fetch(withEvento(`${API}/project-fair/admin/postulaciones/payment-reminders`), {
+                method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ ids, confirm }),
+            });
+            const body = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(body?.error || 'No se pudieron preparar los recordatorios.');
+            return body;
+        };
+        try {
+            const plan = await call(false);
+            if (!plan.willSend) {
+                const motivos = (plan.plan || []).filter((x: any) => !x.send).slice(0, 8)
+                    .map((x: any) => `· ${x.publicRef} ${x.clubName || ''}: ${x.reason}`).join('\n');
+                setReminderMsg({ kind: 'error', text: `No hay a quién enviar un recordatorio ahora.${motivos ? `\n${motivos}` : ''}` });
+                return;
+            }
+            const omitidas = (plan.plan || []).filter((x: any) => !x.send);
+            const ok = window.confirm(
+                `Se enviará el recordatorio de pago a ${plan.willSend} postulación${plan.willSend === 1 ? '' : 'es'}.`
+                + (omitidas.length ? `\n${omitidas.length} no lo recibirán (borrador, ya pagada, recordatorio reciente o tope alcanzado).` : '')
+                + '\n\n¿Enviar ahora?');
+            if (!ok) return;
+            const res = await call(true);
+            setReminderMsg({
+                kind: res.failed ? 'error' : 'ok',
+                text: `Recordatorios enviados: ${res.sent}.` + (res.failed ? ` No se pudieron enviar: ${res.failed}.` : '') + (res.skipped?.length ? ` Omitidas: ${res.skipped.length}.` : ''),
+            });
+            loadRows(pagination.page);
+        } catch (e: any) {
+            setReminderMsg({ kind: 'error', text: e?.message || 'No se pudieron enviar los recordatorios.' });
+        } finally {
+            setReminderBusy(false);
+        }
+    }, [reminderBusy, selectMode, selected, loadRows, pagination.page]);
 
     // ── Acciones en bloque ───────────────────────────────────────────
     //
@@ -824,6 +881,29 @@ const PostulacionesPagos: React.FC = () => {
                             </div>
                         </section>
 
+                        {/* ── v4.1253 — Participación vs. recaudo ──────
+                            Dos preguntas distintas: cuántos clubes quieren
+                            estar (aunque no hayan pagado) y cuánto se ha
+                            cobrado y queda por cobrar. Lo pendiente cuenta
+                            SÓLO postulaciones enviadas, no retiradas ni
+                            rechazadas: un borrador no es deuda. */}
+                        {overview?.participation && (
+                            <section>
+                                <BlockTitle icon={Users}>Participación y recaudo</BlockTitle>
+                                <p className="-mt-1 mb-3 text-xs text-slate-500">La participación no depende del pago: un club puede postular hoy y pagar después.</p>
+                                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                                    <Kpi label="Clubes registrados" value={fmtNum(overview.participation.clubs)} icon={Building2} tone="blue" />
+                                    <Kpi label="Usuarios registrados" value={fmtNum(overview.participation.registeredUsers)} icon={Users} tone="indigo" />
+                                    <Kpi label="Proyectos en borrador" value={fmtNum(overview.participation.drafts)} icon={FileText} tone="slate" />
+                                    <Kpi label="Proyectos postulados" value={fmtNum(overview.participation.applied)} sub={`${fmtNum(overview.participation.approved)} aprobados`} icon={ClipboardList} tone="blue" />
+                                    <Kpi label="Inscripciones pagadas" value={fmtNum(overview.participation.paid)} icon={CheckCircle2} tone="emerald" />
+                                    <Kpi label="Pendientes de pago" value={fmtNum(overview.participation.owing)} sub="Postuladas sin pagar" icon={Clock} tone="amber" />
+                                    <Kpi label="Valor recaudado" value={overview.participation.priceMode === 'USD' ? fmtUsd(overview.participation.collectedAmount) : fmtCop(overview.participation.collectedAmount)} sub="Valor de inscripción, sin cargos" icon={Wallet} tone="emerald" />
+                                    <Kpi label="Valor pendiente de recaudo" value={overview.participation.priceMode === 'USD' ? fmtUsd(overview.participation.pendingAmount) : fmtCop(overview.participation.pendingAmount)} sub="Sólo obligaciones válidas" icon={AlertTriangle} tone="orange" />
+                                </div>
+                            </section>
+                        )}
+
                         {/* ── 2. Embudo del proceso ────────────────────
                             Dónde se pierden las postulaciones. Sólo etapas
                             que el módulo registra de verdad. */}
@@ -1081,10 +1161,42 @@ const PostulacionesPagos: React.FC = () => {
                             )}
                         </div>
 
+                        {/* ── v4.1253 — Participación y recaudo ──────────────
+                            Vistas de un clic para separar a quien quiere
+                            participar de quien ya pagó: postulados, borradores,
+                            pago pendiente… y desde la de pago pendiente, los
+                            recordatorios. */}
+                        {(catalog?.views || []).length > 0 && (
+                            <div className="flex flex-wrap items-center gap-2">
+                                {[{ key: 'all', label: 'Todas' }, ...(catalog?.views || [])].map((v: { key: string; label: string }) => (
+                                    <button key={v.key}
+                                        onClick={() => { setFilters(f => ({ ...f, vista: v.key })); setSelected([]); setTransferPlan(null); }}
+                                        className={`rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition ${filters.vista === v.key ? 'text-white ring-transparent' : 'bg-white text-slate-600 ring-slate-300 hover:bg-slate-50'}`}
+                                        style={filters.vista === v.key ? { background: BLUE } : undefined}>
+                                        {v.label}
+                                    </button>
+                                ))}
+                                {access.managePayments && (
+                                    <button onClick={sendReminders} disabled={reminderBusy}
+                                        className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-60"
+                                        title="Correo «Tu proyecto ya está postulado — Completa el pago de inscripción cuando estés listo». Con tope: no se repite antes de 7 días ni más de 3 veces.">
+                                        {reminderBusy ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
+                                        {selectMode && selected.length ? `Recordar pago a ${selected.length} seleccionada${selected.length === 1 ? '' : 's'}` : 'Recordatorios de pago'}
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                        {reminderMsg && (
+                            <div className={`flex items-start gap-2 rounded-xl border px-4 py-3 text-sm ${reminderMsg.kind === 'ok' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-800'}`}>
+                                <span className="whitespace-pre-line">{reminderMsg.text}</span>
+                                <button onClick={() => setReminderMsg(null)} className="ml-auto text-xs font-bold opacity-60 hover:opacity-100">Cerrar</button>
+                            </div>
+                        )}
+
                         {showFilters && (
                             <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
                                 {[
-                                    ['workflowStatus', 'Estado de la postulación', catalog?.workflowStates?.map((s: StateDef) => ({ value: s.key, label: s.label }))],
+                                    ['workflowStatus', 'Estado del proyecto', elegibles(catalog?.workflowStates).map((s: StateDef) => ({ value: s.key, label: s.label }))],
                                     ['paymentStatus', 'Estado del pago', catalog?.paymentStates?.map((s: StateDef) => ({ value: s.key, label: s.label }))],
                                     ['district', 'Distrito', (catalog?.districts || []).map((d: string) => ({ value: d, label: d }))],
                                     ['focusArea', 'Área de enfoque', (catalog?.focusAreas || []).map((a: any) => ({ value: a.key, label: a.label }))],
@@ -1117,7 +1229,7 @@ const PostulacionesPagos: React.FC = () => {
                                     <input type="number" value={filters.budgetMax} onChange={e => setFilters(f => ({ ...f, budgetMax: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
                                 <div className="flex items-end gap-2">
                                     <button onClick={() => loadRows(1)} className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: BLUE }}>Aplicar</button>
-                                    <button onClick={() => { setFilters({ search: '', paymentStatus: 'all', workflowStatus: 'all', district: 'all', focusArea: 'all', priority: 'all', tagId: '', from: '', to: '', budgetMin: '', budgetMax: '', archivadas: 'activas' }); setTimeout(() => loadRows(1), 0); }}
+                                    <button onClick={() => { setFilters({ search: '', paymentStatus: 'all', workflowStatus: 'all', district: 'all', focusArea: 'all', priority: 'all', tagId: '', from: '', to: '', budgetMin: '', budgetMax: '', vista: 'all', archivadas: 'activas' }); setTimeout(() => loadRows(1), 0); }}
                                         className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600">Limpiar</button>
                                 </div>
                             </div>
@@ -1302,7 +1414,7 @@ const PostulacionesPagos: React.FC = () => {
                                             <select value={bulkStatusTo} onChange={e => setBulkStatusTo(e.target.value)}
                                                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
                                                 <option value="">Elegí un estado…</option>
-                                                {(catalog?.workflowStates || []).map((st: StateDef) => (
+                                                {elegibles(catalog?.workflowStates).map((st: StateDef) => (
                                                     <option key={st.key} value={st.key}>{st.label}</option>
                                                 ))}
                                             </select>
@@ -1932,6 +2044,8 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                                         <Row label="Área de enfoque" value={s.focusAreaLabel || s.focusArea} />
                                         <Row label="Presupuesto" value={`${fmtUsd(s.budgetUsd)} USD`} />
                                         <Row label="Fecha de inscripción" value={fmtDateTime(s.createdAt)} />
+                                        {/* v4.1253 — Cuándo se ENVIÓ: un borrador no la tiene. */}
+                                        <Row label="Fecha de postulación" value={s.appliedAt ? fmtDateTime(s.appliedAt) : 'Todavía en borrador'} />
                                         {s.notes && (
                                             <div className="pt-3">
                                                 <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Comentarios o solicitudes del postulante</p>
@@ -1947,11 +2061,11 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                                     <Section title="Gestión interna">
                                         <div className="grid gap-3 sm:grid-cols-2">
                                             <label className="block">
-                                                <span className="mb-1 block text-xs font-semibold text-slate-600">Estado de la postulación</span>
+                                                <span className="mb-1 block text-xs font-semibold text-slate-600">Estado del proyecto <span className="font-normal text-slate-400">(independiente del pago)</span></span>
                                                 <select disabled={!access.changeStatus} defaultValue={s.workflowStatus}
                                                     onChange={e => patch({ workflowStatus: e.target.value, reason }, 'Estado actualizado')}
                                                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-50">
-                                                    {(catalog?.workflowStates || []).map((st: StateDef) => <option key={st.key} value={st.key}>{st.label}</option>)}
+                                                    {elegibles(catalog?.workflowStates).map((st: StateDef) => <option key={st.key} value={st.key}>{st.label}</option>)}
                                                 </select>
                                             </label>
                                             <label className="block">

@@ -2,7 +2,8 @@
 // Mi Proyecto — Gestión de Proyectos del club
 // v4.642.0
 //
-// Espacio privado del club que ya se inscribió y pagó. Ruta pública:
+// Espacio privado del club que postuló su proyecto (pagado o no: desde
+// v4.1253 la postulación no depende del pago). Ruta pública:
 // /mi-proyecto.
 //
 // v4.642 — El panel dejó de ser "el formulario": ahora es la GESTIÓN del
@@ -19,6 +20,11 @@
 // entrega el servidor, de modo que cuando el administrador cambia las
 // secciones o los campos, esta pantalla los refleja sin tocar código.
 //
+// v4.1253 — El perfil separa la POSTULACIÓN del PAGO. La sección
+// «Inscripción a la Feria de Proyectos» muestra el estado de cada uno, el
+// valor con sus cargos y el total (el MISMO que se cobra), y ofrece «Pagar
+// inscripción» cuando el club decida; un borrador se termina y se envía acá.
+//
 // La sesión es propia del módulo (token con audiencia project-fair-portal):
 // nunca da acceso al panel administrativo de la plataforma.
 // ════════════════════════════════════════════════════════════════════
@@ -29,7 +35,7 @@ import { activeLocale } from '../lib/locale';
 import {
     AlertCircle, ArrowRight, CalendarDays, CheckCircle2, ChevronRight, Clock, ExternalLink,
     FileText, KeyRound, LayoutDashboard, Loader2, LogOut, Lock, MapPin, PenLine,
-    ShieldCheck, Trophy, Wallet,
+    ShieldCheck, Trophy, Wallet, Download, Receipt, Send, Save,
 } from 'lucide-react';
 import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
 import { PROJECT_FAIR_PORTAL_PATH, PROJECT_FAIR_PORTAL_TOKEN_KEY } from '../lib/ctaLinks';
@@ -59,6 +65,9 @@ interface PortalData {
     // PINTA y no vuelve a decidir nada — el navegador no es la fuente de
     // verdad del estado de un cobro (v4.978).
     payment?: PaymentState;
+    // v4.1253 — La postulación, con su estado propio (separado del pago).
+    application?: ApplicationState;
+    focusAreas?: { key: string; label: string }[];
     forms: FormCard[];
     edition: { name: string; city: string; country: string };
     // El evento real de la plataforma al que postula. Null si la edición
@@ -71,9 +80,26 @@ interface PortalData {
     reason: string | null;
 }
 
+interface ApplicationState {
+    projectState: string; projectStateLabel: string; applied: boolean; appliedAt: string | null;
+    paymentStatus: string; paymentStatusLabel: string; owes: boolean;
+    publicRef: string; responsible: string; createdAt: string | null;
+    fields: { projectName: string; projectDescription: string; focusArea: string; focusAreaLabel: string | null; budgetUsd: number | null };
+    acceptingApplications: boolean;
+}
+
 interface PaymentAttempt { n: number; status: string; label: string; reason: string | null; at: string | null }
+interface ChargeLine { key: string; label: string; percent: number | null; amount: number }
 interface PaymentState {
-    state: 'paid' | 'failed' | 'pending' | 'refunded';
+    state: 'paid' | 'failed' | 'pending' | 'refunded' | 'draft';
+    /** v4.1253 — Estado del pago para leer: pending, processing, confirmed, failed, refunded, partially_refunded. */
+    status?: string;
+    statusLabel?: string;
+    applied?: boolean;
+    /** El desglose del cobro, calculado por el servidor con la MISMA función que arma la sesión de Stripe. */
+    charge?: { currency: string; base: number; lines: ChargeLine[]; total: number | null; approxUsd?: number | null; final: boolean } | null;
+    deadline?: string | null;
+    transaction?: { reference: string | null; method: string | null; amount: number | null; currency: string; refundedAmount: number | null } | null;
     paid: boolean;
     canPay: boolean;
     label: string;
@@ -89,6 +115,14 @@ interface PaymentState {
 }
 
 const fmtCop = (n?: number | null) => `$${Number(n || 0).toLocaleString(activeLocale(), { maximumFractionDigits: 0 })}`;
+/** Importe en su moneda: pesos sin decimales, dólares con dos. */
+const fmtMoney = (n: number | null | undefined, currency?: string | null) => {
+    if (n === null || n === undefined) return '—';
+    return String(currency || 'COP').toUpperCase() === 'USD'
+        ? `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`
+        : `${fmtCop(n)} COP`;
+};
+const fmtPercent = (p: number | null) => (p === null || p === undefined ? '' : `${Math.round(p * 1000) / 10} %`.replace('.', ','));
 const fmtDate = (v?: string | null) => {
     if (!v) return '';
     const d = new Date(`${v}T12:00:00`);
@@ -214,7 +248,7 @@ const MiProyecto = () => {
             const body = await res.json().catch(() => ({}));
             if (res.status === 401) { logout(); return; }
             if (body?.alreadyPaid) {
-                setNotice({ kind: 'ok', text: 'Tu pago ya estaba confirmado. Los formularios quedaron habilitados.' });
+                setNotice({ kind: 'ok', text: 'Tu pago ya estaba confirmado.' });
                 loadPortal(token, true);
                 setPaying(false);
                 return;
@@ -226,6 +260,31 @@ const MiProyecto = () => {
             setPaying(false);
         }
     }, [token, paying, logout, loadPortal]);
+
+    /**
+     * El comprobante del pago: la MISMA plantilla del correo, abierta en una
+     * ventana para verla o imprimirla como PDF. Se pide con la sesión del
+     * club; nadie más puede leer el comprobante de otro.
+     */
+    const openReceipt = useCallback(async () => {
+        if (!token) return;
+        // La ventana se abre ANTES del viaje de red: abrirla después del
+        // `await` la convierte en una ventana emergente que el navegador
+        // bloquea.
+        const win = window.open('', '_blank');
+        try {
+            const res = await fetch(`${API}/project-fair/portal/receipt`, { headers: { Authorization: `Bearer ${token}` } });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok || !body?.html) throw new Error(body?.error || 'No pudimos generar tu comprobante.');
+            if (!win) throw new Error('Tu navegador bloqueó la ventana del comprobante. Permite las ventanas emergentes e inténtalo de nuevo.');
+            win.document.open();
+            win.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Comprobante ${body.publicRef || ''}</title></head><body style="margin:0;background:#f8fafc">${body.html}<p style="text-align:center;font-family:Arial,sans-serif;margin:16px"><button onclick="window.print()" style="background:#17458F;color:#fff;border:0;border-radius:8px;padding:10px 20px;font-weight:bold;cursor:pointer">Imprimir o guardar como PDF</button></p></body></html>`);
+            win.document.close();
+        } catch (e: any) {
+            win?.close();
+            setNotice({ kind: 'error', text: e?.message || 'No pudimos generar tu comprobante.' });
+        }
+    }, [token]);
 
     // Entrada automática al volver de Stripe: se canjea la sesión de pago por
     // una sesión del panel, sin pedir la contraseña otra vez.
@@ -392,23 +451,30 @@ const MiProyecto = () => {
                             </div>
                         )}
 
-                        {/* Estado de la inscripción */}
+                        {/* v4.1253 — Un BORRADOR todavía no está postulado: lo
+                            primero que el club ve es cómo terminarlo y enviarlo. */}
+                        {data.application && !data.application.applied && (
+                            <DraftEditor
+                                token={token}
+                                application={data.application}
+                                focusAreas={data.focusAreas || []}
+                                onChange={() => loadPortal(token, true)}
+                                onNotice={setNotice}
+                            />
+                        )}
+
+                        {/* Estado de la postulación */}
                         <section className="mb-6 grid gap-3 sm:grid-cols-3">
                             <div className="rounded-xl border border-slate-200 bg-white p-4">
                                 <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                                    <Wallet size={13} /> Inscripción
+                                    <Send size={13} /> Postulación
                                 </p>
-                                {/* El rótulo lo decide el SERVIDOR (`payment.label`), que es
-                                    quien acaba de preguntarle a la pasarela. Sin `payment`
-                                    —una respuesta anterior a v4.978— se degrada al estado
-                                    guardado y sin acción: mejor un rótulo de más que ofrecer
-                                    pagar sin saber si ya está pagado. */}
-                                <p className={`mt-1 text-lg font-bold ${pago ? (pago.paid ? 'text-emerald-600' : 'text-amber-600') : (data.submission.paymentStatus === 'paid' ? 'text-emerald-600' : 'text-amber-600')}`}>
-                                    {pago ? pago.label : (data.submission.paymentStatus === 'paid' ? 'Pago confirmado' : 'Pendiente de pago')}
+                                {/* El estado del PROYECTO, que ya no depende del pago. */}
+                                <p className="mt-1 text-lg font-bold" style={{ color: data.application?.applied === false ? '#b45309' : BLUE }}>
+                                    {data.application?.projectStateLabel || 'Postulado'}
                                 </p>
                                 <p className="text-xs text-slate-500">
-                                    {fmtCop(data.submission.amountCop)} COP
-                                    {data.submission.paidAt ? ` · ${fmtDateTime(data.submission.paidAt)}` : ''}
+                                    {data.application?.appliedAt ? `Postulado el ${fmtDateTime(data.application.appliedAt)}` : 'Todavía no se ha enviado'}
                                 </p>
                             </div>
                             <div className="rounded-xl border border-slate-200 bg-white p-4">
@@ -441,23 +507,29 @@ const MiProyecto = () => {
                             </div>
                         </section>
 
-                        {/* ⚠️ LA ACCIÓN VA JUNTO AL AVISO QUE LA RECLAMA. Hasta v4.977
-                            acá sólo se leía «Tu formulario se habilita cuando se
-                            confirme el pago» y no había NADA que pulsar: quien
-                            recibía un rechazo del banco quedaba con los
-                            formularios bloqueados y sin salida. La regla del
-                            bloqueo no cambió —sin pago confirmado no hay
-                            formularios—; lo que cambia es que ahora se puede
-                            resolver desde aquí mismo. */}
-                        {pago?.canPay ? (
+                        {/* ⚠️ v4.1253 — INSCRIPCIÓN A LA FERIA DE PROYECTOS. Es la sección
+                            del pago, y es INDEPENDIENTE de la postulación: muestra los
+                            dos estados por separado, el valor con sus cargos y el total
+                            que se cobra (lo calcula el servidor con la misma función
+                            que arma la sesión de Stripe), y «Pagar inscripción» cuando
+                            el club decida. Con el pago confirmado, el botón desaparece
+                            y quedan la transacción y el comprobante. */}
+                        {pago ? (
                             <PaymentCallout
                                 pago={pago}
-                                bloqueo={!data.canEdit ? data.reason : null}
+                                application={data.application || null}
+                                submission={data.submission}
+                                eventName={data.event?.title || data.edition?.name || ''}
+                                bloqueo={pago.canPay && !data.canEdit ? data.reason : null}
                                 onPay={handlePay}
+                                onReceipt={openReceipt}
                                 paying={paying}
-                                esperando={aguardandoPago}
+                                esperando={aguardandoPago && !!pago?.canPay}
                             />
-                        ) : !data.canEdit && data.reason ? (
+                        ) : null}
+                        {/* Un formulario cerrado por otro motivo (plazo, comité,
+                            reembolso, borrador) se dice aparte, con su candado. */}
+                        {!data.canEdit && data.reason && !(pago?.canPay) ? (
                             <div className="mb-6 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                                 <Lock size={17} className="mt-0.5 shrink-0" /> <span>{data.reason}</span>
                             </div>
@@ -505,69 +577,163 @@ const MiProyecto = () => {
 };
 
 /**
- * La banda de «Completar pago».
+ * «Inscripción a la Feria de Proyectos» (v4.1253; antes, la banda de
+ * «Completar pago» de v4.978).
  *
- * ⚠️ ES LA SALIDA DEL CALLEJÓN, y por eso es una banda y no un botón dentro de
- * la tarjeta de tres columnas: lo que hay que resolver tiene que estar donde
- * se mira primero, no a un lado. Dice TRES cosas y las tres hacen falta: qué
- * pasó, qué se pierde mientras no se resuelva (los formularios) y qué hacer.
+ * QUÉ CAMBIÓ Y POR QUÉ. Hasta v4.1252 esta banda sólo aparecía con el pago
+ * pendiente y decía «completa el pago para habilitar los formularios»: el pago
+ * era la puerta. Ahora la postulación no depende del pago, así que la sección
+ * está SIEMPRE y dice las dos cosas por separado: en qué va la postulación y
+ * en qué va el pago. Muestra el valor, los cargos y el total —el pedido exige
+ * que coincida con lo que se envía a Stripe, y por eso lo calcula el servidor
+ * con la misma función que arma la sesión—, la fecha límite sólo si existe,
+ * el historial de intentos y, pagada, la transacción y el comprobante.
+ *
+ * El VEREDICTO (`pago.canPay`, rótulos, frase) llega resuelto del servidor:
+ * esta pantalla no decide si se puede pagar.
  *
  * Va en el ámbito del MÓDULO, como todo componente de este archivo: declarada
- * dentro de la página sería un tipo nuevo en cada render y React desmontaría
- * el árbol entero a cada pulsación (la lección de v4.971).
+ * dentro de la página sería un tipo nuevo en cada render (v4.971).
  */
-const PaymentCallout = ({ pago, bloqueo, onPay, paying, esperando }: {
-    pago: PaymentState; bloqueo: string | null; onPay: () => void; paying: boolean; esperando: boolean;
+const PaymentCallout = ({ pago, application, submission, eventName, bloqueo, onPay, onReceipt, paying, esperando }: {
+    pago: PaymentState; application: ApplicationState | null; submission: PortalData['submission']; eventName: string;
+    bloqueo: string | null; onPay: () => void; onReceipt: () => void; paying: boolean; esperando: boolean;
 }) => {
-    // Sólo los intentos ya resueltos: uno «en curso» no es historia todavía, y
-    // enumerarlo haría que la lista cambiara de largo al recargar.
+    // Sólo los intentos ya resueltos: uno «en curso» no es historia todavía.
     const intentos = (pago.attempts || []).filter(a => a.status !== 'open');
-    return (
-        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-                <AlertCircle size={19} className="mt-0.5 shrink-0 text-amber-600" />
-                <div className="min-w-0 flex-1">
-                    <p className="text-[15px] font-bold text-amber-900">{pago.label}</p>
-                    {pago.detail && <p className="mt-0.5 text-sm text-amber-900">{pago.detail}</p>}
-                    {bloqueo && <p className="mt-1 text-sm text-amber-800">{bloqueo}</p>}
-                    {/* ⚠️ ACÁ VA EL VALOR PUBLICADO Y NADA MÁS (v4.981, decisión
-                        expresa del cliente). El desglose de las comisiones lo pinta
-                        la pasarela: repetirlo en esta banda convertía el aviso de
-                        «te falta pagar» en una factura. */}
-                    {pago.amountCop ? (
-                        <p className="mt-1 text-sm font-semibold text-amber-900">{fmtCop(pago.amountCop)} COP</p>
-                    ) : null}
+    const charge = pago.charge || null;
+    const moneda = charge?.currency || pago.priceMode || 'COP';
+    const confirmado = pago.paid;
+    const tono = confirmado ? 'emerald' : pago.state === 'failed' ? 'red' : pago.state === 'refunded' ? 'slate' : 'amber';
+    const tonoCls: Record<string, string> = {
+        emerald: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+        red: 'bg-red-50 text-red-700 ring-red-200',
+        slate: 'bg-slate-100 text-slate-700 ring-slate-200',
+        amber: 'bg-amber-50 text-amber-800 ring-amber-200',
+    };
+    const fila = (k: React.ReactNode, v: React.ReactNode) => (
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 py-2 text-sm last:border-0">
+            <span className="text-slate-500">{k}</span>
+            <span className="text-right font-semibold text-slate-800">{v}</span>
+        </div>
+    );
 
-                    {/* El detalle de cada intento se guarda para soporte y se
-                        resume acá SIN el mensaje del proveedor: es texto de un
-                        tercero, en inglés, y no le dice nada a quien paga. */}
-                    {intentos.length > 0 && (
-                        <details className="mt-2 text-sm text-amber-900">
-                            <summary className="cursor-pointer font-semibold">
-                                {intentos.length === 1 ? 'Ver el intento anterior' : `Ver los ${intentos.length} intentos anteriores`}
-                            </summary>
-                            <ul className="mt-2 space-y-1">
-                                {intentos.map(a => (
-                                    <li key={a.n} className="flex flex-wrap items-baseline gap-x-2">
-                                        <span className="font-semibold">Intento {a.n}</span>
-                                        <span>· {a.label}</span>
-                                        {a.reason && <span className="text-amber-800">· {a.reason}</span>}
-                                        {a.at && <span className="text-xs text-amber-700">{fmtDateTime(a.at)}</span>}
-                                    </li>
-                                ))}
-                            </ul>
-                        </details>
+    return (
+        <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900">
+                        <Wallet size={18} style={{ color: BLUE }} /> Inscripción a la Feria de Proyectos
+                    </h2>
+                    {eventName && <p className="mt-0.5 text-sm text-slate-500">{eventName}</p>}
+                </div>
+                <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ring-1 ${tonoCls[tono]}`}>
+                    {confirmado ? <CheckCircle2 size={13} /> : <Clock size={13} />}
+                    {confirmado ? 'Pago confirmado' : (pago.statusLabel ? `Pago ${pago.statusLabel.toLowerCase()}` : pago.label)}
+                </span>
+            </div>
+
+            {/* El mensaje: sin alarma. El proyecto está postulado aunque el
+                pago siga pendiente, y se dice con todas las letras. */}
+            {!confirmado && pago.detail && (
+                <p className={`mt-4 rounded-xl px-4 py-3 text-sm leading-relaxed ${pago.state === 'failed' ? 'bg-red-50 text-red-800' : 'bg-amber-50 text-amber-900'}`}>
+                    {pago.detail}
+                    {bloqueo && <span className="mt-1 block">{bloqueo}</span>}
+                </p>
+            )}
+
+            <div className="mt-4 grid gap-6 lg:grid-cols-2">
+                {/* La postulación */}
+                <div>
+                    <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">Postulación</p>
+                    {fila('Proyecto asociado', submission.projectName)}
+                    {fila('Código de postulación', application?.publicRef || submission.publicRef)}
+                    {fila('Club Rotario', submission.clubName)}
+                    {application?.responsible ? fila('Responsable', application.responsible) : null}
+                    {fila('Estado de postulación', application?.projectStateLabel || 'Postulado')}
+                    {application?.appliedAt ? fila('Fecha de postulación', fmtDateTime(application.appliedAt)) : null}
+                </div>
+
+                {/* El pago */}
+                <div>
+                    <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">Pago</p>
+                    {charge ? (
+                        <>
+                            {fila('Valor de inscripción', fmtMoney(charge.base, moneda))}
+                            {charge.lines.map(l => (
+                                <div key={l.key}>
+                                    {fila(<>{l.label}{l.percent !== null ? <span className="font-normal text-slate-400"> ({fmtPercent(l.percent)})</span> : null}</>, fmtMoney(l.amount, moneda))}
+                                </div>
+                            ))}
+                            {fila(confirmado ? 'Total pagado' : 'Total a pagar', <span style={{ color: BLUE }}>{fmtMoney(charge.total, moneda)}</span>)}
+                            {!confirmado && charge.approxUsd ? fila('Equivalente aproximado', `≈ $${charge.approxUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`) : null}
+                        </>
+                    ) : (
+                        fila('Valor de inscripción', fmtMoney(pago.priceMode === 'USD' ? pago.amountUsd : pago.amountCop, pago.priceMode))
+                    )}
+                    {fila('Estado del pago', pago.statusLabel || pago.label)}
+                    {pago.deadline && !confirmado ? fila('Fecha límite de pago', fmtDate(pago.deadline)) : null}
+                    {confirmado && pago.paidAt ? fila('Fecha de pago', fmtDateTime(pago.paidAt)) : null}
+                    {confirmado && pago.transaction?.reference ? fila('Transacción', <span className="font-mono text-xs">…{pago.transaction.reference}</span>) : null}
+                    {confirmado && pago.transaction?.method ? fila('Medio de pago', pago.transaction.method) : null}
+                    {pago.transaction?.refundedAmount ? fila('Reembolsado', fmtMoney(pago.transaction.refundedAmount, pago.transaction.currency)) : null}
+                    {!confirmado && charge && charge.lines.length > 0 && (
+                        <p className="mt-2 text-xs leading-relaxed text-slate-500">
+                            Los cargos cubren la comisión de la pasarela de pagos y el traslado interbancario a la
+                            organización. El total es exactamente lo que verás en la pasarela de Stripe.
+                        </p>
                     )}
                 </div>
-                <button
-                    onClick={onPay}
-                    disabled={paying}
-                    className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl px-5 py-3 text-[15px] font-bold text-white transition disabled:opacity-60"
-                    style={{ backgroundColor: BLUE }}
-                >
-                    {paying ? <><Loader2 size={16} className="animate-spin" /> Abriendo el pago…</> : <>{pago.actionLabel || 'Completar pago'} <ArrowRight size={16} /></>}
-                </button>
             </div>
+
+            {/* El historial de intentos, sin el mensaje del proveedor. */}
+            {intentos.length > 0 && (
+                <details className="mt-4 text-sm text-slate-700">
+                    <summary className="cursor-pointer font-semibold">Historial de pagos ({intentos.length})</summary>
+                    <ul className="mt-2 space-y-1">
+                        {intentos.map(a => (
+                            <li key={a.n} className="flex flex-wrap items-baseline gap-x-2">
+                                <span className="font-semibold">Intento {a.n}</span>
+                                <span>· {a.label}</span>
+                                {a.reason && <span className="text-slate-500">· {a.reason}</span>}
+                                {a.at && <span className="text-xs text-slate-400">{fmtDateTime(a.at)}</span>}
+                            </li>
+                        ))}
+                    </ul>
+                </details>
+            )}
+
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+                {/* ⚠️ El botón de pago existe SÓLO si el servidor dice que se
+                    puede pagar. Con el pago confirmado no hay botón activo. */}
+                {pago?.canPay ? (
+                    <button
+                        onClick={onPay}
+                        disabled={paying}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-[15px] font-bold text-white transition disabled:opacity-60"
+                        style={{ backgroundColor: BLUE }}
+                    >
+                        {paying ? <><Loader2 size={16} className="animate-spin" /> Abriendo el pago…</> : <>{pago.actionLabel || 'Pagar inscripción'} <ArrowRight size={16} /></>}
+                    </button>
+                ) : confirmado ? (
+                    <>
+                        <span className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-50 px-4 py-2.5 text-sm font-bold text-emerald-700">
+                            <CheckCircle2 size={16} /> Pago confirmado
+                        </span>
+                        <button onClick={onReceipt}
+                            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                            <Download size={15} /> Descargar comprobante
+                        </button>
+                        {pago.receiptUrl && (
+                            <a href={pago.receiptUrl} target="_blank" rel="noreferrer"
+                                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                                <Receipt size={15} /> Consultar la transacción en Stripe <ExternalLink size={13} />
+                            </a>
+                        )}
+                    </>
+                ) : null}
+            </div>
+
             {/* Se dice que se está comprobando en vez de dejar la pantalla
                 quieta: quien acaba de pagar y ve «Pendiente» concluye que su
                 dinero se perdió. */}
@@ -576,7 +742,111 @@ const PaymentCallout = ({ pago, bloqueo, onPay, paying, esperando }: {
                     <Loader2 size={13} className="animate-spin" /> Comprobando con la pasarela si tu pago ya se confirmó…
                 </p>
             )}
-        </div>
+        </section>
+    );
+};
+
+/**
+ * El borrador de la postulación (v4.1253): los datos del PROYECTO se
+ * terminan acá y se envían con «Enviar postulación». La identidad del club ya
+ * quedó registrada al crear la cuenta. Enviar no exige pagar.
+ */
+const DraftEditor = ({ token, application, focusAreas, onChange, onNotice }: {
+    token: string; application: ApplicationState; focusAreas: { key: string; label: string }[];
+    onChange: () => void; onNotice: (n: { kind: 'ok' | 'error'; text: string } | null) => void;
+}) => {
+    const [fields, setFields] = useState(() => ({
+        projectName: application.fields.projectName || '',
+        projectDescription: application.fields.projectDescription || '',
+        focusArea: application.fields.focusArea || '',
+        budgetUsd: application.fields.budgetUsd ? String(application.fields.budgetUsd) : '',
+    }));
+    const [errors, setErrors] = useState<Record<string, string>>({});
+    const [busy, setBusy] = useState<'save' | 'submit' | null>(null);
+    const set = (k: keyof typeof fields) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+        setFields(prev => ({ ...prev, [k]: e.target.value }));
+
+    const send = async (action: 'save' | 'submit') => {
+        if (busy) return;
+        setBusy(action);
+        setErrors({});
+        onNotice(null);
+        try {
+            const res = await fetch(`${API}/project-fair/portal/application${action === 'submit' ? '/submit' : ''}`, {
+                method: action === 'submit' ? 'POST' : 'PUT',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ ...fields, budgetUsd: fields.budgetUsd.replace(/[^\d.]/g, '') }),
+            });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                if (body?.fields) setErrors(body.fields);
+                throw new Error(body?.error || 'No pudimos guardar tu postulación.');
+            }
+            onNotice({
+                kind: 'ok',
+                text: action === 'submit'
+                    ? '¡Tu proyecto ha sido postulado exitosamente! Te enviamos la confirmación por correo. El pago de la inscripción queda pendiente y puedes hacerlo cuando estés listo.'
+                    : 'Guardamos tu borrador. Puedes volver cuando quieras para terminarlo.',
+            });
+            onChange();
+        } catch (e: any) {
+            onNotice({ kind: 'error', text: e?.message || 'No pudimos guardar tu postulación.' });
+        } finally {
+            setBusy(null);
+        }
+    };
+
+    const err = (k: string) => errors[k] ? <p className="mt-1 text-xs font-semibold text-red-600">{errors[k]}</p> : null;
+    return (
+        <section className="mb-6 rounded-2xl border-2 border-amber-200 bg-white p-5 sm:p-6">
+            <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900">
+                <PenLine size={18} className="text-amber-600" /> Tu postulación está en borrador
+            </h2>
+            <p className="mt-1 text-[15px] text-slate-600">
+                Completa los datos del proyecto y pulsa <strong>«Enviar postulación»</strong>. Enviarla no requiere pagar:
+                el pago de la inscripción se hace después, desde esta misma página.
+            </p>
+            <div className="mt-4 grid gap-4">
+                <label className="block text-sm font-semibold text-slate-700">Nombre del proyecto
+                    <input className={`${inputCls(false, !!errors.projectName)} mt-1 w-full`} value={fields.projectName} onChange={set('projectName')} maxLength={250} />
+                    {err('projectName')}
+                </label>
+                <label className="block text-sm font-semibold text-slate-700">Descripción del proyecto
+                    <textarea className={`${inputCls(false, !!errors.projectDescription)} mt-1 min-h-[120px] w-full`} value={fields.projectDescription} onChange={set('projectDescription')} maxLength={8000} />
+                    <span className="mt-1 block text-xs font-normal text-slate-400">Mínimo 40 caracteres para enviarla ({fields.projectDescription.trim().length}).</span>
+                    {err('projectDescription')}
+                </label>
+                <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="block text-sm font-semibold text-slate-700">Área de enfoque
+                        <select className={`${inputCls(false, !!errors.focusArea)} mt-1 w-full`} value={fields.focusArea} onChange={set('focusArea')}>
+                            <option value="">Selecciona…</option>
+                            {focusAreas.map(a => <option key={a.key} value={a.key}>{a.label}</option>)}
+                        </select>
+                        {err('focusArea')}
+                    </label>
+                    <label className="block text-sm font-semibold text-slate-700">Presupuesto total (USD)
+                        <input className={`${inputCls(false, !!errors.budgetUsd)} mt-1 w-full`} inputMode="decimal" value={fields.budgetUsd} onChange={set('budgetUsd')} />
+                        {err('budgetUsd')}
+                    </label>
+                </div>
+            </div>
+            {!application.acceptingApplications && (
+                <p className="mt-4 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                    La convocatoria no está recibiendo postulaciones en este momento. Tu borrador sigue guardado.
+                </p>
+            )}
+            <div className="mt-5 flex flex-wrap justify-end gap-3">
+                <button onClick={() => send('save')} disabled={!!busy}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 px-5 py-3 text-[15px] font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">
+                    {busy === 'save' ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Guardar borrador
+                </button>
+                <button onClick={() => send('submit')} disabled={!!busy || !application.acceptingApplications}
+                    className="inline-flex items-center gap-1.5 rounded-xl px-6 py-3 text-[15px] font-bold text-white disabled:opacity-60"
+                    style={{ backgroundColor: BLUE }}>
+                    {busy === 'submit' ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} Enviar postulación
+                </button>
+            </div>
+        </section>
     );
 };
 

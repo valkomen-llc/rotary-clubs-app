@@ -309,13 +309,16 @@ ok('y devuelve el veredicto ya resuelto', /payment: await paymentStateFor\(submi
 const rutas = (await import('fs')).readFileSync(new URL('../server/routes/project-fair.js', import.meta.url), 'utf8');
 ok('la ruta del panel exige sesión', /portal\/checkout', portal\.portalAuth/.test(rutas));
 
-// El bloqueo de los formularios NO se aflojó: es la regla que sigue en pie.
-// Y se comprueba en las DOS mitades, porque el criterio puede quedar intacto
-// mientras un manejador deja de consultarlo — y eso no lo ve nadie: el código
-// es válido, los tipos están bien y el formulario simplemente se guarda.
+// ⚠️ v4.1253 — EL BLOQUEO DE LOS FORMULARIOS DEJÓ DE SER FIJO, a pedido
+// expreso del cliente: «no bloquear proyectos por pagos pendientes». La regla
+// de v4.979 sigue existiendo, pero sólo rige si la Convocatoria la enciende
+// (`registration.requirePaymentForForms`). Se comprueba que la puerta pase por
+// el criterio puro —que es donde vive esa decisión— y no por un `status` suelto.
 const formularios = (await import('fs')).readFileSync(new URL('../server/controllers/projectFormsController.js', import.meta.url), 'utf8');
-ok('sin pago confirmado los formularios siguen bloqueados',
-    /submission\?\.status !== 'paid'/.test(formularios));
+ok('la puerta de los formularios es el criterio del ciclo de vida',
+    /const puerta = formAccessOf\(submission, cfg\);/.test(formularios));
+ok('y ya no hay un `status !== paid` suelto que encierre a nadie',
+    !/submission\?\.status !== 'paid'/.test(formularios));
 
 // Los manejadores que ESCRIBEN tienen que cortar con el veredicto, no sólo
 // calcularlo: guardar y enviar son los dos únicos caminos por los que un
@@ -337,20 +340,21 @@ for (const manejador of ['saveForm', 'submitForm']) {
 // formulario SE PODÍA ABRIR: `getForm` devolvía la plantilla entera con
 // `canEdit:false`. Se reportó como «cualquier usuario que no ha completado el
 // pago puede acceder a los formularios».
-ok('getForm corta sin pago confirmado', /if \(!formIsAvailable\(submission\)\) \{/.test(cuerpoDe('getForm')));
-ok('y responde 402 con el motivo',
-    /return res\.status\(402\)[\s\S]{0,220}needsPayment: true/.test(cuerpoDe('getForm')));
+ok('getForm corta cuando la puerta está cerrada', /if \(!puerta\.available\) \{/.test(cuerpoDe('getForm')));
+ok('y responde 402 sólo cuando lo que falta es el pago',
+    /puerta\.code === 'needs_payment' \? 402 : 409/.test(cuerpoDe('getForm')));
 
 // La puerta se decide con el criterio del PAGO, no con `canEdit`: un reembolso
 // o un plazo vencido dejan el formulario en solo lectura y el club sigue
 // pudiendo consultarlo. Cerrar ahí le quitaría el acceso a un trabajo hecho.
-ok('la puerta usa el criterio puro del pago',
-    /import \{ hasConfirmedPayment \} from '\.\.\/lib\/projectFairPayment\.js'/.test(formularios)
-    && /export const formIsAvailable = \(submission\) => hasConfirmedPayment\(submission\)/.test(formularios));
+const ciclo = (await import('fs')).readFileSync(new URL('../server/lib/projectFairLifecycle.js', import.meta.url), 'utf8');
+ok('cuando se exige el pago, la puerta usa el criterio puro del pago',
+    /import \{ hasConfirmedPayment \} from '\.\/projectFairPayment\.js'/.test(ciclo)
+    && /formsRequirePayment\(cfg\) && !hasConfirmedPayment\(row\)/.test(ciclo));
 
 // La tarjeta lo DECLARA, así que la pantalla no vuelve a decidirlo.
 ok('la tarjeta declara si el formulario se puede abrir',
-    /available: formIsAvailable\(submission\)/.test(formularios));
+    /available: formIsAvailable\(submission, cfg\)/.test(formularios));
 
 
 section('16. La pantalla ofrece la salida donde se mira primero');
@@ -444,6 +448,41 @@ eq('pero el cobro sigue siendo en pesos',
 const enUsd = fair.computePricing({ registration: { priceMode: 'USD', amountUsd: 62 } }, null);
 eq('un precio en dólares se sigue cobrando en dólares',
     fair.quoteCheckout(enUsd, { enabled: { project_fair: false } }).chargeCurrency, 'USD');
+
+section('19. v4.1253 — Postular no exige pagar, y el pago es aparte');
+
+// Un BORRADOR no se cobra: el pago se habilita al postular.
+nuevo({ workflowStatus: 'draft', metadata: { createdAs: 'draft' } });
+const r19 = await cobrar();
+eq('un borrador no abre ningún cobro', r19.blocked, 'draft');
+eq('y no llega nada a la pasarela', stripe.llamadas.create, 0);
+const v19 = await fair.paymentStateFor(db.submission());
+ok('el perfil no le ofrece pagar un borrador', !v19.canPay && v19.state === 'draft');
+
+// ⚠️ LO QUE EL PERFIL ANUNCIA ES LO QUE SE COBRA. El total de la sección de
+// inscripción y el de la sesión de Stripe salen de la MISMA función.
+nuevo({ workflowStatus: 'received' });
+const v19b = await fair.paymentStateFor(db.submission());
+ok('postulado y sin pagar: se le ofrece «Pagar inscripción»', v19b.canPay && v19b.actionLabel === 'Pagar inscripción');
+ok('el perfil trae el desglose del cobro', !!v19b.charge && v19b.charge.total > 0, JSON.stringify(v19b.charge));
+const r19b = await cobrar({ returnPath: '/mi-proyecto' });
+const sesion19 = stripe.sesiones.get(r19b.sessionId);
+eq('el total del perfil es EXACTAMENTE el de la sesión de Stripe (en su unidad mínima)',
+    sesion19?.amount_total, Math.round(Number(v19b.charge?.total) * 100));
+ok('el pago iniciado desde el perfil vuelve al perfil',
+    String(sesion19?.__payload?.success_url || '').includes('/mi-proyecto?submission='));
+
+// El pago NO mueve el estado del proyecto.
+nuevo({ workflowStatus: 'in_review' });
+const r19c = await cobrar();
+await fair.confirmPaidSession(pagar(r19c.sessionId));
+eq('pagar deja el pago confirmado', db.submission().status, 'paid');
+ok('y el proyecto sigue «En revisión», no «Pago confirmado»', db.submission().workflowStatus !== 'payment_confirmed');
+nuevo({ workflowStatus: 'in_review' });
+await cobrar();
+await rechazo('card_declined');
+eq('un rechazo deja el pago fallido', db.submission().status, 'failed');
+ok('y no borra ni mueve la postulación', db.submission().workflowStatus === 'in_review');
 
 console.log(`\n${fail ? '❌' : '✅'} test:fair:payment:path — ${pass} pasaron, ${fail} fallaron.`);
 process.exit(fail ? 1 : 0);

@@ -66,7 +66,15 @@ section('3. Qué se pinta en la tarjeta INSCRIPCIÓN');
 
 const pendiente = paymentViewOf({ status: 'pending_payment' });
 eq('pendiente: rótulo', pendiente.label, 'Pendiente de pago');
-eq('pendiente: acción', pendiente.actionLabel, 'Completar pago');
+// v4.1253 — El pago ya no condiciona la postulación, y la acción lo dice.
+eq('pendiente: acción', pendiente.actionLabel, 'Pagar inscripción');
+ok('pendiente: dice que la postulación sigue registrada, sin alarma',
+    pendiente.detail.includes('ya está postulado') && pendiente.detail.includes('permanece registrada')
+    && !/habilitar los formularios/.test(pendiente.detail));
+// Un BORRADOR no se cobra: el pago se habilita al postular.
+const borrador = paymentViewOf({ status: 'pending_payment' }, { applied: false });
+ok('borrador: no se ofrece pagar', !borrador.canPay && borrador.actionLabel === null && borrador.state === 'draft');
+ok('borrador: dice cuándo se habilita', borrador.detail.includes('envíes tu postulación'));
 ok('pendiente: se puede pagar', pendiente.canPay && !pendiente.paid);
 
 const rechazado = paymentViewOf({ status: 'failed' }, { lastFailure: { code: 'card_declined' } });
