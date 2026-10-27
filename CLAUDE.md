@@ -244,7 +244,7 @@ es **rotar la credencial en Neon**, no sólo borrar el archivo.
 | Campañas de Contribución — v4.807 (COMPLETO, F1-F5) | `docs/claude/campanas-de-contribucion.md` |
 | Un solo camino de cobro para los aportes — v4.808 | `docs/claude/un-solo-camino-de-cobro-para-los-aportes.md` |
 | La agenda del Distrito: traer eventos del ecosistema — v4.747 | `docs/claude/la-agenda-del-distrito-traer-eventos-del-ecosistema.md` |
-| Postulación de Proyectos — ediciones (v4.683) | `docs/claude/postulacion-de-proyectos.md` |
+| Postulación de Proyectos — ediciones (v4.683; fechas importantes editables: v4.1252) | `docs/claude/postulacion-de-proyectos.md` |
 | Formularios del proyecto (Gestión de Proyectos) — v4.788 | `docs/claude/formularios-del-proyecto.md` |
 | Plantillas IA (Generador de Diseños) — v4.729 | `docs/claude/plantillas-ia.md` |
 | Generador de Pendones | `docs/claude/generador-de-pendones.md` |

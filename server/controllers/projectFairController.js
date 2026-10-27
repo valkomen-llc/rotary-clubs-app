@@ -46,6 +46,7 @@ import { DEFAULT_MASTER_FORM, dropRetiredBudgetRows } from '../lib/projectFairMa
 import { DEFAULT_FDD_FORM } from '../lib/projectFairFddForm.js';
 import { seedDistrictClubs } from '../lib/rotaryClubs.js';
 
+console.log('[projectFairController] v4.1252.0 cargado — Fechas importantes del proceso: sin las dos ya cumplidas (Global Grants, 1-sep; CADRES, 15-oct) y editables desde Convocatoria. Una lista guardada sin el editor cede al valor por defecto.');
 console.log('[projectFairController] v4.982.0 cargado — Postulación de Proyectos POR EDICIONES: cada edición es un evento del calendario, con su convocatoria, sus postulaciones y sus reportes aislados. Wizard agrupado + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria. Pago con reintento: mientras no haya pago CONFIRMADO, el club siempre tiene una ruta segura para completarlo. El recargo de pasarela y traslado se SUMA al precio publicado y lo desglosa la pasarela, en partidas separadas. El precio se fija Y SE COBRA en pesos: la conversión a dólares la hace la pasarela con su tasa, no nosotros con la TRM');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
@@ -182,13 +183,16 @@ export const DEFAULT_CONFIG = {
             'Propuestas alineadas con una o varias de las áreas de enfoque de Rotary International',
         ],
         note: 'El proyecto debe estar alineado con al menos una de las siete áreas de enfoque de Rotary International y contar con el Formulario de Necesidades de la Comunidad adjunto.',
-        // v4.609 — Fechas clave del proceso, editables desde el panel. Cada
-        // entrada tiene la fecha (para ordenarla y darle formato) y el texto
-        // que ve el club.
+        // v4.609 — Fechas clave del proceso. Cada entrada tiene la fecha (para
+        // darle formato) y el texto que ve el club.
+        //
+        // v4.1252 — Se quitaron las dos ya cumplidas (1-sep-2026, Global
+        // Grants; 15-oct-2026, comunicación con los CADRES), a pedido del
+        // cliente. Y desde esta versión la lista SÍ se edita en el panel
+        // (Convocatoria → Fechas importantes del proceso): hasta acá el
+        // comentario lo prometía y no había editor.
         scheduleTitle: 'Fechas importantes del proceso',
         schedule: [
-            { date: '2026-09-01', label: 'Plazo para subir proyectos a Global Grants' },
-            { date: '2026-10-15', label: 'Comunicación de los clubes con los CADRES' },
             { date: '2026-11-09', label: 'Fecha máxima para enviar el formato', prefix: 'Hasta el' },
             { date: '2026-11-25', label: 'Fecha máxima para enviar el PowerPoint', prefix: 'Hasta el' },
             { date: '2027-01-10', label: 'Fecha máxima para enviar el video de presentación del proyecto', prefix: 'Hasta el' },
@@ -905,7 +909,7 @@ export const suspendProjectManagerRole = async (submission, { reason = null } = 
 const LEGACY_CADRE_LABEL = 'Comunicación de los clubes con los padres';
 const CADRE_LABEL = 'Comunicación de los clubes con los CADRES';
 
-const normalizeSavedConfig = (saved) => {
+export const normalizeSavedConfig = (saved) => {
     let out = saved;
 
     /*
@@ -930,6 +934,33 @@ const normalizeSavedConfig = (saved) => {
                 schedule: out.content.schedule.map(i => (i?.label === LEGACY_CADRE_LABEL ? { ...i, label: CADRE_LABEL } : i)),
             },
         };
+    }
+
+    // ⚠️ v4.1252 — Una lista de fechas guardada SIN el editor es una copia de
+    // la de por defecto, no una decisión de nadie: hasta esta versión no había
+    // cómo editarla, pero el panel manda la configuración entera al guardar y
+    // la copiaba en la fila. Sin descartarla, quitar una fecha del valor por
+    // defecto no la quitaría nunca del sitio. La que se guardó DESDE el editor
+    // lleva `scheduleEdited` y manda, aunque esté vacía.
+    if (isPlainObject(out?.content) && Array.isArray(out.content.schedule)) {
+        if (out.content.scheduleEdited !== true) {
+            const { schedule, ...restContent } = out.content;
+            out = { ...out, content: restContent };
+        } else {
+            out = {
+                ...out,
+                content: {
+                    ...out.content,
+                    schedule: out.content.schedule
+                        .filter(i => isPlainObject(i) && String(i.label || '').trim())
+                        .map(i => ({
+                            date: String(i.date || '').trim().slice(0, 10),
+                            label: String(i.label).trim().slice(0, 300),
+                            ...(String(i.prefix || '').trim() ? { prefix: String(i.prefix).trim().slice(0, 40) } : {}),
+                        })),
+                },
+            };
+        }
     }
 
     // Antes de v4.617 el formulario maestro era una plantilla genérica de

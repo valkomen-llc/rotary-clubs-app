@@ -42,6 +42,21 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1252.0',
+        title: 'Feria de Proyectos: fechas importantes al día y editables desde el panel 📅',
+        description: 'En Postular Proyecto se quitaron de «Fechas importantes del proceso» las dos fechas ya cumplidas: el 1 de septiembre de 2026 (plazo para subir proyectos a Global Grants) y el 15 de octubre de 2026 (comunicación de los clubes con los CADRES). Además, la lista ahora se edita desde Convocatoria → «Fechas importantes del proceso»: agregar, quitar, reordenar y cambiar fecha, prefijo («Hasta el») y texto, sin pedir un cambio de código.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'postulación', 'convocatoria', 'fechas'],
+        type: 'improvement',
+        impact: 'Media: la página de postulación ya no muestra fechas vencidas y el equipo las mantiene solo.',
+        changes: [
+            { type: 'removed', text: 'Las fechas del 1-sep-2026 (Global Grants) y del 15-oct-2026 (CADRES) de la lista por defecto.' },
+            { type: 'added', text: 'Editor de «Fechas importantes del proceso» en la pestaña Convocatoria, con título del bloque, fecha, prefijo y texto.' },
+            { type: 'fixed', text: 'Una lista guardada sin el editor (copia del valor por defecto que el panel guardaba al salvar otra cosa) ya no tapa los cambios del valor por defecto.' },
+            { type: 'added', text: 'npm run test:fair-schedule (10 comprobaciones).' },
+        ],
+    },
+    {
         version: '4.1251.0',
         title: 'Eventos: el pago de las inscripciones va por defecto por el PayPal de COLROTARIOS 💳➡️🅿️',
         description: 'Pedido del Distrito 4281: en las inscripciones a eventos aparecía Stripe y el medio de pago debía ser el PayPal de COLROTARIOS que ya está conectado en Métodos de pago. Ahora, cuando PayPal está activado allí, el asistente de inscripción lo trae preseleccionado («Recomendado») y la tarjeta queda como alternativa. Si la inscripción está en pesos, se avisa ANTES de salir cuánto se cobrará en dólares con la tasa del día. Al volver de PayPal el pago se captura y la inscripción se confirma con su código y su comprobante, igual que con tarjeta; si la persona cierra la pestaña, el webhook de PayPal termina el cobro. Si PayPal no está activado o no puede cobrar la moneda, todo sigue como antes, con tarjeta.',
