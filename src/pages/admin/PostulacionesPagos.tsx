@@ -55,7 +55,28 @@ const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('rota
  * Se lee de la URL y no del estado del componente porque hay peticiones dentro
  * de subcomponentes; pasarla por props obligaría a hilarla por media pantalla.
  */
-export const currentEventId = () => new URLSearchParams(window.location.search).get('evento') || '';
+// v4.1259 — Embebida en el Centro de Gestión del dashboard, la edición no
+// viaja en la URL de ESTA página (el dashboard tiene la suya): la fija quien
+// la monta. Sigue siendo de módulo por el mismo motivo de siempre — hay
+// peticiones en subcomponentes —, y se limpia al desmontar.
+let embeddedEventId: string | null = null;
+export const currentEventId = () => embeddedEventId || new URLSearchParams(window.location.search).get('evento') || '';
+
+/**
+ * El marco de la pantalla: la página completa con su `AdminLayout`, o nada
+ * cuando va embebida dentro de otra pantalla que ya lo trae (v4.1259). En el
+ * ámbito del MÓDULO: declarado dentro del componente sería un tipo nuevo en
+ * cada render y React remontaría la pantalla entera.
+ */
+const Frame = ({ embedded, children }: { embedded: boolean; children: React.ReactNode }) =>
+    embedded ? <>{children}</> : <AdminLayout>{children}</AdminLayout>;
+
+interface PostulacionesPagosProps {
+    /** v4.1259 — Montada dentro del Centro de Gestión del dashboard. */
+    embedded?: boolean;
+    /** La edición que se abre cuando va embebida. */
+    eventId?: string;
+}
 const withEvento = (url: string) => {
     const id = currentEventId();
     if (!id) return url;
@@ -217,18 +238,34 @@ const RankPanel = ({ title, rows, priceMode }: { title: string; rows: any[]; pri
 );
 
 // ════════════════════════════════════════════════════════════════════
-const PostulacionesPagos: React.FC = () => {
+const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = false, eventId: embedEventId }) => {
     type Tab = 'dashboard' | 'submissions' | 'forms' | 'alerts' | 'config';
     // ?tab=config permite enlazar directo a la configuración (y mantiene vivos
     // los enlaces a la antigua entrada de menú "Postulación de Proyectos").
     const [tab, setTab] = useState<Tab>(() => {
+        // Embebida, lo que se trabaja es el listado: el resto del módulo
+        // sigue en su página.
+        if (embedded) return 'submissions';
         const requested = new URLSearchParams(window.location.search).get('tab');
         return (['dashboard', 'submissions', 'forms', 'alerts', 'config'] as const).includes(requested as Tab)
             ? (requested as Tab) : 'dashboard';
     });
     // Edición abierta. Vive en la URL para que el enlace se pueda compartir y
     // el botón "atrás" del navegador devuelva al listado de versiones.
-    const [eventId] = useState<string>(() => currentEventId());
+    const [eventId] = useState<string>(() => {
+        if (embedded && embedEventId) embeddedEventId = embedEventId;
+        return currentEventId();
+    });
+    // Embebida, la edición se fija aquí y se suelta al desmontar. Se vuelve a
+    // fijar en el efecto (no sólo al iniciar el estado): en desarrollo React
+    // monta, desmonta y vuelve a montar, y sin esto la segunda vuelta pediría
+    // los datos sin edición. Va antes de los efectos que cargan datos, que
+    // corren en el orden en que se declaran.
+    useEffect(() => {
+        if (!embedded || !embedEventId) return undefined;
+        embeddedEventId = embedEventId;
+        return () => { embeddedEventId = null; };
+    }, [embedded, embedEventId]);
     const [access, setAccess] = useState<Access | null>(null);
     const [catalog, setCatalog] = useState<any>(null);
     const [tags, setTags] = useState<Tag[]>([]);
@@ -749,43 +786,45 @@ const PostulacionesPagos: React.FC = () => {
     // partir de ahí todo lo que se ve pertenece sólo a esa edición.
     if (!eventId) {
         return (
-            <AdminLayout>
+            <Frame embedded={embedded}>
                 <EdicionesList onOpen={id => {
                     const url = new URL(window.location.href);
                     url.searchParams.set('evento', id);
                     url.searchParams.delete('tab');
                     window.location.assign(url.toString());
                 }} />
-            </AdminLayout>
+            </Frame>
         );
     }
 
     if (loading) {
-        return <AdminLayout><div className="flex h-64 items-center justify-center text-slate-500"><Loader2 className="mr-2 animate-spin" size={20} /> Cargando módulo…</div></AdminLayout>;
+        return <Frame embedded={embedded}><div className="flex h-64 items-center justify-center text-slate-500"><Loader2 className="mr-2 animate-spin" size={20} /> Cargando módulo…</div></Frame>;
     }
     if (!access?.view) {
-        return <AdminLayout><div className="rounded-xl border border-amber-200 bg-amber-50 p-8 text-center text-amber-800">Tu perfil no tiene acceso a este módulo.</div></AdminLayout>;
+        return <Frame embedded={embedded}><div className="rounded-xl border border-amber-200 bg-amber-50 p-8 text-center text-amber-800">Tu perfil no tiene acceso a este módulo.</div></Frame>;
     }
 
     const k = overview?.kpis || {};
 
     return (
-        <AdminLayout>
+        <Frame embedded={embedded}>
             {/* Mismo ancho que el listado de ediciones y que el módulo de
                 Eventos: el panel ya pone su propio margen. Limitarlo aquí hacía
                 que entrar a una edición se viera como un salto de ancho. */}
             <div className="space-y-5 pb-16">
                 <header className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                        <button
-                            onClick={() => {
-                                const url = new URL(window.location.href);
-                                url.searchParams.delete('evento'); url.searchParams.delete('tab');
-                                window.location.assign(url.toString());
-                            }}
-                            className="mb-1 inline-flex items-center gap-1.5 text-[13px] font-semibold text-slate-500 transition hover:text-slate-800"
-                        ><ArrowLeft size={14} /> Todas las ediciones</button>
-                        <h1 className="text-2xl font-bold text-slate-900">Postulación de Proyectos</h1>
+                        {!embedded && (
+                            <button
+                                onClick={() => {
+                                    const url = new URL(window.location.href);
+                                    url.searchParams.delete('evento'); url.searchParams.delete('tab');
+                                    window.location.assign(url.toString());
+                                }}
+                                className="mb-1 inline-flex items-center gap-1.5 text-[13px] font-semibold text-slate-500 transition hover:text-slate-800"
+                            ><ArrowLeft size={14} /> Todas las ediciones</button>
+                        )}
+                        {!embedded && <h1 className="text-2xl font-bold text-slate-900">Postulación de Proyectos</h1>}
                         <p className="text-sm text-slate-500">
                             {catalog?.edition?.name} · {catalog?.edition?.city}
                             <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
@@ -815,7 +854,7 @@ const PostulacionesPagos: React.FC = () => {
                     </div>
                 )}
 
-                <div className="flex gap-1 overflow-x-auto border-b border-slate-200">
+                {!embedded && <div className="flex gap-1 overflow-x-auto border-b border-slate-200">
                     {/* «Reportes» desapareció en v4.689: mostraba los mismos
                         indicadores y gráficas que el Dashboard con otros
                         nombres. Todo vive ahora en el Centro de Inteligencia. */}
@@ -832,7 +871,7 @@ const PostulacionesPagos: React.FC = () => {
                             )}
                         </button>
                     ))}
-                </div>
+                </div>}
 
                 {/* ── Dashboard ─────────────────────────────────────── */}
                 {/* ══ CENTRO DE INTELIGENCIA DE LA EDICIÓN (v4.689) ══════
@@ -1800,7 +1839,7 @@ const PostulacionesPagos: React.FC = () => {
                     onChanged={() => { loadRows(pagination.page); loadOverview(); }}
                 />
             )}
-        </AdminLayout>
+        </Frame>
     );
 };
 

@@ -15,6 +15,18 @@ import { useAuth } from '../../hooks/useAuth';
 import { useSiteAccess } from '../../hooks/useSiteAccess';
 import { useClub } from '../../contexts/ClubContext';
 import { formatMoney, formatNumber } from '../../lib/locale';
+// v4.1259 — Centro de Gestión del Evento: proyectos postulados e inscripciones
+// dentro del dashboard, con los MISMOS módulos de siempre.
+import {
+    ManagementCards, ManagementPanelView, ManagementTabs, useManagementCenter,
+    MANAGEMENT_PANELS, type ManagementPanel,
+} from '../../components/admin/feria/EventManagementCenter';
+
+/** La pestaña del Centro de Gestión vive en la URL (`?panel=`): «atrás» funciona y se puede compartir. */
+const panelFromUrl = (): ManagementPanel => {
+    const raw = new URLSearchParams(window.location.search).get('panel') as ManagementPanel | null;
+    return raw && MANAGEMENT_PANELS.includes(raw) ? raw : 'resumen';
+};
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -171,6 +183,10 @@ export const ProjectFairDashboard: React.FC = () => {
     const [selectedCurrency, setSelectedCurrency] = useState<'COP' | 'USD'>('COP');
 
     const [data, setData] = useState<DashboardData | null>(null);
+    // v4.1259 — Centro de Gestión. `refreshKey` vuelve a pedir los
+    // indicadores de las tarjetas cada vez que se regresa al Resumen.
+    const [panel, setPanelState] = useState<ManagementPanel>(panelFromUrl);
+    const [refreshKey, setRefreshKey] = useState(0);
     const [loading, setLoading] = useState<boolean>(true);
     const [refreshing, setRefreshing] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
@@ -212,6 +228,28 @@ export const ProjectFairDashboard: React.FC = () => {
     useEffect(() => {
         fetchDashboard();
     }, [token, periodKey]);
+
+    // La edición del dashboard es la que reporta el servidor; mientras carga,
+    // la de Valledupar 2027 (la misma que ya pide `fetchDashboard`).
+    const editionEventId = data?.event?.id || '205348ec-83fd-475d-931c-9cdc3fdf8f62';
+    const management = useManagementCenter(editionEventId, refreshKey);
+
+    const setPanel = (next: ManagementPanel) => {
+        if (next === panel) return;
+        const url = new URL(window.location.href);
+        if (next === 'resumen') url.searchParams.delete('panel'); else url.searchParams.set('panel', next);
+        window.history.pushState(null, '', url.toString());
+        setPanelState(next);
+        // Al volver al Resumen se revalidan las cifras: lo que se hizo en un
+        // módulo tiene que verse sin recargar la página.
+        if (next === 'resumen') { setRefreshKey(k => k + 1); fetchDashboard(true); }
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+    useEffect(() => {
+        const onPop = () => setPanelState(panelFromUrl());
+        window.addEventListener('popstate', onPop);
+        return () => window.removeEventListener('popstate', onPop);
+    }, []);
 
     const handleApplyCustomPeriod = () => {
         if (!customFrom || !customTo) return;
@@ -331,6 +369,28 @@ export const ProjectFairDashboard: React.FC = () => {
                 </div>
             </div>
 
+            {/* ============================================================ */}
+            {/* v4.1259 — CENTRO DE GESTIÓN DEL EVENTO (nivel 2)             */}
+            {/* Lo operativo primero: las pestañas abren los módulos aquí    */}
+            {/* mismo; el Resumen conserva las tarjetas, los indicadores y   */}
+            {/* los gráficos de siempre.                                     */}
+            {/* ============================================================ */}
+            <section className="space-y-4" aria-label="Centro de Gestión del Evento">
+                <div>
+                    <h2 className="text-lg font-bold text-slate-900">Centro de Gestión del Evento</h2>
+                    <p className="text-sm text-slate-500">Proyectos postulados e inscripciones al evento son dos procesos distintos: cada uno con sus datos, sus estados y sus pagos.</p>
+                </div>
+                <ManagementTabs panel={panel} onPanel={setPanel}
+                    projects={management.projects} registrations={management.registrations} />
+                {panel === 'resumen' ? (
+                    <ManagementCards projects={management.projects} registrations={management.registrations}
+                        onOpen={setPanel} onRetry={management.reload} />
+                ) : (
+                    <ManagementPanelView panel={panel} eventId={editionEventId} registrations={management.registrations} />
+                )}
+            </section>
+
+            {panel === 'resumen' && (<>
             {/* ============================================================ */}
             {/* ÁREA 2: FILTRO GLOBAL DE PERÍODOS Y SINCRONIZACIÓN           */}
             {/* ============================================================ */}
@@ -1180,6 +1240,7 @@ export const ProjectFairDashboard: React.FC = () => {
                     </div>
                 </div>
             </div>
+            </>)}
         </div>
     );
 };
