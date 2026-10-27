@@ -48,6 +48,11 @@ router.get('/portal/me', portal.portalAuth, portal.getPortalData);
 // del token, nunca del cuerpo: si viniera del cliente, cualquiera con este
 // endpoint abriría un cobro contra la inscripción de otro club.
 router.post('/portal/checkout', portal.portalAuth, express.json(), portal.startCheckout);
+// v4.1253 — La postulación desde el perfil: terminar y enviar un borrador, y
+// el comprobante del pago. La postulación sale del token, nunca del cuerpo.
+router.put('/portal/application', portal.portalAuth, express.json({ limit: '256kb' }), portal.saveApplication);
+router.post('/portal/application/submit', portal.portalAuth, express.json({ limit: '256kb' }), portal.submitApplication);
+router.get('/portal/receipt', portal.portalAuth, portal.getReceipt);
 // Rutas heredadas: son el formulario 'master' de las genéricas de abajo.
 router.put('/portal/form', portal.portalAuth, express.json({ limit: '2mb' }), portal.saveForm);
 router.post('/portal/form/submit', portal.portalAuth, express.json({ limit: '2mb' }), portal.submitForm);
@@ -102,6 +107,9 @@ router.post('/admin/postulaciones/bulk-restore', authMiddleware, fairEdit, json,
 router.post('/admin/postulaciones/bulk-delete', authMiddleware, fairManage, json, fair.bulkDelete);
 router.post('/admin/postulaciones/bulk-status', authMiddleware, fairEdit, json, fair.bulkStatus);
 router.post('/admin/postulaciones/bulk-tag', authMiddleware, fairEdit, json, fair.bulkTag);
+// v4.1253 — Recordatorios de pago a quien ya postuló y no ha pagado. Sin
+// `confirm: true` sólo devuelve el plan. Literal ANTES de las paramétricas.
+router.post('/admin/postulaciones/payment-reminders', authMiddleware, fairEdit, json, fair.sendPaymentReminders);
 
 // v4.1026 — Resolver el traslado de lo cobrado. LECTURA: devuelve qué
 // inscripciones se pueden trasladar y cuáles no, con su motivo y su salida. El

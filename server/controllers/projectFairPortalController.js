@@ -18,15 +18,23 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import Stripe from 'stripe';
 import db from '../lib/db.js';
-import { ensureTables, logEvent, readConfigForAdmin, readConfigForSubmission, readEditionEvent, sendFairEmail, APPLICANT_ROLES, grantProjectManagerRole, beginCheckout, syncPaymentState, paymentStateFor } from './projectFairController.js';
+import {
+    ensureTables, logEvent, readConfigForAdmin, readConfigForSubmission, readEditionEvent, sendFairEmail, APPLICANT_ROLES,
+    grantProjectManagerRole, beginCheckout, syncPaymentState, paymentStateFor,
+    validateSubmission, applicationViewOf, notifyApplication, buildReceiptHtml,
+} from './projectFairController.js';
+// v4.1253 — Lo de arriba desde `validateSubmission`: postular desde el perfil
+// un borrador, y el comprobante del pago.
+import { isApplied } from '../lib/projectFairLifecycle.js';
 import { completionOf } from '../lib/projectFairMasterForm.js';
 import { SHORT_SESSION_TTL } from '../middleware/auth.js';
 import { resolveForm } from '../lib/projectFormsRegistry.js';
 import {
-    editability, listPortalForms, seedAnswersFor,
+    editability, listPortalForms, seedAnswersFor, formIsAvailable,
     saveForm as saveProjectForm, submitForm as submitProjectForm,
 } from './projectFormsController.js';
 
+console.log('[projectFairPortalController] v4.1253.0 cargado — El perfil del club muestra la postulación y el pago POR SEPARADO: un borrador se termina y se envía desde acá, y la inscripción se paga cuando el club quiera, sin que eso condicione su postulación.');
 console.log('[projectFairPortalController] v4.978.0 cargado — Panel del club: varios formularios por proyecto; el puente con la plataforma sólo retira la sesión del panel si es del mismo correo; el pago pendiente se completa o se reintenta desde acá');
 
 // La edición de un formulario la decide un solo lugar, compartido por todos
@@ -59,6 +67,13 @@ export const portalAuth = async (req, res, next) => {
         res.status(401).json({ error: 'Tu sesión expiró. Vuelve a ingresar.' });
     }
 };
+
+/**
+ * Token del perfil para quien ACABA de crear su cuenta con su contraseña al
+ * postular (v4.1253): así «Ir a mi perfil» lo deja adentro sin pedirle la
+ * contraseña que escribió hace un segundo. Es el mismo token del ingreso.
+ */
+export const issuePortalToken = (account) => signToken(account);
 
 // ── Cuenta ───────────────────────────────────────────────────────────
 export const PASSWORD_MIN = 8;
@@ -434,8 +449,11 @@ export const getPortalData = async (req, res) => {
         const cfg = await readConfigForSubmission(submission.eventId || null);
 
         let form = await loadForm(submission.id);
-        if (!form && submission.status === 'paid') {
-            // Primera entrada tras el pago: se crea el borrador precargado.
+        // v4.1253 — El borrador de la Formulación se siembra cuando el
+        // formulario se puede abrir (postulación enviada y, sólo si la
+        // Convocatoria lo exige, pago confirmado), no al confirmarse el pago.
+        if (!form && formIsAvailable(submission, cfg)) {
+            // Primera entrada con el formulario disponible: se crea precargado.
             const answers = seedAnswers(submission, cfg);
             const created = await db.query(`
                 INSERT INTO "ProjectFairMasterForm" ("submissionId", answers, "completionPct", "lastEditedAt")
@@ -476,6 +494,23 @@ export const getPortalData = async (req, res) => {
                 amountUsd: submission.amountUsd === null ? null : Number(submission.amountUsd),
                 receiptUrl: submission.receiptUrl,
                 workflowStatus: submission.workflowStatus,
+            },
+            // v4.1253 — La POSTULACIÓN, con su estado propio y separado del
+            // pago, y lo que el perfil necesita para mostrarla (o para
+            // terminarla, si todavía es un borrador).
+            application: {
+                ...applicationViewOf(submission),
+                publicRef: submission.publicRef,
+                responsible: [submission.firstName, submission.lastName].filter(Boolean).join(' '),
+                createdAt: submission.createdAt,
+                fields: {
+                    projectName: submission.projectName || '',
+                    projectDescription: submission.projectDescription || '',
+                    focusArea: submission.focusArea || '',
+                    focusAreaLabel: submission.focusAreaLabel || null,
+                    budgetUsd: submission.budgetUsd === null || submission.budgetUsd === undefined ? null : Number(submission.budgetUsd),
+                },
+                acceptingApplications: cfg.enabled !== false,
             },
             // El veredicto del pago llega RESUELTO: estado, frase, si se puede
             // pagar, con qué rótulo y el historial de intentos. La pantalla lo
@@ -527,9 +562,12 @@ export const getPortalData = async (req, res) => {
  */
 export const startCheckout = async (req, res) => {
     try {
+        const cfg = await readConfigForAdmin().catch(() => null);
         const result = await beginCheckout(req.portal.submissionId, {
             req,
             returnUrl: req.body?.returnUrl,
+            // v4.1253 — El pago iniciado desde el perfil vuelve al perfil.
+            returnPath: cfg?.portal?.path || '/mi-proyecto',
             actor: { id: req.portal.sub, name: req.portal.email, role: 'club' },
         });
 
@@ -544,6 +582,132 @@ export const startCheckout = async (req, res) => {
     } catch (error) {
         console.error('[project-fair-portal] startCheckout:', error);
         res.status(500).json({ error: 'No pudimos iniciar el pago. Inténtalo de nuevo en un momento.' });
+    }
+};
+
+// ── La postulación desde el perfil (v4.1253) ─────────────────────────
+const loadOwnSubmission = async (req) => {
+    await ensureTables();
+    // La postulación sale del TOKEN, nunca del cuerpo: cada club sólo toca
+    // la suya.
+    const { rows } = await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = $1 LIMIT 1', [req.portal.submissionId]);
+    return rows[0] || null;
+};
+
+/**
+ * Los campos del PROYECTO que un borrador puede editar desde el perfil. La
+ * identidad (nombre, documento, club, correo) quedó validada al crear la
+ * cuenta y no se cambia por acá.
+ */
+const draftFieldsFrom = (body, submission) => ({
+    projectName: body?.projectName ?? submission.projectName,
+    projectDescription: body?.projectDescription ?? submission.projectDescription,
+    focusArea: body?.focusArea ?? submission.focusArea,
+    budgetUsd: body?.budgetUsd ?? submission.budgetUsd,
+});
+
+const asValidationBody = (submission, fields) => ({
+    ...submission,
+    // La fila guarda la clave del catálogo; el validador acepta clave o rótulo.
+    clubRole: submission.clubRole, idType: submission.idType,
+    ...fields,
+});
+
+// PUT /portal/application — guarda el borrador («En formulación»).
+export const saveApplication = async (req, res) => {
+    try {
+        const submission = await loadOwnSubmission(req);
+        if (!submission) return res.status(404).json({ error: 'No encontramos tu postulación.' });
+        if (isApplied(submission)) return res.status(409).json({ error: 'Tu proyecto ya está postulado. Los cambios se hacen en los formularios del proyecto.' });
+
+        const cfg = await readConfigForSubmission(submission.eventId || null);
+        const { errors, data } = validateSubmission(asValidationBody(submission, draftFieldsFrom(req.body, submission)), cfg, { draft: true, skipPassword: true });
+        const projectErrors = Object.fromEntries(Object.entries(errors).filter(([k]) => ['projectName', 'projectDescription', 'focusArea', 'budgetUsd'].includes(k)));
+        if (Object.keys(projectErrors).length) return res.status(400).json({ error: 'Revisa los campos marcados.', fields: projectErrors });
+
+        const { rows } = await db.query(`
+            UPDATE "ProjectFairSubmission"
+            SET "projectName" = $2, "projectDescription" = $3, "focusArea" = $4, "focusAreaLabel" = $5, "budgetUsd" = $6,
+                "workflowStatus" = 'formulating', "updatedAt" = NOW()
+            WHERE id = $1 AND COALESCE("workflowStatus",'received') IN ('draft','formulating')
+            RETURNING *
+        `, [submission.id, data.projectName, data.projectDescription || null, data.focusArea, data.focusAreaLabel, data.budgetUsd]);
+        if (!rows[0]) return res.status(409).json({ error: 'Tu proyecto ya está postulado.' });
+        res.json({ success: true, application: applicationViewOf(rows[0]) });
+    } catch (error) {
+        console.error('[project-fair-portal] saveApplication:', error);
+        res.status(500).json({ error: 'No pudimos guardar tu borrador.' });
+    }
+};
+
+/**
+ * POST /portal/application/submit — envía formalmente la postulación de un
+ * borrador. Valida TODO lo obligatorio, sella la fecha de postulación, deja
+ * el proyecto «Postulado» con el pago «Pendiente» y manda la confirmación.
+ *
+ * ⚠️ ES UN UPDATE CONDICIONAL (`workflowStatus IN ('draft','formulating')`):
+ * un doble clic o dos pestañas no postulan dos veces ni mandan dos correos —
+ * la segunda petición no encuentra la fila en borrador y responde lo que ya
+ * pasó. Tampoco crea una fila nueva: es la MISMA postulación, con su código.
+ */
+export const submitApplication = async (req, res) => {
+    try {
+        const submission = await loadOwnSubmission(req);
+        if (!submission) return res.status(404).json({ error: 'No encontramos tu postulación.' });
+        if (isApplied(submission)) return res.json({ success: true, alreadyApplied: true, application: applicationViewOf(submission) });
+
+        const cfg = await readConfigForSubmission(submission.eventId || null);
+        if (cfg.enabled === false) return res.status(403).json({ error: 'La convocatoria no está recibiendo postulaciones en este momento.' });
+
+        const { errors, data } = validateSubmission(asValidationBody(submission, draftFieldsFrom(req.body, submission)), cfg, { skipPassword: true });
+        if (Object.keys(errors).length) return res.status(400).json({ error: 'Completa los campos marcados para enviar tu postulación.', fields: errors });
+
+        const { rows } = await db.query(`
+            UPDATE "ProjectFairSubmission"
+            SET "projectName" = $2, "projectDescription" = $3, "focusArea" = $4, "focusAreaLabel" = $5, "budgetUsd" = $6,
+                "workflowStatus" = 'received', "appliedAt" = NOW(),
+                metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('submittedAt', NOW()::text),
+                "updatedAt" = NOW()
+            WHERE id = $1 AND COALESCE("workflowStatus",'received') IN ('draft','formulating')
+            RETURNING *
+        `, [submission.id, data.projectName, data.projectDescription, data.focusArea, data.focusAreaLabel, data.budgetUsd]);
+        const applied = rows[0];
+        if (!applied) {
+            const again = await loadOwnSubmission(req);
+            return res.json({ success: true, alreadyApplied: true, application: applicationViewOf(again) });
+        }
+
+        await logEvent(applied.id, {
+            type: 'form_submitted',
+            title: 'Proyecto postulado',
+            detail: `${applied.projectName} — ${applied.clubName} (${applied.district}). Enviado desde el perfil; pago de inscripción pendiente.`,
+            actor: { name: req.portal.email, role: 'club' },
+            metadata: { publicRef: applied.publicRef, from: 'portal' },
+        });
+        await notifyApplication(applied, cfg);
+        res.json({ success: true, application: applicationViewOf(applied), publicRef: applied.publicRef });
+    } catch (error) {
+        console.error('[project-fair-portal] submitApplication:', error);
+        res.status(500).json({ error: 'No pudimos enviar tu postulación.' });
+    }
+};
+
+/**
+ * GET /portal/receipt — el comprobante del pago, para verlo o imprimirlo
+ * (v4.1253). Es la MISMA plantilla del correo que se manda al confirmarse el
+ * pago: un segundo formato del comprobante diría cosas distintas del mismo
+ * cobro. Sólo existe con el pago confirmado.
+ */
+export const getReceipt = async (req, res) => {
+    try {
+        const submission = await loadOwnSubmission(req);
+        if (!submission) return res.status(404).json({ error: 'No encontramos tu inscripción.' });
+        if (submission.status !== 'paid') return res.status(409).json({ error: 'El comprobante está disponible cuando el pago queda confirmado.' });
+        const cfg = await readConfigForSubmission(submission.eventId || null);
+        res.json({ html: buildReceiptHtml(submission, cfg), publicRef: submission.publicRef, stripeReceiptUrl: submission.receiptUrl || null });
+    } catch (error) {
+        console.error('[project-fair-portal] getReceipt:', error);
+        res.status(500).json({ error: 'No pudimos generar tu comprobante.' });
     }
 };
 

@@ -403,7 +403,7 @@ intento anterior por pago, 5.
 - **ANTE UN ESTADO QUE NO RECONOCEMOS, SE OFRECE PAGAR.** Equivocarse hacia
   ese lado deja un botón de más; hacia el otro, una inscripción encerrada, que
   es justamente el defecto que esta versión corrige.
-- **EL BLOQUEO DE LOS FORMULARIOS NO SE AFLOJÓ.** `editability` sigue exigiendo
+- **(⚠️ SUPERSEDIDA en v4.1253: el bloqueo dejó de ser fijo; ver «Postular NO exige pagar».) EL BLOQUEO DE LOS FORMULARIOS NO SE AFLOJÓ.** `editability` sigue exigiendo
   `status === 'paid'` y una prueba lo fija: lo que cambió es que ahora hay cómo
   resolverlo, no qué se exige. Y se comprueba en las DOS mitades —el criterio y
   los manejadores que ESCRIBEN—, porque el criterio puede quedar intacto
@@ -663,3 +663,105 @@ lista sin un cambio de código.
   sitio. Lo editado en el panel lleva `content.scheduleEdited: true` y manda,
   incluida la lista vacía.
 - Pruebas: `npm run test:fair-schedule`.
+
+### Postular NO exige pagar: postulación y pago desacoplados — v4.1253
+
+Pedido del cliente (XII Feria, Valledupar 2027), con las capturas del paso
+«Confirmar y continuar al pago» y de la pantalla de Stripe: *«los clubes deben
+poder completar su registro y postular sus proyectos sin pagar inmediatamente;
+el pago debe seguir disponible, pero independiente»*.
+
+**Auditoría (cómo estaba hasta v4.1252).** La fila y la cuenta del club ya se
+creaban ANTES de pagar (`createSubmission`, `status = 'pending_payment'`), así
+que el dato no se perdía. Lo que ataba la postulación al pago era:
+
+1. **El wizard**: el último botón decía «Confirmar y continuar al pago» y la
+   única salida era la pantalla de Stripe; no había confirmación de que el
+   proyecto quedó postulado, ni correo (el único era el comprobante de pago).
+2. **El estado del proyecto llevaba el del pago**: `workflowStatus` aceptaba
+   `pending_payment`, `payment_confirmed`, `payment_failed`, `refunded`, y los
+   webhooks lo escribían (pisando «En revisión», por ejemplo).
+3. **Los formularios del proyecto** (Formulación, FDD) estaban cerrados sin
+   pago confirmado (`editability`, `formIsAvailable`, v4.979), y el borrador de
+   la Formulación sólo se sembraba al confirmarse el pago.
+4. **El perfil** decía «Completa el pago para habilitar los formularios».
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/projectFairLifecycle.js` | El CRITERIO. **Puro**: estados del proyecto, borrador vs. postulado, qué es deuda (`owesRegistration`), estado del pago para leer, puerta de los formularios (`formAccessOf`), fecha límite de pago y `reminderVerdict`. Exporta también `SQL_APPLIED` / `SQL_DRAFT` / `SQL_OWES`, ARMADOS desde las mismas listas |
+| `createSubmission` (`mode: 'apply' \| 'draft'`) · `applicationViewOf` · `notifyApplication` · `priceSubmission` · `migrateDecoupledStates` | En `projectFairController.js` |
+| `PUT /portal/application` · `POST /portal/application/submit` · `GET /portal/receipt` | Terminar y enviar un borrador desde el perfil; comprobante imprimible |
+| `POST /admin/postulaciones/payment-reminders?evento=` | Recordatorios de pago (sin `confirm: true` devuelve el PLAN) |
+| `VIEW_FILTERS` / `?vista=` | Vistas de participación y recaudo del listado |
+| `ProjectFairSubmission."appliedAt"` | Cuándo se ENVIÓ la postulación (un borrador no la tiene) |
+
+Pruebas: `npm run test:fair:lifecycle` (78: criterio + invariantes leídas de
+los archivos) y la sección 19 de `npm run test:fair:payment:path` (borrador no
+se cobra; el total del perfil es EXACTAMENTE el de la sesión de Stripe; el pago
+no mueve el estado del proyecto). Verificado además contra un Postgres real:
+migración idempotente, vistas, indicadores, doble envío del borrador y plan de
+recordatorios.
+
+**Reglas durables:**
+
+- **⚠️ DOS ESTADOS INDEPENDIENTES.** `workflowStatus` es el PROYECTO
+  (Borrador, En formulación, Postulado, En revisión, Requiere ajustes,
+  Aprobado, Rechazado, Retirado; más Enviado a Rotary Grants y Cerrado);
+  `status` es el PAGO (lo escribe la pasarela). «Postulado · Pago pendiente» y
+  «En revisión · Pago confirmado» son combinaciones válidas. **Ningún webhook
+  ni la confirmación manual escriben en `workflowStatus`**, salvo normalizar un
+  valor heredado a `received`. Lo fija `test:fair:lifecycle`.
+- **⚠️ LOS VALORES DE PAGO EN `workflowStatus` SON HEREDADOS** y se migran a
+  «Postulado» (`migrateDecoupledStates`, en cada arranque, idempotente, con un
+  evento `state_migrated` por fila). No toca `status`, `paidAt` ni nada de
+  Stripe. Toda fila heredada es una postulación ENVIADA (el wizard sólo creaba
+  la fila al confirmar el formulario completo), así que no se inventa nada.
+  Un «Borrador» anterior a v4.1253 también pasa a Postulado: lo puso un
+  administrador a mano; los borradores reales nacen con
+  `metadata.createdAs = 'draft'`. Los cuatro heredados siguen en
+  `WORKFLOW_STATES` con `legacy: true` (se LEEN), pero no se ofrecen al elegir.
+- **⚠️ UN BORRADOR NO ES DEUDA NI SE COBRA.** `beginCheckout` lo bloquea
+  (`blocked: 'draft'`) y `paymentViewOf(…, { applied: false })` no ofrece
+  pagar. El «pendiente de recaudo» cuenta SÓLO obligaciones válidas
+  (`SQL_OWES`): postuladas, no retiradas ni rechazadas, no archivadas, sin
+  pagar. Usar `status = 'pending_payment'` a secas contaría borradores.
+- **⚠️ ESTO SUPERSEDE EL BLOQUEO FIJO DE v4.979.** Los formularios del proyecto
+  se abren con la postulación ENVIADA, pague o no. Exigir el pago para esa
+  etapa es el interruptor `registration.requirePaymentForForms` de la
+  Convocatoria (apagado; sólo `true` lo enciende) y entonces rige el MISMO
+  `hasConfirmedPayment` vía `formAccessOf`. `getForm` responde 402 sólo si lo
+  que falta es el pago, 409 si falta enviar la postulación.
+- **⚠️ Y SUPERSEDE v4.981 EN EL PERFIL.** El pedido exige mostrar valor,
+  cargos y total en el perfil y que coincida con Stripe. Por eso
+  `priceSubmission` es la ÚNICA función que calcula el cobro: la usan
+  `beginCheckout` (la sesión) y `paymentStateFor` (el perfil). Pagado, el
+  perfil muestra lo COBRADO (`amountReceived` + el recargo guardado con el
+  cobro), no un recálculo con tarifas de hoy.
+- **La puerta de los formularios lee la convocatoria de SU edición**
+  (`portalContext` → `readConfigForSubmission`, regla de v4.691): con el pago
+  exigible por edición, leer la abierta aplicaría la regla de otra feria.
+- **El pago iniciado desde el perfil vuelve al perfil** (`returnPath`); el del
+  wizard, al wizard.
+- **Enviar un borrador es un UPDATE condicional** (`workflowStatus IN
+  ('draft','formulating')`): doble clic o dos pestañas no postulan dos veces ni
+  mandan dos correos. Es la MISMA fila con su código: no se duplica nada.
+- **`createSubmission` devuelve un token del perfil** (`issuePortalToken`):
+  quien acaba de crear su cuenta con su contraseña entra a su perfil sin
+  escribirla otra vez. Los correos enlazan al dominio desde el que se postuló
+  (`metadata.origin`), también los que manda el comité desde la plataforma.
+- **RECORDATORIOS SIN REPETIRSE.** `reminderVerdict`: intervalo mínimo (7
+  días) y tope (3) por postulación, configurables en
+  `notifications.paymentReminders`; nunca a un borrador, retirado, rechazado o
+  pagado, ni con la fecha límite de pago vencida. El rastro son los eventos
+  `payment_reminder` del historial, no una tabla aparte. Exigen `?evento=` y
+  el permiso `managePayments`.
+- **La fecha límite de pago es OPCIONAL** (`registration.paymentDeadline`,
+  AAAA-MM-DD). Sin ella no se muestra ninguna ni se habla de plazos.
+
+**Pendientes conocidos:** no hay preferencias de comunicación por club (el
+tope de recordatorios y el interruptor de la Convocatoria son el control que
+existe); el filtro «Postulaciones sin ningún intento de pago» mira
+`ProjectFairPaymentAttempt`, que existe desde v4.978 — una sesión de Stripe
+abandonada anterior a esa versión no cuenta como intento; y el correo de
+confirmación usa el remitente de la Convocatoria con el respaldo de la
+plataforma, como el comprobante.

@@ -99,7 +99,7 @@ export const friendlyFailure = (code) => {
  * @param {object} opts.lastFailure  { code, at } del último intento fallido, si lo hubo
  * @returns {{state,paid,canPay,label,detail,actionLabel}}
  */
-export const paymentViewOf = (submission, { lastFailure = null } = {}) => {
+export const paymentViewOf = (submission, { lastFailure = null, applied = true } = {}) => {
     const status = String(submission?.status || 'pending_payment');
 
     if (status === 'paid') {
@@ -120,6 +120,19 @@ export const paymentViewOf = (submission, { lastFailure = null } = {}) => {
         };
     }
 
+    // ⚠️ v4.1253 — UN BORRADOR NO SE COBRA. La inscripción se paga sobre una
+    // postulación ENVIADA: cobrar un proyecto que todavía se está escribiendo
+    // sería cobrar algo que el club no ha presentado. El pago se habilita al
+    // postular, y se dice así en vez de esconder la sección.
+    if (!applied) {
+        return {
+            state: 'draft', paid: false, canPay: false,
+            label: 'Pendiente de pago',
+            detail: 'El pago de la inscripción se habilita cuando envíes tu postulación.',
+            actionLabel: null,
+        };
+    }
+
     // Hubo un intento que no llegó a término. Se distingue del «nunca lo
     // intentó» porque son dos situaciones distintas para quien lee: una es un
     // trámite pendiente y la otra, algo que salió mal y hay que resolver.
@@ -135,11 +148,16 @@ export const paymentViewOf = (submission, { lastFailure = null } = {}) => {
         };
     }
 
+    // ⚠️ v4.1253 — EL PAGO YA NO CONDICIONA LA POSTULACIÓN, y la frase lo
+    // dice sin alarma: el proyecto está postulado y sigue registrado aunque
+    // el pago se haga después. «Completa el pago para habilitar los
+    // formularios» dejó de ser cierto (los formularios no esperan al pago,
+    // salvo que la Convocatoria lo exija expresamente).
     return {
         state: 'pending', paid: false, canPay: true,
         label: 'Pendiente de pago',
-        detail: 'Tu inscripción quedó guardada. Completa el pago para habilitar los formularios del proyecto.',
-        actionLabel: 'Completar pago',
+        detail: 'Tu proyecto ya está postulado. El pago de inscripción se encuentra pendiente y puedes realizarlo posteriormente desde esta sección. Tu postulación permanece registrada aunque todavía no hayas realizado el pago.',
+        actionLabel: 'Pagar inscripción',
     };
 };
 

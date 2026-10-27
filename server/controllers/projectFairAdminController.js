@@ -26,7 +26,7 @@ import Stripe from 'stripe';
 import db from '../lib/db.js';
 import {
     ensureTables, logEvent, readConfigForAdmin, sendReceiptFor, buildSubmissionSnapshot,
-    getAdminConfig, saveAdminConfig, resolvePriceMode,
+    getAdminConfig, saveAdminConfig, resolvePriceMode, sendFairEmail, buildPaymentReminderHtml,
 } from './projectFairController.js';
 import { buildProjectDocx, DOCX_MIME } from '../lib/projectFairDocx.js';
 import {
@@ -44,6 +44,12 @@ import { balanceFor } from '../lib/disbursements.js';
 // Normalización del logo institucional (misma que Gestión de Eventos).
 import { embedLogoDataUrl } from '../lib/logoEmbed.js';
 import { hasPermission } from '../lib/rbacSpec.js';
+// v4.1253 — Estado del proyecto y estado del pago, separados.
+import {
+    PROJECT_STATES, PROJECT_STATE_KEYS, LEGACY_PAYMENT_WORKFLOW, projectStateOf, projectStateMeta,
+    isApplied, owesRegistration, paymentStatusOf, paymentStatusLabel, PAYMENT_VIEW_STATES,
+    SQL_APPLIED, SQL_DRAFT, SQL_OWES, reminderVerdict,
+} from '../lib/projectFairLifecycle.js';
 import { resolveUserGrant } from '../lib/rbacStore.js';
 
 console.log('[projectFairAdminController] v4.1220.0 cargado — Gestión de Postulaciones y Pagos (dashboard, trazabilidad Stripe, confirmación manual, etiquetas, alertas y reportes)');
@@ -53,21 +59,19 @@ const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_123
 // ── Estados del proceso ──────────────────────────────────────────────
 // El estado del PAGO vive en `status` (lo escribe Stripe); éste es el estado
 // del proceso interno de revisión, que mueve el equipo.
+// v4.1253 — Es el estado del PROYECTO y nada más. Hasta v4.1252 traía
+// también «Pendiente de pago», «Pago confirmado», «Pago fallido» y
+// «Reembolsada»: el pago escrito en el lugar del proyecto, y el webhook los
+// pisaba sobre lo que hubiera decidido el comité. El catálogo vive en el
+// criterio puro (`projectFairLifecycle.js`); los cuatro heredados se siguen
+// pudiendo LEER (`legacy`) pero ya no se ofrecen al elegir, y la migración de
+// arranque los convierte en «Postulado».
 export const WORKFLOW_STATES = [
-    { key: 'draft', label: 'Borrador', color: 'slate', group: 'inicial' },
-    { key: 'received', label: 'Recibida', color: 'sky', group: 'inicial' },
-    { key: 'pending_payment', label: 'Pendiente de pago', color: 'amber', group: 'pago' },
-    { key: 'payment_confirmed', label: 'Pago confirmado', color: 'emerald', group: 'pago' },
-    { key: 'payment_failed', label: 'Pago fallido', color: 'red', group: 'pago' },
-    { key: 'refunded', label: 'Reembolsada', color: 'orange', group: 'pago' },
-    { key: 'in_review', label: 'En revisión', color: 'indigo', group: 'revision' },
-    { key: 'needs_changes', label: 'Requiere ajustes', color: 'amber', group: 'revision' },
-    { key: 'approved', label: 'Aprobada', color: 'emerald', group: 'resolucion' },
-    { key: 'rejected', label: 'No aprobada', color: 'red', group: 'resolucion' },
-    { key: 'sent_to_grants', label: 'Enviada a Rotary Grants', color: 'violet', group: 'resolucion' },
-    { key: 'closed', label: 'Cerrada', color: 'slate', group: 'resolucion' },
+    ...PROJECT_STATES.map(st => ({ key: st.key, label: st.label, color: st.color, group: st.applied ? 'postulacion' : 'inicial' })),
+    ...LEGACY_PAYMENT_WORKFLOW.map(key => ({ key, label: 'Postulado', color: 'blue', group: 'postulacion', legacy: true })),
 ];
-const WORKFLOW_KEYS = WORKFLOW_STATES.map(s => s.key);
+// Lo que se puede ESCRIBIR: sólo estados del proyecto, nunca uno del pago.
+const WORKFLOW_KEYS = PROJECT_STATE_KEYS;
 
 export const PAYMENT_STATES = [
     { key: 'pending_payment', label: 'Pendiente de pago', color: 'amber' },
@@ -255,7 +259,16 @@ const mapRow = (row, access) => {
         focusAreaLabel: row.focusAreaLabel,
         budgetUsd: num(row.budgetUsd),
         paymentStatus: row.status,
-        workflowStatus: row.workflowStatus || 'received',
+        // v4.1253 — El estado del PROYECTO, normalizado: un valor heredado
+        // del pago se lee como «Postulado».
+        workflowStatus: projectStateOf(row),
+        projectStateLabel: projectStateMeta(projectStateOf(row)).label,
+        applied: isApplied(row),
+        appliedAt: row.appliedAt || null,
+        // Y el del PAGO, como se le explica a una persona.
+        paymentView: paymentStatusOf(row),
+        paymentViewLabel: paymentStatusLabel(paymentStatusOf(row)),
+        owesRegistration: owesRegistration(row),
         priority: row.priority || 'normal',
         internalCategory: row.internalCategory,
         assigneeId: row.assigneeId,
@@ -355,7 +368,18 @@ const buildFilters = (query) => {
         where.push(`("clubName" ILIKE $${i} OR "projectName" ILIKE $${i} OR email ILIKE $${i} OR "publicRef" ILIKE $${i} OR "firstName" ILIKE $${i} OR "lastName" ILIKE $${i})`);
     }
     if (query.paymentStatus && query.paymentStatus !== 'all') add('status = $?', clean(query.paymentStatus, 30));
-    if (query.workflowStatus && query.workflowStatus !== 'all') add('"workflowStatus" = $?', clean(query.workflowStatus, 40));
+    if (query.workflowStatus && query.workflowStatus !== 'all') {
+        const wf = clean(query.workflowStatus, 40);
+        // «Postulado» incluye las filas que todavía tienen un valor heredado
+        // del pago (antes de que corra la migración de arranque).
+        if (wf === 'received') add(`COALESCE("workflowStatus",'received') = ANY($?::text[])`, ['received', ...LEGACY_PAYMENT_WORKFLOW]);
+        else add('"workflowStatus" = $?', wf);
+    }
+    // v4.1253 — Vistas de PARTICIPACIÓN y RECAUDO. Son catálogo cerrado y
+    // cada una es un literal del criterio puro: un valor que no se reconozca
+    // no filtra nada.
+    const vista = VIEW_FILTERS[clean(query.vista, 40)];
+    if (vista) where.push(vista);
     if (query.district && query.district !== 'all') add('district = $?', clean(query.district, 160));
     if (query.focusArea && query.focusArea !== 'all') add('"focusArea" = $?', clean(query.focusArea, 80));
     if (query.priority && query.priority !== 'all') add('priority = $?', clean(query.priority, 20));
@@ -372,6 +396,30 @@ const buildFilters = (query) => {
     }
     return { clause: where.length ? `WHERE ${where.join(' AND ')}` : '', params };
 };
+
+/**
+ * Las vistas que pidió el cliente para separar participación de recaudo.
+ * Cada una sale del criterio puro (`SQL_APPLIED`, `SQL_OWES`…), así que el
+ * listado, los indicadores y los recordatorios cuentan lo mismo.
+ */
+export const VIEW_FILTERS = {
+    postulados: SQL_APPLIED,
+    borradores: SQL_DRAFT,
+    en_revision: `COALESCE("workflowStatus",'received') IN ('in_review','needs_changes')`,
+    pago_pendiente: SQL_OWES,
+    pago_confirmado: `status = 'paid'`,
+    // «Postulaciones sin pago»: deben la inscripción y NUNCA intentaron
+    // pagarla. Es la lista de a quién conviene escribirle primero.
+    sin_intento_de_pago: `${SQL_OWES} AND NOT EXISTS (SELECT 1 FROM "ProjectFairPaymentAttempt" a WHERE a."submissionId" = "ProjectFairSubmission".id)`,
+};
+export const VIEW_OPTIONS = [
+    { key: 'postulados', label: 'Proyectos postulados' },
+    { key: 'borradores', label: 'Proyectos en borrador' },
+    { key: 'en_revision', label: 'Proyectos en revisión' },
+    { key: 'pago_pendiente', label: 'Clubes con pago pendiente' },
+    { key: 'pago_confirmado', label: 'Clubes con pago confirmado' },
+    { key: 'sin_intento_de_pago', label: 'Postulaciones sin ningún intento de pago' },
+];
 
 const SORTABLE = {
     createdAt: '"createdAt"', projectName: '"projectName"', clubName: '"clubName"',
@@ -421,8 +469,16 @@ export const getIntelligence = withAccess(async (req, res, { cfg, access }) => {
                    COUNT(*) FILTER (WHERE status = 'pending_payment')::int AS pending,
                    COUNT(*) FILTER (WHERE status = 'failed')::int AS failed,
                    COUNT(*) FILTER (WHERE status = 'refunded')::int AS refunded,
-                   COUNT(*) FILTER (WHERE "workflowStatus" IN ('received','pending_payment','payment_confirmed'))::int AS "pendingReview",
+                   COUNT(*) FILTER (WHERE "workflowStatus" IN ('received','pending_payment','payment_confirmed','payment_failed','refunded'))::int AS "pendingReview",
                    COUNT(*) FILTER (WHERE "workflowStatus" = 'approved')::int AS approved,
+                   -- v4.1253 — PARTICIPACIÓN y RECAUDO, separados. Un borrador
+                   -- cuenta como participación, nunca como deuda.
+                   COUNT(*) FILTER (WHERE ${SQL_DRAFT})::int AS drafts,
+                   COUNT(*) FILTER (WHERE ${SQL_APPLIED})::int AS applied,
+                   COUNT(*) FILTER (WHERE ${SQL_OWES})::int AS owing,
+                   COALESCE(SUM(${AMT}) FILTER (WHERE ${SQL_OWES}), 0)::float AS "pendingAmount",
+                   COALESCE(SUM(${AMT}) FILTER (WHERE status = 'paid'), 0)::float AS "collectedAmount",
+                   COUNT(DISTINCT lower(email))::int AS "registeredUsers",
                    COUNT(*) FILTER (WHERE "workflowStatus" = 'rejected')::int AS rejected,
                    COUNT(*) FILTER (WHERE "workflowStatus" = 'in_review')::int AS "inReview",
                    COUNT(*) FILTER (WHERE "workflowStatus" = 'needs_changes')::int AS "needsChanges",
@@ -481,11 +537,14 @@ export const getIntelligence = withAccess(async (req, res, { cfg, access }) => {
     // EMBUDO. Sólo etapas que el módulo REGISTRA de verdad; no se inventan
     // pasos ("proyecto publicado") que nadie marca, porque una etapa siempre en
     // cero no dice dónde se pierde nada: sólo estorba.
-    const enviadas = t.total || 0;
+    // v4.1253 — «Enviadas» son las POSTULADAS: un borrador todavía no se
+    // envió. Sin borradores (todo lo anterior a v4.1253) es lo mismo que el
+    // total.
+    const enviadas = t.applied ?? t.total ?? 0;
     const enRevision = (t.inReview || 0) + (t.approved || 0) + (t.sentToGrants || 0);
     const aprobadas = (t.approved || 0) + (t.sentToGrants || 0);
     const funnel = [
-        { key: 'submitted', label: 'Formulario enviado', count: enviadas, rate: enviadas ? 100 : 0 },
+        { key: 'submitted', label: 'Proyecto postulado', count: enviadas, rate: enviadas ? 100 : 0 },
         { key: 'paid', label: 'Pago confirmado', count: t.paid || 0, rate: pct(t.paid, enviadas) },
         { key: 'in_review', label: 'En revisión', count: enRevision, rate: pct(enRevision, enviadas) },
         { key: 'approved', label: 'Aprobada', count: aprobadas, rate: pct(aprobadas, enviadas) },
@@ -644,7 +703,7 @@ export const getIntelligence = withAccess(async (req, res, { cfg, access }) => {
 
     res.json({
         kpis: {
-            total: enviadas,
+            total: t.total || 0,
             paid: t.paid || 0,
             pending: t.pending || 0,
             failed: t.failed || 0,
@@ -677,6 +736,23 @@ export const getIntelligence = withAccess(async (req, res, { cfg, access }) => {
             lastPayment: t.lastPayment || null,
             conversionRate: pct(t.paid, enviadas),
             paymentRate: pct(t.paid, enviadas),
+        },
+        // v4.1253 — PARTICIPACIÓN vs. RECAUDO. Son dos preguntas y se
+        // responden por separado: cuántos clubes quieren estar (aunque no
+        // hayan pagado) y cuánto se ha cobrado y queda por cobrar. Lo
+        // pendiente se calcula SÓLO sobre obligaciones válidas (postuladas,
+        // no retiradas ni rechazadas, sin pagar): un borrador no es deuda.
+        participation: {
+            clubs: t.clubs || 0,
+            registeredUsers: t.registeredUsers || 0,
+            drafts: t.drafts || 0,
+            applied: t.applied || 0,
+            approved: t.approved || 0,
+            paid: t.paid || 0,
+            owing: t.owing || 0,
+            priceMode,
+            collectedAmount: Math.round((t.collectedAmount || 0) * 100) / 100,
+            pendingAmount: Math.round((t.pendingAmount || 0) * 100) / 100,
         },
         funnel,
         byPayment: byPayment.rows,
@@ -1024,7 +1100,9 @@ export const getDashboardIntelligence = withAccess(async (req, res, { cfg, acces
                 type: 'submission',
                 title: r.title,
                 subtitle: `Club ${r.subtitle || 'Sin club'}`,
-                status: r.workflowStatus === 'payment_confirmed' ? 'Pago confirmado' : r.workflowStatus === 'in_review' ? 'En revisión' : 'Pendiente de pago',
+                // v4.1253 — Lo que se pinta es el PAGO (de `status`), no un
+                // estado del proyecto que lo imitaba.
+                status: r.status === 'paid' ? 'Pago confirmado' : projectStateOf(r) === 'in_review' ? 'En revisión' : 'Pendiente de pago',
                 statusType: r.status === 'paid' ? 'success' : 'warning',
                 createdAt: r.createdAt,
                 link: `/admin/postulaciones-pagos?search=${encodeURIComponent(r.title || '')}`,
@@ -1624,9 +1702,10 @@ export const confirmManualPayment = withAccess(async (req, res, { cfg, access })
     const { rows: updatedRows } = await db.query(`
         UPDATE "ProjectFairSubmission"
         SET status = 'paid',
+            -- v4.1253 — Confirmar el pago no mueve el estado del proyecto.
             "workflowStatus" = CASE
-                WHEN "workflowStatus" IN ('received', 'pending_payment', 'draft') OR "workflowStatus" IS NULL
-                THEN 'payment_confirmed' ELSE "workflowStatus" END,
+                WHEN "workflowStatus" IN ('pending_payment', 'payment_confirmed', 'payment_failed', 'refunded') OR "workflowStatus" IS NULL
+                THEN 'received' ELSE "workflowStatus" END,
             "paidAt" = $1,
             "amountReceived" = $2,
             "chargeCurrency" = $3,
@@ -1782,6 +1861,82 @@ export const resendReceipt = withAccess(async (req, res, { cfg, access }) => {
     res.json({ success: true });
 }, 'managePayments');
 
+// ── Recordatorios de pago (v4.1253) ──────────────────────────────────
+/**
+ * POST /admin/postulaciones/payment-reminders?evento=…
+ * Cuerpo: { ids?: string[], confirm?: boolean }
+ *
+ * Sin `ids` alcanza a TODAS las postulaciones de la edición que deben la
+ * inscripción (la vista «Clubes con pago pendiente»). Sin `confirm: true`
+ * NO envía nada: devuelve el PLAN —a quién le llega y a quién no, con su
+ * motivo—, que es lo que el comité tiene que poder revisar antes de mandar
+ * correos a decenas de clubes.
+ *
+ * ⚠️ NO SE MANDAN RECORDATORIOS REPETITIVOS. `reminderVerdict` exige un
+ * intervalo mínimo entre dos y un tope por postulación (configurables en
+ * `notifications.paymentReminders`), y sólo a una obligación válida: ni a un
+ * borrador, ni a un proyecto retirado o rechazado, ni a uno ya pagado, ni
+ * después de una fecha límite de pago vencida. El rastro de lo enviado son los
+ * eventos `payment_reminder` del historial de cada postulación —no hay una
+ * tabla aparte que pueda contradecirlo—.
+ */
+export const sendPaymentReminders = withAccess(async (req, res, { cfg, access }) => {
+    const eventId = clean(req.query?.evento, 60);
+    if (!eventId) return res.status(400).json({ error: 'Abre una edición para enviar recordatorios: sin ella se mezclarían ferias.' });
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(x => clean(x, 60)).filter(Boolean).slice(0, BULK_MAX) : [];
+
+    const { clause, params } = buildFilters({ evento: eventId, vista: ids.length ? undefined : 'pago_pendiente' });
+    let sql = `SELECT * FROM "ProjectFairSubmission" ${clause}`;
+    const p = [...params];
+    if (ids.length) {
+        p.push(ids);
+        sql += `${clause ? ' AND' : ' WHERE'} id = ANY($${p.length}::text[])`;
+    }
+    const { rows } = await db.query(`${sql} ORDER BY "createdAt" ASC LIMIT 1000`, p);
+    const sentRes = rows.length
+        ? await db.query(`SELECT "submissionId", "createdAt" FROM "ProjectFairEvent"
+                          WHERE type = 'payment_reminder' AND "submissionId" = ANY($1::text[])`, [rows.map(r => r.id)])
+        : { rows: [] };
+    const sentBy = {};
+    for (const e of sentRes.rows) (sentBy[e.submissionId] ||= []).push(e.createdAt);
+
+    const plan = rows.map(r => {
+        const v = reminderVerdict(r, sentBy[r.id] || [], { cfg });
+        return { id: r.id, publicRef: r.publicRef, projectName: r.projectName, clubName: r.clubName, email: r.email, send: v.ok, code: v.code, reason: v.reason };
+    });
+    const toSend = plan.filter(x => x.send);
+
+    if (req.body?.confirm !== true) {
+        return res.json({ preview: true, plan, willSend: toSend.length, skipped: plan.length - toSend.length });
+    }
+
+    const actor = actorFrom(req, access);
+    const outcomes = [];
+    for (const item of toSend) {
+        const row = rows.find(r => r.id === item.id);
+        const result = await sendFairEmail({
+            to: row.email,
+            subject: 'Tu proyecto ya está postulado — Completa el pago de inscripción cuando estés listo',
+            html: buildPaymentReminderHtml(row, cfg),
+            cfg,
+        });
+        if (result?.success) {
+            await logEvent(row.id, {
+                type: 'payment_reminder', title: 'Recordatorio de pago enviado',
+                detail: `Enviado a ${row.email}`, actor, metadata: { publicRef: row.publicRef },
+            });
+        }
+        outcomes.push({ id: row.id, publicRef: row.publicRef, sent: !!result?.success, error: result?.success ? null : (result?.error || 'No se pudo enviar') });
+    }
+    res.json({
+        preview: false,
+        sent: outcomes.filter(o => o.sent).length,
+        failed: outcomes.filter(o => !o.sent).length,
+        skipped: plan.filter(x => !x.send),
+        outcomes,
+    });
+}, 'managePayments');
+
 // ── Alertas ──────────────────────────────────────────────────────────
 // GET /admin/alerts
 export const getAlerts = withAccess(async (req, res, { cfg }) => {
@@ -1793,7 +1948,7 @@ export const getAlerts = withAccess(async (req, res, { cfg }) => {
         db.query(`
             SELECT id, "publicRef", "projectName", "clubName", email, "createdAt"
             FROM "ProjectFairSubmission"
-            WHERE status = 'pending_payment' AND "createdAt" < NOW() - ($1 || ' hours')::interval
+            WHERE ${SQL_OWES} AND "archivedAt" IS NULL AND "createdAt" < NOW() - ($1 || ' hours')::interval
             ORDER BY "createdAt" ASC`, [String(pendingHours)]),
         db.query(`SELECT id, "publicRef", "projectName", "clubName", "lastPaymentError", "updatedAt"
                   FROM "ProjectFairSubmission" WHERE status = 'failed' ORDER BY "updatedAt" DESC`),
@@ -1903,6 +2058,10 @@ export const getCatalog = withAccess(async (_req, res, { cfg, access }) => {
     res.json({
         workflowStates: WORKFLOW_STATES,
         paymentStates: PAYMENT_STATES,
+        // v4.1253 — Estados del pago como se le explican a una persona, y las
+        // vistas de participación y recaudo del listado.
+        paymentViewStates: PAYMENT_VIEW_STATES,
+        views: VIEW_OPTIONS,
         priorities: PRIORITIES,
         focusAreas: cfg.focusAreas || [],
         configuredDistricts: cfg.districts || [],
@@ -2504,5 +2663,5 @@ export default {
     readConvocatoriaConfig, writeConvocatoriaConfig,
     listMasterForms, getMasterForm, downloadMasterFormDocx, reopenMasterForm, lockMasterForm,
     bulkArchive, bulkRestore, bulkDelete, bulkStatus, bulkTag,
-    resolveTransfers,
+    resolveTransfers, sendPaymentReminders,
 };

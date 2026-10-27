@@ -63,7 +63,13 @@ export interface FairConfig {
     edition: { number: number; ordinal: string; name: string; city: string; country: string; year: number; dates?: string; key: string };
     deadline: string;
     presentation: { minMinutes?: number; maxMinutes: number };
-    registration: { priceMode?: 'COP' | 'USD'; amountCop: number; amountUsd?: number; currency: string; concept: string; maxProjectsPerClub: number };
+    registration: {
+        priceMode?: 'COP' | 'USD'; amountCop: number; amountUsd?: number; currency: string; concept: string; maxProjectsPerClub: number;
+        /** v4.1253 — Exigir el pago para diligenciar los formularios del proyecto. Apagado por defecto. */
+        requirePaymentForForms?: boolean;
+        /** v4.1253 — Fecha límite de pago (AAAA-MM-DD). Vacía = no hay. */
+        paymentDeadline?: string;
+    };
     districts: DistrictOption[];
     idTypes: FocusArea[];
     clubRoles: FocusArea[];
@@ -81,6 +87,10 @@ export interface FairConfig {
     };
     notifications: {
         adminEmails: string[]; sendReceipt: boolean;
+        /** v4.1253 — Correo «Tu proyecto ha sido postulado» al postular. */
+        sendApplicationConfirmation?: boolean;
+        /** v4.1253 — Recordatorios de pago: intervalo mínimo y tope por postulación. */
+        paymentReminders?: { enabled?: boolean; minDays?: number; max?: number };
         branding?: { headerLogoUrl?: string; footerLogoUrl?: string; footerText?: string };
         sender?: { name?: string; email?: string; replyTo?: string };
     };
@@ -380,6 +390,30 @@ const ConvocatoriaConfig: React.FC<{ canEdit?: boolean; onSaved?: () => void }> 
                     )}
                     <Input label="Concepto del cobro" value={config.registration.concept} onChange={(e: ChangeEvent) => patch('registration.concept', e.target.value)} />
                     <Input label="Club/organización asociada (clubId)" value={config.clubId || ''} onChange={(e: ChangeEvent) => patch('clubId', e.target.value || null)} hint="Opcional: asocia los cobros a la billetera de ese club." />
+                    {/* v4.1253 — El pago es independiente de la postulación. */}
+                    <Input
+                        label="Fecha límite de pago (opcional)" type="date"
+                        value={config.registration.paymentDeadline || ''}
+                        onChange={(e: ChangeEvent) => patch('registration.paymentDeadline', e.target.value)}
+                        hint="Vacía = sin fecha límite. Si la defines, se muestra en el perfil del club y en los recordatorios. No impide postular."
+                    />
+                </div>
+                <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                    <p className="font-semibold text-slate-800">La postulación no requiere pago</p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                        Los clubes postulan su proyecto sin pagar y pagan la inscripción después, desde su perfil.
+                    </p>
+                    <label className="mt-3 flex items-start gap-2">
+                        <input
+                            type="checkbox" className="mt-0.5 h-4 w-4"
+                            checked={config.registration.requirePaymentForForms === true}
+                            onChange={e => patch('registration.requirePaymentForForms', e.target.checked)}
+                        />
+                        <span>
+                            Exigir el pago confirmado para diligenciar los formularios del proyecto (Formulación, FDD…)
+                            <span className="block text-xs text-slate-500">Apagado por defecto. No impide registrarse ni postular.</span>
+                        </span>
+                    </label>
                 </div>
             </Card>
 
@@ -713,6 +747,32 @@ const ConvocatoriaConfig: React.FC<{ canEdit?: boolean; onSaved?: () => void }> 
                         />
                         Enviar comprobante por correo al postulante
                     </label>
+                    <label className="flex items-center gap-2 text-sm text-slate-700">
+                        <input
+                            type="checkbox" className="h-4 w-4"
+                            checked={config.notifications?.sendApplicationConfirmation !== false}
+                            onChange={e => patch('notifications.sendApplicationConfirmation', e.target.checked)}
+                        />
+                        Enviar «Tu proyecto ha sido postulado» al postular (sin esperar al pago)
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-slate-700">
+                        <input
+                            type="checkbox" className="h-4 w-4"
+                            checked={config.notifications?.paymentReminders?.enabled !== false}
+                            onChange={e => patch('notifications.paymentReminders.enabled', e.target.checked)}
+                        />
+                        Permitir recordatorios de pago desde «Postulaciones»
+                    </label>
+                    <Input
+                        label="Días mínimos entre dos recordatorios" type="number"
+                        value={config.notifications?.paymentReminders?.minDays ?? 7}
+                        onChange={(e: ChangeEvent) => patch('notifications.paymentReminders.minDays', Math.max(1, Number(e.target.value) || 7))}
+                    />
+                    <Input
+                        label="Máximo de recordatorios por postulación" type="number"
+                        value={config.notifications?.paymentReminders?.max ?? 3}
+                        onChange={(e: ChangeEvent) => patch('notifications.paymentReminders.max', Math.max(1, Number(e.target.value) || 3))}
+                    />
                 </div>
             </Card>
 
