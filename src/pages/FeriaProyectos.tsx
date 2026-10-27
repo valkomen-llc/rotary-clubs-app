@@ -399,7 +399,7 @@ const FeriaProyectos = () => {
         const goesToPortal = (config as any)?.portal?.redirectAfterPayment !== false;
         const target = goesToPortal
             ? `${portalPath}?submission=${submission.id}&session_id=${encodeURIComponent(new URLSearchParams(window.location.search).get('session_id') || '')}`
-            : (config.redirect?.url || 'https://grants25a.org/');
+            : (config.redirect?.url || 'https://grants31a.org/');
 
         const delay = Math.max(3, Number(config.redirect?.delaySeconds) || 8);
         setCountdown(delay);
@@ -740,8 +740,8 @@ const FeriaProyectos = () => {
                             </p>
                             <p className="mt-3 border-t border-slate-100 pt-3 text-[13px] text-slate-500">
                                 ¿Prefieres continuar primero en{' '}
-                                <a href={config?.redirect?.url || 'https://grants25a.org/'} target="_blank" rel="noreferrer" className="font-semibold" style={{ color: BLUE }}>
-                                    {config?.redirect?.name || 'Rotary Grants 25A'} <ExternalLink size={11} className="inline" />
+                                <a href={config?.redirect?.url || 'https://grants31a.org/'} target="_blank" rel="noreferrer" className="font-semibold" style={{ color: BLUE }}>
+                                    {config?.redirect?.name || 'Rotary Grants 31A'} <ExternalLink size={11} className="inline" />
                                 </a>? También lo encontrarás dentro de tu panel.
                             </p>
                         </div>

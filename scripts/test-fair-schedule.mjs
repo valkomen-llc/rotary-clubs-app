@@ -63,5 +63,15 @@ ok('existe el bloque «Fechas importantes del proceso»', panel.includes('title=
 ok('y al editar marca la lista como decidida', panel.includes("patch('content.scheduleEdited', true)"));
 ok('el editor está declarado fuera de la pantalla', /^const ScheduleEditor = /m.test(panel));
 
+console.log('\n5. v4.1254 — Rotary Grants 25A → 31A');
+eq('el valor por defecto es 31A', [DEFAULT_CONFIG.redirect.url, DEFAULT_CONFIG.redirect.name, DEFAULT_CONFIG.redirect.label],
+    ['https://grants31a.org/', 'Rotary Grants 31A', 'Continuar hacia Rotary Grants 31A']);
+const guardada25 = normalizeSavedConfig({ redirect: { url: 'https://grants25a.org/', name: 'Rotary Grants 25A', label: 'Continuar hacia Rotary Grants 25A', delaySeconds: 10 } });
+eq('una convocatoria guardada con el valor viejo pasa a 31A', guardada25.redirect,
+    { url: 'https://grants31a.org/', name: 'Rotary Grants 31A', label: 'Continuar hacia Rotary Grants 31A', delaySeconds: 10 });
+const propia = normalizeSavedConfig({ redirect: { url: 'https://otro.org/', name: 'Mi portal', label: 'Ir', delaySeconds: 5 } });
+eq('un destino escrito a mano se respeta', propia.redirect, { url: 'https://otro.org/', name: 'Mi portal', label: 'Ir', delaySeconds: 5 });
+ok('ninguna pantalla conserva el 25A', !/grants25a|Grants 25A/.test(read('src/pages/MiProyecto.tsx') + read('src/pages/FeriaProyectos.tsx')));
+
 console.log(`\n${pass} pasadas, ${fail} fallidas`);
 process.exit(fail ? 1 : 0);

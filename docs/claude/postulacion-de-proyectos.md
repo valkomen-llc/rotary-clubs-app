@@ -765,3 +765,16 @@ existe); el filtro «Postulaciones sin ningún intento de pago» mira
 abandonada anterior a esa versión no cuenta como intento; y el correo de
 confirmación usa el remitente de la Convocatoria con el respaldo de la
 plataforma, como el comprobante.
+
+### Rotary Grants 25A → 31A — v4.1254
+
+El destino del «siguiente paso» (`redirect`: perfil del club, confirmación del
+pago, redirección y correo del comprobante) es **Rotary Grants 31A,
+https://grants31a.org/**.
+
+- **⚠️ Cambiar `DEFAULT_CONFIG` no basta**: el panel guarda la convocatoria
+  ENTERA y la fila lleva una copia de `redirect`, que `deepMerge` hace ganar.
+  `normalizeSavedConfig` reemplaza campo por campo SÓLO lo que sigue siendo
+  exactamente el valor viejo (URL, nombre y texto del botón de 25A); un
+  destino escrito a mano en Convocatoria se respeta. Misma regla que la lista
+  de fechas de v4.1252. Pruebas: sección 5 de `npm run test:fair-schedule`.

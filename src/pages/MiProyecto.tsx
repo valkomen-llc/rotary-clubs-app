@@ -558,12 +558,12 @@ const MiProyecto = () => {
                             <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 text-center">
                                 <p className="text-[15px] text-slate-700">
                                     Cuando tengas tu proyecto formulado, continúa el proceso internacional en{' '}
-                                    <strong>{data.nextStep.name || 'Rotary Grants 25A'}</strong>.
+                                    <strong>{data.nextStep.name || 'Rotary Grants 31A'}</strong>.
                                 </p>
                                 <a href={data.nextStep.url} target="_blank" rel="noreferrer"
                                     className="mt-4 inline-flex items-center gap-2 rounded-xl border-2 px-6 py-3 text-[15px] font-bold transition hover:bg-slate-50"
                                     style={{ borderColor: BLUE, color: BLUE }}>
-                                    {data.nextStep.label || 'Continuar hacia Rotary Grants 25A'} <ExternalLink size={16} />
+                                    {data.nextStep.label || 'Continuar hacia Rotary Grants 31A'} <ExternalLink size={16} />
                                 </a>
                             </section>
                         )}
