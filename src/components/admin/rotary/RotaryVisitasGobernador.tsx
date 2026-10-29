@@ -25,7 +25,7 @@ import {
 const API = import.meta.env.VITE_API_URL || '/api';
 const BASE = `${API}/rotary-en-accion/visitas-gobernador`;
 const getToken = () => localStorage.getItem('rotary_token') || '';
-const PUBLIC_PATH = '/rotary-en-accion/visitas-del-gobernador';
+const PUBLIC_PATH = '/visitas-del-gobernador';
 
 const campo = 'w-full px-3 py-2 rounded-xl border-2 border-gray-100 focus:border-rotary-blue outline-none text-sm bg-white min-w-0 transition-colors';
 const rotulo = 'block text-[10px] font-black text-gray-400 uppercase tracking-[0.12em] mb-1';

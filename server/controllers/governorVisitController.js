@@ -28,7 +28,7 @@ import {
 } from '../lib/governorVisitSpec.js';
 import { resolveOrigin } from './rotaryEnAccionController.js';
 
-console.log('[governor-visits] v4.1260.0 cargado — Visitas del Gobernador (Rotary en Acción)');
+console.log('[governor-visits] v4.1261.0 cargado — Visitas del Gobernador (Rotary en Acción) en dominio.org/visitas-del-gobernador');
 
 const fail = (res, e, code = 500) => {
     if (code >= 500) console.error('[governor-visits]', e?.message || e);
@@ -517,7 +517,7 @@ export const adminUpdateVisit = async (req, res) => {
 
 const correctionUrl = (req, token) => {
     const origin = String(req.headers.origin || '').replace(/\/$/, '') || `https://${hostOf(req) || 'rotary4281.org'}`;
-    return `${origin}/rotary-en-accion/visitas-del-gobernador?corregir=${encodeURIComponent(token)}`;
+    return `${origin}/visitas-del-gobernador?corregir=${encodeURIComponent(token)}`;
 };
 
 // POST /visitas-gobernador/admin/:id/status — revisar, aprobar, pedir correcciones, rechazar

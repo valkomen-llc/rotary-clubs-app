@@ -13,7 +13,7 @@ equipo distrital la revise, la apruebe y la publique.
 | Esquema en runtime (tabla `GovernorVisit`) | `server/lib/ensureGovernorVisitSchema.js` |
 | Controlador | `server/controllers/governorVisitController.js` |
 | Rutas (dentro del router de Rotary en Acción) | `server/routes/rotary-en-accion.js` → `/api/rotary-en-accion/visitas-gobernador/…` |
-| Formulario público (5 pasos) | `src/components/rotary/GovernorVisitForm.tsx`, página `src/pages/VisitasGobernador.tsx`, ruta `/rotary-en-accion/visitas-del-gobernador` (alias `/visitas-del-gobernador`) |
+| Formulario público (5 pasos) | `src/components/rotary/GovernorVisitForm.tsx`, página `src/pages/VisitasGobernador.tsx`, ruta canónica **`dominio.org/visitas-del-gobernador`** (v4.1261); `/rotary-en-accion/visitas-del-gobernador` redirige conservando `?corregir=` (`src/pages/VisitasGobernadorRedirect.tsx`) |
 | Administración | `src/components/admin/rotary/RotaryVisitasGobernador.tsx`, pestaña `?tab=visitas` de `/admin/rotary-en-accion` |
 | Ficha del club en el Directorio | `src/components/admin/rotary/ClubGovernorVisitsPanel.tsx`, pestaña «Visitas del Gobernador» de `/admin/directorio-clubes` |
 | Prueba | `npm run test:visitas-gobernador` (`scripts/test-governor-visits.mjs`) |
@@ -60,7 +60,7 @@ equipo distrital la revise, la apruebe y la publique.
 - **Correcciones.** «Solicitar correcciones» exige motivo y genera un enlace de
   un solo uso, 30 días (`correctionToken`, nunca sale en el detalle). El panel
   ofrece copiarlo, WhatsApp y correo (`mailto:`): **no hay envío automático**.
-  El club corrige en el mismo formulario (`?corregir=`) y la visita vuelve a
+  El club corrige en el mismo formulario (`/visitas-del-gobernador?corregir=`) y la visita vuelve a
   «En revisión».
 - **Fechas.** `pg` devuelve `DATE` como `Date`; `String(fecha).slice(0,10)` da
   «Thu Oct 29». Todo pasa por `visitDateIso`; el navegador formatea con

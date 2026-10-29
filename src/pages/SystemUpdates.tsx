@@ -34,13 +34,27 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1260.0 | 2026-10-29 (Rotary en Acción: Visitas del Gobernador)
+// UI V4.1261.0 | 2026-10-29 (Visitas del Gobernador: dirección canónica /visitas-del-gobernador)
 // Cache bust: 2026-10-29
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1261.0',
+        title: 'Visitas del Gobernador: nueva dirección del formulario 🔗',
+        description: 'El formulario de Visitas del Gobernador vive ahora directamente en la raíz de cada sitio: dominio.org/visitas-del-gobernador (por ejemplo, rotary4281.org/visitas-del-gobernador). La dirección anterior, /rotary-en-accion/visitas-del-gobernador, redirige sola y conserva los enlaces de corrección ya enviados. El botón «Copiar enlace del formulario» del panel y los enlaces de corrección usan la nueva dirección.',
+        date: new Date().toISOString(),
+        tags: ['rotary en acción', 'visitas del gobernador'],
+        type: 'improvement',
+        impact: 'Media: un enlace corto y fácil de compartir con las secretarías.',
+        changes: [
+            { type: 'changed', text: 'Ruta canónica /visitas-del-gobernador.' },
+            { type: 'changed', text: '/rotary-en-accion/visitas-del-gobernador redirige conservando ?corregir=.' },
+            { type: 'changed', text: 'El panel y los enlaces de corrección usan la nueva dirección.' },
+        ],
+    },
     {
         version: '4.1260.0',
         title: 'Rotary en Acción: Visitas del Gobernador 🏛️',
