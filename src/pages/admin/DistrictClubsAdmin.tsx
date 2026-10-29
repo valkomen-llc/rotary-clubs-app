@@ -24,6 +24,7 @@ import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
 import { RotaryMarketingInteligente } from '../../components/admin/rotary/RotaryMarketingInteligente';
 import ClubInstitutionalPanel from '../../components/admin/rotary/ClubInstitutionalPanel';
+import ClubGovernorVisitsPanel from '../../components/admin/rotary/ClubGovernorVisitsPanel';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const getAuthToken = () => localStorage.getItem('rotary_token') || localStorage.getItem('token') || '';
@@ -143,7 +144,7 @@ export const DistrictClubsAdmin: React.FC = () => {
   const [detailClub, setDetailClub] = useState<AdminClubProfile | null>(null);
   const [detailFullData, setDetailFullData] = useState<any | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
-  const [detailTab, setDetailTab] = useState<'identidad' | 'liderazgo' | 'completitud' | 'igi' | 'rotary_accion' | 'crm' | 'auditoria'>('identidad');
+  const [detailTab, setDetailTab] = useState<'identidad' | 'liderazgo' | 'completitud' | 'igi' | 'rotary_accion' | 'visitas' | 'crm' | 'auditoria'>('identidad');
 
   const [selectedSubmission, setSelectedSubmission] = useState<AdminSubmission | null>(null);
   const [editingProfile, setEditingProfile] = useState<AdminClubProfile | null>(null);
@@ -1331,6 +1332,14 @@ export const DistrictClubsAdmin: React.FC = () => {
                   Rotary en Acción ({detailFullData?.submissions?.length || 0})
                 </button>
                 <button
+                  onClick={() => setDetailTab('visitas')}
+                  className={`py-3 border-b-2 uppercase tracking-wider transition-all whitespace-nowrap ${
+                    detailTab === 'visitas' ? 'border-rotary-blue text-rotary-blue' : 'border-transparent text-gray-400 hover:text-gray-700'
+                  }`}
+                >
+                  Visitas del Gobernador
+                </button>
+                <button
                   onClick={() => setDetailTab('crm')}
                   className={`py-3 border-b-2 uppercase tracking-wider transition-all whitespace-nowrap flex items-center gap-1.5 ${
                     detailTab === 'crm' ? 'border-violet-500 text-violet-700' : 'border-transparent text-gray-400 hover:text-gray-700'
@@ -1675,6 +1684,14 @@ export const DistrictClubsAdmin: React.FC = () => {
                           </div>
                         )}
                       </div>
+                    )}
+
+                    {/* PESTAÑA: VISITAS DEL GOBERNADOR (v4.1260) */}
+                    {detailTab === 'visitas' && (
+                      <ClubGovernorVisitsPanel
+                        profileId={detailClub.id}
+                        token={token || getAuthToken()}
+                      />
                     )}
 
                     {/* PESTAÑA: CRM INSTITUCIONAL / CONTACTOS VINCULADOS */}

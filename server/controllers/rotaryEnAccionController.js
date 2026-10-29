@@ -139,6 +139,48 @@ export const presign = async (req, res) => {
   } catch (e) { return fail(res, e, 400); }
 };
 
+// ─── Por qué sitio entra una solicitud ────────────────────────────────
+// El dominio manda; si no resuelve a un club concreto (ej.
+// app.clubplatform.org), el club nombrado, después el sitio del distrito y,
+// para la campaña universal, su sitio receptor. Lo usa también la
+// publicación de una Visita del Gobernador (v4.1260), que crea su solicitud
+// por esta misma puerta.
+export async function resolveOrigin({ host = '', club = '', district = '', camp = null } = {}) {
+    const origin = { clubId: null, host };
+    try {
+      const { resolveSiteId } = await import('../lib/linkRedirectStore.js');
+      origin.clubId = await resolveSiteId(host);
+    } catch (e) {
+      console.warn('[rotary-en-accion] origen no resuelto por host:', e.message);
+    }
+
+    // Fallback inteligente si el host no resuelve a un club concreto (ej. app.clubplatform.org)
+    if (!origin.clubId && club) {
+      try {
+        const { siteMatchKey } = await import('../lib/submissionArticleSpec.js');
+        const sKey = siteMatchKey(club);
+        const { rows: matched } = await db.query(
+          `SELECT id, name FROM "Club" WHERE status != 'inactive' AND type != 'district'`
+        );
+        const found = matched.find(c => siteMatchKey(c.name) === sKey);
+        if (found) origin.clubId = found.id;
+      } catch {}
+    }
+    if (!origin.clubId && district) {
+      try {
+        const { rows: distClub } = await db.query(
+          `SELECT id FROM "Club" WHERE type = 'district' AND (district = $1 OR "districtId" = $1) LIMIT 1`,
+          [String(district)]
+        );
+        if (distClub[0]) origin.clubId = distClub[0].id;
+      } catch {}
+    }
+    if (!origin.clubId && camp && (camp.slug === 'rotary-en-accion' || camp.id === 'rotary-en-accion-universal')) {
+      origin.clubId = camp.recipientClubId || '8aa470c5-0a5a-4a8d-b872-38645b8b9f3a';
+    }
+    return origin;
+}
+
 // ─── POST /submit — público ────────────────────────────────────────────
 export const submit = async (req, res) => {
   try {
@@ -168,38 +210,7 @@ export const submit = async (req, res) => {
     }
 
     const host = String(req.headers['x-forwarded-host'] || req.headers.host || '');
-    let origin = { clubId: null, host };
-    try {
-      const { resolveSiteId } = await import('../lib/linkRedirectStore.js');
-      origin.clubId = await resolveSiteId(host);
-    } catch (e) {
-      console.warn('[rotary-en-accion] origen no resuelto por host:', e.message);
-    }
-
-    // Fallback inteligente si el host no resuelve a un club concreto (ej. app.clubplatform.org)
-    if (!origin.clubId && data.club) {
-      try {
-        const { siteMatchKey } = await import('../lib/submissionArticleSpec.js');
-        const sKey = siteMatchKey(data.club);
-        const { rows: matched } = await db.query(
-          `SELECT id, name FROM "Club" WHERE status != 'inactive' AND type != 'district'`
-        );
-        const found = matched.find(c => siteMatchKey(c.name) === sKey);
-        if (found) origin.clubId = found.id;
-      } catch {}
-    }
-    if (!origin.clubId && data.district) {
-      try {
-        const { rows: distClub } = await db.query(
-          `SELECT id FROM "Club" WHERE type = 'district' AND (district = $1 OR "districtId" = $1) LIMIT 1`,
-          [String(data.district)]
-        );
-        if (distClub[0]) origin.clubId = distClub[0].id;
-      } catch {}
-    }
-    if (!origin.clubId && (camp.slug === 'rotary-en-accion' || camp.id === 'rotary-en-accion-universal')) {
-      origin.clubId = camp.recipientClubId || '8aa470c5-0a5a-4a8d-b872-38645b8b9f3a';
-    }
+    const origin = await resolveOrigin({ host, club: data.club, district: data.district, camp });
 
     const submission = await createSubmission({
       campaignId: camp.id, data, files: archivos,

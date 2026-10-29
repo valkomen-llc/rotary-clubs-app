@@ -34,13 +34,29 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1150.0 | 2026-10-02 (Editor de Video: Herramientas Visuales de Edición de Textos/Subtítulos, Bounding Box Interactivo, Galería de Plantillas y Aplicar a Todos)
-// Cache bust: 2026-10-02
+// UI V4.1260.0 | 2026-10-29 (Rotary en Acción: Visitas del Gobernador)
+// Cache bust: 2026-10-29
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1260.0',
+        title: 'Rotary en Acción: Visitas del Gobernador 🏛️',
+        description: 'Nueva sección «Visitas del Gobernador» dentro de Rotary en Acción, junto a Directorio de Clubes. Las secretarías de los clubes reportan la visita oficial del Gobernador en un formulario público de cinco pasos (/rotary-en-accion/visitas-del-gobernador): club del catálogo oficial del Directorio Distrital (con ciudad, departamento e identificador), fecha, gobernador, lugar, título y motivo; memoria institucional (descripción, actividades, temas, reconocimientos, acuerdos, compromisos y resultados); galería de fotos, videos y enlaces con previsualización y descripción; y responsable con confirmación de veracidad y autorización de publicación. Al enviar recibe un identificador único (VG-AAAA-XXXXXX). En el panel: indicadores (recibidas, pendientes, aprobadas, publicadas, rechazadas), cobertura del año rotario por club y por gobernador, listado con búsqueda y filtros por club, fecha, gobernador y estado, ficha con galería, edición, aprobación, correcciones con enlace de un solo uso para el club, rechazo con motivo e historial con el responsable de cada acción. Una visita aprobada se publica en Rotary en Acción con el mismo texto y los mismos archivos, sin copiarlos, y desde la ficha se abre su solicitud. La ficha del club en el Directorio muestra su historial de visitas.',
+        date: new Date().toISOString(),
+        tags: ['rotary en acción', 'visitas del gobernador', 'directorio de clubes', 'distrito 4281'],
+        type: 'feature',
+        impact: 'Alta: las visitas del Gobernador quedan documentadas, revisadas y listas para difundir y para los informes de gestión.',
+        changes: [
+            { type: 'added', text: 'Formulario público de cinco pasos con barra de progreso, validación por paso, borrador local del texto y aviso antes de salir con cambios sin enviar.' },
+            { type: 'added', text: 'Pestaña «Visitas del Gobernador» en /admin/rotary-en-accion (?tab=visitas) con indicadores, filtros, ficha, acciones e historial.' },
+            { type: 'added', text: 'Publicar una visita aprobada crea UNA solicitud de Rotary en Acción (aprobada) con el mismo texto y los mismos objetos de S3; es idempotente.' },
+            { type: 'added', text: 'Pestaña «Visitas del Gobernador» en la ficha del club de /admin/directorio-clubes.' },
+            { type: 'added', text: 'Tabla GovernorVisit (creada en runtime, protegida por el guardián de db:push) y npm run test:visitas-gobernador.' },
+        ],
+    },
     {
         version: '4.1259.0',
         title: 'Dashboard de la Feria: Centro de Gestión del Evento 🗂️',

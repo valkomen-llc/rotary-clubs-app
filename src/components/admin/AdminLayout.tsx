@@ -639,7 +639,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                 { icon: HeartHandshake, label: 'Donaciones Globales', path: '/admin/donaciones', category: 'Management', keywords: ['donacion', 'aportes'] },
                 { icon: Megaphone, label: 'Campañas de Contribución', path: '/admin/campanas-contribucion', category: 'Management', keywords: ['campana', 'campaña', 'contribucion', 'emergencia', 'terremoto', 'donaciones', 'acopio', 'maneras de contribuir'] },
                 { icon: Megaphone, label: 'Campañas de Contenido', path: '/admin/activacion-contenido', category: 'Management', keywords: ['campana', 'campaña', 'contenido', 'activacion', 'segmentar', 'audiencia', 'destinatarios'] },
-                { icon: HeartHandshake, label: 'Rotary en Acción', path: '/admin/rotary-en-accion', category: 'Management', keywords: ['rotary en accion', 'historias', 'captacion', 'banco', 'testimonios', 'solicitudes', 'contenido', 'buzon', 'evidencias', 'bandeja'], badge: solicitudes.medido && solicitudes.count > 0 ? String(solicitudes.count > 99 ? '99+' : solicitudes.count) : undefined },
+                { icon: HeartHandshake, label: 'Rotary en Acción', path: '/admin/rotary-en-accion', category: 'Management', keywords: ['rotary en accion', 'historias', 'captacion', 'banco', 'testimonios', 'solicitudes', 'contenido', 'buzon', 'evidencias', 'bandeja', 'visitas del gobernador', 'gobernador'], badge: solicitudes.medido && solicitudes.count > 0 ? String(solicitudes.count > 99 ? '99+' : solicitudes.count) : undefined },
                 { icon: LayoutTemplate, label: 'Slider Global / Llamados a la Acción', path: '/admin/slider-global', category: 'Management', keywords: ['slider', 'slide', 'carrusel', 'llamado', 'accion', 'destacado', 'bloque destacado', 'polio', 'end polio', 'banner', 'portada', 'global', 'spotlight'] },
                 { icon: Mail, label: 'Notificaciones de Aportes', path: '/admin/notificaciones-aportes', category: 'Management', keywords: ['notificacion', 'notificaciones', 'correo', 'email', 'recibo', 'confirmacion', 'aporte', 'aportes', 'donacion', 'colrotarios', 'remitente', 'plantilla'] },
                 { icon: Bell, label: 'Comunicaciones CRM', path: '/admin/crm', category: 'General', keywords: ['crm', 'email', 'campana', 'whatsapp'] },
@@ -771,7 +771,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
             }
             if (isSubmissionsAllowed) {
                 items.push(
-                    { icon: HeartHandshake, label: 'Rotary en Acción', path: '/admin/rotary-en-accion', category: 'Contenido', keywords: ['rotary en accion', 'historias', 'captacion', 'banco', 'testimonios', 'solicitudes', 'contenido', 'buzon', 'evidencias', 'bandeja'], badge: solicitudes.medido && solicitudes.count > 0 ? String(solicitudes.count > 99 ? '99+' : solicitudes.count) : undefined },
+                    { icon: HeartHandshake, label: 'Rotary en Acción', path: '/admin/rotary-en-accion', category: 'Contenido', keywords: ['rotary en accion', 'historias', 'captacion', 'banco', 'testimonios', 'solicitudes', 'contenido', 'buzon', 'evidencias', 'bandeja', 'visitas del gobernador', 'gobernador'], badge: solicitudes.medido && solicitudes.count > 0 ? String(solicitudes.count > 99 ? '99+' : solicitudes.count) : undefined },
                 );
             }
         }

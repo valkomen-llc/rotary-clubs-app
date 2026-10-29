@@ -23,7 +23,7 @@ import {
   Search, RefreshCw, ArrowLeft, AlertTriangle, Filter, X, ExternalLink,
   Image as ImageIcon, Film, Library, Users, Globe, ChevronLeft, ChevronRight,
   Copy, Check, CheckCircle2, Tag, Layers, Send, Eye, ShieldCheck, Sparkles,
-  Maximize2, Minimize2, Building2, Award
+  Maximize2, Minimize2, Building2, Award, CalendarCheck
 } from 'lucide-react';
 import { toast } from 'sonner';
 import SubmissionDetail from '../../components/admin/contribution/SubmissionDetail';
@@ -42,6 +42,7 @@ import RotaryMarketingInteligente from '../../components/admin/rotary/RotaryMark
 import RotaryActivacionClubes from '../../components/admin/rotary/RotaryActivacionClubes';
 import RotaryDirectorioClubes from '../../components/admin/rotary/RotaryDirectorioClubes';
 import RotaryFeriaProyectos from '../../components/admin/rotary/RotaryFeriaProyectos';
+import RotaryVisitasGobernador from '../../components/admin/rotary/RotaryVisitasGobernador';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const getToken = () => localStorage.getItem('rotary_token');
@@ -53,7 +54,7 @@ const KINDS = [
   { id: 'tema', label: 'Temáticas', desc: 'Categorías y etiquetas temáticas transversales' },
 ];
 
-export type RotaryEnAccionTab = 'resumen' | 'solicitudes' | 'control' | 'marketing' | 'activacion' | 'directorio' | 'feria' | 'tax' | 'config' | 'impacto';
+export type RotaryEnAccionTab = 'resumen' | 'solicitudes' | 'control' | 'marketing' | 'activacion' | 'directorio' | 'visitas' | 'feria' | 'tax' | 'config' | 'impacto';
 
 
 interface Fila {
@@ -140,6 +141,7 @@ const RotaryEnAccionAdmin: React.FC<RotaryEnAccionAdminProps> = ({
     if (tabParam === 'marketing' || tabParam === 'marketing-inteligente') return 'marketing';
     if (tabParam === 'activacion' || tabParam === 'activaciones' || tabParam === 'activar-club') return 'activacion';
     if (tabParam === 'directorio' || tabParam === 'directorio-clubes' || tabParam === 'clubes') return 'directorio';
+    if (tabParam === 'visitas' || tabParam === 'visitas-gobernador' || tabParam === 'visitas-del-gobernador') return 'visitas';
     if (tabParam === 'feria' || tabParam === 'feria-proyectos' || tabParam === 'feria-de-proyectos' || tabParam === 'proyectos') return 'feria';
     if ((tabParam === 'tax' || tabParam === 'taxonomias') && canManage) return 'tax';
     if ((tabParam === 'config' || tabParam === 'configuracion') && canManage) return 'config';
@@ -587,6 +589,18 @@ const RotaryEnAccionAdmin: React.FC<RotaryEnAccionAdminProps> = ({
           <span className="text-[10px] font-black uppercase tracking-wider bg-sky-100 text-sky-800 px-2 py-0.5 rounded-full border border-sky-200">
             D4281
           </span>
+        </button>
+
+        <button
+          onClick={() => cambiarTab('visitas')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap ${
+            activeTab === 'visitas'
+              ? 'bg-white text-gray-900 shadow-sm border border-gray-200/60'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+          }`}
+        >
+          <CalendarCheck className="w-4 h-4 text-indigo-600" />
+          <span>Visitas del Gobernador</span>
         </button>
 
         <button
@@ -1395,6 +1409,11 @@ const RotaryEnAccionAdmin: React.FC<RotaryEnAccionAdminProps> = ({
       {/* ── SECCIÓN: DIRECTORIO DE CLUBES (CATÁLOGO, SOLICITUDES & CRM) ── */}
       {activeTab === 'directorio' && (
         <RotaryDirectorioClubes />
+      )}
+
+      {/* ── SECCIÓN: VISITAS DEL GOBERNADOR (v4.1260) ── */}
+      {activeTab === 'visitas' && (
+        <RotaryVisitasGobernador canEdit={canEdit} canManage={canManage} canPublish={canPublish} />
       )}
 
       {/* ── SECCIÓN: FERIA DE PROYECTOS COLOMBIA ── */}
