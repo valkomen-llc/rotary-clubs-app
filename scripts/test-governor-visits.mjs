@@ -117,6 +117,10 @@ for (const p of ["'/visitas-gobernador/config'", "'/visitas-gobernador/presign'"
 const admin = routes.split('\n').filter(l => l.includes('/visitas-gobernador/admin'));
 ok(admin.length === 7 && admin.every(l => routes.indexOf(l) > authAt && l.includes('requireSubmissionInboxAccess') && l.includes("'rotary_en_accion.")), 'las siete rutas de administración llevan sesión, puerta del módulo y permiso');
 ok(admin.find(l => l.includes('/publish')).includes('rotary_en_accion.publish') && admin.find(l => l.includes('/status')).includes('rotary_en_accion.manage') && admin.find(l => l.includes('router.put')).includes('rotary_en_accion.edit'), 'publicar, cambiar estado y editar piden su permiso propio');
-ok(read('src/App.tsx').includes('path="/rotary-en-accion/visitas-del-gobernador"'), 'la ruta pública existe en el SPA');
+ok(read('src/App.tsx').includes('path="/visitas-del-gobernador" element={<VisitasGobernador />}'), 'la ruta canónica es dominio.org/visitas-del-gobernador');
+ok(read('src/App.tsx').includes('path="/rotary-en-accion/visitas-del-gobernador" element={<VisitasGobernadorRedirect />}'), 'la dirección anterior redirige');
+ok(/\/visitas-del-gobernador\$\{search\}/.test(read('src/pages/VisitasGobernadorRedirect.tsx')), 'la redirección conserva ?corregir=');
+ok(read('server/controllers/governorVisitController.js').includes('/visitas-del-gobernador?corregir='), 'el enlace de corrección usa la dirección canónica');
+ok(read('src/components/admin/rotary/RotaryVisitasGobernador.tsx').includes("PUBLIC_PATH = '/visitas-del-gobernador'"), 'el panel comparte la dirección canónica');
 
 console.log(`\n✅ ${n} comprobaciones, todas en verde.`);
