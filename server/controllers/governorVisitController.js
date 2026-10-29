@@ -28,7 +28,7 @@ import {
 } from '../lib/governorVisitSpec.js';
 import { resolveOrigin } from './rotaryEnAccionController.js';
 
-console.log('[governor-visits] v4.1261.0 cargado — Visitas del Gobernador (Rotary en Acción) en dominio.org/visitas-del-gobernador');
+console.log('[governor-visits] v4.1262.0 cargado — Visitas del Gobernador (Rotary en Acción) en dominio.org/visitas-del-gobernador, formulario en tres pasos');
 
 const fail = (res, e, code = 500) => {
     if (code >= 500) console.error('[governor-visits]', e?.message || e);
@@ -186,7 +186,7 @@ export const submitVisit = async (req, res) => {
 
         const cid = await universalCampaignId();
         const media = await verifyMedia(v.media, { campaignId: cid });
-        if (!media.ok) return res.status(400).json({ error: media.error, errors: [{ step: 4, field: 'media', message: media.error }] });
+        if (!media.ok) return res.status(400).json({ error: media.error, errors: [{ step: 2, field: 'media', message: media.error }] });
 
         const cols = [
             '"publicRef"', 'status', '"districtNumber"', '"clubProfileId"', '"clubName"', '"clubCity"', '"clubState"', '"clubSlug"', '"clubPlatformId"',
@@ -266,7 +266,7 @@ export const submitVisitCorrection = async (req, res) => {
         const cid = await universalCampaignId();
         const known = new Map((actual.media || []).map(m => [m.key, m]));
         const media = await verifyMedia(v.media, { campaignId: cid, known, visitId: actual.id });
-        if (!media.ok) return res.status(400).json({ error: media.error, errors: [{ step: 4, field: 'media', message: media.error }] });
+        if (!media.ok) return res.status(400).json({ error: media.error, errors: [{ step: 2, field: 'media', message: media.error }] });
 
         const { rows } = await db.query(
             `UPDATE "GovernorVisit" SET

@@ -210,7 +210,7 @@ es **rotar la credencial en Neon**, no sólo borrar el archivo.
 
 | Módulo | Archivo |
 |---|---|
-| Visitas del Gobernador (sección de Rotary en Acción: formulario público en `dominio.org/visitas-del-gobernador`, gestión, publicación sin duplicar) — v4.1260 (dirección canónica: v4.1261) | `docs/claude/visitas-del-gobernador.md` |
+| Visitas del Gobernador (sección de Rotary en Acción: formulario público en `dominio.org/visitas-del-gobernador` en tres pasos, gestión, publicación sin duplicar) — v4.1260 (dirección canónica: v4.1261; tres pasos: v4.1262) | `docs/claude/visitas-del-gobernador.md` |
 | Centro de Gestión del Evento (dashboard de la Feria: proyectos e inscripciones embebidos) — v4.1259 | `docs/claude/centro-de-gestion-del-evento.md` |
 | Conciliación de inscripciones y traslados de un evento — **dominio PROPIO de Eventos, sin la Bóveda** (v4.1250; corrige v4.1248–v4.1249, que usaban la Bóveda) | `docs/claude/conciliacion-de-inscripciones-y-traslados-de-un-evento.md` |
 | El ciclo de vida de un evento (próximos, en curso, finalizados, por confirmar; historial en `/eventos/anteriores`) — v4.1247 | `docs/claude/el-ciclo-de-vida-de-un-evento.md` |

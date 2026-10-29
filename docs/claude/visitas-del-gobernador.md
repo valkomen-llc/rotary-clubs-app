@@ -13,7 +13,7 @@ equipo distrital la revise, la apruebe y la publique.
 | Esquema en runtime (tabla `GovernorVisit`) | `server/lib/ensureGovernorVisitSchema.js` |
 | Controlador | `server/controllers/governorVisitController.js` |
 | Rutas (dentro del router de Rotary en Acción) | `server/routes/rotary-en-accion.js` → `/api/rotary-en-accion/visitas-gobernador/…` |
-| Formulario público (5 pasos) | `src/components/rotary/GovernorVisitForm.tsx`, página `src/pages/VisitasGobernador.tsx`, ruta canónica **`dominio.org/visitas-del-gobernador`** (v4.1261); `/rotary-en-accion/visitas-del-gobernador` redirige conservando `?corregir=` (`src/pages/VisitasGobernadorRedirect.tsx`) |
+| Formulario público (3 pasos desde v4.1262: **Club y visita** · **Memoria y galería** · **Responsable y envío**) | `src/components/rotary/GovernorVisitForm.tsx`, página `src/pages/VisitasGobernador.tsx`, ruta canónica **`dominio.org/visitas-del-gobernador`** (v4.1261); `/rotary-en-accion/visitas-del-gobernador` redirige conservando `?corregir=` (`src/pages/VisitasGobernadorRedirect.tsx`) |
 | Administración | `src/components/admin/rotary/RotaryVisitasGobernador.tsx`, pestaña `?tab=visitas` de `/admin/rotary-en-accion` |
 | Ficha del club en el Directorio | `src/components/admin/rotary/ClubGovernorVisitsPanel.tsx`, pestaña «Visitas del Gobernador» de `/admin/directorio-clubes` |
 | Prueba | `npm run test:visitas-gobernador` (`scripts/test-governor-visits.mjs`) |
@@ -72,6 +72,18 @@ equipo distrital la revise, la apruebe y la publique.
   (salvo al titular del enlace de corrección, que es quien los escribió). La
   solicitud de Rotary en Acción los lleva como remitente (interno), nunca en el
   texto publicable.
+
+## Tres pasos (v4.1262)
+
+El reporte se pidió en cinco pasos (v4.1260) y se agrupó en tres a pedido del
+cliente, sin quitar ningún campo: cada paso tiene dos bloques separados por una
+línea (club + visita; memoria + galería) y el tercero es el responsable.
+
+- El número de paso de cada error lo decide `validateVisit` en el servidor
+  (`push(paso, campo, …)`) y lo repite `validateVisitStep` en el navegador; la
+  prueba compara campo por campo que ambos digan el mismo paso.
+- Ante un error, la vista va al primer aviso (`[data-gv-step] [role="alert"]`),
+  que puede estar en el segundo bloque del paso, no al inicio de la página.
 
 ## Estadísticas (`GET …/admin/stats`)
 

@@ -1,7 +1,7 @@
 // ════════════════════════════════════════════════════════════════════════════
-// Visitas del Gobernador — formulario público (v4.1260.0)
+// Visitas del Gobernador — formulario público (v4.1260.0 · tres pasos: v4.1262.0)
 //
-// Cinco pasos con la misma arquitectura visual de Rotary en Acción (Navbar,
+// Tres pasos (v4.1262: Club y visita · Memoria y galería · Responsable y envío) con la misma arquitectura visual de Rotary en Acción (Navbar,
 // cabecera institucional, tarjetas, barra de pasos, navegación Atrás /
 // Siguiente) y la misma subida: URL prefirmada → PUT directo a S3 con
 // progreso. El club sale del catálogo oficial del Directorio Distrital.
@@ -362,17 +362,24 @@ export default function GovernorVisitForm() {
     setErrores(e);
     return Object.keys(e).length === 0;
   };
+  // Cada paso tiene dos bloques: ante un error se lleva la vista al PRIMER
+  // aviso, que puede estar en el segundo bloque, no al inicio de la página.
+  const alPrimerError = () => setTimeout(() => {
+    const el = document.querySelector('[data-gv-step] [role="alert"]');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    else window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, 60);
   const irA = (paso: number) => {
     if (paso > step) {
-      for (let p = step; p < paso; p++) { if (!validar(p)) { setStep(p); window.scrollTo({ top: 0, behavior: 'smooth' }); return; } }
+      for (let p = step; p < paso; p++) { if (!validar(p)) { setStep(p); alPrimerError(); return; } }
     } else setErrores({});
     setStep(paso);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const enviar = async () => {
-    for (let p = 1; p <= 5; p++) {
-      if (!validar(p)) { setStep(p); toast.error('Revisa los campos marcados.'); return; }
+    for (let p = 1; p <= VISIT_STEPS.length; p++) {
+      if (!validar(p)) { setStep(p); alPrimerError(); toast.error('Revisa los campos marcados.'); return; }
     }
     setEnviando(true);
     try {
@@ -388,6 +395,7 @@ export default function GovernorVisitForm() {
         if (lista.length) {
           setStep(lista[0].step);
           setErrores(Object.fromEntries(lista.filter((x) => x.step === lista[0].step).map((x) => [x.field, x.message])));
+          alPrimerError();
         }
         toast.error(data?.error || `No se pudo enviar (${r.status}).`);
         return;
@@ -434,7 +442,7 @@ export default function GovernorVisitForm() {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-10 md:py-12 pb-20 space-y-4">
         {!enviado && (
           <nav aria-label="Progreso" className="bg-white rounded-2xl border border-gray-100 px-4 sm:px-6 py-3.5 shadow-sm space-y-3">
-            <div className="flex items-center justify-between gap-2 overflow-x-auto">
+            <div className="flex items-center justify-between gap-2">
               {VISIT_STEPS.map((label, i) => {
                 const n = i + 1;
                 return (
@@ -446,9 +454,7 @@ export default function GovernorVisitForm() {
                     }`}
                   >
                     <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${n === step ? 'bg-white/25 text-white' : n < step ? 'bg-rotary-blue text-white' : 'bg-gray-100 text-gray-500'}`}>{n}</span>
-                    {/* Cinco etiquetas no caben en el ancho del formulario: sólo
-                        la del paso activo; las demás quedan en su título. */}
-                    <span className={n === step ? 'hidden md:inline' : 'sr-only'}>{label}</span>
+                    <span className="hidden sm:inline">{label}</span>
                   </button>
                 );
               })}
@@ -456,7 +462,7 @@ export default function GovernorVisitForm() {
             <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
               <div className="h-full bg-rotary-blue transition-all duration-500" style={{ width: `${Math.max(4, pct)}%` }} />
             </div>
-            <p className="md:hidden text-[11px] font-bold text-gray-400">Paso {step} de {VISIT_STEPS.length}: {VISIT_STEPS[step - 1]}</p>
+            <p className="sm:hidden text-[11px] font-bold text-gray-400">Paso {step} de {VISIT_STEPS.length}: {VISIT_STEPS[step - 1]}</p>
           </nav>
         )}
 
@@ -473,9 +479,9 @@ export default function GovernorVisitForm() {
           </div>
         )}
 
-        {/* PASO 1 — Identificación del club */}
+        {/* PASO 1 — Club y visita */}
         {step === 1 && !enviado && (
-          <div className={TARJETA}>
+          <div className={TARJETA} data-gv-step="1">
             <TituloPaso icon={<Building2 className="w-5 h-5" />} titulo="Identificación del club" texto="Selecciona el club visitado del catálogo oficial del Directorio Distrital." />
             <div className="relative">
               <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -511,12 +517,7 @@ export default function GovernorVisitForm() {
                 <Resumen etiqueta="ID Directorio" valor={clubSel.id.slice(0, 8).toUpperCase()} />
               </dl>
             )}
-          </div>
-        )}
-
-        {/* PASO 2 — Información de la visita */}
-        {step === 2 && !enviado && (
-          <div className={TARJETA}>
+            <div className="mt-8 pt-8 border-t border-gray-100">
             <TituloPaso icon={<CalendarDays className="w-5 h-5" />} titulo="Información de la visita" texto="Los datos de la visita oficial tal como ocurrió." />
             <div className="grid sm:grid-cols-2 gap-5">
               <Campo label="Fecha real de la visita" htmlFor="gv-fecha" error={errores.visitDate}>
@@ -542,12 +543,13 @@ export default function GovernorVisitForm() {
                 </Campo>
               </div>
             </div>
+            </div>
           </div>
         )}
 
-        {/* PASO 3 — Memoria institucional */}
-        {step === 3 && !enviado && (
-          <div className={TARJETA}>
+        {/* PASO 2 — Memoria y galería */}
+        {step === 2 && !enviado && (
+          <div className={TARJETA} data-gv-step="2">
             <TituloPaso icon={<FileText className="w-5 h-5" />} titulo="Memoria institucional" texto="Lo que quedó de la visita. Solo la descripción es obligatoria; completa lo que aplique." />
             <div className="space-y-5">
               <Campo label="Descripción de la visita" htmlFor="gv-desc" error={errores.description} hint={`${v.description.trim().length} caracteres · mínimo 80`}>
@@ -568,12 +570,7 @@ export default function GovernorVisitForm() {
                 ))}
               </div>
             </div>
-          </div>
-        )}
-
-        {/* PASO 4 — Galería multimedia */}
-        {step === 4 && !enviado && (
-          <div className={TARJETA}>
+            <div className="mt-8 pt-8 border-t border-gray-100">
             <TituloPaso icon={<ImageIcon className="w-5 h-5" />} titulo="Galería multimedia" texto={`Hasta ${VISIT_MAX_PHOTOS} fotografías y ${VISIT_MAX_VIDEOS} videos (${LIMITS_LABEL}), y hasta ${VISIT_MAX_LINKS} enlaces audiovisuales.`} />
             <input ref={inputRef} type="file" multiple accept={ACCEPT_ATTR} className="hidden" onChange={(e) => { agregarArchivos(e.target.files); e.target.value = ''; }} />
             <button
@@ -628,12 +625,13 @@ export default function GovernorVisitForm() {
               )}
             </div>
             {errores.media && <p className="text-sm text-red-600 font-semibold mt-4" role="alert">{errores.media}</p>}
+            </div>
           </div>
         )}
 
-        {/* PASO 5 — Responsable y envío */}
-        {step === 5 && !enviado && (
-          <div className={TARJETA}>
+        {/* PASO 3 — Responsable y envío */}
+        {step === 3 && !enviado && (
+          <div className={TARJETA} data-gv-step="3">
             <TituloPaso icon={<UserCheck className="w-5 h-5" />} titulo="Responsable y envío" texto="Quién reporta la visita. Tus datos de contacto no se publican." />
             <div className="grid sm:grid-cols-2 gap-5">
               <Campo label="Nombre completo" htmlFor="gv-nombre" error={errores.responsibleName}>
