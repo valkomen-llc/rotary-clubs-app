@@ -6,6 +6,7 @@ import { requireRoleOrPermission } from '../middleware/institutionalGuard.js';
 import * as ctrl from '../controllers/rotaryEnAccionController.js';
 import * as mktCtrl from '../controllers/rotaryMarketingController.js';
 import * as actCtrl from '../controllers/rotaryActivationController.js';
+import * as visitCtrl from '../controllers/governorVisitController.js';
 import { lightPublicLimit } from '../middleware/rotaryPublicLimit.js';
 import { requireSubmissionInboxAccess } from '../middleware/submissionInboxGuard.js';
 
@@ -27,6 +28,14 @@ router.get('/activacion/config', lightPublicLimit, actCtrl.getActivationConfig);
 router.post('/activacion/hit', lightPublicLimit, actCtrl.recordFunnelHit);
 router.post('/activacion/submit', lightPublicLimit, actCtrl.submitActivationInterest);
 
+// Visitas del Gobernador (v4.1260): formulario público de las secretarías.
+// La corrección entra con el enlace que genera «Solicitar correcciones».
+router.get('/visitas-gobernador/config', lightPublicLimit, visitCtrl.getVisitConfig);
+router.post('/visitas-gobernador/presign', lightPublicLimit, visitCtrl.presignVisitUpload);
+router.post('/visitas-gobernador/submit', lightPublicLimit, visitCtrl.submitVisit);
+router.get('/visitas-gobernador/correccion/:token', lightPublicLimit, visitCtrl.getVisitForCorrection);
+router.post('/visitas-gobernador/correccion/:token', lightPublicLimit, visitCtrl.submitVisitCorrection);
+
 // ── Admin ────────────────────────────────────────────────────────────
 router.use(authMiddleware);
 router.get('/taxonomies', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.view'), ctrl.adminList);
@@ -40,6 +49,16 @@ router.get('/dashboard', requireSubmissionInboxAccess, requireRoleOrPermission(S
 // ── Admin: Feria de Proyectos Colombia ────────────────────────────────
 router.get('/fair/submissions', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.view'), ctrl.getFairSubmissions);
 router.get('/fair/stats', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.view'), ctrl.getFairStats);
+
+// ── Admin: Visitas del Gobernador (v4.1260) ──────────────────────────
+// Literales antes que paramétricas (check:routes).
+router.get('/visitas-gobernador/admin/list', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.view'), visitCtrl.adminListVisits);
+router.get('/visitas-gobernador/admin/stats', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.view'), visitCtrl.adminVisitStats);
+router.get('/visitas-gobernador/admin/by-club/:profileId', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.view'), visitCtrl.adminVisitsByClub);
+router.get('/visitas-gobernador/admin/:id', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.view'), visitCtrl.adminGetVisit);
+router.put('/visitas-gobernador/admin/:id', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.edit'), visitCtrl.adminUpdateVisit);
+router.post('/visitas-gobernador/admin/:id/status', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.manage'), visitCtrl.adminTransitionVisit);
+router.post('/visitas-gobernador/admin/:id/publish', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.publish'), visitCtrl.adminPublishVisit);
 
 // ── Admin: Activación de Clubes (CRM & KPIs) ─────────────────────────
 router.get('/activacion/leads', requireSubmissionInboxAccess, actCtrl.getActivationLeads);

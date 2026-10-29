@@ -190,6 +190,7 @@ const AgentsManagement = lazyWithRetry(() => import('./pages/admin/Agents'), 'Ag
 const MissionControlVIP = lazyWithRetry(() => import('./pages/admin/MissionControlVIP'), 'MissionControlVIP');
 const ContentActivationPage = lazyWithRetry(() => import('./pages/admin/ContentActivation'), 'ContentActivation');
 const RotaryEnAccion = lazyWithRetry(() => import('./pages/RotaryEnAccion'), 'RotaryEnAccion');
+const VisitasGobernador = lazyWithRetry(() => import('./pages/VisitasGobernador'), 'VisitasGobernador');
 const ActivarMiClub = lazyWithRetry(() => import('./pages/ActivarMiClub'), 'ActivarMiClub');
 const LegacyAportarRedirect = lazyWithRetry(() => import('./pages/LegacyAportarRedirect'), 'LegacyAportarRedirect');
 const RotaryEnAccionAdmin = lazyWithRetry(() => import('./pages/admin/RotaryEnAccionAdmin'), 'RotaryEnAccionAdmin');
@@ -765,6 +766,10 @@ function App() {
                     es legacy y redirige al slug universal conservando
                     ?campaign= y el resto de parámetros. */}
                 <Route path="/rotary-en-accion" element={<RotaryEnAccion />} />
+                {/* Visitas del Gobernador (v4.1260): reporte de las secretarías.
+                    Literal: React Router la prefiere a /rotary-en-accion/:id. */}
+                <Route path="/rotary-en-accion/visitas-del-gobernador" element={<VisitasGobernador />} />
+                <Route path="/visitas-del-gobernador" element={<Navigate to="/rotary-en-accion/visitas-del-gobernador" replace />} />
                 <Route path="/activar-mi-club" element={<ActivarMiClub />} />
                 <Route path="/activar-club" element={<Navigate to="/activar-mi-club" replace />} />
                 <Route path="/aportar-contenido/:ref" element={<LegacyAportarRedirect />} />
