@@ -45,19 +45,19 @@ ok(canPublishVisit('aprobada') && !canPublishVisit('recibida') && !canPublishVis
 console.log('── Validación por paso');
 ok(errs(BASE).length === 0, 'una visita completa es válida');
 ok(errs({ ...BASE, clubProfileId: '' }).some(e => e.step === 1), 'sin club: paso 1');
-ok(errs({ ...BASE, visitDate: '2026-11-01' }).some(e => e.step === 2 && e.field === 'visitDate'), 'fecha futura: paso 2');
+ok(errs({ ...BASE, visitDate: '2026-11-01' }).some(e => e.step === 1 && e.field === 'visitDate'), 'fecha futura: paso 1 (club y visita)');
 ok(errs({ ...BASE, visitDate: '2026-02-31' }).some(e => e.field === 'visitDate'), 'fecha imposible (31 de febrero) rechazada');
-ok(errs({ ...BASE, governorName: '' }).some(e => e.field === 'governorName'), 'sin gobernador: paso 2');
-ok(errs({ ...BASE, description: 'corta' }).some(e => e.step === 3), 'descripción corta: paso 3');
-ok(errs({ ...BASE, media: [], links: [] }).some(e => e.step === 4), 'sin evidencias: paso 4');
+ok(errs({ ...BASE, governorName: '' }).some(e => e.field === 'governorName'), 'sin gobernador: rechazado');
+ok(errs({ ...BASE, description: 'corta' }).some(e => e.step === 2), 'descripción corta: paso 2 (memoria y galería)');
+ok(errs({ ...BASE, media: [], links: [] }).some(e => e.step === 2), 'sin evidencias: paso 2 (memoria y galería)');
 ok(errs({ ...BASE, media: [], links: ['https://youtu.be/x'] }).length === 0, 'un enlace basta como evidencia');
-ok(errs({ ...BASE, media: Array.from({ length: VISIT_MAX_PHOTOS + 1 }, (_, i) => ({ key: `k${i}`, filename: `${i}.jpg`, contentType: 'image/jpeg' })) }).some(e => e.step === 4), `más de ${VISIT_MAX_PHOTOS} fotos: rechazado`);
-ok(errs({ ...BASE, media: Array.from({ length: VISIT_MAX_VIDEOS + 1 }, (_, i) => ({ key: `v${i}`, filename: `${i}.mp4`, contentType: 'video/mp4' })) }).some(e => e.step === 4), `más de ${VISIT_MAX_VIDEOS} videos: rechazado`);
-ok(errs({ ...BASE, media: [{ key: 'p', filename: 'a.pdf', contentType: 'application/pdf' }] }).some(e => e.step === 4), 'un PDF no es evidencia admitida');
-ok(errs({ ...BASE, media: [BASE.media[0], BASE.media[0]] }).some(e => e.step === 4), 'el mismo archivo dos veces: rechazado');
-ok(errs({ ...BASE, responsibleEmail: 'no-es-correo' }).some(e => e.field === 'responsibleEmail'), 'correo inválido: paso 5');
-ok(errs({ ...BASE, responsiblePhone: '123' }).some(e => e.field === 'responsiblePhone'), 'WhatsApp inválido: paso 5');
-ok(errs({ ...BASE, truthConfirmed: false }).some(e => e.field === 'truthConfirmed'), 'sin confirmar veracidad: paso 5');
+ok(errs({ ...BASE, media: Array.from({ length: VISIT_MAX_PHOTOS + 1 }, (_, i) => ({ key: `k${i}`, filename: `${i}.jpg`, contentType: 'image/jpeg' })) }).some(e => e.step === 2), `más de ${VISIT_MAX_PHOTOS} fotos: rechazado`);
+ok(errs({ ...BASE, media: Array.from({ length: VISIT_MAX_VIDEOS + 1 }, (_, i) => ({ key: `v${i}`, filename: `${i}.mp4`, contentType: 'video/mp4' })) }).some(e => e.step === 2), `más de ${VISIT_MAX_VIDEOS} videos: rechazado`);
+ok(errs({ ...BASE, media: [{ key: 'p', filename: 'a.pdf', contentType: 'application/pdf' }] }).some(e => e.step === 2), 'un PDF no es evidencia admitida');
+ok(errs({ ...BASE, media: [BASE.media[0], BASE.media[0]] }).some(e => e.step === 2), 'el mismo archivo dos veces: rechazado');
+ok(errs({ ...BASE, responsibleEmail: 'no-es-correo' }).some(e => e.field === 'responsibleEmail'), 'correo inválido: rechazado');
+ok(errs({ ...BASE, responsiblePhone: '123' }).some(e => e.field === 'responsiblePhone'), 'WhatsApp inválido: rechazado');
+ok(errs({ ...BASE, truthConfirmed: false }).some(e => e.field === 'truthConfirmed'), 'sin confirmar veracidad: rechazado');
 ok(errs({ ...BASE, publicationConsent: 'true' }).some(e => e.field === 'publicationConsent'), 'el consentimiento debe ser un true real, no un texto');
 ok(errs({ ...BASE, media: [], truthConfirmed: false, publicationConsent: false }, { admin: true }).length === 0, 'la edición administrativa no re-exige galería ni consentimiento');
 
@@ -91,7 +91,14 @@ const ts = read('src/lib/governorVisitSpec.ts');
 const num = (name) => Number(ts.match(new RegExp(`export const ${name} = (\\d+)`))?.[1]);
 ok(num('VISIT_MAX_PHOTOS') === VISIT_MAX_PHOTOS && num('VISIT_MAX_VIDEOS') === VISIT_MAX_VIDEOS && num('VISIT_MAX_LINKS') === VISIT_MAX_LINKS && num('VISIT_CAPTION_MAX') === VISIT_CAPTION_MAX, 'mismos topes en servidor y navegador');
 for (const st of Object.values(VISIT_STATES)) ok(ts.includes(`${st.id}: { label: '${st.label}'`), `estado «${st.label}» con la misma etiqueta`);
-ok((ts.match(/VISIT_STEPS = \[([\s\S]*?)\]/)?.[1].match(/'/g) || []).length === 10, 'cinco pasos en el formulario');
+const mirror = await import('../src/lib/governorVisitSpec.ts');
+ok(mirror.VISIT_STEPS.join(' · ') === 'Club y visita · Memoria y galería · Responsable y envío', 'tres pasos en el formulario (v4.1262)');
+// Cada error del servidor lleva al MISMO paso en el que el navegador pinta ese campo.
+const vacio = shapeVisit({ media: [{ key: 'p', filename: 'a.pdf', contentType: 'application/pdf' }], responsiblePhone: '1' });
+const delServidor = validateVisit(vacio, { today }).errors;
+const pasoCliente = (campo) => [1, 2, 3].find(n => campo in mirror.validateVisitStep(n, { ...mirror.EMPTY_VISIT, responsiblePhone: '1' }, { photos: 0, videos: 0, pending: 0, failed: 0 }));
+for (const e of delServidor) ok(pasoCliente(e.field) === e.step, `«${e.field}»: paso ${e.step} en servidor y navegador`);
+ok(delServidor.every(e => e.step >= 1 && e.step <= mirror.VISIT_STEPS.length), 'ningún error del servidor apunta a un paso que no existe');
 
 console.log('── Esquema');
 const ensure = read('server/lib/ensureGovernorVisitSchema.js');

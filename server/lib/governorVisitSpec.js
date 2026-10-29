@@ -131,7 +131,8 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 /**
  * ¿Se puede guardar? Devuelve los errores por PASO para que el formulario
- * lleve a quien envía al paso exacto. `today` se inyecta para poder probarlo.
+ * lleve a quien envía al paso exacto. Tres pasos desde v4.1262: 1 club y
+ * visita, 2 memoria y galería, 3 responsable y envío. `today` se inyecta para poder probarlo.
  *
  * `admin: true` es la edición desde el panel: no vuelve a exigir el
  * consentimiento ni la confirmación (ya los dio quien envió) y no toca la
@@ -143,37 +144,37 @@ export const validateVisit = (v, { today = new Date().toISOString().slice(0, 10)
 
     if (!v.clubProfileId) push(1, 'clubProfileId', 'Selecciona el club visitado del catálogo oficial del Distrito 4281.');
 
-    if (!v.visitDate) push(2, 'visitDate', 'Indica la fecha real de la visita.');
-    else if (v.visitDate > today) push(2, 'visitDate', 'La fecha de la visita no puede ser posterior a hoy: se reporta una visita ya realizada.');
-    else if (v.visitDate < '2000-01-01') push(2, 'visitDate', 'Revisa la fecha de la visita.');
-    if (v.governorName.length < 3) push(2, 'governorName', 'Escribe el nombre del Gobernador visitante.');
-    if (v.venue.length < 3) push(2, 'venue', 'Indica el lugar de la visita.');
-    if (v.title.length < 5) push(2, 'title', 'Escribe un título para la visita (mínimo 5 caracteres).');
-    if (v.reason.length < 10) push(2, 'reason', 'Describe brevemente el motivo del encuentro.');
+    if (!v.visitDate) push(1, 'visitDate', 'Indica la fecha real de la visita.');
+    else if (v.visitDate > today) push(1, 'visitDate', 'La fecha de la visita no puede ser posterior a hoy: se reporta una visita ya realizada.');
+    else if (v.visitDate < '2000-01-01') push(1, 'visitDate', 'Revisa la fecha de la visita.');
+    if (v.governorName.length < 3) push(1, 'governorName', 'Escribe el nombre del Gobernador visitante.');
+    if (v.venue.length < 3) push(1, 'venue', 'Indica el lugar de la visita.');
+    if (v.title.length < 5) push(1, 'title', 'Escribe un título para la visita (mínimo 5 caracteres).');
+    if (v.reason.length < 10) push(1, 'reason', 'Describe brevemente el motivo del encuentro.');
 
-    if (v.description.length < 80) push(3, 'description', 'La descripción de la visita debe tener al menos 80 caracteres: es la memoria institucional.');
+    if (v.description.length < 80) push(2, 'description', 'La descripción de la visita debe tener al menos 80 caracteres: es la memoria institucional.');
 
     if (!admin) {
         const photos = v.media.filter((m) => kindOf(m.contentType, m.filename) === 'image').length;
         const videos = v.media.filter((m) => kindOf(m.contentType, m.filename) === 'video').length;
         const unknown = v.media.filter((m) => !kindOf(m.contentType, m.filename)).length;
-        if (unknown) push(4, 'media', 'Sólo se admiten fotografías (JPG, PNG, WEBP, HEIC) y videos (MP4, MOV, WEBM).');
-        if (photos > VISIT_MAX_PHOTOS) push(4, 'media', `Máximo ${VISIT_MAX_PHOTOS} fotografías por visita.`);
-        if (videos > VISIT_MAX_VIDEOS) push(4, 'media', `Máximo ${VISIT_MAX_VIDEOS} videos por visita.`);
-        if (v.links.length > VISIT_MAX_LINKS) push(4, 'links', `Máximo ${VISIT_MAX_LINKS} enlaces audiovisuales.`);
-        if (photos + videos + v.links.length === 0) push(4, 'media', 'Agrega al menos una fotografía, un video o un enlace audiovisual de la visita.');
+        if (unknown) push(2, 'media', 'Sólo se admiten fotografías (JPG, PNG, WEBP, HEIC) y videos (MP4, MOV, WEBM).');
+        if (photos > VISIT_MAX_PHOTOS) push(2, 'media', `Máximo ${VISIT_MAX_PHOTOS} fotografías por visita.`);
+        if (videos > VISIT_MAX_VIDEOS) push(2, 'media', `Máximo ${VISIT_MAX_VIDEOS} videos por visita.`);
+        if (v.links.length > VISIT_MAX_LINKS) push(2, 'links', `Máximo ${VISIT_MAX_LINKS} enlaces audiovisuales.`);
+        if (photos + videos + v.links.length === 0) push(2, 'media', 'Agrega al menos una fotografía, un video o un enlace audiovisual de la visita.');
         const keys = v.media.map((m) => m.key);
-        if (new Set(keys).size !== keys.length) push(4, 'media', 'Hay un archivo repetido en la galería.');
+        if (new Set(keys).size !== keys.length) push(2, 'media', 'Hay un archivo repetido en la galería.');
     }
 
-    if (v.responsibleName.length < 3) push(5, 'responsibleName', 'Escribe el nombre de quien reporta la visita.');
-    if (v.responsibleRole.length < 3) push(5, 'responsibleRole', 'Indica el cargo de quien reporta (por ejemplo, Secretario/a del club).');
-    if (!EMAIL_RE.test(v.responsibleEmail)) push(5, 'responsibleEmail', 'Escribe un correo electrónico válido.');
+    if (v.responsibleName.length < 3) push(3, 'responsibleName', 'Escribe el nombre de quien reporta la visita.');
+    if (v.responsibleRole.length < 3) push(3, 'responsibleRole', 'Indica el cargo de quien reporta (por ejemplo, Secretario/a del club).');
+    if (!EMAIL_RE.test(v.responsibleEmail)) push(3, 'responsibleEmail', 'Escribe un correo electrónico válido.');
     const digits = v.responsiblePhone.replace(/\D/g, '');
-    if (digits.length < 8 || digits.length > 15) push(5, 'responsiblePhone', 'Escribe un número de WhatsApp válido, con indicativo de país.');
+    if (digits.length < 8 || digits.length > 15) push(3, 'responsiblePhone', 'Escribe un número de WhatsApp válido, con indicativo de país.');
     if (!admin) {
-        if (!v.truthConfirmed) push(5, 'truthConfirmed', 'Confirma que la información reportada es veraz.');
-        if (!v.publicationConsent) push(5, 'publicationConsent', 'Autoriza el uso y la publicación del material para poder enviarlo.');
+        if (!v.truthConfirmed) push(3, 'truthConfirmed', 'Confirma que la información reportada es veraz.');
+        if (!v.publicationConsent) push(3, 'publicationConsent', 'Autoriza el uso y la publicación del material para poder enviarlo.');
     }
 
     return { ok: errors.length === 0, errors };

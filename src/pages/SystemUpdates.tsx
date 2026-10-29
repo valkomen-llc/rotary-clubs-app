@@ -34,13 +34,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1261.0 | 2026-10-29 (Visitas del Gobernador: dirección canónica /visitas-del-gobernador)
+// UI V4.1262.0 | 2026-10-29 (Visitas del Gobernador: formulario en tres pasos)
 // Cache bust: 2026-10-29
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1262.0',
+        title: 'Visitas del Gobernador: el formulario pasa de cinco a tres pasos 🧭',
+        description: 'El reporte de la visita del Gobernador (dominio.org/visitas-del-gobernador) se completa ahora en tres pasos en vez de cinco, con los mismos campos: 1) Club y visita (club del Directorio, fecha, gobernador, lugar, título y motivo); 2) Memoria y galería (descripción, actividades, temas, reconocimientos, acuerdos, compromisos, resultados, fotos, videos y enlaces); 3) Responsable y envío. Si falta algo, el formulario lleva directamente al primer campo con error, aunque esté en la segunda mitad del paso.',
+        date: new Date().toISOString(),
+        tags: ['rotary en acción', 'visitas del gobernador'],
+        type: 'improvement',
+        impact: 'Media: menos clics para las secretarías de los clubes.',
+        changes: [
+            { type: 'changed', text: 'Tres pasos: Club y visita · Memoria y galería · Responsable y envío.' },
+            { type: 'changed', text: 'El servidor indica el paso de cada error con la nueva numeración.' },
+            { type: 'improved', text: 'Ante un error, la vista se desplaza al primer aviso del paso.' },
+            { type: 'added', text: 'npm run test:visitas-gobernador comprueba que servidor y navegador asignan cada campo al mismo paso (78 comprobaciones).' },
+        ],
+    },
     {
         version: '4.1261.0',
         title: 'Visitas del Gobernador: nueva dirección del formulario 🔗',

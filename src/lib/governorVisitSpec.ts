@@ -23,11 +23,10 @@ export const visitStateLabel = (id: string) => VISIT_STATES[id as VisitStatus]?.
 export const visitStateChip = (id: string) => VISIT_STATES[id as VisitStatus]?.chip || 'bg-gray-50 text-gray-600 border-gray-200';
 export const VISIT_REASON_REQUIRED = ['correcciones', 'rechazada'];
 
+// Tres pasos (v4.1262): cada uno agrupa dos bloques del reporte.
 export const VISIT_STEPS = [
-  'Identificación del club',
-  'Información de la visita',
-  'Memoria institucional',
-  'Galería multimedia',
+  'Club y visita',
+  'Memoria y galería',
   'Responsable y envío',
 ];
 
@@ -83,7 +82,7 @@ export const todayLocal = () => {
 };
 
 /**
- * Los errores de UN paso (1 a 5). `media` cuenta lo ya cargado con éxito.
+ * Los errores de UN paso (1 a 3). `media` cuenta lo ya cargado con éxito.
  * Mismos mínimos que el servidor.
  */
 export const validateVisitStep = (
@@ -94,8 +93,6 @@ export const validateVisitStep = (
   const e: Record<string, string> = {};
   if (step === 1) {
     if (!v.clubProfileId) e.clubProfileId = 'Selecciona el club visitado del catálogo oficial del Distrito 4281.';
-  }
-  if (step === 2) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(v.visitDate)) e.visitDate = 'Indica la fecha real de la visita.';
     else if (v.visitDate > todayLocal()) e.visitDate = 'La fecha no puede ser posterior a hoy: se reporta una visita ya realizada.';
     else if (v.visitDate < '2000-01-01') e.visitDate = 'Revisa la fecha de la visita.';
@@ -104,17 +101,15 @@ export const validateVisitStep = (
     if (len(v.title) < 5) e.title = 'Escribe un título (mínimo 5 caracteres).';
     if (len(v.reason) < 10) e.reason = 'Describe brevemente el motivo del encuentro.';
   }
-  if (step === 3) {
+  if (step === 2) {
     if (len(v.description) < 80) e.description = `La descripción debe tener al menos 80 caracteres (llevas ${len(v.description)}).`;
-  }
-  if (step === 4) {
     if (media.pending > 0) e.media = 'Espera a que terminen de cargarse los archivos.';
     else if (media.failed > 0) e.media = 'Hay archivos que no se cargaron: reintenta o quítalos.';
     else if (media.photos + media.videos + v.links.length === 0) e.media = 'Agrega al menos una fotografía, un video o un enlace audiovisual de la visita.';
     if (media.photos > VISIT_MAX_PHOTOS) e.media = `Máximo ${VISIT_MAX_PHOTOS} fotografías por visita.`;
     if (media.videos > VISIT_MAX_VIDEOS) e.media = `Máximo ${VISIT_MAX_VIDEOS} videos por visita.`;
   }
-  if (step === 5) {
+  if (step === 3) {
     if (len(v.responsibleName) < 3) e.responsibleName = 'Escribe tu nombre completo.';
     if (len(v.responsibleRole) < 3) e.responsibleRole = 'Indica tu cargo (por ejemplo, Secretario/a del club).';
     if (!EMAIL_RE.test(String(v.responsibleEmail || '').trim())) e.responsibleEmail = 'Escribe un correo electrónico válido.';

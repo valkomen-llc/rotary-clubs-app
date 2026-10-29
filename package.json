@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1261.0",
-  "cache_bust": "4.1261.0",
+  "version": "4.1262.0",
+  "cache_bust": "4.1262.0",
   "type": "module",
-  "//": "UI V4.1261.0 | 2026-10-29 (Visitas del Gobernador: dirección canónica dominio.org/visitas-del-gobernador)",
+  "//": "UI V4.1262.0 | 2026-10-29 (Visitas del Gobernador: formulario en tres pasos)",
   "scripts": {
     "dev": "vite",
     "bundle:server-blocks": "npx esbuild src/lib/emailBlocks.ts --bundle --platform=node --format=esm --target=node18 --outfile=server/lib/emailBlocks.js",
