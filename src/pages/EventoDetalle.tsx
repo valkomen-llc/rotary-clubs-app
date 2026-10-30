@@ -4,7 +4,7 @@ import { ArrowLeft, Calendar, MapPin, Clock, Tag, Loader2, ExternalLink } from '
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import RegistrationPanel from '../components/RegistrationPanel';
-import EventRegistrationCta, { useEventCta, hasVisibleCta } from '../components/EventRegistrationCta';
+import EventRegistrationCta, { useEventCta, hasVisibleCta, ctaHiddenByAdmin } from '../components/EventRegistrationCta';
 import MediaGallery from '../components/MediaGallery';
 import EventVideoPlayer from '../components/EventVideoPlayer';
 import { hasEventVideo } from '../lib/eventVideo';
@@ -88,10 +88,18 @@ const EventRegistrationSidebar = ({ event, showCountdown }: { event: any; showCo
     // botones, así que la ficha se actualiza sola sin recargar.
     const eventRef = event?.slug || event?.id;
     const { lang } = useLang();
-    const { cta } = useEventCta((club as any)?.id, eventRef, lang);
+    const clubId = (club as any)?.id;
+    const { cta, loading: ctaLoading } = useEventCta(clubId, eventRef, lang);
     const actions = hasVisibleCta(cta)
         ? <EventRegistrationCta cta={cta!} eventRef={eventRef} />
         : undefined;
+    // v4.1266 — El botón de respaldo (`buttonLink`) sólo se pinta cuando ya se
+    // sabe que la botonera por categoría no lo reemplaza: ni mientras se
+    // consulta (aparecería y desaparecería) ni si el administrador escondió los
+    // botones de las categorías («Mostrar botón de inscripción en la página
+    // pública»). En ese caso el secundario —«Aporte realizado desde
+    // COLROTARIOS»— queda como la acción principal del panel.
+    const holdFallback = (ctaLoading && Boolean(clubId && eventRef)) || ctaHiddenByAdmin(cta);
 
     return (
         <RegistrationPanel
@@ -104,7 +112,7 @@ const EventRegistrationSidebar = ({ event, showCountdown }: { event: any; showCo
             // 00:00:00:00 (o una fecha de relleno).
             startDate={showCountdown ? event?.startDate : undefined}
             buttonLabel={cfg.buttonLabel || 'Inscripciones'}
-            buttonLink={cfg.buttonLink || selfRegistration || (isLatir ? 'https://forms.gle/CXWqMj5w335h4qm69' : '')}
+            buttonLink={holdFallback ? '' : (cfg.buttonLink || selfRegistration || (isLatir ? 'https://forms.gle/CXWqMj5w335h4qm69' : ''))}
             secondaryLabel={cfg.secondaryLabel}
             secondaryLink={cfg.secondaryLink}
             ticketGeneralLabel={cfg.ticketGeneralLabel || 'Ticket general:'}

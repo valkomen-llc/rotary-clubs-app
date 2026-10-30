@@ -78,6 +78,8 @@ const REASONS: Record<string, string> = {
     not_yet: 'la categoría todavía no abre',
     closed: 'la categoría ya cerró',
     sold_out: 'la categoría está agotada',
+    // v4.1266 — No es un cierre: la categoría sigue recibiendo inscripciones.
+    hidden_public: 'la categoría tiene desactivado «Mostrar botón de inscripción en la página pública» (Categorías de Registro)',
 };
 
 const EventCtaManager = ({ eventId, cta, categories, saving, onChange, onSave, onGoToCategories, onGoToEdition }: Props) => {
@@ -189,7 +191,9 @@ const EventCtaManager = ({ eventId, cta, categories, saving, onChange, onSave, o
                                     {[a.primary, ...(a.secondary || [])].filter((b: any) => b?.hidden).map((b: any) => (
                                         <p key={b.key} className="mt-1.5 text-[11px] text-amber-700">
                                             «{b.label}» oculto: {REASONS[b.unavailableReason] || b.unavailableReason}.
-                                            Escribe un mensaje de cierre si prefieres mostrarlo apagado.
+                                            {b.hiddenByAdmin
+                                                ? ' Actívalo allí para volver a mostrarlo.'
+                                                : ' Escribe un mensaje de cierre si prefieres mostrarlo apagado.'}
                                         </p>
                                     ))}
                                 </div>

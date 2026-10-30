@@ -1127,3 +1127,54 @@ sin `dist/`).
 contra la base real. La edición no recalcula las etiquetas de sistema (no
 dependen de los campos editables). El modal muestra el país, el departamento
 y el club como texto libre, sin los catálogos del formulario público.
+
+### Mostrar u ocultar el botón de una categoría en la ficha — v4.1266
+
+Cada categoría tiene **«Mostrar botón de inscripción en la página pública»**
+(Registro → Categorías de Registro), guardado en
+`EventRegistrationCategory."showPublicButton"` (`BOOLEAN NOT NULL DEFAULT
+true`). Nació para la XIII Conferencia (Villavicencio 2027): retirar
+«Inscripción - Etapa 1» de la ficha sin tocar a nadie que ya se inscribió.
+
+| Archivo | Qué hace |
+|---|---|
+| `ensureEventRegistrationSchema.js` | `ADD COLUMN` + `OWNED_CATEGORY_COLUMNS` en el atajo |
+| `normalizeCategory` / `resolveCtaButtons` (`eventRegistrationSpec.js`) | El dato y su efecto en los botones |
+| `decorateCategory` (`eventRegistrationController.js`) | Lo pasa a los botones, igual que `active` |
+| `EventCategoriesManager.tsx` | El interruptor y la etiqueta «Oculto en la página pública» |
+| `EventRegistrationCta.tsx` (`ctaHiddenByAdmin`) / `EventoDetalle.tsx` | No pintar el botón de respaldo cuando el administrador ocultó los de categoría |
+| `RegistrationPanel.tsx` | Sin botón principal, el secundario pasa a ser la acción principal |
+| `scripts/test-category-public-button.mjs` | `npm run test:category-public-button` |
+
+- **Visibilidad ≠ disponibilidad.** El interruptor SÓLO decide si el botón se
+  pinta. No cierra la categoría, no la desactiva, no cambia `available` y no
+  toca inscripciones, pagos, conciliaciones ni traslados. El enlace directo
+  (`/eventos/:ref/registro?categoria=…`) sigue aceptando inscripciones. Para
+  dejar de recibirlas están «Categoría activa» y las fechas, que no se tocaron.
+- **Sólo `false` explícito esconde** (`raw.showPublicButton !== false`). Un nulo
+  o un cliente viejo que no manda el dato deja la categoría visible: ninguna
+  migración puede esconder un botón que hoy se ve.
+- **Oculto gana al mensaje de cierre.** `resolveCtaButtons` lo devuelve
+  `hidden: true, hiddenByAdmin: true, unavailableReason: 'hidden_public'` aunque
+  la categoría tenga `unavailableMessage`.
+- **Se reemplaza por otro de la MISMA audiencia, nunca de otra.** Si el
+  principal elegido está oculto y hay otro visible con la misma `audience`
+  (ej. «Etapa 2»), pasa ese. Si no, el principal sale oculto: esconder el
+  nacional no puede convertir en principal el internacional (manda el idioma,
+  v4.652).
+- **El respaldo del panel no puede deshacer el ocultamiento.** Sin botones de
+  categoría visibles, `EventoDetalle` pintaba `cfg.buttonLink || selfRegistration`
+  («Inscripciones» → `/registro`). Ahora no lo pinta mientras se consultan los
+  botones ni cuando `ctaHiddenByAdmin(cta)`. Una categoría cerrada SIN ocultar
+  conserva el comportamiento de antes.
+- **El secundario asciende.** Sin `actions` ni `buttonLink`, el secundario de
+  `RegistrationPanel` («Aporte realizado desde COLROTARIOS», del «Panel de
+  inscripción») va a todo el ancho y con `t.button` (la piel sólida del tema).
+  Su enlace y su texto son los mismos; no depende del interruptor.
+- **Lo que NO se oculta**: la «Información complementaria» del Panel de
+  inscripción (ej. `ticketNote` «31/04/2027: $990.000 COP»). Es texto del panel,
+  no del botón; se quita desde esa pestaña si hace falta.
+- **El botón del encabezado** (Navbar, v4.1022) es un control aparte del sitio:
+  el interruptor no lo esconde. Sólo deja de prestarle el nombre y el enlace de
+  la categoría oculta (`primary.hiddenByAdmin`), así que muestra lo que el
+  administrador escribió para él. Para quitarlo, se oculta en su propia pestaña.

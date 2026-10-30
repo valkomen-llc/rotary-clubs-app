@@ -237,7 +237,7 @@ es **rotar la credencial en Neon**, no sólo borrar el archivo.
 | Una sola herramienta: Campañas de Contribución — v4.987 (supersede v4.986; el alcance de escritura lo matiza v4.988) | `docs/claude/una-sola-herramienta-campanas-de-contribucion.md` |
 | Distribución multi-destino — v4.864 (vista previa v4.865, panel de grupos v4.876) | `docs/claude/distribucion-multi-destino.md` |
 | WhatsApp CRM — motor de automatización — v4.701 | `docs/claude/whatsapp-crm.md` |
-| Inscripciones a eventos / Feria de Proyectos — v4.648 (PayPal de la plataforma por defecto en el pago: v4.1251; seleccionar, editar y eliminar desde el listado: v4.1263) | `docs/claude/inscripciones-a-eventos-feria-de-proyectos.md` |
+| Inscripciones a eventos / Feria de Proyectos — v4.648 (PayPal de la plataforma por defecto en el pago: v4.1251; seleccionar, editar y eliminar desde el listado: v4.1263; mostrar u ocultar el botón público de cada categoría: v4.1266) | `docs/claude/inscripciones-a-eventos-feria-de-proyectos.md` |
 | Aniversarios IA — v4.895 (motor multimodelo: v4.897; **FLUJO SIMPLE: v4.907**) | `docs/claude/aniversarios-ia.md` |
 | Cuentas institucionales como identidades de acceso — v4.932 | `docs/claude/cuentas-institucionales-como-identidades-de-acceso.md` |
 | El asistente de redacción de Noticias — v4.891 | `docs/claude/el-asistente-de-redaccion-de-noticias.md` |

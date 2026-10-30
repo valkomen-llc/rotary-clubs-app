@@ -133,7 +133,9 @@ const Navbar = () => {
 
   const withLanguageAwareRegistration = (cta: typeof headerCtas[number]) => {
     const primary = headerEventCta?.primary;
-    if (!primary || !eventRegistrationRef) return cta;
+    // v4.1266 — Una categoría con el botón oculto en la ficha tampoco presta
+    // su nombre ni su enlace al encabezado: queda lo que escribió el administrador.
+    if (!primary || primary.hiddenByAdmin || !eventRegistrationRef) return cta;
     if (!/\/eventos\/[^/?#]+\/registro/.test(cta.url || '')) return cta;
     return {
       ...cta,

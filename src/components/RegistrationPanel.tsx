@@ -158,8 +158,17 @@ const RegistrationPanel = ({
     // principal y la piel SUAVE de `ctaStyles.ts` — el color distingue cuál es
     // el principal, no el tamaño. Va pegado al de arriba con menos aire que el
     // `mb-5` del principal, para que se lean como una pareja.
+    //
+    // v4.1266 — Sin botón principal (el administrador escondió el de la
+    // categoría de inscripción), el secundario PASA A SER la acción principal:
+    // va justo debajo de la cuenta regresiva, a todo el ancho de la columna y
+    // con la piel sólida del tema —la misma geometría que la botonera por
+    // categoría (`EventRegistrationCta`)—. Su enlace y su texto no cambian.
     const secLink = String(secondaryLink || '').trim();
-    const secondaryClasses = `w-full max-w-[220px] block text-center ${ctaSkin(CTA_SOFT)} text-[15px] font-bold py-2.5 rounded-full transition-colors mb-5 ${(link || actions) ? '-mt-2.5' : ''}`;
+    const secondaryIsMain = !(link || actions);
+    const secondaryClasses = secondaryIsMain
+        ? `w-full block text-center ${t.button} text-[15px] font-bold leading-snug px-4 py-3 rounded-full transition-colors mb-5`
+        : `w-full max-w-[220px] block text-center ${ctaSkin(CTA_SOFT)} text-[15px] font-bold py-2.5 rounded-full transition-colors mb-5 -mt-2.5`;
     const secLabel = secondaryLabel || 'Completar inscripción';
     const hasTickets = !!(ticketGeneral || ticketNote || ticketRotex || closeDateText);
 

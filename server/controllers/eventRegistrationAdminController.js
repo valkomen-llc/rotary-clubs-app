@@ -42,7 +42,7 @@ import { attachGrant } from '../middleware/institutionalGuard.js';
 // Logo institucional embebido (mismo criterio que Postulación de Proyectos).
 import { embedLogoDataUrl } from '../lib/logoEmbed.js';
 
-console.log('[eventRegistrationAdminController] v4.1263.0 cargado — tablero, categorías, fichas, edición, acciones en bloque, acreditación y exportación de inscripciones por evento.');
+console.log('[eventRegistrationAdminController] v4.1266.0 cargado — tablero, categorías (con la visibilidad pública de su botón, independiente de la disponibilidad), fichas, edición, acciones en bloque, acreditación y exportación de inscripciones por evento.');
 
 // ── Acceso ───────────────────────────────────────────────────────────
 
@@ -284,6 +284,7 @@ export const previewCta = async (req, res) => {
             closesAt: edition.closesAt,
             categories: decorated.map(c => ({
                 key: c.key, name: c.name, audience: c.audience, active: c.active,
+                showPublicButton: c.showPublicButton !== false,
                 open: c.open, closedReason: c.closedReason, opensAt: c.opensAt, closesAt: c.closesAt,
             })),
             audiences,
