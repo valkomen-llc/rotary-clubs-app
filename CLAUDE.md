@@ -180,6 +180,9 @@ Y las siete de la Conciliación de inscripciones y traslados de un evento
 `EventFundsNotice`, `EventFundsHistory` y `EventStripeCheck`.
 Y la de las Visitas del Gobernador de Rotary en Acción (v4.1260):
 `GovernorVisit` (galería e historial en JSONB, sin tablas satélite).
+Y las cuatro de la plantilla oficial de presentación de la Feria (v4.1264):
+`ProjectFairResource`, `ProjectFairResourceVersion`,
+`ProjectFairResourceDownload` y `ProjectFairResourceEvent`.
 (Más las del registro de eventos que enumera su propia sección:
 `EventEdition`, `EventRegistrationCategory`, `EventRegistrationCompanion`,
 `EventRegistrationPayment`, `EventRegistrationHistory`,
@@ -210,6 +213,7 @@ es **rotar la credencial en Neon**, no sólo borrar el archivo.
 
 | Módulo | Archivo |
 |---|---|
+| Plantilla oficial de presentación del proyecto (Recursos y plantillas de la Feria: subir, versionar, descarga autenticada y auditada desde `/mi-proyecto`, analítica de quién descargó) — v4.1264 | `docs/claude/plantilla-de-presentacion.md` |
 | Visitas del Gobernador (sección de Rotary en Acción: formulario público en `dominio.org/visitas-del-gobernador` en tres pasos, gestión, publicación sin duplicar) — v4.1260 (dirección canónica: v4.1261; tres pasos: v4.1262) | `docs/claude/visitas-del-gobernador.md` |
 | Centro de Gestión del Evento (dashboard de la Feria: proyectos e inscripciones embebidos) — v4.1259 | `docs/claude/centro-de-gestion-del-evento.md` |
 | Conciliación de inscripciones y traslados de un evento — **dominio PROPIO de Eventos, sin la Bóveda** (v4.1250; corrige v4.1248–v4.1249, que usaban la Bóveda) | `docs/claude/conciliacion-de-inscripciones-y-traslados-de-un-evento.md` |

@@ -69,6 +69,15 @@ router.get('/portal/forms/:formKey', portal.portalAuth, projectForms.getForm);
 router.put('/portal/forms/:formKey', portal.portalAuth, express.json({ limit: '2mb' }), projectForms.saveForm);
 router.post('/portal/forms/:formKey/submit', portal.portalAuth, express.json({ limit: '2mb' }), projectForms.submitForm);
 
+// ── Recursos del proyecto: plantilla oficial de presentación (v4.1264) ─
+// El club lista sus recursos y pide la descarga con SU sesión: la postulación
+// sale del token. El servidor registra la solicitud y la entrega, y sólo
+// entonces devuelve un enlace firmado que caduca. No depende del pago.
+import resources from '../controllers/projectFairResourceController.js';
+
+router.get('/portal/resources', portal.portalAuth, resources.portalListResources);
+router.post('/portal/resources/:key/download', portal.portalAuth, express.json(), resources.portalDownload);
+
 // ── Gestión de Postulaciones y Pagos (v4.598) ────────────────────────
 // Estas rutas devuelven las postulaciones y los pagos de TODOS los clubes, así
 // que exigen sesión de plataforma CON rol administrativo del sitio o permiso
@@ -147,6 +156,17 @@ router.get('/admin/postulaciones/:id/forms/:formKey', authMiddleware, fairRead, 
 router.put('/admin/postulaciones/:id/forms/:formKey/approval', authMiddleware, fairEdit, express.json({ limit: '1mb' }), projectForms.saveApproval);
 router.post('/admin/postulaciones/:id/forms/:formKey/reopen', authMiddleware, fairEdit, express.json(), projectForms.reopenForm);
 router.post('/admin/postulaciones/:id/forms/:formKey/lock', authMiddleware, fairEdit, express.json(), projectForms.lockForm);
+
+// Recursos y plantillas (v4.1264). Ver y consultar estadísticas exige acceso
+// al módulo; exportar, el permiso de exportación; subir, publicar, reemplazar
+// y editar, el de configuración (lo resuelve `withAccess` en el controlador).
+router.get('/admin/recursos', authMiddleware, fairRead, resources.adminListResources);
+router.put('/admin/recursos/:key', authMiddleware, fairManage, express.json(), resources.adminUpdateResource);
+router.post('/admin/recursos/:key/presign', authMiddleware, fairManage, express.json(), resources.adminPresignUpload);
+router.post('/admin/recursos/:key/versions', authMiddleware, fairManage, express.json(), resources.adminRegisterVersion);
+router.get('/admin/recursos/:key/versions/:versionId/download', authMiddleware, fairRead, resources.adminDownloadVersion);
+router.get('/admin/recursos/:key/analytics', authMiddleware, fairRead, resources.adminAnalytics);
+router.get('/admin/recursos/:key/analytics.csv', authMiddleware, fairRead, resources.adminAnalyticsCsv);
 
 router.get('/admin/tags', authMiddleware, fairRead, fair.listTags);
 router.post('/admin/tags', authMiddleware, fairEdit, express.json(), fair.createTag);

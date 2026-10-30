@@ -73,6 +73,10 @@
 // y las siete de la Conciliación de inscripciones y traslados de un evento (v4.1250): EventFundsConfig,
 // EventFundsTransfer, EventFundsAllocation, EventFundsDocument, EventFundsNotice, EventFundsHistory y EventStripeCheck.
 // Y la de las Visitas del Gobernador de Rotary en Acción (v4.1260): GovernorVisit.
+// Y las cuatro de la plantilla oficial de presentación de la Feria de Proyectos
+// (v4.1264): ProjectFairResource, ProjectFairResourceVersion,
+// ProjectFairResourceDownload y ProjectFairResourceEvent — el archivo vigente,
+// sus versiones y QUIÉN LO DESCARGÓ: ese registro no se reconstruye de ninguna parte.
 //
 // ⚠️ SocialDailyMetric es el HISTÓRICO PROPIO de Facebook e Instagram, y es lo
 // que un `db push` no puede borrar sin consecuencia: Meta guarda 30 días de
