@@ -153,6 +153,7 @@ ALTER TABLE "SiteMembership" ADD COLUMN IF NOT EXISTS "sessionsRevokedAt" TIMEST
 ALTER TABLE "SiteMembership" ADD COLUMN IF NOT EXISTS "lastAccessAt" TIMESTAMPTZ;
 ALTER TABLE "SiteRole" ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT true;
 ALTER TABLE "SiteMembership" ADD COLUMN IF NOT EXISTS "resourceScopes" JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE "SiteMembership" ADD COLUMN IF NOT EXISTS "validUntil" TIMESTAMPTZ;
 `;
 
 /** Las columnas que el atajo del catálogo comprueba de verdad. */
@@ -162,6 +163,8 @@ const COLUMNAS = [
     { table: 'SiteRole', column: 'active' },
     // v4.1090 — el alcance por recurso (rol → módulo → recurso).
     { table: 'SiteMembership', column: 'resourceScopes' },
+    // v4.1265 — la vigencia del acceso por período (NULL = sin vencimiento).
+    { table: 'SiteMembership', column: 'validUntil' },
 ];
 
 /**
@@ -187,7 +190,8 @@ export const ensureRbacSchema = async () => {
                               ('SiteMembership','sessionsRevokedAt'),
                               ('SiteMembership','lastAccessAt'),
                               ('SiteRole','active'),
-                              ('SiteMembership','resourceScopes')
+                              ('SiteMembership','resourceScopes'),
+                              ('SiteMembership','validUntil')
                           )) AS columnas`
             );
             const fila = rows?.[0];

@@ -262,6 +262,9 @@ const shapeMembership = (row) => row ? ({
     resourceScopes: normalizeResourceScopes(parseJsonObject(row.resourceScopes)),
     status: row.status || 'active',
     sessionsRevokedAt: row.sessionsRevokedAt || null,
+    // v4.1265 — la vigencia del acceso. `null` es «sin vencimiento», que es
+    // como se comporta toda fila escrita antes de esta versión.
+    validUntil: row.validUntil ? new Date(row.validUntil).toISOString() : null,
     lastAccessAt: row.lastAccessAt || null,
     createdAt: row.createdAt || null,
     updatedAt: row.updatedAt || null,
@@ -472,6 +475,30 @@ export const upsertMembership = async ({
     }
 };
 
+/**
+ * v4.1265 — Fija (o quita, con `null`) la vigencia de una membresía.
+ *
+ * Va aparte de `upsertMembership` a propósito: ahí `undefined` es «no lo
+ * toques» y `null` sería ambiguo con «quítale la fecha», y guardar un rol no
+ * puede borrar la vigencia que alguien fijó. Sólo actualiza: sin membresía no
+ * hay a quién ponerle fecha, y se DICE (`no_membership`).
+ */
+export const setMembershipValidity = async (userId, clubId, validUntil) => {
+    try {
+        await ensureRbacSchema();
+        const { rows } = await db.query(
+            `UPDATE "SiteMembership" SET "validUntil" = $3, "updatedAt" = NOW()
+              WHERE "userId" = $1 AND "clubId" = $2 RETURNING *`,
+            [str(userId, 80), str(clubId, 80), validUntil || null]
+        );
+        if (!rows[0]) return { ok: false, reason: 'no_membership' };
+        return { ok: true, membership: shapeMembership(rows[0]) };
+    } catch (e) {
+        console.error('[RBAC] setMembershipValidity:', e?.message);
+        return { ok: false, reason: e?.message };
+    }
+};
+
 /** Retira a alguien del sitio. La fila se borra; su auditoría NO. */
 export const removeMembership = async (userId, clubId) => {
     try {
@@ -601,6 +628,8 @@ export const serializeGrant = (grant) => ({
     scope: grant?.scope || 'site',
     siteId: grant?.siteId || null,
     restricted: isRestrictedGrant(grant),
+    // v4.1265 — Hasta cuándo vale este acceso, para poder DECIRLO en el panel.
+    validUntil: grant?.membership?.validUntil || grant?.validUntil || null,
     // El tercer nivel, ya normalizado por `resolveGrant`. Un operador o un rol
     // heredado lo llevan vacío: «todos».
     resourceScopes: normalizeResourceScopes(grant?.resourceScopes),
@@ -612,6 +641,6 @@ export { canSignIn, expandPermissions };
 export default {
     listRoles, listCustomRoles, roleFor, createRole, updateRole, deleteRole, roleUsage,
     membershipFor, membershipsOfUser, listMembers, siteAdministrators, orphanCheck,
-    upsertMembership, removeMembership, revokeSessions, touchAccess,
+    upsertMembership, removeMembership, revokeSessions, touchAccess, setMembershipValidity,
     resolveUserGrant, serializeGrant,
 };

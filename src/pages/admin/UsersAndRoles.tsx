@@ -85,6 +85,8 @@ interface UserRow {
     resourceScopes?: ResourceScopes;
     position?: string | null;
     status: string;
+    /** v4.1265 — Hasta cuándo vale su acceso en este sitio. `null`/ausente: sin vencimiento. */
+    validUntil?: string | null;
     lastLoginAt: string | null;
     inherited: boolean;
     isSiteAdmin: boolean;
@@ -107,10 +109,24 @@ interface Catalogo {
     can: { viewUsers: boolean; manageUsers: boolean; viewRoles: boolean; manageRoles: boolean; viewAudit: boolean };
     resources?: RecursoCatalogo[];
     actorScopes?: ResourceScopes;
+    /** v4.1265 — El período rotario en curso, resuelto por el servidor. */
+    rotaryPeriod?: { end: string; label: string | null };
 }
 
 /** Un recurso que se puede asignar, como lo devuelve `GET /rbac/resources/:module`. */
 interface RecursoAsignable { id: string; label: string; startDate?: string | null; location?: string | null; }
+
+/**
+ * v4.1265 — El DÍA de la vigencia, en hora de Colombia, para el campo de
+ * fecha. El servidor la guarda como el final de ese día (−05:00): convertirla
+ * con `toISOString().slice(0, 10)` daría el día SIGUIENTE en UTC.
+ */
+const diaDeVigencia = (iso: string): string => {
+    try {
+        return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso));
+    } catch { return String(iso).slice(0, 10); }
+};
+const vencida = (iso?: string | null) => !!iso && new Date(iso).getTime() < Date.now();
 
 /** Cuántos recursos tiene acotados una persona, para el listado. */
 const resumenDeAlcance = (scopes?: ResourceScopes | null): string | null => {
@@ -463,6 +479,15 @@ const UsersAndRoles: React.FC = () => {
                                     }, 'crear el usuario');
                                     if (!r.ok) { setError(r.error || null); return; }
                                     avisos.push(...(r.data?.warnings || []));
+                                    // v4.1265 — La vigencia va en su propio paso: el alta
+                                    // ya quedó escrita y un fallo acá no la deshace.
+                                    if (valores.validUntil && r.data?.user?.id) {
+                                        const v = await pedirSinRecargar(`${API}/rbac/users/${r.data.user.id}/validity`, {
+                                            method: 'PUT', body: JSON.stringify({ validUntil: valores.validUntil }),
+                                        }, 'fijar la vigencia');
+                                        if (!v.ok) avisos.push(`El usuario se creó, pero la vigencia no se guardó: ${v.error || 'error desconocido'}. Edítalo para fijarla.`);
+                                        else avisos.push(...(v.data?.warnings || []));
+                                    }
                                     if (r.data?.invite && !r.data.invite.sent) {
                                         avisos.push(r.data.invite.error
                                             ? `El usuario se creó, pero el correo de acceso no salió: ${r.data.invite.error}. Usa «Enviar acceso» desde el listado.`
@@ -479,6 +504,9 @@ const UsersAndRoles: React.FC = () => {
                                         [`${API}/rbac/users/${u.userId}/scopes`, { method: 'PUT', body: JSON.stringify({ resourceScopes: valores.resourceScopes }) }, 'guardar el alcance', true],
                                         [`${API}/rbac/users/${u.userId}/status`, { method: 'PUT', body: JSON.stringify({ status: valores.status }) }, 'cambiar el estado',
                                             valores.status !== u.status],
+                                        // v4.1265 — después del rol: sin membresía no hay a quién ponerle fecha.
+                                        [`${API}/rbac/users/${u.userId}/validity`, { method: 'PUT', body: JSON.stringify({ validUntil: valores.validUntil || null }) }, 'guardar la vigencia',
+                                            valores.validUntil !== (u.validUntil ? diaDeVigencia(u.validUntil) : '')],
                                     ];
                                     for (const [url, init, accion, hace] of pasos) {
                                         if (!hace) continue;
@@ -595,6 +623,11 @@ const UsersAndRoles: React.FC = () => {
                                                 </span>
                                                 {u.isSiteAdmin && (
                                                     <p className="text-[11px] text-gray-500 mt-1">Administrador del sitio</p>
+                                                )}
+                                                {u.validUntil && (
+                                                    <p className={`text-[11px] mt-1 ${vencida(u.validUntil) ? 'text-red-700 font-medium' : 'text-gray-500'}`} data-no-translate>
+                                                        {vencida(u.validUntil) ? 'Vencido el ' : 'Vigente hasta el '}{fecha(u.validUntil)}
+                                                    </p>
                                                 )}
                                             </td>
                                             <td className="px-4 py-3 text-gray-600 whitespace-nowrap" data-no-translate>{fecha(u.lastLoginAt)}</td>
@@ -799,7 +832,7 @@ const UsersAndRoles: React.FC = () => {
                                     {fecha(e.createdAt as string)}
                                 </span>
                                 <div className="min-w-0">
-                                    <p className="text-gray-800">{String(e.kind)}</p>
+                                    <p className="text-gray-800">{String(e.label || e.kind)}</p>
                                     {!!e.detail && <p className="text-gray-500 text-xs mt-0.5">{String(e.detail)}</p>}
                                     <p className="text-gray-400 text-[11px] mt-0.5" data-no-translate>
                                         {String(e.actorLabel || e.actorKind || 'sistema')}
@@ -833,6 +866,8 @@ interface ValoresUsuario {
     deniedPermissions: string[];
     resourceScopes: ResourceScopes;
     sendInvite: boolean;
+    /** v4.1265 — `AAAA-MM-DD` o '' (sin vencimiento). */
+    validUntil: string;
 }
 
 /**
@@ -889,6 +924,9 @@ const EditorDeUsuario: React.FC<{
     const [negados, setNegados] = useState<string[]>(usuario?.deniedPermissions || []);
     const [scopes, setScopes] = useState<ResourceScopes>(usuario?.resourceScopes || {});
     const [sendInvite, setSendInvite] = useState(true);
+    // v4.1265 — La vigencia viaja como día (`AAAA-MM-DD`); el servidor la
+    // convierte al final de ese día. '' es «sin vencimiento».
+    const [vigencia, setVigencia] = useState<string>(usuario?.validUntil ? diaDeVigencia(usuario.validUntil) : '');
     const [permisosAbiertos, setPermisosAbiertos] = useState(false);
     const [errorLocal, setErrorLocal] = useState<string | null>(null);
 
@@ -950,6 +988,7 @@ const EditorDeUsuario: React.FC<{
             deniedPermissions: negados,
             resourceScopes: scopes,
             sendInvite,
+            validUntil: vigencia,
         });
     };
 
@@ -1004,6 +1043,34 @@ const EditorDeUsuario: React.FC<{
                         ))}
                     </select>
                 </label>
+                {/* v4.1265 — LA VIGENCIA DEL ACCESO. Un cargo rotario dura un
+                    período (1 de julio – 30 de junio): el acceso puede durar lo
+                    mismo. Al vencer no se borra nada; deja de conceder. */}
+                <div className="block md:col-span-2">
+                    <span className="text-sm font-medium text-gray-700">Vigencia del acceso</span>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <input type="date" value={vigencia} onChange={e => setVigencia(e.target.value)}
+                            aria-label="Vigente hasta"
+                            className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white" data-no-translate />
+                        {catalogo?.rotaryPeriod?.end && vigencia !== catalogo.rotaryPeriod.end && (
+                            <button type="button" onClick={() => setVigencia(catalogo.rotaryPeriod!.end)}
+                                className="px-3 py-2 text-xs font-medium rounded-lg border border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100">
+                                Hasta el fin del período {catalogo.rotaryPeriod.label || ''}
+                            </button>
+                        )}
+                        {vigencia && (
+                            <button type="button" onClick={() => setVigencia('')}
+                                className="px-3 py-2 text-xs font-medium rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50">
+                                Sin vencimiento
+                            </button>
+                        )}
+                    </div>
+                    <span className="text-[11px] text-gray-500">
+                        {vigencia
+                            ? 'Vale hasta el final de ese día (hora de Colombia). Al vencer deja de entrar a las herramientas del sitio; su rol, su historial y la auditoría se conservan para renovarlo o revisarlo.'
+                            : 'Sin vencimiento: el acceso vale hasta que alguien lo suspenda o lo retire.'}
+                    </span>
+                </div>
                 <label className="block md:col-span-2">
                     <span className="text-sm font-medium text-gray-700">Rol</span>
                     <select value={rolElegido} onChange={e => setRolElegido(e.target.value)}

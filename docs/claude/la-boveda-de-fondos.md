@@ -686,3 +686,12 @@ dónde se mire**, y por eso cambia de icono y de rótulo.
 - Pruebas: `npm run test:platform-revenue` (15 casos, **sin base ni red**),
   sobre el endpoint REAL — el criterio puede estar bien y el defecto vivir en el
   camino (v4.744).
+
+### Quién puede consultarla sin administrarla (v4.1265)
+
+La consulta de la Bóveda por permiso —ficha y lotes con `finance.view`,
+comprobantes y documentos con `finance.export`, todo auditado—, el rol
+«Secretaría Digital — Control de Aportes», la vigencia del acceso por período y
+la pestaña «Control y Justificación de Aportes» viven en
+`docs/claude/secretaria-digital-control-de-aportes.md`. Las rutas que ESCRIBEN
+no cambiaron.

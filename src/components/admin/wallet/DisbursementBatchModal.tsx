@@ -101,12 +101,16 @@ const ESTADO_AVISO: Record<string, { label: string; cls: string }> = {
     duplicado: { label: 'Ya enviado', cls: 'bg-gray-50 text-gray-600 border-gray-200' },
 };
 
-export default function DisbursementBatchModal({ batchId, clubId, onCerrar, onCambio }: {
+export default function DisbursementBatchModal({ batchId, clubId, onCerrar, onCambio, soloLectura = false }: {
     batchId: string;
     clubId?: string;
     onCerrar: () => void;
     /** Se llama cuando el aviso se reintentó: la ficha del aporte puede querer recargar. */
     onCambio?: () => void;
+    /** v4.1265 — Quien sólo CONSULTA la Bóveda (Secretaría Digital) ve el
+     *  traslado y su aviso sin los botones que reenvían correo: el servidor
+     *  los rechazaría igual (`requireSiteAdmin`). */
+    soloLectura?: boolean;
 }) {
     const [lote, setLote] = useState<BatchDetail | null>(null);
     const [cargando, setCargando] = useState(true);
@@ -301,7 +305,7 @@ export default function DisbursementBatchModal({ batchId, clubId, onCerrar, onCa
                             )}
                             {lote.notifyError && <p className="text-xs text-red-700">{lote.notifyError}</p>}
                             <div className="flex flex-wrap gap-2 pt-1">
-                                {(lote.notifyEmails.length > 0 || lote.notifyPhones.length > 0) && lote.notifyState !== 'enviado' && (
+                                {!soloLectura && (lote.notifyEmails.length > 0 || lote.notifyPhones.length > 0) && lote.notifyState !== 'enviado' && (
                                     <button
                                         type="button" onClick={reintentar} disabled={reintentando}
                                         className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gray-900 text-white text-[11px] font-bold hover:bg-black disabled:opacity-50"
@@ -310,13 +314,13 @@ export default function DisbursementBatchModal({ batchId, clubId, onCerrar, onCa
                                         Reintentar aviso (sólo a quien no lo recibió)
                                     </button>
                                 )}
-                                <button
+                                {!soloLectura && <button
                                     type="button" onClick={verCorreo} disabled={cargandoPrevio}
                                     className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 text-[11px] font-bold hover:bg-white disabled:opacity-50"
                                 >
                                     {cargandoPrevio ? <Loader2 className="w-3 h-3 animate-spin" /> : <Eye className="w-3 h-3" />}
                                     Ver el correo
-                                </button>
+                                </button>}
                             </div>
                         </div>
 

@@ -34,13 +34,32 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1264.0 | 2026-10-30 (Feria de Proyectos: plantilla oficial de presentación — administrable, versionada, descarga auditada)
+// UI V4.1265.0 | 2026-10-30 (Bóveda de Fondos: acceso de la Secretaría Digital, vigencia por período y Control y Justificación de Aportes)
 // Cache bust: 2026-10-30
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1265.0',
+        title: 'Bóveda de Fondos: acceso de la Secretaría Digital y «Control y Justificación de Aportes» 🔐',
+        description: 'Nuevo rol «Secretaría Digital — Control de Aportes» para seguir los aportes del Distrito sin poder mover dinero: consulta la Bóveda, identifica a los aportantes, abre la ficha y la trazabilidad de cada aporte, descarga comprobantes y exporta informes. Los retiros, traslados, reenvíos y cambios de estado siguen siendo de los administradores, y lo exige el servidor. El acceso puede tener vigencia por período rotario (por ejemplo, hasta el 30 de junio de 2027) y, al vencer, deja de conceder sin borrar nada. Cada apertura, exportación y descarga queda en la auditoría.',
+        date: new Date().toISOString(),
+        tags: ['bóveda', 'finanzas', 'roles', 'auditoría', 'distrito 4281'],
+        type: 'feature',
+        impact: 'Alta: la Secretaría Digital prepara la justificación de los recursos con datos reales, y el Distrito controla y revoca su acceso por período.',
+        changes: [
+            { type: 'added', text: 'Rol «Secretaría Digital — Control de Aportes» (ver y exportar la Bóveda; sin solicitar retiros, registrar traslados ni modificar estados). Entra directo a /admin/boveda.' },
+            { type: 'added', text: 'Pestaña «Control y Justificación de Aportes»: indicadores por moneda (sin sumar COP y USD), estado de Stripe, del traslado y del comprobante por aporte, filtros, búsqueda, detalle con la cadena Origen → Stripe → Disponibilidad → Transferencia → Beneficiario → Comprobante y exportación a Excel, CSV y PDF.' },
+            { type: 'added', text: 'Usuarios y permisos: «Vigencia del acceso» con atajo «hasta el fin del período 2026-2027». Al vencer, el servidor rechaza con la fecha y el rol se conserva para renovarlo.' },
+            { type: 'added', text: 'Auditoría: apertura de la Bóveda, exportaciones, descargas de comprobantes y conciliaciones, y cambios de vigencia, con usuario, fecha, acción y recurso. La pantalla de Auditoría muestra el nombre del evento.' },
+            { type: 'changed', text: 'La ficha de un aporte, sus traslados y lotes se consultan con permiso de ver la Bóveda; los comprobantes y documentos, con permiso de exportar. Las rutas que escriben no cambiaron.' },
+            { type: 'fixed', text: 'La Bóveda fallaba al abrirse con cualquier acceso acotado (llamaba a una función de permisos inexistente). La tarjeta de supervisión nombraba «Fundación Rotaria» a todo perfil de sólo lectura: ahora dice el rol real.' },
+            { type: 'added', text: 'Un traslado sin soporte se marca «Comprobante pendiente»; un pago confirmado nunca se presenta como trasladado.' },
+            { type: 'added', text: 'npm run test:digital-secretary (125 comprobaciones, sin base ni red).' },
+        ],
+    },
     {
         version: '4.1264.0',
         title: 'Feria de Proyectos: plantilla oficial de presentación, descargable desde «Mi proyecto» 📥',

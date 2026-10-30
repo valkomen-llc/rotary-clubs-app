@@ -130,11 +130,19 @@ const fecha = (s: string | null) =>
 
 /* ─── El bloque ──────────────────────────────────────────────────────*/
 
-export default function DisbursementSection({ paymentId, clubId, netAmount, currency }: {
+export default function DisbursementSection({ paymentId, clubId, netAmount, currency, soloLectura = false, puedeDescargar = true }: {
     paymentId: string;
     clubId?: string;
     netAmount: number;
     currency: string;
+    /** v4.1265 — Quien sólo CONSULTA la Bóveda (Secretaría Digital) ve el
+     *  calendario, el historial y los traslados, y no los botones que mueven
+     *  dinero o mandan correo. Esconderlos no protege nada —las rutas exigen
+     *  administrador en el servidor—: evita ofrecer un control que va a
+     *  contestar 403 (v4.868). */
+    soloLectura?: boolean;
+    /** v4.1265 — Abrir un comprobante es DESCARGARLO, y eso pide `finance.export`. */
+    puedeDescargar?: boolean;
 }) {
     // ⚠️ TODOS los hooks arriba, antes de cualquier `return`. React identifica
     // cada hook por su ORDEN de llamada: uno escrito debajo de un return
@@ -171,7 +179,8 @@ export default function DisbursementSection({ paymentId, clubId, netAmount, curr
             setMetodos(r.data?.methods || []);
             // Degrada a «no listo» con su motivo: que no se pueda comprobar
             // WhatsApp no puede impedir registrar el desembolso.
-            axios.get(`${API_BASE}/financial/wallet/whatsapp-template`, {
+            // v4.1265 — En sólo lectura no se registra nada: no se pregunta.
+            if (!soloLectura) axios.get(`${API_BASE}/financial/wallet/whatsapp-template`, {
                 params: clubId ? { clubId } : undefined,
                 headers: { Authorization: `Bearer ${token()}` },
             })
@@ -193,7 +202,7 @@ export default function DisbursementSection({ paymentId, clubId, netAmount, curr
         } finally {
             setCargando(false);
         }
-    }, [paymentId, clubId]);
+    }, [paymentId, clubId, soloLectura]);
 
     useEffect(() => { cargar(); }, [cargar]);
 
@@ -337,7 +346,7 @@ export default function DisbursementSection({ paymentId, clubId, netAmount, curr
                     <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
                         Desembolsos
                     </div>
-                    {puedeDesembolsar && !balance?.completo && (
+                    {!soloLectura && puedeDesembolsar && !balance?.completo && (
                         <button
                             type="button"
                             onClick={() => setModalAbierto(true)}
@@ -361,6 +370,8 @@ export default function DisbursementSection({ paymentId, clubId, netAmount, curr
                 {desembolsos.length === 0 && puedeDesembolsar && (
                     <p className="text-[11px] text-gray-500">
                         El dinero está disponible y todavía no se registró ningún traslado al beneficiario.
+                        {/* v4.1265 — Disponible NO es trasladado, y menos justificado. */}
+                        {soloLectura && ' Por eso no hay comprobante de traslado que revisar todavía.'}
                     </p>
                 )}
 
@@ -417,7 +428,22 @@ export default function DisbursementSection({ paymentId, clubId, netAmount, curr
                                     {/* v4.998 — UN botón por comprobante: el PDF del banco y la
                                         captura del costo se abren por separado. Sin `receiptFiles`
                                         —un servidor anterior— queda el único de siempre. */}
-                                    {d.hasReceipt && (d.receiptFiles?.length ? d.receiptFiles : [{ index: 0, name: d.receiptName || '', mime: '', bytes: null }]).map(f => (
+                                    {/* ⚠️ v4.1265 — UN TRASLADO SIN SOPORTE SE DICE.
+                                        Que el pago esté confirmado o que el traslado
+                                        exista no lo justifica: falta el documento, y
+                                        es lo que la Secretaría Digital tiene que poder
+                                        ver de un vistazo. No se fabrica ninguno. */}
+                                    {!d.hasReceipt && d.status !== 'reversado' && (
+                                        <span className="inline-flex items-center gap-1 font-bold text-amber-700">
+                                            <AlertTriangle className="w-3 h-3" /> Comprobante pendiente
+                                        </span>
+                                    )}
+                                    {d.hasReceipt && !puedeDescargar && (
+                                        <span className="inline-flex items-center gap-1 text-gray-500">
+                                            <Paperclip className="w-3 h-3" /> Con comprobante (tu rol no puede descargarlo)
+                                        </span>
+                                    )}
+                                    {d.hasReceipt && puedeDescargar && (d.receiptFiles?.length ? d.receiptFiles : [{ index: 0, name: d.receiptName || '', mime: '', bytes: null }]).map(f => (
                                         <button
                                             key={f.index}
                                             type="button"
@@ -473,7 +499,7 @@ export default function DisbursementSection({ paymentId, clubId, netAmount, curr
                                                             : ' · sin avisar'}
                                         </span>
                                     ))}
-                                    {d.notifyState === 'fallido' && (
+                                    {!soloLectura && d.notifyState === 'fallido' && (
                                         <button
                                             type="button"
                                             onClick={() => reintentarAviso(d.id)}
@@ -518,11 +544,11 @@ export default function DisbursementSection({ paymentId, clubId, netAmount, curr
 
             {verLote && (
 
-                <DisbursementBatchModal batchId={verLote} clubId={clubId} onCerrar={() => setVerLote(null)} onCambio={cargar} />
+                <DisbursementBatchModal batchId={verLote} clubId={clubId} onCerrar={() => setVerLote(null)} onCambio={cargar} soloLectura={soloLectura} />
 
             )}
 
-            {modalAbierto && (
+            {!soloLectura && modalAbierto && (
                 <DisbursementModal
                     paymentId={paymentId}
                     clubId={clubId}

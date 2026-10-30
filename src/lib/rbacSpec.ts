@@ -1294,6 +1294,20 @@ export const ROLE_PRESETS: RolePreset[] = [
         ]
     },
     {
+        // v4.1265 — Espejo del preset del servidor. Sin `landing`: el destino lo
+        // decide el servidor (regla de v4.1093).
+        "key": "digital_secretary",
+        "label": "Secretaría Digital — Control de Aportes",
+        "description": "Supervisión documental y financiera de los aportes: consulta la Bóveda de Fondos, identifica a los aportantes, verifica estados de Stripe y traslados, descarga comprobantes y exporta informes. No solicita retiros, no registra desembolsos ni modifica estados financieros.",
+        "scope": "site",
+        "protected": true,
+        "permissions": [
+            "finance.view",
+            "finance.export",
+            "email_inbox.use_own"
+        ]
+    },
+    {
         "key": "project_fair_manager",
         "label": "Administrador Institucional de Feria de Proyectos",
         "description": "Administración de los módulos operativos de la Feria de Proyectos Rotarios: analíticas, contactos, bandeja de entrada institucional, proyectos, eventos, multimedia y postulaciones.",
@@ -1480,6 +1494,8 @@ export interface Grant {
      * menú y lo que responde la ruta podrían discrepar.
      */
     restricted?: boolean;
+    /** v4.1265 — Hasta cuándo vale este acceso (ISO). `null`: sin vencimiento. */
+    validUntil?: string | null;
     /**
      * El tercer nivel (rol → módulo → recurso), ya normalizado por el servidor.
      * Un módulo ausente es «todos». Acá sólo se PINTA: el servidor vuelve a

@@ -739,6 +739,32 @@ export const ROLE_PRESETS = [
         landing: '/admin/rotary-en-accion',
     },
     {
+        // v4.1265 — Pedido del Distrito 4281 para la Secretaría Digital
+        // 2026-2027: seguir los aportes, identificar a quién aportó, verificar
+        // sus estados y descargar los soportes para justificar los recursos.
+        //
+        // ⚠️ SÓLO LECTURA Y DESCARGA. `finance.view` abre la Bóveda, la ficha
+        // de cada aporte y los traslados; `finance.export` las exportaciones y
+        // los comprobantes. NO trae `finance.manage`: pedir un retiro,
+        // registrar o reversar un desembolso, sincronizar con Stripe, reenviar
+        // una conciliación o cambiar un beneficiario siguen siendo de quien
+        // administra el sitio, y esa frontera la pone el SERVIDOR en cada ruta,
+        // no la pantalla. Ampliarlo es una excepción individual desde
+        // «Usuarios y permisos», que queda auditada.
+        key: 'digital_secretary',
+        label: 'Secretaría Digital — Control de Aportes',
+        description: 'Supervisión documental y financiera de los aportes: consulta la Bóveda de Fondos, identifica a los aportantes, verifica estados de Stripe y traslados, descarga comprobantes y exporta informes. No solicita retiros, no registra desembolsos ni modifica estados financieros.',
+        scope: 'site',
+        protected: true,
+        permissions: [
+            'finance.view',
+            'finance.export',
+            'email_inbox.use_own',
+        ],
+        // Su trabajo es la Bóveda: el resumen del panel no le dice nada.
+        landing: '/admin/boveda',
+    },
+    {
         key: 'project_fair_manager',
         label: 'Administrador Institucional de Feria de Proyectos',
         description: 'Administración de los módulos operativos de la Feria de Proyectos Rotarios: analíticas, contactos, bandeja de entrada institucional, proyectos, eventos, multimedia y postulaciones.',
@@ -810,6 +836,7 @@ export const ROLE_FALLBACK = {
     crowdfunder: 'site_admin',
     institutional_user: 'institutional_user',
     rotary_foundation: 'rotary_foundation',
+    digital_secretary: 'digital_secretary',
     project_fair_manager: 'project_fair_manager',
     PROJECT_FAIR_MANAGER: 'project_fair_manager',
 };
@@ -849,7 +876,7 @@ export const isPlatformOperator = (user) => PLATFORM_ROLES.includes(str(user?.ro
  * obtiene permisos sobre otro— y es lo que hace que esto sea multi-tenant y no
  * una lista global de permisos con un nombre bonito.
  */
-export const resolveGrant = ({ user = null, siteId = null, membership = null, legacyPermissions = null } = {}) => {
+export const resolveGrant = ({ user = null, siteId = null, membership = null, legacyPermissions = null, now = new Date() } = {}) => {
     const rol = str(user?.role, 40);
 
     if (isPlatformOperator(user)) {
@@ -873,6 +900,19 @@ export const resolveGrant = ({ user = null, siteId = null, membership = null, le
 
     if (suya && suya.status === 'suspended') {
         return { permissions: new Set(), source: 'suspended', roleKey: suya.roleKey || null, roleLabel: suya.roleLabel || null, scope: 'site', siteId, resourceScopes: {} };
+    }
+
+    // v4.1265 — UN ACCESO VENCIDO NO CONCEDE NADA, y no cae al respaldo de su
+    // rol de `User`: sin este `return`, una institucional cuyo período terminó
+    // seguiría entrando por `legacy_permissions` o por el menú base, y la
+    // vigencia no vencería nada. Se conserva la membresía —rol, alcance y
+    // traza— para poder renovarla o explicar por qué ya no entra.
+    if (suya && isMembershipExpired(suya, now)) {
+        return {
+            permissions: new Set(), source: 'expired', roleKey: suya.roleKey || null,
+            roleLabel: suya.roleLabel || presetRole(suya.roleKey)?.label || null,
+            scope: 'site', siteId, resourceScopes: {}, validUntil: suya.validUntil,
+        };
     }
 
     if (suya && (suya.rolePermissions || suya.roleKey)) {
@@ -1133,7 +1173,7 @@ export const isRestrictedGrant = (grant) => {
     const fuente = str(grant.source, 40);
     const acotada = fuente === 'membership'
         || fuente === 'legacy_permissions'
-        || (fuente === 'legacy_role' && ['institutional_user', 'rotary_foundation', 'project_fair_manager', 'PROJECT_FAIR_MANAGER'].includes(str(grant.roleKey, 40)));
+        || (fuente === 'legacy_role' && ['institutional_user', 'rotary_foundation', 'digital_secretary', 'project_fair_manager', 'PROJECT_FAIR_MANAGER'].includes(str(grant.roleKey, 40)));
     if (!acotada) return false;
     return !isFullSiteAdmin(grant);
 };
@@ -1309,6 +1349,77 @@ export const MEMBERSHIP_STATUS_KEYS = MEMBERSHIP_STATUSES.map(s => s.key);
 
 export const canSignIn = (status) =>
     MEMBERSHIP_STATUSES.find(s => s.key === str(status, 20))?.canSignIn ?? true;
+
+// ── La vigencia de un acceso (v4.1265) ───────────────────────────────
+
+/**
+ * ⚠️ UN CARGO ROTARIO DURA UN PERÍODO, y su acceso también puede durarlo.
+ *
+ * Pedido del Distrito 4281 con la Secretaría Digital 2026-2027: el acceso a la
+ * Bóveda se da para ESE período y tiene que poder revisarse o revocarse al
+ * cerrarlo sin borrar nada. La plataforma no tenía cargos con vigencia; la
+ * pieza mínima es una fecha en la MEMBRESÍA (`validUntil`), no en `User`
+ * —que no gana columnas (v4.932)— ni en el rol, que es de todos los que lo
+ * tienen.
+ *
+ * Al vencer NO se borra nada: la membresía se queda, con su rol y su traza, y
+ * deja de conceder. Renovar al responsable del período siguiente es mover la
+ * fecha o asignarle el rol a la persona nueva. El historial de aportes es del
+ * sitio, no de quien lo mira, y no se toca.
+ *
+ * El período rotario va del 1 de julio al 30 de junio.
+ */
+export const ROTARY_PERIOD_END_MONTH = 6; // junio, en 1..12
+
+/**
+ * El día en que termina el período rotario que contiene `now`, como
+ * `AAAA-MM-DD`. El 30 de octubre de 2026 cae en 2026-2027 → `2027-06-30`.
+ */
+export const rotaryPeriodEnd = (now = new Date()) => {
+    const d = now instanceof Date ? now : new Date(now);
+    const y = d.getUTCFullYear();
+    const fin = d.getUTCMonth() + 1 > ROTARY_PERIOD_END_MONTH ? y + 1 : y;
+    return `${fin}-06-30`;
+};
+
+/** «2026-2027» para el período que termina en esa fecha. */
+export const rotaryPeriodLabel = (endDate) => {
+    const y = Number(String(endDate || '').slice(0, 4));
+    return Number.isFinite(y) && y > 2000 ? `${y - 1}-${y}` : null;
+};
+
+/**
+ * ⚠️ UNA FECHA SIN HORA ES EL DÍA ENTERO, en hora de Colombia (UTC−5). Vencer a
+ * las 00:00 del 30 de junio le quitaría el último día del período a quien lo
+ * está cerrando — la misma trampa que `finDelDia` en los filtros de la Bóveda.
+ */
+export const VALIDITY_DAY_END = 'T23:59:59.999-05:00';
+
+/**
+ * Normaliza lo que llega del formulario. `null`/'' es «sin vencimiento».
+ * Devuelve `{ ok, value, error }`; `value` es ISO o `null`. Una fecha ilegible
+ * se RECHAZA con su motivo: interpretarla sería decidir a ciegas cuándo pierde
+ * alguien su acceso.
+ */
+export const normalizeValidUntil = (input) => {
+    if (input === null || input === undefined || String(input).trim() === '') return { ok: true, value: null };
+    const raw = String(input).trim().slice(0, 40);
+    const conHora = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}${VALIDITY_DAY_END}` : raw;
+    const d = new Date(conHora);
+    if (Number.isNaN(d.getTime())) return { ok: false, value: null, error: 'La fecha de vigencia no es válida. Usa el formato AAAA-MM-DD.' };
+    const y = d.getUTCFullYear();
+    if (y < 2000 || y > 2100) return { ok: false, value: null, error: 'La fecha de vigencia está fuera de rango.' };
+    return { ok: true, value: d.toISOString() };
+};
+
+/** ¿Venció? Sin fecha, nunca. Una fecha ilegible en la fila NO vence: ante un dato roto no se le quita el acceso a nadie en silencio. */
+export const isMembershipExpired = (membership, now = new Date()) => {
+    const v = membership?.validUntil;
+    if (!v) return false;
+    const t = new Date(v).getTime();
+    if (Number.isNaN(t)) return false;
+    return t < (now instanceof Date ? now : new Date(now)).getTime();
+};
 
 // ── Protección del último administrador ──────────────────────────────
 
@@ -1769,6 +1880,15 @@ export const RBAC_AUDIT_EVENTS = {
     resource_scope_changed: 'Alcance de acceso modificado',
     resource_assigned: 'Recurso asignado',
     resource_removed: 'Recurso retirado',
+    // v4.1265 — la vigencia por período y la consulta de la Bóveda. Los de la
+    // Bóveda nombran el HECHO —abrir, exportar, descargar un comprobante—
+    // porque son las preguntas de una auditoría financiera: «¿quién descargó
+    // el soporte de este traslado, y cuándo?».
+    membership_validity_changed: 'Vigencia del acceso modificada',
+    vault_opened: 'Bóveda de Fondos consultada',
+    vault_report_exported: 'Informe de la Bóveda exportado',
+    vault_receipt_downloaded: 'Comprobante de traslado descargado',
+    vault_document_downloaded: 'Documento de conciliación descargado',
 };
 
 export default {
@@ -1787,6 +1907,8 @@ export default {
     filterGrantable, grantablePermissions, canAssignRole, assignableRoles,
     validateRole, slugifyRole, ROLE_NAME_MAX, ROLE_DESCRIPTION_MAX,
     MEMBERSHIP_STATUSES, MEMBERSHIP_STATUS_KEYS, canSignIn,
+    ROTARY_PERIOD_END_MONTH, rotaryPeriodEnd, rotaryPeriodLabel, VALIDITY_DAY_END,
+    normalizeValidUntil, isMembershipExpired,
     isAdministrativeRole, wouldOrphanSite, describeRole, permissionMatrix,
     RESOURCE_MODULES, RESOURCE_SCOPE_MODES, resourceModuleOf, normalizeResourceScopes,
     validateResourceScopes, resourceScopeOf, isResourceRestricted, canAccessResource,

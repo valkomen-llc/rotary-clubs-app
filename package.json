@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1264.0",
-  "cache_bust": "4.1264.0",
+  "version": "4.1265.0",
+  "cache_bust": "4.1265.0",
   "type": "module",
   "//": "UI V4.1262.0 | 2026-10-29 (Visitas del Gobernador: formulario en tres pasos)",
   "scripts": {
@@ -178,6 +178,7 @@
     "test:wallet:lifecycle": "node scripts/test-wallet-lifecycle.mjs",
     "test:wallet:filters": "node scripts/test-wallet-filters.mjs",
     "test:wallet:ui": "node scripts/test-wallet-ui.mjs",
+    "test:digital-secretary": "node scripts/test-digital-secretary.mjs",
     "test:account-actions": "node scripts/test-account-actions.mjs",
     "test:institutional-menu": "node scripts/test-institutional-menu.mjs",
     "test:admin:menu": "node scripts/test-admin-menu.mjs",
