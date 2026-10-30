@@ -51,7 +51,27 @@ interface CompletedConfig {
     notifyEnabled: boolean;
     notifySubject: string;
     notifyBody: string;
+    /** v4.1268 — Guía de pago externo del paso 4. Un servidor anterior no la manda. */
+    paymentGuide?: PaymentGuideConfig | null;
 }
+
+interface PaymentGuideConfig {
+    enabled: boolean;
+    method: string;
+    providerName: string;
+    url: string;
+    concept: string;
+    title: string;
+    intro: string;
+    buttonLabel: string;
+    warning: string;
+    receiptHint: string;
+}
+
+const EMPTY_GUIDE: PaymentGuideConfig = {
+    enabled: false, method: 'pasarela_colrotarios', providerName: '', url: '', concept: '',
+    title: '', intro: '', buttonLabel: '', warning: '', receiptHint: '',
+};
 
 // Lo que el servidor DICE de la notificación: remitente real, predeterminados
 // derivados del evento y el catálogo cerrado de variables.
@@ -1307,6 +1327,98 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                                 )}
                             </div>
                         </div>
+
+                        {/* ── Guía de pago externo del paso 4 (v4.1268) ──── */}
+                        {(() => {
+                            const guide = { ...EMPTY_GUIDE, ...(config.paymentGuide || {}) };
+                            const setGuide = (partial: Partial<PaymentGuideConfig>) =>
+                                patchConfig({ paymentGuide: { ...guide, ...partial } });
+                            const urlInvalid = Boolean(guide.url) && !/^https:\/\/[^\s]+$/i.test(guide.url.trim());
+                            return (
+                                <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-4">
+                                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                        <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Guía de pago (paso 4)</p>
+                                        <label className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                                            <input type="checkbox" className="h-4 w-4" checked={guide.enabled}
+                                                onChange={e => setGuide({ enabled: e.target.checked })} />
+                                            Mostrar la guía al elegir el método
+                                        </label>
+                                    </div>
+                                    <p className="mb-3 text-[13px] text-gray-500">
+                                        Cuando el participante elige el método indicado, el paso 4 despliega los pasos para aportar
+                                        en el portal del proveedor (se abre en otra pestaña) y volver a adjuntar el comprobante. Es
+                                        una guía: no registra ni confirma pagos. <strong>Antes de publicar, confirma con el
+                                        responsable financiero que el concepto es el autorizado para este evento.</strong>
+                                    </p>
+                                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                        <div>
+                                            <label className={labelCls}>Método que la despliega</label>
+                                            <select className={inputCls} value={guide.method}
+                                                onChange={e => setGuide({ method: e.target.value })}>
+                                                {(catalog?.paymentMethods || [{ value: 'pasarela_colrotarios', label: 'Pasarela de pagos de COLROTARIOS' }])
+                                                    .map((m: any) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className={labelCls}>Proveedor</label>
+                                            <input type="text" className={inputCls} value={guide.providerName} placeholder="AvalPay"
+                                                onChange={e => setGuide({ providerName: e.target.value })} />
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <label className={labelCls}>Enlace oficial del proveedor (https)</label>
+                                            <input type="url" className={`${inputCls} font-mono text-[13px]`} value={guide.url}
+                                                placeholder="https://micrositios.avalpaycenter.com/…"
+                                                onChange={e => setGuide({ url: e.target.value })} />
+                                            {urlInvalid && (
+                                                <p className="mt-1 text-[12px] font-semibold text-red-600">
+                                                    El enlace tiene que empezar por https://. Sin un enlace válido la guía no se muestra.
+                                                </p>
+                                            )}
+                                        </div>
+                                        <div>
+                                            <label className={labelCls}>Concepto que debe elegir el participante</label>
+                                            <input type="text" className={inputCls} value={guide.concept}
+                                                placeholder="Conferencia Villavicencio 2027"
+                                                onChange={e => setGuide({ concept: e.target.value })} />
+                                        </div>
+                                        <div>
+                                            <label className={labelCls}>Texto del botón</label>
+                                            <input type="text" className={inputCls} value={guide.buttonLabel}
+                                                placeholder={guide.providerName ? `Ir a pagar con ${guide.providerName}` : 'Ir a pagar'}
+                                                onChange={e => setGuide({ buttonLabel: e.target.value })} />
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <label className={labelCls}>Título de la tarjeta</label>
+                                            <input type="text" className={inputCls} value={guide.title}
+                                                placeholder="Realiza tu aporte de inscripción con COLROTARIOS"
+                                                onChange={e => setGuide({ title: e.target.value })} />
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <label className={labelCls}>Instrucciones (introducción)</label>
+                                            <textarea className={inputCls} rows={2} value={guide.intro}
+                                                placeholder="Para completar tu inscripción, realiza tu aporte de manera segura a través del portal de pagos…"
+                                                onChange={e => setGuide({ intro: e.target.value })} />
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <label className={labelCls}>Mensaje de advertencia</label>
+                                            <textarea className={inputCls} rows={2} value={guide.warning}
+                                                placeholder="Importante: realizar el pago no completa automáticamente tu inscripción…"
+                                                onChange={e => setGuide({ warning: e.target.value })} />
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <label className={labelCls}>Indicación junto al comprobante</label>
+                                            <input type="text" className={inputCls} value={guide.receiptHint}
+                                                placeholder="Adjunta aquí el comprobante que descargaste al finalizar tu pago…"
+                                                onChange={e => setGuide({ receiptHint: e.target.value })} />
+                                        </div>
+                                    </div>
+                                    <p className="mt-2 text-[12px] text-gray-500">
+                                        Los pasos se arman solos con el proveedor, el concepto y el texto del botón. Vacío = texto
+                                        predeterminado.
+                                    </p>
+                                </div>
+                            );
+                        })()}
 
                         <label className="flex items-center gap-2 text-sm font-semibold text-gray-800">
                             <input type="checkbox" className="h-4 w-4" checked={config.enabled}

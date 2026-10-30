@@ -25,7 +25,7 @@ import { ensureEventRegistrationSchema } from '../lib/ensureEventRegistrationSch
 import { rotaryCatalogFor } from '../lib/eventRegistrationSpec.js';
 import { clean, recordHistory, recordMessage } from '../lib/eventRegistrationStore.js';
 import {
-    validateAccessPassword,
+    validateAccessPassword, publicPaymentGuide,
     buildCompletedSchema, validateCompletedAnswers,
     completedCodePrefixFor, buildDuplicateFlags, completedStatusMeta,
     paymentMethodLabel,
@@ -44,7 +44,7 @@ import {
     issueAttendeeSession, sendVerificationEmail, auditLogin, REALM_LABELS,
 } from './eventAttendeeController.js';
 
-console.log('[completedRegistrationController] v4.1267.0 cargado — formulario público de inscripciones completadas con la cuenta del participante (crear acceso o entrar con la de siempre, sin duplicar), envío idempotente y la confirmación con la plantilla del evento.');
+console.log('[completedRegistrationController] v4.1268.0 cargado — formulario público de inscripciones completadas con la cuenta del participante, la guía de pago por COLROTARIOS/AvalPay configurable por evento, envío idempotente y la confirmación con la plantilla del evento.');
 
 // El remitente institucional de la plataforma — el MISMO transporte de todo el
 // correo transaccional del sitio (EmailService → Resend/SMTP). Exportado para
@@ -112,6 +112,9 @@ export const getPublicCompletedConfig = async (req, res) => {
             // formulario sólo la pinta. `prefill` son SUS datos, para no
             // pedírselos dos veces, y sólo rellena campos vacíos.
             access: { mode: config.accountMode },
+            // v4.1268 — La guía del paso 4 para pagar en el proveedor externo.
+            // `null` si está apagada o sin enlace https: no se pinta.
+            paymentGuide: publicPaymentGuide(config.paymentGuide, event.title),
             ...(await identityForForm(req, config)),
         });
     } catch (error) {

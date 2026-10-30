@@ -34,13 +34,31 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1267.0 | 2026-10-30 (Eventos: cuenta del participante en «Completar inscripción» y «Mis eventos»)
+// UI V4.1268.0 | 2026-10-30 (Eventos: guía de pago por COLROTARIOS / AvalPay en el paso 4 de «Completar inscripción»)
 // Cache bust: 2026-10-30
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1268.0',
+        title: 'Eventos: guía para aportar por COLROTARIOS con AvalPay en el paso 4 💳',
+        description: 'En «Completar inscripción», al elegir «Pasarela de pagos de COLROTARIOS» se despliega una tarjeta con los cuatro pasos para aportar en el micrositio de AvalPay —que se abre en otra pestaña—, el concepto que hay que elegir («Conferencia Villavicencio 2027») y cómo volver a adjuntar el comprobante. Es una guía: no registra ni confirma ningún pago, y la inscripción sigue quedando pendiente de validación.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'colrotarios', 'avalpay', 'distrito 4281'],
+        type: 'feature',
+        impact: 'Alta: el participante de Villavicencio 2027 sabe dónde pagar, qué concepto elegir y que debe volver a adjuntar el comprobante, sin perder lo que ya escribió.',
+        changes: [
+            { type: 'added', text: 'Paso 4: tarjeta «Realiza tu aporte de inscripción con COLROTARIOS» debajo de los métodos de pago y antes del comprobante. Aparece al elegir COLROTARIOS y desaparece con Transferencia u Otro.' },
+            { type: 'added', text: 'Botón «Ir a pagar con AvalPay»: abre el micrositio oficial en una pestaña nueva (sin acceso al formulario), accesible con teclado y en el móvil. Sin iframe.' },
+            { type: 'added', text: 'Junto al comprobante: «Adjunta aquí el comprobante que descargaste al finalizar tu pago en AvalPay».' },
+            { type: 'improved', text: 'Volver de pagar —aunque el móvil haya recargado la pestaña— retoma el paso 4 con los datos, el método y el comprobante ya subido. La contraseña del acceso nunca se guarda: si hace falta, se vuelve a pedir.' },
+            { type: 'added', text: 'Panel: «Guía de pago (paso 4)» en la configuración del formulario, por evento: activar, método, proveedor, enlace (sólo https), concepto, textos del botón, la introducción, la advertencia y la indicación.' },
+            { type: 'changed', text: 'El concepto «Conferencia Villavicencio 2027» se comprobó en el micrositio oficial de AvalPay (campo «Aportes Colrotarios»). Si el recaudo cambia, se corrige en el panel sin desplegar.' },
+            { type: 'added', text: 'npm run test:completed:payment-guide (38 comprobaciones) y un recorrido en navegador de escritorio y móvil (46).' },
+        ],
+    },
     {
         version: '4.1267.0',
         title: 'Eventos: crea tu acceso al evento y consulta tu inscripción en «Mis eventos» 🔐',

@@ -113,8 +113,13 @@ grupo('1.6 Guardas del código');
     const form = leer('src/pages/CompletarInscripcion.tsx');
     const draftDecl = form.slice(form.indexOf('interface Draft'), form.indexOf('const draftKey'));
     check('el borrador NO declara contraseña', !/password/i.test(draftDecl));
-    check('el borrador se arma sin las credenciales',
-        /const value: Draft = \{ answers, clubNotListed, receipt, submissionKey \}/.test(form));
+    // v4.1268 — el borrador también lleva el paso y la INTENCIÓN de crear
+    // cuenta (un booleano); la contraseña sigue fuera.
+    {
+        const m = /const value: Draft = \{([^}]*)\}/.exec(form);
+        check('el borrador se arma sin las credenciales',
+            Boolean(m) && !/password|credential/i.test(m[1]) && /answers/.test(m[1]), m?.[1]);
+    }
     check('la sección de acceso es un componente de NIVEL SUPERIOR (no pierde el foco)',
         /\nconst AccessSection = \(/.test(form));
     check('el texto introductorio pedido', form.includes('Con tu cuenta podrás consultar el estado de tu inscripción, verificar tus comprobantes'));
