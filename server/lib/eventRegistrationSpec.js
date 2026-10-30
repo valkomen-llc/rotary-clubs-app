@@ -1330,6 +1330,142 @@ export const randomCodeSuffix = (length = 5) => {
 export const buildRegistrationCode = (prefix) =>
     `${prefix || 'REG'}-${randomCodeSuffix(5)}`;
 
+// ── Editar y eliminar desde el listado del panel (v4.1263) ───────────
+//
+// Pedido del comité de Valledupar con el listado «Todos» delante: marcar uno o
+// varios inscritos y editarlos o eliminarlos. El CRITERIO vive aquí, puro, y
+// el controlador sólo hace la I/O — así las pruebas lo fijan sin base.
+
+/**
+ * Las respuestas que además viven en una COLUMNA de `EventRegistration`, con
+ * el mismo tope que les pone el envío del formulario (`createRegistration`).
+ * Editar una respuesta sin su columna dejaría la tabla, los filtros y las
+ * exportaciones mostrando el valor viejo mientras la ficha muestra el nuevo.
+ */
+export const ANSWER_COLUMNS = {
+    firstName: { column: 'firstName', max: 120 },
+    lastName: { column: 'lastName', max: 120 },
+    email: { column: 'email', max: 200 },
+    phone: { column: 'phone', max: 60 },
+    country: { column: 'country', max: 120 },
+    city: { column: 'city', max: 120 },
+    district: { column: 'district', max: 40 },
+    documentNumber: { column: 'documentNumber', max: 60 },
+    department: { column: 'department', max: 120 },
+    fairRole: { column: 'fairRole', max: 60 },
+    fairRoleOther: { column: 'fairRoleOther', max: 120 },
+    dietary: { column: 'dietary', max: 40 },
+    clubName: { column: 'clubName', max: 200 },
+    accessibility: { column: 'notes', max: 1000 },
+};
+
+/** Respuestas que el equipo NO reescribe: la aceptación es de la persona. */
+export const ADMIN_LOCKED_ANSWERS = ['acceptTerms'];
+
+/**
+ * Lo que se corrige EN BLOQUE: lo COMPARTIDO (ubicación y club). La identidad
+ * —nombre, documento, correo, teléfono— no: el mismo valor en veinte personas
+ * destruye datos. Es la regla de las inscripciones COLROTARIOS (v4.952), y el
+ * servidor la hace cumplir aunque la pantalla no ofrezca otra cosa.
+ */
+export const REGISTRATION_BULK_EDITABLE = ['country', 'department', 'city', 'district', 'clubName'];
+
+const sameAnswer = (a, b) => JSON.stringify(a ?? '') === JSON.stringify(b ?? '');
+
+/**
+ * Planea la edición de UNA inscripción: qué respuestas cambian, qué columnas
+ * acompañan y qué errores hay. No escribe nada.
+ *
+ * Sólo se aceptan claves del formulario de SU categoría (más las que la
+ * inscripción ya tenía guardadas: un campo retirado se puede corregir, no
+ * inventar). Un select cambiado tiene que caer en sus opciones; un valor viejo
+ * que ya no figura se respeta mientras nadie lo toque. Nombres, apellidos y un
+ * correo válido son obligatorios: son lo que identifica a la persona en la
+ * sede. El resto NO se exige, a propósito: el equipo corrige registros
+ * incompletos y obligarlo a llenar todo le impediría arreglar lo que sí sabe.
+ */
+export const planRegistrationEdit = ({ fields = [], answers = {}, patch = {} }) => {
+    const byKey = Object.fromEntries(fields.map(f => [f.key, f]));
+    const errors = {};
+    const changed = {};
+    const next = { ...(answers || {}) };
+
+    for (const [key, raw] of Object.entries(patch || {})) {
+        if (ADMIN_LOCKED_ANSWERS.includes(key)) continue;
+        const field = byKey[key];
+        if (!field && !(key in (answers || {}))) continue;
+
+        let value = raw;
+        if (field?.type === 'checkbox') value = raw === true;
+        else if (field?.type === 'multiselect') value = Array.isArray(raw) ? raw.map(v => String(v).trim()).filter(Boolean) : [];
+        else if (field?.type === 'number') value = raw === '' || raw === null || raw === undefined ? '' : Number(raw);
+        else value = String(raw ?? '').trim().slice(0, ANSWER_COLUMNS[key]?.max || field?.max || 2000);
+
+        if (sameAnswer(value, answers?.[key])) continue;
+
+        if (field?.type === 'number' && value !== '' && !Number.isFinite(value)) {
+            errors[key] = `${field.label} debe ser un número.`;
+            continue;
+        }
+        if (field?.options?.length && value !== '' && !(Array.isArray(value) && !value.length)) {
+            const allowed = field.options.map(o => o.value);
+            const values = Array.isArray(value) ? value : [value];
+            if (values.some(v => !allowed.includes(v))) {
+                errors[key] = `${field.label}: opción no válida.`;
+                continue;
+            }
+        }
+        changed[key] = { from: answers?.[key] ?? '', to: value };
+        next[key] = value;
+    }
+
+    for (const key of ['firstName', 'lastName']) {
+        if (key in changed && !String(next[key] || '').trim()) errors[key] = `${byKey[key]?.label || key} es obligatorio.`;
+    }
+    if ('email' in changed && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(next.email || ''))) {
+        errors.email = 'El correo no es válido.';
+    }
+
+    const columns = {};
+    for (const key of Object.keys(changed)) {
+        const meta = ANSWER_COLUMNS[key];
+        if (!meta) continue;
+        const value = key === 'email' ? String(next[key] || '').toLowerCase() : String(next[key] ?? '');
+        columns[meta.column] = value.slice(0, meta.max);
+    }
+
+    return { ok: Object.keys(errors).length === 0, errors, changed, answers: next, columns };
+};
+
+/**
+ * ¿Se puede eliminar esta inscripción? `null` si sí; si no, el MOTIVO, que la
+ * pantalla nombra en el resultado (nunca se omite en silencio):
+ *
+ * - `ya_acreditada` — la acreditación registra un hecho físico (entró a la
+ *   sede). Para eliminarla se anula primero en la ficha, a propósito.
+ * - `en_traslado` — está incluida en un traslado de la conciliación del
+ *   evento: borrarla descuadraría un traslado que ya se registró o envió.
+ * - `sin_permiso_pagos` — tiene el pago confirmado y quien la borra no tiene
+ *   la capacidad de pagos sobre el evento (la misma que exige cambiarle el
+ *   estado a o desde un estado liquidado).
+ *
+ * Borrar una inscripción pagada NO reembolsa nada: el pago y su rastro
+ * (`EventRegistrationPayment`) se conservan, porque el dinero sí entró.
+ */
+export const registrationDeleteBlock = (row, { inTransfer = false, canPayments = true } = {}) => {
+    if (!row) return 'no_existe';
+    if (row.checkedInAt || ['accredited', 'attended'].includes(row.status)) return 'ya_acreditada';
+    if (inTransfer) return 'en_traslado';
+    if (SETTLED_STATUSES.includes(row.status) && !canPayments) return 'sin_permiso_pagos';
+    return null;
+};
+
+export const DELETE_BLOCK_LABELS = {
+    ya_acreditada: 'ya acreditada',
+    en_traslado: 'incluida en un traslado',
+    sin_permiso_pagos: 'pago confirmado (requiere permiso de pagos)',
+};
+
 export default {
     ZERO_DECIMAL, toStripeAmount, CURRENCIES, currencyMeta, roundMoney, formatMoney,
     STATUSES, STATUS, STATUS_KEYS, statusMeta, COMMITTED_STATUSES, SETTLED_STATUSES,
@@ -1344,4 +1480,6 @@ export default {
     resolveAudienceHint, resolveCtaButtons,
     resolveRate, resolveCharge,
     parseRomanEdition, parseLocation, buildCodePrefix, randomCodeSuffix, buildRegistrationCode,
+    ANSWER_COLUMNS, ADMIN_LOCKED_ANSWERS, REGISTRATION_BULK_EDITABLE,
+    planRegistrationEdit, registrationDeleteBlock, DELETE_BLOCK_LABELS,
 };

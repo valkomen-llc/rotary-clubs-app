@@ -34,13 +34,29 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1262.0 | 2026-10-29 (Visitas del Gobernador: formulario en tres pasos)
-// Cache bust: 2026-10-29
+// UI V4.1263.0 | 2026-10-30 (Inscripciones al evento: seleccionar, editar y eliminar desde el listado)
+// Cache bust: 2026-10-30
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1263.0',
+        title: 'Inscripciones al evento: seleccionar, editar y eliminar desde el listado ☑️',
+        description: 'En el listado de Inscripciones y asistentes (Feria de Proyectos y cualquier evento) cada fila tiene ahora una casilla para marcar una o varias inscripciones. Con una marcada, «Editar» abre todos sus datos para corregirlos (nombre, correo, club, distrito, rol, necesidades…); con varias, se corrige en bloque un dato compartido (país, departamento, ciudad, distrito o club). También se puede cambiar el estado o eliminar la selección. La ficha de cada inscripción suma el botón «Editar datos».',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'feria de proyectos'],
+        type: 'feature',
+        impact: 'Alta: el comité corrige y depura el listado sin pedir ayuda técnica.',
+        changes: [
+            { type: 'added', text: 'Casilla por fila, «todas las visibles» y «seleccionar las N que coinciden con el filtro».' },
+            { type: 'added', text: 'Editar: los datos completos de una inscripción, o un campo compartido de varias. Cada cambio queda en el historial.' },
+            { type: 'added', text: 'Cambiar estado y eliminar en bloque, con confirmación que nombra a los elegidos.' },
+            { type: 'changed', text: 'Al eliminar se conservan (y se nombran) las acreditadas y las incluidas en un traslado; el pago no se reembolsa ni se borra.' },
+            { type: 'added', text: 'npm run test:registration-bulk (54 comprobaciones) y test:registration-bulk:ui (22, en navegador).' },
+        ],
+    },
     {
         version: '4.1262.0',
         title: 'Visitas del Gobernador: el formulario pasa de cinco a tres pasos 🧭',

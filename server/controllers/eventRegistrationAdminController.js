@@ -25,6 +25,7 @@ import {
     CATEGORY_BLUEPRINTS, CURRENCIES, AUDIENCES, buildFormSchema,
     normalizeCtaConfig, defaultCtaButtons, resolveCtaButtons, categoryWindow,
     FAIR_ROLES, ROTARY_ROLES,
+    planRegistrationEdit, registrationDeleteBlock, REGISTRATION_BULK_EDITABLE, ANSWER_COLUMNS,
 } from '../lib/eventRegistrationSpec.js';
 import {
     clean, isEmail, parseJson, loadEvent, ensureEdition, updateEdition,
@@ -33,14 +34,15 @@ import {
     mapRegistration, findRegistration, listCompanions, listHistory, listPayments,
     listMessages, recordHistory, recordMessage, assignRegistrationCode,
 } from '../lib/eventRegistrationStore.js';
-import { ACCREDITABLE_STATUSES } from '../lib/completedRegistrationSpec.js';
+import { ACCREDITABLE_STATUSES, BULK_MAX, SELECT_ALL_MAX } from '../lib/completedRegistrationSpec.js';
+import { ensureEventFundsSchema } from '../lib/ensureEventFundsSchema.js';
 import { mapCompleted } from '../lib/completedRegistrationStore.js';
 import { assertEventCapability, holdsCapability } from '../lib/eventAccess.js';
 import { attachGrant } from '../middleware/institutionalGuard.js';
 // Logo institucional embebido (mismo criterio que Postulación de Proyectos).
 import { embedLogoDataUrl } from '../lib/logoEmbed.js';
 
-console.log('[eventRegistrationAdminController] v4.651.0 cargado — tablero, categorías, fichas, acreditación y exportación de inscripciones por evento.');
+console.log('[eventRegistrationAdminController] v4.1263.0 cargado — tablero, categorías, fichas, edición, acciones en bloque, acreditación y exportación de inscripciones por evento.');
 
 // ── Acceso ───────────────────────────────────────────────────────────
 
@@ -737,6 +739,329 @@ export const updateNotes = async (req, res) => {
     }
 };
 
+// PATCH /admin/registrations/:id — corregir los datos de la inscripción (v4.1263).
+//
+// Edita las RESPUESTAS del formulario y, con cada una, su columna
+// (`ANSWER_COLUMNS`): la tabla, los filtros y las exportaciones leen la
+// columna, la ficha lee `answers`, y las dos tienen que decir lo mismo. El
+// criterio (qué clave se acepta, qué opción vale, qué es obligatorio) es de
+// `planRegistrationEdit`, puro. El precio, la categoría, el estado y el pago
+// NO se editan por aquí: el precio se congeló al enviar y el estado tiene su
+// propio camino con historial.
+export const updateRegistration = async (req, res) => {
+    try {
+        await ensureEventRegistrationSchema();
+        const found = await loadDetail(req, res);
+        if (!found) return;
+        const { registration, event } = found;
+
+        const categories = await listCategories(event.id);
+        const category = categories.find(c => c.key === registration.categoryKey) || null;
+        const fields = category ? buildFormSchema(category).steps.flatMap(st => st.fields) : [];
+        const plan = planRegistrationEdit({
+            fields,
+            answers: parseJson(registration.answers, {}),
+            patch: req.body?.answers && typeof req.body.answers === 'object' ? req.body.answers : {},
+        });
+        if (!plan.ok) {
+            return res.status(400).json({ error: Object.values(plan.errors)[0], errors: plan.errors });
+        }
+        if (!Object.keys(plan.changed).length) {
+            return res.json({ registration: mapRegistration(registration), unchanged: true });
+        }
+
+        const sets = ['answers = $1'];
+        const values = [JSON.stringify(plan.answers)];
+        for (const [column, value] of Object.entries(plan.columns)) {
+            values.push(value);
+            sets.push(`"${column}" = $${values.length}`);
+        }
+        values.push(registration.id);
+        const { rows } = await db.query(
+            `UPDATE "EventRegistration" SET ${sets.join(', ')}, "lastActivityAt" = NOW(), "updatedAt" = NOW()
+             WHERE id = $${values.length} RETURNING *`, values);
+
+        await recordHistory({
+            registrationId: registration.id, eventId: event.id, type: 'edited',
+            comment: clean(req.body?.comment, 500) || `Editó: ${Object.keys(plan.changed).join(', ')}`,
+            actor: actorOf(req), payload: { changed: plan.changed },
+        });
+
+        res.json({ registration: mapRegistration(rows[0]) });
+    } catch (error) {
+        console.error('[event-registrations][admin] updateRegistration:', error);
+        res.status(500).json({ error: 'No se pudieron guardar los cambios' });
+    }
+};
+
+// ── Selección y acciones en bloque (v4.1263) ────────────────────────
+//
+// El mismo diseño que las inscripciones COLROTARIOS (v4.952, v4.1092), sobre
+// la tabla de las inscripciones del formulario:
+//
+// - «Seleccionar los N del filtro» resuelve los ids con `buildFilters`, el
+//   MISMO del listado: con un segundo armado se actuaría sobre un conjunto
+//   distinto del que se está mirando.
+// - Confirmación explícita (`confirm: true` → 428), tope `BULK_MAX` por
+//   petición (la pantalla trocea), NO atómico y con desenlace por fila.
+// - Cada fila se comprueba contra el evento del gate: una de otro evento «no
+//   existe» para quien pregunta.
+
+/** ¿Tiene quien pregunta la capacidad de pagos sobre ESTE evento? */
+const canManagePayments = async (req, event) => {
+    const grant = await attachGrant(req);
+    return !(grant && grant.source !== 'none' && !holdsCapability(grant, event.id, 'payments'));
+};
+
+const nameOf = (row) => `${row.firstName || ''} ${row.lastName || ''}`.trim() || row.email || row.id;
+
+// GET /admin/registrations/select-all — los ids de TODO lo que coincide.
+// Filas MÍNIMAS: lo que la confirmación necesita para nombrar la selección y
+// advertir ANTES cuántas se van a conservar. Lo que no cabe se dice.
+export const selectAllRegistrations = async (req, res) => {
+    try {
+        const event = await requireEvent(req, res, 'registrations');
+        if (!event) return;
+
+        const { where, values } = buildFilters(event.id, req.query);
+        const sort = SORTABLE[req.query.sort] || SORTABLE.createdAt;
+        const dir = String(req.query.dir).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+        const { rows } = await db.query(
+            `SELECT id, "registrationCode", "publicRef", "firstName", "lastName", email, status, "checkedInAt"
+             FROM "EventRegistration" WHERE ${where}
+             ORDER BY ${sort} ${dir} NULLS LAST
+             LIMIT $${values.length + 1}`,
+            [...values, SELECT_ALL_MAX + 1]);
+
+        const truncated = rows.length > SELECT_ALL_MAX;
+        const elegidas = truncated ? rows.slice(0, SELECT_ALL_MAX) : rows;
+        res.json({
+            total: elegidas.length, truncated, max: SELECT_ALL_MAX, bulkMax: BULK_MAX,
+            registrations: elegidas.map(r => ({
+                id: r.id, registrationCode: r.registrationCode, publicRef: r.publicRef,
+                firstName: r.firstName, lastName: r.lastName, email: r.email,
+                status: r.status, checkedInAt: r.checkedInAt,
+            })),
+        });
+    } catch (error) {
+        console.error('[event-registrations][admin] selectAllRegistrations:', error);
+        res.status(500).json({ error: 'No se pudo resolver la selección' });
+    }
+};
+
+/** El gate común de las acciones en bloque. `null` si ya respondió. */
+const bulkScopeFor = async (req, res) => {
+    const event = await requireEvent(req, res, 'registrations');
+    if (!event) return null;
+    const ids = Array.isArray(req.body?.ids)
+        ? [...new Set(req.body.ids.map(v => clean(v, 80)).filter(Boolean))]
+        : [];
+    if (!ids.length) {
+        res.status(400).json({ error: 'No hay inscripciones seleccionadas.' });
+        return null;
+    }
+    if (ids.length > BULK_MAX) {
+        res.status(413).json({ error: `Máximo ${BULK_MAX} inscripciones por acción en bloque.` });
+        return null;
+    }
+    if (req.body?.confirm !== true) {
+        res.status(428).json({
+            error: 'La acción en bloque exige confirmación explícita.',
+            requiresConfirmation: true, count: ids.length,
+        });
+        return null;
+    }
+    return { event, ids };
+};
+
+/** La fila, SÓLO si es de este evento. */
+const bulkRowOf = async (id, event) => {
+    const row = await findRegistration(id);
+    return row && row.eventId === event.id ? row : null;
+};
+
+const countOutcomes = (outcomes, keys) =>
+    Object.fromEntries(keys.map(([label, outcome]) => [label, outcomes.filter(o => o.outcome === outcome).length]));
+
+// POST /admin/registrations/bulk-status — mover la selección a otro estado.
+// Las reglas del cambio de a uno: hacia o desde un estado liquidado exige la
+// capacidad de pagos, y al liquidar se asigna el código si faltaba.
+export const bulkStatus = async (req, res) => {
+    try {
+        const scope = await bulkScopeFor(req, res);
+        if (!scope) return;
+        const { event, ids } = scope;
+
+        const next = clean(req.body?.status, 30);
+        if (!STATUS_KEYS.includes(next)) return res.status(400).json({ error: 'Estado no válido.' });
+        const comment = clean(req.body?.comment, 2000);
+        const canPayments = await canManagePayments(req, event);
+        const edition = await ensureEdition(event);
+        const actor = actorOf(req);
+
+        const outcomes = [];
+        for (const id of ids) {
+            try {
+                const row = await bulkRowOf(id, event);
+                if (!row) { outcomes.push({ id, outcome: 'no_existe' }); continue; }
+                if (row.status === next) { outcomes.push({ id, outcome: 'sin_cambio' }); continue; }
+                if (!canPayments && (SETTLED_STATUSES.includes(next) || SETTLED_STATUSES.includes(row.status))) {
+                    outcomes.push({ id, name: nameOf(row), outcome: 'conservada', motivo: 'sin_permiso_pagos' });
+                    continue;
+                }
+                const { rows } = await db.query(
+                    `UPDATE "EventRegistration"
+                     SET status = $1,
+                         "paidAt" = CASE WHEN $2 AND "paidAt" IS NULL THEN NOW() ELSE "paidAt" END,
+                         "lastActivityAt" = NOW(), "updatedAt" = NOW()
+                     WHERE id = $3 AND "eventId" = $4 RETURNING *`,
+                    [next, SETTLED_STATUSES.includes(next), row.id, event.id]);
+                if (SETTLED_STATUSES.includes(next) && rows[0] && !rows[0].registrationCode) {
+                    await assignRegistrationCode(rows[0].id, edition.codePrefix);
+                }
+                await recordHistory({
+                    registrationId: row.id, eventId: event.id, type: 'status_changed',
+                    fromStatus: row.status, toStatus: next,
+                    comment: comment || `Cambio en bloque a "${statusMeta(next).label}"`,
+                    actor, payload: { bulk: true },
+                });
+                outcomes.push({ id, outcome: 'cambiada' });
+            } catch (e) {
+                console.error('[event-registrations][admin] bulkStatus fila:', e);
+                outcomes.push({ id, outcome: 'error', reason: e?.message || 'Fallo al actualizar' });
+            }
+        }
+        res.json({
+            outcomes,
+            totals: countOutcomes(outcomes, [
+                ['cambiadas', 'cambiada'], ['sinCambio', 'sin_cambio'], ['conservadas', 'conservada'],
+                ['noEncontradas', 'no_existe'], ['errores', 'error'],
+            ]),
+        });
+    } catch (error) {
+        console.error('[event-registrations][admin] bulkStatus:', error);
+        res.status(500).json({ error: 'No se pudo cambiar el estado en bloque' });
+    }
+};
+
+// POST /admin/registrations/bulk-edit — UN campo compartido, UN valor.
+// Sólo `REGISTRATION_BULK_EDITABLE` (ubicación y club): la identidad se
+// corrige de a una, en la ficha. La respuesta y su columna van juntas.
+export const bulkEdit = async (req, res) => {
+    try {
+        const scope = await bulkScopeFor(req, res);
+        if (!scope) return;
+        const { event, ids } = scope;
+
+        const field = clean(req.body?.field, 40);
+        if (!REGISTRATION_BULK_EDITABLE.includes(field)) {
+            return res.status(400).json({ error: 'Ese campo no se puede editar en bloque.' });
+        }
+        const { column, max } = ANSWER_COLUMNS[field];
+        const value = clean(req.body?.value, max);
+        const actor = actorOf(req);
+
+        const outcomes = [];
+        for (const id of ids) {
+            try {
+                const row = await bulkRowOf(id, event);
+                if (!row) { outcomes.push({ id, outcome: 'no_existe' }); continue; }
+                const answers = parseJson(row.answers, {});
+                if (String(row[column] ?? '') === value && String(answers[field] ?? '') === value) {
+                    outcomes.push({ id, outcome: 'sin_cambio' });
+                    continue;
+                }
+                await db.query(
+                    `UPDATE "EventRegistration" SET "${column}" = $1, answers = $2, "updatedAt" = NOW()
+                     WHERE id = $3 AND "eventId" = $4`,
+                    [value, JSON.stringify({ ...answers, [field]: value }), row.id, event.id]);
+                await recordHistory({
+                    registrationId: row.id, eventId: event.id, type: 'edited',
+                    comment: `Edición en bloque: ${field}`,
+                    actor, payload: { bulk: true, changed: { [field]: { from: answers[field] ?? row[column] ?? '', to: value } } },
+                });
+                outcomes.push({ id, outcome: 'editada' });
+            } catch (e) {
+                console.error('[event-registrations][admin] bulkEdit fila:', e);
+                outcomes.push({ id, outcome: 'error', reason: e?.message || 'Fallo al editar' });
+            }
+        }
+        res.json({
+            outcomes,
+            totals: countOutcomes(outcomes, [
+                ['editadas', 'editada'], ['sinCambio', 'sin_cambio'], ['noEncontradas', 'no_existe'], ['errores', 'error'],
+            ]),
+        });
+    } catch (error) {
+        console.error('[event-registrations][admin] bulkEdit:', error);
+        res.status(500).json({ error: 'No se pudo editar en bloque' });
+    }
+};
+
+// POST /admin/registrations/bulk-delete — eliminar la selección.
+//
+// Lo que NO se borra se CONSERVA y se nombra con su motivo
+// (`registrationDeleteBlock`): acreditada, incluida en un traslado, o pagada
+// sin permiso de pagos. Con la inscripción se van sus acompañantes (son parte
+// de su formulario). Se QUEDAN, a propósito, sus pagos —el dinero entró y el
+// informe de recaudo lo cuenta—, sus correos y su historial, donde queda la
+// fila `registration_deleted` con quién, cuándo y a quién se eliminó.
+export const bulkDelete = async (req, res) => {
+    try {
+        const scope = await bulkScopeFor(req, res);
+        if (!scope) return;
+        const { event, ids } = scope;
+
+        const canPayments = await canManagePayments(req, event);
+        await ensureEventFundsSchema();
+        const { rows: allocated } = await db.query(
+            `SELECT DISTINCT "registrationId" FROM "EventFundsAllocation"
+             WHERE "eventId" = $1 AND "registrationId" = ANY($2::text[])`, [event.id, ids]);
+        const inTransfer = new Set(allocated.map(r => r.registrationId));
+        const actor = actorOf(req);
+
+        const outcomes = [];
+        const conservadas = [];
+        for (const id of ids) {
+            try {
+                const row = await bulkRowOf(id, event);
+                if (!row) { outcomes.push({ id, outcome: 'no_existe' }); continue; }
+                const motivo = registrationDeleteBlock(row, { inTransfer: inTransfer.has(row.id), canPayments });
+                if (motivo) {
+                    conservadas.push({ id, code: row.registrationCode || row.publicRef || null, name: nameOf(row), motivo });
+                    outcomes.push({ id, outcome: 'conservada', motivo });
+                    continue;
+                }
+                await db.query('DELETE FROM "EventRegistrationCompanion" WHERE "registrationId" = $1', [row.id]);
+                await db.query('DELETE FROM "EventRegistration" WHERE id = $1 AND "eventId" = $2', [row.id, event.id]);
+                await recordHistory({
+                    registrationId: row.id, eventId: event.id, type: 'registration_deleted',
+                    fromStatus: row.status,
+                    comment: `Eliminó la inscripción ${row.registrationCode || row.publicRef || row.id} (${nameOf(row)}).`,
+                    actor, payload: {
+                        bulk: true, email: row.email, categoryKey: row.categoryKey,
+                        baseAmount: row.baseAmount, baseCurrency: row.baseCurrency,
+                    },
+                });
+                outcomes.push({ id, outcome: 'borrada' });
+            } catch (e) {
+                console.error('[event-registrations][admin] bulkDelete fila:', e);
+                outcomes.push({ id, outcome: 'error', reason: e?.message || 'Fallo al eliminar' });
+            }
+        }
+        res.json({
+            outcomes, conservadas,
+            totals: {
+                ...countOutcomes(outcomes, [['borradas', 'borrada'], ['noEncontradas', 'no_existe'], ['errores', 'error']]),
+                conservadas: conservadas.length,
+            },
+        });
+    } catch (error) {
+        console.error('[event-registrations][admin] bulkDelete:', error);
+        res.status(500).json({ error: 'No se pudo eliminar en bloque' });
+    }
+};
+
 // ── Acreditación ─────────────────────────────────────────────────────
 
 // GET /admin/checkin/lookup?eventRef=&q=
@@ -1109,7 +1434,8 @@ export default {
     getEdition, saveEdition, seedEditionCategories,
     saveCategory, removeCategory, previewCategoryForm, previewCta,
     listRegistrations, getDashboard, getRegistrationDetail,
-    changeStatus, updateTags, updateNotes,
+    changeStatus, updateTags, updateNotes, updateRegistration,
+    selectAllRegistrations, bulkStatus, bulkEdit, bulkDelete,
     lookupForCheckIn, checkIn, sendMessage,
     exportRegistrationsCsv, exportRegistrationsXlsx,
     cloneEdition,

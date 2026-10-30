@@ -14,15 +14,28 @@
 // es la única fuente de verdad para KPIs, tabla y rótulo "Período analizado"
 // (sin fechas = período completo del evento), validado contra el eco del
 // servidor antes de renderizar.
+//
+// v4.1263 — Selección de uno o varios inscritos desde el listado, con tres
+// acciones: editar (los datos completos de UNO, o un campo compartido de
+// VARIOS), cambiar estado y eliminar. Mismo diseño que las inscripciones
+// COLROTARIOS (v4.952 / v4.1092): la selección guarda filas mínimas y
+// sobrevive a filtros y páginas, «seleccionar los N del filtro» lo resuelve el
+// servidor con los mismos filtros del listado, y las acciones van por tandas y
+// con el desenlace desglosado.
 // ════════════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
-    AlertCircle, BadgeCheck, CalendarDays, ChevronLeft, ChevronRight, Coins,
-    Download, FileSpreadsheet, FileText, Filter, Globe2, Loader2, Mail, RefreshCw,
-    Search, Send, Users, X,
+    AlertCircle, BadgeCheck, CalendarDays, CheckSquare, ChevronLeft, ChevronRight, Coins,
+    Download, FileSpreadsheet, FileText, Filter, Globe2, ListChecks, Loader2, Mail, Pencil,
+    RefreshCw, Search, Send, Trash2, Users, X,
 } from 'lucide-react';
-import { money, statusMeta, tagMeta, SYSTEM_TAG_KEYS, normalizeTag } from '../../../lib/eventRegistrationSpec';
+import {
+    money, statusMeta, tagMeta, SYSTEM_TAG_KEYS, normalizeTag, isFieldVisible, SETTLED_STATUSES,
+    REGISTRATION_BULK_FIELDS, DELETE_BLOCK_LABELS,
+} from '../../../lib/eventRegistrationSpec';
+import type { FormField } from '../../../lib/eventRegistrationSpec';
+import { chunkIds, BULK_MAX } from '../../../lib/completedRegistrationSpec';
 import { PAID_REGISTRATION_STATUSES, REGISTRATION_TRANSFER_LABELS } from '../../../../server/lib/eventFundsSpec.js';
 import type { RegistrationTransferState } from '../../../../server/lib/eventFundsSpec.js';
 import RegistrationFundsPanel from './RegistrationFundsPanel';
@@ -90,6 +103,14 @@ interface Registration {
     paidAt: string | null;
     createdAt: string;
 }
+
+/** v4.1263 — Lo que la selección guarda de cada inscripción marcada. */
+type PickedRow = Pick<Registration, 'id' | 'registrationCode' | 'publicRef' | 'firstName' | 'lastName' | 'email' | 'status' | 'checkedInAt'>;
+const pickOf = (r: PickedRow): PickedRow => ({
+    id: r.id, registrationCode: r.registrationCode, publicRef: r.publicRef,
+    firstName: r.firstName, lastName: r.lastName, email: r.email, status: r.status, checkedInAt: r.checkedInAt,
+});
+const pickedName = (r: PickedRow) => `${r.firstName || ''} ${r.lastName || ''}`.trim() || r.email || r.publicRef;
 
 interface Filters {
     q: string; status: string; category: string; country: string; district: string;
@@ -194,11 +215,15 @@ const BarList = ({ title, rows, icon: Icon }: {
 
 // ── Ficha detallada ──────────────────────────────────────────────────
 
-const DetailSheet = ({ registrationId, statuses, onClose, onChanged, fundsPanel }: {
+const DetailSheet = ({ registrationId, statuses, onClose, onChanged, onEdit, reloadKey, fundsPanel }: {
     registrationId: string;
     statuses: { key: string; label: string }[];
     onClose: () => void;
     onChanged: () => void;
+    /** v4.1263 — Abre la edición de los datos de esta inscripción. */
+    onEdit: () => void;
+    /** v4.1263 — Cambia al guardar la edición: la ficha se vuelve a leer. */
+    reloadKey: number;
     /** v4.1249 — El bloque de traslado y comprobante (lo arma el listado, que
      *  ya tiene el estado financiero del evento). */
     fundsPanel?: ReactNode;
@@ -224,7 +249,7 @@ const DetailSheet = ({ registrationId, statuses, onClose, onChanged, fundsPanel 
             })
             .catch(err => setError(err?.message || 'No se pudo cargar la inscripción.'))
             .finally(() => setLoading(false));
-    }, [registrationId]);
+    }, [registrationId, reloadKey]);
 
     useEffect(() => { load(); }, [load]);
 
@@ -340,6 +365,10 @@ const DetailSheet = ({ registrationId, statuses, onClose, onChanged, fundsPanel 
                                     <button type="button" onClick={() => setShowMail(v => !v)}
                                         className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-bold text-gray-700 transition hover:bg-gray-50">
                                         <Mail className="h-3.5 w-3.5" /> Enviar correo
+                                    </button>
+                                    <button type="button" onClick={onEdit}
+                                        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-bold text-gray-700 transition hover:bg-gray-50">
+                                        <Pencil className="h-3.5 w-3.5" /> Editar datos
                                     </button>
                                 </div>
                                 {registration.checkedInAt && (
@@ -556,6 +585,172 @@ const DetailSheet = ({ registrationId, statuses, onClose, onChanged, fundsPanel 
     );
 };
 
+// ── Editar los datos de UNA inscripción (v4.1263) ────────────────────
+
+/**
+ * Los campos del formulario de SU categoría, con lo que respondió. El
+ * formulario lo arma el servidor (llega en la ficha como `form`), así que una
+ * categoría nueva o un campo nuevo se editan sin desplegar el navegador. Se
+ * envía SÓLO lo que cambió; el servidor valida igual y actualiza la respuesta
+ * y su columna juntas.
+ */
+const EditRegistrationModal = ({ registrationId, onClose, onSaved }: {
+    registrationId: string;
+    onClose: () => void;
+    onSaved: () => void;
+}) => {
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState('');
+    const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+    const [steps, setSteps] = useState<{ key: string; label: string; fields: FormField[] }[]>([]);
+    const [original, setOriginal] = useState<Record<string, any>>({});
+    const [draft, setDraft] = useState<Record<string, any>>({});
+    const [title, setTitle] = useState('');
+
+    useEffect(() => {
+        setLoading(true);
+        fetch(`${API}/event-registrations/admin/registrations/${registrationId}`, { headers: authHeaders() })
+            .then(r => r.json())
+            .then(d => {
+                if (d?.error) throw new Error(d.error);
+                const answers = d.registration?.answers || {};
+                setOriginal(answers);
+                setDraft(answers);
+                setTitle(`${d.registration?.firstName || ''} ${d.registration?.lastName || ''}`.trim());
+                setSteps((d.form?.steps || []).map((st: any) => ({
+                    key: st.key, label: st.label,
+                    fields: (st.fields || []).filter((f: FormField) => f.key !== 'acceptTerms'),
+                })));
+            })
+            .catch(err => setError(err?.message || 'No se pudo cargar la inscripción.'))
+            .finally(() => setLoading(false));
+    }, [registrationId]);
+
+    const changedKeys = Object.keys(draft).filter(k => JSON.stringify(draft[k] ?? '') !== JSON.stringify(original[k] ?? ''));
+
+    const save = async () => {
+        setSaving(true);
+        setError('');
+        setFieldErrors({});
+        try {
+            const res = await fetch(`${API}/event-registrations/admin/registrations/${registrationId}`, {
+                method: 'PATCH', headers: authHeaders(),
+                body: JSON.stringify({ answers: Object.fromEntries(changedKeys.map(k => [k, draft[k]])) }),
+            });
+            const d = await res.json().catch(() => null);
+            if (!res.ok) {
+                setFieldErrors(d?.errors || {});
+                throw new Error(d?.error || 'No se pudieron guardar los cambios.');
+            }
+            onSaved();
+        } catch (err: any) {
+            setError(err?.message || 'No se pudieron guardar los cambios.');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const set = (key: string, value: any) => setDraft(prev => ({ ...prev, [key]: value }));
+
+    const control = (f: FormField) => {
+        const value = draft[f.key];
+        if (f.type === 'textarea') {
+            return <textarea rows={3} className={inputCls} value={value ?? ''} onChange={e => set(f.key, e.target.value)} />;
+        }
+        if (f.type === 'select') {
+            const known = (f.options || []).some(o => o.value === value);
+            return (
+                <select className={inputCls} value={value ?? ''} onChange={e => set(f.key, e.target.value)}>
+                    <option value="">—</option>
+                    {/* Un valor guardado que ya no figura en las opciones se
+                        muestra tal cual: perderlo al abrir la edición sería
+                        borrar un dato que nadie pidió cambiar. */}
+                    {value && !known && <option value={value}>{String(value)} (valor anterior)</option>}
+                    {(f.options || []).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+            );
+        }
+        if (f.type === 'multiselect') {
+            const list: string[] = Array.isArray(value) ? value : [];
+            return (
+                <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                    {(f.options || []).map(o => (
+                        <label key={o.value} className="flex items-center gap-1.5 text-sm text-gray-700">
+                            <input type="checkbox" className="h-4 w-4" checked={list.includes(o.value)}
+                                onChange={e => set(f.key, e.target.checked ? [...list, o.value] : list.filter(v => v !== o.value))} />
+                            {o.label}
+                        </label>
+                    ))}
+                </div>
+            );
+        }
+        if (f.type === 'checkbox') {
+            return <input type="checkbox" className="h-4 w-4" checked={value === true} onChange={e => set(f.key, e.target.checked)} />;
+        }
+        const type = f.type === 'email' ? 'email' : f.type === 'tel' ? 'tel' : f.type === 'date' ? 'date' : f.type === 'number' ? 'number' : 'text';
+        return <input type={type} className={inputCls} value={value ?? ''} maxLength={f.max || undefined}
+            onChange={e => set(f.key, e.target.value)} />;
+    };
+
+    return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => !saving && onClose()}>
+            <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
+                <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-6 py-4">
+                    <div className="min-w-0">
+                        <h3 className="text-lg font-bold text-gray-900">Editar inscripción</h3>
+                        {title && <p className="truncate text-sm text-gray-500" data-no-translate>{title}</p>}
+                    </div>
+                    <button type="button" onClick={onClose} disabled={saving} aria-label="Cerrar"
+                        className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100">
+                        <X className="h-5 w-5" />
+                    </button>
+                </div>
+                <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
+                    {error && (
+                        <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> {error}
+                        </div>
+                    )}
+                    {loading ? (
+                        <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-blue-600" /></div>
+                    ) : steps.map(step => (
+                        <section key={step.key}>
+                            <p className="mb-2 text-xs font-bold uppercase tracking-wider text-gray-500">{step.label}</p>
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                {step.fields.filter(f => isFieldVisible(f, draft)).map(f => (
+                                    <div key={f.key} className={f.type === 'textarea' || f.type === 'multiselect' ? 'sm:col-span-2' : ''}>
+                                        <label className={labelCls}>{f.label}</label>
+                                        {control(f)}
+                                        {fieldErrors[f.key] && <p className="mt-1 text-xs text-red-600">{fieldErrors[f.key]}</p>}
+                                    </div>
+                                ))}
+                            </div>
+                        </section>
+                    ))}
+                    {!loading && (
+                        <p className="text-xs text-gray-500">
+                            La categoría, el valor y el pago no se editan aquí: el precio quedó fijo al enviar el
+                            formulario y el estado se cambia desde la ficha. Cada cambio queda en el historial.
+                        </p>
+                    )}
+                </div>
+                <div className="flex justify-end gap-2 border-t border-gray-100 px-6 py-4">
+                    <button type="button" disabled={saving} onClick={onClose}
+                        className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                        Cancelar
+                    </button>
+                    <button type="button" disabled={saving || loading || !changedKeys.length} onClick={save}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50">
+                        {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+                        {changedKeys.length ? `Guardar ${changedKeys.length} cambio${changedKeys.length === 1 ? '' : 's'}` : 'Sin cambios'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 // ── Módulo ───────────────────────────────────────────────────────────
 
 interface Props {
@@ -603,6 +798,21 @@ const EventRegistrationsManager = ({ eventId, eventTitle, categories, statuses }
     // = sin acceso a la información financiera: la etiqueta no se pinta.
     const [funds, setFunds] = useState<Record<string, RegistrationTransferState> | null>(null);
     const [fundsTick, setFundsTick] = useState(0);
+    // v4.1263 — Selección y acciones sobre ella. Las filas se guardan (mínimas)
+    // para que la selección sobreviva a cambiar de filtro o de página y la
+    // confirmación pueda nombrarlas aunque ya no estén a la vista.
+    const [picked, setPicked] = useState<Map<string, PickedRow>>(new Map());
+    const [selectAllBusy, setSelectAllBusy] = useState(false);
+    const [bulkAction, setBulkAction] = useState<'' | 'status' | 'edit' | 'delete'>('');
+    const [bulkBusy, setBulkBusy] = useState(false);
+    const [bulkProgreso, setBulkProgreso] = useState<{ hechos: number; total: number } | null>(null);
+    const [bulkNote, setBulkNote] = useState<{ ok: boolean; text: string } | null>(null);
+    const [bulkStatusValue, setBulkStatusValue] = useState('');
+    const [bulkComment, setBulkComment] = useState('');
+    const [bulkField, setBulkField] = useState(REGISTRATION_BULK_FIELDS[0].key);
+    const [bulkValue, setBulkValue] = useState('');
+    const [editing, setEditing] = useState<string | null>(null);
+    const [detailTick, setDetailTick] = useState(0);
 
     /** Los filtros activos, en el formato que espera el servidor. */
     const query = useMemo(() => {
@@ -649,6 +859,127 @@ const EventRegistrationsManager = ({ eventId, eventTitle, categories, statuses }
     useEffect(() => { setOffset(0); }, [filters]);
 
     const refresh = () => { loadRows(); loadDashboard(); };
+
+    // ── Selección (v4.1263) ─────────────────────────────────────────
+    const togglePick = (r: Registration) => setPicked(prev => {
+        const next = new Map(prev);
+        if (next.has(r.id)) next.delete(r.id); else next.set(r.id, pickOf(r));
+        return next;
+    });
+    const allVisiblePicked = rows.length > 0 && rows.every(r => picked.has(r.id));
+    // La casilla de la cabecera marca SÓLO lo visible, que es lo que promete;
+    // «los N del filtro» es otro gesto y dice su número (regla v4.1092).
+    const toggleVisible = () => setPicked(prev => {
+        const next = new Map(prev);
+        if (allVisiblePicked) rows.forEach(r => next.delete(r.id));
+        else rows.forEach(r => next.set(r.id, pickOf(r)));
+        return next;
+    });
+    const pickedRows = [...picked.values()];
+    const acreditadosEnSeleccion = pickedRows.filter(r => r.checkedInAt || ['accredited', 'attended'].includes(r.status)).length;
+    const pagadosEnSeleccion = pickedRows.filter(r => SETTLED_STATUSES.includes(r.status)).length;
+
+    /** Todo lo que coincide con el filtro, resuelto por el servidor con los MISMOS filtros. */
+    const selectAllMatching = async () => {
+        setSelectAllBusy(true);
+        setBulkNote(null);
+        try {
+            const res = await fetch(`${API}/event-registrations/admin/registrations/select-all?${query}`, { headers: authHeaders() });
+            const d = await res.json().catch(() => null);
+            if (!res.ok) throw new Error(d?.error || 'No se pudo resolver la selección completa.');
+            const filas: PickedRow[] = d.registrations || [];
+            setPicked(new Map(filas.map(r => [r.id, r])));
+            const partes = [`Seleccionadas ${filas.length} inscripción(es) con el filtro actual.`];
+            if (d.truncated) {
+                partes.push(`Es el máximo por selección (${d.max}): quedaron ${Math.max(0, total - filas.length)} fuera — acota el filtro y repite la acción con el resto.`);
+            }
+            setBulkNote({ ok: !d.truncated, text: partes.join(' ') });
+        } catch (err: any) {
+            setBulkNote({ ok: false, text: err?.message || 'No se pudo resolver la selección completa.' });
+        } finally {
+            setSelectAllBusy(false);
+        }
+    };
+
+    /** «Editar»: con UNA marcada abre sus datos completos; con varias, un campo compartido. */
+    const startEdit = () => {
+        if (picked.size === 1) { setEditing(pickedRows[0].id); return; }
+        setBulkValue('');
+        setBulkAction('edit');
+    };
+
+    /**
+     * Manda la acción en TANDAS de `BULK_MAX` y ACUMULA los desenlaces: el
+     * resumen se escribe contra el total seleccionado, no contra la última
+     * tanda. Ninguna tanda es atómica y se dice.
+     */
+    const runBulk = async () => {
+        const ids = [...picked.keys()];
+        if (!ids.length || !bulkAction) return;
+        setBulkBusy(true);
+        setBulkNote(null);
+        const tandas = chunkIds(ids, BULK_MAX);
+        if (tandas.length > 1) setBulkProgreso({ hechos: 0, total: ids.length });
+        try {
+            const path = bulkAction === 'status' ? 'bulk-status' : bulkAction === 'edit' ? 'bulk-edit' : 'bulk-delete';
+            const t: Record<string, number> = {};
+            const conservadas: { id: string; code: string | null; name: string; motivo: string }[] = [];
+            const borradas: string[] = [];
+            for (const tanda of tandas) {
+                const body: Record<string, unknown> = { eventRef: eventId, ids: tanda, confirm: true };
+                if (bulkAction === 'status') { body.status = bulkStatusValue; body.comment = bulkComment.trim(); }
+                if (bulkAction === 'edit') { body.field = bulkField; body.value = bulkValue.trim(); }
+                const res = await fetch(`${API}/event-registrations/admin/registrations/${path}`, {
+                    method: 'POST', headers: authHeaders(), body: JSON.stringify(body),
+                });
+                const d = await res.json().catch(() => null);
+                if (!res.ok) throw new Error(d?.error || 'No se pudo completar la acción en bloque.');
+                for (const [k, v] of Object.entries(d?.totals || {})) t[k] = (t[k] || 0) + Number(v || 0);
+                for (const o of (d?.outcomes || [])) {
+                    if (o.outcome === 'conservada') {
+                        const fila = picked.get(o.id);
+                        conservadas.push({
+                            id: o.id, motivo: o.motivo,
+                            code: fila?.registrationCode || fila?.publicRef || null,
+                            name: fila ? pickedName(fila) : (o.name || o.id),
+                        });
+                    }
+                    if (o.outcome === 'borrada') borradas.push(o.id);
+                }
+                setBulkProgreso(prev => (prev ? { hechos: prev.hechos + tanda.length, total: ids.length } : prev));
+            }
+            const partes: string[] = [];
+            if (bulkAction === 'status') partes.push(`Se cambió el estado de ${t.cambiadas ?? 0} de ${ids.length}.`);
+            if (bulkAction === 'edit') partes.push(`Se editaron ${t.editadas ?? 0} de ${ids.length}.`);
+            if (bulkAction === 'delete') partes.push(`Se eliminaron ${t.borradas ?? 0} de ${ids.length}.`);
+            if (t.sinCambio) partes.push(`${t.sinCambio} ya estaban así.`);
+            if (t.noEncontradas) partes.push(`${t.noEncontradas} ya no existen.`);
+            if (t.errores) partes.push(`${t.errores} fallaron.`);
+            if (conservadas.length) {
+                const nombres = conservadas.slice(0, 8)
+                    .map(c => `${c.code || c.name} (${DELETE_BLOCK_LABELS[c.motivo] || c.motivo})`).join(', ');
+                partes.push(`Se conservaron ${conservadas.length}: ${nombres}${conservadas.length > 8 ? ` y ${conservadas.length - 8} más` : ''}.`);
+            }
+            setBulkNote({ ok: !(t.errores ?? 0) && !conservadas.length, text: partes.join(' ') });
+            setBulkAction('');
+            // Tras eliminar, lo conservado sigue marcado: es lo que queda por
+            // resolver. Tras editar o cambiar estado, la selección se suelta.
+            setPicked(prev => {
+                if (bulkAction !== 'delete') return new Map();
+                const next = new Map(prev);
+                borradas.forEach(id => next.delete(id));
+                return next;
+            });
+            if (bulkAction === 'delete') setFundsTick(x => x + 1);
+            refresh();
+        } catch (err: any) {
+            setBulkNote({ ok: false, text: err?.message || 'No se pudo completar la acción en bloque.' });
+            refresh();
+        } finally {
+            setBulkBusy(false);
+            setBulkProgreso(null);
+        }
+    };
 
     const download = async (format: 'csv' | 'xlsx') => {
         setExporting(format);
@@ -852,6 +1183,59 @@ const EventRegistrationsManager = ({ eventId, eventTitle, categories, statuses }
                 })}
             </div>
 
+            {/* v4.1263 — Acciones sobre la selección. Aparece al marcar la
+                primera casilla; la selección sobrevive a filtros y páginas y el
+                contador lo dice. */}
+            {(picked.size > 0 || total > 0) && (
+                <div className={`flex flex-wrap items-center gap-2 rounded-xl border px-4 py-3 ${picked.size
+                    ? 'border-blue-200 bg-blue-50/70' : 'border-gray-100 bg-white'}`}>
+                    <span className={`text-sm font-semibold ${picked.size ? 'text-blue-900' : 'text-gray-500'}`}>
+                        {picked.size
+                            ? `${picked.size} seleccionada${picked.size === 1 ? '' : 's'}`
+                            : 'Marca una o varias inscripciones para editarlas o eliminarlas'}
+                        {picked.size > rows.filter(r => picked.has(r.id)).length ? ' (incluye inscripciones fuera de esta vista)' : ''}
+                    </span>
+                    {picked.size > 0 && (<>
+                        <button type="button" disabled={bulkBusy} onClick={startEdit}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-40">
+                            <Pencil className="h-4 w-4" /> {picked.size === 1 ? 'Editar' : `Editar campo (${picked.size})`}
+                        </button>
+                        <button type="button" disabled={bulkBusy}
+                            onClick={() => { setBulkStatusValue(''); setBulkComment(''); setBulkAction('status'); }}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-40">
+                            <ListChecks className="h-4 w-4" /> Cambiar estado ({picked.size})
+                        </button>
+                        <button type="button" disabled={bulkBusy} onClick={() => setBulkAction('delete')}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-40">
+                            <Trash2 className="h-4 w-4" /> Eliminar ({picked.size})
+                        </button>
+                    </>)}
+                    {total > picked.size && total > rows.length && (
+                        <button type="button" disabled={selectAllBusy || bulkBusy} onClick={selectAllMatching}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-40">
+                            {selectAllBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckSquare className="h-4 w-4" />}
+                            Seleccionar las {total} que coinciden con el filtro
+                        </button>
+                    )}
+                    {picked.size > 0 && (
+                        <button type="button" disabled={bulkBusy} onClick={() => setPicked(new Map())}
+                            className="text-sm font-semibold text-gray-500 hover:text-gray-800 disabled:opacity-40">
+                            Limpiar selección
+                        </button>
+                    )}
+                </div>
+            )}
+            {bulkNote && (
+                <div className={`flex items-start justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${
+                    bulkNote.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-300 bg-amber-50 text-amber-800'}`}>
+                    <span>{bulkNote.text}</span>
+                    <button type="button" onClick={() => setBulkNote(null)} aria-label="Cerrar el aviso"
+                        className="shrink-0 text-current opacity-60 hover:opacity-100">
+                        <X className="h-4 w-4" />
+                    </button>
+                </div>
+            )}
+
             {showFilters && (
                 <div className="grid grid-cols-1 gap-3 rounded-xl border border-gray-200 bg-gray-50 p-4 sm:grid-cols-2 lg:grid-cols-4">
                     <div>
@@ -958,6 +1342,12 @@ const EventRegistrationsManager = ({ eventId, eventTitle, categories, statuses }
                 <table className="w-full min-w-[900px] text-sm">
                     <thead className="bg-gray-50 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">
                         <tr>
+                            <th className="w-10 px-4 py-3">
+                                <input type="checkbox" className="h-4 w-4 cursor-pointer"
+                                    aria-label="Seleccionar todas las inscripciones visibles"
+                                    checked={allVisiblePicked} disabled={!rows.length}
+                                    onChange={toggleVisible} />
+                            </th>
                             <th className="px-4 py-3">Código</th>
                             <th className="px-4 py-3">Titular</th>
                             <th className="px-4 py-3">Categoría</th>
@@ -970,16 +1360,22 @@ const EventRegistrationsManager = ({ eventId, eventTitle, categories, statuses }
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                         {loading && rows.length === 0 ? (
-                            <tr><td colSpan={8} className="py-12 text-center">
+                            <tr><td colSpan={9} className="py-12 text-center">
                                 <Loader2 className="mx-auto h-6 w-6 animate-spin text-blue-600" />
                             </td></tr>
                         ) : rows.length === 0 ? (
-                            <tr><td colSpan={8} className="py-12 text-center text-sm text-gray-400">
+                            <tr><td colSpan={9} className="py-12 text-center text-sm text-gray-400">
                                 No hay inscripciones que coincidan con estos filtros.
                             </td></tr>
                         ) : rows.map(r => (
                             <tr key={r.id} onClick={() => setSelected(r.id)}
-                                className="cursor-pointer transition hover:bg-blue-50/40">
+                                className={`cursor-pointer transition hover:bg-blue-50/40 ${picked.has(r.id) ? 'bg-blue-50/60' : ''}`}>
+                                {/* La casilla no abre la ficha: marcar y abrir son dos gestos. */}
+                                <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                                    <input type="checkbox" className="h-4 w-4 cursor-pointer"
+                                        aria-label={`Seleccionar: ${r.firstName} ${r.lastName}`.trim()}
+                                        checked={picked.has(r.id)} onChange={() => togglePick(r)} />
+                                </td>
                                 <td className="px-4 py-3 font-mono text-xs font-bold text-gray-700">
                                     {r.registrationCode || r.publicRef}
                                 </td>
@@ -1045,6 +1441,7 @@ const EventRegistrationsManager = ({ eventId, eventTitle, categories, statuses }
             {selected && (
                 <DetailSheet registrationId={selected} statuses={statuses}
                     onClose={() => setSelected(null)} onChanged={refresh}
+                    onEdit={() => setEditing(selected)} reloadKey={detailTick}
                     fundsPanel={funds ? (
                         <RegistrationFundsPanel
                             eventId={eventId}
@@ -1052,6 +1449,127 @@ const EventRegistrationsManager = ({ eventId, eventTitle, categories, statuses }
                             onChanged={() => setFundsTick(t => t + 1)}
                         />
                     ) : null} />
+            )}
+
+            {editing && (
+                <EditRegistrationModal registrationId={editing}
+                    onClose={() => setEditing(null)}
+                    onSaved={() => {
+                        setEditing(null);
+                        setDetailTick(x => x + 1);
+                        setBulkNote({ ok: true, text: 'Se guardaron los cambios de la inscripción.' });
+                        // La fila marcada se renueva al recargar: su nombre
+                        // pudo cambiar y la confirmación lo va a nombrar.
+                        setPicked(new Map());
+                        refresh();
+                    }} />
+            )}
+
+            {bulkAction && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+                    onClick={() => !bulkBusy && setBulkAction('')}>
+                    <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <h3 className="mb-1 text-lg font-bold text-gray-900">
+                            {bulkAction === 'status' && `Cambiar el estado de ${picked.size} ${picked.size === 1 ? 'inscripción' : 'inscripciones'}`}
+                            {bulkAction === 'edit' && `Editar un campo en ${picked.size} inscripciones`}
+                            {bulkAction === 'delete' && `Eliminar ${picked.size} ${picked.size === 1 ? 'inscripción' : 'inscripciones'}`}
+                        </h3>
+                        {/* Dice A QUIÉNES, no «¿estás seguro?». */}
+                        <p className="mb-4 text-sm text-gray-500" data-no-translate>
+                            {pickedRows.slice(0, 8).map(pickedName).join(' · ')}
+                            {picked.size > 8 ? ` · y ${picked.size - 8} más` : ''}
+                        </p>
+
+                        {bulkAction === 'status' && (
+                            <div className="space-y-3">
+                                <div>
+                                    <label className={labelCls}>Nuevo estado</label>
+                                    <select className={inputCls} value={bulkStatusValue}
+                                        onChange={e => setBulkStatusValue(e.target.value)}>
+                                        <option value="">Elige un estado…</option>
+                                        {statuses.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className={labelCls}>Comentario del cambio</label>
+                                    <input type="text" className={inputCls} value={bulkComment}
+                                        onChange={e => setBulkComment(e.target.value)}
+                                        placeholder="Queda en el historial de cada inscripción" />
+                                </div>
+                                <p className="text-xs text-gray-500">
+                                    Cambiar el estado no mueve dinero: marcar «Reembolsado» no devuelve el pago.
+                                    Hacia o desde un estado con pago confirmado se necesita el permiso de pagos.
+                                </p>
+                            </div>
+                        )}
+
+                        {bulkAction === 'edit' && (
+                            <div className="space-y-3">
+                                <div>
+                                    <label className={labelCls}>Campo</label>
+                                    <select className={inputCls} value={bulkField}
+                                        onChange={e => { setBulkField(e.target.value); setBulkValue(''); }}>
+                                        {REGISTRATION_BULK_FIELDS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className={labelCls}>Valor que recibirán todas las seleccionadas</label>
+                                    <input type="text" className={inputCls} value={bulkValue}
+                                        onChange={e => setBulkValue(e.target.value)} />
+                                </div>
+                                <p className="text-xs text-gray-500">
+                                    Los datos de identidad (nombre, documento, correo, teléfono) no se editan en
+                                    bloque a propósito: el mismo valor en varias personas destruiría información.
+                                    Para corregirlos, marca una sola inscripción y pulsa «Editar».
+                                </p>
+                            </div>
+                        )}
+
+                        {bulkAction === 'delete' && (
+                            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                                Esta acción no se puede deshacer: se eliminan la inscripción y sus acompañantes.
+                                Se <strong>conservan</strong> y se nombran en el resultado las inscripciones ya
+                                acreditadas y las incluidas en un traslado de la conciliación.
+                                {/* El número se DICE antes de confirmar, no después. */}
+                                {acreditadosEnSeleccion > 0 && (
+                                    <span className="mt-2 block font-semibold">
+                                        {acreditadosEnSeleccion} de las {picked.size} seleccionadas
+                                        {acreditadosEnSeleccion === 1 ? ' está acreditada y se conservará.' : ' están acreditadas y se conservarán.'}
+                                    </span>
+                                )}
+                                {pagadosEnSeleccion > 0 && (
+                                    <span className="mt-2 block font-semibold">
+                                        {pagadosEnSeleccion} {pagadosEnSeleccion === 1 ? 'tiene' : 'tienen'} el pago confirmado.
+                                        Eliminar no reembolsa: el pago queda registrado y, si corresponde, se
+                                        devuelve en la pasarela.
+                                    </span>
+                                )}
+                            </div>
+                        )}
+
+                        {bulkProgreso && (
+                            <p className="mt-3 text-xs font-semibold text-blue-700">
+                                Procesando… {bulkProgreso.hechos} de {bulkProgreso.total}
+                            </p>
+                        )}
+
+                        <div className="mt-5 flex justify-end gap-2">
+                            <button type="button" disabled={bulkBusy} onClick={() => setBulkAction('')}
+                                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                                Cancelar
+                            </button>
+                            <button type="button" onClick={runBulk}
+                                disabled={bulkBusy || (bulkAction === 'status' && !bulkStatusValue)}
+                                className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-bold text-white disabled:opacity-50 ${
+                                    bulkAction === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'}`}>
+                                {bulkBusy && <Loader2 className="h-4 w-4 animate-spin" />}
+                                {bulkAction === 'status' && 'Cambiar estado'}
+                                {bulkAction === 'edit' && 'Aplicar a todas'}
+                                {bulkAction === 'delete' && `Eliminar ${picked.size}`}
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );
