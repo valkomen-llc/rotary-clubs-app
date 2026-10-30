@@ -46,7 +46,7 @@ import { ensureContributionSchema } from '../lib/ensureContributionSchema.js';
 import { listDeliveriesFor, listDeliveries } from '../lib/notificationLog.js';
 import { sendContributionNotifications } from '../lib/notificationSender.js';
 
-console.log('[FINANCIAL v4.849] Bóveda por MONEDA + filtro de período y destino (el saldo no se filtra)');
+console.log('[FINANCIAL v4.1265] Bóveda por MONEDA · consulta por permiso (finance.view / finance.export) y auditada · Control y Justificación de Aportes');
 
 // v4.808 — El DESTINO del aporte cuando nace de un bloque de la página de
 // Aportes («Aporte Voluntario», «End Polio Now»…).

@@ -124,6 +124,18 @@ const sessionRejection = (req, grant) => {
     if (req.user?.institutionalStatus === 'suspended' || grant?.source === 'suspended') {
         return { code: 'account_suspended', error: 'Tu acceso está suspendido. Escríbele al administrador del sitio.' };
     }
+    // v4.1265 — Un acceso VENCIDO dice hasta cuándo valió: «denegado» a secas
+    // se lee como una avería, y esto lo arregla quien administra el sitio
+    // renovando la vigencia, no la persona volviendo a entrar.
+    if (grant?.source === 'expired') {
+        const hasta = grant.validUntil ? new Date(grant.validUntil).toLocaleDateString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'long', year: 'numeric' }) : null;
+        return {
+            code: 'access_expired',
+            error: hasta
+                ? `Tu acceso a este sitio estuvo vigente hasta el ${hasta}. Pídele al administrador del sitio que lo renueve.`
+                : 'Tu acceso a este sitio venció. Pídele al administrador del sitio que lo renueve.',
+        };
+    }
     const m = grant?.membership;
     if (m && !canSignIn(m.status)) {
         return { code: 'account_suspended', error: 'Tu acceso a este sitio está suspendido. Escríbele al administrador del sitio.' };

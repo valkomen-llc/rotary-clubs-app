@@ -1,11 +1,12 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminLayout from '../../components/admin/AdminLayout';
-import { Wallet, ArrowUpRight, Clock, CheckCircle2, XCircle, Building2, AlertCircle, Heart, Mail, MessageSquare, RefreshCw, Plane, Hourglass, Send, Ban, Calendar, Tag, Info, FileSpreadsheet, FileText, Loader2, ChevronLeft, Landmark, CheckSquare, Square } from 'lucide-react';
+import { ShieldCheck, Wallet, ArrowUpRight, Clock, CheckCircle2, XCircle, Building2, AlertCircle, Heart, Mail, MessageSquare, RefreshCw, Plane, Hourglass, Send, Ban, Calendar, Tag, Info, FileSpreadsheet, FileText, Loader2, ChevronLeft, Landmark, CheckSquare, Square } from 'lucide-react';
 // v4.885 — El ciclo de vida del aporte: calendario de liberación, línea de
 // tiempo y desembolsos. Vive aparte porque este archivo ya son 1.700 líneas
 // y porque sus hooks no pueden quedar detrás de un return de `DonorCard`.
 import DisbursementSection from '../../components/admin/wallet/DisbursementSection';
+import ContributionControlView from '../../components/admin/wallet/ContributionControlView';
 // v4.886 — Marcar varios aportes como desembolsados de una vez.
 import BulkDisbursementBar, { type Elegible } from '../../components/admin/wallet/BulkDisbursementBar';
 // v4.1014 — La conciliación de un traslado ya efectuado: la barra de acciones
@@ -328,7 +329,14 @@ export default function WalletManagement() {
     const { token, user } = useAuth();
     const { club } = useClub();
     const acceso = useSiteAccess();
-    const puedeGestionar = !acceso.restricted || acceso.can('finance.manage');
+    const puedeGestionar = !acceso.restricted || acceso.has('finance.manage');
+    // v4.1265 — Exportar y descargar comprobantes es `finance.export`: la
+    // Secretaría Digital lo tiene; un acceso de sólo «ver» no. El servidor lo
+    // vuelve a exigir en cada comprobante y documento; lo que se compone en el
+    // navegador (Excel, CSV, PDF) sólo puede acotarlo la pantalla, y se dice
+    // así en la documentación del módulo.
+    const puedeExportar = !acceso.restricted || acceso.has('finance.export');
+    const soloLectura = !puedeGestionar;
 
     // v4.853 — DOS MODOS, y el scope de datos es lo que los separa.
     //
@@ -424,7 +432,10 @@ export default function WalletManagement() {
     const [trasladoAbierto, setTrasladoAbierto] = useState<string | null>(null);
     const [periodo, setPeriodo] = useState<PeriodoResumen | null>(null);
     const [exportando, setExportando] = useState<'xlsx' | 'csv' | 'pdf' | null>(null);
-    const [tab, setTab] = useState<'aportes' | 'retiros'>('aportes');
+    // v4.1265 — `control`: la vista «Control y Justificación de Aportes». Se
+    // puede abrir por la dirección (`?vista=control`); el catálogo es CERRADO.
+    const [tab, setTab] = useState<'aportes' | 'retiros' | 'control'>(() =>
+        searchParams.get('vista') === 'control' ? 'control' : 'aportes');
     const [orphanMovements, setOrphanMovements] = useState<Movement[]>([]);
     /** v4.1025 — La reconstrucción de los cobros que nunca dejaron movimiento. */
     const [isRebuilding, setIsRebuilding] = useState(false);
@@ -490,6 +501,25 @@ export default function WalletManagement() {
         // no ve—.
     }, [rango, desde, hasta, destino, estado]);
 
+    // v4.1265 — LA TRAZA DE LA CONSULTA. Abrir la Bóveda y exportar lo que se
+    // ve se componen en el navegador, así que es la pantalla la que lo
+    // DECLARA (`POST /wallet/access-log`, catálogo cerrado en el servidor).
+    // Las descargas de comprobantes y documentos las anota el servidor solo.
+    // Un fallo acá no puede impedir mirar ni exportar: se ignora.
+    const registrarAcceso = useCallback((cuerpo: Record<string, unknown>) => {
+        if (!token || !clubIdActivo) return;
+        axios.post(`${API_URL}/financial/wallet/access-log`, { ...cuerpo, clubId: clubIdActivo },
+            { headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
+    }, [token, clubIdActivo, API_URL]);
+    // Una vez por sitio y por visita: un evento por cada recarga silenciosa de
+    // un filtro llenaría la auditoría de ruido.
+    const aperturaRegistrada = useRef<string | null>(null);
+    useEffect(() => {
+        if (!clubIdActivo || modoCentral || aperturaRegistrada.current === clubIdActivo) return;
+        aperturaRegistrada.current = clubIdActivo;
+        registrarAcceso({ evento: 'opened' });
+    }, [clubIdActivo, modoCentral, registrarAcceso]);
+
     // v4.850 — La exportación. El informe se arma UNA vez y lo consumen los tres
     // formatos: escribir cada uno por su cuenta daría tres verdades sobre el
     // mismo período. Las librerías se cargan de forma perezosa —`xlsx` y
@@ -522,6 +552,10 @@ export default function WalletManagement() {
             if (formato === 'csv') mod.descargarCSV(informe);
             else if (formato === 'xlsx') await mod.descargarExcel(informe);
             else await mod.descargarPDF(informe);
+            registrarAcceso({
+                evento: 'exported', formato, vista: 'movimientos', moneda: code,
+                periodo: periodo?.label || '', filas: activeDonations.length,
+            });
         } catch (e: any) {
             // Un fallo al exportar no puede dejar la pantalla en un estado raro:
             // se dice y se sigue.
@@ -917,6 +951,10 @@ export default function WalletManagement() {
             count: activeDonations.length + huerfanos.length,
         },
         { id: 'retiros' as const, label: 'Retiros', icon: <ArrowUpRight className="w-4 h-4" />, count: activePayouts.length },
+        // v4.1265 — Todas las monedas a la vez: la vista separa el dinero por
+        // moneda por su cuenta, y filtrarla por la moneda activa escondería
+        // aportes a quien viene a justificarlos todos.
+        { id: 'control' as const, label: 'Control y Justificación', icon: <ShieldCheck className="w-4 h-4" />, count: donations.length },
     ];
 
     return (
@@ -1134,7 +1172,8 @@ export default function WalletManagement() {
                                 Van al final de la línea y sólo si hay algo que
                                 exportar: un botón que descarga un archivo vacío
                                 es peor que no tenerlo. */}
-                            {activeDonations.length > 0 && (
+                            {/* v4.1265 — Exportar pide `finance.export`. */}
+                            {puedeExportar && activeDonations.length > 0 && (
                                 <div className="flex items-center gap-1.5">
                                     <button
                                         onClick={() => exportar('xlsx')}
@@ -1723,7 +1762,9 @@ export default function WalletManagement() {
                                                 elegido={!!elegidos[donation.movement?.id || '']}
                                                 onElegir={puedeGestionar ? cambiarEleccion : undefined}
                                                 desembolsos={desembolsos[donation.movement?.id || ''] || []}
-                                                onVerTraslado={setTrasladoAbierto} />
+                                                onVerTraslado={puedeGestionar ? setTrasladoAbierto : undefined}
+                                                soloLectura={soloLectura}
+                                                puedeDescargar={puedeExportar} />
                                         ))}
 
                                         {/* Cobros que no nacieron de una donación —una compra
@@ -1753,9 +1794,11 @@ export default function WalletManagement() {
                                                             holdingDays={wallet?.platformHoldingDays ?? 6}
                                                             clubId={clubIdActivo}
                                                             elegido={!!elegidos[m.id]}
-                                                            onElegir={cambiarEleccion}
+                                                            onElegir={puedeGestionar ? cambiarEleccion : undefined}
                                                             desembolsos={desembolsos[m.id] || []}
-                                                            onVerTraslado={setTrasladoAbierto} />
+                                                            onVerTraslado={puedeGestionar ? setTrasladoAbierto : undefined}
+                                                            soloLectura={soloLectura}
+                                                            puedeDescargar={puedeExportar} />
                                                     ))}
                                                 </div>
                                             </div>
@@ -1854,6 +1897,29 @@ export default function WalletManagement() {
                         )}
 
                         {/* ── Retiros: pedir y ver el historial ───────────── */}
+                        {/* ── Control y Justificación de Aportes (v4.1265) ───
+                            Los MISMOS aportes y desembolsos de la pestaña de
+                            al lado, clasificados por pago, traslado y
+                            comprobante. No escribe nada. */}
+                        {tab === 'control' && (
+                            <ContributionControlView
+                                aportes={donations}
+                                desembolsos={desembolsos}
+                                sitio={club?.name || 'Sitio'}
+                                periodoLabel={periodo?.label || 'Todo el histórico'}
+                                destinoLabel={destino === DESTINO_TODOS
+                                    ? 'Todos los destinos'
+                                    : (destinos.find(d => d.key === destino)?.label || destino)}
+                                clubId={clubIdActivo}
+                                puedeExportar={puedeExportar}
+                                emitidoPor={user?.email || null}
+                                onExportado={(formato, inf, monedaFiltro) => registrarAcceso({
+                                    evento: 'exported', formato, vista: 'control',
+                                    moneda: monedaFiltro, periodo: periodo?.label || '', filas: inf.filas.length,
+                                })}
+                            />
+                        )}
+
                         {tab === 'retiros' && (
                             <div role="tabpanel" aria-label="Retiros" className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                                 <div className="lg:col-span-1">
@@ -1955,17 +2021,28 @@ export default function WalletManagement() {
                                             <h3 className="text-lg font-bold text-gray-900 mb-1.5">
                                                 Supervisión de Fondos
                                             </h3>
+                                            {/* v4.1265 — El rol se NOMBRA como es. Decía «Fundación Rotaria»
+                                                a toda cuenta sin `finance.manage`: la Secretaría Digital, un
+                                                usuario institucional o «Solo lectura» leían el nombre de otro
+                                                rol (la regla de v4.939: una pantalla no afirma un rol que no es). */}
                                             <p className="text-xs text-gray-600 leading-relaxed mb-4">
-                                                Tu perfil institucional de la <b>Fundación Rotaria</b> cuenta con permisos para auditar aportes recibidos, consultar el saldo disponible y monitorear el histórico de transferencias.
+                                                Tu perfil {acceso.grant?.roleLabel ? <b>{acceso.grant.roleLabel}</b> : 'institucional'} cuenta con permisos para auditar los aportes recibidos, consultar el saldo disponible y monitorear el histórico de transferencias.
                                             </p>
                                             <div className="p-3 bg-white/80 rounded-xl border border-sky-200/60 text-xs text-gray-600 space-y-1.5">
                                                 <p className="font-semibold text-gray-800">Capacidades asignadas:</p>
                                                 <p className="flex items-center gap-1.5">✓ Visualización de aportes y recaudación</p>
-                                                <p className="flex items-center gap-1.5">✓ Exportación a Excel, CSV y PDF</p>
+                                                <p className="flex items-center gap-1.5">✓ Ficha y trazabilidad de cada aporte</p>
                                                 <p className="flex items-center gap-1.5">✓ Historial de retiros y transferencias</p>
+                                                {puedeExportar && <p className="flex items-center gap-1.5">✓ Exportación a Excel, CSV y PDF</p>}
+                                                {puedeExportar && <p className="flex items-center gap-1.5">✓ Descarga de comprobantes y conciliaciones</p>}
                                             </div>
+                                            {acceso.grant?.validUntil && (
+                                                <p className="text-[11px] text-sky-800 mt-3" data-no-translate>
+                                                    Acceso vigente hasta el {new Date(acceso.grant.validUntil).toLocaleDateString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'long', year: 'numeric' })}.
+                                                </p>
+                                            )}
                                             <p className="text-[11px] text-gray-400 mt-4 leading-normal">
-                                                La solicitud de nuevos retiros bancarios está reservada para los administradores del sitio.
+                                                La solicitud de retiros, el registro de traslados y cualquier cambio de estado financiero están reservados para los administradores del sitio. Cada consulta, exportación y descarga queda registrada en la auditoría.
                                             </p>
                                         </div>
                                     )}
@@ -2137,7 +2214,7 @@ const ENTREGA: Record<string, { label: string; cls: string }> = {
 };
 
 function DonorCard({ donation, movementOnly, holdingDays, deliveries = [], onResent, clubId,
-    elegido, onElegir, desembolsos = [], onVerTraslado }: {
+    elegido, onElegir, desembolsos = [], onVerTraslado, soloLectura = false, puedeDescargar = true }: {
     donation?: DonationRecord;
     movementOnly?: Movement;
     holdingDays: number;
@@ -2157,6 +2234,10 @@ function DonorCard({ donation, movementOnly, holdingDays, deliveries = [], onRes
      *  v4.1017 — Recibe el APORTE: el ámbito lo resuelve el servidor, y así
      *  este camino y el de la selección múltiple entran por la misma puerta. */
     onVerTraslado?: (paymentId: string) => void;
+    /** v4.1265 — Consulta sin acciones: no reenvía correos ni registra traslados. */
+    soloLectura?: boolean;
+    /** v4.1265 — Puede abrir (descargar) los comprobantes: `finance.export`. */
+    puedeDescargar?: boolean;
 }) {
     const [abierta, setAbierta] = useState(false);
     const [reenviando, setReenviando] = useState(false);
@@ -2337,7 +2418,7 @@ function DonorCard({ donation, movementOnly, holdingDays, deliveries = [], onRes
                         Es una sola entrada y no un menú de cinco: las cinco
                         acciones que se pidieron viven adentro, y un menú cuyos
                         ítems abren todos lo mismo es ruido. */}
-                    {trasladado && loteDelAporte && (
+                    {trasladado && loteDelAporte && onVerTraslado && (
                         <div className="pt-3">
                             <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Traslado al beneficiario</div>
                             <button
@@ -2421,6 +2502,8 @@ function DonorCard({ donation, movementOnly, holdingDays, deliveries = [], onRes
                                     ))}
                                 </ul>
                             )}
+                            {/* v4.1265 — Reenviar es escribirle a un TERCERO: sólo quien administra. */}
+                            {!soloLectura && (<>
                             <div className="flex flex-wrap gap-2 items-center">
                                 <input
                                     type="email"
@@ -2457,6 +2540,7 @@ function DonorCard({ donation, movementOnly, holdingDays, deliveries = [], onRes
                             <p className="text-[11px] text-gray-400 mt-1">
                                 Al mismo destinatario no se repite. Para volver a mandarlo, escribí otra dirección.
                             </p>
+                            </>)}
                         </div>
                     )}
                     {!mov ? (
@@ -2583,6 +2667,8 @@ function DonorCard({ donation, movementOnly, holdingDays, deliveries = [], onRes
                                     clubId={clubId}
                                     netAmount={mov.amount}
                                     currency={mov.currency}
+                                    soloLectura={soloLectura}
+                                    puedeDescargar={puedeDescargar}
                                 />
                             </div>
                         </div>

@@ -19,7 +19,7 @@ import { requirePermission, requireActiveAccount } from '../middleware/instituti
 import {
     getCatalog, getMyAccess, getRoles, postRole, postDuplicateRole, patchRole,
     deleteRoleHandler, getUsers, getUser, putUserRole, patchUserPermissions,
-    putUserStatus, postRevokeSessions, deleteUserMembership, getAuditLog,
+    putUserStatus, putUserValidity, postRevokeSessions, deleteUserMembership, getAuditLog,
     getResources, postCreateUser, putUserScopes, putUserProfile, postSendAccess,
 } from '../controllers/rbacController.js';
 
@@ -60,6 +60,8 @@ router.post('/users/:userId/send-access', requirePermission('users.manage'), req
 router.put('/users/:userId/role', requirePermission('users.manage'), requireActiveAccount, putUserRole);
 router.patch('/users/:userId/permissions', requirePermission('users.manage'), requireActiveAccount, patchUserPermissions);
 router.put('/users/:userId/status', requirePermission('users.manage'), requireActiveAccount, putUserStatus);
+// v4.1265 — la vigencia del acceso por período.
+router.put('/users/:userId/validity', requirePermission('users.manage'), requireActiveAccount, putUserValidity);
 router.post('/users/:userId/sessions/revoke', requirePermission('users.manage'), requireActiveAccount, postRevokeSessions);
 router.delete('/users/:userId', requirePermission('users.manage'), requireActiveAccount, deleteUserMembership);
 

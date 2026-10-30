@@ -213,6 +213,7 @@ es **rotar la credencial en Neon**, no sólo borrar el archivo.
 
 | Módulo | Archivo |
 |---|---|
+| Secretaría Digital — Control de Aportes (rol de sólo lectura y descarga sobre la Bóveda, vigencia del acceso por período rotario, auditoría de consultas y descargas, pestaña «Control y Justificación de Aportes») — v4.1265 | `docs/claude/secretaria-digital-control-de-aportes.md` |
 | Plantilla oficial de presentación del proyecto (Recursos y plantillas de la Feria: subir, versionar, descarga autenticada y auditada desde `/mi-proyecto`, analítica de quién descargó) — v4.1264 | `docs/claude/plantilla-de-presentacion.md` |
 | Visitas del Gobernador (sección de Rotary en Acción: formulario público en `dominio.org/visitas-del-gobernador` en tres pasos, gestión, publicación sin duplicar) — v4.1260 (dirección canónica: v4.1261; tres pasos: v4.1262) | `docs/claude/visitas-del-gobernador.md` |
 | Centro de Gestión del Evento (dashboard de la Feria: proyectos e inscripciones embebidos) — v4.1259 | `docs/claude/centro-de-gestion-del-evento.md` |

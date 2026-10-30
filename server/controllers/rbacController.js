@@ -22,14 +22,17 @@ import {
     MODULES, ACTIONS, ALL_ACTION_FORMS, slugifyRole, canSignIn,
     filterGrantableScopes, validateResourceScopes, resourceCatalog, describeResourceScopes,
     normalizeResourceScopes, allowedResourceIds, resourceModuleOf, RESOURCE_SCOPE_MODES,
+    normalizeValidUntil, rotaryPeriodEnd, rotaryPeriodLabel, RBAC_AUDIT_EVENTS,
 } from '../lib/rbacSpec.js';
 import {
     listRoles, listCustomRoles, roleFor, createRole, updateRole, deleteRole, roleUsage,
     listMembers, membershipFor, membershipsOfUser, upsertMembership, removeMembership,
     revokeSessions, orphanCheck, resolveUserGrant, serializeGrant, siteAdministrators,
+    setMembershipValidity,
 } from '../lib/rbacStore.js';
+import { SITE_ADMIN_ROLES } from '../middleware/auth.js';
 import { audit, listAudit, upsertProfile, profileForUser } from '../lib/institutionalStore.js';
-import { isEmail, INSTITUTIONAL_ROLE } from '../lib/institutionalAccess.js';
+import { isEmail, INSTITUTIONAL_ROLE, AUDIT_EVENTS } from '../lib/institutionalAccess.js';
 import { ensureUserFor, deliverAccessLink } from './institutionalAccessController.js';
 import { attachGrant } from '../middleware/institutionalGuard.js';
 import db from '../lib/db.js';
@@ -107,6 +110,10 @@ export const getCatalog = async (req, res) => {
             // tiene por recurso. La protección está en `filterGrantableScopes`.
             actorScopes: normalizeResourceScopes(scope.grant?.resourceScopes),
             isPlatformOperator: scope.operador,
+            // v4.1265 — El período rotario EN CURSO, resuelto acá: el botón
+            // «hasta el fin del período» no rehace la aritmética de fechas en
+            // el navegador (regla del período de la Bóveda, v4.849).
+            rotaryPeriod: (() => { const end = rotaryPeriodEnd(new Date()); return { end, label: rotaryPeriodLabel(end) }; })(),
             can: {
                 viewUsers: guard(scope, 'users.view'),
                 manageUsers: guard(scope, 'users.manage'),
@@ -532,7 +539,22 @@ export const putUserRole = async (req, res) => {
                 ? `Rol: ${rolAnterior?.name || anterior.roleKey || 'sin rol'} → ${rol.name}`
                 : `Añadido con el rol ${rol.name}`,
         });
-        res.json({ membership: guardado.membership, role: rol, summary: describeRole(rol.permissions) });
+
+        // ⚠️ v4.1265 — UN ROL ACOTADO NO ACOTA A QUIEN YA ES ADMINISTRADOR POR
+        // SU ROL DE SIEMPRE. Las rutas financieras se guardan con
+        // `requireRoleOrPermission(SITE_ADMIN_ROLES, …)`: el ROL de `User`
+        // pasa antes de mirar ningún permiso, así que asignarle «Secretaría
+        // Digital» a un `club_admin` le recorta el MENÚ y no le cierra ni una
+        // ruta. Se DICE en vez de dejar creer que quedó en sólo lectura.
+        const warnings = [];
+        if (!isAdministrativeRole(rol)) {
+            const { rows: filaUsuario } = await db.query('SELECT role FROM "User" WHERE id = $1 LIMIT 1', [userId]).catch(() => ({ rows: [] }));
+            const rolPlataforma = String(filaUsuario[0]?.role || '');
+            if (SITE_ADMIN_ROLES.includes(rolPlataforma)) {
+                warnings.push(`Atención: su cuenta conserva el rol de plataforma «${rolPlataforma}», que sigue abriendo las rutas administrativas del sitio aunque el rol «${rol.name}» las restrinja. Para que el acceso quede realmente acotado, la cuenta debe ser institucional (créala desde Correo Institucional) o el operador de la plataforma debe cambiarle ese rol.`);
+            }
+        }
+        res.json({ membership: guardado.membership, role: rol, summary: describeRole(rol.permissions), warnings });
     } catch (error) {
         console.error('[RBAC] putUserRole:', error?.message);
         res.status(500).json({ error: 'No pudimos guardar el rol.' });
@@ -643,6 +665,56 @@ export const putUserStatus = async (req, res) => {
     }
 };
 
+/**
+ * v4.1265 — LA VIGENCIA DEL ACCESO: hasta cuándo vale la membresía de alguien
+ * en ESTE sitio. `validUntil: null` la quita (sin vencimiento).
+ *
+ * Mismas puertas que el estado: `users.manage`, nadie sobre sí mismo (podría
+ * extenderse el suyo) y no se le pone fecha al único administrador del sitio
+ * —el día que venza, el sitio quedaría sin nadie que lo administre—.
+ * Al vencer NO se borra nada: ver `isMembershipExpired`.
+ */
+export const putUserValidity = async (req, res) => {
+    try {
+        const scope = await scopeOf(req);
+        if (!guard(scope, 'users.manage')) return denegar(res, 'users.manage');
+
+        const userId = str(req.params?.userId, 80);
+        if (String(userId) === String(req.user?.id)) {
+            return res.status(409).json({ error: 'No puedes cambiar la vigencia de tu propio acceso. Pídeselo a otro administrador.' });
+        }
+        const v = normalizeValidUntil(req.body?.validUntil);
+        if (!v.ok) return res.status(422).json({ error: v.error });
+
+        if (v.value) {
+            const check = await orphanCheck(scope.clubId, userId);
+            if (check.blocked) return res.status(409).json({ error: check.reason });
+        }
+
+        const anterior = await membershipFor(userId, scope.clubId);
+        if (!anterior) {
+            return res.status(404).json({ error: 'Esa persona todavía no tiene un rol asignado en este sitio. Asígnale uno antes de fijar su vigencia.' });
+        }
+        const hecho = await setMembershipValidity(userId, scope.clubId, v.value);
+        if (!hecho.ok) return res.status(500).json({ error: 'No pudimos guardar la vigencia.' });
+
+        const dia = (iso) => (iso ? String(iso).slice(0, 10) : 'sin vencimiento');
+        await audit('membership_validity_changed', {
+            clubId: scope.clubId, userId, actor: actorOf(req), req,
+            detail: `Vigencia: ${dia(anterior.validUntil)} → ${dia(v.value)}`,
+        });
+
+        const warnings = [];
+        if (v.value && new Date(v.value).getTime() < Date.now()) {
+            warnings.push('La fecha ya pasó: el acceso quedó vencido desde ahora. Su historial y su rol se conservan.');
+        }
+        res.json({ membership: hecho.membership, warnings });
+    } catch (error) {
+        console.error('[RBAC] putUserValidity:', error?.message);
+        res.status(500).json({ error: 'No pudimos guardar la vigencia.' });
+    }
+};
+
 /** Cierra las sesiones abiertas de alguien. Ver `revokeSessions`. */
 export const postRevokeSessions = async (req, res) => {
     try {
@@ -695,7 +767,10 @@ export const getAuditLog = async (req, res) => {
     try {
         const scope = await scopeOf(req);
         if (!guard(scope, 'audit.view')) return denegar(res, 'audit.view');
-        res.json({ events: await listAudit(scope.clubId, { limit: Number(req.query?.limit) || 150 }) });
+        // v4.1265 — Cada evento viaja con su NOMBRE: la pantalla pintaba la
+        // clave cruda («vault_receipt_downloaded»), que no se lee en una junta.
+        const eventos = await listAudit(scope.clubId, { limit: Number(req.query?.limit) || 150 });
+        res.json({ events: eventos.map(e => ({ ...e, label: AUDIT_EVENTS[e.kind] || RBAC_AUDIT_EVENTS[e.kind] || null })) });
     } catch (error) {
         console.error('[RBAC] getAuditLog:', error?.message);
         res.status(500).json({ error: 'No pudimos cargar el registro.' });
