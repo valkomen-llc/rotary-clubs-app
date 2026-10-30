@@ -1065,3 +1065,65 @@ Pruebas: `npm run test:event-payment` (28 casos, **sin base, credenciales ni red
   paso propio de la audiencia («Viaje y estadía») sigue resolviéndose como
   antes, a propósito: corregirlo agregaría ese paso al registro internacional
   del Distrito, y es una decisión del cliente.
+
+### Seleccionar, editar y eliminar desde el listado — v4.1263
+
+Pedido del comité de Valledupar con el listado «Todos» de **Inscripciones y
+asistentes** delante: marcar uno o varios inscritos y editarlos o borrarlos.
+Es el diseño de las inscripciones COLROTARIOS (v4.952 / v4.1092) llevado a la
+tabla `EventRegistration`, sin tocar aquella.
+
+| Pieza | Qué es |
+|---|---|
+| `planRegistrationEdit`, `registrationDeleteBlock`, `ANSWER_COLUMNS`, `REGISTRATION_BULK_EDITABLE` (`eventRegistrationSpec.js`) | El CRITERIO, puro |
+| `updateRegistration`, `selectAllRegistrations`, `bulkStatus`, `bulkEdit`, `bulkDelete` (`eventRegistrationAdminController.js`) | La I/O |
+| `EditRegistrationModal` y la barra de selección (`EventRegistrationsManager.tsx`) | La pantalla |
+| `REGISTRATION_BULK_FIELDS`, `DELETE_BLOCK_LABELS` (`src/lib/eventRegistrationSpec.ts`) | Espejo mínimo, comparado por SALIDAS |
+
+Rutas: `PATCH /admin/registrations/:id`, `GET /admin/registrations/select-all`
+y `POST /admin/registrations/bulk-status|bulk-edit|bulk-delete`, **literales
+ANTES de `/admin/registrations/:id`**. Pruebas: `npm run test:registration-bulk`
+(54, criterio y camino, sin base ni red) y `npm run test:registration-bulk:ui`
+(22, en Chromium con la API simulada, a 1280 y 390 px; con el Playwright
+global hace falta `NODE_PATH=$(npm root -g)`, y `UI_CSS=` para el CSS real
+sin `dist/`).
+
+- **Las casillas están SIEMPRE** (no hay modo «Seleccionar»): el pedido era
+  marcar directamente en el listado. La casilla para la propagación del clic,
+  así marcar no abre la ficha. La cabecera marca SÓLO lo visible; «Seleccionar
+  las N que coinciden con el filtro» es el otro gesto y dice su número.
+- **«Editar» con UNA marcada abre sus datos completos; con VARIAS, UN campo
+  compartido.** La ficha suma «Editar datos» (mismo modal). El modal pinta el
+  formulario de SU categoría (`form` de la ficha, armado por el servidor) y
+  manda SÓLO lo que cambió.
+- **⚠️ LA RESPUESTA Y SU COLUMNA SE ESCRIBEN JUNTAS** (`ANSWER_COLUMNS`, los
+  mismos topes de `createRegistration`). La tabla, los filtros y las
+  exportaciones leen la columna; la ficha, `answers`. Editar sólo una dejaría
+  dos verdades.
+- **Qué acepta la edición**: claves del formulario de su categoría o que la
+  inscripción ya tenía (un campo retirado se corrige, no se inventa);
+  `acceptTerms` nunca (es de la persona); un select CAMBIADO debe caer en sus
+  opciones, uno viejo se respeta mientras nadie lo toque; sólo nombres,
+  apellidos y correo válido son obligatorios — exigir todo impediría al
+  equipo arreglar un registro incompleto. Categoría, precio, estado y pago NO
+  se editan aquí.
+- **⚠️ LA IDENTIDAD NO SE EDITA EN BLOQUE** (`REGISTRATION_BULK_EDITABLE`:
+  país, departamento, ciudad, distrito, club). Pantalla y servidor.
+- **⚠️ AL ELIMINAR SE CONSERVA Y SE NOMBRA** (`registrationDeleteBlock`):
+  acreditada (`checkedInAt` o estado acreditado/asistió), incluida en un
+  traslado (`EventFundsAllocation`: borrarla descuadraría la conciliación), o
+  pagada sin la capacidad `payments`. La confirmación advierte ANTES cuántas
+  acreditadas y pagadas hay.
+- **⚠️ BORRAR NO REEMBOLSA NI BORRA EL PAGO.** Se van la fila y sus
+  acompañantes; se QUEDAN `EventRegistrationPayment` (el dinero entró y el
+  informe de recaudo lo cuenta), los mensajes y el historial, con la fila
+  `registration_deleted` (quién, cuándo, a quién, monto).
+- Confirmación explícita (`confirm: true` → 428), `BULK_MAX`/`SELECT_ALL_MAX`/
+  `chunkIds` del spec COLROTARIOS (mismo tope de plataforma), no atómico, con
+  desenlace por fila acumulado entre tandas. El cambio de estado en bloque
+  respeta el permiso de pagos como el de a uno (`sin_permiso_pagos`).
+
+**Pendientes conocidos:** verificado en navegador sólo con la API simulada, no
+contra la base real. La edición no recalcula las etiquetas de sistema (no
+dependen de los campos editables). El modal muestra el país, el departamento
+y el club como texto libre, sin los catálogos del formulario público.

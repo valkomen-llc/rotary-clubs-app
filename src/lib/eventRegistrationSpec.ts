@@ -370,3 +370,25 @@ export const validateCredentials = (
     return errors;
 };
 
+
+// ── Editar y eliminar desde el listado (v4.1263) ─────────────────────
+//
+// Espejo de `REGISTRATION_BULK_EDITABLE` y `DELETE_BLOCK_LABELS` del servidor,
+// comparado por SALIDAS en `npm run test:registration-bulk`. El servidor
+// decide igual: esto sólo rotula lo que la pantalla ofrece y lo que conservó.
+
+/** Lo COMPARTIDO que se corrige en bloque. La identidad se edita de a una. */
+export const REGISTRATION_BULK_FIELDS: { key: string; label: string }[] = [
+    { key: 'country', label: 'País' },
+    { key: 'department', label: 'Departamento / Estado' },
+    { key: 'city', label: 'Ciudad' },
+    { key: 'district', label: 'Distrito Rotario' },
+    { key: 'clubName', label: 'Club Rotario' },
+];
+
+/** Por qué una inscripción se conservó al eliminar en bloque. */
+export const DELETE_BLOCK_LABELS: Record<string, string> = {
+    ya_acreditada: 'ya acreditada',
+    en_traslado: 'incluida en un traslado',
+    sin_permiso_pagos: 'pago confirmado (requiere permiso de pagos)',
+};

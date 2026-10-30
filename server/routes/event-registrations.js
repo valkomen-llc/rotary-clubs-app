@@ -85,8 +85,16 @@ router.post('/admin/completed/:id/resend', authMiddleware, json, completedAdmin.
 router.get('/admin/completed/:id/receipt', authMiddleware, completedAdmin.receiptUrl);
 router.post('/admin/completed/:id/checkin', authMiddleware, json, completedAdmin.checkIn);
 
+// v4.1263 — Selección y acciones en bloque del listado. Literales ANTES de
+// `/admin/registrations/:id`: si no, «select-all» se leería como un id.
+router.get('/admin/registrations/select-all', authMiddleware, admin.selectAllRegistrations);
+router.post('/admin/registrations/bulk-status', authMiddleware, json, admin.bulkStatus);
+router.post('/admin/registrations/bulk-edit', authMiddleware, json, admin.bulkEdit);
+router.post('/admin/registrations/bulk-delete', authMiddleware, json, admin.bulkDelete);
+
 // Ficha de una inscripción
 router.get('/admin/registrations/:id', authMiddleware, admin.getRegistrationDetail);
+router.patch('/admin/registrations/:id', authMiddleware, json, admin.updateRegistration);
 router.patch('/admin/registrations/:id/status', authMiddleware, json, admin.changeStatus);
 router.patch('/admin/registrations/:id/tags', authMiddleware, json, admin.updateTags);
 router.patch('/admin/registrations/:id/notes', authMiddleware, json, admin.updateNotes);
