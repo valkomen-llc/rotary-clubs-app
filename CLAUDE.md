@@ -213,6 +213,7 @@ es **rotar la credencial en Neon**, no sólo borrar el archivo.
 
 | Módulo | Archivo |
 |---|---|
+| Guía de pago por COLROTARIOS / AvalPay en el paso 4 de «Completar inscripción» (tarjeta contextual, configurable por evento, concepto verificado, volver de pagar sin perder el paso) — v4.1268 | `docs/claude/guia-de-pago-colrotarios.md` |
 | La cuenta del participante en «Completar inscripción» (crear acceso o entrar con la cuenta de siempre, «Mis eventos», vincular lo anterior sólo con el correo demostrado, envío idempotente) — v4.1267 | `docs/claude/cuenta-del-participante-en-completar-inscripcion.md` |
 | Secretaría Digital — Control de Aportes (rol de sólo lectura y descarga sobre la Bóveda, vigencia del acceso por período rotario, auditoría de consultas y descargas, pestaña «Control y Justificación de Aportes») — v4.1265 | `docs/claude/secretaria-digital-control-de-aportes.md` |
 | Plantilla oficial de presentación del proyecto (Recursos y plantillas de la Feria: subir, versionar, descarga autenticada y auditada desde `/mi-proyecto`, analítica de quién descargó) — v4.1264 | `docs/claude/plantilla-de-presentacion.md` |

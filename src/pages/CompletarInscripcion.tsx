@@ -21,6 +21,13 @@
 // El progreso se guarda en este navegador (sin la contraseña) para que entrar
 // o recuperar la clave no obligue a empezar de cero.
 //
+// v4.1268 — Guía de pago del paso 4. Al elegir «Pasarela de pagos de
+// COLROTARIOS» se despliega una tarjeta con los pasos para aportar en AvalPay
+// (en una pestaña NUEVA) y volver a adjuntar el comprobante. Es una guía: no
+// registra ni confirma ningún pago. Proveedor, enlace y concepto los configura
+// el panel por evento. Volver de pagar —aunque el móvil haya recargado la
+// pestaña— retoma el mismo paso, con el método y el comprobante.
+//
 // Se compone con las MISMAS piezas de los formularios públicos del sitio
 // (`Field`, `PhoneField`, `StepProgress`): nada de diseño paralelo. El
 // comprobante sube DIRECTO a S3 con URL prefirmada — el cuerpo de una función
@@ -30,7 +37,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
     AlertCircle, ArrowLeft, ArrowRight, Building2, CalendarDays, Check, CheckCircle2,
-    Circle, Clock, CreditCard, FileText, HeartPulse, IdCard, KeyRound, LayoutDashboard, Loader2, LogIn, Mail, MapPin,
+    Circle, ClipboardList, Clock, CreditCard, ExternalLink, FileText, Globe, HeartPulse, IdCard, Info, KeyRound,
+    LayoutDashboard, Loader2, LogIn, Mail, MapPin,
     Paperclip, ShieldCheck, Trash2, User, UserCheck, Users, Utensils,
 } from 'lucide-react';
 import { openLoginModal, onLoginSuccess, emitLoginSuccess } from '../lib/loginModal';
@@ -62,6 +70,22 @@ interface PublicConfig {
     access?: { mode: AccountMode };
     identity?: { realm: string; email: string; name: string | null; roleLabel: string | null } | null;
     prefill?: Record<string, string>;
+    /** v4.1268 — La guía de pago externo del paso 4; `null` si no aplica. */
+    paymentGuide?: PaymentGuide | null;
+}
+
+interface PaymentGuide {
+    /** La opción de «método de pago» que la despliega. */
+    method: string;
+    providerName: string;
+    url: string;
+    concept: string;
+    title: string;
+    intro: string;
+    buttonLabel: string;
+    warning: string;
+    receiptHint: string;
+    steps: { key: string; icon: string; title: string; text: string }[];
 }
 
 interface SubmitResult {
@@ -98,6 +122,10 @@ interface Draft {
     clubNotListed: boolean;
     receipt: ReceiptState;
     submissionKey: string;
+    /** v4.1268 — El paso en el que iba: volver de pagar retoma ese paso. */
+    stepIndex: number;
+    /** Escribió una contraseña en el paso 1. La contraseña NO se guarda. */
+    wantsAccount: boolean;
 }
 const draftKey = (slug: string) => `completar-inscripcion:${slug}`;
 const newSubmissionKey = () => {
@@ -116,6 +144,8 @@ const readDraft = (slug: string): Draft | null => {
             // Sólo un comprobante YA subido sobrevive; uno a medio subir no.
             receipt: d.receipt?.status === 'ready' ? d.receipt : { status: 'idle' },
             submissionKey: typeof d.submissionKey === 'string' && d.submissionKey ? d.submissionKey : newSubmissionKey(),
+            stepIndex: Math.max(0, Math.floor(Number(d.stepIndex) || 0)),
+            wantsAccount: d.wantsAccount === true,
         };
     } catch { return null; }
 };
@@ -151,10 +181,12 @@ const CompletarInscripcion = () => {
     // no obliga a empezar de cero.
     const [draft] = useState<Draft | null>(() => readDraft(slug));
     const [answers, setAnswers] = useState<Record<string, any>>(() => draft?.answers || { membershipType: 'socio_activo' });
-    // Un borrador recuperado arranca en el PASO 1, con todo lo escrito: es
-    // donde vive el acceso al evento, que no se guarda (no hay contraseña en
-    // el borrador) y hay que volver a resolver.
-    const [stepIndex, setStepIndex] = useState(0);
+    // v4.1268 — Un borrador recuperado retoma el paso en el que iba: quien
+    // salió a pagar en AvalPay y el móvil le recargó la pestaña vuelve al
+    // paso 4 con el método y el comprobante. Si había pedido crear su acceso,
+    // la contraseña (que nunca se guarda) se vuelve a pedir al enviar.
+    const [stepIndex, setStepIndex] = useState(() => draft?.stepIndex || 0);
+    const [wantsAccount, setWantsAccount] = useState(() => draft?.wantsAccount || false);
     const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
     const [clubNotListed, setClubNotListed] = useState(() => draft?.clubNotListed || false);
     const [receipt, setReceipt] = useState<ReceiptState>(() => draft?.receipt || { status: 'idle' });
@@ -262,12 +294,13 @@ const CompletarInscripcion = () => {
     useEffect(() => {
         if (result) return;
         try {
-            const value: Draft = { answers, clubNotListed, receipt, submissionKey };
+            const value: Draft = { answers, clubNotListed, receipt, submissionKey, stepIndex, wantsAccount };
             localStorage.setItem(draftKey(slug), JSON.stringify(value));
         } catch { /* sin borrador: el formulario sigue funcionando */ }
-    }, [answers, clubNotListed, receipt, submissionKey, slug, result]);
+    }, [answers, clubNotListed, receipt, submissionKey, stepIndex, wantsAccount, slug, result]);
 
     const accountMode: AccountMode = config?.access?.mode || 'off';
+    const guide = config?.paymentGuide || null;
     const identity = config?.identity || null;
     const formEmail = String(answers.email || '').trim().toLowerCase();
     /** Entró con su cuenta y el correo del formulario es el suyo. */
@@ -423,7 +456,7 @@ const CompletarInscripcion = () => {
             { allowEmpty: accountMode === 'optional' });
         setCredentialErrors(errors);
         if (Object.keys(errors).length) return;
-        if (!credentials.password) { advance(); return; }
+        if (!credentials.password) { setWantsAccount(false); advance(); return; }
 
         setAccessState({ kind: 'checking' });
         try {
@@ -455,6 +488,7 @@ const CompletarInscripcion = () => {
                     identity: { realm: 'attendee', email: formEmail, name: null, roleLabel: 'Asistente al Evento' },
                 } : prev));
             }
+            setWantsAccount(data.status === 'new');
             setAccessState({ kind: 'idle' });
             advance();
         } catch (err: any) {
@@ -488,6 +522,15 @@ const CompletarInscripcion = () => {
 
     const submit = async () => {
         if (!validateCurrentStep() || receipt.status !== 'ready') return;
+        // La contraseña no se guarda en el navegador: si la pestaña se recargó
+        // (p. ej. al volver de pagar) y había pedido crear su acceso, se pide
+        // otra vez en vez de enviar sin cuenta en silencio.
+        if (wantsAccount && accountMode !== 'off' && !sessionMatches && !credentials.password) {
+            setCredentialErrors({ password: 'Por seguridad no guardamos tu contraseña en este navegador: escríbela de nuevo para crear tu acceso.' });
+            setStepIndex(0);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            return;
+        }
         setSubmitting(true);
         setError('');
         try {
@@ -598,6 +641,10 @@ const CompletarInscripcion = () => {
                             <AlertCircle size={13} /> {err}
                         </p>
                     )}
+                    {/* v4.1268 — Debajo de las opciones y antes del comprobante. */}
+                    {guide && field.key === 'paymentMethod' && value === guide.method && (
+                        <PaymentGuideCard guide={guide} />
+                    )}
                 </div>
             );
         }
@@ -609,6 +656,11 @@ const CompletarInscripcion = () => {
                         <Paperclip size={15} className="text-slate-400" />
                         {field.label} {required && <span className="text-red-500">*</span>}
                     </label>
+                    {guide && answers.paymentMethod === guide.method && (
+                        <p className="mb-2 flex items-start gap-1.5 text-[13px] font-medium" style={{ color: BLUE }}>
+                            <Info size={14} className="mt-0.5 shrink-0" /> {guide.receiptHint}
+                        </p>
+                    )}
                     <input ref={fileInputRef} type="file" accept={RECEIPT_ACCEPT} className="hidden"
                         onChange={e => {
                             const file = e.target.files?.[0];
@@ -621,6 +673,7 @@ const CompletarInscripcion = () => {
                         <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3.5">
                             <p className="flex min-w-0 items-center gap-2 text-sm font-semibold text-emerald-800">
                                 <CheckCircle2 size={17} className="shrink-0" />
+                                <span className="sr-only">Comprobante recibido:</span>
                                 <span className="truncate">{receipt.name}</span>
                                 <span className="shrink-0 font-normal text-emerald-700/70">
                                     {(receipt.bytes / 1024 / 1024).toFixed(1)} MB
@@ -917,6 +970,65 @@ const CompletarInscripcion = () => {
             </main>
             <Footer />
         </div>
+    );
+};
+
+// ── La guía de pago externo (v4.1268) ────────────────────────────────
+//
+// Componente de NIVEL SUPERIOR (regla del proyecto). Aparece con una
+// transición corta —que se apaga con «reducir movimiento»— y vive mientras el
+// método elegido sea el suyo: al cambiar de método se desmonta. El enlace abre
+// una pestaña NUEVA (`noopener noreferrer`): el formulario sigue aquí, intacto.
+
+const GUIDE_ICONS: Record<string, any> = { globe: Globe, list: ClipboardList, card: CreditCard, clip: Paperclip };
+
+const PaymentGuideCard = ({ guide }: { guide: PaymentGuide }) => {
+    const [shown, setShown] = useState(false);
+    useEffect(() => {
+        const id = requestAnimationFrame(() => setShown(true));
+        return () => cancelAnimationFrame(id);
+    }, []);
+
+    return (
+        <section aria-labelledby="guia-de-pago" aria-live="polite"
+            className={`mt-4 rounded-xl border border-blue-200 bg-blue-50/70 p-4 transition-all duration-300 ease-out motion-reduce:transition-none sm:p-5 ${
+                shown ? 'translate-y-0 opacity-100' : '-translate-y-1 opacity-0'}`}>
+            <p id="guia-de-pago" className="flex items-start gap-2 text-[15px] font-bold" style={{ color: BLUE }}>
+                <CreditCard size={18} className="mt-0.5 shrink-0" /> {guide.title}
+            </p>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-slate-600">{guide.intro}</p>
+
+            <ol className="mt-4 space-y-3">
+                {guide.steps.map((step, i) => {
+                    const Icon = GUIDE_ICONS[step.icon] || Circle;
+                    return (
+                        <li key={step.key} className="flex gap-3">
+                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-[13px] font-bold ring-1 ring-blue-200"
+                                style={{ color: BLUE }} aria-hidden="true">
+                                {i + 1}
+                            </span>
+                            <div className="min-w-0">
+                                <p className="flex items-center gap-1.5 text-sm font-bold text-slate-800">
+                                    <Icon size={14} className="shrink-0 text-slate-400" aria-hidden="true" /> {step.title}
+                                </p>
+                                <p className="mt-0.5 text-[13px] leading-relaxed text-slate-600">{step.text}</p>
+                            </div>
+                        </li>
+                    );
+                })}
+            </ol>
+
+            <a href={guide.url} target="_blank" rel="noopener noreferrer"
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-bold text-white transition hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2 sm:w-auto sm:inline-flex"
+                style={{ background: BLUE }}>
+                <ExternalLink size={16} aria-hidden="true" /> {guide.buttonLabel}
+                <span className="sr-only">(se abre en una pestaña nueva)</span>
+            </a>
+
+            <p className="mt-4 flex items-start gap-2 rounded-lg bg-white/80 px-3 py-2.5 text-[13px] leading-relaxed text-slate-700 ring-1 ring-blue-100">
+                <Info size={15} className="mt-0.5 shrink-0" style={{ color: BLUE }} aria-hidden="true" /> {guide.warning}
+            </p>
+        </section>
     );
 };
 

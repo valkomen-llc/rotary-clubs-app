@@ -233,6 +233,8 @@ export const DEFAULT_COMPLETED_CONFIG = {
     notifyBody: '',
     // v4.1267 — Cuenta personal del participante (ver ACCOUNT_MODES).
     accountMode: 'optional',
+    // v4.1268 — Guía de pago externo del paso 4 (ver normalizePaymentGuide).
+    paymentGuide: null,
 };
 
 const cleanStr = (value, max) => String(value ?? '').trim().slice(0, max);
@@ -253,6 +255,13 @@ export const normalizeCompletedConfig = (raw = {}) => ({
     notifySubject: cleanStr(raw?.notifySubject, 300),
     notifyBody: cleanStr(raw?.notifyBody, 4000),
     accountMode: ACCOUNT_MODES.includes(raw?.accountMode) ? raw.accountMode : DEFAULT_ACCOUNT_MODE,
+    // Sin la clave guardada (configuración anterior a v4.1268) manda la de la
+    // semilla del slug, si la tiene. En cuanto el administrador guarda, la clave
+    // existe y su decisión manda — también si la apagó.
+    paymentGuide: normalizePaymentGuide(
+        raw?.paymentGuide !== undefined && raw?.paymentGuide !== null
+            ? raw.paymentGuide
+            : seedForSlug(raw?.slug)?.config?.paymentGuide),
 });
 
 /**
@@ -360,6 +369,105 @@ export const participantHistoryEntry = (h) => {
         comment: isStatus && !automatic && ['needs_correction', 'rejected'].includes(h.toStatus) ? h.comment : null,
         createdAt: h.createdAt,
     };
+};
+
+// ── La guía de pago externo del paso 4 (v4.1268) ─────────────────────
+//
+// Cuando el participante elige «Pasarela de pagos de COLROTARIOS», el paso 4
+// despliega una tarjeta que explica cómo aportar en el micrositio del
+// proveedor (AvalPay) y volver a adjuntar el comprobante. Es una GUÍA, no una
+// integración: abrir el proveedor no prueba ningún pago, el formulario no pide
+// datos bancarios ni de tarjeta, y el registro sigue naciendo «Pendiente de
+// validación».
+//
+// Todo lo que cambia con el evento —proveedor, enlace, concepto, textos— vive
+// en `settings.completedForm.paymentGuide` y se edita en el panel: cambiar el
+// destino del aporte no exige desplegar.
+
+/** El enlace del proveedor: sólo https, para no publicar un destino de pago inseguro. */
+export const safePaymentUrl = (value) => {
+    const raw = String(value ?? '').trim();
+    if (!raw) return '';
+    try {
+        const url = new URL(raw);
+        return url.protocol === 'https:' ? url.toString() : '';
+    } catch { return ''; }
+};
+
+export const normalizePaymentGuide = (raw) => {
+    if (!raw || typeof raw !== 'object') {
+        return {
+            enabled: false, method: 'pasarela_colrotarios', providerName: '', url: '', concept: '',
+            title: '', intro: '', buttonLabel: '', warning: '', receiptHint: '',
+        };
+    }
+    const providerName = cleanStr(raw.providerName, 60);
+    return {
+        enabled: raw.enabled === true,
+        // Qué opción del método de pago despliega la guía. Sólo una que exista.
+        method: PAYMENT_METHODS.some(m => m.value === raw.method) ? raw.method : 'pasarela_colrotarios',
+        providerName,
+        url: safePaymentUrl(raw.url),
+        concept: cleanStr(raw.concept, 160),
+        title: cleanStr(raw.title, 160),
+        intro: cleanStr(raw.intro, 600),
+        buttonLabel: cleanStr(raw.buttonLabel, 60),
+        warning: cleanStr(raw.warning, 600),
+        receiptHint: cleanStr(raw.receiptHint, 300),
+    };
+};
+
+/**
+ * La guía tal como la ve el público, o `null` si no se debe mostrar. Sin
+ * enlace válido no hay guía: un botón de pago que no lleva a ninguna parte
+ * es peor que no tenerlo. Los textos vacíos toman su predeterminado.
+ */
+export const publicPaymentGuide = (guide, eventTitle = '') => {
+    const g = normalizePaymentGuide(guide);
+    if (!g.enabled || !g.url) return null;
+    return {
+        method: g.method,
+        providerName: g.providerName,
+        url: g.url,
+        concept: g.concept,
+        title: g.title || 'Realiza tu aporte de inscripción con COLROTARIOS',
+        intro: g.intro || `Para completar tu inscripción${eventTitle ? ` a la ${eventTitle}` : ''}, realiza tu aporte de manera segura a través del portal de pagos${g.providerName ? ` ${g.providerName}` : ''}.`,
+        buttonLabel: g.buttonLabel || (g.providerName ? `Ir a pagar con ${g.providerName}` : 'Ir a pagar'),
+        warning: g.warning || `Importante: realizar el pago en ${g.providerName || 'el portal'} no completa automáticamente tu inscripción. Debes regresar a este formulario, adjuntar el comprobante y finalizar el registro. El equipo organizador validará posteriormente la información.`,
+        receiptHint: g.receiptHint || `Adjunta aquí el comprobante que descargaste al finalizar tu pago${g.providerName ? ` en ${g.providerName}` : ''}.`,
+        steps: paymentGuideSteps(g),
+    };
+};
+
+/**
+ * Los cuatro pasos. Se ARMAN con el proveedor, el concepto y el texto del
+ * botón configurados: así el paso que dice qué botón pulsar y qué concepto
+ * elegir nunca contradice al botón ni al concepto reales.
+ */
+export const paymentGuideSteps = (guide) => {
+    const g = normalizePaymentGuide(guide);
+    const provider = g.providerName || 'el proveedor';
+    const button = g.buttonLabel || (g.providerName ? `Ir a pagar con ${g.providerName}` : 'Ir a pagar');
+    return [
+        {
+            key: 'open', icon: 'globe', title: 'Ingresa al portal de pagos',
+            text: `Haz clic en el botón «${button}». Se abrirá una nueva pestaña para que puedas realizar el proceso sin perder la información de este formulario.`,
+        },
+        {
+            key: 'concept', icon: 'list', title: 'Selecciona el concepto de aporte',
+            text: g.concept
+                ? `En el campo «Aportes Colrotarios», selecciona la opción «${g.concept}».`
+                : 'En el campo «Aportes Colrotarios», selecciona el concepto que corresponde a este evento.',
+        },
+        {
+            key: 'pay', icon: 'card', title: 'Completa tu pago',
+            text: `Diligencia los datos solicitados, verifica el concepto y el valor correspondiente y completa la transacción siguiendo las instrucciones de ${provider}.`,
+        },
+        {
+            key: 'receipt', icon: 'clip', title: 'Descarga y adjunta tu comprobante',
+            text: 'Cuando finalices el pago, descarga o guarda el comprobante de la transacción. Regresa a este formulario y adjúntalo en el campo «Subir comprobante de pago del aporte» para continuar con tu inscripción.',
+        },
+    ];
 };
 
 // ── La notificación de confirmación (v4.945) ─────────────────────────
@@ -782,6 +890,17 @@ export const COMPLETED_FORM_SEEDS = [
             enabled: true,
             codePrefix: 'CR4281-2027',
             rolePeriod: '2026-2027',
+            // v4.1268 — El concepto se comprobó en el micrositio oficial: el
+            // campo «Aportes Colrotarios» ofrece «Conferencia Villavicencio
+            // 2027» (distinta de «Feria de Proyectos»). Si el recaudo cambia,
+            // se corrige en el panel, sin desplegar.
+            paymentGuide: {
+                enabled: true,
+                method: 'pasarela_colrotarios',
+                providerName: 'AvalPay',
+                url: 'https://micrositios.avalpaycenter.com/fundacion-colombian-rotarios-ma',
+                concept: 'Conferencia Villavicencio 2027',
+            },
         },
     },
 ];
@@ -845,4 +964,5 @@ export default {
     BULK_MAX, SELECT_ALL_MAX, chunkIds,
     ACCOUNT_MODES, DEFAULT_ACCOUNT_MODE, ACCESS_PASSWORD_MIN, validateAccessPassword,
     participantStages, PARTICIPANT_HISTORY, participantHistoryEntry,
+    safePaymentUrl, normalizePaymentGuide, publicPaymentGuide, paymentGuideSteps,
 };
