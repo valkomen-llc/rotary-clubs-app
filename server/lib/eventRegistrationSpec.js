@@ -958,6 +958,10 @@ export const normalizeCategory = (raw = {}) => {
         extraFieldsLabel: String(raw.extraFieldsLabel || '').trim().slice(0, 80) || null,
         sortOrder: Number(raw.sortOrder) || 0,
         active: raw.active !== false,
+        // v4.1266 — ¿Se muestra su botón en la ficha pública? Sólo `false`
+        // explícito lo esconde: un valor ausente o nulo (categoría anterior a
+        // esta versión, panel viejo) la deja visible, como estaba.
+        showPublicButton: raw.showPublicButton !== false,
         updatedAt: raw.updatedAt || null,
     };
 };
@@ -1150,9 +1154,34 @@ export const resolveCtaButtons = ({ categories = [], config = {}, audience = 'in
 
     const categoryOf = (key) => categories.find(c => c.key === key) || null;
 
+    // v4.1266 — El administrador escondió el botón de esta categoría en la
+    // ficha pública. Es SÓLO visibilidad: la categoría sigue abierta, su
+    // enlace directo sigue funcionando y sus inscripciones no se tocan. Por eso
+    // no se mezcla con `available` (eso es la disponibilidad, otra cosa).
+    const hiddenByAdmin = (button) => categoryOf(button.categoryKey)?.showPublicButton === false;
+
     const decorate = (button) => {
         const category = categoryOf(button.categoryKey);
         if (!category) return null;
+        if (category.showPublicButton === false) {
+            return {
+                key: button.key,
+                label: button.label,
+                role: button.role,
+                categoryKey: category.key,
+                categoryName: category.name,
+                currency: category.currency,
+                price: category.price,
+                available: false,
+                unavailableReason: 'hidden_public',
+                unavailableMessage: '',
+                // Oculto SIEMPRE, aunque tenga mensaje de cierre: no es una
+                // categoría cerrada que se explica, es un botón que no se ve.
+                hidden: true,
+                hiddenByAdmin: true,
+                href: `/registro?categoria=${encodeURIComponent(category.key)}`,
+            };
+        }
         const window = categoryWindow(category);
         // Sólo se declara agotada si hay un número de cupos restantes. Comparar
         // `null <= 0` da `true` en JavaScript, y eso escondía el botón de una
@@ -1185,11 +1214,20 @@ export const resolveCtaButtons = ({ categories = [], config = {}, audience = 'in
     const forcedKey = cfg.defaultByLanguage[String(language || '').toLowerCase()]
         || cfg.defaultByLanguage[String(language || '').toLowerCase().slice(0, 2)];
 
-    const chosen =
+    let chosen =
         (forcedKey && primaries.find(b => b.categoryKey === forcedKey))
         || primaries.find(b => b.audience === audience)
         || primaries[0]
         || null;
+
+    // v4.1266 — Si el elegido tiene el botón oculto, pasa el siguiente VISIBLE
+    // de la MISMA audiencia (ej.: se esconde «Etapa 1» y queda «Etapa 2»).
+    // Nunca uno de otra audiencia: manda el idioma (v4.652), y esconder el
+    // nacional no puede convertir en principal el registro internacional. Si
+    // no hay otro, el elegido sigue siendo éste y sale oculto.
+    if (chosen && hiddenByAdmin(chosen)) {
+        chosen = primaries.find(b => b !== chosen && !hiddenByAdmin(b) && b.audience === chosen.audience) || chosen;
+    }
 
     return {
         enabled: true,

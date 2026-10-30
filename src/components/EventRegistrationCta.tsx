@@ -43,6 +43,12 @@ export interface CtaButton {
     unavailableReason: string | null;
     unavailableMessage: string;
     hidden: boolean;
+    /**
+     * v4.1266 — El administrador escondió el botón de la categoría en la ficha
+     * pública («Mostrar botón de inscripción en la página pública»). Sólo es
+     * visibilidad: la categoría sigue recibiendo inscripciones por su enlace.
+     */
+    hiddenByAdmin?: boolean;
     href: string;
 }
 
@@ -123,6 +129,17 @@ export const hasVisibleCta = (cta: EventCta | null): boolean => {
     const primaryVisible = Boolean(cta.primary && !cta.primary.hidden);
     const secondaryVisible = cta.secondary.some(b => !b.hidden);
     return primaryVisible || secondaryVisible;
+};
+
+/**
+ * v4.1266 — ¿La ficha se quedó sin botones porque el administrador los
+ * ESCONDIÓ? Entonces tampoco se pinta el botón de respaldo del panel
+ * («Inscripciones» → `/registro`): sería volver a mostrar, por otro camino, lo
+ * que el administrador acaba de ocultar.
+ */
+export const ctaHiddenByAdmin = (cta: EventCta | null): boolean => {
+    if (!cta?.enabled || hasVisibleCta(cta)) return false;
+    return [cta.primary, ...cta.secondary].some(b => b?.hiddenByAdmin === true);
 };
 
 const Button = ({ button, eventRef, variant }: {

@@ -175,6 +175,10 @@ const decorateCategory = async (eventId, category, edition, surchargeConfig = nu
         // decorada por `categoryWindow`, y sin `active` la daría por inactiva y
         // escondería todos los botones.
         active: category.active,
+        // v4.1266 — Igual que `active`: `resolveCtaButtons` lo lee de esta
+        // categoría decorada para saber si su botón se pinta en la ficha.
+        // Sólo decide eso; el formulario la sigue aceptando.
+        showPublicButton: category.showPublicButton !== false,
         remaining,
         soldOut: remaining !== null && remaining <= 0,
         open: window.open && !(remaining !== null && remaining <= 0),

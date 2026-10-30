@@ -34,13 +34,31 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1265.0 | 2026-10-30 (Bóveda de Fondos: acceso de la Secretaría Digital, vigencia por período y Control y Justificación de Aportes)
+// UI V4.1266.0 | 2026-10-30 (Eventos: mostrar u ocultar el botón de cada categoría de inscripción en la página pública)
 // Cache bust: 2026-10-30
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1266.0',
+        title: 'Eventos: mostrar u ocultar el botón de cada categoría de inscripción en la página pública 👁️',
+        description: 'Cada categoría de registro tiene ahora el interruptor «Mostrar botón de inscripción en la página pública». Apagarlo esconde el botón y su precio en la ficha del evento sin cerrar la categoría ni tocar sus inscripciones, pagos, conciliaciones o traslados; encenderlo los devuelve. Cuando la ficha se queda sin botón de inscripción, «Aporte realizado desde COLROTARIOS» pasa a ser la acción principal del panel lateral, justo debajo de la cuenta regresiva.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'categorías', 'página pública', 'distrito 4281'],
+        type: 'feature',
+        impact: 'Alta: la XIII Conferencia (Villavicencio 2027) puede retirar «Inscripción - Etapa 1» de la página sin afectar a ningún rotario ya inscrito.',
+        changes: [
+            { type: 'added', text: 'Registro → Categorías de Registro: interruptor «Mostrar botón de inscripción en la página pública» por categoría, con su explicación, y la etiqueta «Oculto en la página pública» en la cabecera de la categoría. Se guarda con «Guardar cambios» de la categoría, como el resto.' },
+            { type: 'added', text: 'La visibilidad es independiente de la disponibilidad: «Categoría activa» y las fechas siguen decidiendo si se reciben inscripciones. El enlace directo al formulario de una categoría oculta sigue funcionando.' },
+            { type: 'changed', text: 'Si se oculta una categoría y hay otra visible de la misma audiencia (ej. «Etapa 2»), esa pasa a ser el botón principal. Nunca se muestra en su lugar el registro de otra audiencia.' },
+            { type: 'changed', text: 'Sin botón de inscripción, el botón secundario del panel («Aporte realizado desde COLROTARIOS») se muestra a todo el ancho y en el color principal. Su enlace y su texto no cambian.' },
+            { type: 'fixed', text: 'La ficha ya no muestra por un instante el botón genérico «Inscripciones» mientras consulta los botones por categoría, ni lo vuelve a pintar cuando el administrador los ocultó.' },
+            { type: 'added', text: 'Pestaña «Botones»: la vista previa explica cuándo un botón no se ve porque su categoría lo tiene oculto.' },
+            { type: 'added', text: 'Columna nueva EventRegistrationCategory.showPublicButton (BOOLEAN NOT NULL DEFAULT true): toda categoría existente queda visible, como estaba. npm run test:category-public-button (40 comprobaciones).' },
+        ],
+    },
     {
         version: '4.1265.0',
         title: 'Bóveda de Fondos: acceso de la Secretaría Digital y «Control y Justificación de Aportes» 🔐',

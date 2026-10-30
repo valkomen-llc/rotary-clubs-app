@@ -13,10 +13,15 @@
 //   lo impide también, no sólo esta pantalla.
 // - **Cambiar el precio o la moneda no afecta a quien ya se inscribió**: cada
 //   inscripción guarda su propia foto del cobro.
+// - **Mostrar el botón ≠ recibir inscripciones** (v4.1266). «Mostrar botón de
+//   inscripción en la página pública» sólo decide si el botón de la categoría
+//   se pinta en la ficha del evento. No la cierra, no la desactiva y no toca
+//   sus inscripciones, pagos ni conciliaciones. Cerrarla es «Categoría activa»
+//   o sus fechas, que siguen siendo independientes.
 // ════════════════════════════════════════════════════════════════════
 import { useState } from 'react';
 import {
-    AlertCircle, ChevronDown, Coins, Loader2, Plus, Save, Sparkles, Trash2, Users,
+    AlertCircle, ChevronDown, Coins, Eye, EyeOff, Loader2, Plus, Save, Sparkles, Trash2, Users,
 } from 'lucide-react';
 import { money, normalizeTag } from '../../../lib/eventRegistrationSpec';
 
@@ -45,6 +50,8 @@ export interface AdminCategory {
     extraFieldsLabel: string | null;
     sortOrder: number;
     active: boolean;
+    /** v4.1266 — Sólo `false` esconde el botón; ausente cuenta como visible. */
+    showPublicButton?: boolean;
     usage?: { seats: number; registrations: number };
 }
 
@@ -62,7 +69,7 @@ const blank = (order: number): AdminCategory => ({
     opensAt: null, closesAt: null, requireClub: true,
     companions: { allowed: false, max: 0, price: 0, currency: 'USD', requireDocument: true },
     benefits: [], extraFields: [], extraFieldsLabel: null,
-    sortOrder: order, active: true,
+    sortOrder: order, active: true, showPublicButton: true,
 });
 
 interface Props {
@@ -157,6 +164,7 @@ const EventCategoriesManager = ({ eventId, categories, catalog, hasFxRate, onRel
         const set = (partial: Partial<AdminCategory>) =>
             isNew ? setAdding({ ...c, ...partial }) : patch(original, partial);
         const converts = c.settlementCurrency !== c.currency;
+        const showsButton = c.showPublicButton !== false;
 
         return (
             <div className="space-y-5 border-t border-gray-100 bg-gray-50/50 p-5">
@@ -187,6 +195,37 @@ const EventCategoriesManager = ({ eventId, categories, catalog, hasFxRate, onRel
                     <label className={labelCls}>Descripción (la lee el público al elegir)</label>
                     <textarea rows={3} className={inputCls} value={c.description}
                         onChange={e => set({ description: e.target.value })} />
+                </div>
+
+                {/* ── Visibilidad pública del botón (v4.1266) ───────── */}
+                <div className={`flex items-start justify-between gap-4 rounded-xl border p-4 ${
+                    showsButton ? 'border-gray-200 bg-white' : 'border-amber-200 bg-amber-50/60'}`}>
+                    <div className="min-w-0">
+                        <p id={`show-public-${c.key || 'new'}`}
+                            className="flex items-center gap-1.5 text-sm font-semibold text-gray-800">
+                            {showsButton
+                                ? <Eye className="h-4 w-4 text-blue-600" />
+                                : <EyeOff className="h-4 w-4 text-amber-600" />}
+                            Mostrar botón de inscripción en la página pública
+                        </p>
+                        <p className="mt-1 text-xs leading-relaxed text-gray-500">
+                            Controla únicamente la visibilidad del botón de inscripción en la página pública del
+                            evento. Ocultarlo no elimina la categoría ni afecta las inscripciones o pagos existentes.
+                        </p>
+                        {!showsButton && (
+                            <p className="mt-1.5 text-xs font-semibold text-amber-700">
+                                Oculto: el botón y su precio no se ven en la ficha del evento. Recuerda guardar.
+                            </p>
+                        )}
+                    </div>
+                    <button type="button" role="switch" aria-checked={showsButton}
+                        aria-labelledby={`show-public-${c.key || 'new'}`}
+                        onClick={() => set({ showPublicButton: !showsButton })}
+                        className={`relative mt-0.5 inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                            showsButton ? 'bg-blue-600' : 'bg-gray-300'}`}>
+                        <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                            showsButton ? 'translate-x-5' : 'translate-x-0'}`} />
+                    </button>
                 </div>
 
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -478,6 +517,12 @@ const EventCategoriesManager = ({ eventId, categories, catalog, hasFxRate, onRel
                                         {!state.active && (
                                             <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold uppercase text-gray-500">
                                                 Inactiva
+                                            </span>
+                                        )}
+                                        {state.showPublicButton === false && (
+                                            <span title="El botón de esta categoría no se muestra en la página pública. Sus inscripciones y pagos siguen intactos."
+                                                className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-800">
+                                                <EyeOff className="h-3 w-3" /> Oculto en la página pública
                                             </span>
                                         )}
                                         {dirty && (

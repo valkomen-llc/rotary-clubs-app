@@ -155,6 +155,7 @@ const mapCategory = (row) => normalizeCategory({
     extraFieldsLabel: row.extraFieldsLabel,
     sortOrder: row.sortOrder,
     active: row.active,
+    showPublicButton: row.showPublicButton,
     // Alimenta `tariffVersionOf`: cada guardado de la categoría produce una
     // versión de tarifa nueva, sin llevar un contador aparte.
     updatedAt: row.updatedAt,
@@ -184,8 +185,8 @@ export const upsertCategory = async (eventId, raw) => {
         `INSERT INTO "EventRegistrationCategory"
             ("eventId", key, name, audience, description, currency, "settlementCurrency", price,
              capacity, "opensAt", "closesAt", "requireClub", companions, benefits,
-             "extraFields", "extraFieldsLabel", "sortOrder", active)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+             "extraFields", "extraFieldsLabel", "sortOrder", active, "showPublicButton")
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
          ON CONFLICT ("eventId", key) DO UPDATE SET
             name = EXCLUDED.name, audience = EXCLUDED.audience, description = EXCLUDED.description,
             currency = EXCLUDED.currency, "settlementCurrency" = EXCLUDED."settlementCurrency",
@@ -195,6 +196,7 @@ export const upsertCategory = async (eventId, raw) => {
             benefits = EXCLUDED.benefits, "extraFields" = EXCLUDED."extraFields",
             "extraFieldsLabel" = EXCLUDED."extraFieldsLabel",
             "sortOrder" = EXCLUDED."sortOrder", active = EXCLUDED.active,
+            "showPublicButton" = EXCLUDED."showPublicButton",
             "updatedAt" = NOW()
          RETURNING *`,
         [
@@ -202,6 +204,7 @@ export const upsertCategory = async (eventId, raw) => {
             c.price, c.capacity, c.opensAt, c.closesAt, c.requireClub,
             JSON.stringify(c.companions), JSON.stringify(c.benefits),
             JSON.stringify(c.extraFields), c.extraFieldsLabel, c.sortOrder, c.active,
+            c.showPublicButton,
         ]
     );
     return mapCategory(rows[0]);

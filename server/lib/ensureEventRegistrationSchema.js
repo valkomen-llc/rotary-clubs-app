@@ -85,6 +85,11 @@ const OWNED_MESSAGE_COLUMNS = ['providerId'];
 // aplicado y el ALTER no corre jamás en una base que ya tenía la tabla.
 const OWNED_COMPLETED_COLUMNS = ['importBatchId', 'importMeta', 'guestType'];
 
+// Columnas de `EventRegistrationCategory` añadidas después de crear la tabla.
+// ⚠️ Misma trampa de v4.908: sin enumerarlas acá, el atajo da el esquema por
+// aplicado y el ALTER no corre jamás en una base que ya tenía la tabla.
+const OWNED_CATEGORY_COLUMNS = ['showPublicButton'];
+
 /** ¿Está ya todo aplicado? Dos consultas al catálogo, sin tocar el esquema. */
 const alreadyApplied = async () => {
     try {
@@ -115,7 +120,13 @@ const alreadyApplied = async () => {
             `SELECT column_name FROM information_schema.columns
               WHERE table_schema = 'public' AND table_name = 'EventCompletedRegistration'
                 AND column_name = ANY($1)`, [OWNED_COMPLETED_COLUMNS]);
-        return completedColumns.rows.length === OWNED_COMPLETED_COLUMNS.length;
+        if (completedColumns.rows.length !== OWNED_COMPLETED_COLUMNS.length) return false;
+
+        const categoryColumns = await db.query(
+            `SELECT column_name FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = 'EventRegistrationCategory'
+                AND column_name = ANY($1)`, [OWNED_CATEGORY_COLUMNS]);
+        return categoryColumns.rows.length === OWNED_CATEGORY_COLUMNS.length;
     } catch (error) {
         // Ante la duda, se ejecuta el DDL: es idempotente y no destructivo.
         console.warn('[eventRegistrationSchema] no pude comprobar el catálogo:', error?.message);
@@ -193,6 +204,11 @@ export const ensureEventRegistrationSchema = async () => {
         );
     `);
     await index('EventRegistrationCategory_event_idx', 'ON "EventRegistrationCategory" ("eventId")');
+    // v4.1266 — ¿Se muestra el botón de esta categoría en la ficha pública?
+    // Es SÓLO visibilidad: no cierra la categoría ni toca sus inscripciones.
+    // `DEFAULT true` hace que toda categoría existente quede como estaba
+    // (visible); el `NOT NULL` impide que un nulo la esconda por accidente.
+    await addColumn('EventRegistrationCategory', 'showPublicButton', 'BOOLEAN NOT NULL DEFAULT true');
 
     // ── Inscripciones ────────────────────────────────────────────────
     // La tabla existe desde v4.606 con datos de producción. Se amplía; jamás
