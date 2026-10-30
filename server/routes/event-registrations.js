@@ -123,6 +123,15 @@ router.get('/portal/registrations/:id', attendeeAuth,
     requireAttendeePermission(ATTENDEE_PERMISSIONS.VIEW_OWN_REGISTRATION), attendee.getOwnRegistration);
 router.patch('/portal/profile', attendeeAuth, json,
     requireAttendeePermission(ATTENDEE_PERMISSIONS.UPDATE_OWN_PROFILE), attendee.updateProfile);
+// v4.1267 — Los registros de «Completar inscripción» (COLROTARIOS) del
+// participante. Las literales van ANTES que `/portal/completed/:id`.
+router.post('/portal/completed/claim/confirm', json, attendee.confirmCompletedClaim);
+router.post('/portal/completed/claim', attendeeAuth,
+    requireAttendeePermission(ATTENDEE_PERMISSIONS.VIEW_OWN_REGISTRATION), attendee.requestCompletedClaim);
+router.get('/portal/completed/:id/receipt', attendeeAuth,
+    requireAttendeePermission(ATTENDEE_PERMISSIONS.VIEW_OWN_REGISTRATION), attendee.getOwnCompletedReceipt);
+router.get('/portal/completed/:id', attendeeAuth,
+    requireAttendeePermission(ATTENDEE_PERMISSIONS.VIEW_OWN_REGISTRATION), attendee.getOwnCompleted);
 
 // ── Público ──────────────────────────────────────────────────────────
 // Formulario de inscripciones completadas: la URL pública por evento
@@ -131,6 +140,8 @@ router.patch('/portal/profile', attendeeAuth, json,
 // URL prefirmada de `/receipt-url`.
 router.get('/public/completed/:slug', completed.getPublicCompletedConfig);
 router.post('/public/completed/:slug/receipt-url', json, completed.createReceiptUploadUrl);
+// v4.1267 — El paso 1 comprueba la cuenta del participante (con freno de intentos).
+router.post('/public/completed/:slug/access', json, completed.checkAccess);
 router.post('/public/completed/:slug', json, completed.submitCompleted);
 
 router.get('/config/:clubId/:eventRef', registrations.getPublicRegistrationConfig);

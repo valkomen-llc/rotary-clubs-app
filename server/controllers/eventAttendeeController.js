@@ -37,10 +37,15 @@ import { PASSWORD_MIN, statusMeta } from '../lib/eventRegistrationSpec.js';
 import { SHORT_SESSION_TTL } from '../middleware/auth.js';
 import {
     clean, isEmail, parseJson, asNumber,
-    listCompanions, listHistory, listMessages, listPayments,
+    listCompanions, listHistory, listMessages, listPayments, recordHistory,
 } from '../lib/eventRegistrationStore.js';
+import {
+    completedStatusMeta, paymentMethodLabel, membershipLabel,
+    participantStages, participantHistoryEntry,
+} from '../lib/completedRegistrationSpec.js';
+import { signedReceiptUrl } from '../lib/completedReceipts.js';
 
-console.log('[eventAttendeeController] v4.710.0 cargado — rol "Asistente al Evento": cuenta propia por correo, panel de sólo lectura de su inscripción y auditoría de ingresos. La inscripción ABRE la sesión (issueAttendeeSession) y /portal/claim la canjea al volver de la pasarela desde otro dispositivo.');
+console.log('[eventAttendeeController] v4.1267.0 cargado — rol "Asistente al Evento": cuenta propia por correo, panel de sólo lectura de su inscripción y auditoría de ingresos. Desde v4.1267 también los registros de «Completar inscripción» (COLROTARIOS): misma cuenta, vinculación de lo anterior sólo con el correo demostrado.');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'rotary_secret_key_2026';
 /** Audiencia propia: un token de plataforma o del panel del club no sirve aquí. */
@@ -569,8 +574,20 @@ export const describeAttendeeSession = async (account) => {
            LEFT JOIN "CalendarEvent" e ON e.id = r."eventId"
           WHERE r."accountId" = $1
           ORDER BY r."createdAt" DESC`, [account.id]);
+    // v4.1267 — Y los registros del formulario «Completar inscripción»
+    // (COLROTARIOS) que ya están atados a la cuenta.
+    const completed = await db.query(
+        `SELECT c.id, c."eventId", c."registrationCode", c.status, e.title AS "eventTitle"
+           FROM "EventCompletedRegistration" c
+           LEFT JOIN "CalendarEvent" e ON e.id = c."eventId"
+          WHERE c."accountId" = $1
+          ORDER BY c."createdAt" DESC`, [account.id]).catch(() => ({ rows: [] }));
     const role = account.role || ATTENDEE_ROLES.ATTENDEE;
     return {
+        completed: completed.rows.map(c => ({
+            id: c.id, eventId: c.eventId, eventTitle: c.eventTitle,
+            registrationCode: c.registrationCode, status: c.status,
+        })),
         realm: 'attendee',
         role,
         roleLabel: ROLE_LABELS[role] || ROLE_LABELS[ATTENDEE_ROLES.ATTENDEE],
@@ -801,6 +818,16 @@ export const forgotPassword = async (req, res) => {
         if (!account) {
             const { rows } = await db.query(
                 `SELECT * FROM "EventRegistration" WHERE lower(email) = $1 ORDER BY "createdAt" DESC LIMIT 1`, [email]);
+            // v4.1267 — También quien sólo completó el formulario COLROTARIOS:
+            // es la puerta para reclamar una inscripción anterior sin cuenta.
+            // El enlace llega al correo, y abrirlo es lo que prueba que es suyo.
+            if (!rows[0]) {
+                const completed = await db.query(
+                    `SELECT email, "firstName", "lastName", phone FROM "EventCompletedRegistration"
+                      WHERE lower(email) = $1 ORDER BY "createdAt" DESC LIMIT 1`, [email])
+                    .catch(() => ({ rows: [] }));
+                if (completed.rows[0]) rows.push(completed.rows[0]);
+            }
             if (!rows[0]) return res.json(generic);
             account = await ensurePendingAccountFor(rows[0]);
             if (!account) return res.json(generic);
@@ -862,6 +889,10 @@ export const resetPassword = async (req, res) => {
               WHERE id = $2 RETURNING *`, [passwordHash, account.id]);
 
         await attachOrphanRegistrations(updated[0]);
+        // v4.1267 — El enlace llegó a ESE correo y se abrió: el correo es suyo.
+        // Recién ahora se le atan los registros COLROTARIOS que llevan ese correo.
+        await markEmailProven(updated[0]);
+        await attachOrphanCompleted(updated[0], { comment: 'Vinculada al restablecer la contraseña desde el correo del participante.' });
         await auditLogin(req, { accountId: account.id, email: account.email, outcome: 'reset_completed' });
 
         const session = await describeAttendeeSession(updated[0]);
@@ -907,6 +938,7 @@ export const verifyEmail = async (req, res) => {
               WHERE id = $1 AND "verificationToken" = $2 RETURNING *`,
             [payload.sub, token]);
         if (!rows[0]) return res.status(400).json({ error: 'El enlace ya fue usado o venció.' });
+        await attachOrphanCompleted(rows[0], { comment: 'Vinculada al confirmar el correo del participante.' });
         res.json({ verified: true, token: signToken(rows[0]), email: rows[0].email });
     } catch (error) {
         console.error('[event-attendee] verifyEmail:', error);
@@ -1020,6 +1052,9 @@ export const getPortalData = async (req, res) => {
             },
             // Historial separado por evento: cada edición es su propia entrada.
             registrations,
+            // v4.1267 — Los registros del formulario «Completar inscripción».
+            // Tabla propia (v4.943), así que van en su propia lista.
+            completed: (await loadOwnCompleted(account.id)).map(row => completedParticipantView(row)),
         });
     } catch (error) {
         console.error('[event-attendee] getPortalData:', error);
@@ -1105,6 +1140,301 @@ export const updateProfile = async (req, res) => {
     }
 };
 
+// ════════════════════════════════════════════════════════════════════
+// La cuenta del participante en «Completar inscripción» — v4.1267
+// ════════════════════════════════════════════════════════════════════
+//
+// El formulario COLROTARIOS (v4.943) guarda en su propia tabla y, hasta esta
+// versión, no tenía cuenta. Ahora usa ESTA misma identidad: la cuenta del
+// asistente, una por correo, con la recuperación de contraseña, el ingreso
+// unificado del encabezado y el panel `/mi-inscripcion` de siempre. No hay un
+// segundo sistema de autenticación ni otra tabla de usuarios.
+//
+// Reglas:
+//
+// - **Nunca una segunda cuenta para el mismo correo**, tampoco si el correo
+//   pertenece al Gestor de Proyectos o a un usuario de la plataforma: se pide
+//   entrar con esa cuenta y se VINCULA (`linkAttendeeAccountTo`).
+// - **Una cuenta sin contraseña elegida NO se estrena desde el formulario.**
+//   La creó el sistema; escribirle una clave desde acá sería quedarse con la
+//   cuenta de cualquier correo conocido. Se estrena por «Olvidé mi
+//   contraseña», cuyo enlace llega a ese correo.
+// - **Un registro anterior sin cuenta sólo se ata cuando el titular DEMUESTRA
+//   el correo** (enlace de recuperación, de verificación o de vinculación). La
+//   coincidencia de correo o de nombre, por sí sola, no ata nada.
+// - **La cuenta no confirma la inscripción.** Ninguna de estas funciones toca
+//   `status`.
+
+/** ¿El correo ya es de una cuenta de la plataforma fuera del asistente? */
+const otherRealmHasEmail = async (mail) => {
+    const exists = async (sql) =>
+        (await db.query(sql, [mail]).catch(() => ({ rows: [] }))).rows.length > 0;
+    return (await exists('SELECT 1 FROM "ProjectFairAccount" WHERE lower(email) = $1 LIMIT 1'))
+        || (await exists('SELECT 1 FROM "User" WHERE lower(email) = $1 LIMIT 1'));
+};
+
+/**
+ * Resuelve con qué cuenta queda el registro.
+ *
+ * `outcome`:
+ * - `session`  — había sesión abierta con ESE correo (cualquier identidad).
+ * - `password` — la cuenta de asistente ya existía y la clave coincide.
+ * - `created`  — no había ninguna cuenta con ese correo: se creó.
+ * - `new`      — (sólo con `create: false`) se crearía.
+ * - `exists`   — el correo ya tiene cuenta y hay que entrar con ella (o
+ *                recuperarla). `recover` dice si sólo se puede por recuperación.
+ * - `weak`, `none`, `invalid_email`.
+ *
+ * Con `create: false` no escribe nada: es lo que usa la comprobación del
+ * paso 1 del formulario.
+ */
+export const resolveParticipantAccess = async ({ email, password, identity = null, create = true, profile = {} }) => {
+    await ensureEventRegistrationSchema();
+    const mail = clean(email, 200).toLowerCase();
+    if (!isEmail(mail)) return { outcome: 'invalid_email' };
+
+    // 1) Sesión abierta con el MISMO correo del formulario. Con otro correo la
+    //    sesión no cuenta: se estaría inscribiendo a otra persona a su nombre.
+    if (identity?.email && String(identity.email).toLowerCase() === mail) {
+        if (identity.realm === 'attendee') {
+            const { rows } = await db.query('SELECT * FROM "EventAttendeeAccount" WHERE id = $1 LIMIT 1', [identity.id]);
+            if (rows[0]) return { outcome: 'session', account: rows[0] };
+        } else if (!create) {
+            return { outcome: 'session', account: null };
+        } else {
+            const account = await linkAttendeeAccountTo({ ...identity, ...profile });
+            if (account) return { outcome: 'session', account };
+        }
+    }
+
+    if (!password) return { outcome: 'none' };
+
+    const existing = await findAccountByEmail(mail);
+    if (existing) {
+        if (!existing.passwordHash || existing.passwordHash === UNUSABLE_HASH) {
+            // Vinculada (entra con la clave de su identidad de origen) o creada
+            // por el sistema sin clave (se estrena por recuperación).
+            return { outcome: 'exists', recover: !existing.linkedRealm };
+        }
+        const matches = await bcrypt.compare(String(password), existing.passwordHash).catch(() => false);
+        return matches ? { outcome: 'password', account: existing } : { outcome: 'exists' };
+    }
+    if (await otherRealmHasEmail(mail)) return { outcome: 'exists' };
+    if (String(password).length < PASSWORD_MIN) return { outcome: 'weak' };
+    if (!create) return { outcome: 'new' };
+
+    const passwordHash = await bcrypt.hash(String(password), 10);
+    try {
+        const { rows } = await db.query(
+            `INSERT INTO "EventAttendeeAccount" (email, "passwordHash", "firstName", "lastName", phone, role)
+             VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+            [mail, passwordHash, clean(profile.firstName, 120), clean(profile.lastName, 120),
+                clean(profile.phone, 60), ATTENDEE_ROLES.ATTENDEE]);
+        return { outcome: 'created', account: rows[0] };
+    } catch (error) {
+        // Otra pestaña creó la cuenta en el mismo instante: ya existe, y hay
+        // que entrar con ella — nunca se pisa.
+        if (error?.code === '23505') return { outcome: 'exists' };
+        throw error;
+    }
+};
+
+/** El correo quedó demostrado (abrió un enlace que llegó a él). */
+export const markEmailProven = async (account) => {
+    if (!account?.id || account.emailVerifiedAt) return;
+    await db.query(
+        `UPDATE "EventAttendeeAccount" SET "emailVerifiedAt" = COALESCE("emailVerifiedAt", NOW()) WHERE id = $1`,
+        [account.id]).catch(err => console.error('[event-attendee] markEmailProven:', err?.message));
+};
+
+/**
+ * Ata a la cuenta los registros COLROTARIOS de su correo que aún no tienen
+ * cuenta. SÓLO se llama cuando el correo está demostrado. No toca el estado,
+ * el pago ni el comprobante: sólo `accountId`, y deja historial.
+ */
+export const attachOrphanCompleted = async (account, { comment = 'Inscripción vinculada a la cuenta del participante.' } = {}) => {
+    if (!account?.id || !account?.email) return 0;
+    try {
+        const { rows } = await db.query(
+            `UPDATE "EventCompletedRegistration" SET "accountId" = $1, "updatedAt" = NOW()
+              WHERE "accountId" IS NULL AND lower(email) = $2
+              RETURNING id, "eventId"`,
+            [account.id, String(account.email).toLowerCase()]);
+        for (const row of rows) {
+            await recordHistory({
+                registrationId: row.id, eventId: row.eventId, type: 'account_linked',
+                comment, payload: { via: 'email_proven' },
+            });
+        }
+        return rows.length;
+    } catch (error) {
+        console.error('[event-attendee] attachOrphanCompleted:', error?.message);
+        return 0;
+    }
+};
+
+/** La vista del participante: sin notas internas, alertas de duplicado ni la clave de S3. */
+const completedParticipantView = (row, { history = [], messages = [] } = {}) => {
+    const meta = completedStatusMeta(row.status);
+    return {
+        id: row.id,
+        kind: 'completed',
+        eventId: row.eventId,
+        event: {
+            id: row.eventId, title: row.eventTitle, slug: row.eventSlug,
+            startDate: row.eventStart, endDate: row.eventEnd, location: row.eventLocation,
+        },
+        registrationCode: row.registrationCode,
+        status: row.status,
+        statusLabel: meta.label,
+        statusDescription: meta.description || null,
+        stages: participantStages(row.status),
+        firstName: row.firstName,
+        lastName: row.lastName,
+        email: row.email,
+        phone: row.phone,
+        district: row.district,
+        clubName: row.clubName,
+        membershipLabel: row.membershipType ? membershipLabel(row.membershipType) : null,
+        paymentMethodLabel: row.paymentMethod ? paymentMethodLabel(row.paymentMethod) : null,
+        hasReceipt: Boolean(row.receiptKey),
+        receiptName: row.receiptName || null,
+        checkedInAt: row.checkedInAt,
+        registeredAt: row.submittedAt || row.createdAt,
+        history,
+        messages,
+    };
+};
+
+const COMPLETED_SELECT = `SELECT c.*, e.title AS "eventTitle", e.slug AS "eventSlug",
+        e."startDate" AS "eventStart", e."endDate" AS "eventEnd", e.location AS "eventLocation"
+   FROM "EventCompletedRegistration" c
+   LEFT JOIN "CalendarEvent" e ON e.id = c."eventId"`;
+
+const loadOwnCompleted = async (accountId) => {
+    const { rows } = await db.query(
+        `${COMPLETED_SELECT} WHERE c."accountId" = $1
+          ORDER BY COALESCE(e."startDate", c."createdAt") DESC, c."createdAt" DESC`, [accountId])
+        .catch(() => ({ rows: [] }));
+    return rows;
+};
+
+/** Un registro propio: el filtro por cuenta va en el WHERE, nunca después. */
+const loadOwnCompletedRow = async (id, accountId) => {
+    const { rows } = await db.query(
+        `${COMPLETED_SELECT} WHERE c.id = $1 AND c."accountId" = $2 LIMIT 1`,
+        [clean(id, 60), accountId]);
+    return rows[0] || null;
+};
+
+// GET /portal/completed/:id — ficha de UN registro COLROTARIOS propio.
+export const getOwnCompleted = async (req, res) => {
+    try {
+        await ensureEventRegistrationSchema();
+        const row = await loadOwnCompletedRow(req.params.id, req.attendee.account.id);
+        if (!row) return res.status(404).json({ error: 'No encontramos esa inscripción en tu cuenta.' });
+        const history = (await listHistory(row.id)).map(participantHistoryEntry).filter(Boolean);
+        const messages = (await listMessages(row.id))
+            .filter(m => m.status !== 'failed')
+            .map(m => ({ id: m.id, channel: m.channel, subject: m.subject, createdAt: m.createdAt }));
+        res.json(completedParticipantView(row, { history, messages }));
+    } catch (error) {
+        console.error('[event-attendee] getOwnCompleted:', error);
+        res.status(500).json({ error: 'No pudimos cargar tu inscripción.' });
+    }
+};
+
+// GET /portal/completed/:id/receipt — enlace firmado (2 min) a SU comprobante.
+export const getOwnCompletedReceipt = async (req, res) => {
+    try {
+        await ensureEventRegistrationSchema();
+        const row = await loadOwnCompletedRow(req.params.id, req.attendee.account.id);
+        if (!row) return res.status(404).json({ error: 'No encontramos esa inscripción en tu cuenta.' });
+        if (!row.receiptKey) return res.status(404).json({ error: 'Esta inscripción no tiene comprobante cargado.' });
+        const url = await signedReceiptUrl(row.receiptKey, { seconds: 120 });
+        if (!url) return res.status(502).json({ error: 'No pudimos abrir el comprobante. Intenta de nuevo.' });
+        res.json({ url, name: row.receiptName || 'comprobante' });
+    } catch (error) {
+        console.error('[event-attendee] getOwnCompletedReceipt:', error);
+        res.status(500).json({ error: 'No pudimos abrir el comprobante.' });
+    }
+};
+
+/**
+ * POST /portal/completed/claim — «me inscribí antes sin cuenta».
+ *
+ * Con el correo ya demostrado, se vincula en el acto. Si no, se manda un
+ * enlace A ESE CORREO: abrirlo es la prueba. La respuesta no dice cuántos
+ * registros hay hasta que el correo se demuestra.
+ */
+export const requestCompletedClaim = async (req, res) => {
+    try {
+        await ensureEventRegistrationSchema();
+        const account = req.attendee.account;
+        if (account.emailVerifiedAt) {
+            const linked = await attachOrphanCompleted(account, { comment: 'Vinculada por el titular desde «Mis eventos».' });
+            return res.json({ linked, sent: false });
+        }
+        const { rows } = await db.query(
+            `SELECT COUNT(*)::int AS n FROM "EventCompletedRegistration"
+              WHERE "accountId" IS NULL AND lower(email) = $1`, [String(account.email).toLowerCase()]);
+        if (rows[0]?.n > 0) {
+            const token = jwt.sign({ sub: account.id, email: String(account.email).toLowerCase(), purpose: 'completed_claim' },
+                JWT_SECRET, { expiresIn: '2h' });
+            const origin = req.headers.origin || 'https://app.clubplatform.org';
+            const link = `${origin}${ATTENDEE_PATH}?vincular=${encodeURIComponent(token)}`;
+            const salida = await EmailService.sendPlatformEmail({
+                to: account.email, from: PLATFORM_SENDER,
+                subject: 'Vincula tu inscripción a tu cuenta',
+                html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;color:#1f2937">
+                    <h2 style="color:#17458F">Vincula tu inscripción</h2>
+                    <p>Pediste vincular a tu cuenta las inscripciones que enviaste antes con este correo.</p>
+                    <p><a href="${link}" style="display:inline-block;background:#17458F;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">Vincular mis inscripciones</a></p>
+                    <p style="font-size:13px;color:#6b7280">El enlace vence en 2 horas. Si no fuiste tú, puedes ignorar este correo.</p>
+                </div>`,
+            }).catch(err => ({ success: false, error: err?.message }));
+            if (salida && salida.success === false) {
+                console.error('[event-attendee] correo de vinculación:', salida.error);
+            }
+        }
+        await auditLogin(req, { accountId: account.id, email: account.email, outcome: 'claim_requested' });
+        res.json({ linked: 0, sent: true });
+    } catch (error) {
+        console.error('[event-attendee] requestCompletedClaim:', error);
+        res.status(500).json({ error: 'No pudimos procesar la solicitud.' });
+    }
+};
+
+/**
+ * POST /portal/completed/claim/confirm — el enlace del correo. Prueba a la vez
+ * la cuenta (`sub`) y el correo (llegó a él). Abre la sesión, como la
+ * verificación de correo.
+ */
+export const confirmCompletedClaim = async (req, res) => {
+    try {
+        await ensureEventRegistrationSchema();
+        let payload;
+        try { payload = jwt.verify(clean(req.body?.token, 2000), JWT_SECRET); }
+        catch { return res.status(400).json({ error: 'El enlace venció o no es válido. Pide uno nuevo desde «Mis eventos».' }); }
+        if (payload?.purpose !== 'completed_claim') return res.status(400).json({ error: 'Enlace no válido.' });
+
+        const { rows } = await db.query('SELECT * FROM "EventAttendeeAccount" WHERE id = $1 LIMIT 1', [payload.sub]);
+        const account = rows[0];
+        // El correo del enlace tiene que seguir siendo el de la cuenta.
+        if (!account || String(account.email).toLowerCase() !== String(payload.email || '')) {
+            return res.status(400).json({ error: 'Enlace no válido.' });
+        }
+        await markEmailProven(account);
+        const linked = await attachOrphanCompleted(account, { comment: 'Vinculada por el titular tras confirmar su correo.' });
+        await attachOrphanRegistrations(account);
+        await auditLogin(req, { accountId: account.id, email: account.email, outcome: 'claim_confirmed' });
+        res.json({ linked, ...(await issueAttendeeSession(account)) });
+    } catch (error) {
+        console.error('[event-attendee] confirmCompletedClaim:', error);
+        res.status(500).json({ error: 'No pudimos vincular tus inscripciones.' });
+    }
+};
+
 export default {
     ATTENDEE_ROLES,
     ATTENDEE_PERMISSIONS,
@@ -1129,4 +1459,10 @@ export default {
     getPortalData,
     getOwnRegistration,
     updateProfile,
+    resolveParticipantAccess,
+    attachOrphanCompleted,
+    getOwnCompleted,
+    getOwnCompletedReceipt,
+    requestCompletedClaim,
+    confirmCompletedClaim,
 };

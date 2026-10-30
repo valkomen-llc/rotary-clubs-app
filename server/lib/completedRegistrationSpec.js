@@ -231,6 +231,8 @@ export const DEFAULT_COMPLETED_CONFIG = {
     notifyEnabled: true,
     notifySubject: '',
     notifyBody: '',
+    // v4.1267 — Cuenta personal del participante (ver ACCOUNT_MODES).
+    accountMode: 'optional',
 };
 
 const cleanStr = (value, max) => String(value ?? '').trim().slice(0, max);
@@ -250,6 +252,7 @@ export const normalizeCompletedConfig = (raw = {}) => ({
     notifyEnabled: raw?.notifyEnabled !== false,
     notifySubject: cleanStr(raw?.notifySubject, 300),
     notifyBody: cleanStr(raw?.notifyBody, 4000),
+    accountMode: ACCOUNT_MODES.includes(raw?.accountMode) ? raw.accountMode : DEFAULT_ACCOUNT_MODE,
 });
 
 /**
@@ -263,6 +266,101 @@ export const completedCodePrefixFor = (config = {}, edition = {}) =>
 /** `CR4281-2027-XXXXX`: prefijo configurado + sufijo dictable por teléfono. */
 export const buildCompletedCode = (prefix) =>
     `${prefix || 'REG-C'}-${randomCodeSuffix(5)}`;
+
+// ── La cuenta del participante (v4.1267) ──────────────────────────────
+//
+// Quien completa el formulario puede crear su acceso al evento —o entrar con
+// la cuenta que ya tiene— y consultar después su inscripción en
+// `/mi-inscripcion`. La cuenta es la MISMA `EventAttendeeAccount` del registro
+// en línea (v4.655): una persona, una cuenta por correo, sin un segundo
+// sistema de autenticación.
+//
+// ⚠️ CREAR LA CUENTA NO CONFIRMA NADA. La autenticación y la validación del
+// Equipo de Registro son procesos independientes: el registro nace
+// `submitted` con cuenta o sin ella.
+
+/**
+ * `optional` (por omisión): se ofrece y se recomienda, pero se puede enviar
+ * sin cuenta —quien inscribe a otra persona no tiene por qué inventarle una
+ * contraseña—. `required`: no se envía sin cuenta. `off`: no se ofrece.
+ * Vive en `settings.completedForm.accountMode`: cada evento decide sin
+ * desplegar.
+ */
+export const ACCOUNT_MODES = ['optional', 'required', 'off'];
+export const DEFAULT_ACCOUNT_MODE = 'optional';
+
+/** La política de contraseñas de la plataforma (la misma de v4.655). */
+export const ACCESS_PASSWORD_MIN = 8;
+
+/**
+ * Valida la contraseña nueva y su confirmación. Devuelve `{}` si está bien.
+ * Con `allowEmpty`, las dos vacías significan «no quiero crear cuenta» y no
+ * son un error (modo `optional`); una sola escrita sí lo es.
+ */
+export const validateAccessPassword = (password, confirm, { allowEmpty = false } = {}) => {
+    const pass = String(password ?? '');
+    const again = String(confirm ?? '');
+    const errors = {};
+    if (!pass && !again && allowEmpty) return errors;
+    if (!pass) errors.password = 'Crea una contraseña.';
+    else if (pass.length < ACCESS_PASSWORD_MIN) errors.password = `Usa al menos ${ACCESS_PASSWORD_MIN} caracteres.`;
+    if (!again) errors.passwordConfirm = 'Repite la contraseña.';
+    else if (pass && again !== pass) errors.passwordConfirm = 'Las contraseñas no coinciden.';
+    return errors;
+};
+
+/**
+ * Las etapas que ve el participante, a partir del estado REAL del registro.
+ * No inventa ninguna: cada una sale de un estado de `COMPLETED_STATUSES`.
+ * `received` siempre está cumplida (el registro existe); la segunda etapa es
+ * la revisión, y la tercera, su resultado.
+ */
+export const participantStages = (status) => {
+    const meta = completedStatusMeta(status);
+    const reviewed = status !== 'submitted';
+    const outcome = {
+        validated: { key: 'validated', label: 'Validado', tone: 'emerald' },
+        payment_confirmed: { key: 'confirmed', label: 'Pago confirmado', tone: 'emerald' },
+        needs_correction: { key: 'needs_correction', label: 'Requiere corrección', tone: 'red' },
+        rejected: { key: 'rejected', label: 'Rechazado', tone: 'slate' },
+    }[status] || { key: 'pending_outcome', label: 'Validado o confirmado', tone: 'slate' };
+    return [
+        { key: 'received', label: 'Registro recibido', done: true, current: false, tone: 'emerald' },
+        { key: 'review', label: 'Pendiente de revisión', done: reviewed, current: !reviewed, tone: reviewed ? 'emerald' : 'amber' },
+        { ...outcome, done: reviewed, current: reviewed, description: reviewed ? meta.description : '' },
+    ];
+};
+
+/**
+ * Lo que el participante ve del historial de SU registro. Lista CERRADA: un
+ * tipo nuevo del panel (notas, duplicados, importación, ediciones) no aparece
+ * solo en la vista pública. Sólo hechos con respaldo en la tabla.
+ */
+export const PARTICIPANT_HISTORY = {
+    completed_submitted: 'Inscripción enviada',
+    account_linked: 'Inscripción vinculada a tu cuenta',
+    completed_status_changed: 'Revisión del Equipo de Registro',
+    checkin: 'Acreditación en la sede',
+};
+
+/** Una entrada del historial, ya filtrada para el participante (o `null`). */
+export const participantHistoryEntry = (h) => {
+    const label = PARTICIPANT_HISTORY[h?.type];
+    if (!label) return null;
+    const isStatus = h.type === 'completed_status_changed';
+    // El motivo de una corrección o un rechazo ES para el participante (el
+    // panel lo exige justo porque le llega a él). El comentario automático de
+    // un cambio sin motivo no le dice nada: se reemplaza por el estado.
+    const automatic = /^Cambio (manual|en bloque) a /.test(String(h.comment || ''));
+    return {
+        id: h.id,
+        type: h.type,
+        label: isStatus ? `${label}: ${completedStatusMeta(h.toStatus).label}` : label,
+        toStatus: isStatus ? h.toStatus : null,
+        comment: isStatus && !automatic && ['needs_correction', 'rejected'].includes(h.toStatus) ? h.comment : null,
+        createdAt: h.createdAt,
+    };
+};
 
 // ── La notificación de confirmación (v4.945) ─────────────────────────
 //
@@ -745,4 +843,6 @@ export default {
     duplicateMatchKind, buildDuplicateFlags,
     COMPLETED_FORM_SEEDS, seedForSlug, matchSeedEvent,
     BULK_MAX, SELECT_ALL_MAX, chunkIds,
+    ACCOUNT_MODES, DEFAULT_ACCOUNT_MODE, ACCESS_PASSWORD_MIN, validateAccessPassword,
+    participantStages, PARTICIPANT_HISTORY, participantHistoryEntry,
 };

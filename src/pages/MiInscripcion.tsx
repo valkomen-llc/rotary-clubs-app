@@ -21,6 +21,13 @@
 //
 // El ingreso NO se dibuja aquí: como en todo el sitio, se llama al formulario
 // único del encabezado con `openLoginModal()`.
+//
+// v4.1267 — «Mis eventos». Además de las inscripciones en línea, el panel
+// muestra los registros del formulario «Completar inscripción» (COLROTARIOS)
+// atados a la cuenta: evento, inscripción, estado de validación por etapas,
+// comprobante (enlace firmado de 2 minutos) e historial con hechos reales. Un
+// registro enviado ANTES de tener cuenta se vincula sólo demostrando el correo
+// (enlace `?vincular=`), nunca por coincidencia.
 // ════════════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -28,8 +35,8 @@ import { useLang } from '../contexts/LanguageContext';
 import { activeLocale } from '../lib/locale';
 import {
     AlertCircle, ArrowLeft, ArrowRight, CalendarDays, CheckCircle2, Clock, CreditCard,
-    ExternalLink, FileText, KeyRound, LayoutDashboard, Loader2, LogOut, Mail, MapPin,
-    QrCode, ShieldCheck, Ticket, Users, Wallet,
+    Circle, ExternalLink, FileText, History, KeyRound, LayoutDashboard, Link2, Loader2, LogOut, Mail, MapPin,
+    Paperclip, QrCode, ShieldCheck, Ticket, Users, Wallet,
 } from 'lucide-react';
 import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
 import { openLoginModal } from '../lib/loginModal';
@@ -110,7 +117,42 @@ interface PortalData {
         lastLoginAt: string | null; createdAt: string;
     };
     registrations: RegistrationView[];
+    /** v4.1267 — Registros de «Completar inscripción». Un servidor anterior no los manda. */
+    completed?: CompletedView[];
 }
+
+interface CompletedStage {
+    key: string; label: string; done: boolean; current: boolean; tone: string; description?: string;
+}
+
+interface CompletedView {
+    id: string;
+    kind: 'completed';
+    eventId: string;
+    event: { id: string; title: string | null; slug: string | null; startDate: string | null; endDate: string | null; location: string | null } | null;
+    registrationCode: string | null;
+    status: string;
+    statusLabel: string;
+    statusDescription: string | null;
+    stages: CompletedStage[];
+    firstName: string | null; lastName: string | null; email: string; phone: string | null;
+    district: string | null; clubName: string | null;
+    membershipLabel: string | null; paymentMethodLabel: string | null;
+    hasReceipt: boolean; receiptName: string | null;
+    checkedInAt: string | null;
+    registeredAt: string | null;
+    history: { id: string; type: string; label: string; toStatus: string | null; comment: string | null; createdAt: string }[];
+    messages: { id: string; channel: string; subject: string | null; createdAt: string }[];
+}
+
+/** Color de la píldora del estado de un registro COLROTARIOS. */
+const COMPLETED_TONE: Record<string, string> = {
+    submitted: 'bg-amber-100 text-amber-800',
+    validated: 'bg-emerald-100 text-emerald-800',
+    payment_confirmed: 'bg-emerald-100 text-emerald-800',
+    needs_correction: 'bg-red-100 text-red-700',
+    rejected: 'bg-slate-200 text-slate-700',
+};
 
 const fmtDateTime = (iso?: string | null) => {
     if (!iso) return '—';
@@ -153,6 +195,11 @@ const MiInscripcion = () => {
         () => new URLSearchParams(window.location.search).get('inscripcion'));
     const [detail, setDetail] = useState<RegistrationView | null>(null);
     const [detailLoading, setDetailLoading] = useState(false);
+    // v4.1267 — La ficha abierta de un registro COLROTARIOS (`?completada=`).
+    const [completedId, setCompletedId] = useState<string | null>(
+        () => new URLSearchParams(window.location.search).get('completada'));
+    const [completedDetail, setCompletedDetail] = useState<CompletedView | null>(null);
+    const [claimBusy, setClaimBusy] = useState(false);
 
     // El otro panel de esta misma persona, si tiene esa sesión abierta.
     const sessions = useSiteSessions();
@@ -160,12 +207,14 @@ const MiInscripcion = () => {
 
     const resetToken = useMemo(() => new URLSearchParams(window.location.search).get('reset'), []);
     const verifyToken = useMemo(() => new URLSearchParams(window.location.search).get('verificar'), []);
+    const claimToken = useMemo(() => new URLSearchParams(window.location.search).get('vincular'), []);
 
     // Salir cierra la identidad en el sitio entero, no sólo en esta pantalla:
     // el encabezado escucha ese aviso y baja el avatar en el acto (v4.693).
     const logout = useCallback(() => {
         forgetSession('attendee');
         setToken(null); setData(null); setDetail(null); setOpenId(null);
+        setCompletedDetail(null); setCompletedId(null);
     }, []);
 
     const loadPortal = useCallback((t: string) => {
@@ -186,7 +235,7 @@ const MiInscripcion = () => {
                     .filter(Boolean).join(' ').trim();
                 rememberProfile('attendee', {
                     name: nombre || null,
-                    org: body.registrations?.[0]?.event?.title || null,
+                    org: body.registrations?.[0]?.event?.title || body.completed?.[0]?.event?.title || null,
                     email: body.profile?.email || null,
                 });
             })
@@ -220,6 +269,90 @@ const MiInscripcion = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    // v4.1267 — El enlace «Vincular mis inscripciones» del correo. El token
+    // prueba la cuenta y el correo a la vez, así que funciona sin sesión.
+    useEffect(() => {
+        if (!claimToken) return;
+        fetch(`${API}/event-registrations/portal/completed/claim/confirm`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: claimToken }),
+        })
+            .then(async r => {
+                const texto = await r.text();
+                let body: any = null;
+                try { body = JSON.parse(texto); } catch { /* respuesta sin JSON */ }
+                if (body?.token) {
+                    localStorage.setItem(ATTENDEE_TOKEN_KEY, body.token);
+                    emitSessionChange();
+                    setToken(body.token);
+                    setNotice({
+                        kind: 'ok',
+                        text: body.linked > 0
+                            ? `Vinculamos ${body.linked} inscripción(es) a tu cuenta.`
+                            : 'Tu correo quedó confirmado. No encontramos inscripciones pendientes de vincular.',
+                    });
+                    if (body.linked > 0) loadPortal(body.token);
+                } else {
+                    setNotice({ kind: 'error', text: body?.error || `No pudimos vincular tus inscripciones (HTTP ${r.status}).` });
+                }
+                window.history.replaceState(null, '', window.location.pathname);
+            })
+            .catch(() => setNotice({ kind: 'error', text: 'No pudimos vincular tus inscripciones.' }));
+        // Sólo al montar.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    /** «Me inscribí antes sin cuenta»: vincula o manda el enlace al correo. */
+    const requestClaim = async () => {
+        if (!token) return;
+        setClaimBusy(true);
+        try {
+            const r = await fetch(`${API}/event-registrations/portal/completed/claim`, {
+                method: 'POST', headers: { Authorization: `Bearer ${token}` },
+            });
+            const texto = await r.text();
+            let body: any = null;
+            try { body = JSON.parse(texto); } catch { /* respuesta sin JSON */ }
+            if (!r.ok) throw new Error(body?.error || `No pudimos procesar la solicitud (HTTP ${r.status}).`);
+            if (body.linked > 0) {
+                setNotice({ kind: 'ok', text: `Vinculamos ${body.linked} inscripción(es) a tu cuenta.` });
+                loadPortal(token);
+            } else if (body.sent) {
+                setNotice({ kind: 'ok', text: `Si hay inscripciones enviadas con ${data?.profile.email}, te enviamos un enlace a ese correo para vincularlas. Vence en 2 horas.` });
+            } else {
+                setNotice({ kind: 'ok', text: 'No encontramos inscripciones pendientes de vincular con tu correo.' });
+            }
+        } catch (e: any) {
+            setNotice({ kind: 'error', text: e?.message || 'No pudimos procesar la solicitud.' });
+        } finally {
+            setClaimBusy(false);
+        }
+    };
+
+    const openCompleted = (id: string | null) => {
+        setCompletedId(id);
+        const url = new URL(window.location.href);
+        if (id) url.searchParams.set('completada', id); else url.searchParams.delete('completada');
+        window.history.pushState(null, '', url.toString());
+    };
+
+    useEffect(() => {
+        if (!token || !completedId) { setCompletedDetail(null); return; }
+        setDetailLoading(true);
+        fetch(`${API}/event-registrations/portal/completed/${encodeURIComponent(completedId)}`,
+            { headers: { Authorization: `Bearer ${token}` } })
+            .then(async r => {
+                const texto = await r.text();
+                let body: any = null;
+                try { body = JSON.parse(texto); } catch { /* respuesta sin JSON */ }
+                if (!r.ok || !body) throw new Error(body?.error || 'No encontramos esa inscripción en tu cuenta.');
+                return body as CompletedView;
+            })
+            .then(setCompletedDetail)
+            .catch(e => { setCompletedDetail(null); setNotice({ kind: 'error', text: e?.message }); })
+            .finally(() => setDetailLoading(false));
+    }, [token, completedId]);
+
     // La ficha abierta vive en la URL: entrar y salir de una es navegar.
     const openRegistration = (id: string | null) => {
         setOpenId(id);
@@ -228,7 +361,11 @@ const MiInscripcion = () => {
         window.history.pushState(null, '', url.toString());
     };
     useEffect(() => {
-        const onPop = () => setOpenId(new URLSearchParams(window.location.search).get('inscripcion'));
+        const onPop = () => {
+            const params = new URLSearchParams(window.location.search);
+            setOpenId(params.get('inscripcion'));
+            setCompletedId(params.get('completada'));
+        };
         window.addEventListener('popstate', onPop);
         return () => window.removeEventListener('popstate', onPop);
     }, []);
@@ -268,7 +405,10 @@ const MiInscripcion = () => {
     }
 
     const registrations = data.registrations || [];
+    const completedList = data.completed || [];
     const current = detail || registrations.find(r => r.id === openId) || null;
+    const currentCompleted = completedDetail || completedList.find(c => c.id === completedId) || null;
+    const total = registrations.length + completedList.length;
 
     return (
         <div className="min-h-screen bg-rotary-concrete">
@@ -277,7 +417,7 @@ const MiInscripcion = () => {
             <header style={PAGE_HEADER_BACKGROUND} className="px-4 py-7 text-white sm:px-6">
                 <div className="mx-auto flex max-w-5xl flex-wrap items-start justify-between gap-4">
                     <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/70">Mi inscripción</p>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/70">Mis eventos</p>
                         <h1 className="mt-1 text-2xl font-bold leading-tight">
                             {[data.profile.firstName, data.profile.lastName].filter(Boolean).join(' ') || data.profile.email}
                         </h1>
@@ -319,27 +459,65 @@ const MiInscripcion = () => {
                     </div>
                 )}
 
-                {current ? (
+                {currentCompleted ? (
+                    <CompletedDetail
+                        registration={currentCompleted}
+                        token={token}
+                        loading={detailLoading}
+                        onBack={() => openCompleted(null)}
+                    />
+                ) : current ? (
                     <RegistrationDetail
                         registration={current}
                         loading={detailLoading}
                         onBack={() => openRegistration(null)}
                     />
-                ) : registrations.length === 0 ? (
-                    <section className="rounded-2xl bg-white p-10 text-center shadow-sm">
-                        <Ticket className="mx-auto mb-4" size={40} style={{ color: BLUE }} />
-                        <h2 className="mb-2 text-2xl font-bold text-slate-900">Todavía no tienes inscripciones</h2>
-                        <p className="text-slate-600">
-                            Cuando te inscribas a un evento aparecerá aquí, con su estado y su comprobante.
-                        </p>
-                    </section>
+                ) : total === 0 ? (
+                    <div className="space-y-4">
+                        <section className="rounded-2xl bg-white p-10 text-center shadow-sm">
+                            <Ticket className="mx-auto mb-4" size={40} style={{ color: BLUE }} />
+                            <h2 className="mb-2 text-2xl font-bold text-slate-900">Todavía no tienes inscripciones</h2>
+                            <p className="text-slate-600">
+                                Cuando te inscribas a un evento aparecerá aquí, con su estado y su comprobante.
+                            </p>
+                        </section>
+                        <ClaimBox busy={claimBusy} onClaim={requestClaim} />
+                    </div>
                 ) : (
                     <div className="space-y-4">
                         <p className="text-sm text-slate-500">
-                            {registrations.length === 1
+                            {total === 1
                                 ? 'Tu inscripción:'
-                                : `Tus ${registrations.length} inscripciones, una por evento:`}
+                                : `Tus ${total} inscripciones:`}
                         </p>
+                        {completedList.map(c => (
+                            <button key={c.id} type="button" onClick={() => openCompleted(c.id)}
+                                className="block w-full rounded-2xl bg-white p-6 text-left shadow-sm transition hover:shadow-md sm:p-7">
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div>
+                                        <h2 className="text-lg font-bold text-slate-900">{c.event?.title || 'Evento'}</h2>
+                                        <p className="mt-1 text-sm text-slate-500">Inscripción completada{c.paymentMethodLabel ? ` · ${c.paymentMethodLabel}` : ''}</p>
+                                    </div>
+                                    <span className={`inline-flex items-center rounded-full px-3 py-1 text-[12px] font-bold ${COMPLETED_TONE[c.status] || 'bg-slate-100 text-slate-700'}`}>
+                                        {c.statusLabel}
+                                    </span>
+                                </div>
+                                <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px] text-slate-500">
+                                    {c.event?.startDate && (
+                                        <span className="flex items-center gap-1.5"><CalendarDays size={14} /> {fmtDate(c.event.startDate)}</span>
+                                    )}
+                                    {c.event?.location && (
+                                        <span className="flex items-center gap-1.5"><MapPin size={14} /> {c.event.location}</span>
+                                    )}
+                                    {c.registrationCode && (
+                                        <span className="flex items-center gap-1.5" data-no-translate><Ticket size={14} /> {c.registrationCode}</span>
+                                    )}
+                                </div>
+                                <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-bold" style={{ color: BLUE }}>
+                                    Ver el detalle <ArrowRight size={15} />
+                                </span>
+                            </button>
+                        ))}
                         {registrations.map(r => (
                             <button key={r.id} type="button" onClick={() => openRegistration(r.id)}
                                 className="block w-full rounded-2xl bg-white p-6 text-left shadow-sm transition hover:shadow-md sm:p-7">
@@ -374,6 +552,7 @@ const MiInscripcion = () => {
                                 </span>
                             </button>
                         ))}
+                        <ClaimBox busy={claimBusy} onClaim={requestClaim} />
                     </div>
                 )}
             </main>
@@ -572,6 +751,210 @@ const RegistrationDetail = ({ registration, loading, onBack }: {
 };
 
 // ── Sin sesión ───────────────────────────────────────────────────────
+
+// ── «Me inscribí antes sin cuenta» (v4.1267) ─────────────────────────
+
+const ClaimBox = ({ busy, onClaim }: { busy: boolean; onClaim: () => void }) => (
+    <section className="rounded-2xl border border-dashed border-slate-300 bg-white/70 p-5 sm:p-6">
+        <p className="flex items-center gap-2 text-sm font-bold text-slate-800">
+            <Link2 size={15} style={{ color: BLUE }} /> ¿Enviaste tu inscripción antes de tener cuenta?
+        </p>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-slate-500">
+            Vinculamos a tu cuenta las inscripciones que enviaste con tu mismo correo. Para proteger tus datos, primero
+            confirmamos que el correo es tuyo con un enlace que te llega a él.
+        </p>
+        <button type="button" onClick={onClaim} disabled={busy}
+            className="mt-3 inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60">
+            {busy ? <Loader2 size={15} className="animate-spin" /> : <Link2 size={15} />} Buscar y vincular mis inscripciones
+        </button>
+    </section>
+);
+
+// ── Ficha de un registro «Completar inscripción» (v4.1267) ───────────
+
+const STAGE_TONE: Record<string, string> = {
+    emerald: 'bg-emerald-600 text-white',
+    amber: 'bg-amber-500 text-white',
+    red: 'bg-red-600 text-white',
+    slate: 'bg-slate-500 text-white',
+};
+
+const CompletedDetail = ({ registration, token, loading, onBack }: {
+    registration: CompletedView; token: string | null; loading: boolean; onBack: () => void;
+}) => {
+    const r = registration;
+    const [receiptBusy, setReceiptBusy] = useState(false);
+    const [receiptError, setReceiptError] = useState('');
+
+    // El enlace firmado se pide al pulsar y vence en 2 minutos: no queda
+    // ninguna URL permanente del comprobante en la página.
+    const openReceipt = async () => {
+        if (!token) return;
+        setReceiptBusy(true);
+        setReceiptError('');
+        try {
+            const res = await fetch(`${API}/event-registrations/portal/completed/${encodeURIComponent(r.id)}/receipt`,
+                { headers: { Authorization: `Bearer ${token}` } });
+            const texto = await res.text();
+            let body: any = null;
+            try { body = JSON.parse(texto); } catch { /* respuesta sin JSON */ }
+            if (!res.ok || !body?.url) throw new Error(body?.error || `No pudimos abrir el comprobante (HTTP ${res.status}).`);
+            window.open(body.url, '_blank', 'noopener,noreferrer');
+        } catch (e: any) {
+            setReceiptError(e?.message || 'No pudimos abrir el comprobante.');
+        } finally {
+            setReceiptBusy(false);
+        }
+    };
+
+    return (
+        <div className="space-y-5">
+            <button type="button" onClick={onBack}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50">
+                <ArrowLeft size={15} /> Volver a mis eventos
+            </button>
+
+            {loading && (
+                <p className="flex items-center gap-2 text-sm text-slate-500">
+                    <Loader2 size={15} className="animate-spin" /> Actualizando…
+                </p>
+            )}
+
+            {/* Información del evento */}
+            <section className="rounded-2xl bg-white p-6 shadow-sm sm:p-9">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                        <h2 className="text-xl font-bold text-slate-900 sm:text-2xl">{r.event?.title || 'Evento'}</h2>
+                        <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px] text-slate-500">
+                            {r.event?.startDate && (
+                                <span className="flex items-center gap-1.5">
+                                    <CalendarDays size={14} /> {fmtDate(r.event.startDate)}
+                                    {r.event.endDate && r.event.endDate !== r.event.startDate ? ` – ${fmtDate(r.event.endDate)}` : ''}
+                                </span>
+                            )}
+                            {r.event?.location && (
+                                <span className="flex items-center gap-1.5"><MapPin size={14} /> {r.event.location}</span>
+                            )}
+                        </div>
+                        {(r.event?.slug || r.event?.id) && (
+                            <Link to={`/eventos/${r.event.slug || r.event.id}`}
+                                className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold" style={{ color: BLUE }}>
+                                <ExternalLink size={14} /> Ver la página del evento
+                            </Link>
+                        )}
+                    </div>
+                    <span className={`inline-flex items-center rounded-full px-3 py-1 text-[12px] font-bold ${COMPLETED_TONE[r.status] || 'bg-slate-100 text-slate-700'}`}>
+                        {r.statusLabel}
+                    </span>
+                </div>
+            </section>
+
+            {/* Estado de validación: las etapas salen del estado REAL. */}
+            <section className="rounded-2xl bg-white p-6 shadow-sm sm:p-9">
+                <h3 className="mb-5 flex items-center gap-2 text-sm font-bold uppercase tracking-wide" style={{ color: BLUE }}>
+                    <ShieldCheck size={15} /> Estado de validación
+                </h3>
+                <ol className="grid gap-3 sm:grid-cols-3">
+                    {(r.stages || []).map((stage, i) => (
+                        <li key={stage.key}
+                            className={`rounded-xl border p-4 ${stage.current ? 'border-slate-300 bg-slate-50' : 'border-slate-100'}`}>
+                            <span className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-[13px] font-bold ${
+                                stage.done ? STAGE_TONE[stage.tone] || STAGE_TONE.emerald : stage.current ? STAGE_TONE.amber : 'bg-slate-100 text-slate-400'}`}>
+                                {stage.done ? <CheckCircle2 size={15} /> : stage.current ? <Clock size={14} /> : i + 1}
+                            </span>
+                            <p className={`mt-2 text-sm font-bold ${stage.done || stage.current ? 'text-slate-900' : 'text-slate-400'}`}>{stage.label}</p>
+                            {stage.description && <p className="mt-1 text-[12px] leading-relaxed text-slate-500">{stage.description}</p>}
+                        </li>
+                    ))}
+                </ol>
+                <p className="mt-4 text-[13px] leading-relaxed text-slate-500">
+                    {r.statusDescription}
+                    {' '}La cuenta te permite consultar tu inscripción; la confirma el Equipo de Registro al validar el comprobante.
+                </p>
+            </section>
+
+            {/* Mi inscripción */}
+            <section className="rounded-2xl bg-white p-6 shadow-sm sm:p-9">
+                <h3 className="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide" style={{ color: BLUE }}>
+                    <FileText size={15} /> Mi inscripción
+                </h3>
+                <Row label="Código" value={<span className="font-mono" data-no-translate>{r.registrationCode || '—'}</span>} />
+                <Row label="Participante" value={`${r.firstName || ''} ${r.lastName || ''}`.trim() || '—'} />
+                <Row label="Correo" value={r.email} />
+                {r.clubName && <Row label="Club" value={r.clubName} />}
+                {r.district && <Row label="Distrito" value={r.district} />}
+                {r.membershipLabel && <Row label="Vínculo" value={r.membershipLabel} />}
+                {r.paymentMethodLabel && <Row label="Método de pago" value={r.paymentMethodLabel} />}
+                <Row label="Fecha de registro" value={fmtDateTime(r.registeredAt)} />
+                <Row label="Estado" value={r.statusLabel} />
+                {r.checkedInAt && <Row label="Acreditación" value={`Acreditado el ${fmtDateTime(r.checkedInAt)}`} />}
+            </section>
+
+            {/* Mis comprobantes */}
+            <section className="rounded-2xl bg-white p-6 shadow-sm sm:p-9">
+                <h3 className="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide" style={{ color: BLUE }}>
+                    <Paperclip size={15} /> Mis comprobantes
+                </h3>
+                {r.hasReceipt ? (
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5">
+                        <p className="flex min-w-0 items-center gap-2 text-sm font-semibold text-slate-800">
+                            <FileText size={16} className="shrink-0 text-slate-400" />
+                            <span className="truncate" data-no-translate>{r.receiptName || 'Comprobante de pago'}</span>
+                        </p>
+                        <button type="button" onClick={openReceipt} disabled={receiptBusy}
+                            className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-60"
+                            style={{ background: BLUE }}>
+                            {receiptBusy ? <Loader2 size={14} className="animate-spin" /> : <ExternalLink size={14} />} Ver comprobante
+                        </button>
+                    </div>
+                ) : (
+                    <p className="text-sm text-slate-500">Esta inscripción no tiene comprobante cargado.</p>
+                )}
+                {receiptError && (
+                    <p className="mt-2 flex items-center gap-1.5 text-[13px] font-medium text-red-600"><AlertCircle size={13} /> {receiptError}</p>
+                )}
+            </section>
+
+            {/* Historial: sólo hechos registrados. */}
+            <section className="rounded-2xl bg-white p-6 shadow-sm sm:p-9">
+                <h3 className="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide" style={{ color: BLUE }}>
+                    <History size={15} /> Historial
+                </h3>
+                {r.history?.length ? (
+                    <ol className="space-y-4 border-l-2 border-slate-100 pl-5">
+                        {r.history.map(h => (
+                            <li key={h.id} className="relative">
+                                <span className="absolute -left-[27px] top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-white">
+                                    <Circle size={12} style={{ color: BLUE }} fill="currentColor" />
+                                </span>
+                                <p className="text-sm font-semibold text-slate-800">{h.label}</p>
+                                {h.comment && <p className="mt-0.5 text-[13px] leading-relaxed text-slate-600">{h.comment}</p>}
+                                <p className="mt-0.5 text-[12px] text-slate-400">{fmtDateTime(h.createdAt)}</p>
+                            </li>
+                        ))}
+                    </ol>
+                ) : (
+                    <p className="text-sm text-slate-500">{loading ? 'Cargando…' : 'Todavía no hay movimientos registrados.'}</p>
+                )}
+                {Boolean(r.messages?.length) && (
+                    <div className="mt-6 border-t border-slate-100 pt-4">
+                        <p className="mb-2 flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-wide text-slate-500">
+                            <Mail size={13} /> Correos que te enviamos
+                        </p>
+                        <ul className="space-y-1.5">
+                            {r.messages.map(m => (
+                                <li key={m.id} className="flex flex-wrap justify-between gap-2 text-[13px] text-slate-600">
+                                    <span>{m.subject || 'Correo'}</span>
+                                    <span className="text-slate-400">{fmtDateTime(m.createdAt)}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
+            </section>
+        </div>
+    );
+};
 
 const AttendeeSignIn = ({ notice, hadSession }: { notice: any; hadSession?: boolean }) => {
     // Con sesión abierta y una carga fallida, el problema NO es el ingreso:

@@ -97,6 +97,8 @@ interface CompletedRow {
     emergencyPhone: string | null;
     paymentMethod: string | null;
     hasReceipt: boolean;
+    /** v4.1267 — El participante tiene acceso a «Mis eventos». Un servidor anterior no lo manda. */
+    hasAccount?: boolean;
     receiptName: string | null;
     receiptBytes: number | null;
     comments: string | null;
@@ -318,6 +320,8 @@ const DetailSheet = ({ id, catalog, onClose, onChanged }: {
         ['Método de pago', optionLabel(catalog?.paymentMethods, r.paymentMethod)],
         ['Comentarios', r.comments || '—'],
         ['Fuente del registro', SOURCE_LABELS[r.registrationSource] || r.registrationSource],
+        // v4.1267 — Sólo informa: tener cuenta no valida ni confirma nada.
+        ['Cuenta del participante', r.hasAccount ? 'Vinculada (consulta su inscripción en «Mis eventos»)' : 'Sin cuenta'],
         ['Enviado el', fmtDateTime(r.submittedAt)],
         ['Acreditado', r.checkedInAt ? `${fmtDateTime(r.checkedInAt)} · ${r.checkedInBy || ''}` : 'Todavía no'],
     ] : [];

@@ -175,6 +175,9 @@ export const mapCompleted = (row) => row && ({
     answers: parseJson(row.answers, {}),
     flags: parseJson(row.flags, {}),
     linkedRegistrationId: row.linkedRegistrationId,
+    // v4.1267 — Si el participante tiene cuenta. El id de la cuenta no sale
+    // del servidor: al panel le basta saber que existe.
+    hasAccount: Boolean(row.accountId),
     internalNotes: row.internalNotes,
     checkedInAt: row.checkedInAt,
     checkedInBy: row.checkedInBy,
@@ -286,8 +289,8 @@ export const insertCompleted = async (data) => {
              district, "clubName", "membershipType", "clubRole", "clubRoleOther", "guestType",
              eps, "foodAllergy", "emergencyName", "emergencyPhone",
              "paymentMethod", "receiptKey", "receiptName", "receiptMime", "receiptBytes",
-             comments, answers, flags, "linkedRegistrationId", "submittedAt")
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,NOW())
+             comments, answers, flags, "linkedRegistrationId", "accountId", "submissionKey", "submittedAt")
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,NOW())
          RETURNING *`,
         [
             data.eventId, data.clubId || null, 'submitted', COMPLETED_SOURCE,
@@ -305,9 +308,25 @@ export const insertCompleted = async (data) => {
             JSON.stringify(data.answers || {}),
             JSON.stringify(data.flags || {}),
             data.linkedRegistrationId || null,
+            data.accountId || null,
+            clean(data.submissionKey, 80) || null,
         ]
     );
     return rows[0];
+};
+
+/**
+ * v4.1267 — El registro que ya dejó un envío con esta clave (o `null`). Es la
+ * mitad de la idempotencia; la otra es el índice único, que decide si dos
+ * envíos simultáneos se cruzan.
+ */
+export const findBySubmissionKey = async (eventId, submissionKey) => {
+    const key = clean(submissionKey, 80);
+    if (!eventId || !key) return null;
+    const { rows } = await db.query(
+        `SELECT * FROM "EventCompletedRegistration"
+          WHERE "eventId" = $1 AND "submissionKey" = $2 LIMIT 1`, [eventId, key]);
+    return rows[0] || null;
 };
 
 /**
@@ -339,5 +358,6 @@ export default {
     getCompletedConfig, saveCompletedConfig, slugTakenByOther,
     findCompletedFormBySlug,
     mapCompleted, findCompleted, findDuplicates, insertCompleted, assignCompletedCode,
+    findBySubmissionKey,
     eventBrandingFor, hasSentMessage,
 };

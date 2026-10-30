@@ -34,13 +34,32 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1266.0 | 2026-10-30 (Eventos: mostrar u ocultar el botón de cada categoría de inscripción en la página pública)
+// UI V4.1267.0 | 2026-10-30 (Eventos: cuenta del participante en «Completar inscripción» y «Mis eventos»)
 // Cache bust: 2026-10-30
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1267.0',
+        title: 'Eventos: crea tu acceso al evento y consulta tu inscripción en «Mis eventos» 🔐',
+        description: 'El formulario «Completar inscripción» (aportes realizados desde COLROTARIOS) suma «Crea tu acceso al evento»: el participante crea su contraseña al final del paso 1, o entra con la cuenta de Rotary Distrito 4281 que ya tiene, y después consulta en «Mis eventos» su inscripción, el estado de validación por etapas, su comprobante y el historial. Usa la misma cuenta, el mismo ingreso y la misma recuperación de contraseña de la plataforma: no hay un segundo sistema. Crear la cuenta no confirma la inscripción: la sigue validando el Equipo de Registro.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'cuentas', 'colrotarios', 'distrito 4281'],
+        type: 'feature',
+        impact: 'Alta: los participantes de la XIII Conferencia (Villavicencio 2027) siguen su inscripción sin escribir al Equipo de Registro, y la arquitectura sirve para los próximos eventos.',
+        changes: [
+            { type: 'added', text: 'Paso 1 del formulario: «Crea tu acceso al evento» con el correo ya escrito, contraseña y confirmación con botón para mostrarla, requisitos a la vista y validación de coincidencia. Si ya entraste con ese correo, no se pide nada.' },
+            { type: 'added', text: 'Si el correo ya tiene cuenta, se dice «Este correo ya está asociado a una cuenta de Rotary Distrito 4281» con «Iniciar sesión» y «Recuperar contraseña», sin perder lo escrito. Nunca se crea una cuenta duplicada, tampoco para el correo de un Gestor de Proyectos.' },
+            { type: 'added', text: '«Mis eventos» (/mi-inscripcion): evento, código, club, distrito, método de pago, etapas Registro recibido → Pendiente de revisión → Validado o confirmado (o Requiere corrección, con su motivo), comprobante con enlace firmado de 2 minutos e historial de hechos reales.' },
+            { type: 'added', text: 'Inscripciones enviadas antes de tener cuenta: se vinculan sólo demostrando el correo (enlace que llega a él, o «Olvidé mi contraseña»), nunca por coincidencia de nombre o correo.' },
+            { type: 'added', text: 'El progreso del formulario se guarda en el navegador (sin la contraseña) y un envío repetido —doble clic, recarga— devuelve el mismo registro en vez de crear otro.' },
+            { type: 'changed', text: 'La comprobación de la cuenta en el paso 1 comparte el freno de intentos del ingreso y tiene un tope por IP: no sirve para averiguar en masa qué correos tienen cuenta.' },
+            { type: 'added', text: 'El panel administrativo muestra en la ficha si el participante tiene cuenta. La validación, la conciliación, los pagos y las notificaciones no cambian.' },
+            { type: 'added', text: 'npm run test:completed:accounts: 34 comprobaciones sin base y 64 más con Postgres real (98 en total), incluidas las 12 situaciones del pedido.' },
+        ],
+    },
     {
         version: '4.1266.0',
         title: 'Eventos: mostrar u ocultar el botón de cada categoría de inscripción en la página pública 👁️',
