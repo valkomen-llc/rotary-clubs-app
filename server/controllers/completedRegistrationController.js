@@ -25,6 +25,7 @@ import { ensureEventRegistrationSchema } from '../lib/ensureEventRegistrationSch
 import { rotaryCatalogFor } from '../lib/eventRegistrationSpec.js';
 import { clean, recordHistory, recordMessage } from '../lib/eventRegistrationStore.js';
 import {
+    validateAccessPassword,
     buildCompletedSchema, validateCompletedAnswers,
     completedCodePrefixFor, buildDuplicateFlags, completedStatusMeta,
     paymentMethodLabel,
@@ -33,12 +34,17 @@ import {
 } from '../lib/completedRegistrationSpec.js';
 import {
     findCompletedFormBySlug, findDuplicates, insertCompleted,
-    assignCompletedCode, mapCompleted, findCompleted,
+    assignCompletedCode, mapCompleted, findCompleted, findBySubmissionKey,
     eventBrandingFor, hasSentMessage,
 } from '../lib/completedRegistrationStore.js';
 import { presignReceiptUpload, receiptKeyBelongs, headReceipt } from '../lib/completedReceipts.js';
+import { checkLogin, recordFailure, recordSuccess } from '../lib/loginThrottle.js';
+import {
+    identityFromRequest, prefillForIdentity, resolveParticipantAccess,
+    issueAttendeeSession, sendVerificationEmail, auditLogin, REALM_LABELS,
+} from './eventAttendeeController.js';
 
-console.log('[completedRegistrationController] v4.945.0 cargado — formulario público de inscripciones completadas; la confirmación sale con la plantilla del evento, comprueba el éxito REAL del proveedor y es idempotente.');
+console.log('[completedRegistrationController] v4.1267.0 cargado — formulario público de inscripciones completadas con la cuenta del participante (crear acceso o entrar con la de siempre, sin duplicar), envío idempotente y la confirmación con la plantilla del evento.');
 
 // El remitente institucional de la plataforma — el MISMO transporte de todo el
 // correo transaccional del sitio (EmailService → Resend/SMTP). Exportado para
@@ -101,6 +107,12 @@ export const getPublicCompletedConfig = async (req, res) => {
             // normal y de la Feria (v4.707): una sola fuente de verdad.
             catalogs: { districts: rotaryCatalogFor(edition.settings) },
             successMessage: config.successMessage,
+            // v4.1267 — La cuenta del participante. `identity` es la sesión que
+            // trae el navegador, verificada aquí (firma + audiencia); el
+            // formulario sólo la pinta. `prefill` son SUS datos, para no
+            // pedírselos dos veces, y sólo rellena campos vacíos.
+            access: { mode: config.accountMode },
+            ...(await identityForForm(req, config)),
         });
     } catch (error) {
         console.error('[completed-registrations] getPublicCompletedConfig:', error);
@@ -108,6 +120,101 @@ export const getPublicCompletedConfig = async (req, res) => {
         // de imágenes, v4.912): «no se pudo cargar» a secas obliga a
         // diagnosticar a ciegas — y este 500 se reportó exactamente así.
         res.status(500).json({ error: 'No se pudo cargar el formulario', detail: error?.message });
+    }
+};
+
+// ── La cuenta del participante (v4.1267) ─────────────────────────────
+
+/** Campos del formulario que se pueden precargar desde la cuenta. */
+const PREFILL_KEYS = ['firstName', 'lastName', 'documentNumber', 'email', 'phone', 'district', 'clubName'];
+
+/** La sesión del navegador, resuelta en el servidor, y sus datos de precarga. */
+const identityForForm = async (req, config) => {
+    if (config.accountMode === 'off') return { identity: null, prefill: {} };
+    const identity = await identityFromRequest(req).catch(() => null);
+    if (!identity?.email) return { identity: null, prefill: {} };
+    const all = await prefillForIdentity(identity).catch(() => ({}));
+    const prefill = Object.fromEntries(PREFILL_KEYS.filter(k => all[k]).map(k => [k, all[k]]));
+    return {
+        identity: {
+            realm: identity.realm,
+            email: String(identity.email).toLowerCase(),
+            name: identity.name || null,
+            roleLabel: REALM_LABELS[identity.realm] || null,
+        },
+        prefill,
+    };
+};
+
+const clientIp = (req) => String((req?.headers?.['x-forwarded-for'] || '').split(',')[0].trim()
+    || req?.socket?.remoteAddress || '').slice(0, 60);
+
+// Freno POR IP de la comprobación del paso 1, además del de correo + IP del
+// ingreso (`loginThrottle`). Este cuenta TODAS las consultas, no sólo las
+// fallidas: es lo que hace caro recorrer una lista de correos para saber
+// cuáles tienen cuenta. Es un freno en memoria, como el del ingreso: por
+// instancia, no una garantía.
+const ACCESS_CHECKS_PER_IP = 30;
+const accessChecks = new Map();
+const accessCheckAllowed = (ip, now = Date.now()) => {
+    for (const [k, v] of accessChecks) if (now - v.first > 15 * 60 * 1000) accessChecks.delete(k);
+    if (accessChecks.size > 5000) accessChecks.clear();
+    const entry = accessChecks.get(ip);
+    if (!entry) { accessChecks.set(ip, { first: now, count: 1 }); return true; }
+    entry.count += 1;
+    return entry.count <= ACCESS_CHECKS_PER_IP;
+};
+
+/** El mensaje del escenario B, tal cual lo pidió el Distrito. */
+const ACCOUNT_EXISTS_MESSAGE = 'Este correo ya está asociado a una cuenta de Rotary Distrito 4281. Inicia sesión para continuar con tu inscripción.';
+
+/**
+ * POST /public/completed/:slug/access — el paso 1 comprueba la cuenta ANTES
+ * de pedir los otros tres pasos.
+ *
+ * ⚠️ NO es un «¿existe este correo?»: sin contraseña no contesta nada. Con
+ * contraseña se comporta como un ingreso —si la cuenta existe y la clave
+ * coincide, abre la sesión— y cuenta contra el MISMO freno del ingreso; además,
+ * cada IP tiene un tope de consultas. Distinguir «nuevo» de «existe» después
+ * de escribir una contraseña es lo mismo que hace cualquier registro al
+ * enviarse; lo que no se ofrece es una consulta masiva y barata.
+ */
+export const checkAccess = async (req, res) => {
+    try {
+        const found = await requireForm(req, res);
+        if (!found) return;
+        if (found.config.accountMode === 'off') return res.json({ status: 'off' });
+
+        const email = clean(req.body?.email, 200).toLowerCase();
+        const password = String(req.body?.password || '');
+        const ip = clientIp(req);
+        if (!email || !password) return res.status(400).json({ error: 'Escribe tu correo y la contraseña.' });
+
+        const freno = checkLogin(email, ip);
+        if (!freno.allowed || !accessCheckAllowed(ip)) {
+            return res.status(429).json({
+                error: `Demasiados intentos. Inténtalo de nuevo en ${freno.retryInMinutes || 15} minutos.`,
+            });
+        }
+
+        const result = await resolveParticipantAccess({ email, password, create: false });
+        if (result.outcome === 'password') {
+            recordSuccess(email, ip);
+            await auditLogin(req, { accountId: result.account.id, email, outcome: 'success', detail: 'completar inscripción' });
+            // Escribió la clave correcta de su cuenta: es un ingreso.
+            return res.json({ status: 'signed_in', session: await issueAttendeeSession(result.account) });
+        }
+        if (result.outcome === 'exists') {
+            recordFailure(email, ip);
+            await auditLogin(req, { email, outcome: 'access_exists', detail: 'completar inscripción' });
+            return res.json({ status: 'exists', recover: result.recover === true, message: ACCOUNT_EXISTS_MESSAGE });
+        }
+        if (result.outcome === 'weak') return res.json({ status: 'weak' });
+        if (result.outcome === 'invalid_email') return res.status(400).json({ error: 'Revisa el correo electrónico.' });
+        return res.json({ status: 'new' });
+    } catch (error) {
+        console.error('[completed-registrations] checkAccess:', error);
+        res.status(500).json({ error: 'No pudimos comprobar tu cuenta. Intenta de nuevo.', detail: error?.message });
     }
 };
 
@@ -212,6 +319,24 @@ const notifyAdmins = async (row, event, edition) => {
 
 // ── Envío del formulario ─────────────────────────────────────────────
 
+/**
+ * Lo que vuelve al navegador. Con cuenta, la sesión del asistente ya abierta
+ * (v4.710): «Ir a Mis eventos» entra sin pedir la contraseña otra vez. Un
+ * envío repetido NO abre sesión: la clave del formulario no prueba identidad.
+ */
+const submitResponse = async (row, config, { account = null, repeated = false } = {}) => ({
+    id: row.id,
+    registrationCode: row.registrationCode,
+    status: row.status,
+    statusLabel: completedStatusMeta(row.status).label,
+    email: row.email,
+    firstName: row.firstName,
+    successMessage: config.successMessage,
+    repeated,
+    hasAccount: Boolean(row.accountId),
+    ...(account ? { session: await issueAttendeeSession(account) } : {}),
+});
+
 // POST /api/event-registrations/public/completed/:slug
 export const submitCompleted = async (req, res) => {
     try {
@@ -221,6 +346,12 @@ export const submitCompleted = async (req, res) => {
 
         const answers = (req.body?.answers && typeof req.body.answers === 'object') ? req.body.answers : {};
         const catalogs = { districts: rotaryCatalogFor(edition.settings) };
+
+        // v4.1267 — Idempotencia: el MISMO formulario enviado dos veces (doble
+        // clic, recarga, red que reintenta) devuelve el registro que ya existe.
+        const submissionKey = clean(req.body?.submissionKey, 80);
+        const previous = await findBySubmissionKey(event.id, submissionKey);
+        if (previous) return res.status(200).json(await submitResponse(previous, config, { repeated: true }));
 
         // El servidor valida SIEMPRE, aunque el navegador ya lo haya hecho.
         const verdict = validateCompletedAnswers(config, answers, catalogs);
@@ -243,6 +374,61 @@ export const submitCompleted = async (req, res) => {
         const head = await headReceipt(receiptKey);
         if (!head.ok) {
             return res.status(422).json({ error: head.error, fieldErrors: { receipt: head.error } });
+        }
+
+        // ── La cuenta, ANTES de escribir nada (v4.1267) ──────────────
+        //
+        // Mismo orden que el registro en línea (v4.655): si el correo ya tiene
+        // cuenta y no se entró con ella, el registro no llega a crearse a
+        // medias. Crear la cuenta NO confirma la inscripción.
+        let account = null;
+        let accountOutcome = 'none';
+        if (config.accountMode !== 'off') {
+            const password = String(req.body?.password || '');
+            const passwordConfirm = String(req.body?.passwordConfirm || '');
+            const identity = await identityFromRequest(req).catch(() => null);
+            const sessionMatches = identity?.email
+                && String(identity.email).toLowerCase() === String(answers.email || '').trim().toLowerCase();
+
+            if (!sessionMatches) {
+                const passErrors = validateAccessPassword(password, passwordConfirm,
+                    { allowEmpty: config.accountMode === 'optional' });
+                if (Object.keys(passErrors).length) {
+                    return res.status(422).json({
+                        error: config.accountMode === 'required' && !password
+                            ? 'Crea tu acceso al evento para completar la inscripción.'
+                            : 'Revisa la contraseña de tu acceso.',
+                        fieldErrors: passErrors,
+                    });
+                }
+            }
+
+            const resolved = await resolveParticipantAccess({
+                email: answers.email,
+                password: sessionMatches ? '' : password,
+                identity: sessionMatches ? identity : null,
+                profile: { firstName: answers.firstName, lastName: answers.lastName, phone: answers.phone },
+            });
+            if (resolved.outcome === 'exists') {
+                return res.status(409).json({
+                    error: ACCOUNT_EXISTS_MESSAGE,
+                    accountExists: true,
+                    recover: resolved.recover === true,
+                    fieldErrors: { password: 'Este correo ya tiene una cuenta: inicia sesión o recupera tu contraseña.' },
+                });
+            }
+            if (resolved.outcome === 'weak') {
+                return res.status(422).json({ error: 'Revisa la contraseña de tu acceso.', fieldErrors: validateAccessPassword(password, passwordConfirm) });
+            }
+            if (resolved.account) {
+                account = resolved.account;
+                accountOutcome = resolved.outcome;
+            } else if (config.accountMode === 'required') {
+                return res.status(422).json({
+                    error: 'Crea tu acceso al evento para completar la inscripción.',
+                    fieldErrors: validateAccessPassword('', ''),
+                });
+            }
         }
 
         // ── Duplicados: se marcan y se relacionan, no se bloquea ─────
@@ -280,7 +466,20 @@ export const submitCompleted = async (req, res) => {
             answers,
             flags,
             linkedRegistrationId: linkedOnline?.id || null,
+            accountId: account?.id || null,
+            submissionKey,
+        }).catch(async (error) => {
+            // Dos envíos simultáneos con la misma clave: el índice único deja
+            // pasar uno; el otro devuelve ese mismo registro.
+            if (error?.code === '23505' && String(error?.message || '').includes('submission_uniq')) {
+                const winner = await findBySubmissionKey(event.id, submissionKey);
+                if (winner) return { ...winner, __repeated: true };
+            }
+            throw error;
         });
+        if (row.__repeated) {
+            return res.status(200).json(await submitResponse(row, config, { repeated: true }));
+        }
 
         const code = await assignCompletedCode(row.id, completedCodePrefixFor(config, edition));
         const saved = await findCompleted(row.id);
@@ -291,6 +490,20 @@ export const submitCompleted = async (req, res) => {
             comment: 'Formulario público de inscripción completada enviado.',
             payload: { registrationSource: saved.registrationSource, paymentMethod: saved.paymentMethod },
         });
+        if (account) {
+            await recordHistory({
+                registrationId: row.id, eventId: event.id, type: 'account_linked',
+                comment: {
+                    created: 'El participante creó su acceso al evento al enviar el formulario.',
+                    password: 'El participante vinculó el registro a su cuenta existente.',
+                    session: 'El participante envió el formulario con su sesión iniciada.',
+                }[accountOutcome] || 'Inscripción vinculada a la cuenta del participante.',
+                payload: { via: accountOutcome },
+            });
+            if (accountOutcome === 'created') {
+                await sendVerificationEmail(account, req.headers.origin).catch(() => { });
+            }
+        }
         if (flags.hasDuplicates) {
             await recordHistory({
                 registrationId: row.id, eventId: event.id, type: 'duplicate_flagged',
@@ -304,15 +517,7 @@ export const submitCompleted = async (req, res) => {
 
         // La respuesta pública no lleva las alertas de duplicado: son trabajo
         // del panel, no información del visitante.
-        res.status(201).json({
-            id: saved.id,
-            registrationCode: code || saved.registrationCode,
-            status: saved.status,
-            statusLabel: completedStatusMeta(saved.status).label,
-            email: saved.email,
-            firstName: saved.firstName,
-            successMessage: config.successMessage,
-        });
+        res.status(201).json(await submitResponse({ ...saved, registrationCode: code || saved.registrationCode }, config, { account }));
     } catch (error) {
         console.error('[completed-registrations] submitCompleted:', error);
         res.status(500).json({ error: 'No se pudo guardar tu información. Intenta de nuevo.', detail: error?.message });
@@ -320,6 +525,6 @@ export const submitCompleted = async (req, res) => {
 };
 
 export default {
-    getPublicCompletedConfig, createReceiptUploadUrl, submitCompleted,
+    getPublicCompletedConfig, createReceiptUploadUrl, submitCompleted, checkAccess,
     sendCompletedConfirmation,
 };

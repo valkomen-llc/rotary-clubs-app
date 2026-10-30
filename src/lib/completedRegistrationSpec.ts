@@ -207,3 +207,35 @@ export const chunkIds = (ids: string[] = [], size: number = BULK_MAX): string[][
     for (let i = 0; i < limpio.length; i += paso) tandas.push(limpio.slice(i, i + paso));
     return tandas;
 };
+
+// ── La cuenta del participante (v4.1267) ─────────────────────────────
+//
+// Espejo de `validateAccessPassword` y de los modos del servidor. El servidor
+// valida SIEMPRE; esto sólo evita el viaje para un error evidente. La prueba
+// `test:completed:accounts` compara las SALIDAS de los dos lados.
+
+export type AccountMode = 'optional' | 'required' | 'off';
+
+export const ACCESS_PASSWORD_MIN = 8;
+
+export const validateAccessPassword = (
+    password: string,
+    confirm: string,
+    { allowEmpty = false }: { allowEmpty?: boolean } = {},
+): Record<string, string> => {
+    const pass = String(password ?? '');
+    const again = String(confirm ?? '');
+    const errors: Record<string, string> = {};
+    if (!pass && !again && allowEmpty) return errors;
+    if (!pass) errors.password = 'Crea una contraseña.';
+    else if (pass.length < ACCESS_PASSWORD_MIN) errors.password = `Usa al menos ${ACCESS_PASSWORD_MIN} caracteres.`;
+    if (!again) errors.passwordConfirm = 'Repite la contraseña.';
+    else if (pass && again !== pass) errors.passwordConfirm = 'Las contraseñas no coinciden.';
+    return errors;
+};
+
+/** Los requisitos, para el indicador discreto bajo los campos. */
+export const accessPasswordChecks = (password: string, confirm: string) => [
+    { key: 'length', label: `Al menos ${ACCESS_PASSWORD_MIN} caracteres`, ok: String(password ?? '').length >= ACCESS_PASSWORD_MIN },
+    { key: 'match', label: 'Las dos contraseñas coinciden', ok: Boolean(password) && password === confirm },
+];

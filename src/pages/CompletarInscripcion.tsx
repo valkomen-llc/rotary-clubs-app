@@ -13,18 +13,28 @@
 // configurar su slug en la pestaña «Inscripciones completadas» y declarar su
 // <Route> en App.tsx con este MISMO componente.
 //
+// v4.1267 — «Crea tu acceso al evento». Al final del paso 1 el participante
+// crea su contraseña (o entra con la cuenta que ya tiene) y después consulta
+// su inscripción en «Mis eventos» (`/mi-inscripcion`). La cuenta es la del
+// Asistente al Evento de siempre: el ingreso, la recuperación y el panel son
+// los del sitio, no unos nuevos. Crear la cuenta NO confirma la inscripción.
+// El progreso se guarda en este navegador (sin la contraseña) para que entrar
+// o recuperar la clave no obligue a empezar de cero.
+//
 // Se compone con las MISMAS piezas de los formularios públicos del sitio
 // (`Field`, `PhoneField`, `StepProgress`): nada de diseño paralelo. El
 // comprobante sube DIRECTO a S3 con URL prefirmada — el cuerpo de una función
 // se corta en ~4,5 MB y el archivo admite 10.
 // ════════════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import {
     AlertCircle, ArrowLeft, ArrowRight, Building2, CalendarDays, Check, CheckCircle2,
-    Clock, CreditCard, FileText, HeartPulse, IdCard, Loader2, Mail, MapPin,
-    Paperclip, Trash2, User, Users, Utensils,
+    Circle, Clock, CreditCard, FileText, HeartPulse, IdCard, KeyRound, LayoutDashboard, Loader2, LogIn, Mail, MapPin,
+    Paperclip, ShieldCheck, Trash2, User, UserCheck, Users, Utensils,
 } from 'lucide-react';
+import { openLoginModal, onLoginSuccess, emitLoginSuccess } from '../lib/loginModal';
+import { emitSessionChange, TOKEN_KEY } from '../lib/siteSession';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useLang } from '../contexts/LanguageContext';
@@ -35,6 +45,7 @@ import {
     type CompletedField, type CompletedStep, type CompletedCatalogs,
     completedOptionsFor, isCompletedFieldVisible, isCompletedFieldRequired,
     validateCompletedStep, checkReceiptFile, RECEIPT_ACCEPT,
+    validateAccessPassword, accessPasswordChecks, type AccountMode,
 } from '../lib/completedRegistrationSpec';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
@@ -47,6 +58,10 @@ interface PublicConfig {
     receipt: { maxBytes: number; extensions: string[] };
     catalogs: CompletedCatalogs;
     successMessage: string;
+    /** v4.1267 — La cuenta del participante. Un servidor anterior no la manda. */
+    access?: { mode: AccountMode };
+    identity?: { realm: string; email: string; name: string | null; roleLabel: string | null } | null;
+    prefill?: Record<string, string>;
 }
 
 interface SubmitResult {
@@ -56,7 +71,54 @@ interface SubmitResult {
     email: string;
     firstName: string;
     successMessage?: string;
+    repeated?: boolean;
+    hasAccount?: boolean;
+    session?: { token?: string } | null;
 }
+
+/**
+ * La sesión que se le presenta al servidor, en este orden: la del propio
+ * asistente, la del panel del club y la de la plataforma. El servidor la
+ * verifica (firma + audiencia); aquí sólo se elige cuál mandar.
+ */
+const IDENTITY_KEYS = [TOKEN_KEY.attendee, TOKEN_KEY.portal, TOKEN_KEY.platform];
+const currentIdentityToken = (): string => {
+    for (const key of IDENTITY_KEYS) {
+        try {
+            const value = localStorage.getItem(key);
+            if (value) return value;
+        } catch { /* almacenamiento bloqueado: sin sesión */ }
+    }
+    return '';
+};
+
+/** El borrador de este navegador. NUNCA lleva la contraseña. */
+interface Draft {
+    answers: Record<string, any>;
+    clubNotListed: boolean;
+    receipt: ReceiptState;
+    submissionKey: string;
+}
+const draftKey = (slug: string) => `completar-inscripcion:${slug}`;
+const newSubmissionKey = () => {
+    try { return crypto.randomUUID(); }
+    catch { return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`; }
+};
+const readDraft = (slug: string): Draft | null => {
+    try {
+        const raw = localStorage.getItem(draftKey(slug));
+        if (!raw) return null;
+        const d = JSON.parse(raw);
+        if (!d || typeof d !== 'object' || typeof d.answers !== 'object') return null;
+        return {
+            answers: d.answers || {},
+            clubNotListed: d.clubNotListed === true,
+            // Sólo un comprobante YA subido sobrevive; uno a medio subir no.
+            receipt: d.receipt?.status === 'ready' ? d.receipt : { status: 'idle' },
+            submissionKey: typeof d.submissionKey === 'string' && d.submissionKey ? d.submissionKey : newSubmissionKey(),
+        };
+    } catch { return null; }
+};
 
 type ReceiptState =
     | { status: 'idle' }
@@ -84,14 +146,34 @@ const CompletarInscripcion = () => {
     const [config, setConfig] = useState<PublicConfig | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
-    const [answers, setAnswers] = useState<Record<string, any>>({ membershipType: 'socio_activo' });
+    // v4.1267 — Se arranca desde el borrador de este navegador, si lo hay:
+    // volver después de entrar, de recuperar la clave o de cerrar la pestaña
+    // no obliga a empezar de cero.
+    const [draft] = useState<Draft | null>(() => readDraft(slug));
+    const [answers, setAnswers] = useState<Record<string, any>>(() => draft?.answers || { membershipType: 'socio_activo' });
+    // Un borrador recuperado arranca en el PASO 1, con todo lo escrito: es
+    // donde vive el acceso al evento, que no se guarda (no hay contraseña en
+    // el borrador) y hay que volver a resolver.
     const [stepIndex, setStepIndex] = useState(0);
     const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-    const [clubNotListed, setClubNotListed] = useState(false);
-    const [receipt, setReceipt] = useState<ReceiptState>({ status: 'idle' });
+    const [clubNotListed, setClubNotListed] = useState(() => draft?.clubNotListed || false);
+    const [receipt, setReceipt] = useState<ReceiptState>(() => draft?.receipt || { status: 'idle' });
     const [submitting, setSubmitting] = useState(false);
     const [result, setResult] = useState<SubmitResult | null>(null);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
+    /** Una por formulario: un segundo envío con ella devuelve el mismo registro. */
+    const [submissionKey, setSubmissionKey] = useState(() => draft?.submissionKey || newSubmissionKey());
+
+    // ── El acceso al evento (v4.1267) ────────────────────────────────
+    // La contraseña vive APARTE de `answers`: no entra en el borrador ni en
+    // ningún almacenamiento del navegador, y sólo viaja al servidor.
+    const [credentials, setCredentials] = useState({ password: '', passwordConfirm: '' });
+    const [credentialErrors, setCredentialErrors] = useState<Record<string, string>>({});
+    const [accessState, setAccessState] = useState<
+        { kind: 'idle' } | { kind: 'checking' } | { kind: 'exists'; message: string; recover: boolean } | { kind: 'error'; message: string }
+    >({ kind: 'idle' });
+    const [authTick, setAuthTick] = useState(0);
+    useEffect(() => onLoginSuccess(() => setAuthTick(t => t + 1)), []);
 
     useEffect(() => {
         let vivo = true;
@@ -104,7 +186,9 @@ const CompletarInscripcion = () => {
             try {
                 let r: Response;
                 try {
-                    r = await fetch(`${API}/event-registrations/public/completed/${encodeURIComponent(slug)}`);
+                    const identityToken = currentIdentityToken();
+                    r = await fetch(`${API}/event-registrations/public/completed/${encodeURIComponent(slug)}`,
+                        identityToken ? { headers: { Authorization: `Bearer ${identityToken}` } } : undefined);
                 } catch {
                     // La petición no llegó (red, función dormida): eso no es un
                     // rechazo del servidor y merece el mismo único reintento.
@@ -137,6 +221,58 @@ const CompletarInscripcion = () => {
         return () => { vivo = false; };
     }, [slug]);
 
+    // v4.1267 — Al entrar con una cuenta (encabezado o el propio formulario),
+    // se vuelve a preguntar QUIÉN es, sin recargar ni tocar lo ya escrito.
+    useEffect(() => {
+        if (!authTick) return;
+        const identityToken = currentIdentityToken();
+        fetch(`${API}/event-registrations/public/completed/${encodeURIComponent(slug)}`,
+            identityToken ? { headers: { Authorization: `Bearer ${identityToken}` } } : undefined)
+            .then(r => r.text())
+            .then(texto => {
+                let data: any = null;
+                try { data = JSON.parse(texto); } catch { return; }
+                if (!data || data.error) return;
+                setConfig(prev => (prev ? { ...prev, identity: data.identity || null, prefill: data.prefill || {} } : prev));
+                setAccessState({ kind: 'idle' });
+            })
+            .catch(() => { /* sin cambios: el envío lo vuelve a resolver el servidor */ });
+    }, [authTick, slug]);
+
+    // Precarga con los datos de la cuenta: SÓLO campos vacíos. Lo que la
+    // persona ya escribió no se pisa nunca.
+    useEffect(() => {
+        const prefill = config?.prefill;
+        if (!prefill || !Object.keys(prefill).length) return;
+        setAnswers(prev => {
+            const next = { ...prev };
+            let changed = false;
+            for (const [key, value] of Object.entries(prefill)) {
+                if (value && (next[key] === undefined || next[key] === null || String(next[key]).trim() === '')) {
+                    next[key] = value;
+                    changed = true;
+                }
+            }
+            return changed ? next : prev;
+        });
+    }, [config?.prefill]);
+
+    // El borrador se guarda en cada cambio. Sin contraseña: no está en este
+    // estado. Un almacenamiento bloqueado no rompe el formulario.
+    useEffect(() => {
+        if (result) return;
+        try {
+            const value: Draft = { answers, clubNotListed, receipt, submissionKey };
+            localStorage.setItem(draftKey(slug), JSON.stringify(value));
+        } catch { /* sin borrador: el formulario sigue funcionando */ }
+    }, [answers, clubNotListed, receipt, submissionKey, slug, result]);
+
+    const accountMode: AccountMode = config?.access?.mode || 'off';
+    const identity = config?.identity || null;
+    const formEmail = String(answers.email || '').trim().toLowerCase();
+    /** Entró con su cuenta y el correo del formulario es el suyo. */
+    const sessionMatches = Boolean(identity?.email) && identity!.email === formEmail;
+
     // ⚠️ v4.958 — LOS PASOS VISIBLES, no todos. El esquema declara dos ramas
     // excluyentes (cargo / invitado) y el vínculo con el club decide cuál se
     // recorre. Filtrar acá —y no dentro del render— es lo que mantiene
@@ -148,7 +284,7 @@ const CompletarInscripcion = () => {
         () => (config?.form.steps || []).filter(step => isCompletedFieldVisible(step, answers)),
         [config, answers],
     );
-    const currentStep = steps[stepIndex];
+    const currentStep = steps[Math.min(stepIndex, Math.max(steps.length - 1, 0))];
     const catalogs = config?.catalogs || {};
 
     const setAnswer = useCallback((key: string, value: any) => {
@@ -252,12 +388,98 @@ const CompletarInscripcion = () => {
         return Object.keys(errors).length === 0;
     };
 
-    const goNext = () => {
-        if (!validateCurrentStep()) return;
+    const advance = () => {
         setFieldErrors({});
         setStepIndex(i => Math.min(i + 1, steps.length - 1));
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
+
+    const setCredential = (key: 'password' | 'passwordConfirm', value: string) => {
+        setCredentials(prev => ({ ...prev, [key]: value }));
+        setCredentialErrors(prev => {
+            if (!prev[key]) return prev;
+            const next = { ...prev };
+            delete next[key];
+            return next;
+        });
+        if (accessState.kind === 'exists' || accessState.kind === 'error') setAccessState({ kind: 'idle' });
+    };
+
+    /** Deja abierta la sesión que emitió el servidor (v4.710). */
+    const openAttendeeSession = (token?: string | null) => {
+        if (!token) return;
+        try { localStorage.setItem(TOKEN_KEY.attendee, token); } catch { /* sin almacenamiento */ }
+        emitSessionChange();
+        emitLoginSuccess({ realm: 'attendee' });
+    };
+
+    /**
+     * El acceso se resuelve en el PASO 1: así quien ya tiene cuenta se entera
+     * antes de llenar los otros tres pasos, y no después de subir el
+     * comprobante. El servidor no contesta nada sin contraseña.
+     */
+    const checkAccessAndAdvance = async () => {
+        const errors = validateAccessPassword(credentials.password, credentials.passwordConfirm,
+            { allowEmpty: accountMode === 'optional' });
+        setCredentialErrors(errors);
+        if (Object.keys(errors).length) return;
+        if (!credentials.password) { advance(); return; }
+
+        setAccessState({ kind: 'checking' });
+        try {
+            const res = await fetch(`${API}/event-registrations/public/completed/${encodeURIComponent(slug)}/access`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: answers.email, password: credentials.password }),
+            });
+            const { data, crudo } = await leerJson(res);
+            if (!data) throw new Error(describirNoJson(res, crudo));
+            if (!res.ok) throw new Error(data?.error || 'No pudimos comprobar tu cuenta.');
+            if (data.status === 'exists') {
+                setAccessState({ kind: 'exists', message: data.message, recover: data.recover === true });
+                return;
+            }
+            if (data.status === 'weak') {
+                setCredentialErrors(validateAccessPassword(credentials.password, credentials.passwordConfirm));
+                setAccessState({ kind: 'idle' });
+                return;
+            }
+            if (data.status === 'signed_in') {
+                // Escribió la clave de la cuenta que ya tenía: entró. La
+                // identidad se fija ya —el envío no puede depender de que
+                // termine la recarga—; la recarga sólo trae la precarga.
+                openAttendeeSession(data.session?.token);
+                setCredentials({ password: '', passwordConfirm: '' });
+                setConfig(prev => (prev ? {
+                    ...prev,
+                    identity: { realm: 'attendee', email: formEmail, name: null, roleLabel: 'Asistente al Evento' },
+                } : prev));
+            }
+            setAccessState({ kind: 'idle' });
+            advance();
+        } catch (err: any) {
+            setAccessState({ kind: 'error', message: err?.message || 'No pudimos comprobar tu cuenta.' });
+        }
+    };
+
+    const goNext = () => {
+        if (!validateCurrentStep()) return;
+        // El bloque de acceso vive al final del PRIMER paso.
+        if (stepIndex === 0 && accountMode !== 'off' && !sessionMatches) {
+            void checkAccessAndAdvance();
+            return;
+        }
+        advance();
+    };
+
+    const loginWithEmail = (mode: 'login' | 'forgot' = 'login') => openLoginModal({
+        email: String(answers.email || '').trim(),
+        mode,
+        next: `${window.location.pathname}${window.location.search}`,
+        reason: mode === 'forgot'
+            ? 'Te enviaremos un enlace para crear una contraseña nueva. Tu formulario queda guardado en este navegador.'
+            : 'Ingresa con tu cuenta de Rotary Distrito 4281 y seguimos con tu inscripción, sin perder lo que ya escribiste.',
+    });
     const goBack = () => {
         setFieldErrors({});
         setStepIndex(i => Math.max(i - 1, 0));
@@ -269,17 +491,39 @@ const CompletarInscripcion = () => {
         setSubmitting(true);
         setError('');
         try {
+            const identityToken = sessionMatches ? currentIdentityToken() : '';
             const res = await fetch(`${API}/event-registrations/public/completed/${encodeURIComponent(slug)}`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(identityToken ? { Authorization: `Bearer ${identityToken}` } : {}),
+                },
                 body: JSON.stringify({
                     answers,
                     receipt: { key: receipt.key, name: receipt.name, contentType: receipt.contentType },
+                    submissionKey,
+                    // Sólo si no entró con su cuenta. El servidor guarda el hash.
+                    ...(accountMode !== 'off' && !sessionMatches
+                        ? { password: credentials.password, passwordConfirm: credentials.passwordConfirm }
+                        : {}),
                 }),
             });
             const { data, crudo } = await leerJson(res);
             if (!data) throw new Error(describirNoJson(res, crudo));
             if (!res.ok) {
+                // v4.1267 — El correo ya tiene cuenta (otra pestaña la creó, o
+                // se saltó la comprobación): de vuelta al paso 1, con la salida.
+                if (data?.accountExists) {
+                    setAccessState({ kind: 'exists', message: data.error, recover: data.recover === true });
+                    setStepIndex(0);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                    return;
+                }
+                if (data?.fieldErrors?.password || data?.fieldErrors?.passwordConfirm) {
+                    const { password, passwordConfirm } = data.fieldErrors;
+                    setCredentialErrors({ ...(password ? { password } : {}), ...(passwordConfirm ? { passwordConfirm } : {}) });
+                    setStepIndex(0);
+                }
                 if (data?.fieldErrors) {
                     setFieldErrors(data.fieldErrors);
                     // Se salta al PRIMER paso con error: corregir a ciegas en el
@@ -291,6 +535,12 @@ const CompletarInscripcion = () => {
                 throw new Error(data?.detail ? `${base} — ${data.detail}` : base);
             }
             setResult(data);
+            openAttendeeSession(data?.session?.token);
+            setCredentials({ password: '', passwordConfirm: '' });
+            // El formulario quedó enviado: el borrador ya no hace falta, y el
+            // siguiente formulario de este navegador nace con otra clave.
+            try { localStorage.removeItem(draftKey(slug)); } catch { /* nada */ }
+            setSubmissionKey(newSubmissionKey());
             window.scrollTo({ top: 0, behavior: 'smooth' });
         } catch (err: any) {
             setError(err?.message || 'No se pudo enviar la información.');
@@ -552,6 +802,30 @@ const CompletarInscripcion = () => {
                         {result.successMessage && (
                             <p className="mx-auto mt-5 max-w-lg text-sm text-slate-600">{result.successMessage}</p>
                         )}
+                        {/* v4.1267 — Dónde consultar la inscripción después. */}
+                        {result.hasAccount ? (
+                            <div className="mx-auto mt-6 max-w-lg rounded-xl border border-blue-100 bg-blue-50/60 px-5 py-4 text-left">
+                                <p className="flex items-center gap-2 text-sm font-bold" style={{ color: BLUE }}>
+                                    <ShieldCheck size={16} /> Tu acceso al evento está activo
+                                </p>
+                                <p className="mt-1.5 text-[13px] leading-relaxed text-slate-600">
+                                    Consulta el estado de tu inscripción, tu comprobante y su historial en «Mis eventos».
+                                    Tener cuenta no confirma la inscripción: la confirma el Equipo de Registro al validar
+                                    tu comprobante.
+                                </p>
+                                <Link to="/mi-inscripcion"
+                                    className="mt-3 inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white transition hover:opacity-90"
+                                    style={{ background: BLUE }}>
+                                    <LayoutDashboard size={15} /> Ir a Mis eventos
+                                </Link>
+                            </div>
+                        ) : accountMode !== 'off' && (
+                            <p className="mx-auto mt-5 max-w-lg text-[13px] leading-relaxed text-slate-500">
+                                ¿Quieres consultar tu inscripción más adelante? En{' '}
+                                <Link to="/mi-inscripcion" className="font-semibold underline" style={{ color: BLUE }}>Mis eventos</Link>{' '}
+                                usa «Olvidé mi contraseña» con este mismo correo: te llegará un enlace para crear tu acceso.
+                            </p>
+                        )}
                         <p className="mt-5 text-xs text-slate-400">
                             Guarda este código: identifica tu registro ante el Equipo de Registro.
                         </p>
@@ -589,6 +863,21 @@ const CompletarInscripcion = () => {
                                 <StepProgress step={stepIndex + 1} total={steps.length} title={currentStep.label} />
                                 <div className="grid gap-5 sm:grid-cols-2">
                                     {currentStep.fields.map(renderField)}
+                                    {stepIndex === 0 && accountMode !== 'off' && (
+                                        <AccessSection
+                                            eventTitle={config.event.title}
+                                            mode={accountMode}
+                                            identity={identity}
+                                            sessionMatches={sessionMatches}
+                                            credentials={credentials}
+                                            errors={credentialErrors}
+                                            state={accessState}
+                                            onCredential={setCredential}
+                                            onLogin={() => loginWithEmail('login')}
+                                            onForgot={() => loginWithEmail('forgot')}
+                                            onUseSessionEmail={() => identity && setAnswer('email', identity.email)}
+                                        />
+                                    )}
                                 </div>
                             </>
                         )}
@@ -602,9 +891,12 @@ const CompletarInscripcion = () => {
                             )}
                             {stepIndex < steps.length - 1 ? (
                                 <button type="button" onClick={goNext}
-                                    className="inline-flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-bold text-white transition hover:opacity-90"
+                                    disabled={accessState.kind === 'checking'}
+                                    className="inline-flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-60"
                                     style={{ background: BLUE }}>
-                                    Siguiente <ArrowRight size={15} />
+                                    {accessState.kind === 'checking'
+                                        ? <><Loader2 size={15} className="animate-spin" /> Comprobando…</>
+                                        : <>Siguiente <ArrowRight size={15} /></>}
                                 </button>
                             ) : (
                                 <button type="button" onClick={submit}
@@ -624,6 +916,167 @@ const CompletarInscripcion = () => {
                 )}
             </main>
             <Footer />
+        </div>
+    );
+};
+
+// ── «Crea tu acceso al evento» (v4.1267) ─────────────────────────────
+//
+// Componente de NIVEL SUPERIOR a propósito: declarado dentro del formulario
+// sería un tipo nuevo en cada render y los campos perderían el foco tras cada
+// letra (regla del proyecto). Tres casos, los del pedido del Distrito:
+//   A. sin cuenta → crea su contraseña;
+//   B. el correo ya tiene cuenta → entrar o recuperar, sin duplicarla;
+//   C. ya entró con ese correo → no se le pide nada.
+
+interface AccessSectionProps {
+    eventTitle: string;
+    mode: AccountMode;
+    identity: PublicConfig['identity'];
+    sessionMatches: boolean;
+    credentials: { password: string; passwordConfirm: string };
+    errors: Record<string, string>;
+    state: { kind: 'idle' } | { kind: 'checking' } | { kind: 'exists'; message: string; recover: boolean } | { kind: 'error'; message: string };
+    onCredential: (key: 'password' | 'passwordConfirm', value: string) => void;
+    onLogin: () => void;
+    onForgot: () => void;
+    onUseSessionEmail: () => void;
+}
+
+const AccessSection = ({
+    eventTitle, mode, identity, sessionMatches, credentials, errors, state,
+    onCredential, onLogin, onForgot, onUseSessionEmail,
+}: AccessSectionProps) => {
+    // Caso C: ya entró, con el MISMO correo del formulario.
+    if (sessionMatches && identity) {
+        return (
+            <div className="sm:col-span-2">
+                <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                    <UserCheck size={18} className="mt-0.5 shrink-0 text-emerald-700" />
+                    <div>
+                        <p className="text-sm font-bold text-emerald-900">Estás ingresando con tu cuenta de Rotary Distrito 4281.</p>
+                        <p className="mt-1 text-[13px] leading-relaxed text-emerald-800">
+                            Esta inscripción quedará en tu cuenta (<span className="font-semibold" data-no-translate>{identity.email}</span>)
+                            y podrás consultarla en «Mis eventos». No necesitas crear otra contraseña.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    const checks = accessPasswordChecks(credentials.password, credentials.passwordConfirm);
+    const touched = Boolean(credentials.password || credentials.passwordConfirm);
+
+    return (
+        <div className="sm:col-span-2">
+            <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 sm:p-5" aria-labelledby="crea-tu-acceso">
+                <p id="crea-tu-acceso" className="flex items-center gap-2 text-[15px] font-bold text-slate-800">
+                    <KeyRound size={16} style={{ color: BLUE }} /> Crea tu acceso al evento
+                    {mode === 'optional' && (
+                        <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500 ring-1 ring-slate-200">
+                            Recomendado
+                        </span>
+                    )}
+                </p>
+                <p className="mt-1.5 text-[13px] leading-relaxed text-slate-600">
+                    Con tu cuenta podrás consultar el estado de tu inscripción, verificar tus comprobantes y acceder a
+                    la información de tu participación en la {eventTitle}.
+                </p>
+
+                {identity && !sessionMatches && (
+                    <p className="mt-2 text-[13px] leading-relaxed text-slate-500">
+                        Tienes la sesión iniciada como <span className="font-semibold" data-no-translate>{identity.email}</span>,
+                        pero el correo del formulario es otro: esta inscripción será de esa otra persona y necesita su propio
+                        acceso.{' '}
+                        <button type="button" onClick={onUseSessionEmail} className="font-semibold underline" style={{ color: BLUE }}>
+                            Usar el correo de mi sesión
+                        </button>
+                    </p>
+                )}
+
+                <p className="mt-3 flex items-center gap-1.5 text-[13px] text-slate-600">
+                    <Mail size={14} className="text-slate-400" />
+                    Correo de acceso: el que escribiste arriba.
+                </p>
+
+                <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                    <Field
+                        label="Crear contraseña" name="password" type="password" revealable
+                        required={mode === 'required'}
+                        value={credentials.password}
+                        onChange={(e: any) => onCredential('password', e.target.value)}
+                        error={errors.password}
+                        touched={Boolean(errors.password)}
+                        placeholder="Mínimo 8 caracteres"
+                    />
+                    <Field
+                        label="Confirmar contraseña" name="passwordConfirm" type="password" revealable
+                        required={mode === 'required'}
+                        value={credentials.passwordConfirm}
+                        onChange={(e: any) => onCredential('passwordConfirm', e.target.value)}
+                        error={errors.passwordConfirm}
+                        touched={Boolean(errors.passwordConfirm)}
+                        placeholder="Escríbela de nuevo"
+                    />
+                </div>
+
+                {/* El indicador discreto de requisitos: se ve en cuanto se escribe. */}
+                {touched && (
+                    <ul className="mt-2.5 flex flex-wrap gap-x-5 gap-y-1 text-[12px]" aria-live="polite">
+                        {checks.map(c => (
+                            <li key={c.key} className={`flex items-center gap-1.5 ${c.ok ? 'text-emerald-700' : 'text-slate-500'}`}>
+                                {c.ok ? <CheckCircle2 size={13} /> : <Circle size={13} />} {c.label}
+                            </li>
+                        ))}
+                    </ul>
+                )}
+
+                {mode === 'optional' && (
+                    <p className="mt-2.5 text-[12px] leading-relaxed text-slate-500">
+                        Si inscribes a otra persona, puedes dejarlo en blanco: ella podrá crear su acceso después con su correo.
+                    </p>
+                )}
+
+                {/* Caso B: el correo ya tiene cuenta. Nunca se crea otra. */}
+                {state.kind === 'exists' && (
+                    <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4" role="alert">
+                        <p className="text-sm font-bold text-amber-900">{state.message}</p>
+                        <p className="mt-1 text-[13px] leading-relaxed text-amber-800">
+                            Lo que ya escribiste queda guardado en este navegador.
+                            {mode === 'optional' && ' Si prefieres, deja la contraseña en blanco y continúa: podrás vincular la inscripción después.'}
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                            {!state.recover && (
+                                <button type="button" onClick={onLogin}
+                                    className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-bold text-white transition hover:opacity-90"
+                                    style={{ background: BLUE }}>
+                                    <LogIn size={15} /> Iniciar sesión
+                                </button>
+                            )}
+                            <button type="button" onClick={onForgot}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-900 transition hover:bg-amber-100">
+                                <KeyRound size={15} /> Recuperar contraseña
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {state.kind === 'error' && (
+                    <p className="mt-3 flex items-center gap-1.5 text-[13px] font-medium text-red-600" role="alert">
+                        <AlertCircle size={13} /> {state.message}
+                    </p>
+                )}
+
+                {!identity && state.kind !== 'exists' && (
+                    <p className="mt-3 text-[13px] text-slate-500">
+                        ¿Ya tienes una cuenta en Rotary Distrito 4281?{' '}
+                        <button type="button" onClick={onLogin} className="font-semibold underline" style={{ color: BLUE }}>
+                            Inicia sesión
+                        </button>
+                    </p>
+                )}
+            </section>
         </div>
     );
 };

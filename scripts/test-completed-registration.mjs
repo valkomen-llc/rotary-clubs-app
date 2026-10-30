@@ -706,8 +706,14 @@ const leer = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
     // `test:completed:path`; esto fija que la defensa no se quite por descuido.
     check('el ensure de requireForm está envuelto en try: un tropiezo no tumba la lectura',
         /try\s*\{\s*await ensureEventRegistrationSchema\(\);\s*\}/.test(publicCtrl));
-    check('los tres 500 públicos llevan el motivo textual en `detail`',
-        (publicCtrl.match(/res\.status\(500\)\.json\(\{[^}]*detail:\s*error\?\.message/g) || []).length === 3);
+    // v4.1267 — Son cuatro desde la comprobación de acceso del paso 1. Se
+    // exige que TODOS lleven el motivo, no un número fijo que se quede atrás.
+    {
+        const todos = (publicCtrl.match(/res\.status\(500\)\.json\(/g) || []).length;
+        const conMotivo = (publicCtrl.match(/res\.status\(500\)\.json\(\{[^}]*detail:\s*error\?\.message/g) || []).length;
+        check('los 500 públicos llevan TODOS el motivo textual en `detail`', todos >= 4 && conMotivo === todos,
+            `${conMotivo} de ${todos}`);
+    }
 
     const store = leer('server/lib/completedRegistrationStore.js');
     check('el ensure de la resolución por slug también está envuelto en try',
@@ -766,7 +772,7 @@ const leer = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 
     // v4.950 — el motor de importación.
     check('las columnas del motor están ENUMERADAS en el atajo del ensure (trampa v4.908)',
-        /OWNED_COMPLETED_COLUMNS = \['importBatchId', 'importMeta', 'guestType'\]/.test(ensure)
+        /OWNED_COMPLETED_COLUMNS = \['importBatchId', 'importMeta', 'guestType'[,\]]/.test(ensure)
         && /OWNED_COMPLETED_COLUMNS\]/.test(ensure)
         && /'EventImportBatch',/.test(ensure)
         && /addColumn\('EventCompletedRegistration', 'importBatchId'/.test(ensure));

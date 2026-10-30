@@ -83,7 +83,7 @@ const OWNED_MESSAGE_COLUMNS = ['providerId'];
 // Columnas de `EventCompletedRegistration` añadidas después de crear la tabla.
 // ⚠️ Misma trampa de v4.908: sin enumerarlas acá, el atajo da el esquema por
 // aplicado y el ALTER no corre jamás en una base que ya tenía la tabla.
-const OWNED_COMPLETED_COLUMNS = ['importBatchId', 'importMeta', 'guestType'];
+const OWNED_COMPLETED_COLUMNS = ['importBatchId', 'importMeta', 'guestType', 'accountId', 'submissionKey'];
 
 // Columnas de `EventRegistrationCategory` añadidas después de crear la tabla.
 // ⚠️ Misma trampa de v4.908: sin enumerarlas acá, el atajo da el esquema por
@@ -546,6 +546,22 @@ export const ensureEventRegistrationSchema = async () => {
     // v4.951 — el tipo de invitado del formulario de referencia.
     await addColumn('EventCompletedRegistration', 'guestType', 'VARCHAR(200)');
     await index('EventCompletedRegistration_batch_idx', 'ON "EventCompletedRegistration" ("importBatchId")');
+
+    // v4.1267 — La cuenta del participante. `accountId` ata el registro a su
+    // `EventAttendeeAccount` (la misma del registro en línea): cuenta → evento
+    // → inscripción en UNA fila, y el panel filtra por ella en el WHERE.
+    // Nulo = sin cuenta todavía; nunca se rellena por coincidencia de correo
+    // sin que el titular haya demostrado que el correo es suyo.
+    await addColumn('EventCompletedRegistration', 'accountId', 'TEXT');
+    await index('EventCompletedRegistration_account_idx', 'ON "EventCompletedRegistration" ("accountId")');
+    // `submissionKey` la genera el navegador una vez por formulario: un
+    // segundo envío con la misma clave (doble clic, recarga, red que reintenta)
+    // devuelve el registro que ya existe en vez de crear otro. Único por
+    // evento, y parcial: las filas anteriores no tienen clave.
+    await addColumn('EventCompletedRegistration', 'submissionKey', 'VARCHAR(80)');
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "EventCompletedRegistration_submission_uniq"
+                    ON "EventCompletedRegistration" ("eventId", "submissionKey") WHERE "submissionKey" IS NOT NULL;`)
+        .catch(err => console.error('[eventRegistrationSchema] EventCompletedRegistration_submission_uniq:', err.message));
 
     // El LOTE de una importación: identificable, con sus totales y su estado.
     // Es lo que hace posible el historial de importaciones y la reversión.
