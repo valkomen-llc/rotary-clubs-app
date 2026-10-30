@@ -44,6 +44,7 @@ import { forgetSession, rememberProfile, emitSessionChange, useSiteSessions } fr
 import { FORM_STATE_META, fmtDateTime, type FormCard, type FormState } from '../lib/projectForms';
 import { inputCls, BLUE } from '../components/project-forms/FormFields';
 import ProjectFormView from '../components/project-forms/ProjectFormView';
+import { PresentationTemplateCard, NextStepCard } from '../components/project-forms/ProjectResourceCards';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 
@@ -535,38 +536,33 @@ const MiProyecto = () => {
                             </div>
                         ) : null}
 
-                        {/* Formularios del proyecto */}
+                        {/* Formularios y recursos del proyecto.
+                            v4.1264 — Una sola cuadrícula de dos columnas: arriba
+                            los formularios (Formulación | Solicitud del FDD), abajo
+                            la plantilla de presentación (debajo de la Formulación)
+                            y Rotary 31A (debajo del FDD), que dejó de ser una banda
+                            de ancho completo. En el móvil, una columna en ese
+                            mismo orden. */}
                         <section>
-                            <h2 className="text-lg font-bold text-slate-900">Formularios del proyecto</h2>
+                            <h2 className="text-lg font-bold text-slate-900">Formularios y recursos del proyecto</h2>
                             <p className="mt-1 text-[15px] text-slate-600">
                                 Diligéncialos en el orden que prefieras. El avance se guarda solo y puedes volver cuantas veces necesites.
                             </p>
-
-                            <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                                {forms.map(form => <FormCardTile key={form.key} form={form} onOpen={() => openFormView(form.key)} />)}
-                            </div>
 
                             {!forms.length && (
                                 <p className="mt-5 rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-400">
                                     Todavía no hay formularios habilitados para tu proyecto.
                                 </p>
                             )}
-                        </section>
 
-                        {/* Paso siguiente */}
-                        {data.nextStep?.url && (
-                            <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 text-center">
-                                <p className="text-[15px] text-slate-700">
-                                    Cuando tengas tu proyecto formulado, continúa el proceso internacional en{' '}
-                                    <strong>{data.nextStep.name || 'Rotary Grants 31A'}</strong>.
-                                </p>
-                                <a href={data.nextStep.url} target="_blank" rel="noreferrer"
-                                    className="mt-4 inline-flex items-center gap-2 rounded-xl border-2 px-6 py-3 text-[15px] font-bold transition hover:bg-slate-50"
-                                    style={{ borderColor: BLUE, color: BLUE }}>
-                                    {data.nextStep.label || 'Continuar hacia Rotary Grants 31A'} <ExternalLink size={16} />
-                                </a>
-                            </section>
-                        )}
+                            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                                {forms.map(form => <FormCardTile key={form.key} form={form} onOpen={() => openFormView(form.key)} />)}
+                                {/* La descarga no depende del pago ni de los
+                                    formularios: es un recurso de apoyo. */}
+                                <PresentationTemplateCard token={token} onSessionExpired={logout} />
+                                {data.nextStep?.url && <NextStepCard nextStep={data.nextStep} />}
+                            </div>
+                        </section>
                     </>
                 )}
             </main>

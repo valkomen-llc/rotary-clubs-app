@@ -34,13 +34,30 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1263.0 | 2026-10-30 (Inscripciones al evento: seleccionar, editar y eliminar desde el listado)
+// UI V4.1264.0 | 2026-10-30 (Feria de Proyectos: plantilla oficial de presentación — administrable, versionada, descarga auditada)
 // Cache bust: 2026-10-30
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1264.0',
+        title: 'Feria de Proyectos: plantilla oficial de presentación, descargable desde «Mi proyecto» 📥',
+        description: 'El panel «Mi proyecto» reorganiza sus tarjetas en dos columnas: arriba la Formulación del proyecto y la Solicitud de Aportes del FDD; abajo la nueva «Plantilla de presentación del proyecto» (debajo de la Formulación) y Subvenciones de Rotary 31A (debajo del FDD). La plantilla la sube y publica el comité desde Postulación de Proyectos → «Recursos y plantillas», con historial de versiones, y cada descarga queda registrada para saber qué usuarios, clubes y proyectos ya la tienen y cuáles no.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'mi proyecto', 'plantillas', 'analítica'],
+        type: 'feature',
+        impact: 'Alta: los clubes descargan el formato institucional y el comité sabe a quién recordarle antes de la Feria.',
+        changes: [
+            { type: 'added', text: 'Tarjeta «Plantilla de presentación del proyecto» con estados: disponible, próximamente, actualizada y ya descargada. Descargar no depende del pago ni cambia ningún formulario.' },
+            { type: 'changed', text: 'Subvenciones de Rotary 31A pasa de banda de ancho completo a tarjeta, con el mismo texto y enlace. En el móvil, una sola columna en el mismo orden.' },
+            { type: 'added', text: 'Recursos y plantillas: subir PPTX o PDF (se valida el tipo real del archivo), publicar o desactivar, editar título y descripción, tamaño máximo configurable, reemplazar conservando las versiones anteriores.' },
+            { type: 'added', text: 'Descarga autenticada: el servidor verifica la sesión del club, registra la solicitud y la entrega con la versión, y entrega un enlace privado que caduca en 2 minutos. Los intentos fallidos no cuentan como descargas.' },
+            { type: 'added', text: 'Analítica: usuarios únicos, proyectos con descarga, descargas exitosas, pendientes, adopción por distrito, evolución diaria y tabla de seguimiento con filtros, búsqueda y exportación CSV / Excel.' },
+            { type: 'added', text: 'npm run test:fair:resources (70), test:fair:resources:e2e (55, Postgres real) y test:fair:resources:ui (24, en navegador).' },
+        ],
+    },
     {
         version: '4.1263.0',
         title: 'Inscripciones al evento: seleccionar, editar y eliminar desde el listado ☑️',

@@ -15,7 +15,7 @@ import {
     AlertTriangle, ArrowLeft, ArrowUpDown, BarChart3, Building2, Globe, MapPin, CheckCircle2, ClipboardList, Clock,
     CreditCard, Download, ExternalLink, Eye, FileSpreadsheet, FileText, Filter,
     Loader2, Mail, MessageSquarePlus, RefreshCw, Search,
-    TrendingUp, Wallet, X, ShieldCheck, Paperclip, Settings, FileSignature, Lock, Unlock,
+    TrendingUp, Wallet, X, ShieldCheck, Paperclip, Settings, FileSignature, Lock, Unlock, FileDown,
     Archive, ArchiveRestore, CheckSquare, Square, Trash2, TagIcon, Banknote, ArrowRight, History, Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -31,6 +31,8 @@ import {
 } from '../../lib/projectFairBulk';
 import AdminLayout from '../../components/admin/AdminLayout';
 import ConvocatoriaConfig from '../../components/admin/feria/ConvocatoriaConfig';
+// v4.1264 — La plantilla oficial de presentación: subir, publicar, versiones y analítica.
+import RecursosPlantillas from '../../components/admin/feria/RecursosPlantillas';
 import EdicionesList from '../../components/admin/feria/EdicionesList';
 import ProjectFormApproval from '../../components/admin/feria/ProjectFormApproval';
 // ⚠️ v4.1026 — LA MISMA BARRA DE LA BÓVEDA, no una copia. Registrar un traslado
@@ -193,6 +195,8 @@ const EVENT_META: Record<string, { label: string; color: string }> = {
     sync_error: { label: 'Error de sincronización', color: 'red' },
     reviewed: { label: 'Revisada', color: 'emerald' },
     redirect: { label: 'Redirección a Grants', color: 'violet' },
+    // v4.1264 — Entrega de la plantilla oficial de presentación al club.
+    template_downloaded: { label: 'Plantilla descargada', color: 'sky' },
 };
 
 /** Encabezado de un bloque temático del Centro de Inteligencia. */
@@ -239,7 +243,7 @@ const RankPanel = ({ title, rows, priceMode }: { title: string; rows: any[]; pri
 
 // ════════════════════════════════════════════════════════════════════
 const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = false, eventId: embedEventId }) => {
-    type Tab = 'dashboard' | 'submissions' | 'forms' | 'alerts' | 'config';
+    type Tab = 'dashboard' | 'submissions' | 'forms' | 'alerts' | 'config' | 'resources';
     // ?tab=config permite enlazar directo a la configuración (y mantiene vivos
     // los enlaces a la antigua entrada de menú "Postulación de Proyectos").
     const [tab, setTab] = useState<Tab>(() => {
@@ -247,7 +251,7 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
         // sigue en su página.
         if (embedded) return 'submissions';
         const requested = new URLSearchParams(window.location.search).get('tab');
-        return (['dashboard', 'submissions', 'forms', 'alerts', 'config'] as const).includes(requested as Tab)
+        return (['dashboard', 'submissions', 'forms', 'alerts', 'config', 'resources'] as const).includes(requested as Tab)
             ? (requested as Tab) : 'dashboard';
     });
     // Edición abierta. Vive en la URL para que el enlace se pueda compartir y
@@ -861,7 +865,8 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                     {([['dashboard', 'Centro de Inteligencia', BarChart3], ['submissions', 'Postulaciones', ClipboardList],
                        ['forms', 'Formulación', FileSignature],
                        ['alerts', 'Alertas', AlertTriangle],
-                       ['config', 'Convocatoria', Settings]] as const).map(([key, label, Icon]) => (
+                       ['config', 'Convocatoria', Settings],
+                       ['resources', 'Recursos y plantillas', FileDown]] as const).map(([key, label, Icon]) => (
                         <button key={key} onClick={() => setTab(key)}
                             className={`inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-semibold transition ${
                                 tab === key ? 'border-blue-700 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
@@ -1817,6 +1822,9 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                     </div>
                     );
                 })()}
+
+                {/* ── Recursos y plantillas (v4.1264) ──────────────────── */}
+                {tab === 'resources' && <RecursosPlantillas eventId={eventId} />}
 
                 {/* ── Configuración de la convocatoria ──────────────────── */}
                 {tab === 'config' && (
