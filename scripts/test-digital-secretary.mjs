@@ -59,7 +59,8 @@ const preset = S.presetRole('digital_secretary');
 check('existe como preset del código (no fila sembrada)', !!preset);
 eq('su nombre es el del pedido', preset?.label, 'Secretaría Digital — Control de Aportes');
 check('es de sitio y protegido', preset?.scope === 'site' && preset?.protected === true);
-eq('⚠️ sus permisos son EXACTAMENTE ver, exportar y su buzón', [...preset.permissions].sort(), ['email_inbox.use_own', 'finance.export', 'finance.view']);
+// v4.1271 — más el Directorio de Clubes y su Catálogo Maestro (ver y administrar).
+eq('⚠️ sus permisos son EXACTAMENTE ver, exportar, su buzón y el Directorio de Clubes', [...preset.permissions].sort(), ['clubs.manage', 'clubs.view', 'email_inbox.use_own', 'finance.export', 'finance.view']);
 check('⚠️ NO trae finance.manage (retiros, traslados, estados)', !S.expandPermissions(preset.permissions).permissions.includes('finance.manage'));
 check('no es un rol administrativo (no administra usuarios)', !S.isAdministrativeRole(preset));
 eq('entra directo a la Bóveda', preset.landing, '/admin/boveda');
@@ -83,11 +84,16 @@ check('abre /admin/boveda', S.canOpenPath(gJ, '/admin/boveda'));
 check('no abre /admin/integraciones', !S.canOpenPath(gJ, '/admin/integraciones'));
 check('no abre /admin/configuracion', !S.canOpenPath(gJ, '/admin/configuracion'));
 eq('su destino al entrar es la Bóveda', S.landingFor(gJ), '/admin/boveda');
+check('v4.1271 — ve el Directorio de Clubes', S.hasPermission(gJ, 'clubs.view'));
+check('v4.1271 — administra el Directorio y el Catálogo Maestro', S.hasPermission(gJ, 'clubs.manage'));
+check('v4.1271 — abre /admin/directorio-clubes (y su pestaña del catálogo)', S.canOpenPath(gJ, '/admin/directorio-clubes') && S.canOpenPath(gJ, '/admin/directorio-clubes?tab=catalogo'));
+check('v4.1271 — el Directorio es un módulo de SITIO, no de plataforma', S.moduleOf('clubs')?.scope === 'site' && !S.moduleOf('platform_sites').routes.includes('/admin/directorio-clubes'));
 
 const LAYOUT = leer('src/components/admin/AdminLayout.tsx');
 const RUTAS = [...new Set([...LAYOUT.matchAll(/path:\s*(?:esFeria \? '[^']*' : )?'(\/admin[^']*)'/g)].map(m => m[1]))];
 const menu = RUTAS.filter(p => S.canOpenPath(gJ, p));
 check('la barra lateral tiene «Finanzas → Bóveda de Fondos»', menu.includes('/admin/boveda'), JSON.stringify(menu));
+check('v4.1271 — y «Directorio de Clubes»', menu.includes('/admin/directorio-clubes'), JSON.stringify(menu));
 check('⚠️ y ninguna pantalla de administración', !menu.some(p => ['/admin/usuarios', '/admin/configuracion', '/admin/integraciones', '/admin/roles'].includes(p)), JSON.stringify(menu));
 check('la entrada de la Bóveda vive en la categoría Finanzas', /label: esFeria \? 'Conciliaciones y Desembolsos' : 'Bóveda de Fondos',[\s\S]{0,200}category: 'Finanzas'/.test(LAYOUT));
 

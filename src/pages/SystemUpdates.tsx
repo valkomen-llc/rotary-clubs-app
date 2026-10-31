@@ -34,13 +34,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1270.0 | 2026-10-31 (Catálogo Maestro: el equipo del sitio distrital puede agregar y editar clubes)
+// UI V4.1271.0 | 2026-10-31 (Secretaría Digital: acceso al Directorio de Clubes y al Catálogo Maestro)
 // Cache bust: 2026-10-31
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1271.0',
+        title: 'Secretaría Digital: acceso al Directorio de Clubes y al Catálogo Maestro 🗂️',
+        description: 'La cuenta de la Secretaría Distrital (rol «Secretaría Digital») ve ahora en su menú «Directorio de Clubes» y puede administrar el Catálogo Maestro: agregar, editar, inactivar, importar y revisar duplicados. Para hacerlo posible, el Directorio de Clubes pasó a ser un módulo de permisos del sitio («Directorio de Clubes»), que también se puede conceder a cualquier otro rol desde «Usuarios y permisos».',
+        date: new Date().toISOString(),
+        tags: ['directorio de clubes', 'catálogo', 'permisos', 'secretaría digital', 'distrito 4281'],
+        type: 'feature',
+        impact: 'Alta: la Secretaría Distrital mantiene la lista oficial de clubes sin depender de un administrador del sitio.',
+        changes: [
+            { type: 'added', text: 'Nuevo módulo de permisos «Directorio de Clubes» (ver / administrar) en «Usuarios y permisos». Las rutas del Directorio ya pedían esos permisos, pero el módulo no existía y la pantalla colgaba de «Sitios del ecosistema», un módulo de plataforma que ningún rol de sitio podía recibir.' },
+            { type: 'changed', text: 'El rol «Secretaría Digital — Control de Aportes» incluye ahora «Directorio de Clubes: ver y administrar». Sigue sin poder mover dinero (sin «finance.manage»).' },
+            { type: 'changed', text: 'Los roles «Administrador del sitio» y «Solo lectura» incluyen el módulo nuevo, como todos los módulos del sitio. Escribir en el Catálogo Maestro sigue exigiendo ser del sitio del distrito: con este permiso, el sitio de un club no toca el catálogo distrital.' },
+            { type: 'added', text: 'Pruebas: test:digital-secretary (130) y test:club-catalog con el caso de la Secretaría en el sitio del 4281 y en el sitio de un club.' },
+        ],
+    },
     {
         version: '4.1270.0',
         title: 'Catálogo Maestro: el equipo distrital ya puede agregar y editar clubes ➕',

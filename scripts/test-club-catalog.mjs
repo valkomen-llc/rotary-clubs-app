@@ -104,6 +104,8 @@ check('sitio tipo district con los dígitos sólo en el subdominio («rotary4281
 check('sitio de tipo «club» que lleva el subdominio del distrito', sc({ role: 'club_admin', clubId: 's1' }, { id: 's1', type: 'club', subdomain: 'rotary4281' }) === '4281');
 check('sitio donde está asignado el district_admin del distrito', sc({ role: 'club_admin', clubId: 's1' }, { id: 's1', type: 'club', districtId: 'd4281' }, [{ ...D4281, isAdminSite: true }]) === '4281');
 check('el sitio de un CLUB que sólo pertenece al distrito NO administra', sc({ role: 'club_admin', clubId: 'pasto' }, { id: 'pasto', name: 'Club Rotario Pasto', type: 'club', districtId: 'd4281', district: '4281', subdomain: 'pasto' }) === null);
+check('v4.1271 — la Secretaría Digital (institutional_user) del sitio del 4281 administra el catálogo', sc({ role: 'institutional_user', clubId: 's1' }, { id: 's1', type: 'district', district: '4281' }) === '4281');
+check('…pero la de un sitio de club no', sc({ role: 'institutional_user', clubId: 'pasto' }, { id: 'pasto', type: 'club', districtId: 'd4281' }) === null);
 check('district_admin sin sitio: su distrito', sc({ role: 'district_admin', districtId: 'd4281' }, null) === '4281');
 check('un socio (member) sólo consulta', sc({ role: 'member', clubId: 's1' }, { id: 's1', type: 'district', district: '4281' }) === null);
 check('administrator / superadmin: todos', S.catalogScopeFromRecords({ user: { role: 'administrator' } }).scope?.all === true);

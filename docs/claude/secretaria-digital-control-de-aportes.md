@@ -127,6 +127,15 @@ traslado abierto a `finance.view` → 1; el `return` del vencido quitado → 3;
 administradora por `User.role` y hay que corregir eso primero. Queda en la
 auditoría con quién lo hizo.
 
+**v4.1271 — Directorio de Clubes y Catálogo Maestro.** El preset suma
+`clubs.view` y `clubs.manage`. Para que eso fuera concedible se creó el módulo
+de SITIO `clubs` («Directorio de Clubes», ruta `/admin/directorio-clubes`) en
+`rbacSpec.js` + espejo; la ruta salió de `platform_sites`. Las rutas del
+servidor ya pedían `clubs.view`/`clubs.manage` desde v4.1212 pero el permiso no
+existía en el registro: ninguna cuenta acotada podía pasar. Escribir en el
+catálogo exige además ser del sitio del distrito (`catalogScopeFromRecords`,
+incluye `institutional_user`). Sigue SIN `finance.manage`.
+
 **Pendientes conocidos:** el listado de `/financial/donations` trae hasta 200
 aportes por consulta (suficiente hoy; paginar si un sitio lo supera); el club y
 el distrito del aportante no existen como dato en `Donation` (se ven cuando el
