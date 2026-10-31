@@ -580,7 +580,7 @@ const ChangesPanel: React.FC<{ district: string }> = ({ district }) => {
 
 // ─── La pantalla ──────────────────────────────────────────────────────
 export const ClubCatalogMaster: React.FC<{ defaultDistrict?: number }> = ({ defaultDistrict = 4281 }) => {
-  const [data, setData] = useState<{ clubs: MasterClub[]; summary: Summary; districts: number[]; permissions: { canWrite: boolean; scope: any } } | null>(null);
+  const [data, setData] = useState<{ clubs: MasterClub[]; summary: Summary; districts: number[]; permissions: { canWrite: boolean; scope: any; reason?: string } } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [vista, setVista] = useState<'clubes' | 'duplicados' | 'bitacora'>('clubes');
   const [q, setQ] = useState('');
@@ -639,7 +639,13 @@ export const ClubCatalogMaster: React.FC<{ defaultDistrict?: number }> = ({ defa
         {!canWrite && data && (
           <span className="text-xs font-bold text-gray-600 bg-gray-100 rounded-full px-3 py-1.5 flex items-center gap-1.5"><Lock className="w-3.5 h-3.5" /> Sólo consulta</span>
         )}
+        {canWrite && data?.permissions?.scope?.districts && (
+          <span className="text-xs font-bold text-emerald-700 bg-emerald-50 rounded-full px-3 py-1.5 flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5" /> Administras el Distrito {data.permissions.scope.districts.join(', ')}</span>
+        )}
       </div>
+      {!canWrite && data?.permissions?.reason && (
+        <p className="text-xs text-gray-600 bg-gray-50 border border-gray-100 rounded-xl p-3 flex gap-2"><Info className="w-4 h-4 shrink-0 text-gray-400" />{data.permissions.reason}</p>
+      )}
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <Stat label="Clubes" value={s?.total ?? '—'} hint="En el filtro de distrito" />

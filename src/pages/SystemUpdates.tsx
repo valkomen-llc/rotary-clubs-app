@@ -34,13 +34,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1269.0 | 2026-10-31 (Directorio de Clubes: Catálogo Maestro, la fuente única de clubes de todos los formularios)
+// UI V4.1270.0 | 2026-10-31 (Catálogo Maestro: el equipo del sitio distrital puede agregar y editar clubes)
 // Cache bust: 2026-10-31
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1270.0',
+        title: 'Catálogo Maestro: el equipo distrital ya puede agregar y editar clubes ➕',
+        description: 'En rotary4281.org el Catálogo Maestro aparecía en «Sólo consulta» y sin el botón «Agregar club». El permiso sólo reconocía el sitio del distrito cuando su registro tenía el tipo «distrito» y el vínculo directo con el Distrito; el sitio del 4281 está vinculado por el número del distrito y su subdominio. Ahora se usa el mismo criterio con el que la plataforma ya sirve rotary4281.org.',
+        date: new Date().toISOString(),
+        tags: ['directorio de clubes', 'catálogo', 'permisos', 'distrito 4281'],
+        type: 'fix',
+        impact: 'Alta: el equipo del Distrito 4281 puede agregar, editar, inactivar, importar y revisar duplicados en el Catálogo Maestro.',
+        changes: [
+            { type: 'fixed', text: 'El sitio del distrito se reconoce por su vínculo real: número del distrito en el sitio, subdominio declarado, asignación del administrador distrital o vínculo directo. Mismo criterio que `districtSite.js`.' },
+            { type: 'changed', text: 'Sigue igual la seguridad: el sitio de un club que sólo pertenece al distrito (p. ej. un club de Pasto) consulta pero no modifica el catálogo, y todo se valida en el servidor.' },
+            { type: 'added', text: 'Si una cuenta queda en «Sólo consulta», el panel explica el motivo; si puede editar, muestra «Administras el Distrito 4281».' },
+            { type: 'added', text: 'npm run test:club-catalog: 51 comprobaciones puras y 50 de integración, con el caso real del sitio del 4281.' },
+        ],
+    },
     {
         version: '4.1269.0',
         title: 'Directorio de Clubes: Catálogo Maestro, la fuente única de clubes 🏛️',

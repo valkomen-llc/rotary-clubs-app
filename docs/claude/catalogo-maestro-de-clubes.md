@@ -131,6 +131,27 @@ pendiente_verificacion), `clubType`, `adminNotes`, `aliases` (JSONB),
 - **Lo público** (`/public/clubs`, `/public/districts`, `/public/club/:id`) sólo
   devuelve activos y `publicClubShape`: nunca notas, correos ni quién editó.
 
+## v4.1270 — el equipo del sitio distrital quedaba en «Sólo consulta»
+
+Reporte con captura: en rotary4281.org el Catálogo Maestro decía «Sólo
+consulta» y no ofrecía «Agregar club». `catalogScopeFor` exigía que el sitio
+de la sesión tuviera `Club.type` distrito **y** `districtId` enlazado; el sitio
+del 4281 está vinculado por el número en `Club.district` / su subdominio, no por
+`districtId` (exactamente lo que `districtSite.js` documenta desde v4.744).
+
+- La decisión es ahora PURA: `catalogScopeFromRecords` (en `clubCatalogSpec.js`)
+  con `districtLinkScore` de `districtSite.js`: el sitio tiene que **pertenecer**
+  al distrito (id, número —también «Distrito 4281» o «rotary4281»— o
+  subdominio) **y declararse su sitio** (tipo distrito, subdominio del distrito
+  o un `district_admin` de ese distrito asignado al sitio). Pertenecer no
+  alcanza: el sitio de un club del distrito sigue en sólo consulta.
+- El número del distrito sale de `District.number` o de los dígitos de su
+  nombre, subdominio o dominio (`districtNumberOfRecord`).
+- La API devuelve `permissions.reason`; el panel lo muestra cuando no se puede
+  escribir y, cuando sí, «Administras el Distrito N».
+- Pruebas: 10 casos puros con las formas reales del sitio + 3 de integración con
+  el sitio del 4281 SIN `districtId`, como en producción.
+
 ## Cómo se probó (v4.1269)
 
 - `npm run test:club-catalog`: 41 comprobaciones puras (en `prebuild`) + 47 de

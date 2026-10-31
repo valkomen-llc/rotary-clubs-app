@@ -19,10 +19,10 @@ import {
     clubHistory, recentChanges, createClub, updateClub, setClubStatus, duplicateCandidates, mergeClubs,
     unmergeClub, dismissDuplicate, previewImport, commitImport, markVerified, resolveClubId, CatalogError,
 } from '../lib/clubCatalog.js';
-import { publicClubShape, CATALOG_STATES, CLUB_TYPES, ORGANIZATION_TYPES } from '../lib/clubCatalogSpec.js';
+import { publicClubShape, CATALOG_STATES, CLUB_TYPES, ORGANIZATION_TYPES, catalogScopeFromRecords } from '../lib/clubCatalogSpec.js';
 import { isPlatformOperator } from '../lib/institutionalAccess.js';
 
-console.log('[club-catalog] v4.1269.0 cargado — Catálogo Maestro de Clubes (fuente única para formularios y Directorio)');
+console.log('[club-catalog] v4.1270.0 cargado — Catálogo Maestro de Clubes: el equipo del sitio distrital puede agregar y editar clubes (mismo criterio de sitio que districtSite.js)');
 
 const fail = (res, e) => {
     const status = e instanceof CatalogError ? e.status : 500;
@@ -32,30 +32,46 @@ const fail = (res, e) => {
 
 const districtsParam = (v) => String(v || '').split(',').map(x => Number(String(x).replace(/\D/g, ''))).filter(n => n >= 1000 && n <= 9999);
 const actorOf = (req) => ({ id: req.user?.id || null, name: req.user?.name || req.user?.email || 'Administración' });
-const DISTRICT_SITE_TYPES = ['district', 'distrito', 'distrito rotario'];
+
+/**
+ * El alcance de escritura de la sesión, con su motivo. `scope: null` = sólo consulta.
+ * La decisión es PURA (`catalogScopeFromRecords`, mismo criterio que
+ * `districtSite.js`); aquí sólo se leen los registros.
+ */
+export async function catalogScopeDetail(user) {
+    if (!user) return { scope: null, reason: 'Sin sesión.' };
+    if (isPlatformOperator(user) || user.isSuperAdmin === true) return { scope: { all: true }, reason: 'Operador de la plataforma.' };
+    let site = null;
+    if (user.clubId) {
+        const { rows } = await db.query(
+            `SELECT id, name, type, "districtId", district, subdomain, domain FROM "Club" WHERE id = $1`, [user.clubId]
+        ).catch(() => ({ rows: [] }));
+        site = rows[0] || null;
+    }
+    const loose = (v) => { const m = String(v ?? '').match(/(?:^|\D)(\d{4})(?:\D|$)/); return m ? Number(m[1]) : null; };
+    const siteNum = loose(site?.district) || loose(site?.subdomain) || loose(site?.domain);
+    const { rows: districts } = await db.query(
+        `SELECT d.id, d.number, d.name, d.subdomain, d.domain,
+                ($5::text IS NOT NULL AND EXISTS (SELECT 1 FROM "User" u WHERE u."districtId" = d.id AND u."clubId" = $5 AND u.role = 'district_admin')) AS "isAdminSite"
+           FROM "District" d
+          WHERE d.id = ANY($1::text[])
+             OR ($2::int IS NOT NULL AND d.number = $2::int)
+             OR ($3::text <> '' AND lower(coalesce(d.subdomain, '')) = $3)
+             OR ($4::text <> '' AND lower(coalesce(d.domain, '')) = $4)`,
+        [[site?.districtId, user.districtId].filter(Boolean), siteNum || null,
+            String(site?.subdomain || '').toLowerCase().trim(), String(site?.domain || '').toLowerCase().trim(), site?.id || null]
+    ).catch((e) => { console.error('[club-catalog] alcance:', e?.message); return { rows: [] }; });
+    return catalogScopeFromRecords({ user, site, districts });
+}
 
 /** El alcance de escritura de la sesión. `null` = sólo consulta. */
 export async function catalogScopeFor(user) {
-    if (!user) return null;
-    if (isPlatformOperator(user) || user.isSuperAdmin === true) return { all: true };
-    const numeros = new Set();
-    if (user.role === 'district_admin' && user.districtId) {
-        const { rows } = await db.query(`SELECT number FROM "District" WHERE id = $1`, [user.districtId]).catch(() => ({ rows: [] }));
-        if (rows[0]?.number) numeros.add(Number(rows[0].number));
-    }
-    if (user.clubId) {
-        const { rows } = await db.query(
-            `SELECT c.type, d.number FROM "Club" c LEFT JOIN "District" d ON d.id = c."districtId" WHERE c.id = $1`, [user.clubId]
-        ).catch(() => ({ rows: [] }));
-        const site = rows[0];
-        if (site && DISTRICT_SITE_TYPES.includes(String(site.type || '').toLowerCase().trim()) && site.number) numeros.add(Number(site.number));
-    }
-    return numeros.size ? { districts: [...numeros] } : null;
+    return (await catalogScopeDetail(user)).scope;
 }
 
 const requireScope = async (req) => {
-    const scope = await catalogScopeFor(req.user);
-    if (!scope) throw new CatalogError('Tu cuenta puede consultar el catálogo, pero no modificarlo. Lo administra el equipo distrital.', 403);
+    const { scope, reason } = await catalogScopeDetail(req.user);
+    if (!scope) throw new CatalogError(reason || 'Tu cuenta puede consultar el catálogo, pero no modificarlo. Lo administra el equipo distrital.', 403);
     return scope;
 };
 
@@ -100,10 +116,10 @@ export const adminList = async (req, res) => {
     try {
         const districts = districtsParam(req.query.district);
         const out = await adminCatalog({ districts: districts.length ? districts : null });
-        const scope = await catalogScopeFor(req.user);
+        const { scope, reason } = await catalogScopeDetail(req.user);
         res.json({
             ...out,
-            permissions: { canWrite: !!scope, scope },
+            permissions: { canWrite: !!scope, scope, reason },
             options: { states: CATALOG_STATES, clubTypes: CLUB_TYPES, organizationTypes: ORGANIZATION_TYPES },
         });
     } catch (e) { return fail(res, e); }
@@ -231,5 +247,5 @@ export const ensureSchema = async (req, res, next) => {
 export default {
     publicClubs, publicDistricts, publicClub, adminList, adminDuplicates, adminChanges, adminDetail,
     adminCreate, adminUpdate, adminStatus, adminVerify, adminMerge, adminUnmerge, adminDismissDuplicate,
-    adminImportPreview, adminImportCommit, ensureSchema, catalogScopeFor,
+    adminImportPreview, adminImportCommit, ensureSchema, catalogScopeFor, catalogScopeDetail,
 };

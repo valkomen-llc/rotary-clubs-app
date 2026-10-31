@@ -23,6 +23,7 @@
 // Un club puede estar activo y con la ficha en borrador (existe, su página no
 // está lista), y un club inactivo conserva su ficha y su historia.
 // ════════════════════════════════════════════════════════════════════
+import { districtLinkScore } from './districtSite.js';
 
 /** Estados del club en el catálogo. Ninguno borra nada. */
 export const CATALOG_STATES = {
@@ -423,6 +424,79 @@ export const catalogScopeAllows = (scope, districtNumber) => {
     if (scope.all) return true;
     return Array.isArray(scope.districts) && scope.districts.map(Number).includes(Number(districtNumber));
 };
+
+/** El número de un distrito: su columna, o los cuatro dígitos de su nombre, subdominio o dominio. */
+export const districtNumberOfRecord = (d) => {
+    if (!d) return null;
+    const n = Number(d.number);
+    if (Number.isInteger(n) && n >= 1000 && n <= 9999) return n;
+    for (const v of [d.name, d.subdomain, d.domain]) {
+        const x = districtNumberFrom(v);
+        if (x) return x;
+    }
+    return null;
+};
+
+/** Roles que administran el sitio en el que están (mismo criterio que `SITE_ADMIN_ROLES`). */
+export const CATALOG_SITE_ROLES = ['administrator', 'superadmin', 'district_admin', 'club_admin', 'editor', 'institutional_user'];
+
+/**
+ * El alcance de escritura de una sesión, a partir de los REGISTROS (puro).
+ *
+ * v4.1270 — Hasta v4.1269 sólo se reconocía el sitio distrital si su fila de
+ * `Club` tenía `type = 'district'` Y `districtId` enlazado. El sitio de
+ * rotary4281.org no cumple las dos —el proyecto lo documenta en
+ * `districtSite.js`: el vínculo puede ser el número en `Club.district`, el
+ * subdominio declarado por el distrito o la asignación de sus
+ * administradores— y su equipo quedó en «Sólo consulta». Ahora se usa ese
+ * MISMO criterio (`districtLinkScore`): pertenecer al distrito Y declararse su
+ * sitio. Un club que sólo pertenece al distrito (el sitio de Pasto) sigue sin
+ * alcance: pertenecer no alcanza.
+ *
+ *   user       { role, districtId, clubId, isSuperAdmin }
+ *   site       la fila `Club` del sitio de la sesión (o null)
+ *   districts  filas `District` candidatas (por id, número o subdominio)
+ */
+export function catalogScopeFromRecords({ user, site = null, districts = [], linkScore = districtLinkScore }) {
+    if (!user) return { scope: null, reason: 'Sin sesión.' };
+    const role = String(user.role || '').trim();
+    if (role === 'administrator' || role === 'superadmin' || user.isSuperAdmin === true) return { scope: { all: true }, reason: 'Operador de la plataforma.' };
+    if (!CATALOG_SITE_ROLES.includes(role)) return { scope: null, reason: 'Tu rol puede consultar el catálogo, pero no modificarlo.' };
+    const numeros = new Set();
+    const lista = (Array.isArray(districts) ? districts : []).filter(Boolean);
+    // El administrador del distrito: su distrito.
+    if (role === 'district_admin' && user.districtId) {
+        const n = districtNumberOfRecord(lista.find(d => d.id === user.districtId));
+        if (n) numeros.add(n);
+    }
+    // El equipo del SITIO del distrito.
+    if (site) {
+        // Los números se normalizan antes de comparar: «Distrito 4281» en
+        // `Club.district` o un `District.number` vacío no deben romper el vínculo.
+        // Cuatro dígitos también pegados a letras: «rotary4281», «d4281.org».
+        const loose = (v) => { const m = String(v ?? '').match(/(?:^|\D)(\d{4})(?:\D|$)/); return m ? Number(m[1]) : null; };
+        const siteNum = loose(site.district) || loose(site.subdomain) || loose(site.domain);
+        for (const d of lista) {
+            const n = districtNumberOfRecord(d);
+            if (!n) continue;
+            const club = {
+                ...site,
+                district: siteNum ? String(siteNum) : site.district,
+                // `isAdminSite`: hay un `district_admin` de ese distrito asignado a
+                // este sitio (la asignación humana que `districtSite.js` ya usa).
+                isDistrictAdminSite: !!d.isAdminSite,
+            };
+            if (linkScore({ ...d, number: n }, club) > 0) numeros.add(n);
+        }
+    }
+    if (numeros.size) return { scope: { districts: [...numeros].sort() }, reason: `Administras el catálogo del Distrito ${[...numeros].join(', ')}.` };
+    return {
+        scope: null,
+        reason: site
+            ? `Tu cuenta pertenece al sitio «${site.name || 'sin nombre'}», que no es el sitio de un distrito: puedes consultar el catálogo, pero lo administra el equipo distrital.`
+            : 'Tu cuenta no está asociada al sitio de un distrito: puedes consultar el catálogo, pero lo administra el equipo distrital.',
+    };
+}
 
 /** Los indicadores del panel: cuántos, en qué estado, cuándo se tocó por última vez. */
 export function summarizeCatalog(clubs = []) {
