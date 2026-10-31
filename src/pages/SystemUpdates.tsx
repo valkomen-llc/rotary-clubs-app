@@ -34,13 +34,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1271.0 | 2026-10-31 (Secretaría Digital: acceso al Directorio de Clubes y al Catálogo Maestro)
+// UI V4.1272.0 | 2026-10-31 (Eventos: las tarjetas van centradas)
 // Cache bust: 2026-10-31
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1272.0',
+        title: 'Eventos: las tarjetas van centradas 🎯',
+        description: 'En la página pública de Eventos, cuando hay menos de tres eventos (p. ej. rotary4281.org con dos eventos próximos) las tarjetas quedaban pegadas a la izquierda con un hueco a la derecha. Ahora se reparten desde el centro de la página.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'sitio público', 'diseño'],
+        type: 'fix',
+        impact: 'Media: la página de Eventos se ve equilibrada con uno, dos o cualquier cantidad de eventos.',
+        changes: [
+            { type: 'fixed', text: 'La grilla de tres columnas pasó a una fila centrada con tarjetas del mismo ancho: uno o dos eventos quedan en la mitad, y la última fila incompleta de una lista larga también se centra.' },
+            { type: 'changed', text: 'Aplica a «Próximos eventos», «Eventos anteriores» y «Próximamente» (fecha por confirmar). En el móvil no cambia: una tarjeta por fila.' },
+        ],
+    },
     {
         version: '4.1271.0',
         title: 'Secretaría Digital: acceso al Directorio de Clubes y al Catálogo Maestro 🗂️',

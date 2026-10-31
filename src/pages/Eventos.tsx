@@ -100,10 +100,17 @@ const EventCard = ({ event, status, locale }: { event: PublicEvent; status: Temp
     );
 };
 
+// v4.1272 — Las tarjetas van CENTRADAS. Con la grilla de tres columnas, un
+// sitio con uno o dos eventos los dejaba pegados a la izquierda y la tercera
+// columna vacía. Ahora es una fila que se reparte desde el centro: mismo ancho
+// de tarjeta (un tercio menos los espacios), y la última fila incompleta
+// también queda en la mitad.
 const EventGrid = ({ events, now, locale }: { events: PublicEvent[]; now: number; locale: string }) => (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
+    <div className="flex flex-wrap justify-center gap-12">
         {events.map((event) => (
-            <EventCard key={event.id} event={event} status={temporalOf(event.lifecycle, now)} locale={locale} />
+            <div key={event.id} className="w-full md:w-[calc((100%-6rem)/3)]">
+                <EventCard event={event} status={temporalOf(event.lifecycle, now)} locale={locale} />
+            </div>
         ))}
     </div>
 );
