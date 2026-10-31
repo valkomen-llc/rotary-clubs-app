@@ -29,7 +29,10 @@ import {
 import * as connections from '../controllers/crm/connections.controller.js';
 import * as institutional from '../controllers/crm/institutional.controller.js';
 
+// v4.1269 — los clubes salen del Catálogo Maestro (vivo), no de la lista estática.
+import { clubCatalogWarm } from '../lib/clubCatalog.js';
 const router = express.Router();
+router.use(clubCatalogWarm);
 
 // ── Webhook (PÚBLICO — sin auth, Meta necesita acceso directo) ────────────
 router.get('/webhook', verifyWebhook);

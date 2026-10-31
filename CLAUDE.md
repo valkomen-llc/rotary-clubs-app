@@ -180,6 +180,8 @@ Y las siete de la Conciliación de inscripciones y traslados de un evento
 `EventFundsNotice`, `EventFundsHistory` y `EventStripeCheck`.
 Y la de las Visitas del Gobernador de Rotary en Acción (v4.1260):
 `GovernorVisit` (galería e historial en JSONB, sin tablas satélite).
+Y la bitácora del Catálogo Maestro de Clubes (v4.1269): `ClubCatalogChange`
+(el catálogo mismo es `DistrictClubProfile`, ampliada; ver su archivo).
 Y las cuatro de la plantilla oficial de presentación de la Feria (v4.1264):
 `ProjectFairResource`, `ProjectFairResourceVersion`,
 `ProjectFairResourceDownload` y `ProjectFairResourceEvent`.
@@ -213,6 +215,7 @@ es **rotar la credencial en Neon**, no sólo borrar el archivo.
 
 | Módulo | Archivo |
 |---|---|
+| **Catálogo Maestro de Clubes** — la fuente ÚNICA de clubes (Directorio = catálogo; lista estática sólo semilla; catálogo vivo para todos los formularios; estados, alias, duplicados reversibles, importación con revisión, permisos por distrito) — v4.1269 | `docs/claude/catalogo-maestro-de-clubes.md` |
 | Guía de pago por COLROTARIOS / AvalPay en el paso 4 de «Completar inscripción» (tarjeta contextual, configurable por evento, concepto verificado, volver de pagar sin perder el paso) — v4.1268 | `docs/claude/guia-de-pago-colrotarios.md` |
 | La cuenta del participante en «Completar inscripción» (crear acceso o entrar con la cuenta de siempre, «Mis eventos», vincular lo anterior sólo con el correo demostrado, envío idempotente) — v4.1267 | `docs/claude/cuenta-del-participante-en-completar-inscripcion.md` |
 | Secretaría Digital — Control de Aportes (rol de sólo lectura y descarga sobre la Bóveda, vigencia del acceso por período rotario, auditoría de consultas y descargas, pestaña «Control y Justificación de Aportes») — v4.1265 | `docs/claude/secretaria-digital-control-de-aportes.md` |

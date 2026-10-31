@@ -14,7 +14,7 @@
 import { randomBytes } from 'node:crypto';
 import db from '../lib/db.js';
 import ensureGovernorVisitSchema from '../lib/ensureGovernorVisitSchema.js';
-import { ensureDistrictClubDirectorySchema } from '../lib/ensureDistrictClubDirectorySchema.js';
+import { ensureClubCatalogSchema, catalogForForms } from '../lib/clubCatalog.js';
 import { universalCampaignId } from '../lib/rotaryEngine.js';
 import { presignSubmissionUpload, headSubmissionFile, stagingKeyBelongs, signedSubmissionUrl } from '../lib/submissionFiles.js';
 import { createSubmission, transitionSubmission } from '../lib/contentSubmissionStore.js';
@@ -50,27 +50,33 @@ const errorsMessage = (errors) => errors[0]?.message || 'Revisa los datos de la 
 // archivado no se ofrece; uno en borrador sí, porque el club existe aunque su
 // ficha pública no esté completa.
 async function catalogClubs() {
-    await ensureDistrictClubDirectorySchema();
-    const { rows } = await db.query(
-        `SELECT id, "officialName", "shortName", slug, city, state, "clubId"
-           FROM "DistrictClubProfile"
-          WHERE "districtNumber" = $1 AND "organizationType" = 'rotary' AND COALESCE(status, '') <> 'archived'
-          ORDER BY "officialName" ASC`,
-        [GOVERNOR_VISIT_DISTRICT]
-    );
-    return rows;
+    // v4.1269 — El Catálogo Maestro: sólo los ACTIVOS se ofrecen para una
+    // visita nueva. Un club inactivo o fusionado conserva sus visitas.
+    const rows = await catalogForForms({ districts: [GOVERNOR_VISIT_DISTRICT] });
+    return rows.sort((a, b) => String(a.officialName).localeCompare(String(b.officialName), 'es'));
 }
 
-async function clubById(id) {
+/**
+ * El club de una visita. `allowInactive` es para una visita que YA lo tenía
+ * (corrección o edición): cambiar el estado del club en el catálogo no puede
+ * impedir corregir un reporte histórico. Un id fusionado se sigue hasta el
+ * club que lo absorbió.
+ */
+async function clubById(id, { allowInactive = false, keepId = null } = {}) {
     if (!id) return null;
-    await ensureDistrictClubDirectorySchema();
+    await ensureClubCatalogSchema();
     const { rows } = await db.query(
-        `SELECT id, "officialName", "shortName", slug, city, state, "clubId"
+        `SELECT id, "officialName", "shortName", slug, city, state, "clubId", "catalogStatus", "mergedIntoId"
            FROM "DistrictClubProfile"
           WHERE id = $1 AND "districtNumber" = $2 AND "organizationType" = 'rotary' AND COALESCE(status, '') <> 'archived'`,
         [String(id), GOVERNOR_VISIT_DISTRICT]
     );
-    return rows[0] || null;
+    const c = rows[0] || null;
+    if (!c) return null;
+    const conservado = keepId && String(keepId) === String(c.id);
+    if (c.mergedIntoId && !conservado) return clubById(c.mergedIntoId, { allowInactive });
+    if ((c.catalogStatus || 'activo') !== 'activo' && !(allowInactive && conservado)) return null;
+    return c;
 }
 
 /**
@@ -261,7 +267,7 @@ export const submitVisitCorrection = async (req, res) => {
         const v = shapeVisit(req.body || {});
         const juicio = validateVisit(v);
         if (!juicio.ok) return res.status(400).json({ error: errorsMessage(juicio.errors), errors: juicio.errors });
-        const club = await clubById(v.clubProfileId);
+        const club = await clubById(v.clubProfileId, { allowInactive: true, keepId: actual.clubProfileId });
         if (!club) return res.status(400).json({ error: 'El club seleccionado no está en el catálogo oficial del Distrito 4281.' });
         const cid = await universalCampaignId();
         const known = new Map((actual.media || []).map(m => [m.key, m]));

@@ -73,6 +73,9 @@
 // y las siete de la Conciliación de inscripciones y traslados de un evento (v4.1250): EventFundsConfig,
 // EventFundsTransfer, EventFundsAllocation, EventFundsDocument, EventFundsNotice, EventFundsHistory y EventStripeCheck.
 // Y la de las Visitas del Gobernador de Rotary en Acción (v4.1260): GovernorVisit.
+// Y la bitácora del Catálogo Maestro de Clubes (v4.1269): ClubCatalogChange —quién
+// creó, renombró, inactivó, importó o marcó como duplicado cada club, y cuándo—.
+// (El catálogo mismo es DistrictClubProfile, ya protegida desde v4.1212.)
 // Y las cuatro de la plantilla oficial de presentación de la Feria de Proyectos
 // (v4.1264): ProjectFairResource, ProjectFairResourceVersion,
 // ProjectFairResourceDownload y ProjectFairResourceEvent — el archivo vigente,

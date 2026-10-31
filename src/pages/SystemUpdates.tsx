@@ -34,13 +34,34 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1268.0 | 2026-10-30 (Eventos: guía de pago por COLROTARIOS / AvalPay en el paso 4 de «Completar inscripción»)
-// Cache bust: 2026-10-30
+// UI V4.1269.0 | 2026-10-31 (Directorio de Clubes: Catálogo Maestro, la fuente única de clubes de todos los formularios)
+// Cache bust: 2026-10-31
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1269.0',
+        title: 'Directorio de Clubes: Catálogo Maestro, la fuente única de clubes 🏛️',
+        description: 'Los clubes rotarios ya no viven en tres listas que se separaban en silencio. El Directorio de Clubes es ahora el Catálogo Maestro: se administra desde «Directorio de Clubes → Catálogo Maestro» y todo lo que se agrega, corrige o inactiva ahí aparece en Visitas del Gobernador, inscripciones a eventos, postulación de proyectos, Rotary en Acción, Plantillas IA, Aniversarios y el portal de clubes, sin cargarlo cinco veces.',
+        date: new Date().toISOString(),
+        tags: ['directorio de clubes', 'catálogo', 'formularios', 'visitas del gobernador', 'distrito 4281'],
+        type: 'feature',
+        impact: 'Alta: un club que falte se agrega una sola vez y queda disponible en todos los formularios; renombrar o inactivar un club no rompe inscripciones, proyectos, visitas ni cuentas.',
+        changes: [
+            { type: 'added', text: 'Pestaña «Catálogo Maestro» en el Directorio de Clubes: tabla con nombre oficial, distrito, ciudad, departamento, país, tipo, estado y última actualización; búsqueda, filtros por distrito, estado y organización; agregar, editar, historial de cambios y exportación a CSV y Excel.' },
+            { type: 'added', text: 'Estados Activo, Inactivo y Pendiente de verificación. Nunca se borra un club: inactivarlo sólo lo quita de los formularios nuevos.' },
+            { type: 'added', text: 'Bitácora de cada cambio (quién, cuándo, qué campo, de qué valor a cuál y por qué). Renombrar conserva el nombre anterior como alias.' },
+            { type: 'added', text: 'Posibles duplicados señalados por nombre, ID de Rotary International o similitud, con revisión humana: marcar como duplicado (reversible, sin reescribir registros) o «No son el mismo club».' },
+            { type: 'added', text: 'Importación de CSV/Excel con vista previa fila por fila y comparación contra una fuente oficial: lista los clubes activos que no vienen en el archivo. Lo nuevo entra como pendiente de verificación; lo existente sólo completa campos vacíos.' },
+            { type: 'added', text: 'Selector de Club Rotario reutilizable: busca por nombre, ciudad o departamento mientras se escribe, se maneja con teclado, funciona en el móvil, guarda el ID del club y, si no aparece, indica contactar al equipo administrador. Estrenado en Visitas del Gobernador.' },
+            { type: 'changed', text: 'Los formularios que leían la lista estática (eventos, postulación, Rotary en Acción, Plantillas IA, Aniversarios, CRM, portal de clubes) leen ahora el catálogo vivo. Una convocatoria o un evento que había guardado la COPIA de la lista ya no la congela.' },
+            { type: 'changed', text: 'Reconciliación única y automática: los clubes de la lista estática que faltaban en el Directorio (incluido todo el Distrito 4271) se incorporaron al catálogo, sin duplicar los existentes.' },
+            { type: 'added', text: 'Permisos por distrito validados en el servidor: el equipo del sitio distrital administra su distrito; los operadores de la plataforma, todos; el administrador de un club sólo consulta.' },
+            { type: 'added', text: 'npm run test:club-catalog: 41 comprobaciones puras (corren en cada despliegue) y 47 de integración contra Postgres (las doce pruebas obligatorias).' },
+        ],
+    },
     {
         version: '4.1268.0',
         title: 'Eventos: guía para aportar por COLROTARIOS con AvalPay en el paso 4 💳',

@@ -456,6 +456,7 @@ router.post('/banner-logo', bannerLogoUpload.single('file'), async (req, res) =>
 // pieza. La diferencia importante es que acá el público SÓLO manda valores de
 // variables declaradas; el diseño viene de la publicación guardada y no se
 // puede tocar desde la petición. Ver la cabecera de `designPublicController.js`.
+import { clubCatalogFresh } from '../lib/clubCatalog.js';
 import { getPublicTemplate as getPublicDesign, publicClubs, renderPublic, publicMessage, publicPhoto, publicBackdrop, publicBackdropSync, publicVerify, markUsed }
     from '../controllers/designPublicController.js';
 // 12 MB: una foto de móvil moderna entra holgada y un archivo mayor es casi
@@ -463,7 +464,8 @@ import { getPublicTemplate as getPublicDesign, publicClubs, renderPublic, public
 // se guarda: la respuesta es un data URL.
 const designPhotoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024, files: 1 } });
 // El buscador va ANTES de `/design/:slug`, o Express toma «clubs» por un slug.
-router.get('/design/clubs', publicClubs);
+// v4.1269 — la lista sale del Catálogo Maestro vivo.
+router.get('/design/clubs', clubCatalogFresh, publicClubs);
 router.get('/design/:slug', getPublicDesign);
 router.post('/design/:slug/render', renderPublic);
 router.post('/design/:slug/message', publicMessage);

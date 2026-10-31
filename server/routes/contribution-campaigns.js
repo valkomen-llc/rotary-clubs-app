@@ -37,8 +37,11 @@ import {
     reorderSubmissionReel, confirmSubmissionReel, changeSubmissionReelStatus, newSubmissionReelVersion, listPendingReels,
     resumeSubmissionReel, fallbackSubmissionReelScene, regenerateSubmissionReelScene,
 } from '../controllers/submissionReelController.js';
+// v4.1269 — los clubes salen del Catálogo Maestro (vivo), no de la lista estática.
+import { clubCatalogFresh } from '../lib/clubCatalog.js';
 
 const router = express.Router();
+router.use(clubCatalogFresh);
 const superAdminOnly = roleMiddleware(['administrator']);
 
 // Públicas — sin sesión. `active` corre en cada visita de la página de

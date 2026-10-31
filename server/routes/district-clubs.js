@@ -8,8 +8,11 @@ import { authMiddleware, SITE_ADMIN_ROLES } from '../middleware/auth.js';
 import { requireRoleOrPermission } from '../middleware/institutionalGuard.js';
 import { lightPublicLimit } from '../middleware/rotaryPublicLimit.js';
 import * as ctrl from '../controllers/districtClubsController.js';
+// v4.1269 — los clubes salen del Catálogo Maestro (vivo), no de la lista estática.
+import { clubCatalogFresh } from '../lib/clubCatalog.js';
 
 const router = express.Router();
+router.use(clubCatalogFresh);
 
 // ── Rutas Públicas Literales ───────────────────────────────────────────────
 router.get('/config', lightPublicLimit, ctrl.getDirectoryConfig);

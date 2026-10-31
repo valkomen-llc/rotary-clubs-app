@@ -32,8 +32,11 @@ import {
     postPublicAnalyze, postPublicCopy, postPublicCompose, getPublicPiece,
     postPublicGreeting, postEmailPiece,
 } from '../controllers/anniversaryPublicController.js';
+// v4.1269 — los clubes salen del Catálogo Maestro (vivo), no de la lista estática.
+import { clubCatalogFresh } from '../lib/clubCatalog.js';
 
 const router = express.Router();
+router.use(clubCatalogFresh);
 
 // El operador de la plataforma. La configuración gobierna piezas que salen
 // firmadas por clubes de todo el ecosistema; no es contenido de un sitio.

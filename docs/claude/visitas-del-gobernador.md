@@ -32,6 +32,10 @@ equipo distrital la revise, la apruebe y la publique.
   (sólo `organizationType = 'rotary'`, distrito 4281, no archivados). Se copian
   nombre, ciudad, departamento (`state`) y slug para que el registro siga
   legible si la ficha cambia.
+- **v4.1269: el club sale del Catálogo Maestro** (`docs/claude/catalogo-maestro-de-clubes.md`):
+  sólo clubes `catalogStatus = 'activo'` y sin `mergedIntoId` para una visita
+  nueva; una corrección conserva su club aunque se haya inactivado
+  (`clubById(…, { allowInactive, keepId })`). El selector es `ClubSelector`.
 - **La subida es la de Rotary en Acción.** `presignSubmissionUpload` con la
   campaña universal: prefijo `private/campaign-submissions/{universal}/`, sin
   lectura pública, mismos topes (50 MB foto, 2 GB video). Al enviar se comprueba
