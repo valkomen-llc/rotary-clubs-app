@@ -107,3 +107,6 @@ con uno o dos eventos los muestra en la mitad de la página —el 4281 los tení
 pegados a la izquierda— y la última fila incompleta de una lista larga también
 se centra. Vale para próximos, anteriores y «Próximamente». No volver a
 `grid-cols-3`.
+`npm run test:event-lifecycle` (en `prebuild`) comprueba ese patrón; el primer
+despliegue de v4.1272 falló porque la prueba todavía exigía `md:grid-cols-3`.
+Ante un cambio de maquetación de la página, correr `npm run prebuild` entero.
