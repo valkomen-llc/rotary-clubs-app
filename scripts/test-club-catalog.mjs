@@ -92,6 +92,23 @@ check('sin alcance no se escribe', !S.catalogScopeAllows(null, 4281));
 check('el alcance de un distrito no alcanza a otro', S.catalogScopeAllows({ districts: [4281] }, 4281) && !S.catalogScopeAllows({ districts: [4281] }, 4271));
 check('el operador de la plataforma alcanza a todos', S.catalogScopeAllows({ all: true }, 5000));
 
+console.log('\n── Alcance: el equipo del SITIO distrital administra; un club no (v4.1270) ──');
+const D4281 = { id: 'd4281', number: 4281, name: 'Distrito 4281', subdomain: 'rotary4281', domain: 'rotary4281.org' };
+const sc = (user, site, districts = [D4281]) => S.catalogScopeFromRecords({ user, site, districts }).scope?.districts?.join() || null;
+check('sitio tipo district enlazado sólo por el número en Club.district (sin districtId)',
+    sc({ role: 'club_admin', clubId: 's1' }, { id: 's1', name: 'Rotary 4281', type: 'district', districtId: null, district: '4281' }) === '4281');
+check('sitio «Distrito Rotario» enlazado por subdominio, District sin número',
+    sc({ role: 'club_admin', clubId: 's1' }, { id: 's1', type: 'Distrito Rotario', subdomain: 'rotary4281' }, [{ ...D4281, number: null }]) === '4281');
+check('sitio tipo district con los dígitos sólo en el subdominio («rotary4281»)',
+    sc({ role: 'editor', clubId: 's1' }, { id: 's1', type: 'district', subdomain: 'rotary4281' }, [{ ...D4281, subdomain: 'd4281' }]) === '4281');
+check('sitio de tipo «club» que lleva el subdominio del distrito', sc({ role: 'club_admin', clubId: 's1' }, { id: 's1', type: 'club', subdomain: 'rotary4281' }) === '4281');
+check('sitio donde está asignado el district_admin del distrito', sc({ role: 'club_admin', clubId: 's1' }, { id: 's1', type: 'club', districtId: 'd4281' }, [{ ...D4281, isAdminSite: true }]) === '4281');
+check('el sitio de un CLUB que sólo pertenece al distrito NO administra', sc({ role: 'club_admin', clubId: 'pasto' }, { id: 'pasto', name: 'Club Rotario Pasto', type: 'club', districtId: 'd4281', district: '4281', subdomain: 'pasto' }) === null);
+check('district_admin sin sitio: su distrito', sc({ role: 'district_admin', districtId: 'd4281' }, null) === '4281');
+check('un socio (member) sólo consulta', sc({ role: 'member', clubId: 's1' }, { id: 's1', type: 'district', district: '4281' }) === null);
+check('administrator / superadmin: todos', S.catalogScopeFromRecords({ user: { role: 'administrator' } }).scope?.all === true);
+check('sin alcance se explica el motivo', /no es el sitio de un distrito/.test(S.catalogScopeFromRecords({ user: { role: 'club_admin' }, site: { name: 'Club Rotario Pasto', type: 'club' }, districts: [D4281] }).reason));
+
 console.log('\n── Buscador: por nombre, ciudad o departamento ──');
 const lista = [
     { id: '1', officialName: 'Club Rotario Ibagué', shortName: 'Ibagué', city: 'Ibagué', state: 'Tolima' },
@@ -140,10 +157,13 @@ if (!process.env.TEST_DATABASE_URL) {
     const db = (await import('../server/lib/db.js')).default;
     await db.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto`).catch(() => {});
     await db.query(`DROP TABLE IF EXISTS "DistrictClubProfile", "DistrictClubSubmission", "DistrictClubAccount", "ClubCatalogChange", "GovernorVisit", "Club", "District" CASCADE`);
-    await db.query(`CREATE TABLE "District" (id TEXT PRIMARY KEY, number INT, name TEXT)`);
-    await db.query(`CREATE TABLE "Club" (id TEXT PRIMARY KEY, name TEXT, city TEXT, logo TEXT, description TEXT, "districtId" TEXT, status TEXT DEFAULT 'active', type TEXT DEFAULT 'club')`);
-    await db.query(`INSERT INTO "District" VALUES ('d4281', 4281, 'Distrito 4281'), ('d4271', 4271, 'Distrito 4271')`);
-    await db.query(`INSERT INTO "Club" (id, name, "districtId", type) VALUES ('site-4281', 'Rotary Distrito 4281', 'd4281', 'district'), ('site-pasto', 'Club Rotario Pasto', 'd4281', 'club')`);
+    await db.query(`DROP TABLE IF EXISTS "User"`);
+    await db.query(`CREATE TABLE "District" (id TEXT PRIMARY KEY, number INT, name TEXT, subdomain TEXT, domain TEXT)`);
+    await db.query(`CREATE TABLE "Club" (id TEXT PRIMARY KEY, name TEXT, city TEXT, logo TEXT, description TEXT, "districtId" TEXT, district TEXT, subdomain TEXT, domain TEXT, status TEXT DEFAULT 'active', type TEXT DEFAULT 'club')`);
+    await db.query(`CREATE TABLE "User" (id TEXT PRIMARY KEY, role TEXT, "clubId" TEXT, "districtId" TEXT)`);
+    await db.query(`INSERT INTO "District" VALUES ('d4281', 4281, 'Distrito 4281', 'rotary4281', 'rotary4281.org'), ('d4271', 4271, 'Distrito 4271', 'd4271', NULL)`);
+    // Como en producción: el sitio del 4281 SIN districtId, enlazado por el número en Club.district (v4.1270).
+    await db.query(`INSERT INTO "Club" (id, name, "districtId", district, subdomain, type) VALUES ('site-4281', 'Rotary Distrito 4281', NULL, '4281', 'rotary4281', 'district'), ('site-pasto', 'Club Rotario Pasto', 'd4281', '4281', 'pasto', 'club')`);
 
     const CAT = await import('../server/lib/clubCatalog.js');
     const CTRL = await import('../server/controllers/clubCatalogController.js');
@@ -165,6 +185,11 @@ if (!process.env.TEST_DATABASE_URL) {
     const scope4281 = await CTRL.catalogScopeFor({ role: 'club_admin', clubId: 'site-4281' });
     const scopeClub = await CTRL.catalogScopeFor({ role: 'club_admin', clubId: 'site-pasto' });
     const actor = { id: 'u1', name: 'Admin Distrital' };
+    check('el equipo del sitio del 4281 (sin districtId, como en producción) puede escribir', scope4281?.districts?.join() === '4281', JSON.stringify(scope4281));
+    const listaAdm = await call(CTRL.adminList, { user: { role: 'club_admin', clubId: 'site-4281' }, query: { district: '4281' } });
+    check('…y el panel le habilita «Agregar club»', listaAdm.body?.permissions?.canWrite === true);
+    const listaClub = await call(CTRL.adminList, { user: { role: 'club_admin', clubId: 'site-pasto' }, query: { district: '4281' } });
+    check('el sitio de un club ve «Sólo consulta» con el motivo', listaClub.body?.permissions?.canWrite === false && /no es el sitio de un distrito/.test(listaClub.body?.permissions?.reason || ''));
 
     console.log('\n 1. Crear un club desde el administrador');
     const creado = await CAT.createClub({ officialName: 'Club Rotario Mocoa Andino', districtNumber: 4281, city: 'Mocoa', state: 'Putumayo' }, { scope: scope4281, actor });
