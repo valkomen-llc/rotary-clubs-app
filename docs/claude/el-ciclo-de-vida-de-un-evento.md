@@ -97,3 +97,13 @@ caché intermedio sirva una lista vieja.
 
 `npm run test:event-lifecycle` (en `prebuild`): los 14 escenarios del pedido
 más el caso real de Cancún con fecha de referencia 26/10/2026.
+
+## Las tarjetas van centradas (v4.1272)
+
+`EventGrid` (en `src/pages/Eventos.tsx`) NO es una grilla de tres columnas:
+es `flex flex-wrap justify-center` con cada tarjeta a
+`md:w-[calc((100%-6rem)/3)]` (un tercio menos los dos `gap-12`). Así un sitio
+con uno o dos eventos los muestra en la mitad de la página —el 4281 los tenía
+pegados a la izquierda— y la última fila incompleta de una lista larga también
+se centra. Vale para próximos, anteriores y «Próximamente». No volver a
+`grid-cols-3`.
