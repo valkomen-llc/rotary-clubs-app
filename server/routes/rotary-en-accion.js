@@ -9,8 +9,11 @@ import * as actCtrl from '../controllers/rotaryActivationController.js';
 import * as visitCtrl from '../controllers/governorVisitController.js';
 import { lightPublicLimit } from '../middleware/rotaryPublicLimit.js';
 import { requireSubmissionInboxAccess } from '../middleware/submissionInboxGuard.js';
+// v4.1269 — los clubes salen del Catálogo Maestro (vivo), no de la lista estática.
+import { clubCatalogFresh } from '../lib/clubCatalog.js';
 
 const router = express.Router();
+router.use(clubCatalogFresh);
 
 // ── Público ──────────────────────────────────────────────────────────
 router.get('/config', lightPublicLimit, ctrl.getEngineConfig);

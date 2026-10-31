@@ -15,6 +15,7 @@ import {
 } from '../lib/ensureDistrictClubDirectorySchema.js';
 import { CLUBS_4281, CLUBS_BY_DISTRICT_NUMBER, districtNumberOf } from '../lib/rotaryClubs.js';
 import { norm, clubDisplayName } from '../lib/publicClubs.js';
+import { catalogForForms, ensureClubCatalogSchema } from '../lib/clubCatalog.js';
 
 console.log('[districtClubsController] v4.1233.0 cargado — Optimización formulario 6 pasos, patrocinio dinámico Rotaract/Interact');
 
@@ -69,13 +70,23 @@ export const getDirectoryConfig = async (req, res) => {
     const distNum = Number(req.query.district) || 4281;
 
     // Catálogo oficial curado
+    // v4.1269 — El catálogo oficial es el Catálogo Maestro (clubes ACTIVOS),
+    // con su id: la lista estática sólo responde si la base no contesta.
     const catalogNames = CLUBS_BY_DISTRICT_NUMBER[distNum] || CLUBS_4281;
-    const officialCatalog = catalogNames.map(name => ({
-      name,
-      display: clubDisplayName(name),
-      slug: slugifyClub(name),
-      district: distNum
-    }));
+    const maestro = await catalogForForms({ districts: [distNum] }).catch(() => []);
+    const porNombre = new Map(maestro.map(c => [norm(c.shortName), c]));
+    const officialCatalog = catalogNames.map(name => {
+      const m = porNombre.get(norm(name));
+      return {
+        id: m?.id || null,
+        name,
+        display: m?.officialName || clubDisplayName(name),
+        slug: m?.slug || slugifyClub(name),
+        city: m?.city || null,
+        state: m?.state || null,
+        district: distNum
+      };
+    });
 
     // Métricas globales de perfiles para este distrito
     const { rows: statsRows } = await db.query(
@@ -121,13 +132,15 @@ export const getDirectoryConfig = async (req, res) => {
 // ─── 2. GET /api/district-clubs/public ───────────────────────────────────────
 export const getPublicDirectory = async (req, res) => {
   try {
-    await ensureDistrictClubDirectorySchema();
+    // v4.1269 — El Directorio público muestra sólo clubes ACTIVOS del Catálogo
+    // Maestro (ni inactivos ni marcados como duplicado).
+    await ensureClubCatalogSchema();
     const distNum = Number(req.query.district) || 4281;
     const type = req.query.type ? String(req.query.type).toLowerCase() : 'all';
     const q = req.query.q ? norm(req.query.q) : '';
     const city = req.query.city ? String(req.query.city).trim() : '';
 
-    let whereClause = `WHERE "districtNumber" = $1 AND status = 'published'`;
+    let whereClause = `WHERE "districtNumber" = $1 AND status = 'published' AND "catalogStatus" = 'activo' AND "mergedIntoId" IS NULL`;
     const params = [distNum];
     let pIdx = 2;
 
@@ -174,14 +187,14 @@ export const getPublicDirectory = async (req, res) => {
         COUNT(CASE WHEN "organizationType" = 'rotaract' THEN 1 END)::int as rotaract,
         COUNT(CASE WHEN "organizationType" = 'interact' THEN 1 END)::int as interact
        FROM "DistrictClubProfile"
-       WHERE "districtNumber" = $1 AND status = 'published'`,
+       WHERE "districtNumber" = $1 AND status = 'published' AND "catalogStatus" = 'activo' AND "mergedIntoId" IS NULL`,
       [distNum]
     );
 
     // Listado de ciudades únicas para selector
     const { rows: cityRows } = await db.query(
       `SELECT DISTINCT city FROM "DistrictClubProfile"
-       WHERE "districtNumber" = $1 AND status = 'published' AND city IS NOT NULL AND city != ''
+       WHERE "districtNumber" = $1 AND status = 'published' AND "catalogStatus" = 'activo' AND "mergedIntoId" IS NULL AND city IS NOT NULL AND city != ''
        ORDER BY city ASC`,
       [distNum]
     );
@@ -201,7 +214,9 @@ export const getPublicDirectory = async (req, res) => {
 // ─── 3. GET /api/district-clubs/profile/:type/:slug ──────────────────────────
 export const getPublicClubProfile = async (req, res) => {
   try {
-    await ensureDistrictClubDirectorySchema();
+    // v4.1269 — El Directorio público muestra sólo clubes ACTIVOS del Catálogo
+    // Maestro (ni inactivos ni marcados como duplicado).
+    await ensureClubCatalogSchema();
     const { type, slug } = req.params;
     const distNum = Number(req.query.district) || 4281;
 
@@ -214,7 +229,7 @@ export const getPublicClubProfile = async (req, res) => {
        WHERE "districtNumber" = $1 
          AND "organizationType" = $2 
          AND slug = $3 
-         AND status = 'published'`,
+         AND status = 'published' AND "catalogStatus" = 'activo' AND "mergedIntoId" IS NULL`,
       [distNum, cleanType, cleanSlug]
     );
 
@@ -225,7 +240,7 @@ export const getPublicClubProfile = async (req, res) => {
          WHERE "districtNumber" = $1 
            AND "organizationType" = $2 
            AND (slug LIKE $3 OR LOWER("shortName") = LOWER($4) OR LOWER("officialName") LIKE LOWER($5))
-           AND status = 'published'
+           AND status = 'published' AND "catalogStatus" = 'activo' AND "mergedIntoId" IS NULL
          LIMIT 1`,
         [distNum, cleanType, `%${cleanSlug}%`, cleanSlug.replace(/-/g, ' '), `%${cleanSlug.replace(/-/g, ' ')}%`]
       );
@@ -242,7 +257,7 @@ export const getPublicClubProfile = async (req, res) => {
     const { rows: related } = await db.query(
       `SELECT id, "organizationType", "officialName", "shortName", slug, city, "logoUrl"
        FROM "DistrictClubProfile"
-       WHERE "districtNumber" = $1 AND id != $2 AND status = 'published'
+       WHERE "districtNumber" = $1 AND id != $2 AND status = 'published' AND "catalogStatus" = 'activo' AND "mergedIntoId" IS NULL
        ORDER BY RANDOM()
        LIMIT 3`,
       [distNum, club.id]

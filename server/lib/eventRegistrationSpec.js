@@ -17,7 +17,7 @@
 
 // El catálogo de clubes por distrito tiene UNA fuente de verdad desde v4.707 y
 // es la misma que alimenta la postulación de proyectos.
-import { DISTRICT_CATALOG } from './rotaryClubs.js';
+import { DISTRICT_CATALOG, seedDistrictClubs } from './rotaryClubs.js';
 
 // ── Monedas ──────────────────────────────────────────────────────────
 //
@@ -646,7 +646,10 @@ export const defaultAnswersFor = (category, settings = {}) =>
  */
 export const rotaryCatalogFor = (settings = {}) => {
     const raw = settings?.rotaryCatalog?.districts;
-    const source = Array.isArray(raw) ? raw : DISTRICT_CATALOG;
+    // v4.1269: una lista propia que es la COPIA del catálogo (lo que quedaba
+    // guardado al editar la edición) se reemplaza por el Catálogo Maestro vivo;
+    // una lista CURADA o vacía se respeta. Misma regla que la convocatoria.
+    const source = Array.isArray(raw) ? seedDistrictClubs(raw) : DISTRICT_CATALOG;
     return source
         .map(d => ({
             value: String(d?.value ?? d?.label ?? '').trim(),

@@ -16,8 +16,11 @@ import admin from '../controllers/eventRegistrationAdminController.js';
 import completed from '../controllers/completedRegistrationController.js';
 import completedAdmin from '../controllers/completedRegistrationAdminController.js';
 import attendee, { attendeeAuth, requireAttendeePermission, ATTENDEE_PERMISSIONS } from '../controllers/eventAttendeeController.js';
+// v4.1269 — los clubes salen del Catálogo Maestro (vivo), no de la lista estática.
+import { clubCatalogFresh } from '../lib/clubCatalog.js';
 
 const router = express.Router();
+router.use(clubCatalogFresh);
 const json = express.json({ limit: '512kb' });
 
 // ── Administración ───────────────────────────────────────────────────

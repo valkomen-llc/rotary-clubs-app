@@ -25,6 +25,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { RotaryMarketingInteligente } from '../../components/admin/rotary/RotaryMarketingInteligente';
 import ClubInstitutionalPanel from '../../components/admin/rotary/ClubInstitutionalPanel';
 import ClubGovernorVisitsPanel from '../../components/admin/rotary/ClubGovernorVisitsPanel';
+import ClubCatalogMaster from '../../components/admin/clubs/ClubCatalogMaster';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const getAuthToken = () => localStorage.getItem('rotary_token') || localStorage.getItem('token') || '';
@@ -107,7 +108,7 @@ export const DistrictClubsAdmin: React.FC = () => {
   const { user, token } = useAuth();
   const [params, setParams] = useSearchParams();
 
-  const [activeTab, setActiveTab] = useState<'directorio' | 'solicitudes' | 'marketing'>('directorio');
+  const [activeTab, setActiveTab] = useState<'directorio' | 'catalogo' | 'solicitudes' | 'marketing'>('directorio');
   const [clubs, setClubs] = useState<AdminClubProfile[]>([]);
   const [submissions, setSubmissions] = useState<AdminSubmission[]>([]);
   const [stats, setStats] = useState({
@@ -239,6 +240,8 @@ export const DistrictClubsAdmin: React.FC = () => {
     const tabParam = params.get('tab');
     if (tabParam === 'solicitudes') {
       setActiveTab('solicitudes');
+    } else if (tabParam === 'catalogo' || tabParam === 'catalogo-maestro') {
+      setActiveTab('catalogo');
     } else if (tabParam === 'marketing') {
       setActiveTab('marketing');
     }
@@ -722,7 +725,20 @@ export const DistrictClubsAdmin: React.FC = () => {
             }`}
           >
             <Building2 className="w-4 h-4" />
-            <span>Catálogo Maestro de Clubes ({clubs.length})</span>
+            <span>Fichas del Directorio ({clubs.length})</span>
+          </button>
+
+          {/* v4.1269 — La administración de la fuente única de clubes. */}
+          <button
+            onClick={() => setActiveTab('catalogo')}
+            className={`px-6 py-3 text-xs font-black uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'catalogo'
+                ? 'border-rotary-blue text-rotary-blue'
+                : 'border-transparent text-gray-500 hover:text-gray-900'
+            }`}
+          >
+            <Layers className="w-4 h-4" />
+            <span>Catálogo Maestro</span>
           </button>
 
           <button
@@ -1227,6 +1243,10 @@ export const DistrictClubsAdmin: React.FC = () => {
         {/* ════════════════════════════════════════════════════════════════
             PESTAÑA 3: MARKETING INTELIGENTE IA · DIRECTORIO DE CLUBES
            ════════════════════════════════════════════════════════════════ */}
+        {activeTab === 'catalogo' && (
+          <ClubCatalogMaster defaultDistrict={4281} />
+        )}
+
         {activeTab === 'marketing' && (
           <div className="space-y-4">
             <RotaryMarketingInteligente initialInitiative="directorio_clubes" />

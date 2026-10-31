@@ -17,7 +17,10 @@ import {
     listTrmProviders,
 } from '../controllers/projectFairController.js';
 
+// v4.1269 — los clubes salen del Catálogo Maestro (vivo), no de la lista estática.
+import { clubCatalogFresh } from '../lib/clubCatalog.js';
 const router = express.Router();
+router.use(clubCatalogFresh);
 
 const fairRead = requireRoleOrPermission(SITE_ADMIN_ROLES, 'project_fair.view');
 const fairEdit = requireRoleOrPermission(SITE_ADMIN_ROLES, 'project_fair.edit');

@@ -16,7 +16,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom';
 import {
   AlertTriangle, ArrowLeft, ArrowRight, Building2, CalendarDays, CheckCircle2, FileText,
-  Film, Image as ImageIcon, Link2, Loader2, MapPin, RotateCcw, Search, ShieldCheck, Trash2, Upload, UserCheck,
+  Film, Image as ImageIcon, Link2, Loader2, MapPin, RotateCcw, ShieldCheck, Trash2, Upload, UserCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import Navbar from '../../sections/Navbar';
@@ -25,6 +25,8 @@ import { PublicPageHeader } from '../common/PublicInstitutionalComponents';
 import PhoneInputWithCountry from '../common/PhoneInputWithCountry';
 import { useSEO } from '../../hooks/useSEO';
 import { leerJson } from '../../lib/leerJson';
+import ClubSelector from '../clubs/ClubSelector';
+import type { CatalogClub } from '../../lib/clubCatalog';
 import { ACCEPT_ATTR, checkFileMeta, kindOf, LIMITS_LABEL, DUPLICATE_MESSAGE, duplicateKey, partialFileHash } from '../../lib/contentSubmissionSpec';
 import {
   EMPTY_VISIT, VISIT_CAPTION_MAX, VISIT_MAX_LINKS, VISIT_MAX_PHOTOS, VISIT_MAX_VIDEOS, VISIT_STEPS,
@@ -41,7 +43,7 @@ const TARJETA = 'bg-white rounded-3xl p-6 sm:p-8 md:p-10 shadow-sm border border
 
 interface Club { id: string; name: string; shortName: string; city: string; state: string; slug: string; siteId: string | null }
 interface Config {
-  clubs: Club[]; governors: string[]; consentText: string;
+  clubs: Club[]; district?: number; governors: string[]; consentText: string;
   limits: { maxPhotos: number; maxVideos: number; maxLinks: number; captionMax: number };
 }
 type Estado = 'pending' | 'uploading' | 'uploaded' | 'error';
@@ -149,7 +151,6 @@ export default function GovernorVisitForm() {
   archivosRef.current = archivos;
   const xhrs = useRef<Map<string, XMLHttpRequest>>(new Map());
   const inputRef = useRef<HTMLInputElement>(null);
-  const [busquedaClub, setBusquedaClub] = useState('');
   const [nuevoEnlace, setNuevoEnlace] = useState('');
   const [errorEnlace, setErrorEnlace] = useState('');
   const [enviando, setEnviando] = useState(false);
@@ -237,12 +238,11 @@ export default function GovernorVisitForm() {
   }, []);
 
   const clubSel = useMemo(() => cfg?.clubs.find((c) => c.id === v.clubProfileId) || null, [cfg, v.clubProfileId]);
-  const clubsFiltrados = useMemo(() => {
-    const q = busquedaClub.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
-    const lista = cfg?.clubs || [];
-    if (!q) return lista;
-    return lista.filter((c) => `${c.name} ${c.city} ${c.state}`.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().includes(q));
-  }, [cfg, busquedaClub]);
+  // Los clubes de la configuración de la visita, en la forma del Catálogo Maestro.
+  const catalogoClubes = useMemo<CatalogClub[]>(() => (cfg?.clubs || []).map((c) => ({
+    id: c.id, name: c.name, shortName: c.shortName, city: c.city, state: c.state,
+    country: 'Colombia', districtNumber: cfg?.district || 4281, organizationType: 'rotary', clubType: '',
+  })), [cfg]);
   const conteo = useMemo(() => ({
     photos: archivos.filter((a) => a.kind === 'image' && a.estado === 'uploaded').length,
     videos: archivos.filter((a) => a.kind === 'video' && a.estado === 'uploaded').length,
@@ -483,32 +483,14 @@ export default function GovernorVisitForm() {
         {step === 1 && !enviado && (
           <div className={TARJETA} data-gv-step="1">
             <TituloPaso icon={<Building2 className="w-5 h-5" />} titulo="Identificación del club" texto="Selecciona el club visitado del catálogo oficial del Directorio Distrital." />
-            <div className="relative">
-              <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                value={busquedaClub} onChange={(e) => setBusquedaClub(e.target.value)}
-                placeholder="Buscar por nombre, ciudad o departamento"
-                aria-label="Buscar club"
-                className={`${CAMPO} pl-10`}
-              />
-            </div>
-            <div className="mt-3 max-h-72 overflow-y-auto rounded-2xl border border-gray-100 divide-y divide-gray-50" role="listbox" aria-label="Clubes del Distrito 4281">
-              {clubsFiltrados.length === 0 && <p className="p-4 text-sm text-gray-400">Ningún club coincide con «{busquedaClub}».</p>}
-              {clubsFiltrados.map((c) => (
-                <button
-                  key={c.id} type="button" role="option" aria-selected={c.id === v.clubProfileId}
-                  onClick={() => set('clubProfileId', c.id)}
-                  className={`w-full text-left px-4 py-3 flex items-center justify-between gap-3 text-sm transition-colors ${c.id === v.clubProfileId ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
-                >
-                  <span className="min-w-0">
-                    <span className="block font-bold text-gray-800 truncate">{c.name}</span>
-                    <span className="block text-xs text-gray-400">{[c.city, c.state].filter(Boolean).join(' · ') || 'Distrito 4281'}</span>
-                  </span>
-                  {c.id === v.clubProfileId && <CheckCircle2 className="w-5 h-5 text-rotary-blue shrink-0" />}
-                </button>
-              ))}
-            </div>
-            {errores.clubProfileId && <p className="text-xs text-red-600 font-semibold mt-2" role="alert">{errores.clubProfileId}</p>}
+            {/* v4.1269 — El selector único del Catálogo Maestro: guarda el ID del club. */}
+            <ClubSelector
+              label=""
+              value={v.clubProfileId}
+              onChange={(c) => set('clubProfileId', c?.id || '')}
+              options={catalogoClubes}
+              error={errores.clubProfileId}
+            />
             {clubSel && (
               <dl className="mt-5 rounded-2xl bg-gray-50 border border-gray-100 p-4 grid sm:grid-cols-2 gap-x-4 gap-y-2">
                 <Resumen etiqueta="Club" valor={clubSel.name} />
