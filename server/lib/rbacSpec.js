@@ -216,6 +216,19 @@ export const MODULES = [
         routes: ['/admin/rotary-en-accion'], legacy: 'rotary_en_accion',
         help: 'Herramientas de seguimiento, campañas, solicitudes de contenido y reportes de impacto de Rotary en Acción.',
     },
+    {
+        // v4.1271 — El Directorio de Clubes y su Catálogo Maestro. Las rutas del
+        // servidor ya pedían `clubs.view` / `clubs.manage` desde v4.1212, pero el
+        // permiso NO EXISTÍA en este registro y la pantalla colgaba del módulo de
+        // PLATAFORMA «Sitios del ecosistema»: ningún rol de un sitio —tampoco la
+        // Secretaría Digital— podía recibirlo. Escribir en el CATÁLOGO pide además
+        // ser del sitio del distrito (`catalogScopeFromRecords`): este permiso en
+        // el sitio de un club no le deja tocar el catálogo del distrito.
+        key: 'clubs', label: 'Directorio de Clubes', group: 'Contenido', scope: 'site',
+        actions: ['view', 'manage'],
+        routes: ['/admin/directorio-clubes'], legacy: null,
+        help: 'Fichas del Directorio Distrital y el Catálogo Maestro de Clubes: la lista oficial de clubes que usan todos los formularios.',
+    },
 
     // ── Comunicación ─────────────────────────────────────────────────
     {
@@ -341,7 +354,7 @@ export const MODULES = [
         key: 'platform_sites', label: 'Sitios del ecosistema', group: 'Plataforma', scope: 'platform',
         actions: ['view', 'create', 'edit', 'delete', 'manage'],
         routes: [
-            '/admin/distritos', '/admin/clubes', '/admin/directorio-clubes', '/admin/asociaciones', '/admin/zonas',
+            '/admin/distritos', '/admin/clubes', '/admin/asociaciones', '/admin/zonas',
             '/admin/programas-intercambio', '/admin/ferias-proyectos', '/admin/eventos-convenciones',
         ],
         legacy: null, sensitive: true,
@@ -753,13 +766,18 @@ export const ROLE_PRESETS = [
         // «Usuarios y permisos», que queda auditada.
         key: 'digital_secretary',
         label: 'Secretaría Digital — Control de Aportes',
-        description: 'Supervisión documental y financiera de los aportes: consulta la Bóveda de Fondos, identifica a los aportantes, verifica estados de Stripe y traslados, descarga comprobantes y exporta informes. No solicita retiros, no registra desembolsos ni modifica estados financieros.',
+        description: 'Supervisión documental y financiera de los aportes: consulta la Bóveda de Fondos, identifica a los aportantes, verifica estados de Stripe y traslados, descarga comprobantes y exporta informes. Administra además el Directorio de Clubes y su Catálogo Maestro. No solicita retiros, no registra desembolsos ni modifica estados financieros.',
         scope: 'site',
         protected: true,
         permissions: [
             'finance.view',
             'finance.export',
             'email_inbox.use_own',
+            // v4.1271 — La Secretaría Distrital lleva el registro de los clubes:
+            // ve y administra el Directorio y su Catálogo Maestro. Sigue SIN
+            // `finance.manage`: mover dinero no entra en este rol.
+            'clubs.view',
+            'clubs.manage',
         ],
         // Su trabajo es la Bóveda: el resumen del panel no le dice nada.
         landing: '/admin/boveda',

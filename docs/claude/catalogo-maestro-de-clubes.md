@@ -152,6 +152,16 @@ del 4281 está vinculado por el número en `Club.district` / su subdominio, no p
 - Pruebas: 10 casos puros con las formas reales del sitio + 3 de integración con
   el sitio del 4281 SIN `districtId`, como en producción.
 
+## v4.1271 — el módulo de permisos «Directorio de Clubes»
+
+`clubs` (ver / administrar, scope sitio, ruta `/admin/directorio-clubes`) en
+`MODULES` de `rbacSpec.js` y su espejo `src/lib/rbacSpec.ts` (con los presets
+expandidos `site_admin`, `platform_superadmin` y `viewer` actualizados a mano:
+`test:rbac` los compara). La ruta salió de `platform_sites`. La Secretaría
+Digital (`digital_secretary`) lo trae completo. Antes, `clubs.view` y
+`clubs.manage` —que pedían las rutas— no existían en el registro, así que sólo
+los roles de `SITE_ADMIN_ROLES` entraban al Directorio.
+
 ## Cómo se probó (v4.1269)
 
 - `npm run test:club-catalog`: 41 comprobaciones puras (en `prebuild`) + 47 de

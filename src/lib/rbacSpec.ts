@@ -406,6 +406,22 @@ export const MODULES: ModuleSpec[] = [
         "help": "Herramientas de seguimiento, campañas, solicitudes de contenido y reportes de impacto de Rotary en Acción."
     },
     {
+        "key": "clubs",
+        "label": "Directorio de Clubes",
+        "group": "Contenido",
+        "scope": "site",
+        "actions": [
+            "view",
+            "manage"
+        ],
+        "routes": [
+            "/admin/directorio-clubes"
+        ],
+        "legacy": null,
+        "sensitive": false,
+        "help": "Fichas del Directorio Distrital y el Catálogo Maestro de Clubes: la lista oficial de clubes que usan todos los formularios."
+    },
+    {
         "key": "email_inbox",
         "label": "Bandeja de Entrada",
         "group": "Comunicación",
@@ -700,7 +716,6 @@ export const MODULES: ModuleSpec[] = [
         "routes": [
             "/admin/distritos",
             "/admin/clubes",
-            "/admin/directorio-clubes",
             "/admin/asociaciones",
             "/admin/zonas",
             "/admin/programas-intercambio",
@@ -840,6 +855,8 @@ export const ROLE_PRESETS: RolePreset[] = [
             "rotary_en_accion.publish",
             "rotary_en_accion.export",
             "rotary_en_accion.manage",
+            "clubs.view",
+            "clubs.manage",
             "email_inbox.use_own",
             "email_inbox.use_all",
             "email_accounts.view",
@@ -988,6 +1005,8 @@ export const ROLE_PRESETS: RolePreset[] = [
             "rotary_en_accion.publish",
             "rotary_en_accion.export",
             "rotary_en_accion.manage",
+            "clubs.view",
+            "clubs.manage",
             "email_inbox.use_own",
             "email_inbox.use_all",
             "email_accounts.view",
@@ -1227,6 +1246,7 @@ export const ROLE_PRESETS: RolePreset[] = [
             "contribution_campaigns.view",
             "faqs.view",
             "rotary_en_accion.view",
+            "clubs.view",
             "email_accounts.view",
             "contacts.view",
             "crm.view",
@@ -1298,13 +1318,15 @@ export const ROLE_PRESETS: RolePreset[] = [
         // decide el servidor (regla de v4.1093).
         "key": "digital_secretary",
         "label": "Secretaría Digital — Control de Aportes",
-        "description": "Supervisión documental y financiera de los aportes: consulta la Bóveda de Fondos, identifica a los aportantes, verifica estados de Stripe y traslados, descarga comprobantes y exporta informes. No solicita retiros, no registra desembolsos ni modifica estados financieros.",
+        "description": "Supervisión documental y financiera de los aportes: consulta la Bóveda de Fondos, identifica a los aportantes, verifica estados de Stripe y traslados, descarga comprobantes y exporta informes. Administra además el Directorio de Clubes y su Catálogo Maestro. No solicita retiros, no registra desembolsos ni modifica estados financieros.",
         "scope": "site",
         "protected": true,
         "permissions": [
             "finance.view",
             "finance.export",
-            "email_inbox.use_own"
+            "email_inbox.use_own",
+            "clubs.view",
+            "clubs.manage"
         ]
     },
     {
