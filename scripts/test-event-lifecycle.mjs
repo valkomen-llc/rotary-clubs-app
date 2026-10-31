@@ -182,7 +182,11 @@ grupo('13–14. Filtros por categoría y vista móvil (la página)');
     check('El selector es accesible (tablist / aria-selected)', pagina.includes('role="tablist"') && pagina.includes('aria-selected'));
     const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
     check('El historial tiene su propia dirección (/eventos/anteriores)', pagina.includes("'/eventos/anteriores'") && app.includes('path="/eventos/anteriores"'));
-    check('14. La rejilla sigue siendo responsive (1 columna en móvil, 3 en escritorio)', pagina.includes('grid-cols-1 md:grid-cols-3'));
+    // v4.1272 — Ya no es una grilla de tres columnas: es una fila centrada
+    // con tarjetas de un tercio en escritorio y ancho completo en el móvil,
+    // para que uno o dos eventos queden en la mitad de la página.
+    check('14. La rejilla sigue siendo responsive (1 columna en móvil, 3 en escritorio)', pagina.includes('w-full md:w-[calc((100%-6rem)/3)]'));
+    check('14. Las tarjetas van centradas (pocos eventos quedan en la mitad)', pagina.includes('flex flex-wrap justify-center') && !pagina.includes('md:grid-cols-3'));
     check('No se depende sólo del reloj del navegador (se corrige con la hora del servidor)', /headers\.get\('date'\)/i.test(pagina));
 }
 

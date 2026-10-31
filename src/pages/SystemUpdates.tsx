@@ -52,6 +52,7 @@ const TRAMO_1: UpdateItem[] = [
         changes: [
             { type: 'fixed', text: 'La grilla de tres columnas pasó a una fila centrada con tarjetas del mismo ancho: uno o dos eventos quedan en la mitad, y la última fila incompleta de una lista larga también se centra.' },
             { type: 'changed', text: 'Aplica a «Próximos eventos», «Eventos anteriores» y «Próximamente» (fecha por confirmar). En el móvil no cambia: una tarjeta por fila.' },
+            { type: 'fixed', text: 'La prueba test:event-lifecycle (en prebuild) seguía exigiendo la grilla de tres columnas y frenaba el despliegue a producción. Ahora comprueba la fila centrada.' },
         ],
     },
     {
