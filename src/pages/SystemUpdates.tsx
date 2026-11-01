@@ -42,6 +42,20 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1274.0',
+        title: 'Eventos: el carrusel de la imagen lateral avanza solo de verdad ▶️',
+        description: 'En la ficha pública de un evento (p. ej. rotary4281.org/eventos/villavicencio2027) el carrusel de la imagen lateral no cambiaba de imagen por sí solo: había que usar las flechas. Dos causas: un clic en una flecha o un punto dejaba el botón enfocado y eso pausaba el carrusel hasta hacer clic en otra parte de la página, y en equipos con «Reducir movimiento» activado la reproducción automática se apagaba por completo.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'widgets', 'carrusel', 'sitio público', 'fix'],
+        type: 'fix',
+        impact: 'Alta: el carrusel lateral rota las imágenes como se configuró en el panel.',
+        changes: [
+            { type: 'fixed', text: 'Sólo el foco de TECLADO pausa el carrusel. Tras usar las flechas o los puntos con el ratón, al retirar el cursor vuelve a avanzar solo.' },
+            { type: 'fixed', text: '«Reducir movimiento» ya no apaga la reproducción automática: las imágenes siguen rotando con un fundido, sin desplazamiento.' },
+            { type: 'added', text: 'El carrusel expone su estado en el atributo data-autoplay (running, paused:hover, paused:focus…) para diagnosticarlo desde el navegador.' },
+        ],
+    },
+    {
         version: '4.1273.0',
         title: 'Eventos: la «Imagen lateral del evento» ahora es un carrusel 🖼️🎠',
         description: 'El widget de la columna derecha de un evento (debajo del mapa) admite varias imágenes y las muestra como un carrusel automático e interactivo, en el mismo espacio y con el mismo diseño. Con una sola imagen se ve exactamente como antes, sin controles. Las imágenes que ya tenía cada evento se conservan solas, con su texto alternativo y su enlace.',

@@ -1,4 +1,4 @@
-# Carrusel de la «Imagen lateral del evento» — v4.1273.0
+# Carrusel de la «Imagen lateral del evento» — v4.1273.0 (autoplay corregido: v4.1274.0)
 
 El widget de la columna derecha de la ficha pública de un evento (debajo del
 mapa de la sede), nacido en v4.1207.0 con UNA imagen, admite desde v4.1273.0
@@ -54,12 +54,20 @@ Límites (`CAROUSEL_LIMITS`): intervalo 2–30 s, transición 100–3000 ms, 20 
   no cambia al pasar de una a otra. Trade-off aceptado: una imagen apaisada
   junto a afiches verticales queda centrada con aire arriba y abajo (nunca
   recortada ni deformada: `object-contain`).
-- **Movimiento reducido** (`prefers-reduced-motion`): transiciones instantáneas
-  y SIN avance automático; las flechas se muestran aunque estén desactivadas
-  para que todas las imágenes sigan siendo alcanzables.
-- **Pausa**: con cursor encima, foco dentro o un toque (se retoma tras un
-  intervalo completo), y con la pestaña oculta. Cualquier cambio de imagen
-  reinicia la cuenta.
+- **Movimiento reducido** (`prefers-reduced-motion`): nada se DESPLAZA (el
+  modo slide se muestra como fundido), pero la reproducción automática SIGUE.
+  Hasta v4.1273.0 la apagaba del todo y, en un Mac con «Reducir movimiento»,
+  el carrusel parecía roto (v4.1274.0).
+- **Pausa**: con cursor encima, foco de TECLADO dentro (`:focus-visible`) o un
+  toque (se retoma tras un intervalo completo), y con la pestaña oculta.
+  Cualquier cambio de imagen reinicia la cuenta. ⚠️ Nunca pausar por CUALQUIER
+  foco: un clic en una flecha enfoca el botón y el carrusel quedaba pausado
+  hasta hacer clic en otra parte de la página — fue el reporte de v4.1274.0
+  («hay que cambiar los slides con los botones»).
+- **Diagnóstico**: el contenedor lleva `data-autoplay` con el estado
+  (`running`, `off`, `paused:hover`, `paused:focus`, `paused:touch`,
+  `paused:hidden`, `paused:end`). Ante «no avanza solo», mirar ese atributo
+  en las herramientas del navegador.
 - **Deslizar no abre el enlace**: un swipe sobre una imagen enlazada cancela el
   clic. Los enlaces de imágenes ocultas salen del orden de tabulación.
 - Subida múltiple: un archivo por petición contra `/calendar/events/upload-image`

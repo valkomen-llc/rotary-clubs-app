@@ -13,8 +13,11 @@
 //   de una grilla, así que el alto del carrusel es el de la imagen más alta
 //   y no cambia al pasar de una a otra. Cada imagen conserva su proporción
 //   (object-contain, sin recortes ni deformaciones).
-// - Movimiento reducido: transiciones instantáneas y sin avance automático;
-//   las flechas quedan siempre disponibles para navegar a mano.
+// - Movimiento reducido: nada se DESPLAZA (el modo slide pasa a fundido),
+//   pero la reproducción automática sigue funcionando (v4.1274.0).
+// - La pausa por foco es sólo para el foco de TECLADO: un clic en una flecha
+//   deja el botón enfocado y antes eso pausaba el carrusel para siempre
+//   (v4.1274.0).
 // ════════════════════════════════════════════════════════════════════
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -52,6 +55,16 @@ const SLIDE_KEYFRAMES = `
 `;
 
 const SWIPE_THRESHOLD_PX = 40;
+
+/** ¿El foco llegó por teclado? (`:focus-visible`; un clic de ratón no lo activa). */
+const isKeyboardFocus = (target: EventTarget | null): boolean => {
+    if (!(target instanceof Element)) return false;
+    try {
+        return target.matches(':focus-visible');
+    } catch {
+        return false; // navegador sin :focus-visible: no pausar antes que pausar para siempre
+    }
+};
 
 const usePrefersReducedMotion = (): boolean => {
     const [reduced, setReduced] = useState(false);
@@ -173,7 +186,17 @@ const EventSidebarImageCarousel: React.FC<Props> = ({
 
     const interactionPause = settings.pauseOnInteraction && (hovered || focused || touchPaused);
     const atEnd = !settings.loop && safeActive >= count - 1;
-    const autoplayRunning = settings.autoplay && count > 1 && !reducedMotion && !pageHidden && !interactionPause && !atEnd;
+    // v4.1274.0 — El movimiento reducido YA NO apaga la reproducción automática:
+    // sólo cambia cómo entra la imagen (fundido, sin desplazamiento).
+    const autoplayRunning = settings.autoplay && count > 1 && !pageHidden && !interactionPause && !atEnd;
+    // Por qué está quieto, a la vista en las herramientas del navegador.
+    const autoplayState = !settings.autoplay ? 'off'
+        : autoplayRunning ? 'running'
+        : pageHidden ? 'paused:hidden'
+        : atEnd ? 'paused:end'
+        : hovered ? 'paused:hover'
+        : focused ? 'paused:focus'
+        : touchPaused ? 'paused:touch' : 'paused';
 
     // Reproducción automática. Depende del índice: cualquier cambio (manual o
     // automático) reinicia la cuenta, así una navegación manual nunca salta
@@ -201,9 +224,10 @@ const EventSidebarImageCarousel: React.FC<Props> = ({
         );
     }
 
-    const duration = reducedMotion ? 0 : settings.transitionMs;
-    const isSlide = settings.transition === 'slide';
-    const showArrows = settings.showArrows || reducedMotion;
+    const duration = settings.transitionMs;
+    // Con movimiento reducido nada se desplaza: el slide se muestra como fundido.
+    const isSlide = settings.transition === 'slide' && !reducedMotion;
+    const showArrows = settings.showArrows;
     const canPrev = settings.loop || safeActive > 0;
     const canNext = settings.loop || safeActive < count - 1;
 
@@ -291,11 +315,17 @@ const EventSidebarImageCarousel: React.FC<Props> = ({
             className="relative w-full overflow-hidden bg-gray-50/40 group/carousel"
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
-            onFocus={() => setFocused(true)}
+            onFocus={e => {
+                // Sólo el foco de TECLADO pausa. El clic en una flecha también
+                // enfoca el botón, y eso dejaba el carrusel pausado hasta hacer
+                // clic en otra parte de la página.
+                if (isKeyboardFocus(e.target)) setFocused(true);
+            }}
             onBlur={e => {
                 if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused(false);
             }}
             onKeyDown={onKeyDown}
+            data-autoplay={autoplayState}
         >
             {isSlide && <style>{SLIDE_KEYFRAMES}</style>}
 
