@@ -261,6 +261,12 @@ check('el editor ofrece «Configuración del carrusel»', editorSrc.includes('Co
 check('el editor sube varias imágenes a la vez', /type="file"\s+multiple/.test(editorSrc));
 check('el carrusel respeta prefers-reduced-motion', carouselSrc.includes('prefers-reduced-motion'));
 check('el carrusel carga diferido las imágenes', carouselSrc.includes("'lazy'"));
+// v4.1274.0 — reporte: «la reproducción automática no funciona»
+const autoplayLine = carouselSrc.split('\n').find(l => l.includes('const autoplayRunning')) || '';
+check('el movimiento reducido NO apaga la reproducción automática', autoplayLine && !autoplayLine.includes('reducedMotion'), autoplayLine.trim());
+check('sólo el foco de teclado pausa (un clic en una flecha no deja el carrusel pausado)',
+    carouselSrc.includes("matches(':focus-visible')") && !carouselSrc.includes('onFocus={() => setFocused(true)}'));
+check('el carrusel expone su estado en data-autoplay', carouselSrc.includes('data-autoplay='));
 
 console.log(`\n────────────────────────────────────────────────────────────`);
 if (malos.length === 0) {

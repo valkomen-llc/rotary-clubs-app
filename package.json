@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1273.0",
-  "cache_bust": "4.1273.0",
+  "version": "4.1274.0",
+  "cache_bust": "4.1274.0",
   "type": "module",
-  "//": "UI V4.1273.0 | 2026-11-01 (Eventos: la imagen lateral se convierte en carrusel)",
+  "//": "UI V4.1274.0 | 2026-11-01 (Eventos: el carrusel lateral avanza solo de verdad)",
   "scripts": {
     "dev": "vite",
     "bundle:server-blocks": "npx esbuild src/lib/emailBlocks.ts --bundle --platform=node --format=esm --target=node18 --outfile=server/lib/emailBlocks.js",
