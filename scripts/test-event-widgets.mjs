@@ -20,6 +20,11 @@ const {
     hasVisibleSidebarImageWidget,
     extractSidebarImageWidget,
     draftSidebarImageWidget,
+    serializeSidebarImageWidget,
+    normalizeCarouselSettings,
+    visibleSidebarSlides,
+    resolveSlideLinkTarget,
+    DEFAULT_CAROUSEL_SETTINGS,
 } = mod;
 
 let ok = 0; const malos = [];
@@ -161,6 +166,101 @@ check('Events.tsx renderiza EventWidgetsEditor en la pestaña widgets',
 const calendarSrc = readFileSync('server/routes/calendar.js', 'utf8');
 check('calendar.js preserva metadata.widgets al actualizar evento',
     calendarSrc.includes("puede('info') || puede('media')"));
+
+// 8. Carrusel (v4.1273.0)
+grupo('8. Carrusel de imágenes: migración, orden, propiedades y configuración');
+
+// 8.1 Migración de un evento existente de UNA imagen
+const legacy = {
+    enabled: true,
+    imageUrl: 'https://cdn.rotary.org/vestuario.jpg',
+    title: 'Código de vestuario',
+    showTitle: true,
+    altText: 'Vestuario casual rotario',
+    linkUrl: 'https://rotary4281.org/guia',
+    openInNewTab: true,
+};
+const migrated = normalizeSidebarImageWidget(legacy);
+check('un widget heredado se lee como lista de UNA imagen', migrated?.images?.length === 1);
+check('la imagen migrada conserva URL, alt, enlace y destino',
+    migrated?.images?.[0]?.imageUrl === legacy.imageUrl &&
+    migrated?.images?.[0]?.altText === legacy.altText &&
+    migrated?.images?.[0]?.linkUrl === legacy.linkUrl &&
+    migrated?.images?.[0]?.openInNewTab === true &&
+    migrated?.images?.[0]?.enabled === true);
+check('la migración conserva título y «Visualización activa»', migrated?.title === 'Código de vestuario' && migrated?.showTitle === true && migrated?.enabled === true);
+check('la migración aplica la configuración predeterminada del carrusel',
+    JSON.stringify(migrated?.carousel) === JSON.stringify(DEFAULT_CAROUSEL_SETTINGS));
+check('un widget heredado sigue siendo visible', hasVisibleSidebarImageWidget(migrated));
+check('un widget heredado pausado sigue pausado', !hasVisibleSidebarImageWidget(normalizeSidebarImageWidget({ ...legacy, enabled: false })));
+
+const legacyDraft = draftSidebarImageWidget(legacy);
+check('el borrador del editor migra la imagen heredada sin perderla',
+    legacyDraft.images.length === 1 && legacyDraft.images[0].imageUrl === legacy.imageUrl && legacyDraft.images[0].altText === legacy.altText);
+const legacySaved = serializeSidebarImageWidget(legacyDraft);
+check('al guardar, queda en el esquema nuevo (images + carousel)', Array.isArray(legacySaved.images) && legacySaved.images.length === 1 && legacySaved.carousel?.autoplay === true);
+check('al guardar, el reflejo heredado sigue apuntando a la imagen', legacySaved.imageUrl === legacy.imageUrl && legacySaved.linkUrl === legacy.linkUrl);
+check('guardar y volver a leer es estable (idempotente)',
+    JSON.stringify(normalizeSidebarImageWidget(legacySaved)) === JSON.stringify(normalizeSidebarImageWidget(serializeSidebarImageWidget(draftSidebarImageWidget(legacySaved)))));
+
+// 8.2 Varias imágenes con propiedades propias
+const multi = {
+    enabled: true,
+    images: [
+        { id: 'a', imageUrl: 'https://cdn.rotary.org/1.jpg', altText: 'Uno', linkUrl: '/registro', openInNewTab: false, enabled: true },
+        { id: 'b', imageUrl: 'https://cdn.rotary.org/2.jpg', altText: 'Dos', enabled: false },
+        { id: 'c', imageUrl: 'javascript:alert(1)', enabled: true },
+        { id: 'd', imageUrl: 'https://cdn.rotary.org/4.jpg', altText: 'Cuatro', linkUrl: 'www.patrocinador.com', openInNewTab: true, enabled: true },
+    ],
+    carousel: { autoplay: false, intervalMs: 8000, transition: 'slide', transitionMs: 800, showArrows: false, showDots: true, loop: false, pauseOnInteraction: false },
+};
+const multiNorm = normalizeSidebarImageWidget(multi);
+check('descarta imágenes con URL insegura', multiNorm?.images?.length === 3 && !multiNorm.images.some(i => i.id === 'c'));
+check('conserva el orden configurado', multiNorm?.images?.map(i => i.id).join(',') === 'a,b,d');
+check('cada imagen conserva su alt y su enlace',
+    multiNorm?.images?.[0]?.altText === 'Uno' && multiNorm?.images?.[0]?.linkUrl === '/registro' &&
+    multiNorm?.images?.[2]?.linkUrl === 'https://www.patrocinador.com' && multiNorm?.images?.[2]?.openInNewTab === true);
+check('cada imagen conserva su estado activa/inactiva', multiNorm?.images?.[1]?.enabled === false);
+check('el sitio público muestra sólo las activas, en orden', visibleSidebarSlides(multiNorm).map(i => i.id).join(',') === 'a,d');
+check('conserva la configuración del carrusel guardada', JSON.stringify(multiNorm?.carousel) === JSON.stringify(multi.carousel));
+check('el reflejo heredado es la primera imagen activa', multiNorm?.imageUrl === 'https://cdn.rotary.org/1.jpg');
+
+const allOff = normalizeSidebarImageWidget({ enabled: true, images: [{ id: 'x', imageUrl: 'https://cdn.rotary.org/x.jpg', enabled: false }] });
+check('si todas las imágenes están inactivas, el widget no se muestra', allOff !== null && !hasVisibleSidebarImageWidget(allOff));
+check('la lista `images` manda sobre el imageUrl heredado', normalizeSidebarImageWidget({ imageUrl: 'https://cdn.rotary.org/viejo.jpg', images: [] }) === null);
+
+// 8.3 Configuración del carrusel: predeterminados y límites
+const defs = normalizeCarouselSettings(undefined);
+check('predeterminados: autoplay, 5 s, fade, 500 ms, flechas, puntos, continua, pausa',
+    defs.autoplay === true && defs.intervalMs === 5000 && defs.transition === 'fade' && defs.transitionMs === 500 &&
+    defs.showArrows === true && defs.showDots === true && defs.loop === true && defs.pauseOnInteraction === true);
+const clamped = normalizeCarouselSettings({ intervalMs: 10, transitionMs: 999999, transition: 'zoom' });
+check('el intervalo se acota a un mínimo razonable', clamped.intervalMs === 2000);
+check('la duración de transición se acota a un máximo', clamped.transitionMs === 3000);
+check('una transición desconocida vuelve a fade', clamped.transition === 'fade');
+check('valores no numéricos vuelven al predeterminado', normalizeCarouselSettings({ intervalMs: 'abc' }).intervalMs === 5000);
+
+// 8.4 Aislamiento entre eventos: el borrador no comparte objetos
+const d1 = draftSidebarImageWidget(null);
+const d2 = draftSidebarImageWidget(null);
+d1.carousel.autoplay = false;
+check('cada evento parte de su propia copia de la configuración', d2.carousel.autoplay === true && DEFAULT_CAROUSEL_SETTINGS.autoplay === true);
+
+// 8.5 Destino de los enlaces individuales
+check('enlace interno abre en la misma pestaña', resolveSlideLinkTarget('/registro', false).target === '_self');
+check('enlace externo sin preferencia abre en pestaña nueva', resolveSlideLinkTarget('https://x.org', false).target === '_blank');
+check('pestaña nueva lleva rel noopener', resolveSlideLinkTarget('/x', true).rel === 'noopener noreferrer');
+
+// 8.6 Cableado del carrusel
+const widgetSrc = readFileSync('src/components/EventSidebarImageWidget.tsx', 'utf8');
+const editorSrc = readFileSync('src/components/admin/events/EventWidgetsEditor.tsx', 'utf8');
+const carouselSrc = readFileSync('src/components/EventSidebarImageCarousel.tsx', 'utf8');
+check('el sitio público usa EventSidebarImageCarousel', widgetSrc.includes('<EventSidebarImageCarousel'));
+check('la vista previa usa EL MISMO carrusel', editorSrc.includes('<EventSidebarImageCarousel'));
+check('el editor ofrece «Configuración del carrusel»', editorSrc.includes('Configuración del carrusel'));
+check('el editor sube varias imágenes a la vez', /type="file"\s+multiple/.test(editorSrc));
+check('el carrusel respeta prefers-reduced-motion', carouselSrc.includes('prefers-reduced-motion'));
+check('el carrusel carga diferido las imágenes', carouselSrc.includes("'lazy'"));
 
 console.log(`\n────────────────────────────────────────────────────────────`);
 if (malos.length === 0) {

@@ -215,6 +215,7 @@ es **rotar la credencial en Neon**, no sólo borrar el archivo.
 
 | Módulo | Archivo |
 |---|---|
+| Carrusel de la «Imagen lateral del evento» (varias imágenes con alt/enlace/estado propios, miniaturas reordenables, «Configuración del carrusel» por evento, vista previa con el mismo componente, migración al leer de la imagen única) — v4.1273.0 | `docs/claude/carrusel-de-la-imagen-lateral-del-evento.md` |
 | **Catálogo Maestro de Clubes** — la fuente ÚNICA de clubes (Directorio = catálogo; lista estática sólo semilla; catálogo vivo para todos los formularios; estados, alias, duplicados reversibles, importación con revisión, permisos por distrito) — v4.1269 | `docs/claude/catalogo-maestro-de-clubes.md` |
 | Guía de pago por COLROTARIOS / AvalPay en el paso 4 de «Completar inscripción» (tarjeta contextual, configurable por evento, concepto verificado, volver de pagar sin perder el paso) — v4.1268 | `docs/claude/guia-de-pago-colrotarios.md` |
 | La cuenta del participante en «Completar inscripción» (crear acceso o entrar con la cuenta de siempre, «Mis eventos», vincular lo anterior sólo con el correo demostrado, envío idempotente) — v4.1267 | `docs/claude/cuenta-del-participante-en-completar-inscripcion.md` |
