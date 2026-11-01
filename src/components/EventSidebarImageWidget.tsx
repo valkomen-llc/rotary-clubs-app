@@ -10,12 +10,18 @@
 // ancho 100% responsive, altura proporcional (object-contain) para
 // formatos verticales como 1080×1350 (4:5) o cualquier proporción,
 // sin recortar textos ni desbordar la columna.
+//
+// v4.1273.0 — Con varias imágenes activas se convierte en un carrusel
+// (EventSidebarImageCarousel). Con una sola, se ve exactamente como antes.
 // ════════════════════════════════════════════════════════════════════
-import React from 'react';
+import React, { useState } from 'react';
 import { ExternalLink } from 'lucide-react';
+import EventSidebarImageCarousel from './EventSidebarImageCarousel';
 import {
     hasVisibleSidebarImageWidget,
     normalizeSidebarImageWidget,
+    resolveSlideLinkTarget,
+    visibleSidebarSlides,
     type EventSidebarImageWidget as WidgetData,
 } from '../lib/eventWidgets';
 
@@ -33,43 +39,26 @@ const EventSidebarImageWidget: React.FC<Props> = ({
     eventTitle,
     className = '',
 }) => {
+    // v4.1273.0 — Hook arriba, antes de cualquier return.
+    const [activeIndex, setActiveIndex] = useState(0);
     const widget = normalizeSidebarImageWidget(rawWidget);
 
     if (!hasVisibleSidebarImageWidget(widget)) {
         return null;
     }
 
-    const {
-        imageUrl,
-        title,
-        showTitle,
-        altText,
-        linkUrl,
-        openInNewTab,
-    } = widget!;
+    const { title, showTitle, carousel } = widget!;
+    // Sólo las imágenes activas, en el orden configurado. Un evento anterior
+    // al carrusel llega aquí como una lista de UNA imagen (migración al leer).
+    const slides = visibleSidebarSlides(widget);
+    const activeSlide = slides[Math.min(activeIndex, slides.length - 1)];
 
     const fallbackAlt = title
         ? `${title}${eventTitle ? ` · ${eventTitle}` : ''}`
         : (eventTitle ? `Imagen informativa · ${eventTitle}` : 'Imagen informativa del evento');
 
-    const effectiveAlt = altText || fallbackAlt;
-
-    const isLinkExternal = Boolean(
-        linkUrl && (/^https?:\/\//i.test(linkUrl) || openInNewTab)
-    );
-    const target = openInNewTab
-        ? '_blank'
-        : (linkUrl?.startsWith('/') ? '_self' : (isLinkExternal ? '_blank' : '_self'));
-    const rel = target === '_blank' ? 'noopener noreferrer' : undefined;
-
-    const imageElement = (
-        <img
-            src={imageUrl}
-            alt={effectiveAlt}
-            loading="lazy"
-            decoding="async"
-            className="w-full h-auto object-contain block transition-transform duration-300 group-hover:scale-[1.01]"
-        />
+    const activeIsExternal = Boolean(
+        activeSlide?.linkUrl && resolveSlideLinkTarget(activeSlide.linkUrl, activeSlide.openInNewTab).external
     );
 
     return (
@@ -82,30 +71,19 @@ const EventSidebarImageWidget: React.FC<Props> = ({
                     <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500">
                         {title}
                     </h3>
-                    {linkUrl && isLinkExternal && (
-                        <ExternalLink className="w-3.5 h-3.5 text-gray-400 group-hover:text-rotary-blue transition-colors" />
+                    {activeIsExternal && (
+                        <ExternalLink className="w-3.5 h-3.5 text-gray-400" />
                     )}
                 </div>
             )}
 
-            {/* Contenedor de la imagen con ajuste responsive perfecto */}
-            <div className="w-full overflow-hidden bg-gray-50/40">
-                {linkUrl ? (
-                    <a
-                        href={linkUrl}
-                        target={target}
-                        rel={rel}
-                        className="group block w-full focus:outline-none focus:ring-2 focus:ring-rotary-blue/50 focus:ring-inset"
-                        title={effectiveAlt}
-                    >
-                        {imageElement}
-                    </a>
-                ) : (
-                    <div className="w-full">
-                        {imageElement}
-                    </div>
-                )}
-            </div>
+            {/* Imagen única o carrusel, con ajuste responsive sin recortes */}
+            <EventSidebarImageCarousel
+                slides={slides}
+                settings={carousel}
+                fallbackAlt={fallbackAlt}
+                onIndexChange={setActiveIndex}
+            />
         </div>
     );
 };

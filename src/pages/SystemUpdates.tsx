@@ -42,6 +42,25 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1273.0',
+        title: 'Eventos: la «Imagen lateral del evento» ahora es un carrusel 🖼️🎠',
+        description: 'El widget de la columna derecha de un evento (debajo del mapa) admite varias imágenes y las muestra como un carrusel automático e interactivo, en el mismo espacio y con el mismo diseño. Con una sola imagen se ve exactamente como antes, sin controles. Las imágenes que ya tenía cada evento se conservan solas, con su texto alternativo y su enlace.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'widgets', 'imagen-lateral', 'carrusel', 'sitio público', 'panel'],
+        type: 'feature',
+        impact: 'Alta: cada evento puede rotar afiches, patrocinadores, código de vestuario y anuncios en la barra lateral sin tocar código.',
+        changes: [
+            { type: 'added', text: 'Varias imágenes por evento: subida múltiple desde el equipo (o soltando los archivos), selección múltiple de la Biblioteca y URL externa. Hasta 20 por evento.' },
+            { type: 'added', text: 'Miniaturas en orden de presentación: arrastrar y soltar para reordenar (o flechas, para teclado y pantallas táctiles), reemplazar desde el equipo o la Biblioteca y eliminar una a una.' },
+            { type: 'added', text: 'Cada imagen tiene su propio texto alternativo, su enlace (misma pestaña o nueva) y su estado activa/inactiva.' },
+            { type: 'added', text: '«Configuración del carrusel» guardada por evento: reproducción automática, tiempo entre imágenes (5 s), transición fade o slide (fade, 500 ms), flechas, puntos, reproducción continua y pausa al interactuar.' },
+            { type: 'added', text: 'Sitio público: flechas discretas, puntos de posición, deslizamiento táctil, teclado (← →), pausa al pasar el cursor, tocar o enfocar, y con la pestaña oculta.' },
+            { type: 'improved', text: 'La vista previa del panel usa EL MISMO carrusel del sitio: se prueban transiciones y navegación, muestra «n / total» y salta a la imagen que se elige en las miniaturas.' },
+            { type: 'improved', text: 'Sin saltos de diseño: el carrusel toma el alto de la imagen más alta y cada imagen conserva su proporción, sin recortes. Carga diferida (lazy) y, con «movimiento reducido» del dispositivo, sin animaciones ni avance automático.' },
+            { type: 'changed', text: 'El interruptor «Visualización activa» sigue encendiendo o apagando todo el widget. Los eventos existentes se migran solos al leerse (su imagen pasa a ser la primera del carrusel) y al guardar quedan en el esquema nuevo.' },
+        ],
+    },
+    {
         version: '4.1272.0',
         title: 'Eventos: las tarjetas van centradas 🎯',
         description: 'En la página pública de Eventos, cuando hay menos de tres eventos (p. ej. rotary4281.org con dos eventos próximos) las tarjetas quedaban pegadas a la izquierda con un hueco a la derecha. Ahora se reparten desde el centro de la página.',
