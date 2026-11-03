@@ -1,18 +1,21 @@
 // ════════════════════════════════════════════════════════════════════
-// Imagen de portada de un evento, con movimiento suave — v4.1276.0
+// Imagen de portada de un evento con efecto Ken Burns — v4.1276.0
+// Continuo con animación CSS y vivo con «Reducir movimiento» — v4.1277.0
 //
-// Acercamiento lento y único (Ken Burns) que arranca cuando la imagen YA
-// cargó: si empezara antes, en una conexión lenta el movimiento se gastaría
-// con la foto todavía vacía. Termina y se queda quieta (no hay bucle que
-// distraiga). Sólo `transform` y `opacity`: lo anima la GPU, no recalcula
-// el diseño ni mueve el resto de la página.
-//
-// · «Reducir movimiento» del sistema → la foto aparece quieta.
-// · `replayKey` (vista previa del panel) vuelve a reproducir el efecto.
-// Configuración: src/lib/eventHeroMotion.ts.
+// · La animación (keyframes `heroKenBurns` en src/index.css) arranca cuando
+//   la imagen YA cargó: si empezara antes, en una conexión lenta se gastaría
+//   con la foto todavía vacía.
+// · Continuo: acerca y aleja sin parar (`alternate infinite`). Una vez: se
+//   acerca y se queda (`forwards`).
+// · Sólo `transform` y `opacity` dentro del contenedor `overflow-hidden`: lo
+//   anima la GPU y no mueve el resto de la página.
+// · Con la pestaña oculta el navegador pausa la animación solo.
+// · Diagnóstico: `data-hero-motion` = running | gentle | still-reduced | off
+//   | waiting. Ante «no se mueve», mirar ese atributo en el navegador.
+// Criterio: src/lib/eventHeroMotion.ts (`planHeroMotion`).
 // ════════════════════════════════════════════════════════════════════
-import { useEffect, useRef, useState } from 'react';
-import { HERO_MOTION_ORIGIN, HERO_MOTION_SCALE, normalizeHeroMotion } from '../lib/eventHeroMotion';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { normalizeHeroMotion, planHeroMotion } from '../lib/eventHeroMotion';
 
 interface Props {
     src: string;
@@ -24,7 +27,7 @@ interface Props {
     className?: string;
 }
 
-const prefersReducedMotion = () => {
+const readReducedMotion = () => {
     try {
         return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
     } catch {
@@ -33,32 +36,45 @@ const prefersReducedMotion = () => {
 };
 
 const EventHeroImage = ({ src, alt, motion, replayKey, className = '' }: Props) => {
-    const cfg = normalizeHeroMotion(motion);
     const imgRef = useRef<HTMLImageElement>(null);
     const [loaded, setLoaded] = useState(false);
-    const [moving, setMoving] = useState(false);
-    const [reduced] = useState(prefersReducedMotion);
+    const [reduced, setReduced] = useState(readReducedMotion);
+
+    // Si la persona cambia «Reducir movimiento» con la página abierta.
+    useEffect(() => {
+        let mq: MediaQueryList | null = null;
+        try { mq = window.matchMedia('(prefers-reduced-motion: reduce)'); } catch { return; }
+        const on = () => setReduced(mq!.matches);
+        mq.addEventListener?.('change', on);
+        return () => mq?.removeEventListener?.('change', on);
+    }, []);
 
     // Una imagen que vino del caché puede terminar de cargar antes de que React
     // enganche `onLoad`: se mira `complete` al montar.
     useEffect(() => {
         setLoaded(false);
-        setMoving(false);
         const img = imgRef.current;
         if (img && img.complete && img.naturalWidth > 0) setLoaded(true);
     }, [src, replayKey]);
 
-    // Dos cuadros después de pintar la imagen en su tamaño inicial, se pide el
-    // final: así el navegador SIEMPRE ve el cambio y la transición corre.
-    useEffect(() => {
-        if (!loaded || !cfg.enabled || reduced) return;
-        let a = 0; let b = 0;
-        a = requestAnimationFrame(() => { b = requestAnimationFrame(() => setMoving(true)); });
-        return () => { cancelAnimationFrame(a); cancelAnimationFrame(b); };
-    }, [loaded, cfg.enabled, reduced, replayKey]);
+    const plan = planHeroMotion(normalizeHeroMotion(motion), reduced);
+    const moves = plan.state === 'running' || plan.state === 'gentle';
 
-    const animate = cfg.enabled && !reduced;
-    const scale = animate && moving ? HERO_MOTION_SCALE[cfg.intensity] : 1;
+    const style: CSSProperties & Record<string, string | number | undefined> = {
+        transformOrigin: plan.origin,
+        opacity: loaded ? 1 : 0,
+        transition: 'opacity 700ms ease-out',
+        backfaceVisibility: 'hidden',
+        '--hero-scale': String(plan.scale),
+        '--hero-dx': plan.dx,
+        '--hero-dy': plan.dy,
+    };
+    if (moves && loaded) {
+        style.animation = plan.iterations === 'infinite'
+            ? `heroKenBurns ${plan.durationSec}s ease-in-out 0s infinite alternate both`
+            : `heroKenBurns ${plan.durationSec}s cubic-bezier(0.25, 0.1, 0.25, 1) 0s 1 normal forwards`;
+        style.willChange = 'transform';
+    }
 
     return (
         <img
@@ -69,22 +85,10 @@ const EventHeroImage = ({ src, alt, motion, replayKey, className = '' }: Props) 
             fetchPriority="high"
             decoding="async"
             onLoad={() => setLoaded(true)}
-            // Si la imagen falla, no se queda invisible: se ve como antes.
             onError={() => setLoaded(true)}
-            data-hero-motion={animate ? (moving ? 'running' : 'waiting') : (cfg.enabled ? 'reduced' : 'off')}
+            data-hero-motion={moves && !loaded ? 'waiting' : plan.state}
             className={`w-full h-full object-cover ${className}`}
-            style={{
-                transformOrigin: HERO_MOTION_ORIGIN[cfg.focus],
-                transform: `scale(${scale})`,
-                // Aparece con un fundido corto al cargar; el acercamiento dura lo
-                // configurado con una curva que arranca y frena con suavidad.
-                opacity: loaded ? 1 : 0,
-                transition: animate
-                    ? `transform ${cfg.durationSec}s cubic-bezier(0.25, 0.1, 0.25, 1), opacity 700ms ease-out`
-                    : 'opacity 500ms ease-out',
-                willChange: animate && !moving ? 'transform' : undefined,
-                backfaceVisibility: 'hidden',
-            }}
+            style={style}
         />
     );
 };

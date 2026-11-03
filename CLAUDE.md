@@ -215,7 +215,7 @@ es **rotar la credencial en Neon**, no sólo borrar el archivo.
 
 | Módulo | Archivo |
 |---|---|
-| Movimiento de la portada del evento (acercamiento suave Ken Burns en la ficha pública, configurable por evento en Multimedia, encendido por defecto, respeta «Reducir movimiento») — v4.1276.0 | `docs/claude/movimiento-de-la-portada-del-evento.md` |
+| Movimiento de la portada del evento (Ken Burns en la ficha pública, configurable por evento en Multimedia, encendido por defecto) — v4.1276.0 (**continuo y vivo con «Reducir movimiento»: v4.1277.0**) | `docs/claude/movimiento-de-la-portada-del-evento.md` |
 | **Hoteles de la conferencia** (sección pública de diapositivas entre el carrusel de fotos y el HTML de la ficha; pestaña «🏨 Hoteles y alojamiento»; subida prefirmada validada por bytes y optimizada en WebP; historial sellado por el servidor; liberación acotada de archivos sin uso; PDF → diapositivas es Fase 2) — v4.1275.0 | `docs/claude/hoteles-de-la-conferencia.md` |
 | Carrusel de la «Imagen lateral del evento» (varias imágenes con alt/enlace/estado propios, miniaturas reordenables, «Configuración del carrusel» por evento, vista previa con el mismo componente, migración al leer de la imagen única) — v4.1273.0 (avance automático corregido: v4.1274.0) | `docs/claude/carrusel-de-la-imagen-lateral-del-evento.md` |
 | **Catálogo Maestro de Clubes** — la fuente ÚNICA de clubes (Directorio = catálogo; lista estática sólo semilla; catálogo vivo para todos los formularios; estados, alias, duplicados reversibles, importación con revisión, permisos por distrito) — v4.1269 | `docs/claude/catalogo-maestro-de-clubes.md` |
