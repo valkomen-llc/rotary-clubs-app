@@ -42,6 +42,21 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1276.0',
+        title: 'Eventos: la portada del evento cobra vida con un acercamiento suave 🎬',
+        description: 'En la página pública de cada evento (p. ej. rotary4281.org/eventos/villavicencio2027) la imagen de portada hace un acercamiento muy leve durante unos 5 segundos al abrir la página, y el título aparece con un fundido. Se configura por evento en Multimedia.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'portada', 'animación', 'sitio público', 'panel'],
+        type: 'feature',
+        impact: 'Media: la cabecera del evento se siente más viva sin distraer de la lectura.',
+        changes: [
+            { type: 'added', text: 'Acercamiento lento (efecto Ken Burns) de la portada: arranca cuando la imagen ya cargó, dura 5 s y se queda quieta; sin bucles.' },
+            { type: 'added', text: 'Panel → Multimedia → «🎬 Movimiento de la portada»: activar o desactivar, intensidad (5 %, 8 % o 12 %), duración (3 a 12 s) y hacia dónde acercarse, con vista previa que se puede repetir.' },
+            { type: 'improved', text: 'Accesible y liviano: no se mueve con «Reducir movimiento» del dispositivo, sólo anima transformaciones en la GPU y no desplaza el resto de la página.' },
+            { type: 'changed', text: 'Activado por defecto con la intensidad más sutil en todos los eventos; cada evento puede apagarlo.' },
+        ],
+    },
+    {
         version: '4.1275.0',
         title: 'Eventos: «Hoteles de la conferencia» con diapositivas, zoom y guía descargable 🏨',
         description: 'Nueva sección en la página pública de cada evento (p. ej. rotary4281.org/eventos/villavicencio2027), entre el carrusel de fotos y «¿Qué incluye tu inscripción?»: las diapositivas con los hoteles, tarifas, condiciones y contactos se ven completas, se amplían para leer en el teléfono y, si se autoriza, se descarga la guía en PDF. Se administra por evento desde la nueva pestaña «🏨 Hoteles y alojamiento».',

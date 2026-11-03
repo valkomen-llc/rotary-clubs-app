@@ -11,6 +11,8 @@ import { hasEventVideo } from '../lib/eventVideo';
 import EventVenueCard from '../components/EventVenueCard';
 import EventSidebarImageWidget from '../components/EventSidebarImageWidget';
 import EventHotelsSection from '../components/EventHotelsSection';
+import EventHeroImage from '../components/EventHeroImage';
+import { normalizeHeroMotion } from '../lib/eventHeroMotion';
 import { normalizeVenue } from '../lib/eventVenue';
 import { sourceTraceOf } from '../lib/districtEcosystem';
 import { useClub } from '../contexts/ClubContext';
@@ -249,6 +251,8 @@ const EventoDetalle = () => {
                     ? { label: 'Fecha por confirmar', className: 'bg-rotary-gold text-white' }
                     : null;
     const coverImg = event.image || (event.images && event.images[0]) || null;
+    // v4.1276.0 — Con el movimiento de la portada, el título entra con un fundido.
+    const heroMotionOn = normalizeHeroMotion(event.metadata?.heroMotion).enabled;
 
     return (
         <div className="min-h-screen bg-white">
@@ -256,13 +260,14 @@ const EventoDetalle = () => {
 
             {/* Hero */}
             <div className="relative h-[420px] md:h-[520px] overflow-hidden">
-                <img
+                {/* v4.1276.0 — Acercamiento muy suave al cargar (configurable por evento). */}
+                <EventHeroImage
                     src={coverImg || (typeImages[event.type] || defaultImage)}
                     alt={event.title}
-                    className="w-full h-full object-cover"
+                    motion={event.metadata?.heroMotion}
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
-                <div className="absolute bottom-0 left-0 right-0 px-6 pb-10 max-w-7xl mx-auto">
+                <div className={`absolute bottom-0 left-0 right-0 px-6 pb-10 max-w-7xl mx-auto ${heroMotionOn ? 'animate-in fade-in slide-in-from-bottom-3 duration-1000 motion-reduce:animate-none' : ''}`}>
                     <div className="flex flex-wrap items-center gap-2 mb-4">
                         <span className="inline-block bg-white/20 backdrop-blur-md text-white text-[11px] font-black uppercase tracking-widest px-3 py-1 rounded-full">
                             {TYPE_LABELS[event.type] || event.type || 'Evento'}

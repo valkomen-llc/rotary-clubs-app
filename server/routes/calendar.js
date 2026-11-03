@@ -256,7 +256,8 @@ const EVENT_FIELDS_BY_CAPABILITY = {
 // v4.1247 — El estado editorial, la zona horaria, «fecha por confirmar» y
 // «todo el día» son parte de la información del evento.
 // v4.1275.0 — `hotels` (Hoteles de la conferencia) es de Multimedia.
-const METADATA_KEYS_BY_CAPABILITY = { venue: ['venue'], registration_panel: ['latir'], media: ['video', 'hotels'], info: LIFECYCLE_METADATA_KEYS };
+// v4.1276.0 — `heroMotion` (movimiento de la portada) también.
+const METADATA_KEYS_BY_CAPABILITY = { venue: ['venue'], registration_panel: ['latir'], media: ['video', 'hotels', 'heroMotion'], info: LIFECYCLE_METADATA_KEYS };
 
 const mergeEventUpdate = (actual, cuerpo, caps) => {
     const puede = (c) => caps === null || caps.includes(c);

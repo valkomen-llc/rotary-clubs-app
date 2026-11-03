@@ -17,6 +17,7 @@ import EventVenueEditor from '../../components/admin/events/EventVenueEditor';
 import EventVideoEditor from '../../components/admin/events/EventVideoEditor';
 import EventWidgetsEditor from '../../components/admin/events/EventWidgetsEditor';
 import EventHotelsEditor from '../../components/admin/events/EventHotelsEditor';
+import EventHeroMotionEditor from '../../components/admin/events/EventHeroMotionEditor';
 import EcosystemPicker from '../../components/admin/events/EcosystemPicker';
 import { useAuth } from '../../hooks/useAuth';
 import { useSiteAccess } from '../../hooks/useSiteAccess';
@@ -1684,6 +1685,13 @@ const EventsManagement = () => {
                                                             currentUrl={event.image || ''}
                                                             onUploaded={url => updateEventField(event.id, 'image', url)}
                                                             onUrlChange={url => updateEventField(event.id, 'image', url)}
+                                                        />
+                                                        {/* v4.1276.0 — Acercamiento suave de la portada en la ficha pública. */}
+                                                        <EventHeroMotionEditor
+                                                            motion={event.metadata?.heroMotion}
+                                                            coverUrl={event.image || (event.images && event.images[0]) || null}
+                                                            eventTitle={event.title}
+                                                            onChange={heroMotion => updateEventField(event.id, 'metadata', { ...event.metadata, heroMotion })}
                                                         />
                                                         <hr className="border-gray-100" />
                                                         <EventVideoEditor
