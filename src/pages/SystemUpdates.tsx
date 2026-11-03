@@ -42,6 +42,23 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1275.0',
+        title: 'Eventos: «Hoteles de la conferencia» con diapositivas, zoom y guía descargable 🏨',
+        description: 'Nueva sección en la página pública de cada evento (p. ej. rotary4281.org/eventos/villavicencio2027), entre el carrusel de fotos y «¿Qué incluye tu inscripción?»: las diapositivas con los hoteles, tarifas, condiciones y contactos se ven completas, se amplían para leer en el teléfono y, si se autoriza, se descarga la guía en PDF. Se administra por evento desde la nueva pestaña «🏨 Hoteles y alojamiento».',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'hoteles', 'multimedia', 'sitio público', 'panel'],
+        type: 'feature',
+        impact: 'Alta: los asistentes consultan alojamiento y tarifas sin salir de la página del evento, y el comité lo actualiza sin tocar código.',
+        changes: [
+            { type: 'added', text: 'Sitio público: visor de diapositivas sin recortes ni reproducción automática, flechas, «Diapositiva n de N», miniaturas, deslizamiento táctil y teclado. Apagada o sin diapositivas, la sección no aparece.' },
+            { type: 'added', text: 'Vista ampliada a pantalla completa con zoom hasta 4× (botones, + / −, doble clic o doble toque, pellizco, Ctrl + rueda), arrastre para desplazarse y navegación con ← → y Esc.' },
+            { type: 'added', text: 'Panel: pestaña «🏨 Hoteles y alojamiento» por evento: publicar u ocultar, título, descripción, fecha de actualización de tarifas, subida múltiple, Biblioteca, reordenar arrastrando o con flechas, reemplazar una sin tocar las demás, texto alternativo, activar o eliminar, y vista previa con el mismo componente público.' },
+            { type: 'added', text: '«Permitir descargar presentación de hoteles»: botón «📥 Descargar guía de hoteles» con el PDF que suba el administrador. Sin archivo o desactivado, no aparece.' },
+            { type: 'improved', text: 'Seguridad: el tipo se juzga por los bytes (un HTML disfrazado de .jpg o un PDF con JavaScript se rechazan), tope de tamaño y de píxeles, imágenes re-codificadas en WebP sin metadatos en tres tamaños, y archivos guardados en el almacenamiento propio de cada evento.' },
+            { type: 'improved', text: 'Historial de cambios sellado por el servidor (quién, cuándo y qué) y liberación controlada de archivos reemplazados: sólo los del módulo y del evento, sin uso en ninguna página y con más de 24 horas.' },
+        ],
+    },
+    {
         version: '4.1274.0',
         title: 'Eventos: el carrusel de la imagen lateral avanza solo de verdad ▶️',
         description: 'En la ficha pública de un evento (p. ej. rotary4281.org/eventos/villavicencio2027) el carrusel de la imagen lateral no cambiaba de imagen por sí solo: había que usar las flechas. Dos causas: un clic en una flecha o un punto dejaba el botón enfocado y eso pausaba el carrusel hasta hacer clic en otra parte de la página, y en equipos con «Reducir movimiento» activado la reproducción automática se apagaba por completo.',

@@ -18,6 +18,7 @@ import { SITE_CONFIG_BUDGET, siteConfigCacheKey } from '../lib/documentBudget.js
 import { siteConfigCache } from '../lib/siteConfigCache.js';
 import { describeLifecycle, isPubliclyVisible, partitionPublicEvents } from '../lib/eventLifecycle.js';
 import { resolveSiteEventTimezone } from '../lib/siteEventTimezone.js';
+import { stripPrivateHotelsFields } from '../lib/eventHotels.js';
 
 const router = express.Router();
 
@@ -650,7 +651,9 @@ router.get('/:clubId/events/:id', async (req, res) => {
         if (!event || !isPubliclyVisible(event)) return res.status(404).json({ error: 'Evento no encontrado' });
         const fallbackTz = await resolveSiteEventTimezone(clubId);
         res.setHeader('Cache-Control', 'no-store');
-        res.json({ ...event, lifecycle: describeLifecycle(event, { fallbackTz }) });
+        // v4.1275.0 — El historial y el autor de los cambios de «Hoteles de la
+        // conferencia» son del panel: no viajan a la ficha pública.
+        res.json({ ...event, metadata: stripPrivateHotelsFields(event.metadata), lifecycle: describeLifecycle(event, { fallbackTz }) });
     } catch (error) {
         console.error('Public event detail error:', error.message);
         res.status(500).json({ error: 'Error al cargar el evento' });
@@ -688,7 +691,7 @@ router.get('/:clubId/events', async (req, res) => {
         const nowMs = Date.now();
         const events = result.rows
             .filter(isPubliclyVisible)
-            .map(e => ({ ...e, lifecycle: describeLifecycle(e, { nowMs, fallbackTz }) }));
+            .map(e => ({ ...e, metadata: stripPrivateHotelsFields(e.metadata), lifecycle: describeLifecycle(e, { nowMs, fallbackTz }) }));
         res.setHeader('Cache-Control', 'no-store');
         const scope = String(req.query.scope || '').toLowerCase();
         if (scope === 'upcoming' || scope === 'past') {

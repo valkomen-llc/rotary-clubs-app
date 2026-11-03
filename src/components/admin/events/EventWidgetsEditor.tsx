@@ -96,7 +96,7 @@ const uploadEventImage = async (file: File): Promise<string> => {
 
 // ── Piezas de interfaz (declaradas fuera del editor: nunca un componente dentro de otro) ──
 
-const ToggleSwitch: React.FC<{
+export const ToggleSwitch: React.FC<{
     checked: boolean;
     onChange: (next: boolean) => void;
     label: string;

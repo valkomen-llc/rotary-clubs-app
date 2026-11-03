@@ -16,6 +16,7 @@ import EventFundsTab from '../../components/admin/events/EventFundsTab';
 import EventVenueEditor from '../../components/admin/events/EventVenueEditor';
 import EventVideoEditor from '../../components/admin/events/EventVideoEditor';
 import EventWidgetsEditor from '../../components/admin/events/EventWidgetsEditor';
+import EventHotelsEditor from '../../components/admin/events/EventHotelsEditor';
 import EcosystemPicker from '../../components/admin/events/EcosystemPicker';
 import { useAuth } from '../../hooks/useAuth';
 import { useSiteAccess } from '../../hooks/useSiteAccess';
@@ -68,7 +69,7 @@ export const slugify = (value: string) =>
 // Registro: son las dos primeras pestañas del evento y la vista con la que
 // se abre. El contenido sigue siendo el MISMO componente (`EventRegistrationTab`
 // con su prop `view`): cero duplicación, una sola fuente de verdad.
-type EventTab = 'inscripciones' | 'completadas' | 'conciliacion' | 'info' | 'media' | 'html' | 'social' | 'sede' | 'metadata' | 'registro' | 'widgets';
+type EventTab = 'inscripciones' | 'completadas' | 'conciliacion' | 'info' | 'media' | 'html' | 'social' | 'sede' | 'metadata' | 'registro' | 'widgets' | 'hoteles';
 
 // v4.1090 — Qué CAPACIDAD del alcance de acceso gobierna cada pestaña. Es el
 // mismo catálogo que `RESOURCE_MODULES.events` en `rbacSpec.js`; acá sólo se
@@ -87,6 +88,8 @@ const TAB_CAPABILITY: Record<EventTab, string> = {
     metadata: 'registration_panel',
     registro: 'registration',
     widgets: 'media',
+    // v4.1275.0 — «Hoteles y alojamiento»: diapositivas y guía de hoteles.
+    hoteles: 'media',
 };
 const EDITABLE_CAPABILITIES = ['info', 'media', 'html', 'venue', 'registration_panel'];
 
@@ -1144,7 +1147,7 @@ const EventsManagement = () => {
     };
     const hasCap = (id: string, cap: string) => { const c = capsOf(id); return c === null || c.includes(cap); };
     const tabsFor = (id: string): EventTab[] =>
-        (['inscripciones', 'completadas', 'conciliacion', 'info', 'media', 'html', 'social', 'sede', 'widgets', 'metadata', 'registro'] as EventTab[])
+        (['inscripciones', 'completadas', 'conciliacion', 'info', 'media', 'html', 'social', 'sede', 'widgets', 'hoteles', 'metadata', 'registro'] as EventTab[])
             .filter(tab => hasCap(id, TAB_CAPABILITY[tab]));
     const canEdit = (id: string) => EDITABLE_CAPABILITIES.some(cap => hasCap(id, cap));
     const getTab = (id: string): EventTab => {
@@ -1596,6 +1599,7 @@ const EventsManagement = () => {
                                                             social: '🚀 Social',
                                                             sede: '🏨 Sede y Mapa',
                                                             widgets: '🧩 Widgets / Imagen lateral',
+                                                            hoteles: '🏨 Hoteles y alojamiento',
                                                             metadata: '🎟️ Panel de inscripción',
                                                             registro: '💳 Registro',
                                                         }[tab as string]}
@@ -1709,6 +1713,23 @@ const EventsManagement = () => {
                                                                 Configurar imagen lateral →
                                                             </button>
                                                         </div>
+                                                        <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                                            <div>
+                                                                <h4 className="text-sm font-bold text-blue-950 flex items-center gap-1.5">
+                                                                    🏨 Hoteles y alojamiento
+                                                                </h4>
+                                                                <p className="text-xs text-blue-800/80 mt-0.5">
+                                                                    Diapositivas con hoteles, tarifas y condiciones, publicadas como «Hoteles de la conferencia» debajo del carrusel de fotos.
+                                                                </p>
+                                                            </div>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setTab(event.id, 'hoteles')}
+                                                                className="shrink-0 px-3.5 py-1.5 bg-white text-rotary-blue text-xs font-bold rounded-xl border border-blue-200 shadow-xs hover:bg-blue-50 transition-colors"
+                                                            >
+                                                                Configurar hoteles →
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                 )}
 
@@ -1743,6 +1764,17 @@ const EventsManagement = () => {
                                                             />
                                                         </div>
                                                     </div>
+                                                )}
+
+                                                {/* ── Tab: Hoteles y alojamiento (v4.1275.0) ── */}
+                                                {getTab(event.id) === 'hoteles' && (
+                                                    <EventHotelsEditor
+                                                        eventId={event.id}
+                                                        eventTitle={event.title}
+                                                        hotels={event.metadata?.hotels}
+                                                        onChange={hotels => updateEventField(
+                                                            event.id, 'metadata', { ...event.metadata, hotels })}
+                                                    />
                                                 )}
 
                                                 {/* ── Tab: Widgets y contenido complementario (v4.1207.0) ── */}
