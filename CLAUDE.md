@@ -146,7 +146,7 @@ Nunca volver a poner `db push` en el `build`.
    perderían y cuántas filas tienen. Para sincronizar de todos modos, a
    sabiendas: `npm run db:push:force`.
 
-Las 51 tablas que la aplicación crea sola y que estas barreras protegen:
+Las 54 tablas que la aplicación crea sola y que estas barreras protegen:
 `BannerTemplate`, `MediaOutroComposition` (la versión con outro de un video de la Biblioteca, v4.1039), `CreativeProfile`, `CreativeReference`, `DesignProject`,
 `DisbursementBatch` (el desembolso agrupado, v4.996), las cinco de Notificaciones de Contribuciones (`NotificationDelivery`,
 `NotificationBeneficiary`, `NotificationProfile`, `NotificationTemplate`,
@@ -185,6 +185,9 @@ Y la bitácora del Catálogo Maestro de Clubes (v4.1269): `ClubCatalogChange`
 Y las cuatro de la plantilla oficial de presentación de la Feria (v4.1264):
 `ProjectFairResource`, `ProjectFairResourceVersion`,
 `ProjectFairResourceDownload` y `ProjectFairResourceEvent`.
+Y las tres de los códigos QR dinámicos de los enlaces inteligentes (v4.1278):
+`LinkRedirectQr` (el código IMPRESO en cada pieza, su vigencia y su diseño),
+`LinkRedirectQrDaily` y `LinkRedirectQrVisitor` (su medición aparte).
 (Más las del registro de eventos que enumera su propia sección:
 `EventEdition`, `EventRegistrationCategory`, `EventRegistrationCompanion`,
 `EventRegistrationPayment`, `EventRegistrationHistory`,
@@ -215,6 +218,7 @@ es **rotar la credencial en Neon**, no sólo borrar el archivo.
 
 | Módulo | Archivo |
 |---|---|
+| **Enlaces inteligentes y códigos QR dinámicos** (Configuración → Identidad; varios QR por enlace, vigencia 30/90/nunca/fecha calculada en el servidor, estados derivados del reloj, página institucional, analítica por QR frente a enlace directo, resumen del sitio; descargas PNG/SVG/PDF verificadas con dos codificadores) — v4.1278 | `docs/claude/enlaces-inteligentes-y-codigos-qr.md` |
 | Movimiento de la portada del evento (Ken Burns en la ficha pública, configurable por evento en Multimedia, encendido por defecto) — v4.1276.0 (**continuo y vivo con «Reducir movimiento»: v4.1277.0**) | `docs/claude/movimiento-de-la-portada-del-evento.md` |
 | **Hoteles de la conferencia** (sección pública de diapositivas entre el carrusel de fotos y el HTML de la ficha; pestaña «🏨 Hoteles y alojamiento»; subida prefirmada validada por bytes y optimizada en WebP; historial sellado por el servidor; liberación acotada de archivos sin uso; PDF → diapositivas es Fase 2) — v4.1275.0 | `docs/claude/hoteles-de-la-conferencia.md` |
 | Carrusel de la «Imagen lateral del evento» (varias imágenes con alt/enlace/estado propios, miniaturas reordenables, «Configuración del carrusel» por evento, vista previa con el mismo componente, migración al leer de la imagen única) — v4.1273.0 (avance automático corregido: v4.1274.0) | `docs/claude/carrusel-de-la-imagen-lateral-del-evento.md` |

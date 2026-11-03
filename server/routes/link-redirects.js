@@ -15,7 +15,8 @@
 import express from 'express';
 import { authMiddleware, roleMiddleware } from '../middleware/auth.js';
 import {
-    list, create, update, setStatus, remove, stats, audit,
+    list, create, update, setStatus, remove, stats, audit, overview,
+    qrList, qrCreate, qrUpdate, qrSetStatus, qrRemove, qrStats,
 } from '../controllers/linkRedirectController.js';
 
 const router = express.Router();
@@ -27,9 +28,22 @@ const gate = [authMiddleware, roleMiddleware(adminRoles)];
 router.get('/', ...gate, list);
 router.post('/', ...gate, create);
 
+// El resumen del sitio: LITERAL, y por eso va antes que `/:id/...`.
+router.get('/overview', ...gate, overview);
+
 router.get('/:id/stats', ...gate, stats);
 router.get('/:id/audit', ...gate, audit);
 router.patch('/:id/status', ...gate, setStatus);
+
+// Los códigos QR de un enlace (v4.1278). Las literales de cada nivel antes
+// que sus paramétricas: `/:id/qrs/:qrId/stats` y `/status` arriba de `/:qrId`.
+router.get('/:id/qrs', ...gate, qrList);
+router.post('/:id/qrs', ...gate, qrCreate);
+router.get('/:id/qrs/:qrId/stats', ...gate, qrStats);
+router.patch('/:id/qrs/:qrId/status', ...gate, qrSetStatus);
+router.put('/:id/qrs/:qrId', ...gate, qrUpdate);
+router.delete('/:id/qrs/:qrId', ...gate, qrRemove);
+
 router.put('/:id', ...gate, update);
 router.delete('/:id', ...gate, remove);
 

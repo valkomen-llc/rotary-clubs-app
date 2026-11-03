@@ -2020,7 +2020,7 @@ const ClubSettings: React.FC = () => {
                             funcionaban. Ahora se guarda solo, contra su propia
                             API, y «Guardar Configuración» no lo toca.
                         */}
-                        <LinkRedirectsPanel siteHost={club?.domain || undefined} />
+                        <LinkRedirectsPanel siteHost={club?.domain || undefined} siteLogo={club?.logo || undefined} />
 
                         {/*
                             Bloque Destacado del inicio — SIN acotar por tipo de

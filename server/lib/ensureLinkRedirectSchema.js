@@ -12,7 +12,7 @@
 // que cualquier guardado del panel reescribiera el documento entero. Ver la
 // sección del módulo en CLAUDE.md.
 //
-// LAS CINCO TABLAS VAN EN LA LISTA DEL GUARDIÁN DE `db:push`
+// LAS OCHO TABLAS VAN EN LA LISTA DEL GUARDIÁN DE `db:push`
 // (`scripts/db-push-guard.mjs`). Sin eso, el primer `npm run db:push` se lleva
 // las redirecciones activas del ecosistema y todo su histórico de clics.
 import db from './db.js';
@@ -31,13 +31,26 @@ const EXPECTED_TABLES = [
     'LinkRedirectDaily',
     'LinkRedirectVisitor',
     'LinkRedirectAudit',
+    // v4.1278 — los códigos QR dinámicos de un enlace y su medición aparte.
+    'LinkRedirectQr',
+    'LinkRedirectQrDaily',
+    'LinkRedirectQrVisitor',
 ];
 
 // Toda columna agregada con `ADD COLUMN IF NOT EXISTS` va enumerada acá:
 // `CREATE TABLE IF NOT EXISTS` no amplía nada, así que una base que estrenó el
 // módulo antes tiene las tablas y NO la columna nueva, y con el atajo mirando
 // sólo tablas el `ALTER` no correría nunca.
-const EXPECTED_COLUMNS = [];
+const EXPECTED_COLUMNS = [
+    // v4.1278 — enlaces inteligentes y QR dinámicos.
+    ['LinkRedirect', 'name'],
+    ['LinkRedirect', 'qrScans'],
+    ['LinkRedirectEvent', 'qrId'],
+    ['LinkRedirectEvent', 'accessKind'],
+    ['LinkRedirectEvent', 'outcome'],
+    ['LinkRedirectDaily', 'qrScans'],
+    ['LinkRedirectAudit', 'qrId'],
+];
 
 export async function ensureLinkRedirectSchema() {
     if (_ready) return;
@@ -248,6 +261,136 @@ export async function ensureLinkRedirectSchema() {
 
         CREATE INDEX IF NOT EXISTS "LinkRedirectAudit_link_idx"
             ON "LinkRedirectAudit" ("linkId", "createdAt" DESC);
+
+        -- ═══════════════════════════════════════════════════════════════════
+        -- v4.1278 — ENLACES INTELIGENTES Y CÓDIGOS QR DINÁMICOS
+        -- ═══════════════════════════════════════════════════════════════════
+        --
+        -- Lo que se AGREGA a las tablas que ya existen. CREATE TABLE IF NOT
+        -- EXISTS no amplía nada, así que cada columna va con su ALTER y está
+        -- enumerada en EXPECTED_COLUMNS, o en una base que estrenó el módulo
+        -- antes el ALTER no correría nunca.
+
+        -- El nombre con el que el administrador reconoce el enlace en el
+        -- listado («Inscripciones Feria 2027»). Vacío = se muestra el slug.
+        ALTER TABLE "LinkRedirect" ADD COLUMN IF NOT EXISTS "name" TEXT NOT NULL DEFAULT '';
+        -- Cuántos de los clics del enlace entraron por un QR. Se mantiene en
+        -- la misma ida que registra el clic; la diferencia con "totalClicks"
+        -- son los clics del enlace compartido por otros medios.
+        ALTER TABLE "LinkRedirect" ADD COLUMN IF NOT EXISTS "qrScans" INTEGER NOT NULL DEFAULT 0;
+
+        -- De qué QR vino el clic (vacío = enlace directo), por qué vía y qué
+        -- pasó con él: 'redirected' saltó; 'expired' | 'paused' | 'disabled' |
+        -- 'deleted' vio la página institucional. Los bloqueados quedan como
+        -- evento porque «siguen escaneando el afiche viejo» es información.
+        ALTER TABLE "LinkRedirectEvent" ADD COLUMN IF NOT EXISTS "qrId" TEXT NOT NULL DEFAULT '';
+        ALTER TABLE "LinkRedirectEvent" ADD COLUMN IF NOT EXISTS "accessKind" TEXT NOT NULL DEFAULT 'link';
+        ALTER TABLE "LinkRedirectEvent" ADD COLUMN IF NOT EXISTS "outcome" TEXT NOT NULL DEFAULT 'redirected';
+
+        -- Del día: cuántos de los clics vinieron por QR. Es lo que permite el
+        -- gráfico «QR frente a enlace directo» sin recorrer eventos.
+        ALTER TABLE "LinkRedirectDaily" ADD COLUMN IF NOT EXISTS "qrScans" INTEGER NOT NULL DEFAULT 0;
+
+        -- La auditoría también registra lo que se le hace a un QR.
+        ALTER TABLE "LinkRedirectAudit" ADD COLUMN IF NOT EXISTS "qrId" TEXT NOT NULL DEFAULT '';
+
+        CREATE INDEX IF NOT EXISTS "LinkRedirectEvent_qr_idx"
+            ON "LinkRedirectEvent" ("qrId", "createdAt" DESC) WHERE "qrId" <> '';
+
+        -- ═══════════════════════════════════════════════════════════════════
+        -- EL CÓDIGO QR. Una identidad permanente que se imprime.
+        -- ═══════════════════════════════════════════════════════════════════
+        --
+        -- "code" es lo que va dentro de la imagen (?qr=code) y NO cambia
+        -- nunca: ni al editar el nombre, ni al extender la vigencia, ni al
+        -- pausar o reactivar. Es lo que hace que un afiche impreso en marzo
+        -- siga funcionando en noviembre con otro destino.
+        --
+        -- "status" es lo que fija el administrador: active | paused |
+        -- disabled. «Vencido» NO es un estado guardado: se deriva de
+        -- "expiresAt" contra el reloj, así que extender la vigencia reactiva
+        -- el código sin tocar nada más.
+        CREATE TABLE IF NOT EXISTS "LinkRedirectQr" (
+            id TEXT PRIMARY KEY,
+            "linkId" TEXT NOT NULL,
+            "clubId" TEXT NOT NULL,
+            code TEXT NOT NULL,
+
+            name TEXT NOT NULL DEFAULT '',
+            campaign TEXT NOT NULL DEFAULT '',
+            medium TEXT NOT NULL DEFAULT 'otro',
+            label TEXT NOT NULL DEFAULT '',
+
+            -- Colores, tamaño, margen, corrección y logotipo: lo que hace
+            -- falta para volver a DESCARGAR la misma imagen más adelante.
+            design JSONB NOT NULL DEFAULT '{}'::jsonb,
+
+            status TEXT NOT NULL DEFAULT 'active',
+            "validityPreset" TEXT NOT NULL DEFAULT 'none',
+            "expiresAt" TIMESTAMP(3),
+
+            -- Contadores exactos, mantenidos en la misma ida que el clic.
+            "totalScans" INTEGER NOT NULL DEFAULT 0,
+            "uniqueVisitors" INTEGER NOT NULL DEFAULT 0,
+            "botHits" INTEGER NOT NULL DEFAULT 0,
+            -- Escaneos que llegaron con el código vencido, pausado o
+            -- deshabilitado. No suman a "totalScans": nadie llegó al destino.
+            "blockedScans" INTEGER NOT NULL DEFAULT 0,
+            "lastScanAt" TIMESTAMP(3),
+
+            "deletedAt" TIMESTAMP(3),
+            "deletedBy" TEXT,
+
+            "createdBy" TEXT,
+            "createdByName" TEXT NOT NULL DEFAULT '',
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT NOW(),
+            "updatedBy" TEXT,
+            "updatedByName" TEXT NOT NULL DEFAULT '',
+            "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT NOW()
+        );
+
+        -- El código es único en TODA la plataforma, no por sitio: se resuelve
+        -- también cuando el enlace ya no está activo, y un código no puede
+        -- significar dos cosas. No es parcial: un código eliminado tampoco se
+        -- reutiliza — está impreso en alguna parte.
+        CREATE UNIQUE INDEX IF NOT EXISTS "LinkRedirectQr_code_key"
+            ON "LinkRedirectQr" (code);
+
+        CREATE INDEX IF NOT EXISTS "LinkRedirectQr_link_idx"
+            ON "LinkRedirectQr" ("linkId", "createdAt" DESC);
+
+        CREATE INDEX IF NOT EXISTS "LinkRedirectQr_site_idx"
+            ON "LinkRedirectQr" ("clubId");
+
+        -- ═══════════════════════════════════════════════════════════════════
+        -- EL AGREGADO DIARIO DEL QR. Una fila por código y por día.
+        -- ═══════════════════════════════════════════════════════════════════
+        CREATE TABLE IF NOT EXISTS "LinkRedirectQrDaily" (
+            "qrId" TEXT NOT NULL,
+            "linkId" TEXT NOT NULL,
+            "clubId" TEXT NOT NULL,
+            day DATE NOT NULL,
+            scans INTEGER NOT NULL DEFAULT 0,
+            uniques INTEGER NOT NULL DEFAULT 0,
+            bots INTEGER NOT NULL DEFAULT 0,
+            blocked INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY ("qrId", day)
+        );
+
+        CREATE INDEX IF NOT EXISTS "LinkRedirectQrDaily_link_idx"
+            ON "LinkRedirectQrDaily" ("linkId", day);
+
+        -- ═══════════════════════════════════════════════════════════════════
+        -- EL VISITANTE DEL QR. Exacto y O(1), igual que el del enlace.
+        -- ═══════════════════════════════════════════════════════════════════
+        CREATE TABLE IF NOT EXISTS "LinkRedirectQrVisitor" (
+            "qrId" TEXT NOT NULL,
+            "visitorKey" TEXT NOT NULL,
+            "firstSeenAt" TIMESTAMP(3) NOT NULL,
+            "lastSeenAt" TIMESTAMP(3) NOT NULL,
+            scans INTEGER NOT NULL DEFAULT 1,
+            PRIMARY KEY ("qrId", "visitorKey")
+        );
     `);
 
     _ready = true;

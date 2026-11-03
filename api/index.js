@@ -471,9 +471,34 @@ app.get('*', async (req, res) => {
     // vista previa de WhatsApp, los rastreadores y `curl` no ejecutan
     // JavaScript. Mismo motivo por el que el `<head>` se resuelve acá (v4.702).
     try {
-        const { readRedirectsForHost, recordClick } = await import('../server/lib/linkRedirectStore.js');
+        const { readRedirectsForHost, recordClick, recordBlockedScan, lookupQrByCode } = await import('../server/lib/linkRedirectStore.js');
         const { matchLink } = await import('../server/lib/linkRedirects.js');
         const { describeClick, redirectStatus, forwardedSearch } = await import('../server/lib/linkTracking.js');
+        const {
+            readQrParam, stripQrParam, qrAccessState, linkAccessState, blockedHttpStatus, unavailablePage,
+        } = await import('../server/lib/linkQr.js');
+
+        const search = req.originalUrl.includes('?')
+            ? req.originalUrl.slice(req.originalUrl.indexOf('?'))
+            : '';
+
+        // v4.1278 — `?qr=código` es la marca de que la visita viene de un
+        // código QR nuestro. Se lee de la query ANTES de todo: decide a qué
+        // contador va el acceso y si el código sigue vigente.
+        const qrCode = readQrParam(search);
+
+        // La página que ve quien escanea un código que NO salta. Se sirve
+        // entera desde acá —no la aplicación de React— y sin caché: un código
+        // pausado que se reactiva tiene que volver a saltar en el escaneo
+        // siguiente, y un teléfono no tiene por qué recordar la página vieja.
+        const paginaNoDisponible = (state) => {
+            res.setHeader('Cache-Control', 'no-store');
+            res.setHeader('Content-Type', 'text/html; charset=utf-8');
+            if (state === 'paused') res.setHeader('Retry-After', '3600');
+            return res.status(blockedHttpStatus(state)).send(
+                unavailablePage({ state, siteName: hostname, homeUrl: `https://${hostname}/` })
+            );
+        };
 
         // La lista del sitio va CACHEADA (60 s), así que una página normal no
         // paga ninguna consulta de más por pasar por acá.
@@ -482,10 +507,6 @@ app.get('*', async (req, res) => {
         const link = matchLink(req.path, await withDeadline(
             readRedirectsForHost(hostname), DOCUMENT_BUDGET.redirectsMs, 'redirects'));
         if (link) {
-            const search = req.originalUrl.includes('?')
-                ? req.originalUrl.slice(req.originalUrl.indexOf('?'))
-                : '';
-
             // Los UTM se leen ANTES de resolver el salto: son parte del clic, no
             // del destino, y se miden aunque el enlace no los propague.
             const click = describeClick({
@@ -497,28 +518,73 @@ app.get('*', async (req, res) => {
                 clubId: link.clubId,
             });
 
+            // El QR que trae la visita, si es de este enlace. Un código que no
+            // es de este enlace —o que no existe— se trata como clic directo:
+            // el enlace sigue funcionando y no se le atribuye nada a nadie.
+            const qr = qrCode ? (link.qrs || []).find(q => q.code === qrCode) || null : null;
+            if (qr) {
+                const estado = qrAccessState(qr);
+                if (estado !== 'active') {
+                    // Vencido, pausado, deshabilitado o eliminado: no se salta y
+                    // queda registrado que lo escanearon — eso es lo que le dice
+                    // al administrador si vale la pena extender la vigencia.
+                    await recordBlockedScan({ link, qr, state: estado, click });
+                    return paginaNoDisponible(estado);
+                }
+            }
+
             // Se mide ANTES de responder y en UNA sola ida a la base. En Vercel
             // la función se CONGELA al cerrar la respuesta, así que «registrar
             // después» no existe: quedaría a medias. `recordClick` nunca lanza —
             // un fallo midiendo no puede costar la redirección.
-            await recordClick({ link, click });
+            await recordClick({ link, click, qr });
 
+            // Al destino le llega lo que traía el visitante, no nuestra
+            // contabilidad: el `?qr=` se quita antes de reenviar la query.
             const destino = link.target + (() => {
-                const q = forwardedSearch(search, { forwardQuery: link.forwardQuery !== false });
+                const q = forwardedSearch(stripQrParam(search), { forwardQuery: link.forwardQuery !== false });
                 if (!q) return '';
                 return (link.target.includes('?') ? '&' : '?') + q.slice(1);
             })();
+
+            // Un acceso por QR NUNCA es permanente, aunque el enlace lo sea: un
+            // 301 cacheado en el teléfono dejaría de contar cada escaneo
+            // siguiente, y medir es exactamente lo que el QR vino a hacer.
+            const permanente = Boolean(link.permanent) && !qr;
 
             // Una redirección temporal NO se cachea: es lo que permite
             // corregirla, que el cambio se note en la siguiente visita y —sobre
             // todo— que el clic se siga contando. Un 301 cacheado deja de
             // preguntar, así que deja de medirse. La permanente la elige el
             // administrador sabiendo eso.
-            if (!link.permanent) res.setHeader('Cache-Control', 'no-store');
+            if (!permanente) res.setHeader('Cache-Control', 'no-store');
             return res.redirect(
-                redirectStatus({ permanent: link.permanent, method: req.method }),
+                redirectStatus({ permanent: permanente, method: req.method }),
                 destino
             );
+        }
+
+        // Ningún enlace ACTIVO casó, pero la visita trae un código QR: alguien
+        // escaneó un afiche cuyo enlace fue pausado o eliminado. Merece la
+        // página institucional, no la portada ni un «no encontrado». Es el
+        // camino raro y es el único que consulta la base por código.
+        if (qrCode) {
+            const hit = await withDeadline(lookupQrByCode(qrCode), DOCUMENT_BUDGET.redirectsMs, 'qr-lookup');
+            if (hit?.qr && hit.link) {
+                const estadoQr = qrAccessState(hit.qr);
+                const estadoEnlace = linkAccessState(hit.link);
+                const estado = estadoQr !== 'active' ? estadoQr : estadoEnlace;
+                if (estado !== 'active') {
+                    const click = describeClick({
+                        headers: req.headers, search,
+                        userAgent: req.headers['user-agent'] || '',
+                        ip: req.ip || req.headers['x-forwarded-for'] || '',
+                        method: req.method, clubId: hit.link.clubId,
+                    });
+                    await recordBlockedScan({ link: hit.link, qr: hit.qr, state: estado, click });
+                    return paginaNoDisponible(estado);
+                }
+            }
         }
     } catch (e) {
         // Nunca se rompe la página por esto: sin redirección, se sirve el sitio.
