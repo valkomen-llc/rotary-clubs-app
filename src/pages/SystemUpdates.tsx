@@ -42,6 +42,21 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1277.0',
+        title: 'Eventos: la portada se mueve de verdad con efecto Ken Burns continuo 🎬',
+        description: 'En v4.1276.0 la portada hacía un único acercamiento del 5 % en 5 segundos y se detenía, y en equipos con «Reducir movimiento» activado (como muchos Mac) no se movía nada: la página del evento se veía estática. Ahora la portada se acerca y se aleja lentamente sin parar, con un leve desplazamiento, y se percibe como en movimiento.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'portada', 'ken burns', 'sitio público', 'fix'],
+        type: 'fix',
+        impact: 'Alta: el efecto pedido para la portada se ve en todos los equipos.',
+        changes: [
+            { type: 'fixed', text: 'Movimiento continuo por defecto: acerca y aleja sin parar (animación CSS en la GPU) en lugar de un único acercamiento que terminaba mientras cargaba la página.' },
+            { type: 'fixed', text: 'Con «Reducir movimiento» del dispositivo la portada ya no queda quieta: se mueve más suave (la mitad del acercamiento, más lento y sin desplazamiento). Cada evento puede elegir dejarla quieta para esas personas.' },
+            { type: 'improved', text: 'Intensidades perceptibles: suave (8 %), media (12 %) y marcada (18 %); duración de cada acercamiento de 4 a 20 s (8 s recomendado).' },
+            { type: 'added', text: 'Panel → Multimedia → «🎬 Movimiento de la portada»: elegir entre continuo o una sola vez, y la opción de respetar «Reducir movimiento». Los eventos ya configurados pasan solos al modo continuo.' },
+        ],
+    },
+    {
         version: '4.1276.0',
         title: 'Eventos: la portada del evento cobra vida con un acercamiento suave 🎬',
         description: 'En la página pública de cada evento (p. ej. rotary4281.org/eventos/villavicencio2027) la imagen de portada hace un acercamiento muy leve durante unos 5 segundos al abrir la página, y el título aparece con un fundido. Se configura por evento en Multimedia.',

@@ -209,6 +209,7 @@
     animation: fadeIn 0.6s ease-out forwards;
   }
 
+
   /* Prose - Manual implementation of basic typography */
   .prose {
     color: #374151; /* gray-700 */
@@ -264,5 +265,18 @@
   .prose strong {
     font-weight: 600;
     color: #111827;
+  }
+}
+
+/* Fuera de cualquier @layer: Tailwind no lo purga. */
+/* v4.1277.0 — Ken Burns de la portada de un evento (EventHeroImage).
+   La escala final viaja en --hero-scale; el desplazamiento leve hacia el
+   foco, en --hero-dx / --hero-dy. */
+@keyframes heroKenBurns {
+  from {
+    transform: scale(1) translate3d(0, 0, 0);
+  }
+  to {
+    transform: scale(var(--hero-scale, 1.1)) translate3d(var(--hero-dx, 0), var(--hero-dy, 0), 0);
   }
 }

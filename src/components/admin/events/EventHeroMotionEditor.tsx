@@ -1,5 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // «Movimiento de la portada» — editor del panel — v4.1276.0
+// Modo continuo y opción de «Reducir movimiento» — v4.1277.0
 //
 // Va en la pestaña Multimedia del evento, debajo de la imagen de portada.
 // Encender/apagar, intensidad, duración y punto de acercamiento, con una
@@ -12,8 +13,8 @@ import { Move, Play } from 'lucide-react';
 import EventHeroImage from '../../EventHeroImage';
 import { ToggleSwitch } from './EventWidgetsEditor';
 import {
-    HERO_MOTION_DURATIONS, HERO_MOTION_FOCUS_LABELS, HERO_MOTION_INTENSITY_LABELS, normalizeHeroMotion,
-    type HeroMotionConfig, type HeroMotionFocus, type HeroMotionIntensity,
+    HERO_MOTION_DURATIONS, HERO_MOTION_FOCUS_LABELS, HERO_MOTION_INTENSITY_LABELS, HERO_MOTION_MODE_LABELS, normalizeHeroMotion,
+    type HeroMotionConfig, type HeroMotionFocus, type HeroMotionIntensity, type HeroMotionMode,
 } from '../../../lib/eventHeroMotion';
 
 interface Props {
@@ -40,7 +41,7 @@ const EventHeroMotionEditor: React.FC<Props> = ({ motion, coverUrl, eventTitle, 
                     <div>
                         <h4 className="text-sm font-bold text-gray-900">🎬 Movimiento de la portada</h4>
                         <p className="text-xs text-gray-500 mt-0.5">
-                            Un acercamiento muy suave sobre la imagen de portada al abrir la página del evento. Se detiene al terminar y no se aplica a quien tiene activado «Reducir movimiento» en su dispositivo.
+                            Efecto Ken Burns: la imagen de portada se acerca y se aleja lentamente, como si estuviera en movimiento. Quien tenga activado «Reducir movimiento» en su dispositivo la ve moverse más suave.
                         </p>
                     </div>
                 </div>
@@ -50,7 +51,13 @@ const EventHeroMotionEditor: React.FC<Props> = ({ motion, coverUrl, eventTitle, 
                 </label>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Movimiento</label>
+                    <select className={select} disabled={!cfg.enabled} value={cfg.mode} onChange={e => set({ mode: e.target.value as HeroMotionMode })}>
+                        {(Object.keys(HERO_MOTION_MODE_LABELS) as HeroMotionMode[]).map(k => <option key={k} value={k}>{HERO_MOTION_MODE_LABELS[k]}</option>)}
+                    </select>
+                </div>
                 <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Intensidad</label>
                     <select className={select} disabled={!cfg.enabled} value={cfg.intensity} onChange={e => set({ intensity: e.target.value as HeroMotionIntensity })}>
@@ -58,9 +65,9 @@ const EventHeroMotionEditor: React.FC<Props> = ({ motion, coverUrl, eventTitle, 
                     </select>
                 </div>
                 <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Duración</label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">{cfg.mode === 'continuous' ? 'Duración de cada acercamiento' : 'Duración'}</label>
                     <select className={select} disabled={!cfg.enabled} value={cfg.durationSec} onChange={e => set({ durationSec: Number(e.target.value) })}>
-                        {HERO_MOTION_DURATIONS.map(s => <option key={s} value={s}>{s} segundos{s === 5 ? ' (recomendado)' : ''}</option>)}
+                        {HERO_MOTION_DURATIONS.map(s => <option key={s} value={s}>{s} segundos{s === 8 ? ' (recomendado)' : ''}</option>)}
                     </select>
                 </div>
                 <div>
@@ -70,6 +77,17 @@ const EventHeroMotionEditor: React.FC<Props> = ({ motion, coverUrl, eventTitle, 
                     </select>
                 </div>
             </div>
+
+            <label className="flex items-start gap-2 text-xs text-gray-600">
+                <input
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4"
+                    disabled={!cfg.enabled}
+                    checked={cfg.respectReducedMotion}
+                    onChange={e => set({ respectReducedMotion: e.target.checked })}
+                />
+                <span>Dejar la portada quieta para quien activó «Reducir movimiento» en su dispositivo (por defecto se le muestra un movimiento más suave).</span>
+            </label>
 
             {coverUrl ? (
                 <div className="space-y-2">
