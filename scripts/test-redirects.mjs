@@ -268,7 +268,9 @@ check('se resuelve ANTES de servir el documento', () => {
 check('una redirección temporal no se cachea', () =>
     // Es lo que permite corregirla, que el cambio se note en la visita
     // siguiente y —sobre todo— que el clic se siga contando.
-    assert.match(API, /if \(!link\.permanent\) res\.setHeader\('Cache-Control', 'no-store'\)/));
+    // v4.1278: «permanente» es `link.permanent && !qr` — un acceso por QR
+    // nunca se cachea, aunque el enlace sea 301.
+    assert.match(API, /if \(!permanente\) res\.setHeader\('Cache-Control', 'no-store'\)/));
 check('el clic se registra ANTES de responder', () => {
     // En Vercel la función se congela al cerrar la respuesta: «medir después»
     // no existe. Si el `recordClick` quedara detrás del `res.redirect`, no

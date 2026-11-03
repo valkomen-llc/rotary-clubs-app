@@ -34,13 +34,31 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1272.0 | 2026-10-31 (Eventos: las tarjetas van centradas)
-// Cache bust: 2026-10-31
+// UI V4.1278.0 | 2026-11-03 (Enlaces inteligentes y códigos QR dinámicos)
+// Cache bust: 2026-11-03
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1278.0',
+        title: 'Enlaces inteligentes y códigos QR dinámicos con analítica por pieza 🔗',
+        description: 'El bloque «Redirecciones de Enlaces» de Configuración → Identidad pasa a ser «Enlaces inteligentes y códigos QR»: cada enlace corto puede tener uno o varios códigos QR —afiche, Instagram, presentación, invitación— que llevan al mismo destino y se miden por separado. El QR codifica una dirección del propio sitio, no el destino: cambiar el destino, pausar, vencer o reactivar un código nunca invalida la imagen ya impresa.',
+        date: new Date().toISOString(),
+        tags: ['enlaces', 'qr', 'analítica', 'configuración', 'identidad', 'multisitio'],
+        type: 'feature',
+        impact: 'Alta: una sola herramienta para crear, personalizar, descargar, administrar y medir los enlaces publicitarios de distritos, clubes, ferias y eventos.',
+        changes: [
+            { type: 'added', text: '«Crear enlace inteligente» con nombre identificador; el listado muestra estado, cantidad de QR, accesos totales, por QR y directos, fecha y último acceso, con búsqueda y filtro por estado.' },
+            { type: 'added', text: '«Generar código QR» por enlace: nombre, campaña, medio de difusión, etiqueta interna; vigencia de 30 días, 90 días, sin vencimiento o fecha propia (calculada y guardada en el servidor); colores, tamaño, margen, nivel de corrección, logotipo centrado y etiqueta debajo, con vista previa en vivo.' },
+            { type: 'added', text: 'Descargas en PNG de alta resolución, SVG vectorial y PDF listo para imprimir (A4, 80 mm), más «Copiar enlace del QR». El código es permanente: se descarga las veces que haga falta y es siempre la misma imagen.' },
+            { type: 'added', text: 'El QR codifica https://dominio/slug?qr=código. El servidor identifica el código, verifica estado y vigencia, registra el acceso y redirige. Vencido, pausado, deshabilitado o eliminado muestran una página institucional (410/503, sin caché) y el escaneo queda registrado como «sin saltar».' },
+            { type: 'added', text: 'Estadísticas del enlace con accesos por QR frente a enlace compartido, evolución diaria apilada, comparación entre QR, filtros por medio y campaña, actividad reciente; estadísticas propias de cada QR; y resumen del sitio con QR y campañas con más accesos.' },
+            { type: 'improved', text: 'Legibilidad protegida: no se permiten QR claros sobre fondo oscuro ni contrastes menores a 3:1; con logotipo la corrección se fija en H. La imagen se verifica con dos codificadores independientes en las pruebas (npm run test:qr, 107 casos).' },
+            { type: 'changed', text: 'Las redirecciones existentes siguen funcionando igual; sus clics anteriores quedan como «directos». Tres tablas nuevas fuera de Prisma (LinkRedirectQr, LinkRedirectQrDaily, LinkRedirectQrVisitor), protegidas por el guardián de db:push.' },
+        ],
+    },
     {
         version: '4.1277.0',
         title: 'Eventos: la portada se mueve de verdad con efecto Ken Burns continuo 🎬',

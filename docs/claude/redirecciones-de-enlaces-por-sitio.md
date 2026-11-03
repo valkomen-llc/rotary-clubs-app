@@ -2,6 +2,11 @@
 
 ## Redirecciones de enlaces por sitio — v4.781
 
+⚠️ **Desde v4.1278 el bloque se llama «Enlaces inteligentes y códigos QR»** y
+cada enlace puede tener varios códigos QR con vigencia y medición propias. Lo
+de este archivo sigue vigente entero; lo nuevo vive en
+`enlaces-inteligentes-y-codigos-qr.md` (leer los dos).
+
 Direcciones cortas del propio dominio que llevan a otra parte
 (`rotary4281.org/conferencia` → el formulario de inscripción). Se configuran en
 Configuración → Identidad.

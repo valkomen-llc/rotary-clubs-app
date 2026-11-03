@@ -38,6 +38,10 @@ const SEED = () => ({
     daily: [],
     visitors: [],
     audit: [],
+    // v4.1278 — los códigos QR y su medición aparte.
+    qrs: [],
+    qrDaily: [],
+    qrVisitors: [],
     // Con `true`, el atajo de `ensureLinkRedirectSchema` da las tablas por
     // presentes: así las pruebas no ejecutan la ráfaga de DDL en cada llamada.
     schemaReady: true,
@@ -97,18 +101,34 @@ const casa = (fila, conds, params) => conds.every(c => {
 function diaDe(linkId, clubId, day) {
     let fila = DATA.daily.find(d => d.linkId === linkId && d.day === day);
     if (!fila) {
-        fila = { linkId, clubId, day, clicks: 0, uniques: 0, bots: 0 };
+        fila = { linkId, clubId, day, clicks: 0, uniques: 0, bots: 0, qrScans: 0 };
         DATA.daily.push(fila);
     }
     return fila;
+}
+
+function diaQrDe(qrId, linkId, clubId, day) {
+    let fila = DATA.qrDaily.find(d => d.qrId === qrId && d.day === day);
+    if (!fila) {
+        fila = { qrId, linkId, clubId, day, scans: 0, uniques: 0, bots: 0, blocked: 0 };
+        DATA.qrDaily.push(fila);
+    }
+    return fila;
+}
+
+/** Suma de columnas numéricas sobre un conjunto de filas, con los alias que pida el SQL. */
+function sumar(filas, columnas) {
+    const out = {};
+    for (const c of columnas) out[c] = filas.reduce((a, f) => a + Number(f[c] || 0), 0);
+    return out;
 }
 
 function nuevoEnlace(x) {
     return {
         id: x.id, clubId: x.clubId, slug: x.slug, target: x.target,
         permanent: x.permanent === true, forwardQuery: x.forwardQuery !== false,
-        status: 'active', notes: x.notes || '', deletedAt: null, deletedBy: null,
-        totalClicks: 0, uniqueVisitors: 0, botHits: 0, lastClickAt: null,
+        status: 'active', notes: x.notes || '', name: x.name || '', deletedAt: null, deletedBy: null,
+        totalClicks: 0, uniqueVisitors: 0, botHits: 0, lastClickAt: null, qrScans: 0,
         createdBy: x.createdBy || null, createdByName: x.createdByName || '',
         createdAt: new Date(), updatedBy: null, updatedByName: '', updatedAt: new Date(),
     };
@@ -178,16 +198,44 @@ const db = {
 
         // ── El registro del clic (las dos sentencias con CTE) ────────────
         if (s.startsWith('WITH d AS') && s.includes('"botHits"')) {
-            const [linkId, clubId, dia] = params;
+            const [linkId, clubId, dia, qrId] = params;
             const link = DATA.links.find(l => l.id === linkId);
             if (link) link.botHits += 1;
             diaDe(linkId, clubId, dia).bots += 1;
+            if (qrId) {
+                const qr = DATA.qrs.find(q => q.id === qrId);
+                if (qr) qr.botHits += 1;
+                diaQrDe(qrId, linkId, clubId, dia).bots += 1;
+            }
+            return { rows: [] };
+        }
+
+        // ── El escaneo BLOQUEADO (vencido, pausado, deshabilitado) ──────
+        if (s.startsWith('WITH e AS') && s.includes('"blockedScans"')) {
+            const [eventId, linkId, clubId, now, visitorKey] = params;
+            const qrId = params[22], outcome = params[23], dia = params[24];
+            DATA.events.push({
+                id: eventId, linkId, clubId, createdAt: now, visitorKey, isNewVisitor: false,
+                referrer: params[5], referrerHost: params[6],
+                sourceKind: params[7], sourceLabel: params[8], sourceEvidence: params[9],
+                utmSource: params[10], utmMedium: params[11], utmCampaign: params[12],
+                utmContent: params[13], utmTerm: params[14],
+                device: params[15], browser: params[16], os: params[17],
+                country: params[18], region: params[19], city: params[20],
+                userAgent: params[21], qrId, accessKind: 'qr', outcome,
+            });
+            diaQrDe(qrId, linkId, clubId, dia).blocked += 1;
+            const qr = DATA.qrs.find(q => q.id === qrId);
+            if (qr) qr.blockedScans += 1;
             return { rows: [] };
         }
 
         if (s.startsWith('WITH v AS') && s.includes('LinkRedirectEvent')) {
             const [linkId, visitorKey, now, eventId, clubId] = params;
-            const dia = params[params.length - 1];
+            // Desde v4.1278 el día va en $23 y el QR (vacío = enlace directo)
+            // en $24. Leer «el último» era leer el QR.
+            const dia = params[22];
+            const qrId = params[23] || '';
 
             let nuevo = false;
             if (visitorKey) {
@@ -196,6 +244,15 @@ const db = {
                 else {
                     DATA.visitors.push({ linkId, visitorKey, firstSeenAt: now, lastSeenAt: now, clicks: 1 });
                     nuevo = true;
+                }
+            }
+            let nuevoQr = false;
+            if (visitorKey && qrId) {
+                const v = DATA.qrVisitors.find(x => x.qrId === qrId && x.visitorKey === visitorKey);
+                if (v) { v.lastSeenAt = now; v.scans += 1; }
+                else {
+                    DATA.qrVisitors.push({ qrId, visitorKey, firstSeenAt: now, lastSeenAt: now, scans: 1 });
+                    nuevoQr = true;
                 }
             }
 
@@ -208,10 +265,12 @@ const db = {
                 device: params[15], browser: params[16], os: params[17],
                 country: params[18], region: params[19], city: params[20],
                 userAgent: params[21],
+                qrId, accessKind: qrId ? 'qr' : 'link', outcome: 'redirected',
             });
 
             const fila = diaDe(linkId, clubId, dia);
             fila.clicks += 1;
+            if (qrId && s.includes('"qrScans"')) fila.qrScans += 1;
 
             // El incremento de únicos NO se decide acá: sale del `CASE WHEN` de
             // la propia sentencia. Si el módulo dejara de distinguir al que
@@ -225,8 +284,114 @@ const db = {
                 const distingueTotal = s.includes('CASE WHEN nuevo THEN 1 ELSE 0 END');
                 if (!distingueTotal || nuevo) link.uniqueVisitors += 1;
                 link.lastClickAt = now;
+                if (qrId && s.includes('"qrScans" = "qrScans" +')) link.qrScans += 1;
+            }
+
+            if (qrId && s.includes('"LinkRedirectQr"')) {
+                const qr = DATA.qrs.find(q => q.id === qrId);
+                if (qr) {
+                    qr.totalScans += 1;
+                    if (nuevoQr) qr.uniqueVisitors += 1;
+                    qr.lastScanAt = now;
+                }
+                const fq = diaQrDe(qrId, linkId, clubId, dia);
+                fq.scans += 1;
+                if (nuevoQr) fq.uniques += 1;
             }
             return { rows: [] };
+        }
+
+        // ── LinkRedirectQr ───────────────────────────────────────────────
+        if (s.includes('INSERT INTO "LinkRedirectQr" ')) {
+            const [id, linkId, clubId, code, name, campaign, medium, label, design, validityPreset, expiresAt, createdBy, createdByName] = params;
+            if (DATA.qrs.some(q => q.code === code)) {
+                throw new Error('duplicate key value violates unique constraint "LinkRedirectQr_code_key"');
+            }
+            const fila = {
+                id, linkId, clubId, code, name, campaign, medium, label, design,
+                status: 'active', validityPreset, expiresAt: expiresAt || null,
+                totalScans: 0, uniqueVisitors: 0, botHits: 0, blockedScans: 0, lastScanAt: null,
+                deletedAt: null, deletedBy: null,
+                createdBy, createdByName, createdAt: new Date(), updatedBy: null, updatedByName: '', updatedAt: new Date(),
+            };
+            DATA.qrs.push(fila);
+            return { rows: [{ ...fila }] };
+        }
+
+        if (s.startsWith('UPDATE "LinkRedirectQr"')) {
+            const where = s.slice(s.indexOf(' WHERE '));
+            const conds = condiciones(where);
+            const vivas = where.includes('"deletedAt" IS NULL');
+            const hits = DATA.qrs.filter(q => casa(q, conds, params) && (!vivas || !q.deletedAt));
+            for (const q of hits) {
+                if (s.includes('SET name = $4')) {
+                    Object.assign(q, {
+                        name: params[3], campaign: params[4], medium: params[5], label: params[6],
+                        design: params[7], validityPreset: params[8], expiresAt: params[9] || null,
+                        updatedBy: params[10], updatedByName: params[11], updatedAt: new Date(),
+                    });
+                } else if (s.includes('SET status = $4')) {
+                    Object.assign(q, { status: params[3], updatedBy: params[4], updatedByName: params[5], updatedAt: new Date() });
+                } else if (s.includes('"deletedAt" = NOW()')) {
+                    Object.assign(q, { deletedAt: new Date(), deletedBy: params[3] });
+                } else {
+                    DATA.qrs.splice(DATA.qrs.indexOf(q), 1);
+                }
+            }
+            return { rows: hits.map(q => ({ ...q })) };
+        }
+
+        if (s.includes('FROM "LinkRedirectQr"') && s.includes('COUNT(*)') && s.includes('GROUP BY "linkId"')) {
+            const [clubId] = params;
+            const mapa = new Map();
+            for (const q of DATA.qrs) {
+                if (q.clubId !== clubId || q.deletedAt) continue;
+                mapa.set(q.linkId, (mapa.get(q.linkId) || 0) + 1);
+            }
+            return { rows: [...mapa].map(([linkId, n]) => ({ linkId, n })) };
+        }
+
+        if (s.includes('FROM "LinkRedirectQr"')) {
+            const where = s.includes(' WHERE ') ? s.slice(s.indexOf(' WHERE ')) : '';
+            const conds = condiciones(where);
+            let rows = DATA.qrs.filter(q => casa(q, conds, params));
+            if (where.includes('"deletedAt" IS NULL')) rows = rows.filter(q => !q.deletedAt);
+            return { rows: rows.map(q => ({ ...q })) };
+        }
+
+        // ── Agregado diario del QR ───────────────────────────────────────
+        if (s.includes('FROM "LinkRedirectQrDaily"')) {
+            const where = s.slice(s.indexOf(' WHERE '));
+            const porQr = where.includes('"qrId" = $1');
+            const porEnlace = where.includes('"linkId" = $1');
+            const filas = DATA.qrDaily.filter(d =>
+                porQr ? d.qrId === params[0] : porEnlace ? d.linkId === params[0] : d.clubId === params[0]);
+            if (s.includes('FILTER (WHERE')) {
+                const [, hoy, d7, d30] = params;
+                const suma = (p) => filas.filter(p).reduce((a, f) => a + f.scans, 0);
+                return {
+                    rows: [{
+                        hoy: suma(f => f.day === hoy), d7: suma(f => f.day >= d7), d30: suma(f => f.day >= d30),
+                        bots: filas.reduce((a, f) => a + f.bots, 0),
+                        blocked: filas.reduce((a, f) => a + f.blocked, 0),
+                    }],
+                };
+            }
+            const desde = params[1], hasta = params[2];
+            const enRango = filas.filter(f => (!desde || f.day >= desde) && (!hasta || f.day <= hasta));
+            if (s.includes('GROUP BY "qrId"')) {
+                const mapa = new Map();
+                for (const f of enRango) {
+                    const acc = mapa.get(f.qrId) || { qrId: f.qrId, scans: 0, uniques: 0, blocked: 0 };
+                    acc.scans += f.scans; acc.uniques += f.uniques; acc.blocked += f.blocked;
+                    mapa.set(f.qrId, acc);
+                }
+                return { rows: [...mapa.values()] };
+            }
+            return {
+                rows: enRango.sort((a, b) => a.day.localeCompare(b.day))
+                    .map(f => ({ day: f.day, clicks: f.scans, uniques: f.uniques, bots: f.bots, blocked: f.blocked })),
+            };
         }
 
         // ── LinkRedirect ─────────────────────────────────────────────────
@@ -242,7 +407,7 @@ const db = {
             if (choca) throw new Error('duplicate key value violates unique constraint "LinkRedirect_slug_key"');
             const fila = nuevoEnlace({
                 id, clubId, slug, target, permanent, forwardQuery: params[5],
-                notes: params[6], createdBy: params[7], createdByName: params[8],
+                notes: params[6], createdBy: params[7], createdByName: params[8], name: params[9] || '',
             });
             DATA.links.push(fila);
             return { rows: [{ ...fila }] };
@@ -260,6 +425,7 @@ const db = {
                         slug: params[2], target: params[3], permanent: params[4],
                         forwardQuery: params[5], notes: params[6],
                         updatedBy: params[7], updatedByName: params[8], updatedAt: new Date(),
+                        name: params[9] !== undefined ? params[9] : l.name,
                     });
                 } else if (s.includes('SET status = $3')) {
                     Object.assign(l, {
@@ -292,8 +458,19 @@ const db = {
 
         // ── Agregado diario y eventos ────────────────────────────────────
         if (s.includes('FROM "LinkRedirectDaily"')) {
-            const linkId = params[0];
-            const filas = DATA.daily.filter(d => d.linkId === linkId);
+            const porSitio = s.includes('"clubId" = $1');
+            const filas = DATA.daily.filter(d => porSitio ? d.clubId === params[0] : d.linkId === params[0]);
+            if (porSitio) {
+                const [, desde, hasta] = params;
+                const mapa = new Map();
+                for (const f of filas) {
+                    if ((desde && f.day < desde) || (hasta && f.day > hasta)) continue;
+                    const acc = mapa.get(f.day) || { day: f.day, clicks: 0, uniques: 0, bots: 0, qrScans: 0 };
+                    acc.clicks += f.clicks; acc.uniques += f.uniques; acc.bots += f.bots; acc.qrScans += f.qrScans || 0;
+                    mapa.set(f.day, acc);
+                }
+                return { rows: [...mapa.values()].sort((a, b) => a.day.localeCompare(b.day)) };
+            }
             if (s.includes('FILTER (WHERE')) {
                 const [, hoy, d7, d30] = params;
                 const suma = (p) => filas.filter(p).reduce((a, f) => a + f.clicks, 0);
@@ -310,17 +487,32 @@ const db = {
             const sel = filas
                 .filter(f => (!desde || f.day >= desde) && (!hasta || f.day <= hasta))
                 .sort((a, b) => a.day.localeCompare(b.day));
-            return { rows: sel.map(f => ({ day: f.day, clicks: f.clicks, uniques: f.uniques, bots: f.bots })) };
+            return { rows: sel.map(f => ({ day: f.day, clicks: f.clicks, uniques: f.uniques, bots: f.bots, qrScans: f.qrScans || 0 })) };
         }
 
         if (s.includes('FROM "LinkRedirectEvent"')) {
-            const linkId = params[0];
+            const porQr = s.includes('"qrId" = $1');
             const desde = params[1] ? new Date(params[1]) : null;
-            const evs = DATA.events.filter(e =>
-                e.linkId === linkId && (!desde || new Date(e.createdAt) >= desde));
+            let evs = DATA.events.filter(e =>
+                (porQr ? e.qrId === params[0] : e.linkId === params[0])
+                && (!desde || new Date(e.createdAt) >= desde));
+            // Los desgloses sólo cuentan los que SALTARON; la actividad
+            // reciente muestra también los bloqueados.
+            if (s.includes("outcome = 'redirected'")) evs = evs.filter(e => (e.outcome || 'redirected') === 'redirected');
 
             if (s.includes('AS n')) {
                 return { rows: [{ n: new Set(evs.map(e => e.visitorKey).filter(Boolean)).size }] };
+            }
+
+            if (!s.includes('GROUP BY')) {
+                return {
+                    rows: [...evs].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 25)
+                        .map(e => ({
+                            createdAt: e.createdAt, accessKind: e.accessKind || 'link', qrId: e.qrId || '',
+                            outcome: e.outcome || 'redirected', sourceKind: e.sourceKind, sourceLabel: e.sourceLabel,
+                            device: e.device, browser: e.browser, country: e.country, isNewVisitor: e.isNewVisitor,
+                        })),
+                };
             }
 
             const grupo = /GROUP BY (.+?) ORDER BY/.exec(s)?.[1] || '';
@@ -350,7 +542,7 @@ const db = {
                 id: params[0], linkId: params[1], clubId: params[2], action: params[3],
                 actorId: params[4], actorName: params[5],
                 fromTarget: params[6], toTarget: params[7],
-                fromStatus: params[8], toStatus: params[9], detail: params[10],
+                fromStatus: params[8], toStatus: params[9], detail: params[10], qrId: params[11] || '',
                 createdAt: new Date(),
             });
             return { rows: [] };

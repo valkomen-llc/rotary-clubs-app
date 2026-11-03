@@ -30,6 +30,10 @@ import { dayKey, DEFAULT_STATS_TZ, periodRange, fillDays } from './linkTracking.
 import { zonedWallToUtc } from './timezone.js';
 import { pointsToOwnBucket, keyFromBucketUrl, publicMediaPath } from './publicMedia.js';
 import { ensureLinkRedirectSchema } from './ensureLinkRedirectSchema.js';
+import {
+    codeFromBytes, QR_CODE_LENGTH, expiryFor, qrAccessState, normalizeDesign,
+    normalizeQrFields, QR_STATUSES,
+} from './linkQr.js';
 
 export const SETTING_KEY = 'link_redirects';
 
@@ -213,6 +217,73 @@ async function resolveBucketTargets(rows) {
     }
 }
 
+/**
+ * Los códigos QR del sitio, colgados de su enlace, para que el salto los
+ * resuelva sin otra consulta por visita.
+ *
+ * Se traen TODOS, también los pausados, deshabilitados, vencidos y eliminados:
+ * un código impreso que ya no sirve tiene que contestar con la página
+ * institucional, no con la portada del sitio ni con un «no encontrado». Lo que
+ * cada uno hace lo decide `qrAccessState` en el momento del escaneo, contra el
+ * reloj — así un código vence sin que nadie toque la base.
+ *
+ * Va DENTRO de la lectura cacheada (60 s). Nunca lanza: sin QR, los enlaces
+ * siguen saltando como siempre.
+ */
+async function attachQrs(links, siteId) {
+    if (!links.length) return links;
+    try {
+        const { rows } = await db.query(
+            `SELECT id, "linkId", code, status, "expiresAt", "deletedAt"
+               FROM "LinkRedirectQr"
+              WHERE "clubId" = $1`,
+            [siteId]
+        );
+        if (!rows.length) return links.map(l => ({ ...l, qrs: [] }));
+        const porEnlace = new Map();
+        for (const q of rows) {
+            if (!porEnlace.has(q.linkId)) porEnlace.set(q.linkId, []);
+            porEnlace.get(q.linkId).push(q);
+        }
+        return links.map(l => ({ ...l, qrs: porEnlace.get(l.id) || [] }));
+    } catch (e) {
+        console.warn('[redirects] QR sin resolver:', e.message);
+        return links.map(l => ({ ...l, qrs: [] }));
+    }
+}
+
+/**
+ * Un código QR por su identificador público, CON su enlace aunque éste ya no
+ * esté activo. Es el camino raro: sólo se consulta cuando la visita trae
+ * `?qr=` y ningún enlace activo casó con la dirección — o sea, cuando alguien
+ * escaneó un afiche cuyo enlace fue pausado o eliminado, y merece la página
+ * institucional en vez de la portada.
+ *
+ * Nunca lanza: ante cualquier duda devuelve `null` y el catch-all sigue.
+ */
+export async function lookupQrByCode(code) {
+    if (!code) return null;
+    try {
+        await ensureLinkRedirectSchema();
+        const { rows } = await db.query(
+            `SELECT id, "linkId", "clubId", code, status, "expiresAt", "deletedAt"
+               FROM "LinkRedirectQr" WHERE code = $1 LIMIT 1`,
+            [code]
+        );
+        const qr = rows[0];
+        if (!qr) return null;
+        const { rows: enlaces } = await db.query(
+            `SELECT id, "clubId", slug, target, status, "deletedAt"
+               FROM "LinkRedirect" WHERE id = $1 LIMIT 1`,
+            [qr.linkId]
+        );
+        return { qr, link: enlaces[0] || null };
+    } catch (e) {
+        console.warn('[redirects] código QR sin resolver:', e.message);
+        return null;
+    }
+}
+
 export async function readRedirectsForHost(host) {
     const key = canonicalDomain(host);
     if (!key) return [];
@@ -246,6 +317,7 @@ export async function readRedirectsForHost(host) {
                 }
             }
             links = await resolveBucketTargets(rows);
+            links = await attachQrs(links, siteId);
         }
     } catch (e) {
         console.error('[redirects] no se pudieron leer:', e.message);
@@ -293,10 +365,14 @@ export function visitorKeyFor(seed) {
  * Nunca lanza: un fallo midiendo no puede costar la redirección, que es lo que
  * el visitante vino a buscar.
  */
-export async function recordClick({ link, click, now = new Date() }) {
+export async function recordClick({ link, click, qr = null, now = new Date() }) {
     if (!link?.id) return { ok: false, reason: 'sin_enlace' };
     try {
         const dia = dayKey(now, STATS_TZ);
+        // Vacío = clic del enlace compartido por otros medios. Con id = vino
+        // por ese QR, y las mismas CTEs mantienen además los contadores del
+        // código (v4.1278). Sigue siendo UNA sentencia.
+        const qrId = qr?.id || '';
 
         // Un bot no deja evento ni visitante: sólo su contador. Ver la tabla.
         if (click?.isBot) {
@@ -306,9 +382,18 @@ export async function recordClick({ link, click, now = new Date() }) {
                      VALUES ($1, $2, $3::date, 0, 0, 1)
                      ON CONFLICT ("linkId", day)
                      DO UPDATE SET bots = "LinkRedirectDaily".bots + 1
+                 ),
+                 qd AS (
+                     INSERT INTO "LinkRedirectQrDaily" ("qrId", "linkId", "clubId", day, scans, uniques, bots, blocked)
+                     SELECT $4, $1, $2, $3::date, 0, 0, 1, 0 WHERE $4 <> ''
+                     ON CONFLICT ("qrId", day)
+                     DO UPDATE SET bots = "LinkRedirectQrDaily".bots + 1
+                 ),
+                 q AS (
+                     UPDATE "LinkRedirectQr" SET "botHits" = "botHits" + 1 WHERE id = $4 AND $4 <> ''
                  )
                  UPDATE "LinkRedirect" SET "botHits" = "botHits" + 1 WHERE id = $1`,
-                [link.id, link.clubId, dia]
+                [link.id, link.clubId, dia, qrId]
             );
             return { ok: true, counted: false, bot: true };
         }
@@ -325,28 +410,58 @@ export async function recordClick({ link, click, now = new Date() }) {
                  RETURNING ("firstSeenAt" = $3::timestamp) AS nuevo
              ),
              n AS (SELECT COALESCE((SELECT nuevo FROM v), FALSE) AS nuevo),
+             qv AS (
+                 INSERT INTO "LinkRedirectQrVisitor" ("qrId", "visitorKey", "firstSeenAt", "lastSeenAt", scans)
+                 SELECT $24, $2, $3::timestamp, $3::timestamp, 1 WHERE $2 <> '' AND $24 <> ''
+                 ON CONFLICT ("qrId", "visitorKey")
+                 DO UPDATE SET "lastSeenAt" = EXCLUDED."lastSeenAt",
+                               scans = "LinkRedirectQrVisitor".scans + 1
+                 RETURNING ("firstSeenAt" = $3::timestamp) AS nuevo
+             ),
+             qn AS (SELECT COALESCE((SELECT nuevo FROM qv), FALSE) AS nuevo),
              e AS (
                  INSERT INTO "LinkRedirectEvent"
                      (id, "linkId", "clubId", "createdAt", "visitorKey", "isNewVisitor",
                       referrer, "referrerHost", "sourceKind", "sourceLabel", "sourceEvidence",
                       "utmSource", "utmMedium", "utmCampaign", "utmContent", "utmTerm",
-                      device, browser, os, country, region, city, "userAgent")
+                      device, browser, os, country, region, city, "userAgent",
+                      "qrId", "accessKind", outcome)
                  SELECT $4, $1, $5, $3::timestamp, $2, n.nuevo,
                         $6, $7, $8, $9, $10,
                         $11, $12, $13, $14, $15,
-                        $16, $17, $18, $19, $20, $21, $22
+                        $16, $17, $18, $19, $20, $21, $22,
+                        $24, CASE WHEN $24 <> '' THEN 'qr' ELSE 'link' END, 'redirected'
                    FROM n
              ),
              d AS (
-                 INSERT INTO "LinkRedirectDaily" ("linkId", "clubId", day, clicks, uniques, bots)
-                 SELECT $1, $5, $23::date, 1, CASE WHEN n.nuevo THEN 1 ELSE 0 END, 0 FROM n
+                 INSERT INTO "LinkRedirectDaily" ("linkId", "clubId", day, clicks, uniques, bots, "qrScans")
+                 SELECT $1, $5, $23::date, 1, CASE WHEN n.nuevo THEN 1 ELSE 0 END, 0,
+                        CASE WHEN $24 <> '' THEN 1 ELSE 0 END
+                   FROM n
                  ON CONFLICT ("linkId", day)
                  DO UPDATE SET clicks = "LinkRedirectDaily".clicks + 1,
-                               uniques = "LinkRedirectDaily".uniques + EXCLUDED.uniques
+                               uniques = "LinkRedirectDaily".uniques + EXCLUDED.uniques,
+                               "qrScans" = "LinkRedirectDaily"."qrScans" + EXCLUDED."qrScans"
+             ),
+             qd AS (
+                 INSERT INTO "LinkRedirectQrDaily" ("qrId", "linkId", "clubId", day, scans, uniques, bots, blocked)
+                 SELECT $24, $1, $5, $23::date, 1, CASE WHEN qn.nuevo THEN 1 ELSE 0 END, 0, 0
+                   FROM qn WHERE $24 <> ''
+                 ON CONFLICT ("qrId", day)
+                 DO UPDATE SET scans = "LinkRedirectQrDaily".scans + 1,
+                               uniques = "LinkRedirectQrDaily".uniques + EXCLUDED.uniques
+             ),
+             q AS (
+                 UPDATE "LinkRedirectQr"
+                    SET "totalScans" = "totalScans" + 1,
+                        "uniqueVisitors" = "uniqueVisitors" + (SELECT CASE WHEN nuevo THEN 1 ELSE 0 END FROM qn),
+                        "lastScanAt" = $3::timestamp
+                  WHERE id = $24 AND $24 <> ''
              )
              UPDATE "LinkRedirect"
                 SET "totalClicks" = "totalClicks" + 1,
                     "uniqueVisitors" = "uniqueVisitors" + (SELECT CASE WHEN nuevo THEN 1 ELSE 0 END FROM n),
+                    "qrScans" = "qrScans" + CASE WHEN $24 <> '' THEN 1 ELSE 0 END,
                     "lastClickAt" = $3::timestamp
               WHERE id = $1`,
             [
@@ -358,13 +473,72 @@ export async function recordClick({ link, click, now = new Date() }) {
                 click?.device || 'desconocido', click?.browser || '', click?.os || '',
                 click?.country || '', click?.region || '', click?.city || '',
                 click?.userAgent || '',
-                dia,
+                dia, qrId,
             ]
         );
-        return { ok: true, counted: true, bot: false };
+        return { ok: true, counted: true, bot: false, viaQr: Boolean(qrId) };
     } catch (e) {
         // Medir es secundario: el visitante ya está en camino al destino.
         console.error('[redirects] no se pudo registrar el clic:', e.message);
+        return { ok: false, reason: e.message };
+    }
+}
+
+/**
+ * Un escaneo de un QR que NO saltó: vencido, pausado, deshabilitado o
+ * eliminado. Queda como evento con su `outcome` y suma al contador de
+ * bloqueados del código — nunca a los clics del enlace ni a los escaneos
+ * buenos, porque nadie llegó al destino.
+ *
+ * «Siguen escaneando el afiche viejo» es información para quien decide si
+ * extender la vigencia. Los bots no se registran acá: de un código que no
+ * salta, una vista previa no dice nada.
+ *
+ * UNA sentencia, y nunca lanza — misma disciplina que `recordClick`.
+ */
+export async function recordBlockedScan({ link, qr, state, click, now = new Date() }) {
+    if (!link?.id || !qr?.id) return { ok: false, reason: 'sin_qr' };
+    if (click?.isBot) return { ok: true, counted: false, bot: true };
+    try {
+        const dia = dayKey(now, STATS_TZ);
+        const vk = click?.identifiable ? visitorKeyFor(click.seed) : '';
+        const outcome = ['expired', 'paused', 'disabled', 'deleted'].includes(state) ? state : 'disabled';
+        await db.query(
+            `WITH e AS (
+                 INSERT INTO "LinkRedirectEvent"
+                     (id, "linkId", "clubId", "createdAt", "visitorKey", "isNewVisitor",
+                      referrer, "referrerHost", "sourceKind", "sourceLabel", "sourceEvidence",
+                      "utmSource", "utmMedium", "utmCampaign", "utmContent", "utmTerm",
+                      device, browser, os, country, region, city, "userAgent",
+                      "qrId", "accessKind", outcome)
+                 VALUES ($1, $2, $3, $4::timestamp, $5, FALSE,
+                         $6, $7, $8, $9, $10,
+                         $11, $12, $13, $14, $15,
+                         $16, $17, $18, $19, $20, $21, $22,
+                         $23, 'qr', $24)
+             ),
+             qd AS (
+                 INSERT INTO "LinkRedirectQrDaily" ("qrId", "linkId", "clubId", day, scans, uniques, bots, blocked)
+                 VALUES ($23, $2, $3, $25::date, 0, 0, 0, 1)
+                 ON CONFLICT ("qrId", day)
+                 DO UPDATE SET blocked = "LinkRedirectQrDaily".blocked + 1
+             )
+             UPDATE "LinkRedirectQr" SET "blockedScans" = "blockedScans" + 1 WHERE id = $23`,
+            [
+                nuevoId(), link.id, link.clubId, now, vk,
+                click?.referrer || '', click?.referrerHost || '',
+                click?.sourceKind || 'directo', click?.sourceLabel || '', click?.sourceEvidence || 'ninguna',
+                click?.utmSource || '', click?.utmMedium || '', click?.utmCampaign || '',
+                click?.utmContent || '', click?.utmTerm || '',
+                click?.device || 'desconocido', click?.browser || '', click?.os || '',
+                click?.country || '', click?.region || '', click?.city || '',
+                click?.userAgent || '',
+                qr.id, outcome, dia,
+            ]
+        );
+        return { ok: true, counted: true, blocked: true, outcome };
+    } catch (e) {
+        console.error('[redirects] no se pudo registrar el escaneo bloqueado:', e.message);
         return { ok: false, reason: e.message };
     }
 }
@@ -373,15 +547,15 @@ export async function recordClick({ link, click, now = new Date() }) {
 
 /** SÓLO AGREGA. Corregir es escribir otro evento, nunca editar el anterior. */
 export async function writeAudit({ linkId, clubId, action, actorId = null, actorName = '',
-    fromTarget = '', toTarget = '', fromStatus = '', toStatus = '', detail = '' }) {
+    fromTarget = '', toTarget = '', fromStatus = '', toStatus = '', detail = '', qrId = '' }) {
     try {
         await db.query(
             `INSERT INTO "LinkRedirectAudit"
                  (id, "linkId", "clubId", action, "actorId", "actorName",
-                  "fromTarget", "toTarget", "fromStatus", "toStatus", detail)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+                  "fromTarget", "toTarget", "fromStatus", "toStatus", detail, "qrId")
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
             [nuevoId(), linkId, clubId, action, actorId, actorName || '',
-                fromTarget || '', toTarget || '', fromStatus || '', toStatus || '', detail || '']
+                fromTarget || '', toTarget || '', fromStatus || '', toStatus || '', detail || '', qrId || '']
         );
         return { ok: true };
     } catch (e) {
@@ -393,7 +567,7 @@ export async function writeAudit({ linkId, clubId, action, actorId = null, actor
 export async function listAudit(linkId, clubId, limit = 30) {
     const { rows } = await db.query(
         `SELECT action, "actorName", "fromTarget", "toTarget", "fromStatus", "toStatus",
-                detail, "createdAt"
+                detail, "createdAt", "qrId"
            FROM "LinkRedirectAudit"
           WHERE "linkId" = $1 AND "clubId" = $2
           ORDER BY "createdAt" DESC
@@ -405,8 +579,8 @@ export async function listAudit(linkId, clubId, limit = 30) {
 
 // ── El panel: listar, crear, editar, pausar, borrar ─────────────────────────
 
-const CAMPOS = `id, "clubId", slug, target, permanent, "forwardQuery", status, notes,
-                "totalClicks", "uniqueVisitors", "botHits", "lastClickAt",
+const CAMPOS = `id, "clubId", slug, target, permanent, "forwardQuery", status, notes, name,
+                "totalClicks", "uniqueVisitors", "botHits", "lastClickAt", "qrScans",
                 "createdByName", "createdAt", "updatedByName", "updatedAt"`;
 
 /**
@@ -430,7 +604,7 @@ export async function listRedirects(clubId, { page = 1, perPage = 25, q = '', st
     const params = [clubId];
     if (q) {
         params.push(`%${String(q).toLowerCase()}%`);
-        filtros.push(`(lower(slug) LIKE $${params.length} OR lower(target) LIKE $${params.length})`);
+        filtros.push(`(lower(slug) LIKE $${params.length} OR lower(target) LIKE $${params.length} OR lower(name) LIKE $${params.length})`);
     }
     if (status === 'active' || status === 'paused') {
         params.push(status);
@@ -449,8 +623,21 @@ export async function listRedirects(clubId, { page = 1, perPage = 25, q = '', st
         db.query(`SELECT COUNT(*)::int AS n FROM "LinkRedirect" WHERE ${where}`, params),
     ]);
 
+    // Cuántos QR vivos tiene cada enlace. Es una consulta sobre la tabla de
+    // códigos —chica— y no sobre eventos: el listado sigue sin recorrer uno.
+    const qrCount = new Map();
+    if (filas.rows.length) {
+        const { rows } = await db.query(
+            `SELECT "linkId", COUNT(*)::int AS n FROM "LinkRedirectQr"
+              WHERE "clubId" = $1 AND "deletedAt" IS NULL
+              GROUP BY "linkId"`,
+            [clubId]
+        );
+        for (const r of rows) qrCount.set(r.linkId, r.n);
+    }
+
     return {
-        items: filas.rows,
+        items: filas.rows.map(r => ({ ...r, qrCount: qrCount.get(r.id) || 0 })),
         page: Math.max(1, Number(page) || 1),
         perPage: limit,
         total: total.rows[0]?.n || 0,
@@ -479,7 +666,7 @@ async function slugsDelSitio(clubId, exceptId = null) {
 }
 
 export async function createRedirect({ clubId, slug, target, permanent = false,
-    forwardQuery = true, notes = '', actor = {} }) {
+    forwardQuery = true, notes = '', name = '', actor = {} }) {
     await ensureLinkRedirectSchema();
     await migrateLegacySetting(clubId).catch(() => {});
 
@@ -494,11 +681,12 @@ export async function createRedirect({ clubId, slug, target, permanent = false,
         const { rows } = await db.query(
             `INSERT INTO "LinkRedirect"
                  (id, "clubId", slug, target, permanent, "forwardQuery", status, notes,
-                  "createdBy", "createdByName", "updatedBy", "updatedByName")
-             VALUES ($1,$2,$3,$4,$5,$6,'active',$7,$8,$9,$8,$9)
+                  "createdBy", "createdByName", "updatedBy", "updatedByName", name)
+             VALUES ($1,$2,$3,$4,$5,$6,'active',$7,$8,$9,$8,$9,$10)
              RETURNING ${CAMPOS}`,
             [id, clubId, from, to, permanent === true, forwardQuery !== false,
-                String(notes || '').slice(0, 500), actor.id || null, actor.name || '']
+                String(notes || '').slice(0, 500), actor.id || null, actor.name || '',
+                String(name || '').replace(/\s+/g, ' ').trim().slice(0, 80)]
         );
         await writeAudit({
             linkId: id, clubId, action: 'created',
@@ -527,6 +715,9 @@ export async function updateRedirect(id, clubId, patch = {}, actor = {}) {
     const permanent = patch.permanent !== undefined ? patch.permanent === true : actual.permanent;
     const forwardQuery = patch.forwardQuery !== undefined ? patch.forwardQuery !== false : actual.forwardQuery;
     const notes = patch.notes !== undefined ? String(patch.notes).slice(0, 500) : actual.notes;
+    const name = patch.name !== undefined
+        ? String(patch.name || '').replace(/\s+/g, ' ').trim().slice(0, 80)
+        : (actual.name || '');
 
     const otros = await slugsDelSitio(clubId, id);
     const v = validateRule({ from, to, permanent }, otros);
@@ -536,10 +727,10 @@ export async function updateRedirect(id, clubId, patch = {}, actor = {}) {
         const { rows } = await db.query(
             `UPDATE "LinkRedirect"
                 SET slug = $3, target = $4, permanent = $5, "forwardQuery" = $6, notes = $7,
-                    "updatedBy" = $8, "updatedByName" = $9, "updatedAt" = NOW()
+                    "updatedBy" = $8, "updatedByName" = $9, "updatedAt" = NOW(), name = $10
               WHERE id = $1 AND "clubId" = $2 AND "deletedAt" IS NULL
               RETURNING ${CAMPOS}`,
-            [id, clubId, from, to, permanent, forwardQuery, notes, actor.id || null, actor.name || '']
+            [id, clubId, from, to, permanent, forwardQuery, notes, actor.id || null, actor.name || '', name]
         );
         if (!rows[0]) return { ok: false, status: 404, error: 'Esa redirección no existe.' };
 
@@ -627,68 +818,29 @@ function inicioDeDia(clave) {
 }
 
 /**
- * Las cifras de un enlace.
+ * Los DESGLOSES de un conjunto de eventos: fuente, dispositivo, país,
+ * navegador, campañas UTM y visitantes únicos del rango.
  *
- * La CABECERA sale de contadores y del agregado diario: nunca recorre eventos.
- * Los DESGLOSES sí leen eventos, pero acotados al rango y por un índice
- * `(linkId, createdAt)`.
+ * `cond` y `params` acotan el conjunto —un enlace, o un QR— y el rango. Sólo
+ * acá se leen eventos, y siempre por un índice `(linkId|qrId, createdAt)`.
+ *
+ * La columna de agrupación se pasa por SEPARADO de las que se seleccionan
+ * además: derivarla del `SELECT` con un `split` es la clase de atajo que se
+ * rompe en silencio en cuanto una consulta lleva dos columnas.
  */
-export async function statsFor(id, clubId, { period = 'd30', now = new Date() } = {}) {
-    const link = await getRedirect(id, clubId);
-    if (!link) return { ok: false, status: 404, error: 'Esa redirección no existe.' };
-
-    const rango = periodRange(period, now, STATS_TZ);
-    const hoy = dayKey(now, STATS_TZ);
-    const desde7 = dayKey(new Date(now.getTime() - 6 * 86400000), STATS_TZ);
-    const desde30 = dayKey(new Date(now.getTime() - 29 * 86400000), STATS_TZ);
-
-    const [cabecera, serie] = await Promise.all([
-        db.query(
-            `SELECT
-                 COALESCE(SUM(clicks) FILTER (WHERE day = $2::date), 0)::int  AS hoy,
-                 COALESCE(SUM(clicks) FILTER (WHERE day >= $3::date), 0)::int AS d7,
-                 COALESCE(SUM(clicks) FILTER (WHERE day >= $4::date), 0)::int AS d30,
-                 COALESCE(SUM(bots), 0)::int                                  AS bots
-               FROM "LinkRedirectDaily" WHERE "linkId" = $1`,
-            [id, hoy, desde7, desde30]
-        ),
-        rango.fromDay
-            ? db.query(
-                `SELECT to_char(day, 'YYYY-MM-DD') AS day, clicks, uniques, bots
-                   FROM "LinkRedirectDaily"
-                  WHERE "linkId" = $1 AND day >= $2::date AND day <= $3::date
-                  ORDER BY day ASC`,
-                [id, rango.fromDay, rango.toDay]
-            )
-            : db.query(
-                `SELECT to_char(day, 'YYYY-MM-DD') AS day, clicks, uniques, bots
-                   FROM "LinkRedirectDaily" WHERE "linkId" = $1 ORDER BY day ASC`,
-                [id]
-            ),
-    ]);
-
-    // Los desgloses del rango. Un enlace sin clics no paga ninguna consulta.
-    const desde = rango.fromDay ? inicioDeDia(rango.fromDay) : null;
-    const cond = desde ? `"linkId" = $1 AND "createdAt" >= $2` : `"linkId" = $1`;
-    const params = desde ? [id, desde] : [id];
-
-    /**
-     * Un desglose. La columna de agrupación se pasa por SEPARADO de las que se
-     * seleccionan además: derivarla del `SELECT` con un `split` es la clase de
-     * atajo que se rompe en silencio en cuanto una consulta lleva dos columnas.
-     */
+async function desglosesDe(cond, params) {
     const agrupar = (grupo, alias, extras = '') => db.query(
         `SELECT ${grupo} AS ${alias}${extras}, COUNT(*)::int AS clicks,
                 COUNT(DISTINCT NULLIF("visitorKey", ''))::int AS uniques
            FROM "LinkRedirectEvent"
-          WHERE ${cond}
+          WHERE ${cond} AND outcome = 'redirected'
           GROUP BY ${grupo}
           ORDER BY clicks DESC
           LIMIT 20`,
         params
     );
 
-    const [fuentes, dispositivos, paises, campanas, navegadores, unicos] = await Promise.all([
+    const [fuentes, dispositivos, paises, campanas, navegadores, unicos, recientes] = await Promise.all([
         agrupar(`"sourceKind"`, 'kind', `, MAX("sourceLabel") AS label`),
         agrupar('device', 'device'),
         agrupar('country', 'country'),
@@ -704,10 +856,117 @@ export async function statsFor(id, clubId, { period = 'd30', now = new Date() } 
         agrupar('browser', 'browser'),
         db.query(
             `SELECT COUNT(DISTINCT NULLIF("visitorKey", ''))::int AS n
-               FROM "LinkRedirectEvent" WHERE ${cond}`,
+               FROM "LinkRedirectEvent" WHERE ${cond} AND outcome = 'redirected'`,
+            params
+        ),
+        // La actividad reciente. Sin IP, sin user-agent crudo: lo que se
+        // muestra es lo que la pantalla necesita para leer «qué pasó».
+        db.query(
+            `SELECT "createdAt", "accessKind", "qrId", outcome, "sourceKind", "sourceLabel",
+                    device, browser, country, "isNewVisitor"
+               FROM "LinkRedirectEvent"
+              WHERE ${cond}
+              ORDER BY "createdAt" DESC
+              LIMIT 25`,
             params
         ),
     ]);
+
+    return {
+        sources: fuentes.rows,
+        devices: dispositivos.rows,
+        countries: paises.rows.filter(r => r.country),
+        browsers: navegadores.rows.filter(r => r.browser),
+        campaigns: campanas.rows,
+        periodUniques: unicos.rows[0]?.n || 0,
+        recent: recientes.rows,
+    };
+}
+
+/** Las claves de día que la cabecera necesita: hoy, hace 7, hace 30. */
+function clavesDeCabecera(now) {
+    return {
+        hoy: dayKey(now, STATS_TZ),
+        desde7: dayKey(new Date(now.getTime() - 6 * 86400000), STATS_TZ),
+        desde30: dayKey(new Date(now.getTime() - 29 * 86400000), STATS_TZ),
+    };
+}
+
+/**
+ * Las cifras de un enlace.
+ *
+ * La CABECERA sale de contadores y del agregado diario: nunca recorre eventos.
+ * Los DESGLOSES sí leen eventos, pero acotados al rango y por un índice
+ * `(linkId, createdAt)`.
+ *
+ * Desde v4.1278 distingue los clics que entraron por un QR de los del enlace
+ * compartido por otros medios, y trae la comparación entre los QR del enlace.
+ */
+export async function statsFor(id, clubId, { period = 'd30', now = new Date() } = {}) {
+    const link = await getRedirect(id, clubId);
+    if (!link) return { ok: false, status: 404, error: 'Esa redirección no existe.' };
+
+    const rango = periodRange(period, now, STATS_TZ);
+    const { hoy, desde7, desde30 } = clavesDeCabecera(now);
+
+    const [cabecera, serie, qrs] = await Promise.all([
+        db.query(
+            `SELECT
+                 COALESCE(SUM(clicks) FILTER (WHERE day = $2::date), 0)::int  AS hoy,
+                 COALESCE(SUM(clicks) FILTER (WHERE day >= $3::date), 0)::int AS d7,
+                 COALESCE(SUM(clicks) FILTER (WHERE day >= $4::date), 0)::int AS d30,
+                 COALESCE(SUM(bots), 0)::int                                  AS bots
+               FROM "LinkRedirectDaily" WHERE "linkId" = $1`,
+            [id, hoy, desde7, desde30]
+        ),
+        rango.fromDay
+            ? db.query(
+                `SELECT to_char(day, 'YYYY-MM-DD') AS day, clicks, uniques, bots, "qrScans"
+                   FROM "LinkRedirectDaily"
+                  WHERE "linkId" = $1 AND day >= $2::date AND day <= $3::date
+                  ORDER BY day ASC`,
+                [id, rango.fromDay, rango.toDay]
+            )
+            : db.query(
+                `SELECT to_char(day, 'YYYY-MM-DD') AS day, clicks, uniques, bots, "qrScans"
+                   FROM "LinkRedirectDaily" WHERE "linkId" = $1 ORDER BY day ASC`,
+                [id]
+            ),
+        listQrs(id, clubId, { now }),
+    ]);
+
+    // Los desgloses del rango. Un enlace sin clics no paga ninguna consulta.
+    const desde = rango.fromDay ? inicioDeDia(rango.fromDay) : null;
+    const cond = desde ? `"linkId" = $1 AND "createdAt" >= $2` : `"linkId" = $1`;
+    const params = desde ? [id, desde] : [id];
+    const desgloses = await desglosesDe(cond, params);
+
+    // Los escaneos de cada QR DENTRO del período, del agregado diario del QR.
+    const escaneosPeriodo = new Map();
+    if (qrs.length) {
+        const { rows } = await db.query(
+            rango.fromDay
+                ? `SELECT "qrId", COALESCE(SUM(scans), 0)::int AS scans,
+                          COALESCE(SUM(uniques), 0)::int AS uniques,
+                          COALESCE(SUM(blocked), 0)::int AS blocked
+                     FROM "LinkRedirectQrDaily"
+                    WHERE "linkId" = $1 AND day >= $2::date AND day <= $3::date
+                    GROUP BY "qrId"`
+                : `SELECT "qrId", COALESCE(SUM(scans), 0)::int AS scans,
+                          COALESCE(SUM(uniques), 0)::int AS uniques,
+                          COALESCE(SUM(blocked), 0)::int AS blocked
+                     FROM "LinkRedirectQrDaily"
+                    WHERE "linkId" = $1
+                    GROUP BY "qrId"`,
+            rango.fromDay ? [id, rango.fromDay, rango.toDay] : [id]
+        );
+        for (const r of rows) escaneosPeriodo.set(r.qrId, r);
+    }
+
+    const series = fillDays(serie.rows, rango);
+    const enPeriodo = series.reduce((a, d) => ({
+        clicks: a.clicks + d.clicks, qrScans: a.qrScans + (d.qrScans || 0),
+    }), { clicks: 0, qrScans: 0 });
 
     return {
         ok: true,
@@ -715,28 +974,445 @@ export async function statsFor(id, clubId, { period = 'd30', now = new Date() } 
         period: { ...rango },
         totals: {
             clicks: link.totalClicks,
+            qrScans: link.qrScans || 0,
+            linkClicks: Math.max(0, (link.totalClicks || 0) - (link.qrScans || 0)),
             uniqueVisitors: link.uniqueVisitors,
             bots: link.botHits,
             today: cabecera.rows[0]?.hoy || 0,
             last7: cabecera.rows[0]?.d7 || 0,
             last30: cabecera.rows[0]?.d30 || 0,
             lastClickAt: link.lastClickAt,
-            periodUniques: unicos.rows[0]?.n || 0,
+            periodUniques: desgloses.periodUniques,
+            periodClicks: enPeriodo.clicks,
+            periodQrScans: enPeriodo.qrScans,
+            periodLinkClicks: Math.max(0, enPeriodo.clicks - enPeriodo.qrScans),
+        },
+        series,
+        sources: desgloses.sources,
+        devices: desgloses.devices,
+        countries: desgloses.countries,
+        browsers: desgloses.browsers,
+        campaigns: desgloses.campaigns,
+        recent: desgloses.recent,
+        qrs: qrs.map(q => ({
+            ...q,
+            periodScans: escaneosPeriodo.get(q.id)?.scans || 0,
+            periodUniques: escaneosPeriodo.get(q.id)?.uniques || 0,
+            periodBlocked: escaneosPeriodo.get(q.id)?.blocked || 0,
+        })),
+    };
+}
+
+// ── Los códigos QR: listar, crear, editar, estado, vigencia, borrar ─────────
+
+const CAMPOS_QR = `id, "linkId", "clubId", code, name, campaign, medium, label, design,
+                   status, "validityPreset", "expiresAt",
+                   "totalScans", "uniqueVisitors", "botHits", "blockedScans", "lastScanAt",
+                   "createdByName", "createdAt", "updatedByName", "updatedAt"`;
+
+/** Un QR con su estado EFECTIVO calculado contra el reloj. */
+function conEstado(row, now = new Date()) {
+    if (!row) return row;
+    const design = typeof row.design === 'string'
+        ? (() => { try { return JSON.parse(row.design); } catch { return {}; } })()
+        : (row.design || {});
+    return { ...row, design, state: qrAccessState(row, now) };
+}
+
+/** Un código nuevo. La entropía la pone `crypto`; la forma, el criterio. */
+function nuevoCodigo() {
+    return codeFromBytes(crypto.randomBytes(QR_CODE_LENGTH), QR_CODE_LENGTH);
+}
+
+export async function listQrs(linkId, clubId, { now = new Date() } = {}) {
+    await ensureLinkRedirectSchema();
+    const { rows } = await db.query(
+        `SELECT ${CAMPOS_QR} FROM "LinkRedirectQr"
+          WHERE "linkId" = $1 AND "clubId" = $2 AND "deletedAt" IS NULL
+          ORDER BY "createdAt" DESC`,
+        [linkId, clubId]
+    );
+    return rows.map(r => conEstado(r, now));
+}
+
+export async function getQr(qrId, linkId, clubId, { now = new Date() } = {}) {
+    await ensureLinkRedirectSchema();
+    const { rows } = await db.query(
+        `SELECT ${CAMPOS_QR} FROM "LinkRedirectQr"
+          WHERE id = $1 AND "linkId" = $2 AND "clubId" = $3 AND "deletedAt" IS NULL
+          LIMIT 1`,
+        [qrId, linkId, clubId]
+    );
+    return rows[0] ? conEstado(rows[0], now) : null;
+}
+
+/**
+ * Crea un QR para un enlace. El código es permanente desde este momento: lo
+ * que se descargue hoy sigue siendo válido con cualquier cambio posterior.
+ *
+ * La fecha de vencimiento se calcula ACÁ (`expiryFor`), nunca se acepta la que
+ * mande el navegador. El diseño se sanea y, si tiene errores de legibilidad,
+ * se rechaza con el motivo.
+ */
+export async function createQr({ linkId, clubId, fields = {}, design = {}, validity = {}, actor = {}, now = new Date() }) {
+    const link = await getRedirect(linkId, clubId);
+    if (!link) return { ok: false, status: 404, error: 'Esa redirección no existe.' };
+
+    const f = normalizeQrFields(fields);
+    if (!f.name) return { ok: false, status: 400, error: 'Ponele un nombre al QR: es como lo vas a reconocer en el listado («Afiche A3», «Instagram»).' };
+
+    const d = normalizeDesign(design);
+    if (!d.ok) return { ok: false, status: 400, error: d.errors[0] };
+
+    const v = expiryFor(validity.preset, { now, customDate: validity.customDate });
+    if (!v.ok) return { ok: false, status: 400, error: v.error };
+
+    const id = nuevoId();
+    // El índice único del código es GLOBAL y no parcial, así que un choque es
+    // un choque de verdad. Con 31^10 combinaciones no debería ocurrir; si
+    // ocurre, se prueba otro código, no se devuelve un error al administrador.
+    for (let intento = 0; intento < 4; intento++) {
+        const code = nuevoCodigo();
+        try {
+            const { rows } = await db.query(
+                `INSERT INTO "LinkRedirectQr"
+                     (id, "linkId", "clubId", code, name, campaign, medium, label, design,
+                      status, "validityPreset", "expiresAt",
+                      "createdBy", "createdByName", "updatedBy", "updatedByName")
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,'active',$10,$11,$12,$13,$12,$13)
+                 RETURNING ${CAMPOS_QR}`,
+                [id, linkId, clubId, code, f.name, f.campaign, f.medium, f.label,
+                    JSON.stringify(d.design), v.preset, v.expiresAt,
+                    actor.id || null, actor.name || '']
+            );
+            await writeAudit({
+                linkId, clubId, qrId: id, action: 'qr_created',
+                actorId: actor.id || null, actorName: actor.name || '',
+                toStatus: 'active',
+                detail: `QR «${f.name}» · ${v.expiresAt ? 'vence ' + v.expiresAt.toISOString().slice(0, 10) : 'sin vencimiento'}`,
+            });
+            invalidateRedirectCache();
+            return { ok: true, qr: conEstado(rows[0], now), warnings: d.warnings };
+        } catch (e) {
+            if (String(e.message || '').includes('LinkRedirectQr_code_key')) continue;
+            throw e;
+        }
+    }
+    return { ok: false, status: 500, error: 'No se pudo generar un código único. Probá otra vez.' };
+}
+
+/**
+ * Edita la identificación, el diseño y la vigencia de un QR. El CÓDIGO no se
+ * toca nunca: la imagen ya descargada sigue valiendo.
+ *
+ * Cambiar la vigencia es lo que REACTIVA un código vencido: «vencido» se deriva
+ * de la fecha, así que una fecha nueva (o «sin vencimiento») basta.
+ */
+export async function updateQr(qrId, linkId, clubId, patch = {}, actor = {}, now = new Date()) {
+    const actual = await getQr(qrId, linkId, clubId, { now });
+    if (!actual) return { ok: false, status: 404, error: 'Ese código QR no existe.' };
+
+    const f = normalizeQrFields({
+        name: patch.name !== undefined ? patch.name : actual.name,
+        campaign: patch.campaign !== undefined ? patch.campaign : actual.campaign,
+        medium: patch.medium !== undefined ? patch.medium : actual.medium,
+        label: patch.label !== undefined ? patch.label : actual.label,
+    });
+    if (!f.name) return { ok: false, status: 400, error: 'El QR necesita un nombre.' };
+
+    const d = normalizeDesign(patch.design !== undefined ? patch.design : actual.design);
+    if (!d.ok) return { ok: false, status: 400, error: d.errors[0] };
+
+    let preset = actual.validityPreset || 'none';
+    let expiresAt = actual.expiresAt || null;
+    let cambioVigencia = false;
+    if (patch.validity && patch.validity.preset) {
+        const v = expiryFor(patch.validity.preset, { now, customDate: patch.validity.customDate });
+        if (!v.ok) return { ok: false, status: 400, error: v.error };
+        preset = v.preset;
+        expiresAt = v.expiresAt;
+        cambioVigencia = String(actual.expiresAt || '') !== String(expiresAt || '');
+    }
+
+    const { rows } = await db.query(
+        `UPDATE "LinkRedirectQr"
+            SET name = $4, campaign = $5, medium = $6, label = $7, design = $8::jsonb,
+                "validityPreset" = $9, "expiresAt" = $10,
+                "updatedBy" = $11, "updatedByName" = $12, "updatedAt" = NOW()
+          WHERE id = $1 AND "linkId" = $2 AND "clubId" = $3 AND "deletedAt" IS NULL
+          RETURNING ${CAMPOS_QR}`,
+        [qrId, linkId, clubId, f.name, f.campaign, f.medium, f.label, JSON.stringify(d.design),
+            preset, expiresAt, actor.id || null, actor.name || '']
+    );
+    if (!rows[0]) return { ok: false, status: 404, error: 'Ese código QR no existe.' };
+
+    const nuevo = conEstado(rows[0], now);
+    if (cambioVigencia) {
+        await writeAudit({
+            linkId, clubId, qrId, action: 'qr_validity',
+            actorId: actor.id || null, actorName: actor.name || '',
+            fromStatus: actual.state, toStatus: nuevo.state,
+            detail: `Vigencia: ${actual.expiresAt ? String(actual.expiresAt).slice(0, 10) : 'sin vencimiento'} → ${expiresAt ? expiresAt.toISOString().slice(0, 10) : 'sin vencimiento'}`,
+        });
+    } else {
+        await writeAudit({
+            linkId, clubId, qrId, action: 'qr_edited',
+            actorId: actor.id || null, actorName: actor.name || '',
+            detail: `QR «${f.name}»`,
+        });
+    }
+    invalidateRedirectCache();
+    return { ok: true, qr: nuevo, warnings: d.warnings };
+}
+
+/** Pausar, deshabilitar o reactivar. Nada de esto borra una sola estadística. */
+export async function setQrStatus(qrId, linkId, clubId, status, actor = {}, now = new Date()) {
+    if (!QR_STATUSES.includes(status)) {
+        return { ok: false, status: 400, error: `Estado inválido. Los admitidos son: ${QR_STATUSES.join(', ')}.` };
+    }
+    const actual = await getQr(qrId, linkId, clubId, { now });
+    if (!actual) return { ok: false, status: 404, error: 'Ese código QR no existe.' };
+
+    const { rows } = await db.query(
+        `UPDATE "LinkRedirectQr"
+            SET status = $4, "updatedBy" = $5, "updatedByName" = $6, "updatedAt" = NOW()
+          WHERE id = $1 AND "linkId" = $2 AND "clubId" = $3 AND "deletedAt" IS NULL
+          RETURNING ${CAMPOS_QR}`,
+        [qrId, linkId, clubId, status, actor.id || null, actor.name || '']
+    );
+    if (!rows[0]) return { ok: false, status: 404, error: 'Ese código QR no existe.' };
+
+    const nuevo = conEstado(rows[0], now);
+    await writeAudit({
+        linkId, clubId, qrId,
+        action: status === 'active' ? 'qr_activated' : status === 'paused' ? 'qr_paused' : 'qr_disabled',
+        actorId: actor.id || null, actorName: actor.name || '',
+        fromStatus: actual.status, toStatus: status,
+        detail: `QR «${actual.name}»`,
+    });
+    invalidateRedirectCache();
+    return { ok: true, qr: nuevo };
+}
+
+/**
+ * Borrado SUAVE. El código NO se libera —está impreso en alguna parte— y
+ * quien lo escanee verá «este enlace ya no existe». El historial se queda.
+ */
+export async function deleteQr(qrId, linkId, clubId, actor = {}) {
+    const actual = await getQr(qrId, linkId, clubId);
+    if (!actual) return { ok: false, status: 404, error: 'Ese código QR no existe.' };
+
+    const { rows } = await db.query(
+        `UPDATE "LinkRedirectQr"
+            SET "deletedAt" = NOW(), "deletedBy" = $4, "updatedAt" = NOW()
+          WHERE id = $1 AND "linkId" = $2 AND "clubId" = $3 AND "deletedAt" IS NULL
+          RETURNING id`,
+        [qrId, linkId, clubId, actor.id || null]
+    );
+    if (!rows[0]) return { ok: false, status: 404, error: 'Ese código QR no existe.' };
+
+    await writeAudit({
+        linkId, clubId, qrId, action: 'qr_deleted',
+        actorId: actor.id || null, actorName: actor.name || '',
+        fromStatus: actual.status,
+        detail: `QR «${actual.name}» · borrado suave: el historial se conserva y el código impreso muestra la página de «ya no existe».`,
+    });
+    invalidateRedirectCache();
+    return { ok: true };
+}
+
+/**
+ * Las cifras de UN código QR. Misma arquitectura que las del enlace: la
+ * cabecera del agregado diario del QR, los desgloses de eventos acotados por
+ * `(qrId, createdAt)`.
+ */
+export async function qrStatsFor(qrId, linkId, clubId, { period = 'd30', now = new Date() } = {}) {
+    const qr = await getQr(qrId, linkId, clubId, { now });
+    if (!qr) return { ok: false, status: 404, error: 'Ese código QR no existe.' };
+    const link = await getRedirect(linkId, clubId);
+
+    const rango = periodRange(period, now, STATS_TZ);
+    const { hoy, desde7, desde30 } = clavesDeCabecera(now);
+
+    const [cabecera, serie] = await Promise.all([
+        db.query(
+            `SELECT
+                 COALESCE(SUM(scans) FILTER (WHERE day = $2::date), 0)::int  AS hoy,
+                 COALESCE(SUM(scans) FILTER (WHERE day >= $3::date), 0)::int AS d7,
+                 COALESCE(SUM(scans) FILTER (WHERE day >= $4::date), 0)::int AS d30,
+                 COALESCE(SUM(bots), 0)::int                                 AS bots,
+                 COALESCE(SUM(blocked), 0)::int                              AS blocked
+               FROM "LinkRedirectQrDaily" WHERE "qrId" = $1`,
+            [qrId, hoy, desde7, desde30]
+        ),
+        rango.fromDay
+            ? db.query(
+                `SELECT to_char(day, 'YYYY-MM-DD') AS day, scans AS clicks, uniques, bots, blocked
+                   FROM "LinkRedirectQrDaily"
+                  WHERE "qrId" = $1 AND day >= $2::date AND day <= $3::date
+                  ORDER BY day ASC`,
+                [qrId, rango.fromDay, rango.toDay]
+            )
+            : db.query(
+                `SELECT to_char(day, 'YYYY-MM-DD') AS day, scans AS clicks, uniques, bots, blocked
+                   FROM "LinkRedirectQrDaily" WHERE "qrId" = $1 ORDER BY day ASC`,
+                [qrId]
+            ),
+    ]);
+
+    const desde = rango.fromDay ? inicioDeDia(rango.fromDay) : null;
+    const cond = desde ? `"qrId" = $1 AND "createdAt" >= $2` : `"qrId" = $1`;
+    const params = desde ? [qrId, desde] : [qrId];
+    const desgloses = await desglosesDe(cond, params);
+
+    return {
+        ok: true,
+        qr,
+        link,
+        period: { ...rango },
+        totals: {
+            scans: qr.totalScans,
+            uniqueVisitors: qr.uniqueVisitors,
+            bots: qr.botHits,
+            blocked: qr.blockedScans,
+            today: cabecera.rows[0]?.hoy || 0,
+            last7: cabecera.rows[0]?.d7 || 0,
+            last30: cabecera.rows[0]?.d30 || 0,
+            lastScanAt: qr.lastScanAt,
+            periodUniques: desgloses.periodUniques,
         },
         series: fillDays(serie.rows, rango),
-        sources: fuentes.rows,
-        devices: dispositivos.rows,
-        countries: paises.rows.filter(r => r.country),
-        browsers: navegadores.rows.filter(r => r.browser),
-        campaigns: campanas.rows,
+        sources: desgloses.sources,
+        devices: desgloses.devices,
+        countries: desgloses.countries,
+        browsers: desgloses.browsers,
+        campaigns: desgloses.campaigns,
+        recent: desgloses.recent,
+    };
+}
+
+// ── El resumen del sitio ────────────────────────────────────────────────────
+
+/**
+ * Lo que un administrador quiere ver ANTES de abrir un enlace: cuánto tráfico
+ * hay en total, cuánto vino por QR, qué códigos y qué campañas rinden más.
+ *
+ * Todo sale de contadores y agregados diarios acotados por sitio. No toca
+ * eventos.
+ */
+export async function overviewFor(clubId, { period = 'd30', now = new Date() } = {}) {
+    await ensureLinkRedirectSchema();
+    const rango = periodRange(period, now, STATS_TZ);
+
+    const [enlaces, qrs, diario, diarioQr] = await Promise.all([
+        db.query(
+            `SELECT id, slug, name, status, "totalClicks", "qrScans", "uniqueVisitors", "lastClickAt"
+               FROM "LinkRedirect"
+              WHERE "clubId" = $1 AND "deletedAt" IS NULL`,
+            [clubId]
+        ),
+        db.query(
+            `SELECT id, "linkId", name, campaign, medium, status, "expiresAt",
+                    "totalScans", "uniqueVisitors", "blockedScans", "lastScanAt"
+               FROM "LinkRedirectQr"
+              WHERE "clubId" = $1 AND "deletedAt" IS NULL`,
+            [clubId]
+        ),
+        rango.fromDay
+            ? db.query(
+                `SELECT to_char(day, 'YYYY-MM-DD') AS day,
+                        SUM(clicks)::int AS clicks, SUM(uniques)::int AS uniques,
+                        SUM(bots)::int AS bots, SUM("qrScans")::int AS "qrScans"
+                   FROM "LinkRedirectDaily"
+                  WHERE "clubId" = $1 AND day >= $2::date AND day <= $3::date
+                  GROUP BY day ORDER BY day ASC`,
+                [clubId, rango.fromDay, rango.toDay]
+            )
+            : db.query(
+                `SELECT to_char(day, 'YYYY-MM-DD') AS day,
+                        SUM(clicks)::int AS clicks, SUM(uniques)::int AS uniques,
+                        SUM(bots)::int AS bots, SUM("qrScans")::int AS "qrScans"
+                   FROM "LinkRedirectDaily"
+                  WHERE "clubId" = $1
+                  GROUP BY day ORDER BY day ASC`,
+                [clubId]
+            ),
+        rango.fromDay
+            ? db.query(
+                `SELECT "qrId", SUM(scans)::int AS scans, SUM(blocked)::int AS blocked
+                   FROM "LinkRedirectQrDaily"
+                  WHERE "clubId" = $1 AND day >= $2::date AND day <= $3::date
+                  GROUP BY "qrId"`,
+                [clubId, rango.fromDay, rango.toDay]
+            )
+            : db.query(
+                `SELECT "qrId", SUM(scans)::int AS scans, SUM(blocked)::int AS blocked
+                   FROM "LinkRedirectQrDaily"
+                  WHERE "clubId" = $1
+                  GROUP BY "qrId"`,
+                [clubId]
+            ),
+    ]);
+
+    const porQr = new Map(diarioQr.rows.map(r => [r.qrId, r]));
+    const nombreEnlace = new Map(enlaces.rows.map(l => [l.id, l.name || l.slug]));
+
+    const codigos = qrs.rows.map(q => ({
+        ...q,
+        state: qrAccessState(q, now),
+        linkName: nombreEnlace.get(q.linkId) || '',
+        periodScans: porQr.get(q.id)?.scans || 0,
+        periodBlocked: porQr.get(q.id)?.blocked || 0,
+    }));
+
+    const estados = { active: 0, expired: 0, paused: 0, disabled: 0 };
+    for (const q of codigos) estados[q.state] = (estados[q.state] || 0) + 1;
+
+    // Campañas: la suma de los QR que llevan el mismo nombre de campaña.
+    const campanas = new Map();
+    for (const q of codigos) {
+        const k = q.campaign || '';
+        if (!k) continue;
+        const acc = campanas.get(k) || { campaign: k, qrs: 0, scans: 0, periodScans: 0 };
+        acc.qrs += 1; acc.scans += q.totalScans || 0; acc.periodScans += q.periodScans;
+        campanas.set(k, acc);
+    }
+
+    const series = fillDays(diario.rows, rango);
+    const enPeriodo = series.reduce((a, d) => ({
+        clicks: a.clicks + d.clicks, qrScans: a.qrScans + (d.qrScans || 0),
+    }), { clicks: 0, qrScans: 0 });
+
+    const sum = (arr, k) => arr.reduce((a, r) => a + Number(r[k] || 0), 0);
+
+    return {
+        ok: true,
+        period: { ...rango },
+        totals: {
+            links: enlaces.rows.length,
+            activeLinks: enlaces.rows.filter(l => l.status === 'active').length,
+            qrs: codigos.length,
+            qrStates: estados,
+            clicks: sum(enlaces.rows, 'totalClicks'),
+            qrScans: sum(enlaces.rows, 'qrScans'),
+            uniqueVisitors: sum(enlaces.rows, 'uniqueVisitors'),
+            periodClicks: enPeriodo.clicks,
+            periodQrScans: enPeriodo.qrScans,
+            periodLinkClicks: Math.max(0, enPeriodo.clicks - enPeriodo.qrScans),
+        },
+        series,
+        topQrs: [...codigos].sort((a, b) => b.periodScans - a.periodScans || b.totalScans - a.totalScans).slice(0, 10),
+        topCampaigns: [...campanas.values()].sort((a, b) => b.periodScans - a.periodScans || b.scans - a.scans).slice(0, 10),
+        topLinks: [...enlaces.rows].sort((a, b) => (b.totalClicks || 0) - (a.totalClicks || 0)).slice(0, 10),
     };
 }
 
 export default {
     SETTING_KEY, STATS_TZ,
-    readRedirectsForHost, invalidateRedirectCache, migrateLegacySetting,
-    recordClick, visitorKeyFor,
+    readRedirectsForHost, invalidateRedirectCache, migrateLegacySetting, lookupQrByCode,
+    recordClick, recordBlockedScan, visitorKeyFor,
     listRedirects, getRedirect, createRedirect, updateRedirect,
     setRedirectStatus, deleteRedirect, statsFor,
+    listQrs, getQr, createQr, updateQr, setQrStatus, deleteQr, qrStatsFor, overviewFor,
     writeAudit, listAudit,
 };

@@ -421,6 +421,10 @@ export function fillDays(rows, { fromDay, toDay } = {}) {
             clicks: Number(hit?.clicks || 0),
             uniques: Number(hit?.uniques || 0),
             bots: Number(hit?.bots || 0),
+            // v4.1278 — cuántos de esos clics entraron por un QR, y cuántos
+            // escaneos no saltaron. Cero donde la fila no los trae.
+            qrScans: Number(hit?.qrScans || 0),
+            blocked: Number(hit?.blocked || 0),
         });
         cursor = shiftDayKey(cursor, 1);
     }
