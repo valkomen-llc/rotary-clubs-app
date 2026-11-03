@@ -10,6 +10,10 @@ import { attachGrant } from '../middleware/institutionalGuard.js';
 import { resourceCapabilitiesFor, isResourceRestricted, canCreateResource } from '../lib/rbacSpec.js';
 import { describeLifecycle, LIFECYCLE_METADATA_KEYS } from '../lib/eventLifecycle.js';
 import { resolveSiteEventTimezone } from '../lib/siteEventTimezone.js';
+import { stampHotelsUpdate } from '../lib/eventHotels.js';
+import {
+    presignHotelUpload, confirmHotelSlide, confirmHotelDocument, listHotelOrphans, deleteHotelOrphans,
+} from '../controllers/eventHotelsController.js';
 
 const router = express.Router();
 
@@ -41,6 +45,15 @@ router.post('/events/upload-image', authMiddleware, (req, res, next) => {
     if (!req.file) return res.status(400).json({ error: 'No se recibió imagen' });
     res.json({ url: req.file.location });
 });
+
+// v4.1275.0 — «Hoteles de la conferencia»: diapositivas y guía en PDF de UN
+// evento. El navegador sube directo a S3 con una URL prefirmada; el servidor
+// valida los bytes, optimiza y publica (ver eventHotelsController.js).
+router.post('/events/:id/hotels/presign', authMiddleware, presignHotelUpload);
+router.post('/events/:id/hotels/slides', authMiddleware, confirmHotelSlide);
+router.post('/events/:id/hotels/document', authMiddleware, confirmHotelDocument);
+router.get('/events/:id/hotels/orphans', authMiddleware, listHotelOrphans);
+router.delete('/events/:id/hotels/orphans', authMiddleware, deleteHotelOrphans);
 
 // S3 Upload para video del evento (MP4, WEBM, OGV, MOV hasta 100MB)
 const uploadEventVideo = multer({
@@ -242,7 +255,8 @@ const EVENT_FIELDS_BY_CAPABILITY = {
 };
 // v4.1247 — El estado editorial, la zona horaria, «fecha por confirmar» y
 // «todo el día» son parte de la información del evento.
-const METADATA_KEYS_BY_CAPABILITY = { venue: ['venue'], registration_panel: ['latir'], media: ['video'], info: LIFECYCLE_METADATA_KEYS };
+// v4.1275.0 — `hotels` (Hoteles de la conferencia) es de Multimedia.
+const METADATA_KEYS_BY_CAPABILITY = { venue: ['venue'], registration_panel: ['latir'], media: ['video', 'hotels'], info: LIFECYCLE_METADATA_KEYS };
 
 const mergeEventUpdate = (actual, cuerpo, caps) => {
     const puede = (c) => caps === null || caps.includes(c);
@@ -288,6 +302,13 @@ router.put('/events/:id', authMiddleware, async (req, res) => {
         }
         const actual = event.rows[0];
         const { title, description, htmlContent, startDate, endDate, location, type, image, images, metadata, slug } = mergeEventUpdate(actual, req.body || {}, caps);
+        // v4.1275.0 — «Hoteles de la conferencia»: se normaliza y se sella con
+        // quién y cuándo, a partir de lo YA guardado (el historial que mande el
+        // navegador se ignora). Sin cambios, conserva su fecha y su historial.
+        if (metadata && typeof metadata === 'object' && metadata.hotels !== undefined) {
+            const hotels = stampHotelsUpdate(actual.metadata?.hotels, metadata.hotels, req.user);
+            if (hotels === undefined) delete metadata.hotels; else metadata.hotels = hotels;
+        }
         // `slug` ausente en el cuerpo = no se toca; presente (aunque vacío) sí.
         const nextSlug = slug === undefined ? actual.slug : normalizeSlug(slug);
         const inicio = startDateFor(startDate, metadata, actual.startDate);

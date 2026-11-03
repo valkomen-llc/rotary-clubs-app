@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1274.0",
-  "cache_bust": "4.1274.0",
+  "version": "4.1275.0",
+  "cache_bust": "4.1275.0",
   "type": "module",
   "//": "UI V4.1274.0 | 2026-11-01 (Eventos: el carrusel lateral avanza solo de verdad)",
   "scripts": {
@@ -74,6 +74,8 @@
     "test:event-venue": "node scripts/test-event-venue.mjs",
     "test:event-video": "node scripts/test-event-video.mjs",
     "test:event-widgets": "node scripts/test-event-widgets.mjs",
+    "test:event-hotels": "node scripts/test-event-hotels.mjs",
+    "test:event-hotels:e2e": "node scripts/test-event-hotels-e2e.mjs",
     "test:cta": "node scripts/test-cta-styles.mjs",
     "test:category-public-button": "node scripts/test-category-public-button.mjs",
     "test:nav": "node scripts/test-site-nav.mjs",

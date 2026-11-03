@@ -10,6 +10,7 @@ import EventVideoPlayer from '../components/EventVideoPlayer';
 import { hasEventVideo } from '../lib/eventVideo';
 import EventVenueCard from '../components/EventVenueCard';
 import EventSidebarImageWidget from '../components/EventSidebarImageWidget';
+import EventHotelsSection from '../components/EventHotelsSection';
 import { normalizeVenue } from '../lib/eventVenue';
 import { sourceTraceOf } from '../lib/districtEcosystem';
 import { useClub } from '../contexts/ClubContext';
@@ -361,6 +362,15 @@ const EventoDetalle = () => {
                                 altPrefix={`Imagen de ${event.title}`}
                             />
                         )}
+
+                        {/* Hoteles de la conferencia — v4.1275.0
+                            Entre el carrusel de fotos y el contenido HTML («¿Qué incluye
+                            tu inscripción?»). Apagada o sin diapositivas, no pinta nada. */}
+                        <EventHotelsSection
+                            hotels={(event as any)?.metadata?.hotels}
+                            eventTitle={event.title}
+                            className="my-10"
+                        />
 
                         {/* Rich HTML content */}
                         {/* Las imágenes pegadas dentro del contenido se muestran completas y
