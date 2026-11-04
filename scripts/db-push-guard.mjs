@@ -83,6 +83,10 @@
 // (v4.1264): ProjectFairResource, ProjectFairResourceVersion,
 // ProjectFairResourceDownload y ProjectFairResourceEvent — el archivo vigente,
 // sus versiones y QUIÉN LO DESCARGÓ: ese registro no se reconstruye de ninguna parte.
+// Y las cinco de las Estadísticas de descarga de los documentos de un evento
+// (v4.1279): EventDocument, EventDocumentVersion, EventDocumentDownload,
+// EventDocumentDaily y EventDocumentVisitor — cuántas veces se pidió la guía
+// de hoteles de cada evento, por versión y por día: tampoco se reconstruye.
 //
 // ⚠️ SocialDailyMetric es el HISTÓRICO PROPIO de Facebook e Instagram, y es lo
 // que un `db push` no puede borrar sin consecuencia: Meta guarda 30 días de

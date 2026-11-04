@@ -25,6 +25,12 @@ guía completa, todo administrable por evento y sin tocar código.
 **Sin tablas nuevas.** Datos en `CalendarEvent.metadata.hotels` (Jsonb), uno
 por evento. Las imágenes van a S3, nunca a la base.
 
+**v4.1279.0 — Estadísticas de descarga de la guía.** El botón público ya NO
+enlaza S3 directo: pasa por `/api/calendar/events/:id/hotels/document/download`,
+que registra la solicitud y redirige. La cifra y «Ver estadísticas» viven en
+la tarjeta «Guía descargable» del panel. Reglas, tablas y pruebas:
+`docs/claude/estadisticas-de-descarga-de-documentos-de-un-evento.md`.
+
 ## Esquema
 
 ```js

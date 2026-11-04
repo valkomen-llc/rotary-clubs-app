@@ -34,13 +34,29 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1278.0 | 2026-11-03 (Enlaces inteligentes y códigos QR dinámicos)
-// Cache bust: 2026-11-03
+// UI V4.1279.0 | 2026-11-04 (Estadísticas de descarga de la guía de hoteles)
+// Cache bust: 2026-11-04
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1279.0',
+        title: 'Estadísticas de descarga de la guía de hoteles del evento 📥',
+        description: 'El administrador del evento ve junto a la «Guía descargable» cuántas veces se solicitó su descarga desde la página pública, y un panel «Ver estadísticas» con indicadores, evolución por día y filtros por fecha. El botón público pasa ahora por la plataforma, que registra la solicitud en el servidor y redirige al archivo: el visitante no nota ningún cambio y la página pública no muestra ninguna cifra.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'hoteles', 'analítica', 'descargas', 'documentos'],
+        type: 'feature',
+        impact: 'Media: el comité sabe cuántas veces se pidió el boletín de la Conferencia de Villavicencio 2027, por versión y por día, sin cambiar la experiencia de los asistentes.',
+        changes: [
+            { type: 'added', text: 'La tarjeta de la guía muestra la cifra real de solicitudes de descarga (histórico de todas las versiones), la última descarga y las de la versión vigente; sin registros dice «Sin datos registrados todavía». Nada se inventa hacia atrás.' },
+            { type: 'added', text: '«Ver estadísticas»: total, hoy, últimos 7 y 30 días, última descarga y versión actual; evolución por día con filtros Hoy, 7 días, 30 días, todo el histórico y rango personalizado; desde dónde se pidió (sección o vista ampliada), dispositivo, país, fuente de la visita, versiones del archivo y últimas solicitudes. Todo sin salir de la administración del evento.' },
+            { type: 'added', text: 'Registro desde el servidor: GET /api/calendar/events/:id/hotels/document/download comprueba que el evento esté publicado y la descarga habilitada, registra la solicitud en una sola sentencia (fecha del servidor, visitante seudónimo sin IP, dispositivo, país, origen) y redirige (302, sin caché) al PDF vigente. Un bot o vista previa recibe el archivo pero no cuenta; dos solicitudes del mismo visitante en 30 s cuentan una; por encima de 20 por minuto desde una dirección se entrega igual y no se cuenta.' },
+            { type: 'added', text: 'El histórico sobrevive a reemplazar el PDF (cada archivo es una versión con sus propias descargas), renombrarlo, desactivar la descarga y volver a activarla, y quitar el archivo (queda «histórico conservado»).' },
+            { type: 'changed', text: 'Las estadísticas se consultan sólo con sesión de administración del sitio y para los eventos que la sesión alcanza; la página pública conserva su diseño y no muestra contadores. Cinco tablas nuevas fuera de Prisma (EventDocument, EventDocumentVersion, EventDocumentDownload, EventDocumentDaily, EventDocumentVisitor), protegidas por el guardián de db:push. Pruebas: npm run test:event-documents (64) y test:event-documents:e2e (17, Postgres real).' },
+        ],
+    },
     {
         version: '4.1278.0',
         title: 'Enlaces inteligentes y códigos QR dinámicos con analítica por pieza 🔗',

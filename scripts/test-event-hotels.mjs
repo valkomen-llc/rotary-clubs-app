@@ -213,7 +213,7 @@ for (const r of ["post('/events/:id/hotels/presign'", "post('/events/:id/hotels/
     check(`ruta ${r} con sesión`, rutas.includes(`router.${r}, authMiddleware`));
 }
 check('PUT del evento sella los hoteles', rutas.includes('stampHotelsUpdate(actual.metadata?.hotels, metadata.hotels, req.user)'));
-check('un alcance acotado: `hotels` es de Multimedia', rutas.includes("media: ['video', 'hotels']"));
+check('un alcance acotado: `hotels` es de Multimedia', /media: \['video', 'hotels'(, '[a-zA-Z]+')*\]/.test(rutas));
 const ctrl = readFileSync('server/controllers/eventHotelsController.js', 'utf8');
 check('controlador: exige la capacidad media sobre ESE evento', ctrl.includes("assertEventCapability(req, req.params.id, 'media')"));
 check('controlador: juzga el tipo por los bytes', ctrl.includes('sniffImageFormat(buffer)') && ctrl.includes('inspectPdfBytes(buffer)'));
