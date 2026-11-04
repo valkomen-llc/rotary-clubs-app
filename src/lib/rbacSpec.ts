@@ -422,6 +422,26 @@ export const MODULES: ModuleSpec[] = [
         "help": "Fichas del Directorio Distrital y el Catálogo Maestro de Clubes: la lista oficial de clubes que usan todos los formularios."
     },
     {
+        "key": "programs",
+        "label": "Programas",
+        "group": "Contenido",
+        "scope": "site",
+        "actions": [
+            "view",
+            "create",
+            "edit",
+            "publish",
+            "export",
+            "manage"
+        ],
+        "routes": [
+            "/admin/programas"
+        ],
+        "legacy": null,
+        "sensitive": false,
+        "help": "Programas respaldados por el distrito (Clínicas Ponseti y otros): ficha, contenidos, flujo editorial, solicitudes públicas y activación por clubes."
+    },
+    {
         "key": "email_inbox",
         "label": "Bandeja de Entrada",
         "group": "Comunicación",
@@ -857,6 +877,12 @@ export const ROLE_PRESETS: RolePreset[] = [
             "rotary_en_accion.manage",
             "clubs.view",
             "clubs.manage",
+            "programs.view",
+            "programs.create",
+            "programs.edit",
+            "programs.publish",
+            "programs.export",
+            "programs.manage",
             "email_inbox.use_own",
             "email_inbox.use_all",
             "email_accounts.view",
@@ -1007,6 +1033,12 @@ export const ROLE_PRESETS: RolePreset[] = [
             "rotary_en_accion.manage",
             "clubs.view",
             "clubs.manage",
+            "programs.view",
+            "programs.create",
+            "programs.edit",
+            "programs.publish",
+            "programs.export",
+            "programs.manage",
             "email_inbox.use_own",
             "email_inbox.use_all",
             "email_accounts.view",
@@ -1247,6 +1279,7 @@ export const ROLE_PRESETS: RolePreset[] = [
             "faqs.view",
             "rotary_en_accion.view",
             "clubs.view",
+            "programs.view",
             "email_accounts.view",
             "contacts.view",
             "crm.view",

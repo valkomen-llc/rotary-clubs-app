@@ -1,6 +1,6 @@
 # Rotary Clubs App — guía para Claude
 
-## Cómo está organizada esta guía (v4.1279)
+## Cómo está organizada esta guía (v4.1280)
 
 Este archivo se carga ENTERO en cada conversación. Llegó a pesar 1,48 MB
 (~21.000 líneas) y llenaba la ventana de contexto antes de empezar a trabajar.
@@ -192,6 +192,15 @@ Y las cinco de las Estadísticas de descarga de los documentos de un evento
 (v4.1279): `EventDocument` (el documento lógico y su histórico),
 `EventDocumentVersion` (cada archivo que ocupó ese lugar), `EventDocumentDownload`,
 `EventDocumentDaily` y `EventDocumentVisitor` (sin IP).
+Y las trece de **Programas** (v4.1280): `Program` (la identidad única),
+`ProgramDistrictLink` (vinculación por distrito), `ProgramClubActivation`
+(activación de un club en su sitio), `ProgramMember` (perfiles por programa),
+`ProgramContent` y `ProgramContentVersion` (el contenido vivo y sus versiones),
+`ProgramChangeRequest` (el formato de gestión y su flujo editorial),
+`ProgramRequest` (solicitudes públicas: datos personales PRIVADOS),
+`ProgramSubscriber` (novedades, consentimiento aparte), `ProgramFile` (archivos
+privados: autorizaciones y respaldos), `ProgramAuditLog`, `ProgramMetricDaily` y
+`ProgramVisitor` (métricas sin IP).
 (Más las del registro de eventos que enumera su propia sección:
 `EventEdition`, `EventRegistrationCategory`, `EventRegistrationCompanion`,
 `EventRegistrationPayment`, `EventRegistrationHistory`,
@@ -222,6 +231,7 @@ es **rotar la credencial en Neon**, no sólo borrar el archivo.
 
 | Módulo | Archivo |
 |---|---|
+| **Programas** (identidad única por programa, vinculación distrital, activación por clubes con contenido central compartido, formato «Gestión de contenidos» en tres pasos, flujo editorial con revisión médica sólo para lo clínico, página pública `/programas/:slug` por secciones, cuatro formularios públicos, solicitudes con seguimiento, donación por enlace externo, auditoría y métricas; piloto D4281 «Clínicas Ponseti» en borrador) — v4.1280 | `docs/claude/programas.md` |
 | **Estadísticas de descarga de los documentos de un evento** (la «Guía descargable» de hoteles: el botón público pasa por la plataforma, registro en una sentencia sin IP, histórico por versión que sobrevive a reemplazar/quitar/desactivar, cifra y panel «Ver estadísticas» sólo en el administrador, filtros por fecha) — v4.1279 | `docs/claude/estadisticas-de-descarga-de-documentos-de-un-evento.md` |
 | **Enlaces inteligentes y códigos QR dinámicos** (Configuración → Identidad; varios QR por enlace, vigencia 30/90/nunca/fecha calculada en el servidor, estados derivados del reloj, página institucional, analítica por QR frente a enlace directo, resumen del sitio; descargas PNG/SVG/PDF verificadas con dos codificadores) — v4.1278 | `docs/claude/enlaces-inteligentes-y-codigos-qr.md` |
 | Movimiento de la portada del evento (Ken Burns en la ficha pública, configurable por evento en Multimedia, encendido por defecto) — v4.1276.0 (**continuo y vivo con «Reducir movimiento»: v4.1277.0**) | `docs/claude/movimiento-de-la-portada-del-evento.md` |

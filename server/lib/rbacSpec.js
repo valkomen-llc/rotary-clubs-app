@@ -229,6 +229,16 @@ export const MODULES = [
         routes: ['/admin/directorio-clubes'], legacy: null,
         help: 'Fichas del Directorio Distrital y el Catálogo Maestro de Clubes: la lista oficial de clubes que usan todos los formularios.',
     },
+    {
+        // v4.1280 — Programas: los programas que un distrito respalda y que sus
+        // clubes activan. El permiso del sitio abre la RUTA; qué programa y con
+        // qué perfil (coordinador, comunicaciones, revisor médico, gestor de
+        // solicitudes, colaborador) lo decide `programAccess` por fila.
+        key: 'programs', label: 'Programas', group: 'Contenido', scope: 'site',
+        actions: ['view', 'create', 'edit', 'publish', 'export', 'manage'],
+        routes: ['/admin/programas'], legacy: null,
+        help: 'Programas respaldados por el distrito (Clínicas Ponseti y otros): ficha, contenidos, flujo editorial, solicitudes públicas y activación por clubes.',
+    },
 
     // ── Comunicación ─────────────────────────────────────────────────
     {

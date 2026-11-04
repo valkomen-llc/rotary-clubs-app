@@ -281,6 +281,8 @@ const getDistrictClubs = async () => _districtClubs || (({ default: _districtClu
 // v4.1269 — Catálogo Maestro de Clubes: la fuente única de clubes de todos los formularios
 let _clubCatalog;
 const getClubCatalog = async () => _clubCatalog || (({ default: _clubCatalog } = await import('../server/routes/club-catalog.js')), _clubCatalog);
+// Programas (v4.1280): identidad única, vinculación distrital, activación por clubes.
+let _programs; const getPrograms = async () => _programs || (({ default: _programs } = await import('../server/routes/programs.js')), _programs);
 
 // ── Route handlers ────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
@@ -394,6 +396,7 @@ app.use('/api/rotary-en-accion', async (req, res, next) => { try { return (await
 app.use('/api/site-modules', async (req, res, next) => { try { return (await getSiteModules())(req, res, next); } catch (e) { console.error('API Error [site-modules]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/district-clubs', async (req, res, next) => { try { return (await getDistrictClubs())(req, res, next); } catch (e) { console.error('API Error [district-clubs]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/club-catalog', async (req, res, next) => { try { return (await getClubCatalog())(req, res, next); } catch (e) { console.error('API Error [club-catalog]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/programas', async (req, res, next) => { try { return (await getPrograms())(req, res, next); } catch (e) { console.error('API Error [programas]:', e); res.status(500).json({ error: e.message }); } });
 
 // ── robots.txt y sitemap.xml EN LA RAÍZ ───────────────────────────────────────
 //

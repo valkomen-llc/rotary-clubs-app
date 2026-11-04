@@ -1015,6 +1015,10 @@ const Navbar = () => {
                 )}
 
                 {showNav('proyectos') && <Link to="/proyectos" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Proyectos</T></Link>}
+                {/* Programas (v4.1280): sólo si este sitio muestra alguno (vinculación del distrito o activación del club). */}
+                {(club.programsNav?.count || 0) > 0 ? (
+                  <Link to={club.programsNav?.single ? `/programas/${club.programsNav.single.slug}` : '/programas'} className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Programas</T></Link>
+                ) : null}
                 {showNav('noticias') && <Link to="/blog" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Noticias</T></Link>}
 
                 {(showNav('eventos') && (isEventSite || (club.eventsCount && club.eventsCount > 0))) ? (
@@ -1223,6 +1227,9 @@ const Navbar = () => {
                   )}
 
                   {showNav('proyectos') && <Link to="/proyectos" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Proyectos</Link>}
+                  {(club.programsNav?.count || 0) > 0 ? (
+                    <Link to={club.programsNav?.single ? `/programas/${club.programsNav.single.slug}` : '/programas'} className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Programas</Link>
+                  ) : null}
                   {showNav('noticias') && <Link to="/blog" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Noticias</Link>}
 
                   {(showNav('eventos') && (isEventSite || (club.eventsCount && club.eventsCount > 0))) ? (

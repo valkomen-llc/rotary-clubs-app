@@ -57,6 +57,8 @@ export const PAGE_KINDS = {
     event: { schema: 'Event', priority: 0.8, changefreq: 'weekly', dynamic: true },
     shop_index: { schema: 'CollectionPage', priority: 0.7, changefreq: 'weekly' },
     product: { schema: 'Product', priority: 0.7, changefreq: 'weekly', dynamic: true },
+    programs_index: { schema: 'CollectionPage', priority: 0.8, changefreq: 'weekly' },
+    program: { schema: 'WebPage', priority: 0.8, changefreq: 'weekly', dynamic: true },
     generic: { schema: 'WebPage', priority: 0.5, changefreq: 'monthly' },
     private: { schema: null, priority: 0, changefreq: null, noindex: true },
 };
@@ -70,6 +72,7 @@ export const PAGE_KINDS = {
 // prioridad de relleno y sin Schema propio.
 export const STATIC_ROUTES = [
     { path: '/', kind: 'home', label: 'Inicio' },
+    { path: '/programas', kind: 'programs_index', label: 'Programas' },
     { path: '/quienes-somos', kind: 'about', label: 'Quiénes somos' },
     { path: '/nuestra-historia', kind: 'about', label: 'Nuestra historia' },
     { path: '/nuestras-causas', kind: 'generic', label: 'Nuestras causas' },
@@ -527,6 +530,7 @@ export function kindOfPath(pathname) {
     if (/^\/blog\/[^/]+$/.test(p)) return 'post';
     if (/^\/proyectos\/[^/]+$/.test(p)) return 'project';
     if (/^\/eventos\/[^/]+$/.test(p)) return 'event';
+    if (/^\/programas\/[^/]+$/.test(p)) return 'program';
     if (/^\/shop\/product\/[^/]+$/.test(p)) return 'product';
     // Un registro de evento es un formulario con sesión: no se indexa.
     if (/^\/eventos\/[^/]+\/registro$/.test(p)) return 'private';

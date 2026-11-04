@@ -564,6 +564,11 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
             );
         }
 
+        // Programas (v4.1280): el distrito los gestiona; el club activa los de su
+        // distrito. Lo que cada sesión alcanza lo decide el servidor; el RBAC
+        // (`programs.view`) filtra la entrada en `menuItems` como a todas.
+        items.push({ icon: HeartHandshake, label: 'Programas', path: '/admin/programas', category: isSuperAdmin ? 'Management' : 'Contenido', keywords: ['programas', 'ponseti', 'clinicas', 'fundacion', 'activar', 'distrito', 'pequeño corazon'] });
+
         // Management items for District/Super Admins and District Sites
         if (isSuperAdmin || user?.role === 'district_admin' || (club as any)?.type === 'district') {
             items.push(
