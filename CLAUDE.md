@@ -1,6 +1,6 @@
 # Rotary Clubs App — guía para Claude
 
-## Cómo está organizada esta guía (v4.1205)
+## Cómo está organizada esta guía (v4.1279)
 
 Este archivo se carga ENTERO en cada conversación. Llegó a pesar 1,48 MB
 (~21.000 líneas) y llenaba la ventana de contexto antes de empezar a trabajar.
@@ -188,6 +188,10 @@ Y las cuatro de la plantilla oficial de presentación de la Feria (v4.1264):
 Y las tres de los códigos QR dinámicos de los enlaces inteligentes (v4.1278):
 `LinkRedirectQr` (el código IMPRESO en cada pieza, su vigencia y su diseño),
 `LinkRedirectQrDaily` y `LinkRedirectQrVisitor` (su medición aparte).
+Y las cinco de las Estadísticas de descarga de los documentos de un evento
+(v4.1279): `EventDocument` (el documento lógico y su histórico),
+`EventDocumentVersion` (cada archivo que ocupó ese lugar), `EventDocumentDownload`,
+`EventDocumentDaily` y `EventDocumentVisitor` (sin IP).
 (Más las del registro de eventos que enumera su propia sección:
 `EventEdition`, `EventRegistrationCategory`, `EventRegistrationCompanion`,
 `EventRegistrationPayment`, `EventRegistrationHistory`,
@@ -218,6 +222,7 @@ es **rotar la credencial en Neon**, no sólo borrar el archivo.
 
 | Módulo | Archivo |
 |---|---|
+| **Estadísticas de descarga de los documentos de un evento** (la «Guía descargable» de hoteles: el botón público pasa por la plataforma, registro en una sentencia sin IP, histórico por versión que sobrevive a reemplazar/quitar/desactivar, cifra y panel «Ver estadísticas» sólo en el administrador, filtros por fecha) — v4.1279 | `docs/claude/estadisticas-de-descarga-de-documentos-de-un-evento.md` |
 | **Enlaces inteligentes y códigos QR dinámicos** (Configuración → Identidad; varios QR por enlace, vigencia 30/90/nunca/fecha calculada en el servidor, estados derivados del reloj, página institucional, analítica por QR frente a enlace directo, resumen del sitio; descargas PNG/SVG/PDF verificadas con dos codificadores) — v4.1278 | `docs/claude/enlaces-inteligentes-y-codigos-qr.md` |
 | Movimiento de la portada del evento (Ken Burns en la ficha pública, configurable por evento en Multimedia, encendido por defecto) — v4.1276.0 (**continuo y vivo con «Reducir movimiento»: v4.1277.0**) | `docs/claude/movimiento-de-la-portada-del-evento.md` |
 | **Hoteles de la conferencia** (sección pública de diapositivas entre el carrusel de fotos y el HTML de la ficha; pestaña «🏨 Hoteles y alojamiento»; subida prefirmada validada por bytes y optimizada en WebP; historial sellado por el servidor; liberación acotada de archivos sin uso; PDF → diapositivas es Fase 2) — v4.1275.0 | `docs/claude/hoteles-de-la-conferencia.md` |

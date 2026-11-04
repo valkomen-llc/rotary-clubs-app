@@ -374,6 +374,7 @@ const EventoDetalle = () => {
                         <EventHotelsSection
                             hotels={(event as any)?.metadata?.hotels}
                             eventTitle={event.title}
+                            eventId={event.id}
                             className="my-10"
                         />
 

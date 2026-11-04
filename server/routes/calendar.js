@@ -14,6 +14,7 @@ import { stampHotelsUpdate } from '../lib/eventHotels.js';
 import {
     presignHotelUpload, confirmHotelSlide, confirmHotelDocument, listHotelOrphans, deleteHotelOrphans,
 } from '../controllers/eventHotelsController.js';
+import { downloadHotelsGuide, hotelsGuideSummary, hotelsGuideStats } from '../controllers/eventDocumentController.js';
 
 const router = express.Router();
 
@@ -54,6 +55,13 @@ router.post('/events/:id/hotels/slides', authMiddleware, confirmHotelSlide);
 router.post('/events/:id/hotels/document', authMiddleware, confirmHotelDocument);
 router.get('/events/:id/hotels/orphans', authMiddleware, listHotelOrphans);
 router.delete('/events/:id/hotels/orphans', authMiddleware, deleteHotelOrphans);
+
+// v4.1279.0 — Estadísticas de descarga de la guía de hoteles. La descarga es
+// PÚBLICA (el botón de la ficha apunta acá y el servidor redirige a S3 tras
+// registrar la solicitud); el resumen y las estadísticas son del panel.
+router.get('/events/:id/hotels/document/download', downloadHotelsGuide);
+router.get('/events/:id/hotels/document/summary', authMiddleware, hotelsGuideSummary);
+router.get('/events/:id/hotels/document/stats', authMiddleware, hotelsGuideStats);
 
 // S3 Upload para video del evento (MP4, WEBM, OGV, MOV hasta 100MB)
 const uploadEventVideo = multer({

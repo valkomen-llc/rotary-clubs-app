@@ -31,13 +31,15 @@ interface Props {
     index: number;
     title: string;
     download?: HotelDocument | null;
+    /** La dirección medible de la descarga (v4.1279.0); sin ella, el archivo directo. */
+    downloadHref?: string;
     onIndexChange: (index: number) => void;
     onClose: () => void;
 }
 
 interface Anchor { fx: number; fy: number; px: number; py: number }
 
-const EventHotelsLightbox = ({ slides, index, title, download, onIndexChange, onClose }: Props) => {
+const EventHotelsLightbox = ({ slides, index, title, download, downloadHref, onIndexChange, onClose }: Props) => {
     const [zoom, setZoom] = useState(1);
     const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
     const [box, setBox] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
@@ -297,7 +299,7 @@ const EventHotelsLightbox = ({ slides, index, title, download, onIndexChange, on
                     </button>
                     {download && (
                         <a
-                            href={download.url}
+                            href={downloadHref || download.url}
                             download={download.fileName}
                             target="_blank"
                             rel="noopener noreferrer"

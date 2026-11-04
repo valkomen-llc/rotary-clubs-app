@@ -12,15 +12,17 @@
 //     funciona en pantallas táctiles), reemplazar una sin tocar las demás,
 //     texto alternativo y activa/inactiva por diapositiva, eliminar.
 //   · Guía descargable en PDF + «Permitir descargar presentación de hoteles».
+//   · v4.1279.0: la cifra REAL de descargas junto al archivo y «Ver
+//     estadísticas» (panel con filtros por fecha). Sólo datos del servidor.
 //   · Vista previa con EL MISMO componente del sitio público.
 //   · Historial de cambios y limpieza controlada de archivos sin uso.
 //
 // Las subidas leen el estado y el `onChange` MÁS RECIENTES (`latestRef`) para
 // no pisar lo que se editó mientras subían (lección del carrusel lateral).
 // ════════════════════════════════════════════════════════════════════
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-    AlertCircle, ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Download, Eye, EyeOff, FileText, FolderOpen,
+    AlertCircle, ArrowDown, ArrowUp, BarChart3, ChevronLeft, ChevronRight, Download, Eye, EyeOff, FileText, FolderOpen,
     GripVertical, History, Hotel, Image as ImageIcon, RefreshCw, Sparkles, Trash2, Upload, X,
 } from 'lucide-react';
 import MediaPicker from '../content-studio/MediaPicker';
@@ -35,8 +37,14 @@ import {
     deleteHotelOrphans, fetchHotelOrphans, uploadHotelDocument, uploadHotelSlide,
     type HotelOrphans, type UploadedSlide,
 } from '../../../lib/eventHotelsUpload';
+import { downloadsLabel } from '../../../../server/lib/eventDocumentStats.js';
+import { fetchDocumentSummary, type DocumentSummaryDto } from '../../../lib/eventDocumentStats';
+import EventDocumentStatsModal from './EventDocumentStatsModal';
+import { haceCuanto } from '../link-qr/StatsBits';
 
 const PDF_HINT = 'Los PDF todavía no se convierten en diapositivas. Súbelo en «Guía descargable» y, para mostrarlo aquí, exporta sus páginas como imágenes (PowerPoint o Keynote: Archivo → Exportar → JPEG o PNG).';
+
+const numeroCorto = (n: number) => Number(n || 0).toLocaleString('es-CO');
 
 const formatWhen = (iso?: string) => {
     if (!iso) return '';
@@ -178,11 +186,28 @@ const EventHotelsEditor: React.FC<Props> = ({ eventId, eventTitle, hotels: rawHo
     const [orphans, setOrphans] = useState<HotelOrphans | null>(null);
     const [orphansBusy, setOrphansBusy] = useState(false);
     const [orphansMsg, setOrphansMsg] = useState<string | null>(null);
+    // v4.1279.0 — Estadísticas de descarga de la guía (sólo lo que registró el servidor).
+    const [docStats, setDocStats] = useState<DocumentSummaryDto | null>(null);
+    const [docStatsError, setDocStatsError] = useState<string | null>(null);
+    const [statsOpen, setStatsOpen] = useState(false);
+    const [statsRefresh, setStatsRefresh] = useState(0);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const replaceInputRef = useRef<HTMLInputElement>(null);
     const docInputRef = useRef<HTMLInputElement>(null);
     const latestRef = useRef<{ draft: HotelsConfig; onChange: Props['onChange']; stored: HotelsConfig | null }>({ draft, onChange, stored });
     latestRef.current = { draft, onChange, stored };
+
+    // La cifra junto al archivo sale del servidor: se pide al abrir la pestaña,
+    // cuando cambia el archivo GUARDADO y al cerrar el panel de estadísticas.
+    const storedDocUrl = stored?.document?.url || '';
+    useEffect(() => {
+        let alive = true;
+        setDocStatsError(null);
+        fetchDocumentSummary(eventId)
+            .then(s => { if (alive) setDocStats(s); })
+            .catch(e => { if (alive) setDocStatsError(e?.message || 'No pudimos leer las descargas.'); });
+        return () => { alive = false; };
+    }, [eventId, storedDocUrl, statsRefresh]);
 
     const selected = slides.find(s => s.id === selectedId) || slides[0] || null;
     const selectedIndex = selected ? slides.findIndex(s => s.id === selected.id) : -1;
@@ -615,11 +640,31 @@ const EventHotelsEditor: React.FC<Props> = ({ eventId, eventTitle, hotels: rawHo
                                     PDF{draft.document.sizeBytes ? ` · ${formatBytes(draft.document.sizeBytes)}` : ''}
                                     {draft.document.uploadedAt ? ` · subido el ${formatWhen(draft.document.uploadedAt)}` : ''}
                                 </p>
+                                <p className="mt-1 text-[12px] font-semibold text-gray-700 flex flex-wrap items-center gap-x-2 gap-y-0.5" aria-live="polite">
+                                    <span aria-hidden="true">📥</span>
+                                    {docStats
+                                        ? (
+                                            <>
+                                                <span>{docStats.state === 'none' ? 'Sin datos registrados todavía' : downloadsLabel(docStats.totalDownloads)}</span>
+                                                {docStats.state !== 'none' && docStats.lastDownloadAt && <span className="font-normal text-gray-400">· última {haceCuanto(docStats.lastDownloadAt, 'ninguna')}</span>}
+                                                {docStats.state === 'current' && docStats.current && docStats.totalDownloads !== docStats.current.downloads && (
+                                                    <span className="font-normal text-gray-400">· {numeroCorto(docStats.current.downloads)} de la versión actual</span>
+                                                )}
+                                                {storedDocUrl && draft.document.url !== storedDocUrl && <span className="font-normal text-amber-700">· guarda los cambios para medir el archivo nuevo</span>}
+                                            </>
+                                        )
+                                        : docStatsError
+                                            ? <span className="font-normal text-gray-400">{docStatsError}</span>
+                                            : <span className="font-normal text-gray-400">Leyendo descargas…</span>}
+                                </p>
                             </div>
                         </div>
                         <div className="flex flex-wrap gap-2">
+                            <button type="button" onClick={() => setStatsOpen(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-100 bg-blue-50 text-xs font-semibold text-rotary-blue hover:bg-blue-100">
+                                <BarChart3 className="h-3.5 w-3.5" /> Ver estadísticas
+                            </button>
                             <a href={draft.document.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-xs font-semibold text-gray-700 hover:text-rotary-blue">
-                                <Download className="h-3.5 w-3.5" /> Ver
+                                <Download className="h-3.5 w-3.5" /> Ver archivo
                             </a>
                             <button type="button" disabled={docUploading} onClick={() => docInputRef.current?.click()} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-xs font-semibold text-gray-700 hover:text-rotary-blue disabled:opacity-50">
                                 <RefreshCw className="h-3.5 w-3.5" /> {docUploading ? 'Subiendo…' : 'Reemplazar'}
@@ -638,6 +683,12 @@ const EventHotelsEditor: React.FC<Props> = ({ eventId, eventTitle, hotels: rawHo
                     >
                         {docUploading ? <><span className="w-4 h-4 border-2 border-rotary-blue border-t-transparent rounded-full animate-spin" /> Subiendo y verificando el PDF…</> : <><Upload className="h-4 w-4" /> Subir la guía en PDF (hasta {HOTEL_LIMITS.maxDocumentMb} MB)</>}
                     </button>
+                )}
+                {!draft.document && docStats && docStats.state !== 'none' && docStats.totalDownloads > 0 && (
+                    <p className="text-xs text-gray-500 flex flex-wrap items-center gap-2">
+                        <span>📥 Histórico conservado: {downloadsLabel(docStats.totalDownloads)} de versiones anteriores.</span>
+                        <button type="button" onClick={() => setStatsOpen(true)} className="inline-flex items-center gap-1 font-semibold text-rotary-blue hover:underline"><BarChart3 className="h-3.5 w-3.5" /> Ver estadísticas</button>
+                    </p>
                 )}
                 {docError && <p className="text-xs text-red-600 flex items-start gap-1.5 font-medium"><AlertCircle className="w-3.5 h-3.5 mt-px shrink-0" />{docError}</p>}
                 {draft.allowDownload && !draft.document && (
@@ -723,6 +774,14 @@ const EventHotelsEditor: React.FC<Props> = ({ eventId, eventTitle, hotels: rawHo
                     setPickerOpen(false);
                 }}
             />
+
+            {statsOpen && (
+                <EventDocumentStatsModal
+                    eventId={eventId}
+                    fileName={draft.document?.fileName || stored?.document?.fileName}
+                    onClose={() => { setStatsOpen(false); setStatsRefresh(n => n + 1); }}
+                />
+            )}
         </div>
     );
 };

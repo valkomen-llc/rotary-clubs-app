@@ -20,12 +20,20 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { CalendarClock, ChevronLeft, ChevronRight, Download, Hotel, ImageOff, Loader2, Maximize2 } from 'lucide-react';
 import EventHotelsLightbox from './EventHotelsLightbox';
 import { formatBytes, formatRatesDate, publicHotelsView } from '../../server/lib/eventHotels.js';
+import { hotelsGuideDownloadPath } from '../../server/lib/eventDocumentStats.js';
+
+// v4.1279.0 — El botón de descarga apunta a la PLATAFORMA, que registra la
+// solicitud y redirige a S3. Sin `eventId` (o en la vista previa del panel) se
+// enlaza el archivo directo: una prueba del administrador no cuenta.
+const API = (import.meta as any).env?.VITE_API_URL || '/api';
 
 interface Props {
     /** `metadata.hotels` del evento, tal cual llega del servidor. */
     hotels: unknown;
     /** Nombre del evento (texto alternativo de respaldo). */
     eventTitle?: string;
+    /** Id del evento: con él, la descarga de la guía pasa por la plataforma y se cuenta. */
+    eventId?: string;
     /**
      * Vista previa del panel: se pinta aunque la sección esté apagada (para
      * ver cómo quedará antes de publicarla). Sin diapositivas, igual no pinta.
@@ -44,7 +52,7 @@ const viewerRatio = (slides: { width?: number; height?: number }[]) => {
     return Math.min(1.3, Math.max(0.42, r));
 };
 
-const EventHotelsSection = ({ hotels, eventTitle, preview = false, className = '' }: Props) => {
+const EventHotelsSection = ({ hotels, eventTitle, eventId, preview = false, className = '' }: Props) => {
     // Hooks arriba, antes de cualquier return.
     const view = useMemo(
         () => publicHotelsView(preview && hotels && typeof hotels === 'object' ? { ...(hotels as object), enabled: true } : hotels),
@@ -57,6 +65,8 @@ const EventHotelsSection = ({ hotels, eventTitle, preview = false, className = '
     const [loaded, setLoaded] = useState<Record<string, boolean>>({});
     const [failed, setFailed] = useState<Record<string, boolean>>({});
     const headingId = useId();
+    // Sólo en el sitio público: con id y fuera de la vista previa.
+    const tracked = Boolean(eventId) && !preview;
     const thumbsRef = useRef<HTMLDivElement>(null);
     const swipeRef = useRef<{ x: number; y: number; id: number } | null>(null);
     const swipedRef = useRef(false);
@@ -294,7 +304,7 @@ const EventHotelsSection = ({ hotels, eventTitle, preview = false, className = '
             {view.download && (
                 <div className="mt-5 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 border-t border-gray-100 pt-5">
                     <a
-                        href={view.download.url}
+                        href={tracked ? `${API}${hotelsGuideDownloadPath(eventId as string, 'section')}` : view.download.url}
                         download={view.download.fileName}
                         target="_blank"
                         rel="noopener noreferrer"
@@ -315,6 +325,7 @@ const EventHotelsSection = ({ hotels, eventTitle, preview = false, className = '
                     index={safeIndex}
                     title={view.title}
                     download={view.download}
+                    downloadHref={tracked && view.download ? `${API}${hotelsGuideDownloadPath(eventId as string, 'lightbox')}` : undefined}
                     onIndexChange={go}
                     onClose={() => setLightboxOpen(false)}
                 />
