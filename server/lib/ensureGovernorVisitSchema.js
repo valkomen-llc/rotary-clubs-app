@@ -23,8 +23,14 @@ let _ready = false;
 // IF NOT EXISTS` no amplía una tabla que ya existe, así que con el atajo
 // mirando sólo la tabla un ALTER nuevo no correría NUNCA en producción. Lo fija
 // `scripts/test-governor-visits.mjs`, que recorre los ADD COLUMN del archivo.
+//
+// v4.1284 — Las seis categorías nuevas de la Memoria institucional. Las seis
+// anteriores (activities, topics, recognitions, agreements, commitments,
+// highlights) SE CONSERVAN con sus datos: no hay correspondencia comprobada
+// entre una y otra categoría, así que nada se traslada.
+export const MEMORY_COLUMNS = ['featuredActivities', 'alliances', 'works', 'permanentPrograms', 'projects', 'grants'];
 export const OWNED_COLUMNS = {
-    GovernorVisit: [],
+    GovernorVisit: [...MEMORY_COLUMNS],
 };
 
 export async function ensureGovernorVisitSchema() {
@@ -105,6 +111,13 @@ export async function ensureGovernorVisitSchema() {
             "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
     `);
+    // v4.1284 — Memoria institucional por categorías (texto libre, opcional).
+    await db.query(`ALTER TABLE "GovernorVisit" ADD COLUMN IF NOT EXISTS "featuredActivities" TEXT`);
+    await db.query(`ALTER TABLE "GovernorVisit" ADD COLUMN IF NOT EXISTS "alliances" TEXT`);
+    await db.query(`ALTER TABLE "GovernorVisit" ADD COLUMN IF NOT EXISTS "works" TEXT`);
+    await db.query(`ALTER TABLE "GovernorVisit" ADD COLUMN IF NOT EXISTS "permanentPrograms" TEXT`);
+    await db.query(`ALTER TABLE "GovernorVisit" ADD COLUMN IF NOT EXISTS "projects" TEXT`);
+    await db.query(`ALTER TABLE "GovernorVisit" ADD COLUMN IF NOT EXISTS "grants" TEXT`);
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "GovernorVisit_publicRef_key" ON "GovernorVisit" ("publicRef")`);
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "GovernorVisit_correctionToken_key" ON "GovernorVisit" ("correctionToken") WHERE "correctionToken" IS NOT NULL`);
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "GovernorVisit_submission_key" ON "GovernorVisit" ("contributionSubmissionId") WHERE "contributionSubmissionId" IS NOT NULL`);

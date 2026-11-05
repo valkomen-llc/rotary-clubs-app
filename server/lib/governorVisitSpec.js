@@ -143,6 +143,15 @@ export const shapeVisit = (raw = {}) => {
         title: str(raw.title, 160),
         reason: multi(raw.reason, 1500),
         description: multi(raw.description, 6000),
+        // v4.1284 — Memoria institucional: seis categorías nuevas, opcionales.
+        featuredActivities: multi(raw.featuredActivities, 3000),
+        alliances: multi(raw.alliances, 3000),
+        works: multi(raw.works, 3000),
+        permanentPrograms: multi(raw.permanentPrograms, 3000),
+        projects: multi(raw.projects, 3000),
+        grants: multi(raw.grants, 3000),
+        // Las seis anteriores: el formulario ya no las pide; se conservan para
+        // las visitas históricas (consulta y edición administrativa).
         activities: multi(raw.activities, 3000),
         topics: multi(raw.topics, 3000),
         recognitions: multi(raw.recognitions, 3000),
@@ -246,8 +255,31 @@ export const visitDateIso = (value) => {
     return isoDate(value);
 };
 
+/**
+ * v4.1284 — La Memoria institucional, en orden alfabético. Las categorías
+ * anteriores (`VISIT_MEMORY_LEGACY`) se conservan sólo para las visitas que
+ * las tienen: no se trasladan a las nuevas.
+ */
+export const VISIT_MEMORY_FIELDS = [
+    ['featuredActivities', 'Actividades destacadas'],
+    ['alliances', 'Alianzas'],
+    ['works', 'Obras'],
+    ['permanentPrograms', 'Programas permanentes'],
+    ['projects', 'Proyectos'],
+    ['grants', 'Subvenciones'],
+];
+export const VISIT_MEMORY_LEGACY = [
+    ['activities', 'Actividades desarrolladas'],
+    ['topics', 'Temas abordados'],
+    ['recognitions', 'Reconocimientos'],
+    ['agreements', 'Acuerdos'],
+    ['commitments', 'Compromisos'],
+    ['highlights', 'Resultados destacados'],
+];
+
 const SECCIONES = [
     ['description', 'Descripción de la visita'],
+    ...VISIT_MEMORY_FIELDS,
     ['activities', 'Actividades desarrolladas'],
     ['topics', 'Temas abordados'],
     ['recognitions', 'Reconocimientos'],

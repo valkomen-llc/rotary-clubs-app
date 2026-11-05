@@ -6,6 +6,11 @@
 // visita (80–700 caracteres, con contador). Sin título ni motivo del
 // encuentro; el paso 2 queda para la memoria opcional y la galería.
 //
+// v4.1284.0 — La Memoria institucional del paso 2 son seis categorías nuevas,
+// opcionales y en orden alfabético (`VISIT_MEMORY_FIELDS`): actividades
+// destacadas, alianzas, obras, programas permanentes, proyectos y
+// subvenciones. Las seis anteriores ya no se piden.
+//
 // Tres pasos (v4.1262: Club y visita · Memoria y galería · Responsable y envío) con la misma arquitectura visual de Rotary en Acción (Navbar,
 // cabecera institucional, tarjetas, barra de pasos, navegación Atrás /
 // Siguiente) y la misma subida: URL prefirmada → PUT directo a S3 con
@@ -34,7 +39,7 @@ import ClubSelector from '../clubs/ClubSelector';
 import type { CatalogClub } from '../../lib/clubCatalog';
 import { ACCEPT_ATTR, checkFileMeta, kindOf, LIMITS_LABEL, DUPLICATE_MESSAGE, duplicateKey, partialFileHash } from '../../lib/contentSubmissionSpec';
 import {
-  EMPTY_VISIT, VISIT_CAPTION_MAX, VISIT_DESCRIPTION_MAX, VISIT_DESCRIPTION_MIN, VISIT_MAX_LINKS, VISIT_MAX_PHOTOS, VISIT_MAX_VIDEOS, VISIT_STEPS,
+  EMPTY_VISIT, VISIT_CAPTION_MAX, VISIT_DESCRIPTION_MAX, VISIT_DESCRIPTION_MIN, VISIT_MAX_LINKS, VISIT_MEMORY_FIELDS, VISIT_MAX_PHOTOS, VISIT_MAX_VIDEOS, VISIT_STEPS,
   normalizeVisitLink, todayLocal, validateVisitStep, visitDateLabel, type VisitDraft,
 } from '../../lib/governorVisitSpec';
 import { rotaryPeriodFrom } from '../../lib/rotaryPeriod';
@@ -235,8 +240,8 @@ export default function GovernorVisitForm() {
           ...EMPTY_VISIT,
           clubProfileId: x.clubProfileId || '', visitDate: x.visitDate || '', governorName: x.governorName || '',
           venue: x.venue || '', description: x.description || '',
-          activities: x.activities || '', topics: x.topics || '', recognitions: x.recognitions || '',
-          agreements: x.agreements || '', commitments: x.commitments || '', highlights: x.highlights || '',
+          featuredActivities: x.featuredActivities || '', alliances: x.alliances || '', works: x.works || '',
+          permanentPrograms: x.permanentPrograms || '', projects: x.projects || '', grants: x.grants || '',
           links: (x.links || []).map((l: any) => ({ url: l.url, caption: l.caption || '' })),
           responsibleName: x.responsibleName || '', responsibleRole: x.responsibleRole || '',
           responsibleEmail: x.responsibleEmail || '', responsiblePhone: x.responsiblePhone || '',
@@ -593,19 +598,12 @@ export default function GovernorVisitForm() {
         {/* PASO 2 — Memoria y galería */}
         {step === 2 && !enviado && (
           <div className={TARJETA} data-gv-step="2">
-            <TituloPaso icon={<FileText className="w-5 h-5" />} titulo="Memoria institucional" texto="Lo que quedó de la visita, más allá de la descripción del paso 1. Todo es opcional: completa lo que aplique." />
+            <TituloPaso icon={<FileText className="w-5 h-5" />} titulo="Memoria institucional" texto="Comparte los proyectos, programas, alianzas, obras y actividades más representativas de tu club rotario. Completa únicamente los campos que correspondan." />
             <div className="space-y-5">
               <div className="grid sm:grid-cols-2 gap-5">
-                {([
-                  ['activities', 'Actividades desarrolladas', 'Reunión con la junta, visita a proyectos…'],
-                  ['topics', 'Temas abordados', 'Membresía, Fundación Rotaria, imagen pública…'],
-                  ['recognitions', 'Reconocimientos', 'Distinciones entregadas o recibidas'],
-                  ['agreements', 'Acuerdos', 'Lo que se acordó en la visita'],
-                  ['commitments', 'Compromisos', 'Compromisos del club y del distrito'],
-                  ['highlights', 'Resultados destacados', 'Logros, cifras o hitos de la visita'],
-                ] as const).map(([k, label, ph]) => (
+                {VISIT_MEMORY_FIELDS.map(([k, label, ph]) => (
                   <Campo key={k} label={label} htmlFor={`gv-${k}`}>
-                    <textarea id={`gv-${k}`} rows={3} maxLength={3000} value={v[k]} onChange={(e) => set(k, e.target.value)} className={CAMPO} placeholder={ph} />
+                    <textarea id={`gv-${k}`} rows={4} maxLength={3000} value={v[k]} onChange={(e) => set(k, e.target.value)} className={`${CAMPO} resize-y`} placeholder={ph} />
                   </Campo>
                 ))}
               </div>

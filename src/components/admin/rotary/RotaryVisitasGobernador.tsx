@@ -12,6 +12,11 @@
 // de 80 a 700 caracteres que el formulario público. Título y motivo del
 // encuentro ya no se piden: el título se compone con el club y el motivo sólo
 // aparece en las visitas anteriores que lo tienen.
+//
+// v4.1284.0 — Memoria institucional por categorías (actividades destacadas,
+// alianzas, obras, programas permanentes, proyectos, subvenciones). Las seis
+// anteriores se muestran y se editan sólo en las visitas que las tienen, en
+// un bloque aparte «formato anterior»: nada se traslada de una a otra.
 // ════════════════════════════════════════════════════════════════════════════
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -25,7 +30,7 @@ import { useAuth } from '../../../hooks/useAuth';
 import { leerJson } from '../../../lib/leerJson';
 import { stateLabel } from '../../../lib/contentSubmissionSpec';
 import {
-  VISIT_REASON_REQUIRED, VISIT_CAPTION_MAX, VISIT_DESCRIPTION_MAX, visitDateLabel, visitDescriptionError, visitStateChip, visitStateLabel,
+  VISIT_REASON_REQUIRED, VISIT_CAPTION_MAX, VISIT_DESCRIPTION_MAX, VISIT_MEMORY_FIELDS, VISIT_MEMORY_LEGACY, visitDateLabel, visitDescriptionError, visitStateChip, visitStateLabel,
 } from '../../../lib/governorVisitSpec';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -45,12 +50,12 @@ interface Kpis { recibidas?: number; pendientes?: number; aprobadas?: number; pu
 interface Filtros { q: string; club: string; governor: string; status: string; from: string; to: string; sort: string; page: number }
 const FILTROS0: Filtros = { q: '', club: '', governor: '', status: '', from: '', to: '', sort: 'recientes', page: 1 };
 
-// La memoria opcional del paso 2. La descripción (paso 1) va aparte, en la
-// información principal de la visita.
-const TEXTOS: [string, string][] = [
-  ['activities', 'Actividades desarrolladas'], ['topics', 'Temas abordados'],
-  ['recognitions', 'Reconocimientos'], ['agreements', 'Acuerdos'], ['commitments', 'Compromisos'], ['highlights', 'Resultados destacados'],
-];
+// La memoria opcional del paso 2 (v4.1284). La descripción (paso 1) va
+// aparte, en la información principal de la visita.
+const TEXTOS: [string, string][] = VISIT_MEMORY_FIELDS.map(([k, l]) => [k, l] as [string, string]);
+const lleno = (v: any, k: string) => String(v?.[k] || '').trim().length > 0;
+/** Las categorías anteriores que ESTA visita tiene con datos. */
+const anterioresCon = (v: any) => VISIT_MEMORY_LEGACY.filter(([k]) => lleno(v, k));
 const HIST_LABEL: Record<string, string> = {
   created: 'Reporte recibido', status: 'Cambio de estado', corrected: 'Correcciones enviadas por el club',
   edited: 'Edición administrativa', published: 'Publicada en Rotary en Acción', notes: 'Notas internas',
@@ -144,8 +149,8 @@ const DetalleVisita: React.FC<PanelProps> = ({ id, canEdit, canManage, canPublis
   const empezarEdicion = () => {
     setForm({
       governorName: v.governorName, visitDate: v.visitDate, venue: v.venue || '', title: v.title, reason: v.reason || '',
-      description: v.description || '', activities: v.activities || '', topics: v.topics || '', recognitions: v.recognitions || '',
-      agreements: v.agreements || '', commitments: v.commitments || '', highlights: v.highlights || '',
+      description: v.description || '',
+      ...Object.fromEntries([...VISIT_MEMORY_FIELDS, ...VISIT_MEMORY_LEGACY].map(([k]) => [k, v[k] || ''])),
       responsibleName: v.responsibleName, responsibleRole: v.responsibleRole || '', responsibleEmail: v.responsibleEmail, responsiblePhone: v.responsiblePhone || '',
       adminNotes: v.adminNotes || '',
       media: (v.media || []).map((m: any) => ({ key: m.key, caption: m.caption || '', filename: m.filename, kind: m.kind, url: m.url })),
@@ -294,10 +299,26 @@ const DetalleVisita: React.FC<PanelProps> = ({ id, canEdit, canManage, canPublis
                           );
                         })()}
                       </div>
-                      {[...(String(v.reason || '').trim() ? [['reason', 'Motivo del encuentro (registro anterior)'] as [string, string]] : []), ...TEXTOS].map(([k, l]) => (
-                        <div key={k} className="sm:col-span-2">
+                      {String(v.reason || '').trim() && (
+                        <div className="sm:col-span-2">
+                          <label className={rotulo}>Motivo del encuentro (registro anterior)</label>
+                          <textarea rows={2} value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} className={campo} />
+                        </div>
+                      )}
+                      <p className="sm:col-span-2 text-[10px] font-black uppercase tracking-[0.12em] text-gray-500 pt-2">Memoria institucional (opcional)</p>
+                      {TEXTOS.map(([k, l]) => (
+                        <div key={k}>
                           <label className={rotulo}>{l}</label>
-                          <textarea rows={k === 'description' ? 5 : 2} value={form[k]} onChange={(e) => setForm({ ...form, [k]: e.target.value })} className={campo} />
+                          <textarea rows={3} maxLength={3000} value={form[k]} onChange={(e) => setForm({ ...form, [k]: e.target.value })} className={campo} />
+                        </div>
+                      ))}
+                      {anterioresCon(v).length > 0 && (
+                        <p className="sm:col-span-2 text-[10px] font-black uppercase tracking-[0.12em] text-gray-500 pt-2">Memoria · formato anterior (se conserva)</p>
+                      )}
+                      {anterioresCon(v).map(([k, l]) => (
+                        <div key={k}>
+                          <label className={rotulo}>{l}</label>
+                          <textarea rows={3} maxLength={3000} value={form[k]} onChange={(e) => setForm({ ...form, [k]: e.target.value })} className={campo} />
                         </div>
                       ))}
                       <div className="sm:col-span-2 space-y-2">
@@ -346,13 +367,23 @@ const DetalleVisita: React.FC<PanelProps> = ({ id, canEdit, canManage, canPublis
                     </dl>
                   </Seccion>
                   <Seccion titulo="Memoria institucional">
-                    {TEXTOS.some(([k]) => String(v[k] || '').trim()) ? (
+                    {/* Sólo las categorías diligenciadas. */}
+                    {TEXTOS.some(([k]) => lleno(v, k)) ? (
                       <div className="space-y-3">
-                        {TEXTOS.filter(([k]) => String(v[k] || '').trim()).map(([k, l]) => (
+                        {TEXTOS.filter(([k]) => lleno(v, k)).map(([k, l]) => (
                           <div key={k}><p className="text-[10px] font-black uppercase tracking-wider text-gray-400">{l}</p><p className="text-sm text-gray-800 whitespace-pre-line">{v[k]}</p></div>
                         ))}
                       </div>
-                    ) : <p className="text-xs text-gray-400">El club no agregó memoria adicional (actividades, temas, acuerdos…).</p>}
+                    ) : anterioresCon(v).length === 0 && <p className="text-xs text-gray-400">El club no agregó memoria institucional (proyectos, programas, alianzas, obras…).</p>}
+                    {/* Visitas anteriores a v4.1284: sus categorías se conservan tal cual. */}
+                    {anterioresCon(v).length > 0 && (
+                      <div className="space-y-3 rounded-xl bg-gray-50 border border-gray-100 p-3">
+                        <p className="text-[10px] font-black uppercase tracking-wider text-gray-500">Formato anterior (registro histórico)</p>
+                        {anterioresCon(v).map(([k, l]) => (
+                          <div key={k}><p className="text-[10px] font-black uppercase tracking-wider text-gray-400">{l}</p><p className="text-sm text-gray-800 whitespace-pre-line">{v[k]}</p></div>
+                        ))}
+                      </div>
+                    )}
                   </Seccion>
                   <Seccion titulo={`Galería (${(v.media || []).length} archivo(s) · ${(v.links || []).length} enlace(s))`}>
                     {(v.media || []).length > 0 && (
