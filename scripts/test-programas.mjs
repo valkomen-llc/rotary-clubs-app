@@ -14,6 +14,7 @@ import assert from 'node:assert/strict';
 import * as S from '../server/lib/programSpec.js';
 import { abilitiesFor, canSubmitScope, ABILITIES } from '../server/lib/programAccess.js';
 import { OWNED_COLUMNS, PROGRAM_TABLES } from '../server/lib/ensureProgramSchema.js';
+import * as LS from '../server/lib/programLandingSpec.js';
 
 let n = 0; const malos = [];
 const ok = (cond, msg) => { try { assert.ok(cond, msg); n++; console.log(`  ✓ ${msg}`); } catch (e) { malos.push(msg); console.log(`  ✗ ${msg}`); } };
@@ -168,14 +169,47 @@ ok(miembro(['comunicaciones', 'revisor_medico']).can('publish') && miembro(['com
 ok(miembro(['coordinador'], { active: false }).abilities.length === 0, 'un perfil retirado no abre nada');
 ok(abilitiesFor(d4281, { ...prog, ownerClubId: null, ownerDistrictNumber: null }, { links: [{ id: 'l2', districtNumber: 4271, status: 'activa' }], members: [] }).abilities.length === 0, 'sin vinculación con su distrito, el administrador distrital no entra');
 
+console.log('── La página pública por contenedores (landing)');
+const rand = (() => { let i = 0; return () => ((i += 0.137) % 1); })();
+const land = LS.defaultLanding({ name: 'Clínicas Ponseti', slug: 'clinicas-ponseti', summary: 'resumen' }, { districtNumber: 4281, rand });
+ok(land.blocks.length === 11 && land.blocks.map(b => b.type).join() === 'hero,intro,cards,feature,impact,directory,donation,stories,resources,clubs,contact', 'once contenedores en el orden de la referencia');
+ok(land.blocks[0].content.eyebrow === 'Programas · Distrito 4281' && land.blocks[0].content.tagline === 'Cada paso abre un futuro' && land.blocks[0].content.buttons[0].label === 'Necesito orientación', 'la portada trae los textos de la referencia para el piloto');
+ok(LS.defaultLanding({ name: 'Otro', slug: 'otro', summary: 'r' }).blocks[0].content.tagline === '' && LS.defaultLanding({ name: 'Otro', slug: 'otro', summary: 'r' }).blocks[1].content.title === 'Una red de apoyo que transforma vidas', 'otro programa recibe textos genéricos sin la frase del piloto');
+ok(LS.validateLanding(land).ok, 'el diseño inicial es válido');
+ok(!LS.validateLanding(LS.shapeLanding({ blocks: [land.blocks[0], land.blocks[0]] })).ok, 'dos portadas: rechazado');
+ok(!LS.validateLanding(LS.shapeLanding({ blocks: [{ ...land.blocks[1], content: { ...land.blocks[1].content, button: { label: 'X', action: { type: 'external', target: 'javascript:alert(1)' } } } }] })).ok, 'un enlace externo peligroso: rechazado');
+const shaped = LS.shapeLanding({ blocks: [{ type: 'cards', content: { title: 'T', cards: [{ icon: 'nope', title: 'A', description: '<script>x</script>', link: { label: 'L', action: { type: 'internal', target: '//evil.com' } } }] }, style: { background: 'pink' } }] });
+ok(shaped.blocks[0].content.cards[0].icon === 'book' && shaped.blocks[0].style.background === 'white' && shaped.blocks[0].content.cards[0].link.action.target === '', 'ícono y fondo fuera del catálogo caen al valor por omisión; ruta interna con // se descarta');
+const pub = LS.resolveLanding(land, { slug: 'clinicas-ponseti' }, { preview: false });
+ok(pub.blocks.map(b => b.type).join() === 'hero,intro,cards,feature,clubs,contact', 'en público, sin fuentes, no se pintan impacto, directorio, donación, historias ni recursos');
+ok(pub.blocks[0].data.image === null, 'en público una imagen faltante no se pinta como marcador');
+const pre = LS.resolveLanding(land, { slug: 'clinicas-ponseti' }, { preview: true });
+ok(pre.blocks.length === 11 && pre.blocks[0].data.image.placeholder === true && pre.blocks.find(b => b.type === 'impact').notes.some(n => /por validar/.test(n)), 'en vista previa todo se pinta con marcadores y avisos');
+const fuentes = { slug: 'clinicas-ponseti', clinics: [{ id: 'c1', name: 'H', city: 'Cali', region: 'Valle' }], indicators: [{ id: 'i1', name: 'Familias', value: '120', unit: 'familias', period: '2025', mode: 'periodo' }], stories: [{ id: 's1', title: 'Historia', media: [] }], resources: [{ id: 'r1', type: 'video' }], donation: { url: 'https://f.org/d', receiver: 'Fundación', verifiedAt: '2026-11-01' } };
+const landLinked = LS.shapeLanding({ ...land, blocks: land.blocks.map(b => (b.type === 'impact' ? { ...b, content: { ...b.content, items: b.content.items.map((it, i) => (i === 0 ? { ...it, indicatorId: 'i1' } : it)) } } : b)) });
+const pub2 = LS.resolveLanding(landLinked, fuentes, { preview: false });
+ok(pub2.blocks.length === 11, 'con fuentes publicadas se pintan los once');
+const imp = pub2.blocks.find(b => b.type === 'impact');
+ok(imp.data.items.length === 1 && imp.data.items[0].indicator.value === '120', 'impacto: sólo las tarjetas vinculadas a un indicador publicado, con su valor real');
+const resBlock = pub2.blocks.find(b => b.type === 'resources');
+ok(resBlock.data.items.length === 1 && resBlock.data.items[0].resourceType === 'video', 'recursos: sólo los accesos con recursos publicados de su tipo');
+ok(pub2.blocks.find(b => b.type === 'donation').data.button.kind === 'donation' && pub2.blocks.find(b => b.type === 'donation').data.receiver === 'Fundación', 'donación: el botón sale sólo con canal verificado y dice quién recibe');
+ok(LS.resolveLanding(landLinked, { ...fuentes, donation: { ...fuentes.donation, verifiedAt: '' } }, { preview: false }).blocks.every(b => b.type !== 'donation'), 'donación sin verificar: el contenedor no se pinta en público');
+ok(pub2.blocks[0].data.buttons[0].kind === 'form' && pub2.blocks[0].data.buttons[0].form === 'orientacion' && pub2.blocks[0].data.buttons[1].kind === 'anchor' && pub2.blocks[0].data.buttons[1].href === '#directorio', 'botones de la portada: formulario de orientación y ancla al directorio');
+ok(LS.resolveLanding(landLinked, { ...fuentes, formsEnabled: { orientacion: false } }, { preview: false }).blocks[0].data.buttons.length === 1, 'un formulario desactivado en el programa quita su botón');
+ok(LS.resolveButton({ label: 'X', action: { type: 'section', target: 'nada' } }, { slug: 's', landingBlocks: [] }) === null, 'un ancla a un contenedor inexistente no se ofrece');
+const nb = LS.newBlock('cards', rand);
+ok(nb && nb.type === 'cards' && nb.id !== land.blocks[2].id, 'un contenedor nuevo nace con id propio');
+ok(LS.newBlock('hero', rand).content.title === '' && LS.newBlock('zzz') === null, 'una portada nueva nace vacía; un tipo desconocido no existe');
+
 console.log('── El atajo del ensure enumera todo ADD COLUMN');
 const ensure = read('server/lib/ensureProgramSchema.js');
 const adds = [...ensure.matchAll(/ALTER TABLE "(\w+)" ADD COLUMN IF NOT EXISTS "?(\w+)"?/g)].map(m => [m[1], m[2]]);
 ok(adds.every(([t, c]) => (OWNED_COLUMNS[t] || []).includes(c)), `los ${adds.length} ADD COLUMN del ensure están en OWNED_COLUMNS`);
-ok(PROGRAM_TABLES.length === 13 && [...ensure.matchAll(/CREATE TABLE IF NOT EXISTS "(\w+)"/g)].map(m => m[1]).every(t => PROGRAM_TABLES.includes(t)), 'las trece tablas están en OWNED_COLUMNS');
+ok(PROGRAM_TABLES.length === 15 && [...ensure.matchAll(/CREATE TABLE IF NOT EXISTS "(\w+)"/g)].map(m => m[1]).every(t => PROGRAM_TABLES.includes(t)), 'las quince tablas están en OWNED_COLUMNS');
 
 console.log('── Lo que ninguna otra barrera ve');
-for (const f of ['server/lib/programStore.js', 'server/controllers/programController.js', 'server/lib/ensureProgramSchema.js', 'server/lib/programAccess.js']) {
+for (const f of ['server/lib/programStore.js', 'server/controllers/programController.js', 'server/lib/ensureProgramSchema.js', 'server/lib/programAccess.js', 'server/lib/programLandingSpec.js']) {
     const src = read(f);
     const sqls = [...src.matchAll(/db\.query\(\s*`([\s\S]*?)`/g)].map(m => m[1]);
     ok(sqls.every(q => !q.includes('`')), `${f}: ninguna comilla invertida dentro de un SQL (${sqls.length} sentencias)`);
@@ -185,13 +219,13 @@ ok(routes.indexOf("'/public/catalogo'") < routes.indexOf("'/public/:slug'") && r
 ok(/router\.use\(authMiddleware\)/.test(routes) && routes.split('router.use(authMiddleware)')[0].split('\n').filter(l => /router\.(get|post)/.test(l)).every(l => l.includes('lightPublicLimit')), 'todo lo público lleva lightPublicLimit; lo admin va tras authMiddleware');
 ok(routes.split('router.use(authMiddleware)')[1].split('\n').filter(l => /router\.(get|post|put|delete)/.test(l)).every(l => /\b(ver|crear|editar|publicar|administrar)\b/.test(l)), 'toda ruta admin pide un permiso programs.*');
 const app = read('src/App.tsx');
-ok(app.includes('path="/programas"') && app.includes('path="/programas/:slug"') && app.includes('path="/admin/programas"') && app.includes('path="/admin/programas/:id"'), 'las cuatro rutas están en App.tsx');
+ok(app.includes('path="/programas"') && app.includes('path="/programas/:slug"') && app.includes('path="/programas/:slug/detalle"') && app.includes('path="/admin/programas"') && app.includes('path="/admin/programas/:id"'), 'las cinco rutas están en App.tsx');
 ok(app.indexOf('path="/programas"') < app.indexOf('path="*"'), 'antes del comodín');
 ok(read('server/lib/rbacSpec.js').includes("key: 'programs'") && read('src/lib/rbacSpec.ts').includes('"key": "programs"'), 'el módulo programs está en el RBAC del servidor y en su espejo');
 ok(read('server/lib/seoSpec.js').includes("return 'program'") && read('server/lib/seoEntities.js').includes('programMeta'), 'SEO: la página del programa tiene su clase y su ficha');
 const guard = read('scripts/db-push-guard.mjs'); const claude = read('CLAUDE.md');
-ok(PROGRAM_TABLES.every(t => guard.includes(t)), 'las trece tablas están en el comentario del guardián de db:push');
-ok(PROGRAM_TABLES.every(t => claude.includes(`\`${t}\``)), 'las trece tablas están en CLAUDE.md');
+ok(PROGRAM_TABLES.every(t => guard.includes(t)), 'las quince tablas están en el comentario del guardián de db:push');
+ok(PROGRAM_TABLES.every(t => claude.includes(`\`${t}\``)), 'las quince tablas están en CLAUDE.md');
 ok(read('src/sections/Navbar.tsx').includes('programsNav') && read('server/routes/clubs.js').includes('programsNav'), 'el menú público lee programsNav y by-domain lo sirve');
 const api = read('api/index.js');
 ok(api.includes("'/api/programas'") && read('server/server.js').includes("'/api/programas'"), 'el router está montado en los dos entrypoints');
@@ -221,6 +255,8 @@ try {
         const nav = M.validatePublicRequest(t, raw).map(e => e.field).sort();
         ok(same(srv, nav), `misma validación pública (${t}: ${srv.join(',') || 'válida'})`);
     }
+    const ML = await (async () => { const o = await esbuild.build({ entryPoints: [new URL('../src/lib/programLandingSpec.ts', import.meta.url).pathname], bundle: true, format: 'esm', write: false, platform: 'neutral', logLevel: 'silent' }); return import(`data:text/javascript;base64,${Buffer.from(o.outputFiles[0].text).toString('base64')}`); })();
+    ok(same(ML.BACKGROUNDS, LS.BACKGROUNDS) && same(ML.ICONS, LS.ICONS) && same(ML.BUTTON_ACTIONS, LS.BUTTON_ACTIONS) && same(ML.DETAIL_ANCHORS, LS.DETAIL_ANCHORS) && same(ML.FORM_TARGETS, LS.FORM_TARGETS) && same(ML.BLOCK_TYPES, LS.BLOCK_TYPES), 'landing: mismos catálogos (fondos, íconos, acciones, anclas, formularios, tipos de contenedor)');
     const crCasos = [cr, { ...cr, kind: 'clinic', payload: S.shapeContent('clinic', { name: 'H' }) }, { ...cr, authorizations: {} }, S.shapeChangeRequest({ kind: 'indicator', operation: 'crear', scopeType: 'central', title: 'Ind', payload: { name: 'X' }, responsibleName: 'A', responsibleEmail: 'a@x.org' })];
     for (const c of crCasos) {
         const srv = S.validateChangeRequest(c).errors.map(e => `${e.step}:${e.field}`).sort();

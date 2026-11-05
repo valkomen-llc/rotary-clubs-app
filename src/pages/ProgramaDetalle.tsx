@@ -1,7 +1,8 @@
 /**
  * Programas — la página pública de un programa (v4.1280.0)
  *
- * `/programas/:slug`. Secciones ordenables y activables desde el panel; una
+ * `/programas/:slug/detalle` (v4.1281: la landing por contenedores vive en
+ * `/programas/:slug`). Secciones ordenables y activables desde el panel; una
  * sección sin contenido NO se pinta (el servidor ya la filtró en `sections`).
  * El contenido es el central más lo distrital de esta vinculación más lo local
  * de este club: nunca el local de otro club.
@@ -81,7 +82,7 @@ const ProgramaDetalle = () => {
     useSEO({
         title: p?.seo?.title || p?.name || 'Programa',
         description: p?.seo?.description || p?.summary || '',
-        path: `/programas/${slug}`,
+        path: `/programas/${slug}/detalle`,
         image: p?.seo?.image || p?.heroImageUrl || p?.logoUrl || undefined,
         noindex: Boolean(data?.preview),
     });
@@ -153,7 +154,7 @@ const ProgramaDetalle = () => {
             <section id="inicio" className="relative overflow-hidden text-white" style={PAGE_HEADER_BACKGROUND} aria-labelledby="programa-titulo">
                 {p.heroImageUrl ? <img src={p.heroImageUrl} alt="" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover opacity-25" /> : null}
                 <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-14 md:py-20">
-                    <Link to="/programas" className="inline-flex items-center gap-2 text-sm text-white/80 hover:text-white mb-6"><ArrowLeft className="w-4 h-4" /> Volver a Programas</Link>
+                    <Link to={`/programas/${encodeURIComponent(slug)}`} className="inline-flex items-center gap-2 text-sm text-white/80 hover:text-white mb-6"><ArrowLeft className="w-4 h-4" /> Volver a la página del programa</Link>
                     <div className="flex flex-col md:flex-row md:items-center gap-6">
                         {p.logoUrl ? <img src={p.logoUrl} alt={`Logo de ${p.name}`} className="w-24 h-24 md:w-28 md:h-28 object-contain bg-white rounded-2xl p-2 shadow-lg shrink-0" /> : null}
                         <div className="flex-1">
@@ -397,7 +398,7 @@ const ProgramaDetalle = () => {
             })}
 
             <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10">
-                <Link to="/programas" className="inline-flex items-center gap-2 text-sm font-semibold text-rotary-blue hover:underline"><ArrowLeft className="w-4 h-4" /> Volver a Programas</Link>
+                <Link to={`/programas/${encodeURIComponent(slug)}`} className="inline-flex items-center gap-2 text-sm font-semibold text-rotary-blue hover:underline"><ArrowLeft className="w-4 h-4" /> Volver a la página del programa</Link>
             </div>
 
             {/* Aviso antes de salir a donar */}

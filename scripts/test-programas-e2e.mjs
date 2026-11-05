@@ -63,7 +63,7 @@ await db.query(`INSERT INTO "User" (id, email, name, role, "clubId") VALUES
     ('e2e-u-medico', 'medico@ponseti.org', 'Dra. Revisora', 'institutional_user', 'e2e-site-4281'),
     ('e2e-u-gestor', 'gestor@ponseti.org', 'Gestor Solicitudes', 'institutional_user', 'e2e-site-4281'),
     ('e2e-u-op', 'op@clubplatform.org', 'Operador', 'superadmin', NULL)`);
-await db.query(`DROP TABLE IF EXISTS "Program", "ProgramDistrictLink", "ProgramClubActivation", "ProgramMember", "ProgramContent", "ProgramContentVersion", "ProgramChangeRequest", "ProgramRequest", "ProgramSubscriber", "ProgramFile", "ProgramAuditLog", "ProgramMetricDaily", "ProgramVisitor"`);
+await db.query(`DROP TABLE IF EXISTS "Program", "ProgramDistrictLink", "ProgramClubActivation", "ProgramMember", "ProgramContent", "ProgramContentVersion", "ProgramChangeRequest", "ProgramRequest", "ProgramSubscriber", "ProgramFile", "ProgramAuditLog", "ProgramMetricDaily", "ProgramVisitor", "ProgramLanding", "ProgramLandingVersion"`);
 
 const u = async (id) => (await db.query(`SELECT id, email, name, role, "clubId" FROM "User" WHERE id = $1`, [id])).rows[0];
 const D4281 = await u('e2e-u-d4281'); const D4290 = await u('e2e-u-d4290'); const CALI = await u('e2e-u-cali'); const PASTO = await u('e2e-u-pasto'); const BOGOTA = await u('e2e-u-bogota');
@@ -345,6 +345,62 @@ await check('el operador lista todo; el distrito, lo suyo; el responsable con pe
     assert.equal((await call(C.adminList, { user: D4281 })).body.total, 1);
     assert.equal((await call(C.adminList, { user: GESTOR })).body.total, 1);
     assert.equal((await call(C.adminList, { user: BOGOTA })).body.total, 0);
+});
+
+grupo('9. La página pública por contenedores (landing)');
+let landingPayload;
+await check('sin nada guardado, el panel ofrece el diseño inicial y el público lo ve con los contenedores que tienen datos', async () => {
+    const r = await call(C.adminGetLanding, { user: D4281, params: { id: programId } }); assert.equal(r.status, 200, JSON.stringify(r.body)); landingPayload = r.body;
+    assert.equal(r.body.exists, false); assert.equal(r.body.draft.blocks.length, 11); assert.equal(r.body.draft.blocks[0].content.eyebrow, 'Programas · Distrito 4281');
+    const pub = await call(C.publicProgram, { params: { slug }, query: { clubId: 'e2e-site-4281' } });
+    const types = pub.body.landing.blocks.map(b => b.type);
+    assert.ok(types.includes('hero') && types.includes('donation') && !types.includes('directory') && !types.includes('impact'), `público: ${types.join(',')}`);
+    assert.equal(pub.body.landing.blocks.find(b => b.type === 'donation').data.receiver, 'Fundación Ponseti');
+});
+await check('Cali (club) no edita la página; el distrito guarda el borrador y el público NO cambia', async () => {
+    const draft = structuredClone(landingPayload.draft); draft.blocks[0].content.tagline = 'Nueva frase en borrador';
+    assert.equal((await call(C.adminSaveLanding, { user: CALI, params: { id: programId }, body: { landing: draft, baseVersion: 0 } })).status, 403);
+    const s = await call(C.adminSaveLanding, { user: D4281, params: { id: programId }, body: { landing: draft, baseVersion: 0 } }); assert.equal(s.status, 200, JSON.stringify(s.body)); assert.equal(s.body.draftVersion, 1); assert.equal(s.body.unpublishedChanges, true); landingPayload = s.body;
+    const pub = await call(C.publicProgram, { params: { slug }, query: { clubId: 'e2e-site-4281' } });
+    assert.equal(pub.body.landing, null, 'con borrador guardado y nada publicado, el público no ve la landing nueva');
+});
+await check('la vista previa firmada muestra el BORRADOR con marcadores; una edición concurrente choca (409)', async () => {
+    const t = await call(C.adminPreviewToken, { user: D4281, params: { id: programId } });
+    const pre = await call(C.publicProgram, { params: { slug }, query: { clubId: 'e2e-site-4281', t: t.body.token } });
+    assert.equal(pre.body.landing.blocks[0].data.tagline, 'Nueva frase en borrador'); assert.equal(pre.body.landing.blocks.length, 11); assert.equal(pre.body.landing.blocks.find(b => b.type === 'impact').ready, false);
+    const stale = structuredClone(landingPayload.draft); stale.blocks[0].content.tagline = 'Otra persona';
+    const r = await call(C.adminSaveLanding, { user: OP, params: { id: programId }, body: { landing: stale, baseVersion: 0 } }); assert.equal(r.status, 409); assert.equal(r.body.code, 'LANDING_CONFLICT');
+});
+await check('publicar: el público ve la versión publicada; un borrador posterior no la toca hasta publicarse', async () => {
+    assert.equal((await call(C.adminPublishLanding, { user: CALI, params: { id: programId }, body: { baseVersion: 1 } })).status, 403);
+    const pubr = await call(C.adminPublishLanding, { user: D4281, params: { id: programId }, body: { baseVersion: 1 } }); assert.equal(pubr.status, 200, JSON.stringify(pubr.body)); assert.equal(pubr.body.publishedVersion, 1); assert.equal(pubr.body.unpublishedChanges, false);
+    let pub = await call(C.publicProgram, { params: { slug }, query: { clubId: 'e2e-site-4281' } }); assert.equal(pub.body.landing.blocks[0].data.tagline, 'Nueva frase en borrador');
+    const draft = structuredClone(pubr.body.draft); draft.blocks[0].content.tagline = 'Cambio sin publicar'; draft.blocks = draft.blocks.filter(b => b.type !== 'clubs');
+    const s = await call(C.adminSaveLanding, { user: D4281, params: { id: programId }, body: { landing: draft, baseVersion: 1 } }); assert.equal(s.status, 200, JSON.stringify(s.body)); assert.equal(s.body.unpublishedChanges, true);
+    pub = await call(C.publicProgram, { params: { slug }, query: { clubId: 'e2e-site-4281' } });
+    assert.equal(pub.body.landing.blocks[0].data.tagline, 'Nueva frase en borrador'); assert.ok(pub.body.landing.blocks.some(b => b.type === 'clubs'), 'la versión publicada conserva el contenedor quitado en el borrador');
+    const v = await call(C.adminLandingVersions, { user: D4281, params: { id: programId } }); assert.equal(v.body.versions.length, 1);
+});
+await check('el impacto se pinta cuando la tarjeta se vincula a un indicador publicado (valor real, nunca inventado)', async () => {
+    const r = await call(C.adminCreateChange, { user: D4281, params: { id: programId }, body: { kind: 'indicator', operation: 'crear', scopeType: 'central', title: 'Familias acompañadas 2025', responsibleName: 'Admin', responsibleEmail: 'admin@d4281.org', submit: true, payload: { name: 'Familias acompañadas', definition: 'Familias que recibieron orientación', value: '48', unit: 'familias', mode: 'periodo', period: '2025', source: 'Registro del programa', validatedBy: 'Coordinación', updatedOn: '2026-11-01' }, authorizations: { sourceVerified: true } } });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    const pubr = await call(C.adminPublishChange, { user: D4281, params: { id: programId, reqId: r.body.request.id } }); assert.equal(pubr.status, 200, JSON.stringify(pubr.body));
+    const g = await call(C.adminGetLanding, { user: D4281, params: { id: programId } }); assert.equal(g.body.sources.indicators.length, 1);
+    const draft = structuredClone(g.body.draft); const imp = draft.blocks.find(b => b.type === 'impact'); imp.content.items[0].indicatorId = g.body.sources.indicators[0].id;
+    const s = await call(C.adminSaveLanding, { user: D4281, params: { id: programId }, body: { landing: draft, baseVersion: g.body.draftVersion } }); assert.equal(s.status, 200, JSON.stringify(s.body));
+    assert.equal(s.body.notes[imp.id].ready, true);
+    const p2 = await call(C.adminPublishLanding, { user: D4281, params: { id: programId }, body: { baseVersion: s.body.draftVersion } }); assert.equal(p2.status, 200);
+    const pub = await call(C.publicProgram, { params: { slug }, query: { clubId: 'e2e-site-4281' } });
+    const impacto = pub.body.landing.blocks.find(b => b.type === 'impact'); assert.ok(impacto); assert.equal(impacto.data.items.length, 1); assert.equal(impacto.data.items[0].indicator.value, '48');
+});
+await check('un contenido saneado: HTML en un texto no entra y un botón externo malicioso se rechaza', async () => {
+    const g = await call(C.adminGetLanding, { user: D4281, params: { id: programId } });
+    const draft = structuredClone(g.body.draft); draft.blocks[1].content.button = { label: 'X', icon: 'star', variant: 'primary', action: { type: 'external', target: 'javascript:alert(1)' } };
+    assert.equal((await call(C.adminSaveLanding, { user: D4281, params: { id: programId }, body: { landing: draft, baseVersion: g.body.draftVersion } })).status, 400);
+    draft.blocks[1].content.button.action = { type: 'detail', target: 'programa' }; draft.blocks[1].content.title = 'Título <b>sin</b> html';
+    const s = await call(C.adminSaveLanding, { user: D4281, params: { id: programId }, body: { landing: draft, baseVersion: g.body.draftVersion } }); assert.equal(s.status, 200);
+    assert.equal(s.body.draft.blocks[1].content.title, 'Título <b>sin</b> html', 'el texto se guarda como texto plano (React lo escapa al pintar)');
+    const a = await S.auditList(programId, { entityType: 'landing' }); assert.ok(a.rows.some(x => x.action === 'published') && a.rows.some(x => x.action === 'draft_saved'));
 });
 
 await db.end?.().catch(() => {});

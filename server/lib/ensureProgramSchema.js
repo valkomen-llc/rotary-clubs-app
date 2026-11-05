@@ -1,7 +1,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 // Programas — el esquema, en runtime (v4.1280.0)
 //
-// TRECE tablas fuera de Prisma, todas con prefijo `Program`. Sin claves
+// QUINCE tablas fuera de Prisma, todas con prefijo `Program`. Sin claves
 // foráneas hacia tablas existentes, por la regla de siempre: ninguna tabla
 // que ya exista gana una columna ni una restricción por esto. Los vínculos
 // van por id (`Club.id`, `User.id`, `DistrictClubProfile.id`, `District.number`).
@@ -19,6 +19,8 @@
 //   ProgramAuditLog          historial y auditoría
 //   ProgramMetricDaily       métricas por día, sin datos personales
 //   ProgramVisitor           visitante seudónimo (hash, nunca IP)
+//   ProgramLanding           la página pública por contenedores: borrador y publicada (v4.1281)
+//   ProgramLandingVersion    cada versión publicada de la página
 //
 // Están en la lista del guardián de `db:push` y en la de CLAUDE.md.
 // ════════════════════════════════════════════════════════════════════════════
@@ -44,6 +46,8 @@ export const OWNED_COLUMNS = {
     ProgramAuditLog: [],
     ProgramMetricDaily: [],
     ProgramVisitor: [],
+    ProgramLanding: [],
+    ProgramLandingVersion: [],
 };
 export const PROGRAM_TABLES = Object.keys(OWNED_COLUMNS);
 
@@ -386,6 +390,37 @@ export async function ensureProgramSchema() {
             PRIMARY KEY ("programId", "visitorKey")
         )
     `);
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "ProgramLanding" (
+            "programId" TEXT PRIMARY KEY,
+            "schemaVersion" INT NOT NULL DEFAULT 1,
+            draft JSONB NOT NULL DEFAULT '{}'::jsonb,
+            published JSONB,
+            -- Bloqueo optimista: quien guarda manda la versión que leyó.
+            "draftVersion" INT NOT NULL DEFAULT 1,
+            "publishedVersion" INT,
+            "updatedBy" TEXT,
+            "updatedByName" TEXT,
+            "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            "publishedBy" TEXT,
+            "publishedByName" TEXT,
+            "publishedAt" TIMESTAMPTZ,
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "ProgramLandingVersion" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "programId" TEXT NOT NULL,
+            version INT NOT NULL,
+            config JSONB NOT NULL,
+            "publishedBy" TEXT,
+            "publishedByName" TEXT,
+            note TEXT,
+            "publishedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "ProgramLandingVersion_program_version_key" ON "ProgramLandingVersion" ("programId", version)`);
     _ready = true;
 }
 

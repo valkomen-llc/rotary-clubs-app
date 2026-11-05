@@ -8,11 +8,11 @@
  * Información institucional», que pasa por revisión (el servidor lo impone).
  */
 import { useEffect, useState } from 'react';
-import { Save, CheckCircle2, Archive, AlertTriangle, Plus, Trash2, ArrowUp, ArrowDown, Lock } from 'lucide-react';
+import { Save, CheckCircle2, Archive, AlertTriangle, Plus, Trash2, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, can, ApiError } from './api';
 import { Tarjeta, Campo, campo, btnPrimario, btnSecundario, btnPeligro, Toggle, ImageField } from './ui';
-import { PROGRAM_CATEGORIES, SECTIONS } from '../../../lib/programSpec';
+import { PROGRAM_CATEGORIES } from '../../../lib/programSpec';
 import type { Detalle } from '../../../pages/admin/ProgramaAdminDetalle';
 
 const PERSONAS: { key: string; label: string; hint?: string }[] = [
@@ -22,11 +22,6 @@ const PERSONAS: { key: string; label: string; hint?: string }[] = [
     { key: 'requestsManager', label: 'Responsable de solicitudes' },
     { key: 'requestsBackup', label: 'Responsable alterno de solicitudes' },
 ];
-const CTA_TARGETS = [
-    { id: 'orientacion', label: 'Formulario: Necesito orientación' }, { id: 'apoyo', label: 'Formulario: Quiero apoyar' }, { id: 'club', label: 'Formulario: Mi club quiere participar' },
-    { id: 'novedades', label: 'Formulario: Novedades' }, { id: 'clinicas', label: 'Ir al directorio de clínicas' }, { id: 'donar', label: 'Ir a Cómo ayudar' }, { id: 'enlace', label: 'Enlace externo' },
-];
-
 const ProgramaFichaTab = ({ data, onChanged }: { data: Detalle; onChanged: () => void }) => {
     const editable = can(data.grant, 'editProgram');
     const activo = data.program.status === 'activo';
@@ -62,11 +57,6 @@ const ProgramaFichaTab = ({ data, onChanged }: { data: Detalle; onChanged: () =>
             toast.success(status === 'activo' ? 'Programa publicado.' : status === 'archivado' ? 'Programa archivado.' : 'Programa devuelto a borrador.'); onChanged();
         } catch (e: any) { if (e instanceof ApiError && e.errors.length) setErrores(e.errors); toast.error(e?.message || 'No se pudo cambiar el estado.'); }
     };
-    const moverSeccion = (i: number, dir: -1 | 1) => {
-        const arr = [...(p.sections || [])]; const j = i + dir; if (j < 0 || j >= arr.length) return;
-        [arr[i], arr[j]] = [arr[j], arr[i]]; set('sections', arr.map((s: any, k: number) => ({ ...s, order: k })));
-    };
-    const sections: any[] = (p.sections?.length ? p.sections : SECTIONS.map((s, i) => ({ key: s.key, enabled: s.defaultEnabled, order: i, title: '' })));
     const ro = !editable;
     const clinicoBloqueado = activo && editable;
 
@@ -180,32 +170,9 @@ const ProgramaFichaTab = ({ data, onChanged }: { data: Detalle; onChanged: () =>
                 </div>
             </Tarjeta>
 
-            {/* Secciones y CTAs */}
-            <Tarjeta title="Secciones de la página pública">
-                <p className="text-[11px] text-gray-500 mb-3">Activa, desactiva y ordena. Una sección activa sin contenido no se publica.</p>
-                <ul className="space-y-2">
-                    {sections.map((s: any, i: number) => (
-                        <li key={s.key} className="flex items-center gap-3 rounded-xl border border-gray-100 px-3 py-2">
-                            <Toggle checked={s.enabled !== false} onChange={v => set(`sections.${i}.enabled`, v)} label={SECTIONS.find(x => x.key === s.key)?.label || s.key} />
-                            <input className={`${campo} max-w-xs ml-auto`} placeholder="Título personalizado (opcional)" value={s.title || ''} disabled={ro} onChange={e => set(`sections.${i}.title`, e.target.value)} />
-                            {editable ? <><button type="button" className="p-1 text-gray-400 hover:text-gray-700" onClick={() => moverSeccion(i, -1)} aria-label="Subir"><ArrowUp className="w-4 h-4" /></button><button type="button" className="p-1 text-gray-400 hover:text-gray-700" onClick={() => moverSeccion(i, 1)} aria-label="Bajar"><ArrowDown className="w-4 h-4" /></button></> : null}
-                        </li>
-                    ))}
-                </ul>
-                <div className="mt-5">
-                    <div className="flex items-center justify-between mb-2"><h4 className="text-sm font-semibold text-gray-800">Llamados a la acción (portada)</h4>{editable ? <button type="button" className={btnSecundario} onClick={() => set('ctas', [...(p.ctas || []), { label: '', target: 'orientacion', href: '', enabled: true }])}><Plus className="w-4 h-4" /> Llamado</button> : null}</div>
-                    {errorDe('ctas') ? <p className="text-xs text-rose-600 mb-2">{errorDe('ctas')}</p> : null}
-                    <div className="space-y-2">
-                        {(p.ctas || []).map((c: any, i: number) => (
-                            <div key={i} className="grid md:grid-cols-4 gap-2 items-center rounded-xl border border-gray-100 p-2">
-                                <input className={campo} placeholder="Texto del botón" value={c.label} disabled={ro} onChange={e => set(`ctas.${i}.label`, e.target.value)} />
-                                <select className={campo} value={c.target} disabled={ro} onChange={e => set(`ctas.${i}.target`, e.target.value)}>{CTA_TARGETS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}</select>
-                                <input className={campo} placeholder="https://… (sólo enlace externo)" value={c.href || ''} disabled={ro || c.target !== 'enlace'} onChange={e => set(`ctas.${i}.href`, e.target.value)} />
-                                <div className="flex items-center justify-between gap-2"><Toggle checked={c.enabled !== false} onChange={v => set(`ctas.${i}.enabled`, v)} label="Visible" />{editable ? <button type="button" className="text-gray-400 hover:text-rose-600" onClick={() => set('ctas', p.ctas.filter((_: any, k: number) => k !== i))} aria-label="Quitar"><Trash2 className="w-4 h-4" /></button> : null}</div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
+            {/* Secciones y CTAs: desde v4.1281 la página pública se compone por contenedores en su propia pestaña. */}
+            <Tarjeta title="Página pública">
+                <p className="text-sm text-gray-600">La composición de la página pública (portada, presentación, tarjetas, equipo, impacto, directorio, donaciones, historias, recursos, clubes y contacto), sus textos, imágenes, íconos, fondos y botones se editan en la pestaña <strong>«Página pública»</strong>, con borrador, vista previa y publicación.</p>
             </Tarjeta>
 
             {/* Formularios y enrutamiento */}

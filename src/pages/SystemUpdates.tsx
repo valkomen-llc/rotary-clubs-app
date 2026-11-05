@@ -34,13 +34,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1280.0 | 2026-11-04 (Programas: Clínicas Ponseti y otros programas respaldados por el distrito)
+// UI V4.1281.0 | 2026-11-05 (Programas: la página pública por contenedores, fiel a la referencia)
 // Cache bust: 2026-11-04
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1281.0',
+        title: 'Programas: la página pública de Clínicas Ponseti por contenedores, editable desde el panel 🧩',
+        description: 'La página pública de cada programa (/programas/:slug) se compone ahora de once contenedores fieles a la propuesta visual: portada, presentación, información para familias, equipo, impacto, directorio de clínicas, donaciones, historias, recursos educativos, vinculación de clubes y orientación. Cada uno se activa, se ordena y se edita desde la nueva pestaña «Página pública» (textos, imagen de la Biblioteca con texto alternativo y punto de enfoque, íconos de lista cerrada, fondo, distribución y botones con acción controlada), con borrador, vista previa firmada y publicación. Los datos de clínicas, indicadores, historias, recursos y donación salen de sus fuentes reales: un contenedor sin datos publicables se ve en la vista previa con marcadores y no se publica.',
+        date: new Date().toISOString(),
+        tags: ['programas', 'ponseti', 'página pública', 'contenedores', 'borrador', 'publicación'],
+        type: 'feature',
+        impact: 'Alta: el Distrito 4281 arma la página de Clínicas Ponseti sin tocar código, revisa el borrador en vista previa y publica cuando esté lista; el visitante ve sólo la última versión publicada.',
+        changes: [
+            { type: 'added', text: 'Pestaña «Página pública» en /admin/programas/:id: lista de contenedores con activar, reordenar (controles accesibles), agregar instancias de los tipos reutilizables y quitar; editor por contenedor con textos, imagen (subir o Biblioteca, texto alternativo, enfoque), íconos, fondo (blanco, azul claro, azul institucional, azul marino, gris), alineación y lado de la imagen, botones (ancla, detalle, formulario, canal de donación, enlace interno o externo). Guardar borrador con bloqueo optimista (una edición concurrente avisa en vez de pisar), vista previa del borrador, publicar, versiones publicadas con restaurar y volver al diseño inicial.' },
+            { type: 'added', text: 'Landing pública /programas/:slug con la composición de la referencia y la página de detalle en /programas/:slug/detalle (directorio completo, recursos, equipo, historias, formularios). «Necesito orientación», «Quiero vincular mi club» y «Solicitar orientación» abren los formularios del programa en un diálogo accesible; «Quiero donar» muestra quién recibe y administra antes de salir al canal oficial verificado.' },
+            { type: 'added', text: 'Fuentes reales sin copias: el directorio toma las clínicas publicadas (filtros por departamento y ciudad), el impacto se vincula a indicadores publicados (sin vínculo: «Indicadores por validar» en vista previa y oculto en público), historias y recursos a los registros aprobados, y donaciones al enlace verificado del programa. Nada ficticio se publica.' },
+            { type: 'changed', text: 'La ficha ya no tiene el editor de secciones: todo se compone en «Página pública». Dos tablas nuevas fuera de Prisma (ProgramLanding, ProgramLandingVersion) en el guardián de db:push. Pruebas ampliadas: test:programas (+21) y test:programas:e2e (+6).' },
+        ],
+    },
     {
         version: '4.1280.0',
         title: 'Programas: los programas que respalda el distrito, en el sitio del distrito y de sus clubes 🩺',

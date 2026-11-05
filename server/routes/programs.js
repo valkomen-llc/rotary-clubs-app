@@ -30,6 +30,7 @@ const administrar = requireRoleOrPermission(SITE_ADMIN_ROLES, 'programs.manage')
 router.get('/admin/context', ver, ctrl.adminContext);
 router.get('/admin/list', ver, ctrl.adminList);
 router.get('/admin/clubs-catalog', ver, ctrl.adminClubsCatalog);
+router.get('/admin/landing/new-block', ver, ctrl.adminNewBlock);
 router.post('/admin', crear, ctrl.adminCreate);
 router.get('/admin/:id', ver, ctrl.adminGet);
 router.put('/admin/:id', editar, ctrl.adminUpdate);
@@ -60,6 +61,12 @@ router.post('/admin/:id/files/presign', ver, ctrl.adminPresignFile);
 router.post('/admin/:id/files/register', ver, ctrl.adminRegisterFile);
 router.get('/admin/:id/files', ver, ctrl.adminListFiles);
 router.get('/admin/:id/files/:fileId/download', ver, ctrl.adminDownloadFile);
+router.get('/admin/:id/landing', ver, ctrl.adminGetLanding);
+router.put('/admin/:id/landing', editar, ctrl.adminSaveLanding);
+router.post('/admin/:id/landing/publish', publicar, ctrl.adminPublishLanding);
+router.get('/admin/:id/landing/versions', ver, ctrl.adminLandingVersions);
+router.post('/admin/:id/landing/restore', editar, ctrl.adminRestoreLanding);
+router.post('/admin/:id/landing/reset', editar, ctrl.adminResetLanding);
 router.get('/admin/:id/audit', ver, ctrl.adminAudit);
 router.get('/admin/:id/metrics', ver, ctrl.adminMetrics);
 
