@@ -34,13 +34,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1283.0 | 2026-11-05 (Visitas del Gobernador: paso 1 simplificado con la descripción de 80 a 700 caracteres)
+// UI V4.1284.0 | 2026-11-05 (Visitas del Gobernador: Memoria institucional por categorías)
 // Cache bust: 2026-11-04
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1284.0',
+        title: 'Visitas del Gobernador: la Memoria institucional por categorías 🏛️',
+        description: 'El paso 2 «Memoria y galería» documenta el trabajo institucional del club con seis categorías nuevas, opcionales y en orden alfabético: Actividades destacadas, Alianzas, Obras, Programas permanentes, Proyectos y Subvenciones, cada una con su texto orientativo. Reemplazan a Actividades desarrolladas, Temas abordados, Reconocimientos, Acuerdos, Compromisos y Resultados destacados en el formulario público. Las visitas ya registradas conservan esa información y el panel la sigue mostrando.',
+        date: new Date().toISOString(),
+        tags: ['visitas del gobernador', 'rotary en acción', 'memoria institucional', 'formulario'],
+        type: 'improvement',
+        impact: 'Media: los clubes reportan proyectos, programas, alianzas, obras y subvenciones en categorías claras; nada se pierde de lo histórico.',
+        changes: [
+            { type: 'changed', text: 'Memoria institucional: seis áreas de texto opcionales (dos columnas en escritorio, una en móvil) con el nuevo texto introductorio «Comparte los proyectos, programas, alianzas, obras y actividades más representativas de tu club rotario…». Se conservan al navegar entre pasos y en el borrador local; la galería no cambia.' },
+            { type: 'added', text: 'Seis columnas nuevas en GovernorVisit (featuredActivities, alliances, works, permanentPrograms, projects, grants) con ADD COLUMN IF NOT EXISTS, enumeradas en el atajo del ensure. Ninguna columna se borra ni se renombra.' },
+            { type: 'changed', text: 'Las seis categorías anteriores no se trasladan a las nuevas (no hay correspondencia comprobada): una visita nueva no las escribe, la corrección del club no las toca y el panel las muestra y edita aparte, como «formato anterior», sólo cuando tienen datos.' },
+            { type: 'changed', text: 'Panel: la ficha muestra sólo las categorías diligenciadas y la edición incluye las seis nuevas. La publicación en Rotary en Acción lleva la memoria en el mismo orden. Prueba test:visitas-gobernador: 125 comprobaciones.' },
+        ],
+    },
     {
         version: '4.1283.0',
         title: 'Visitas del Gobernador: un formulario más sencillo, con la descripción en el primer paso 📝',

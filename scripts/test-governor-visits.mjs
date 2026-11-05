@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ════════════════════════════════════════════════════════════════════
-// Visitas del Gobernador — v4.1260.0 (paso 1 simplificado: v4.1283.0)
+// Visitas del Gobernador — v4.1260.0 (paso 1 simplificado: v4.1283.0 · Memoria por categorías: v4.1284.0)
 // npm run test:visitas-gobernador
 //
 // Sin base ni red: el criterio puro, la paridad con el espejo del navegador,
@@ -17,6 +17,7 @@ import {
     shapeVisit, validateVisit, normalizeVisitLink, makeVisitRef, visitDateIso,
     visitToSubmissionData, visitFilesForSubmission, visitMemoryText,
     VISIT_DESCRIPTION_MIN, VISIT_DESCRIPTION_MAX, visitDescriptionError, visitTitleFor,
+    VISIT_MEMORY_FIELDS, VISIT_MEMORY_LEGACY,
 } from '../server/lib/governorVisitSpec.js';
 import { DEFAULT_GOVERNOR, GOVERNOR_BY_PERIOD, rotaryPeriodOf, fallbackGovernorFor } from '../server/lib/districtGovernor.js';
 
@@ -27,7 +28,9 @@ const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 const BASE = {
     // v4.1283: sin título ni motivo — el formulario ya no los pide.
     clubProfileId: 'club-1', visitDate: '2026-10-01', governorName: 'Gobernador X', venue: 'Sede social',
-    description: 'x'.repeat(90), activities: 'Reunión', topics: '', recognitions: '', agreements: '', commitments: '', highlights: 'Logro',
+    description: 'x'.repeat(90),
+    // v4.1284: Memoria institucional por categorías nuevas (opcionales).
+    featuredActivities: 'Jornada de salud', alliances: '', works: '', permanentPrograms: '', projects: 'Agua potable', grants: '',
     media: [{ key: 'k1', filename: 'a.jpg', contentType: 'image/jpeg' }], links: [],
     responsibleName: 'Ana Pérez', responsibleRole: 'Secretaria', responsibleEmail: 'ana@club.org', responsiblePhone: '+57 300 123 4567',
     truthConfirmed: true, publicationConsent: true,
@@ -93,13 +96,39 @@ const visit = { ...shapeVisit(BASE), publicRef: 'VG-2026-ABCDEF', clubName: 'Clu
     media: [{ key: 'k1', kind: 'image', filename: 'a.jpg', contentType: 'image/jpeg', bytes: 10 }, { key: 'k2', kind: 'video', filename: 'b.mp4', contentType: 'video/mp4', bytes: 20 }, { key: 'k3', kind: 'otro' }] };
 const d = visitToSubmissionData(visit);
 ok(d.title === 'Visita oficial del Gobernador al Club Rotario X' && d.club === 'Club Rotario X' && d.activityDate === '2026-10-01' && d.district === '4281', 'título, club, fecha y distrito reutilizados');
-ok(d.story.startsWith('Descripción de la visita:') && d.story.includes('Resultados destacados:') && !d.story.includes('Temas abordados'), 'la memoria va por secciones y sin las vacías');
+ok(d.story.startsWith('Descripción de la visita:') && d.story.includes('Actividades destacadas:') && d.story.includes('Proyectos:') && !d.story.includes('Alianzas'), 'la memoria va por secciones y sin las vacías');
+ok(d.story.indexOf('Actividades destacadas:') < d.story.indexOf('Proyectos:'), 'la memoria publicada sigue el orden alfabético');
+const conAnterior = visitToSubmissionData({ ...visit, highlights: 'Logro histórico', agreements: 'Acuerdo histórico' });
+ok(conAnterior.story.includes('Resultados destacados:\nLogro histórico') && conAnterior.story.includes('Acuerdos:\nAcuerdo histórico'), 'una visita histórica publica también su memoria del formato anterior');
 ok(d.submissionType === 'governor_visit' && d.contentType === 'evento' && d.tags.includes('visita-del-gobernador'), 'se distingue por tipo de solicitud y etiqueta, sin tipo nuevo en el formulario general');
 ok(d.extra.includes('VG-2026-ABCDEF'), 'la referencia de la visita viaja con la solicitud');
 ok(d.description.startsWith(BASE.description) && d.description.includes('Lugar: Sede social'), 'visita nueva: la descripción del paso 1 resume la solicitud');
 const historica = visitToSubmissionData({ ...visit, title: 'Título del club', reason: 'Motivo anterior' });
 ok(historica.title === 'Título del club' && historica.description.startsWith('Motivo anterior'), 'visita anterior: conserva su título y su motivo al publicarse');
 ok(visitTitleFor({ clubName: 'Club Rotario Armenia' }) === 'Visita oficial del Gobernador al Club Rotario Armenia' && visitTitleFor({}).length > 10, 'el título se compone con el club');
+
+console.log('── Memoria institucional por categorías (v4.1284)');
+const NUEVAS = ['featuredActivities', 'alliances', 'works', 'permanentPrograms', 'projects', 'grants'];
+const ETIQUETAS = ['Actividades destacadas', 'Alianzas', 'Obras', 'Programas permanentes', 'Proyectos', 'Subvenciones'];
+ok(VISIT_MEMORY_FIELDS.map(([k]) => k).join() === NUEVAS.join() && VISIT_MEMORY_FIELDS.map(([, l]) => l).join() === ETIQUETAS.join(), 'las seis categorías nuevas, con su etiqueta');
+ok(ETIQUETAS.join('|') === [...ETIQUETAS].sort((a, b) => a.localeCompare(b, 'es')).join('|'), 'en orden alfabético');
+ok(VISIT_MEMORY_LEGACY.map(([k]) => k).join() === 'activities,topics,recognitions,agreements,commitments,highlights', 'las seis anteriores se conservan para lo histórico');
+ok(errs({ ...BASE, ...Object.fromEntries(NUEVAS.map(k => [k, ''])) }).length === 0, 'todas las categorías son opcionales');
+const forma = shapeVisit({ ...BASE, alliances: 'Alcaldía\r\nCámara de comercio', grants: 'z'.repeat(5000) });
+ok(forma.alliances === 'Alcaldía\nCámara de comercio' && forma.grants.length === 3000, 'multilínea conservada y tope de 3000 por categoría');
+ok(NUEVAS.every(k => k in shapeVisit(BASE)), 'shapeVisit conoce las seis categorías nuevas');
+const ctrl = read('server/controllers/governorVisitController.js');
+const insert = ctrl.slice(ctrl.indexOf('export const submitVisit'), ctrl.indexOf('async function visitByToken'));
+ok(insert.includes(`'"featuredActivities"', 'alliances', 'works', '"permanentPrograms"', 'projects', 'grants'`) && !/'activities', 'topics'/.test(insert), 'una visita nueva guarda las categorías nuevas y no escribe las anteriores');
+const correccion = ctrl.slice(ctrl.indexOf('export const submitVisitCorrection'), ctrl.indexOf('// ADMINISTRACIÓN'));
+ok(correccion.includes('"featuredActivities" = $14') && !/\bactivities = \$/.test(correccion) && !/\bhighlights = \$/.test(correccion), 'la corrección del club no borra las categorías anteriores');
+const edicion = ctrl.slice(ctrl.indexOf('export const adminUpdateVisit'), ctrl.indexOf('const correctionUrl'));
+ok(edicion.includes('"featuredActivities" = $29') && edicion.includes('grants = $34') && edicion.includes('activities = $14'), 'la edición administrativa guarda las nuevas y conserva las anteriores');
+const editable = ctrl.match(/const EDITABLE = \[([^\]]+)\]/)[1];
+ok([...NUEVAS, 'activities', 'highlights'].every(k => editable.includes(`'${k}'`)), 'el panel puede editar categorías nuevas y anteriores');
+const { MEMORY_COLUMNS } = await import('../server/lib/ensureGovernorVisitSchema.js');
+ok(MEMORY_COLUMNS.join() === NUEVAS.join(), 'una columna por categoría nueva, sin renombrar ni borrar las anteriores');
+ok(!/DROP COLUMN|RENAME/.test(read('server/lib/ensureGovernorVisitSchema.js')), 'ningún DROP ni RENAME: lo histórico no se pierde');
 
 console.log('── Gobernador del período');
 ok(DEFAULT_GOVERNOR === 'Fabio Enrique Véjar Montañez' && GOVERNOR_BY_PERIOD['2026-2027'] === DEFAULT_GOVERNOR, 'Gobernador 2026-2027: Fabio Enrique Véjar Montañez');
@@ -123,6 +152,12 @@ for (const st of Object.values(VISIT_STATES)) ok(ts.includes(`${st.id}: { label:
 const mirror = await import('../src/lib/governorVisitSpec.ts');
 ok(mirror.VISIT_STEPS.join(' · ') === 'Club y visita · Memoria y galería · Responsable y envío', 'tres pasos en el formulario (v4.1262)');
 ok(!('title' in mirror.EMPTY_VISIT) && !('reason' in mirror.EMPTY_VISIT), 'el borrador del navegador ya no tiene título ni motivo');
+ok(mirror.VISIT_MEMORY_FIELDS.map(([k, l]) => `${k}:${l}`).join() === VISIT_MEMORY_FIELDS.map(([k, l]) => `${k}:${l}`).join(), 'mismas categorías y etiquetas en servidor y navegador');
+ok(mirror.VISIT_MEMORY_FIELDS.every(([k, , ph]) => k in mirror.EMPTY_VISIT && ph.length > 20), 'cada categoría está en el borrador y tiene su texto orientativo');
+ok(['activities', 'topics', 'recognitions', 'agreements', 'commitments', 'highlights'].every(k => !(k in mirror.EMPTY_VISIT)), 'las categorías anteriores ya no están en el formulario público');
+ok([1, 2, 3].every(n => !mirror.VISIT_MEMORY_FIELDS.some(([k]) => k in mirror.validateVisitStep(n, mirror.EMPTY_VISIT))), 'ninguna categoría bloquea el avance');
+ok(formulario.includes('Comparte los proyectos, programas, alianzas, obras y actividades más representativas de tu club rotario. Completa únicamente los campos que correspondan.'), 'el texto introductorio nuevo');
+ok(!/Actividades desarrolladas|Temas abordados|Resultados destacados/.test(formulario), 'el formulario público no muestra las categorías anteriores');
 for (const t of ['corta', 'z'.repeat(80), 'z'.repeat(700), 'z'.repeat(701)]) ok(mirror.visitDescriptionError(t) === visitDescriptionError(t), `mismo aviso para ${t.length} caracteres`);
 ok('description' in mirror.validateVisitStep(1, mirror.EMPTY_VISIT) && !('description' in mirror.validateVisitStep(2, mirror.EMPTY_VISIT)), 'el navegador pide la descripción en el paso 1, no en el 2');
 ok(!/id="gv-titulo"|id="gv-motivo"/.test(formulario) && (formulario.match(/id="gv-desc"/g) || []).length === 1, 'el formulario no tiene Título ni Motivo y la descripción aparece una sola vez');

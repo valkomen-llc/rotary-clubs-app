@@ -50,12 +50,15 @@ export interface VisitDraft {
   venue: string;
   // v4.1283: sin `title` ni `reason` — el formulario ya no los pide.
   description: string;
-  activities: string;
-  topics: string;
-  recognitions: string;
-  agreements: string;
-  commitments: string;
-  highlights: string;
+  // v4.1284 — Memoria institucional por categorías (opcionales). Las seis
+  // anteriores (activities, topics, recognitions, agreements, commitments,
+  // highlights) ya no se piden: sólo las ve el panel en visitas históricas.
+  featuredActivities: string;
+  alliances: string;
+  works: string;
+  permanentPrograms: string;
+  projects: string;
+  grants: string;
   links: { url: string; caption: string }[];
   responsibleName: string;
   responsibleRole: string;
@@ -67,10 +70,30 @@ export interface VisitDraft {
 
 export const EMPTY_VISIT: VisitDraft = {
   clubProfileId: '', visitDate: '', governorName: '', venue: '',
-  description: '', activities: '', topics: '', recognitions: '', agreements: '', commitments: '', highlights: '',
+  description: '', featuredActivities: '', alliances: '', works: '', permanentPrograms: '', projects: '', grants: '',
   links: [], responsibleName: '', responsibleRole: '', responsibleEmail: '', responsiblePhone: '',
   truthConfirmed: false, publicationConsent: false,
 };
+
+/**
+ * v4.1284 — La Memoria institucional del paso 2, en orden alfabético: clave,
+ * etiqueta y texto orientativo. Todas opcionales. Mismas claves y etiquetas
+ * que `VISIT_MEMORY_FIELDS` del servidor (lo fija la prueba).
+ */
+export const VISIT_MEMORY_FIELDS = [
+  ['featuredActivities', 'Actividades destacadas', 'Describe las actividades más representativas realizadas por el club.'],
+  ['alliances', 'Alianzas', 'Menciona las alianzas con instituciones, empresas u organizaciones que apoyan las iniciativas del club.'],
+  ['works', 'Obras', 'Describe las obras realizadas o en ejecución y su impacto en la comunidad.'],
+  ['permanentPrograms', 'Programas permanentes', 'Describe los programas que el club desarrolla de manera continua en beneficio de la comunidad.'],
+  ['projects', 'Proyectos', 'Presenta los principales proyectos sociales, comunitarios o institucionales del club.'],
+  ['grants', 'Subvenciones', 'Describe las subvenciones distritales o globales en las que participa el club y los proyectos que apoyan.'],
+] as const;
+
+/** Las categorías anteriores a v4.1284: sólo para consultar visitas históricas. */
+export const VISIT_MEMORY_LEGACY: [string, string][] = [
+  ['activities', 'Actividades desarrolladas'], ['topics', 'Temas abordados'], ['recognitions', 'Reconocimientos'],
+  ['agreements', 'Acuerdos'], ['commitments', 'Compromisos'], ['highlights', 'Resultados destacados'],
+];
 
 /** Un enlace audiovisual: http(s), con host, sin credenciales. */
 export const normalizeVisitLink = (raw: string): string | null => {

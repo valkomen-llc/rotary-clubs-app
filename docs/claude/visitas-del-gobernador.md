@@ -1,4 +1,4 @@
-# Visitas del Gobernador — v4.1260 (paso 1 simplificado: v4.1283)
+# Visitas del Gobernador — v4.1260 (paso 1 simplificado: v4.1283; Memoria por categorías: v4.1284)
 
 Sección de **Rotary en Acción** (no un módulo aparte) para que las secretarías
 de los clubes del Distrito 4281 reporten la visita oficial del Gobernador, y el
@@ -131,6 +131,37 @@ Pedido del cliente: menos campos y lo esencial en el primer paso.
   línea en `GOVERNOR_BY_PERIOD`).
 - **Publicación:** `visitToSubmissionData` usa `title || visitTitleFor(...)` y,
   como resumen, el motivo (visitas anteriores) o la descripción (nuevas).
+
+## Memoria institucional por categorías (v4.1284)
+
+El paso 2 pide seis categorías **opcionales**, en orden alfabético
+(`VISIT_MEMORY_FIELDS`, mismo arreglo de claves y etiquetas en servidor y
+navegador; el del navegador trae además el texto orientativo):
+`featuredActivities` Actividades destacadas · `alliances` Alianzas · `works`
+Obras · `permanentPrograms` Programas permanentes · `projects` Proyectos ·
+`grants` Subvenciones. Tope 3000 caracteres cada una, multilínea.
+
+- **Almacenamiento:** seis columnas TEXT nuevas en `GovernorVisit`, agregadas
+  con `ADD COLUMN IF NOT EXISTS` y enumeradas en `OWNED_COLUMNS`
+  (`MEMORY_COLUMNS`). Nada se borra ni se renombra.
+- **Lo histórico (`VISIT_MEMORY_LEGACY`):** `activities`, `topics`,
+  `recognitions`, `agreements`, `commitments`, `highlights` siguen en la tabla
+  con sus datos. **No se trasladan** a las nuevas: no hay correspondencia
+  comprobada («Actividades desarrolladas» no es «Actividades destacadas»).
+  Una visita nueva no las escribe (quedan NULL); la corrección del club NO las
+  incluye en su UPDATE (el club ya no las ve y no puede borrarlas sin
+  saberlo); la edición administrativa sí las guarda. El panel las muestra en
+  un bloque «Formato anterior (registro histórico)» y las ofrece para editar
+  sólo cuando la visita las tiene con datos.
+- **Borrador local:** `camposDelBorrador` sólo recupera las claves de
+  `EMPTY_VISIT`; un borrador de antes de v4.1284 no resucita las categorías
+  anteriores.
+- **Publicación:** `visitMemoryText` (la «historia» de la solicitud de Rotary
+  en Acción) recorre descripción → seis nuevas → seis anteriores, saltando las
+  vacías: una visita histórica publica también lo que tenía.
+- Que no se agregara la séptima categoría propuesta («Otros logros e
+  iniciativas») fue una decisión: el pedido la dejaba opcional y la
+  estructura estricta son seis.
 
 ## Estadísticas (`GET …/admin/stats`)
 

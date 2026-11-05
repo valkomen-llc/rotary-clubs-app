@@ -30,7 +30,7 @@ import {
 import { currentDistrictGovernor } from '../lib/districtGovernor.js';
 import { resolveOrigin } from './rotaryEnAccionController.js';
 
-console.log('[governor-visits] v4.1283.0 cargado — Visitas del Gobernador (Rotary en Acción) en dominio.org/visitas-del-gobernador: paso 1 con fecha, Gobernador del período, lugar y descripción (80–700); sin título ni motivo');
+console.log('[governor-visits] v4.1284.0 cargado — Visitas del Gobernador (Rotary en Acción) en dominio.org/visitas-del-gobernador: Memoria institucional por categorías (actividades destacadas, alianzas, obras, programas permanentes, proyectos, subvenciones); las seis anteriores se conservan en lo histórico');
 
 const fail = (res, e, code = 500) => {
     if (code >= 500) console.error('[governor-visits]', e?.message || e);
@@ -207,7 +207,9 @@ export const submitVisit = async (req, res) => {
         const cols = [
             '"publicRef"', 'status', '"districtNumber"', '"clubProfileId"', '"clubName"', '"clubCity"', '"clubState"', '"clubSlug"', '"clubPlatformId"',
             '"visitDate"', '"governorName"', 'venue', 'title', 'reason',
-            'description', 'activities', 'topics', 'recognitions', 'agreements', 'commitments', 'highlights',
+            // v4.1284 — Memoria por categorías nuevas. Las seis anteriores ya no
+            // se escriben en una visita nueva (quedan NULL).
+            'description', '"featuredActivities"', 'alliances', 'works', '"permanentPrograms"', 'projects', 'grants',
             'media', 'links', '"responsibleName"', '"responsibleRole"', '"responsibleEmail"', '"responsiblePhone"',
             '"truthConfirmed"', '"publicationConsent"', '"consentText"', '"consentAt"', 'history', '"originHost"',
         ];
@@ -216,7 +218,7 @@ export const submitVisit = async (req, res) => {
             // v4.1283: el formulario ya no pide título ni motivo; el título se
             // compone con el club (la columna es NOT NULL y lo usa la publicación).
             v.visitDate, v.governorName, v.venue, v.title || visitTitleFor({ clubName: club.officialName }), v.reason || null,
-            v.description, v.activities || null, v.topics || null, v.recognitions || null, v.agreements || null, v.commitments || null, v.highlights || null,
+            v.description, v.featuredActivities || null, v.alliances || null, v.works || null, v.permanentPrograms || null, v.projects || null, v.grants || null,
             JSON.stringify(media.media), JSON.stringify(v.links), v.responsibleName, v.responsibleRole, v.responsibleEmail, v.responsiblePhone,
             v.truthConfirmed, v.publicationConsent, GOVERNOR_VISIT_CONSENT_TEXT, new Date(),
             evento({ type: 'created', to: VISIT_INITIAL_STATE, actorName: v.responsibleName, detail: `Reporte enviado por ${v.responsibleRole}: ${media.media.length} archivo(s), ${v.links.length} enlace(s)` }),
@@ -260,8 +262,9 @@ export const getVisitForCorrection = async (req, res) => {
                 ...publicView(v), statusReason: v.statusReason,
                 clubProfileId: v.clubProfileId, visitDate: visitDateIso(v.visitDate),
                 governorName: v.governorName, venue: v.venue, reason: v.reason,
-                description: v.description, activities: v.activities, topics: v.topics, recognitions: v.recognitions,
-                agreements: v.agreements, commitments: v.commitments, highlights: v.highlights,
+                description: v.description,
+                featuredActivities: v.featuredActivities, alliances: v.alliances, works: v.works,
+                permanentPrograms: v.permanentPrograms, projects: v.projects, grants: v.grants,
                 links: v.links, media: await mediaWithUrls(v),
                 responsibleName: v.responsibleName, responsibleRole: v.responsibleRole,
                 responsibleEmail: v.responsibleEmail, responsiblePhone: v.responsiblePhone,
@@ -290,7 +293,7 @@ export const submitVisitCorrection = async (req, res) => {
             `UPDATE "GovernorVisit" SET
                 status = 'en_revision', "clubProfileId" = $2, "clubName" = $3, "clubCity" = $4, "clubState" = $5, "clubSlug" = $6, "clubPlatformId" = $7,
                 "visitDate" = $8, "governorName" = $9, venue = $10, title = $11, reason = $12,
-                description = $13, activities = $14, topics = $15, recognitions = $16, agreements = $17, commitments = $18, highlights = $19,
+                description = $13, "featuredActivities" = $14, alliances = $15, works = $16, "permanentPrograms" = $17, projects = $18, grants = $19,
                 media = $20, links = $21, "responsibleName" = $22, "responsibleRole" = $23, "responsibleEmail" = $24, "responsiblePhone" = $25,
                 "truthConfirmed" = TRUE, "publicationConsent" = TRUE, "consentAt" = NOW(),
                 "correctionToken" = NULL, "correctionTokenExpires" = NULL,
@@ -301,7 +304,9 @@ export const submitVisitCorrection = async (req, res) => {
                 actual.id, club.id, club.officialName, club.city || null, club.state || null, club.slug || null, club.clubId || null,
                 // Título y motivo históricos se conservan: el formulario ya no los muestra.
                 v.visitDate, v.governorName, v.venue, v.title || actual.title || visitTitleFor({ clubName: club.officialName }), v.reason || actual.reason || null,
-                v.description, v.activities || null, v.topics || null, v.recognitions || null, v.agreements || null, v.commitments || null, v.highlights || null,
+                // v4.1284: las categorías anteriores (activities, topics…) no se
+                // tocan: el club ya no las ve, y la visita conserva lo que tenía.
+                v.description, v.featuredActivities || null, v.alliances || null, v.works || null, v.permanentPrograms || null, v.projects || null, v.grants || null,
                 JSON.stringify(media.media), JSON.stringify(v.links), v.responsibleName, v.responsibleRole, v.responsibleEmail, v.responsiblePhone,
                 evento({ type: 'corrected', from: 'correcciones', to: 'en_revision', actorName: v.responsibleName, detail: 'Correcciones enviadas por el club desde el enlace de corrección.' }),
             ]
@@ -459,7 +464,7 @@ export const adminGetVisit = async (req, res) => {
     } catch (e) { return fail(res, e); }
 };
 
-const EDITABLE = ['visitDate', 'governorName', 'venue', 'title', 'reason', 'description', 'activities', 'topics', 'recognitions', 'agreements', 'commitments', 'highlights', 'responsibleName', 'responsibleRole', 'responsibleEmail', 'responsiblePhone'];
+const EDITABLE = ['visitDate', 'governorName', 'venue', 'title', 'reason', 'description', 'featuredActivities', 'alliances', 'works', 'permanentPrograms', 'projects', 'grants', 'activities', 'topics', 'recognitions', 'agreements', 'commitments', 'highlights', 'responsibleName', 'responsibleRole', 'responsibleEmail', 'responsiblePhone'];
 
 // PUT /visitas-gobernador/admin/:id — editar (texto, club, galería existente)
 export const adminUpdateVisit = async (req, res) => {
@@ -518,7 +523,8 @@ export const adminUpdateVisit = async (req, res) => {
                 "visitDate" = $8, "governorName" = $9, venue = $10, title = $11, reason = $12,
                 description = $13, activities = $14, topics = $15, recognitions = $16, agreements = $17, commitments = $18, highlights = $19,
                 media = $20, links = $21, "responsibleName" = $22, "responsibleRole" = $23, "responsibleEmail" = $24, "responsiblePhone" = $25,
-                "adminNotes" = $26, history = history || $27::jsonb, "updatedAt" = NOW()
+                "adminNotes" = $26, history = history || $27::jsonb, "updatedAt" = NOW(),
+                "featuredActivities" = $29, alliances = $30, works = $31, "permanentPrograms" = $32, projects = $33, grants = $34
               WHERE id = $1 AND status = $28 RETURNING id`,
             [
                 actual.id, club.id, club.officialName, club.city || null, club.state || null, club.slug || null, club.clubId || null,
@@ -527,6 +533,7 @@ export const adminUpdateVisit = async (req, res) => {
                 JSON.stringify(media), JSON.stringify(v.links), v.responsibleName, v.responsibleRole, v.responsibleEmail, v.responsiblePhone,
                 notas, evento({ type: 'edited', actor, actorName, detail: cambios.length ? `Editado: ${cambios.join(', ')}.` : 'Guardado sin cambios.' }),
                 actual.status,
+                v.featuredActivities || null, v.alliances || null, v.works || null, v.permanentPrograms || null, v.projects || null, v.grants || null,
             ]
         );
         if (!rows[0]) return res.status(409).json({ error: 'La visita cambió mientras la editabas. Recarga.' });
