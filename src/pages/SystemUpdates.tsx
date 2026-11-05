@@ -34,13 +34,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1282.0 | 2026-11-05 (Programas: la landing con los patrones institucionales del sitio)
+// UI V4.1283.0 | 2026-11-05 (Visitas del Gobernador: paso 1 simplificado con la descripción de 80 a 700 caracteres)
 // Cache bust: 2026-11-04
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1283.0',
+        title: 'Visitas del Gobernador: un formulario más sencillo, con la descripción en el primer paso 📝',
+        description: 'El paso 1 «Club y visita» concentra lo esencial: fecha real de la visita, Gobernador visitante, lugar y la descripción de la visita, que pasa del paso 2 al 1. Se quitan del formulario el título y el motivo del encuentro. La descripción es obligatoria, de 80 a 700 caracteres, con contador «125 / 700 caracteres» y avisos claros, y se valida igual en el navegador y en el servidor. El Gobernador visitante llega precargado con el del período vigente, Fabio Enrique Véjar Montañez, tomado de la configuración del distrito; las visitas anteriores conservan su Gobernador.',
+        date: new Date().toISOString(),
+        tags: ['visitas del gobernador', 'rotary en acción', 'formulario', 'validación', 'gobernador'],
+        type: 'improvement',
+        impact: 'Media: reportar una visita pide menos campos; el panel muestra la descripción como información principal y edita con el mismo rango, sin perder los datos históricos.',
+        changes: [
+            { type: 'removed', text: 'Título y Motivo del encuentro salen del formulario público. Las columnas se conservan: las visitas anteriores siguen mostrando su título y su motivo («registro anterior»), y una visita nueva recibe un título compuesto con el club («Visita oficial del Gobernador al Club…»), que el panel y la publicación en Rotary en Acción siguen usando.' },
+            { type: 'changed', text: 'Descripción de la visita en el paso 1, a todo el ancho y después de Lugar: área amplia, contador dinámico, «Has alcanzado el máximo de 700 caracteres», borde rojo ante un error; no se avanza con una descripción fuera del rango. El paso 2 queda para la memoria opcional y la galería. Mismo campo en la base (description): sin columnas nuevas.' },
+            { type: 'added', text: 'Gobernador del período: Administración → Distritos (dato institucional) y, como respaldo, un registro por período rotario en server/lib/districtGovernor.js, compartido con Aniversarios IA. Si la fecha elegida es de otro período, el formulario pide confirmar el Gobernador de entonces.' },
+            { type: 'changed', text: 'Panel de Visitas: la descripción aparece junto a fecha, Gobernador y lugar; al editar se valida de 80 a 700 caracteres sólo si se modifica, así una visita histórica con otro formato se sigue consultando y editando. La búsqueda incluye la descripción. Prueba test:visitas-gobernador ampliada (105 comprobaciones).' },
+        ],
+    },
     {
         version: '4.1282.0',
         title: 'Programas: la landing de Clínicas Ponseti con los patrones institucionales del sitio 🎨',

@@ -1,6 +1,11 @@
 // ════════════════════════════════════════════════════════════════════════════
 // Visitas del Gobernador — formulario público (v4.1260.0 · tres pasos: v4.1262.0)
 //
+// v4.1283.0 — Paso 1 simplificado: fecha, Gobernador (el del período vigente
+// por defecto, de la configuración del distrito), lugar y la DESCRIPCIÓN de la
+// visita (80–700 caracteres, con contador). Sin título ni motivo del
+// encuentro; el paso 2 queda para la memoria opcional y la galería.
+//
 // Tres pasos (v4.1262: Club y visita · Memoria y galería · Responsable y envío) con la misma arquitectura visual de Rotary en Acción (Navbar,
 // cabecera institucional, tarjetas, barra de pasos, navegación Atrás /
 // Siguiente) y la misma subida: URL prefirmada → PUT directo a S3 con
@@ -29,9 +34,10 @@ import ClubSelector from '../clubs/ClubSelector';
 import type { CatalogClub } from '../../lib/clubCatalog';
 import { ACCEPT_ATTR, checkFileMeta, kindOf, LIMITS_LABEL, DUPLICATE_MESSAGE, duplicateKey, partialFileHash } from '../../lib/contentSubmissionSpec';
 import {
-  EMPTY_VISIT, VISIT_CAPTION_MAX, VISIT_MAX_LINKS, VISIT_MAX_PHOTOS, VISIT_MAX_VIDEOS, VISIT_STEPS,
+  EMPTY_VISIT, VISIT_CAPTION_MAX, VISIT_DESCRIPTION_MAX, VISIT_DESCRIPTION_MIN, VISIT_MAX_LINKS, VISIT_MAX_PHOTOS, VISIT_MAX_VIDEOS, VISIT_STEPS,
   normalizeVisitLink, todayLocal, validateVisitStep, visitDateLabel, type VisitDraft,
 } from '../../lib/governorVisitSpec';
+import { rotaryPeriodFrom } from '../../lib/rotaryPeriod';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const BASE = `${API}/rotary-en-accion/visitas-gobernador`;
@@ -40,10 +46,14 @@ const DRAFT_KEY = 'governor-visit-draft';
 const CAMPO = 'w-full p-3.5 rounded-xl border-2 border-gray-100 text-base bg-gray-50/60 outline-none focus:border-rotary-blue transition-colors';
 const ROTULO = 'block text-[11px] font-black text-gray-400 uppercase tracking-[0.15em] mb-2';
 const TARJETA = 'bg-white rounded-3xl p-6 sm:p-8 md:p-10 shadow-sm border border-gray-100';
+/** El campo con su estado de error visible (borde y fondo), no sólo el aviso. */
+const campoCon = (error?: string) => (error ? CAMPO.replace('border-gray-100', 'border-red-300').replace('bg-gray-50/60', 'bg-red-50/40') : CAMPO);
 
 interface Club { id: string; name: string; shortName: string; city: string; state: string; slug: string; siteId: string | null }
 interface Config {
   clubs: Club[]; district?: number; governors: string[]; consentText: string;
+  /** v4.1283 — El Gobernador del período vigente (configuración del distrito). */
+  currentGovernor?: { name: string; period: string; source: string } | null;
   limits: { maxPhotos: number; maxVideos: number; maxLinks: number; captionMax: number };
 }
 type Estado = 'pending' | 'uploading' | 'uploaded' | 'error';
@@ -53,6 +63,17 @@ interface Archivo {
 }
 
 const nuevoId = () => Math.random().toString(36).slice(2, 10);
+
+/** Del borrador local, sólo los campos que el formulario conoce y con su tipo:
+ *  un borrador de la versión anterior traía título y motivo, que ya no van. */
+const camposDelBorrador = (d: Record<string, unknown>): Partial<VisitDraft> => Object.fromEntries(
+  (Object.keys(EMPTY_VISIT) as (keyof VisitDraft)[])
+    .filter((k) => (Array.isArray(EMPTY_VISIT[k]) ? Array.isArray(d[k]) : typeof d[k] === typeof EMPTY_VISIT[k]))
+    .map((k) => [k, d[k]]),
+) as Partial<VisitDraft>;
+
+/** El período rotario de una fecha «2026-10-29», leída como fecha de calendario. */
+const periodoDe = (iso: string) => (/^\d{4}-\d{2}-\d{2}$/.test(iso) ? rotaryPeriodFrom(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1) : null);
 
 // ── Piezas de presentación (fuera del componente: ver CLAUDE.md) ─────────
 const Marco: React.FC<{ children: React.ReactNode }> = ({ children }) => (
@@ -71,6 +92,40 @@ const Campo: React.FC<{ label: string; htmlFor?: string; error?: string; hint?: 
     {error && <p className="text-xs text-red-600 font-semibold mt-1" role="alert">{error}</p>}
   </div>
 );
+
+/**
+ * v4.1283 — La descripción de la visita: área amplia, contador «125 / 700
+ * caracteres» y el estado del rango debajo. El tope duro es `maxLength`; un
+ * borrador anterior más largo se ve en rojo hasta recortarlo.
+ */
+const CampoDescripcion: React.FC<{ value: string; error?: string; onChange: (v: string) => void }> = ({ value, error, onChange }) => {
+  const n = value.trim().length;
+  const tope = value.length >= VISIT_DESCRIPTION_MAX;
+  const estado = n > VISIT_DESCRIPTION_MAX ? null
+    : tope ? { t: `Has alcanzado el máximo de ${VISIT_DESCRIPTION_MAX} caracteres.`, c: 'text-amber-600' }
+      : n === 0 ? { t: `Mínimo ${VISIT_DESCRIPTION_MIN} caracteres.`, c: 'text-gray-400' }
+        : n < VISIT_DESCRIPTION_MIN ? { t: `Faltan ${VISIT_DESCRIPTION_MIN - n} caracteres para el mínimo.`, c: 'text-gray-500' }
+          : { t: 'Extensión adecuada.', c: 'text-emerald-600' };
+  return (
+    <div>
+      <label className={ROTULO} htmlFor="gv-desc">Descripción de la visita</label>
+      <textarea
+        id="gv-desc" rows={7} maxLength={VISIT_DESCRIPTION_MAX} value={value}
+        onChange={(e) => onChange(e.target.value)}
+        aria-invalid={!!error} aria-describedby="gv-desc-contador"
+        className={`${campoCon(error)} min-h-[11rem] resize-y leading-relaxed`}
+        placeholder="Describe cómo se desarrolló la visita, quiénes participaron, las actividades realizadas y los principales momentos del encuentro."
+      />
+      <div id="gv-desc-contador" className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mt-1.5" aria-live="polite">
+        {error ? <p className="text-xs text-red-600 font-semibold" role="alert">{error}</p>
+          : estado ? <p className={`text-[11px] font-semibold ${estado.c}`}>{estado.t}</p> : <span />}
+        <p className={`text-[11px] font-bold tabular-nums ${n > VISIT_DESCRIPTION_MAX || error ? 'text-red-600' : tope ? 'text-amber-600' : 'text-gray-400'}`}>
+          {n} / {VISIT_DESCRIPTION_MAX} caracteres
+        </p>
+      </div>
+    </div>
+  );
+};
 
 const TituloPaso: React.FC<{ icon: React.ReactNode; titulo: string; texto: string }> = ({ icon, titulo, texto }) => (
   <div className="flex items-start gap-3 mb-6">
@@ -167,6 +222,9 @@ export default function GovernorVisitForm() {
       const { data } = await leerJson<Config & { error?: string }>(r);
       if (!r.ok || !data) throw new Error(data?.error || `No se pudo cargar el formulario (${r.status}).`);
       setCfg(data);
+      // v4.1283 — Una visita NUEVA arranca con el Gobernador del período
+      // vigente; quien reporta puede cambiarlo. Una corrección trae el suyo.
+      const vigente = data.currentGovernor?.name || '';
       if (correctionToken) {
         const rc = await fetch(`${BASE}/correccion/${encodeURIComponent(correctionToken)}`);
         const { data: dc } = await leerJson<any>(rc);
@@ -176,7 +234,7 @@ export default function GovernorVisitForm() {
         setV({
           ...EMPTY_VISIT,
           clubProfileId: x.clubProfileId || '', visitDate: x.visitDate || '', governorName: x.governorName || '',
-          venue: x.venue || '', title: x.title || '', reason: x.reason || '', description: x.description || '',
+          venue: x.venue || '', description: x.description || '',
           activities: x.activities || '', topics: x.topics || '', recognitions: x.recognitions || '',
           agreements: x.agreements || '', commitments: x.commitments || '', highlights: x.highlights || '',
           links: (x.links || []).map((l: any) => ({ url: l.url, caption: l.caption || '' })),
@@ -194,11 +252,12 @@ export default function GovernorVisitForm() {
           if (raw) {
             const d = JSON.parse(raw);
             if (d && typeof d === 'object') {
-              setV({ ...EMPTY_VISIT, ...d, truthConfirmed: false, publicationConsent: false });
+              const previo = camposDelBorrador(d);
+              setV({ ...EMPTY_VISIT, ...previo, governorName: String(previo.governorName || '').trim() ? String(previo.governorName) : vigente, truthConfirmed: false, publicationConsent: false });
               setBorradorRestaurado(true);
-            }
-          }
-        } catch { /* sin borrador */ }
+            } else setV({ ...EMPTY_VISIT, governorName: vigente });
+          } else setV({ ...EMPTY_VISIT, governorName: vigente });
+        } catch { setV({ ...EMPTY_VISIT, governorName: vigente }); }
       }
     } catch (e: any) {
       setErrorCarga(e?.message || 'No se pudo cargar el formulario.');
@@ -413,7 +472,7 @@ export default function GovernorVisitForm() {
 
   const descartarBorrador = () => {
     try { localStorage.removeItem(DRAFT_KEY); } catch { /* noop */ }
-    setV(EMPTY_VISIT);
+    setV({ ...EMPTY_VISIT, governorName: cfg?.currentGovernor?.name || '' });
     setBorradorRestaurado(false);
   };
 
@@ -432,6 +491,15 @@ export default function GovernorVisitForm() {
   );
 
   const pct = enviado ? 100 : Math.round(((step - 1) / VISIT_STEPS.length) * 100);
+
+  // v4.1283 — El Gobernador por defecto es el del período vigente. Si la fecha
+  // elegida es de otro período, se avisa para que lo confirme.
+  const vigente = cfg.currentGovernor;
+  const periodoVisita = periodoDe(v.visitDate);
+  const pistaGobernador = !vigente ? undefined
+    : periodoVisita && periodoVisita !== vigente.period
+      ? `La fecha es del período ${periodoVisita}: confirma quién era el Gobernador entonces.`
+      : `Gobernador del período ${vigente.period}, según la configuración del distrito.`;
 
   return (
     <Marco>
@@ -503,26 +571,19 @@ export default function GovernorVisitForm() {
             <TituloPaso icon={<CalendarDays className="w-5 h-5" />} titulo="Información de la visita" texto="Los datos de la visita oficial tal como ocurrió." />
             <div className="grid sm:grid-cols-2 gap-5">
               <Campo label="Fecha real de la visita" htmlFor="gv-fecha" error={errores.visitDate}>
-                <input id="gv-fecha" type="date" max={todayLocal()} value={v.visitDate} onChange={(e) => set('visitDate', e.target.value)} className={CAMPO} />
+                <input id="gv-fecha" type="date" max={todayLocal()} value={v.visitDate} onChange={(e) => set('visitDate', e.target.value)} className={campoCon(errores.visitDate)} />
               </Campo>
-              <Campo label="Gobernador visitante" htmlFor="gv-gob" error={errores.governorName}>
-                <input id="gv-gob" list="gv-gobernadores" value={v.governorName} onChange={(e) => set('governorName', e.target.value)} className={CAMPO} placeholder="Nombre completo" autoComplete="off" />
+              <Campo label="Gobernador visitante" htmlFor="gv-gob" error={errores.governorName} hint={pistaGobernador}>
+                <input id="gv-gob" list="gv-gobernadores" value={v.governorName} onChange={(e) => set('governorName', e.target.value)} className={campoCon(errores.governorName)} placeholder="Nombre completo" autoComplete="off" />
                 <datalist id="gv-gobernadores">{cfg.governors.map((g) => <option key={g} value={g} />)}</datalist>
               </Campo>
               <div className="sm:col-span-2">
                 <Campo label="Lugar" htmlFor="gv-lugar" error={errores.venue}>
-                  <input id="gv-lugar" value={v.venue} onChange={(e) => set('venue', e.target.value)} className={CAMPO} placeholder="Sede, dirección o espacio del encuentro" />
+                  <input id="gv-lugar" value={v.venue} onChange={(e) => set('venue', e.target.value)} className={campoCon(errores.venue)} placeholder="Sede, dirección o espacio del encuentro" />
                 </Campo>
               </div>
               <div className="sm:col-span-2">
-                <Campo label="Título" htmlFor="gv-titulo" error={errores.title}>
-                  <input id="gv-titulo" value={v.title} maxLength={160} onChange={(e) => set('title', e.target.value)} className={CAMPO} placeholder="Ej. Visita oficial del Gobernador al Club Rotario …" />
-                </Campo>
-              </div>
-              <div className="sm:col-span-2">
-                <Campo label="Motivo del encuentro" htmlFor="gv-motivo" error={errores.reason}>
-                  <textarea id="gv-motivo" rows={3} maxLength={1500} value={v.reason} onChange={(e) => set('reason', e.target.value)} className={CAMPO} placeholder="Visita oficial del período, seguimiento de proyectos, entrega de reconocimientos…" />
-                </Campo>
+                <CampoDescripcion value={v.description} error={errores.description} onChange={(val) => set('description', val)} />
               </div>
             </div>
             </div>
@@ -532,11 +593,8 @@ export default function GovernorVisitForm() {
         {/* PASO 2 — Memoria y galería */}
         {step === 2 && !enviado && (
           <div className={TARJETA} data-gv-step="2">
-            <TituloPaso icon={<FileText className="w-5 h-5" />} titulo="Memoria institucional" texto="Lo que quedó de la visita. Solo la descripción es obligatoria; completa lo que aplique." />
+            <TituloPaso icon={<FileText className="w-5 h-5" />} titulo="Memoria institucional" texto="Lo que quedó de la visita, más allá de la descripción del paso 1. Todo es opcional: completa lo que aplique." />
             <div className="space-y-5">
-              <Campo label="Descripción de la visita" htmlFor="gv-desc" error={errores.description} hint={`${v.description.trim().length} caracteres · mínimo 80`}>
-                <textarea id="gv-desc" rows={6} maxLength={6000} value={v.description} onChange={(e) => set('description', e.target.value)} className={CAMPO} placeholder="Cómo se desarrolló la visita, quiénes participaron y qué se vivió." />
-              </Campo>
               <div className="grid sm:grid-cols-2 gap-5">
                 {([
                   ['activities', 'Actividades desarrolladas', 'Reunión con la junta, visita a proyectos…'],
@@ -636,7 +694,7 @@ export default function GovernorVisitForm() {
                 <Resumen etiqueta="Club" valor={clubSel?.name} />
                 <Resumen etiqueta="Fecha" valor={visitDateLabel(v.visitDate)} />
                 <Resumen etiqueta="Gobernador" valor={v.governorName} />
-                <Resumen etiqueta="Título" valor={v.title} />
+                <Resumen etiqueta="Lugar" valor={v.venue} />
                 <Resumen etiqueta="Material" valor={`${conteo.photos} foto(s) · ${conteo.videos} video(s) · ${v.links.length} enlace(s)`} />
               </dl>
             </div>

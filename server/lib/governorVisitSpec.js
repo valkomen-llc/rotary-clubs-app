@@ -69,6 +69,36 @@ export const VISIT_MAX_VIDEOS = 3;
 export const VISIT_MAX_LINKS = 10;
 export const VISIT_CAPTION_MAX = 300;
 
+// ─── La descripción de la visita (v4.1283) ─────────────────────────────
+//
+// Desde v4.1283 es el ÚNICO texto obligatorio y vive en el paso 1, junto a la
+// fecha, el Gobernador y el lugar; reemplaza al título y al motivo del
+// encuentro, que el formulario ya no pide. Entre 80 y 700 caracteres, contados
+// sobre el texto recortado (lo mismo que cuenta el navegador).
+//
+// `shapeVisit` sigue admitiendo hasta 6000 para no cortar en silencio una
+// descripción histórica más larga: el tope lo decide `validateVisit`, y la
+// edición administrativa no lo exige a una descripción que no se tocó.
+export const VISIT_DESCRIPTION_MIN = 80;
+export const VISIT_DESCRIPTION_MAX = 700;
+
+/** El aviso de la descripción, o '' si cumple. Mismo texto en el navegador. */
+export const visitDescriptionError = (text) => {
+    const n = String(text ?? '').trim().length;
+    if (n < VISIT_DESCRIPTION_MIN) return `La descripción debe tener al menos ${VISIT_DESCRIPTION_MIN} caracteres (lleva ${n}).`;
+    if (n > VISIT_DESCRIPTION_MAX) return `La descripción no puede superar los ${VISIT_DESCRIPTION_MAX} caracteres (lleva ${n}).`;
+    return '';
+};
+
+/**
+ * El título de una visita. El formulario ya no lo pide (v4.1283), pero la
+ * columna es NOT NULL, el panel y la ficha del club lo muestran y la
+ * publicación en Rotary en Acción lo necesita: se compone con el club. Una
+ * visita anterior conserva el título que escribió su club.
+ */
+export const visitTitleFor = ({ clubName } = {}) =>
+    str(`Visita oficial del Gobernador al ${String(clubName || '').trim() || 'club'}`, 160);
+
 /** Un enlace audiovisual: http(s), con host, sin credenciales. */
 export const normalizeVisitLink = (raw) => {
     const value = str(raw, 600);
@@ -107,6 +137,9 @@ export const shapeVisit = (raw = {}) => {
         visitDate: isoDate(raw.visitDate),
         governorName: str(raw.governorName, 160),
         venue: str(raw.venue, 240),
+        // Título y motivo: ya no los pide el formulario (v4.1283). Se siguen
+        // aceptando para no romper un navegador con la versión anterior en
+        // caché ni la edición de una visita histórica que los tiene.
         title: str(raw.title, 160),
         reason: multi(raw.reason, 1500),
         description: multi(raw.description, 6000),
@@ -137,8 +170,12 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
  * `admin: true` es la edición desde el panel: no vuelve a exigir el
  * consentimiento ni la confirmación (ya los dio quien envió) y no toca la
  * galería (la edición de texto no re-sube nada).
+ *
+ * `storedDescription` (sólo la edición administrativa) es la descripción ya
+ * guardada: si no cambió, no se le exige el rango 80–700. Así una visita
+ * histórica con otro formato se sigue pudiendo editar en lo demás.
  */
-export const validateVisit = (v, { today = new Date().toISOString().slice(0, 10), admin = false } = {}) => {
+export const validateVisit = (v, { today = new Date().toISOString().slice(0, 10), admin = false, storedDescription = null } = {}) => {
     const errors = [];
     const push = (step, field, message) => errors.push({ step, field, message });
 
@@ -149,10 +186,10 @@ export const validateVisit = (v, { today = new Date().toISOString().slice(0, 10)
     else if (v.visitDate < '2000-01-01') push(1, 'visitDate', 'Revisa la fecha de la visita.');
     if (v.governorName.length < 3) push(1, 'governorName', 'Escribe el nombre del Gobernador visitante.');
     if (v.venue.length < 3) push(1, 'venue', 'Indica el lugar de la visita.');
-    if (v.title.length < 5) push(1, 'title', 'Escribe un título para la visita (mínimo 5 caracteres).');
-    if (v.reason.length < 10) push(1, 'reason', 'Describe brevemente el motivo del encuentro.');
-
-    if (v.description.length < 80) push(2, 'description', 'La descripción de la visita debe tener al menos 80 caracteres: es la memoria institucional.');
+    // v4.1283: la descripción va en el paso 1 y reemplaza a título y motivo.
+    const sinTocar = admin && storedDescription !== null && v.description === multi(storedDescription, 6000);
+    const avisoDescripcion = sinTocar ? '' : visitDescriptionError(v.description);
+    if (avisoDescripcion) push(1, 'description', avisoDescripcion);
 
     if (!admin) {
         const photos = v.media.filter((m) => kindOf(m.contentType, m.filename) === 'image').length;
@@ -240,8 +277,9 @@ export const visitToSubmissionData = (visit = {}) => ({
     club: visit.clubName,
     mainClub: visit.clubName,
     role: visit.responsibleRole,
-    title: String(visit.title || '').slice(0, 160),
-    description: [visit.reason, visit.venue ? `Lugar: ${visit.venue}` : ''].filter(Boolean).join('\n').slice(0, 3000),
+    title: String(visit.title || visitTitleFor(visit)).slice(0, 160),
+    // Una visita histórica trae su motivo; una nueva (v4.1283), su descripción.
+    description: [visit.reason || visit.description, visit.venue ? `Lugar: ${visit.venue}` : ''].filter(Boolean).join('\n').slice(0, 3000),
     location: visit.venue || null,
     city: visit.clubCity || null,
     activityDate: visitDateIso(visit.visitDate) || null,

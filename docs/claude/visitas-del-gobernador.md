@@ -1,4 +1,4 @@
-# Visitas del Gobernador — v4.1260
+# Visitas del Gobernador — v4.1260 (paso 1 simplificado: v4.1283)
 
 Sección de **Rotary en Acción** (no un módulo aparte) para que las secretarías
 de los clubes del Distrito 4281 reporten la visita oficial del Gobernador, y el
@@ -88,6 +88,49 @@ línea (club + visita; memoria + galería) y el tercero es el responsable.
   prueba compara campo por campo que ambos digan el mismo paso.
 - Ante un error, la vista va al primer aviso (`[data-gv-step] [role="alert"]`),
   que puede estar en el segundo bloque del paso, no al inicio de la página.
+
+## Paso 1 simplificado y Gobernador del período (v4.1283)
+
+Pedido del cliente: menos campos y lo esencial en el primer paso.
+
+- **Paso 1 «Club y visita» → Información de la visita:** fecha real · Gobernador
+  visitante (misma fila en escritorio) · lugar · **Descripción de la visita** a
+  todo el ancho. La descripción pasó del paso 2 al 1; el paso 2 queda para la
+  memoria OPCIONAL (actividades, temas, reconocimientos, acuerdos, compromisos,
+  resultados) y la galería.
+- **Título y Motivo del encuentro salen del formulario**, no de la base: las
+  columnas `title` (NOT NULL) y `reason` siguen. Una visita nueva recibe
+  `visitTitleFor({ clubName })` = «Visita oficial del Gobernador al …» (lo usan
+  el listado, la ficha del club y la publicación); `reason` queda NULL. Una
+  corrección o una edición conservan el título y el motivo que ya tenía. El
+  panel muestra el motivo sólo si existe, como «registro anterior».
+  `shapeVisit` sigue aceptando `title`/`reason` (un navegador con la versión
+  anterior en caché no se rompe).
+- **Descripción: 80–700 caracteres** sobre el texto recortado
+  (`VISIT_DESCRIPTION_MIN/MAX`, `visitDescriptionError`, mismo texto en
+  servidor y navegador; la prueba compara los avisos). `shapeVisit` admite
+  hasta 6000 para no cortar en silencio una descripción histórica; el tope lo
+  pone `validateVisit`. **La edición administrativa** pasa
+  `storedDescription`: si la descripción no cambió, no se le exige el rango
+  (una visita histórica con otro formato se sigue editando en lo demás); si
+  cambió, vale 80–700. El formulario usa `maxLength=700`, contador
+  «N / 700 caracteres», «Has alcanzado el máximo…» y borde rojo ante el error.
+  El borrador local de la versión anterior se filtra a los campos actuales
+  (`camposDelBorrador`): no resucita título ni motivo.
+- **Gobernador del período:** `server/lib/districtGovernor.js` es la única
+  fuente. Manda `District.governor` (Administración → Distritos, distrito
+  4281); si está vacío, el respaldo `GOVERNOR_BY_PERIOD['2026-2027']` =
+  Fabio Enrique Véjar Montañez. `GET …/config` lo entrega como
+  `currentGovernor { name, period, source }` y el formulario lo precarga SOLO
+  en una visita nueva (no en una corrección, no si el borrador ya traía uno).
+  Si la fecha elegida es de otro período, la pista pide confirmar el
+  Gobernador de entonces. Nada se aplica hacia atrás: cada visita conserva su
+  `governorName`. `anniversarySpec.DEFAULT_GOVERNOR` ahora se reexporta de
+  aquí (el nombre está escrito en un solo lugar). Para un período nuevo:
+  cambiar el Gobernador en Distritos (y, si se quiere respaldo, agregar su
+  línea en `GOVERNOR_BY_PERIOD`).
+- **Publicación:** `visitToSubmissionData` usa `title || visitTitleFor(...)` y,
+  como resumen, el motivo (visitas anteriores) o la descripción (nuevas).
 
 ## Estadísticas (`GET …/admin/stats`)
 
