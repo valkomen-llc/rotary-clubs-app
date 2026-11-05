@@ -203,6 +203,9 @@ privados: autorizaciones y respaldos), `ProgramAuditLog`, `ProgramMetricDaily` y
 `ProgramVisitor` (métricas sin IP), y la página pública por contenedores
 (v4.1281): `ProgramLanding` (borrador y versión publicada) y
 `ProgramLandingVersion`.
+Y la traza de cada mensaje entrante de WhatsApp (v4.1285):
+`WhatsAppInboundTrace` (el recorrido de cada «Hola» y la única evidencia de
+qué conversaciones quedaron sin respuesta).
 (Más las del registro de eventos que enumera su propia sección:
 `EventEdition`, `EventRegistrationCategory`, `EventRegistrationCompanion`,
 `EventRegistrationPayment`, `EventRegistrationHistory`,
@@ -265,7 +268,7 @@ es **rotar la credencial en Neon**, no sólo borrar el archivo.
 | Sin el accesorio «Página de aportes sin campaña» — v4.989 | `docs/claude/sin-el-accesorio-pagina-de-aportes-sin-campana.md` |
 | Una sola herramienta: Campañas de Contribución — v4.987 (supersede v4.986; el alcance de escritura lo matiza v4.988) | `docs/claude/una-sola-herramienta-campanas-de-contribucion.md` |
 | Distribución multi-destino — v4.864 (vista previa v4.865, panel de grupos v4.876) | `docs/claude/distribucion-multi-destino.md` |
-| WhatsApp CRM — motor de automatización — v4.701 | `docs/claude/whatsapp-crm.md` |
+| WhatsApp CRM — motor de automatización — v4.701 (**el agente responde los mensajes reales y el panel lo demuestra: traza por mensaje, cinco silencios corregidos, verde falso de la suscripción, prueba real y reporte de sin respuesta: v4.1285**) | `docs/claude/whatsapp-crm.md` |
 | Inscripciones a eventos / Feria de Proyectos — v4.648 (PayPal de la plataforma por defecto en el pago: v4.1251; seleccionar, editar y eliminar desde el listado: v4.1263; mostrar u ocultar el botón público de cada categoría: v4.1266) | `docs/claude/inscripciones-a-eventos-feria-de-proyectos.md` |
 | Aniversarios IA — v4.895 (motor multimodelo: v4.897; **FLUJO SIMPLE: v4.907**) | `docs/claude/aniversarios-ia.md` |
 | Cuentas institucionales como identidades de acceso — v4.932 | `docs/claude/cuentas-institucionales-como-identidades-de-acceso.md` |

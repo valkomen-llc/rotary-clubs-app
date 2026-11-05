@@ -510,6 +510,18 @@ export const FAILURE_CAUSES = {
     fix: 'Revisar el ID del número de las conexiones, o crear la que falta. El identificador exacto está en la bitácora del webhook.',
     metaCodes: [],
   },
+  webhook_otra_app: {
+    title: 'La cuenta entrega sus mensajes a OTRA aplicación de Meta',
+    detail: 'La suscripción de una cuenta de WhatsApp es de la aplicación dueña del token. Si el token de esta línea pertenece a otra aplicación, Meta entrega los mensajes entrantes a la URL de esa aplicación, no a esta plataforma: los envíos y las campañas funcionan (sólo necesitan el token), el simulador funciona (no pasa por Meta) y ningún mensaje real llega. Es el «verde falso» que este diagnóstico daba por bueno hasta v4.1284.',
+    fix: 'Pulsar «Dirigir el webhook a esta plataforma» en el diagnóstico de esta línea (suscribe la cuenta con la URL de callback de Club Platform), o generar el token con un usuario del sistema de la aplicación de la plataforma.',
+    metaCodes: [],
+  },
+  sin_eventos_de_vuelta: {
+    title: 'Salen mensajes por esta línea y Meta no devuelve ningún evento',
+    detail: 'En los últimos 7 días salieron mensajes por esta línea y no volvió ni un estado de entrega ni un mensaje entrante. Los mensajes llegan a los destinatarios: lo que no llega es el webhook. Es la firma de una suscripción que apunta a otra parte.',
+    fix: 'Revisar a qué aplicación está suscrita la cuenta (arriba) y dirigir el webhook a esta plataforma.',
+    metaCodes: [],
+  },
   sin_agente: {
     title: 'No hay agente asignado a esta línea',
     detail: 'Los mensajes se reciben y se guardan en la bandeja, pero no sale ninguna respuesta automática porque no hay agente propio ni se hereda el del sitio.',
@@ -589,9 +601,30 @@ export function diagnoseConnection(facts = {}) {
   else add('numero', 'El número pertenece a esta cuenta', 'unknown', 'No se pudo listar los números de la cuenta.');
 
   // 4. Suscripción al webhook — la avería que se ve como «todo normal».
-  if (facts.subscribed === true) add('suscripcion', 'Cuenta suscrita al webhook', 'ok', 'Meta entregará los eventos de esta cuenta.');
-  else if (facts.subscribed === false) add('suscripcion', 'Cuenta suscrita al webhook', 'fail', 'La cuenta no figura suscrita a ninguna aplicación.', FAILURE_CAUSES.webhook_sin_suscripcion);
-  else add('suscripcion', 'Cuenta suscrita al webhook', 'unknown', 'No se pudo consultar la suscripción (suele faltar el permiso de administración).');
+  //
+  // ⚠️ «Suscrita» NO BASTA (v4.1285). Hasta v4.1284 este punto se pintaba en
+  // verde si la cuenta estaba suscrita a CUALQUIER aplicación. La suscripción es
+  // de la aplicación dueña del token: si es otra, Meta le entrega a ella. Ahora
+  // se exige que sea la de la plataforma (o un override hacia nuestra URL).
+  if (facts.subscriptionState === 'platform') {
+    add('suscripcion', 'Webhook dirigido a esta plataforma', 'ok', facts.subscriptionDetail || 'Meta entregará los eventos de esta cuenta a esta plataforma.');
+  } else if (facts.subscriptionState === 'other_app') {
+    add('suscripcion', 'Webhook dirigido a esta plataforma', 'fail', facts.subscriptionDetail || 'La cuenta está suscrita a otra aplicación.', FAILURE_CAUSES.webhook_otra_app);
+  } else if (facts.subscriptionState === 'none' || facts.subscribed === false) {
+    add('suscripcion', 'Webhook dirigido a esta plataforma', 'fail', facts.subscriptionDetail || 'La cuenta no figura suscrita a ninguna aplicación.', FAILURE_CAUSES.webhook_sin_suscripcion);
+  } else if (facts.subscriptionState === 'unknown' && facts.subscriptionDetail) {
+    add('suscripcion', 'Webhook dirigido a esta plataforma', 'unknown', facts.subscriptionDetail);
+  } else if (facts.subscribed === true) {
+    // Camino anterior: sólo se sabe que hay ALGUNA suscripción. No es verde.
+    add('suscripcion', 'Webhook dirigido a esta plataforma', 'unknown', 'La cuenta está suscrita a alguna aplicación, pero no se pudo confirmar que sea la de esta plataforma.');
+  } else add('suscripcion', 'Webhook dirigido a esta plataforma', 'unknown', 'No se pudo consultar la suscripción (suele faltar el permiso de administración).');
+
+  // 4b. La PRUEBA de que los eventos vuelven: salen mensajes y no vuelve nada.
+  if (Number(facts.outbound7d || 0) >= 5 && Number(facts.statusesBack7d || 0) === 0 && !facts.lastWebhookAt) {
+    add('eventos', 'Meta devuelve eventos de esta línea', 'fail', `Salieron ${facts.outbound7d} mensajes en 7 días y no volvió ningún evento (ni estados ni entrantes).`, FAILURE_CAUSES.sin_eventos_de_vuelta);
+  } else if (facts.lastWebhookAt) {
+    add('eventos', 'Meta devuelve eventos de esta línea', 'ok', `Último evento recibido: ${facts.lastWebhookAt}.`);
+  }
 
   // 5. Último webhook recibido. Es una MEDIDA, no una opinión.
   if (facts.lastInboundAt) add('entrada', 'Último evento recibido', 'ok', `Se recibió algo por esta línea el ${facts.lastInboundAt}.`);

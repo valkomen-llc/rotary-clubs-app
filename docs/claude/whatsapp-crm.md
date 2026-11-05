@@ -763,3 +763,139 @@ llaman al `handleWebhook` real). Misma exigencia que `test:crm`: base vacía.
 pantalla que el equipo usa a diario. `sendCampaign` mantiene su copia de la
 lógica de envío (ver arriba). Y el chatbot sigue **apagado** hasta que alguien lo
 encienda a propósito.
+
+### El agente responde los mensajes reales, y el panel lo demuestra — v4.1285
+
+**El caso (2026-11-05).** Línea «Feria de Proyectos Rotary Colombia ·
++57 321 6937317»: credenciales válidas, número de la cuenta, «Cuenta suscrita
+al webhook» en verde, campañas saliendo, agente encendido y el simulador
+respondiendo. Los «Hola» y «Estoy interesado» reales no recibían nada.
+
+**Lo que se pudo y lo que NO se pudo comprobar.** El análisis se hizo sobre el
+código y con pruebas de punta a punta contra el `handleWebhook` real; **no se
+pudo leer la base de producción ni hacer la prueba real por WhatsApp** desde la
+sesión de desarrollo. Por eso la causa exacta de la Feria **no se afirma**: se
+listan las cinco causas encontradas, todas reales en el código, y la herramienta
+que dice cuál fue en un minuto («Prueba real por WhatsApp» + «Conversaciones sin
+respuesta» + el diagnóstico de la suscripción). El criterio de aceptación del
+pedido —un «Hola» real respondido— queda **pendiente de esa prueba en
+producción**.
+
+**Por qué el simulador funciona y WhatsApp no.** El simulador
+(`POST /crm/agent-config/test` → `previewAgentReply`) usa la instrucción que
+está EN PANTALLA, guardada o no, y no pasa por Meta, el webhook, la resolución
+de la línea, las reglas, la pausa humana, `sendGuard` ni el envío. Que responda
+demuestra el modelo y la instrucción; nada más. Ahora lo dice en la pantalla.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/whatsappInbound.js` | El CRITERIO. **Puro**: etapas, catálogo CERRADO de motivos (cada uno con `fix` y `human`), errores de Meta por línea/pasajeros, aplanado del lote, código de prueba, salud por bloques y juicio de la suscripción |
+| `server/lib/whatsappInboundStore.js` | `WhatsAppInboundTrace`: reclamo idempotente, etapas, estados de la respuesta, reporte de sin respuesta, hechos de salud y trazas trabadas. **Nunca tumba el webhook** |
+| `server/services/whatsappInboundProcessor.js` | Bandeja → agente → Meta con la traza; y `retryStuckInbound` para el cron |
+| `src/components/admin/whatsapp/WhatsAppLineHealth.tsx` | «Funcionamiento real de la línea» en Automatización |
+
+Pruebas: `npm run test:whatsapp:inbound` (98, sin base ni red, con el webhook
+real), más `test:whatsapp:router` (106), `test:whatsapp:connections` (159),
+`test:whatsapp:scope` (158) y `test:crm:diag` (69, con un Postgres VACÍO).
+Verificadas a la inversa: devolver la degradación por cualquier error, leer sólo
+`entry[0]` o quitar el `ON CONFLICT` del reclamo hacen fallar la batería.
+
+**Las cinco causas de silencio encontradas (todas corregidas):**
+
+1. **⚠️ EL VERDE FALSO DE LA SUSCRIPCIÓN.** `diagnose` daba «suscrita» con
+   CUALQUIER app en `GET /{waba}/subscribed_apps`. La suscripción es de la APP
+   DEL TOKEN: con el token de otra app de Meta, `POST /subscribed_apps` suscribe
+   esa app y Meta entrega a SU callback. Envíos y simulador funcionan; nada
+   entra. Ahora `judgeSubscription` exige `META_APP_ID` (o un override hacia
+   nuestra URL), se pregunta `GET /app` por la app del token, y «Dirigir el
+   webhook a esta plataforma» suscribe con `override_callback_uri` +
+   `verify_token` (`WA_VERIFY_TOKEN`; `verifyWebhook` acepta también el
+   `verifyToken` de cada `WhatsAppConnection`). Además: salen ≥ 5 mensajes en
+   7 días y no vuelve NINGÚN evento → falla «Meta devuelve eventos de esta línea».
+2. **⚠️ EL APAGÓN AUTOINFLIGIDO.** Cualquier error al enviar una respuesta
+   hacía `markError` con `degrade` y la línea pasaba a `error`, donde `sendGuard`
+   bloquea TODO lo que sale —respuestas y campañas— hasta «Verificar». Un 131047
+   (fuera de la ventana) de un solo contacto dejaba muda la línea. Ahora sólo
+   degrada `classifyMetaSendError(...).lineLevel` (token, permisos, número, cuenta
+   bloqueada). Y `diagnose` recupera a `active` si Meta acepta la credencial.
+3. **⚠️ LA PLANTILLA QUE PAUSABA AL AGENTE.** `sendMessageToContact` ponía
+   `autoReplyPausedUntil` también al enviar una PLANTILLA desde el Chat: mandar
+   la invitación de la Feria silenciaba al agente 120 min justo cuando la persona
+   contestaba. Sólo pausa un texto/medio escrito por una persona, y con los
+   minutos del agente de ESA línea. **La pausa sigue siendo por contacto, no por
+   línea** (pendiente: una persona que responde en el Distrito pausa también a la
+   Feria para ese contacto; la traza lo dice como `pausa_humana`).
+4. **⚠️ EL LOTE LEÍDO A MEDIAS.** El webhook leía `entry[0].changes[0]`. Meta
+   agrupa: un mensaje de la Feria detrás de los estados del Distrito se perdía
+   sin rastro. `flattenWebhook` recorre todas las entradas y cambios; los cambios
+   de cuenta (plantillas, calidad) se anotan y no se encaminan.
+5. **⚠️ LA IDEMPOTENCIA QUE NO ERA.** Era un `SELECT` y un `INSERT … ON CONFLICT
+   DO NOTHING` sobre `WhatsAppMessageLog`, que NO tiene índice único en
+   `messageId`: dos entregas simultáneas respondían dos veces. Ahora se RECLAMA
+   el `wamid` contra `uniq_wa_inbound_trace_message`. Si la tabla de trazas no
+   está disponible, se cae a la deduplicación de siempre.
+
+Y de paso: las respuestas a **botones** de plantilla (`button`, `interactive`)
+llegan al agente (antes sólo `text`); una línea con **agente propio** no
+contesta con el menú GLOBAL del chatbot (era otra organización contestando);
+`metaApiCall` tiene tope de 20 s y nunca hace `.json()` a ciegas; el destinatario
+va en dígitos como en el resto de envíos.
+
+**Reglas durables:**
+
+- **⚠️ TODO ENTRANTE TERMINA EN UN DESENLACE CON MOTIVO.** `replied`, `skipped`
+  (regla: pausa, silencio, baja, multimedia, agente apagado/ausente) o `failed`
+  (avería). Un `return` mudo o un `console.error` como único rastro es el defecto
+  que esto corrige. El catálogo `REASONS` es CERRADO y cada entrada tiene `fix`;
+  `human: true` separa «está bien que no responda» de «hay que arreglar algo», y
+  el reporte no los mezcla.
+- **⚠️ SÓLO SE REINTENTA LO QUE NO PUDO HABER SALIDO.** Red antes de conectar,
+  5xx, 130429/131000…: sí (máx. 3 intentos, 1 s y 3 s). Un tiempo agotado contra
+  Meta, un error que no viene de Meta (la base falló DESPUÉS de que Meta aceptó)
+  o una traza que ya llegó a `sent_to_meta`: **no**, se cierra como
+  `resultado_desconocido`. Una respuesta duplicada también es un defecto.
+- **El cron retoma lo interrumpido** (`crm-automation-tick`, primer paso):
+  `pending` sin movimiento hace > 3 min y recibido hace < 30 min, con
+  `claimRetry` condicional sobre `attempts` (dos vueltas no responden dos veces).
+  Más de 30 min: mejor una persona que un «Hola» contestado tarde.
+- **NO SE USÓ `waitUntil`.** El webhook sigue procesando ANTES del 200 (la
+  decisión de siempre): `waitUntil` depende de cómo corre la función en Vercel y,
+  si no completara, el agente dejaría de responder en todas las líneas. Lo que
+  hace seguro responder tarde es la idempotencia por `wamid` y el reintento.
+- **⚠️ LA FIRMA SE REGISTRA Y SÓLO BLOQUEA CON `WA_ENFORCE_SIGNATURE=true`.** Una
+  cuenta con override de callback recibe los eventos firmados por la app dueña
+  del token, con OTRO secreto: bloquear por defecto volvería a dejar muda a la
+  línea que esto arregla. Encender la variable cuando todas las líneas entreguen
+  por la app de la plataforma.
+- **⚠️ «OPERATIVO» SE DEMUESTRA.** `evaluateLineHealth`: credenciales válidas =
+  «Conectado»; «Operativo» exige recepción reciente Y respuestas enviadas. Lo que
+  no se consultó en vivo no se pinta verde (`live=1` sólo al pulsar «Comprobar
+  con Meta»: la vista se refresca sola y no puede gastar llamadas).
+- **LA PRUEBA REAL NO TIENE ATAJO.** El código (`PRUEBA-XXXXXX`) no se guarda al
+  generarlo: viaja en el mensaje y el webhook lo anota. Así recorre exactamente
+  el camino de un mensaje real. El agente (y la bandeja, y el historial) reciben
+  el texto SIN el código. Si llega por otra línea, se dice.
+- **⚠️ EL REPORTE DE SIN RESPUESTA NO INVENTA NI ENVÍA.** Fuentes: la traza
+  (motivo exacto) y, antes de v4.1285, `WhatsAppMessageLog` (entrante sin
+  saliente posterior por la línea, «motivo no registrado»). Lo que Meta nunca
+  nos entregó **no está y no se recupera desde la plataforma** —se ve en el
+  teléfono / WhatsApp Business de la línea—. «Marcar como revisado» no manda
+  nada: responder es desde el Chat, a mano, y fuera de 24 h sólo con plantilla.
+- **El teléfono sale ENMASCARADO** en trazas y reporte (`maskPhone`); el texto,
+  como adelanto sin URLs firmadas (`previewText`). Ningún token en la traza.
+- **`WhatsAppInboundTrace` vive fuera de Prisma** y está en la lista del guardián
+  de `db:push` y de CLAUDE.md. Sin `ADD COLUMN`: si se agrega uno, va en un atajo
+  de columnas como los demás ensures.
+- **El doble de la base aprendió dos cosas** (`db-whatsapp-stub.mjs`): el cast
+  `$n::jsonb` en `VALUES` y la fusión `col = COALESCE(col,'{}'::jsonb) || $n::jsonb`,
+  y `SELECT COUNT(*) AS alias` sin filtros. Sin lo primero las etapas no se
+  podían comprobar; sin lo segundo `verifyWebhook` aceptaba cualquier token en la
+  prueba (el respaldo «sin configuraciones») y la aserción mentía.
+
+**Pendientes conocidos:** la **prueba real en producción** (criterio de
+aceptación 1–9) está por hacer con «Prueba real por WhatsApp» — sin ella no se
+da por resuelto. La **pausa humana es por contacto**, no por línea. El simulador
+sigue usando el cerebro del SITIO aunque la línea tenga `brainId` propio. El
+respaldo de `verifyWebhook` que acepta cualquier token si `WhatsAppConfig` está
+vacía se conserva (lo usa el alta inicial). Las pantallas nuevas **no se
+comprobaron en un navegador** (la lección de v4.717).

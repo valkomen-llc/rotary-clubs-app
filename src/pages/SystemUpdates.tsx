@@ -34,13 +34,31 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1284.0 | 2026-11-05 (Visitas del Gobernador: Memoria institucional por categorías)
-// Cache bust: 2026-11-04
+// UI V4.1285.0 | 2026-11-05 (WhatsApp CRM: el agente responde los mensajes reales y el panel lo demuestra)
+// Cache bust: 2026-11-05
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1285.0',
+        title: 'WhatsApp CRM: el agente responde los mensajes reales y el panel lo demuestra 📲',
+        description: 'Reparación urgente del agente conversacional de WhatsApp (caso Feria de Proyectos Rotary Colombia: diagnóstico en verde, simulador respondiendo y mensajes reales sin respuesta). Cada mensaje entrante deja ahora una traza con sus etapas —recibido, línea identificada, agente, respuesta generada, enviada a Meta, aceptada, entregada— y, si no se responde, el motivo exacto con su salida. Se corrigieron cinco formas en que un mensaje real quedaba sin respuesta en silencio, el diagnóstico deja de dar por buena una suscripción a otra aplicación de Meta, y Automatización suma «Funcionamiento real de la línea», una prueba real por WhatsApp y el reporte de conversaciones sin respuesta.',
+        date: new Date().toISOString(),
+        tags: ['whatsapp', 'crm', 'agente ia', 'webhook', 'diagnóstico', 'feria de proyectos'],
+        type: 'fix',
+        impact: 'Alta: una línea oficial de atención deja de aparentar estar operativa cuando nadie recibe respuesta; cada «Hola» sin contestar queda con su causa y se puede revisar.',
+        changes: [
+            { type: 'fixed', text: 'Diagnóstico: «Cuenta suscrita al webhook» se pintaba en verde con CUALQUIER aplicación suscrita. La suscripción es de la aplicación dueña del token: si el token de la línea es de otra aplicación de Meta, los mensajes van a esa aplicación y nunca llegan a Club Platform (los envíos y el simulador funcionan igual). Ahora se exige la aplicación de la plataforma (META_APP_ID) o un override hacia /api/crm/webhook, se muestra la aplicación del token y se ofrece «Dirigir el webhook a esta plataforma» (override_callback_uri). Además falla si salen mensajes y Meta no devuelve ningún evento de la línea en 7 días.' },
+            { type: 'fixed', text: 'Un solo error de envío (p. ej. un contacto fuera de la ventana de 24 h, 131047) pasaba la línea entera a «Con error» y bloqueaba todas las respuestas y campañas hasta pulsar «Verificar». Sólo los errores de credencial o del número degradan la línea; «Revisar ahora» recupera una línea en error si Meta acepta la credencial.' },
+            { type: 'fixed', text: 'Enviar una PLANTILLA desde el Chat (como la invitación de la Feria) pausaba al agente 120 minutos para ese contacto: su «Hola» o «Estoy interesado» quedaba sin respuesta. Sólo pausa una respuesta escrita por una persona, con los minutos del agente de esa línea.' },
+            { type: 'fixed', text: 'El webhook leía sólo la primera entrada y el primer cambio de cada entrega: un mensaje de la Feria agrupado detrás de los estados del Distrito se perdía. Se procesan todos. La idempotencia pasa a un índice único por wamid (dos entregas simultáneas ya no responden dos veces). Las respuestas a botones de plantilla llegan al agente. El menú global del chatbot no contesta en una línea con agente propio.' },
+            { type: 'added', text: 'Traza por mensaje (tabla WhatsAppInboundTrace, creada en runtime y protegida por el guardián de db:push) con correlación por wamid, motivo explícito de cada mensaje sin respuesta, estado de entrega de la respuesta y reintento automático desde el cron de lo interrumpido antes de pedir el envío. Envíos a Meta con tope de 20 s, reintento sólo de fallas pasajeras y mensaje de respaldo si la IA falla.' },
+            { type: 'added', text: 'Automatización → «Funcionamiento real de la línea»: Conexión con Meta, Recepción, Procesamiento con IA, Envío y Salud (Configurado / Conectado / Operativo / Degradado / Error; «Operativo» sólo con mensajes recibidos y respuestas enviadas que lo demuestren), «Prueba real por WhatsApp» con un código y su recorrido etapa por etapa, últimos mensajes y «Conversaciones sin respuesta» (30 días, por avería, por regla y anteriores a la traza) para seguimiento humano, sin envíos retroactivos. El simulador queda rotulado como prueba interna.' },
+            { type: 'added', text: 'Prueba test:whatsapp:inbound: 98 comprobaciones de punta a punta con el handleWebhook real (verificación, entrante, firma inválida, duplicado y simultáneo, lote, línea y agente correctos, envío exitoso y con error, falla de IA, pausa humana, aislamiento entre líneas, prueba real y reintento).' },
+        ],
+    },
     {
         version: '4.1284.0',
         title: 'Visitas del Gobernador: la Memoria institucional por categorías 🏛️',

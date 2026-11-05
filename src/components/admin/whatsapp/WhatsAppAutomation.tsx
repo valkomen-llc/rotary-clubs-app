@@ -5,6 +5,7 @@ import { useAuth } from '../../../hooks/useAuth';
 import WhatsAppAccountPicker, {
     useWhatsAppAccounts, preselectAccount, accountLabel,
 } from './WhatsAppAccountPicker';
+import WhatsAppLineHealth from './WhatsAppLineHealth';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -216,6 +217,31 @@ export default function WhatsAppAutomation() {
             toast.error(e.message);
         } finally {
             setLoadingDiag(false);
+        }
+    };
+
+    const [dirigiendo, setDirigiendo] = useState(false);
+    /**
+     * Suscribe la cuenta con la URL de callback de ESTA plataforma (override
+     * de Meta). Es la salida cuando el token de la línea es de otra aplicación:
+     * sin esto, Meta entrega los mensajes a esa otra aplicación.
+     */
+    const dirigirWebhook = async () => {
+        if (!porLinea) return;
+        if (!confirm('Meta entregará los mensajes y estados de esta cuenta de WhatsApp a Club Platform.\n\nSi otra herramienta recibía hoy los eventos de esta cuenta, dejará de recibirlos. ¿Continuar?')) return;
+        setDirigiendo(true);
+        try {
+            const res = await fetch(`${API}/crm/connections/${connId}/subscribe`, {
+                method: 'POST', headers, body: JSON.stringify({ mode: 'override' }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.providerMessage ? `${data.error}: ${data.providerMessage}` : (data.error || 'Error'));
+            toast.success(data.note || 'Webhook dirigido a esta plataforma.');
+            runDiag();
+        } catch (e: any) {
+            toast.error(e.message);
+        } finally {
+            setDirigiendo(false);
         }
     };
 
@@ -463,12 +489,21 @@ export default function WhatsAppAutomation() {
                     <div className="flex flex-col bg-gray-50 rounded-xl border border-gray-200 overflow-hidden">
                         <div className="px-4 py-3 border-b border-gray-200 bg-white flex items-center justify-between">
                             <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                                <MessageSquare className="w-4 h-4 text-emerald-500" /> Probar la conversación
+                                <MessageSquare className="w-4 h-4 text-emerald-500" /> Simulador interno del agente
                             </h3>
                             {testChat.length > 0 && (
                                 <button onClick={() => setTestChat([])} className="text-xs text-gray-400 hover:text-gray-600">Limpiar</button>
                             )}
                         </div>
+                        {/* ⚠️ El simulador NO es WhatsApp (v4.1285). Usa la
+                            instrucción que está EN PANTALLA —guardada o no— y
+                            no pasa por Meta, el webhook, la línea, las reglas
+                            ni la pausa. Que responda aquí no demuestra que la
+                            línea responda: eso lo demuestra la prueba real. */}
+                        <p className="px-4 py-2 text-[11px] leading-snug text-amber-800 bg-amber-50 border-b border-amber-100">
+                            Prueba interna: usa la instrucción que ves en pantalla (aunque no esté guardada) y no pasa por WhatsApp, Meta ni el webhook.
+                            Para comprobar la línea real usa <b>«Prueba real por WhatsApp»</b> más abajo.
+                        </p>
                         <div className="flex-1 p-4 space-y-3 overflow-y-auto min-h-[280px] max-h-[420px]">
                             {testChat.length === 0 ? (
                                 <p className="text-xs text-gray-400 text-center mt-12">Escribe un mensaje para ver cómo respondería el agente.<br />(Aquí no se envía nada por WhatsApp)</p>
@@ -543,6 +578,30 @@ export default function WhatsAppAutomation() {
                         {diag.tokenNote && (
                             <p className="text-xs text-amber-700">{diag.tokenNote}</p>
                         )}
+                        {diag.recovered && (
+                            <p className="text-xs text-emerald-700">Meta aceptó la credencial: la línea estaba en «Con error» y volvió a «Activa».</p>
+                        )}
+                        {/* A qué aplicación entrega Meta los eventos de esta
+                            cuenta. «Suscrita» no basta: tiene que ser ésta. */}
+                        {diag.webhook && (
+                            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700 space-y-1">
+                                <p><b>URL del webhook de esta plataforma:</b> <code className="break-all">{diag.webhook.callbackUrl || '—'}</code></p>
+                                <p><b>Aplicación de la plataforma:</b> {diag.webhook.platformAppId || 'sin META_APP_ID en el servidor'}</p>
+                                {diag.webhook.tokenApp && (
+                                    <p><b>Aplicación dueña del token de esta línea:</b> {diag.webhook.tokenApp.name || '—'} ({diag.webhook.tokenApp.id})
+                                        {diag.webhook.tokenFromOtherApp && <span className="text-red-700 font-bold"> · es OTRA aplicación</span>}</p>
+                                )}
+                                {Array.isArray(diag.webhook.subscribedApps) && diag.webhook.subscribedApps.length > 0 && (
+                                    <p><b>Suscrita a:</b> {diag.webhook.subscribedApps.map((a: any) => `${a.name || a.id}${a.override ? ` → ${a.override}` : ''}`).join(' · ')}</p>
+                                )}
+                                {diag.webhook.subscriptionState !== 'platform' && (
+                                    <button onClick={dirigirWebhook} disabled={dirigiendo}
+                                        className="mt-1 inline-flex items-center gap-2 bg-rotary-blue hover:bg-sky-800 text-white px-3 py-1.5 rounded-lg text-xs font-bold disabled:opacity-50">
+                                        <Link2 className="w-3.5 h-3.5" /> {dirigiendo ? 'Dirigiendo…' : 'Dirigir el webhook a esta plataforma'}
+                                    </button>
+                                )}
+                            </div>
+                        )}
                         {/* La pausa del bot es del CONTACTO, no de la línea: se
                             ofrece igual y se dice que alcanza a todo el sitio. */}
                         <button onClick={resumeBot}
@@ -609,6 +668,13 @@ export default function WhatsAppAutomation() {
                     </div>
                 )}
             </div>
+
+            {/* ── FUNCIONAMIENTO REAL (v4.1285) ─────────────────────────
+                Lo de arriba es configuración; esto es lo que PASÓ con los
+                mensajes reales de esta línea. */}
+            {porLinea && connId && (
+                <WhatsAppLineHealth connectionId={connId} lineLabel={accountLabel(cuenta)} onResume={resumeBot} />
+            )}
 
             {/* ── RESPUESTAS AUTOMÁTICAS ──────────────────────────────── */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">

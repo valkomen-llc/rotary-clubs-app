@@ -38,6 +38,7 @@ export const tablas = {
   CrmWebhookEvent: [],
   CrmOutboundLog: [],
   CrmSuppression: [],
+  WhatsAppInboundTrace: [],
   Club: [],
 };
 
@@ -119,7 +120,8 @@ const filaDelInsert = (sql, params) => {
   cols.forEach((col, i) => {
     const v = vals[i];
     if (v === undefined) return;
-    const pm = v.match(/^\$(\d+)$/);
+    // `$12::jsonb` es el mismo parámetro con un cast de Postgres.
+    const pm = v.match(/^\$(\d+)(?:::\w+)?$/);
     if (pm) fila[col] = params[Number(pm[1]) - 1];
     else if (/^NOW\(\)|CURRENT_TIMESTAMP$/i.test(v)) fila[col] = new Date().toISOString();
     else if (/^'(.*)'$/.test(v)) fila[col] = v.slice(1, -1);
@@ -202,6 +204,14 @@ const query = async (sql, params = []) => {
         f[m[1]] = /NOW/i.test(m[2]) ? new Date().toISOString()
           : /NULL/i.test(m[2]) ? null : m[2].toLowerCase() === 'true';
       }
+      // `col = COALESCE(col, '{}'::jsonb) || $n::jsonb` — la fusión de un
+      // objeto JSON (las marcas de etapa de la traza, v4.1285).
+      for (const m of sets.matchAll(/"?(\w+)"?\s*=\s*COALESCE\(\s*"?\1"?\s*,\s*'\{\}'::jsonb\s*\)\s*\|\|\s*\$(\d+)::jsonb/g)) {
+        const prev = typeof f[m[1]] === 'string' ? (() => { try { return JSON.parse(f[m[1]]); } catch { return {}; } })() : (f[m[1]] || {});
+        let add = params[Number(m[2]) - 1];
+        if (typeof add === 'string') { try { add = JSON.parse(add); } catch { add = {}; } }
+        f[m[1]] = { ...prev, ...(add || {}) };
+      }
       // `col = col + 1`
       for (const m of sets.matchAll(/"(\w+)"\s*=\s*"?\w+"?\s*\+\s*1/g)) {
         f[m[1]] = Number(f[m[1]] || 0) + 1;
@@ -248,6 +258,11 @@ const query = async (sql, params = []) => {
   }
   const lim = q.match(/LIMIT\s+(\d+)/i);
   if (lim) rows = rows.slice(0, Number(lim[1]));
+
+  // `SELECT COUNT(*) AS alias` —sin filtros que el doble no sepa leer—
+  // devuelve la cuenta con su alias, como Postgres.
+  const cnt = q.match(/^SELECT COUNT\(\*\)(?:::int)?\s+as\s+"?(\w+)"?\s+FROM\s+"\w+"\s*$/i);
+  if (cnt) return { rows: [{ [cnt[1]]: String(rows.length) }] };
 
   // `SELECT 1 …` sólo necesita saber si hay algo.
   if (/^SELECT\s+1\b/i.test(q)) return { rows: rows.map(() => ({ '?column?': 1 })) };

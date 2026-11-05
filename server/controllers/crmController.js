@@ -18,7 +18,7 @@ const WA_API_BASE = `https://graph.facebook.com/${process.env.WA_API_VERSION || 
 // Queda en el arranque en frío para poder confirmar QUÉ versión está atendiendo
 // los webhooks. Es lo primero que hace falta saber cuando el módulo se comporta
 // distinto de lo que dice el código que uno está leyendo.
-console.log('[WA-CRM] Controlador v4.921 — campañas a varias listas activas.');
+console.log('[WA-CRM] Controlador v4.1285 — traza por mensaje entrante, idempotencia real y lotes completos del webhook.');
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -138,14 +138,29 @@ async function metaApiCall({ method = 'GET', path, body, token, clubId = null, a
     let data = null;
     let thrown = null;
     try {
-        const res = await fetch(url, opts);
+        // Con tope de tiempo (regla del proyecto: ningún fetch a un tercero sin
+        // él). Sin tope, una Cloud API lenta colgaba el webhook entero hasta los
+        // 120 s de Vercel y la respuesta al usuario no salía nunca (v4.1285).
+        const res = await fetch(url, { ...opts, signal: AbortSignal.timeout(20000) });
         httpStatus = res.status;
-        data = await res.json();
+        // Nunca un `.json()` a ciegas: una página de error de un proxy no es
+        // JSON y la excepción escondería el HTTP real.
+        if (typeof res.text === 'function') {
+            const raw = await res.text();
+            try { data = raw ? JSON.parse(raw) : null; }
+            catch { data = null; thrown = Object.assign(new Error(`Meta respondió algo que no es JSON (HTTP ${httpStatus}): ${raw.slice(0, 200)}`), { httpStatus }); }
+        } else {
+            data = await res.json();
+        }
     } catch (err) {
-        // Fallo de red o respuesta que no es JSON. También se registra: un
-        // tiempo agotado contra Meta es indistinguible de un envío perdido si no
-        // queda anotado.
+        // Fallo de red o tiempo agotado. También se registra: un tiempo agotado
+        // contra Meta es indistinguible de un envío perdido si no queda anotado.
         thrown = err;
+        // Se distinguen para el reintento: un error de red ANTES de conectar
+        // no salió; un tiempo agotado pudo haber salido (reintentarlo podría
+        // duplicar la respuesta).
+        if (err?.name === 'TimeoutError' || err?.name === 'AbortError') err.metaTimeout = true;
+        else err.metaNetwork = true;
     }
 
     const metaError = data?.error || null;
@@ -238,7 +253,13 @@ export async function sendWhatsAppTextMessage({
 
     if (conn) {
         const guard = sendGuard(conn);
-        if (!guard.ok) throw new Error(guard.message);
+        if (!guard.ok) {
+            // Marcado para que quien llama no lo reintente ni lo confunda con un
+            // rechazo de Meta: la línea NO PUEDE enviar y el motivo es nuestro.
+            const e = new Error(guard.message);
+            e.sendGuard = guard.code;
+            throw e;
+        }
         const opened = openToken(conn.accessTokenEnc);
         if (!opened.token) throw new Error(opened.detail || 'La conexión no tiene un token utilizable.');
         phoneNumberId = conn.phoneNumberId;
@@ -257,7 +278,9 @@ export async function sendWhatsAppTextMessage({
     const apiBody = {
         messaging_product: 'whatsapp',
         recipient_type: 'individual',
-        to: contact.phone,
+        // Sólo dígitos, como el resto de los envíos del módulo (campañas y chat
+        // pasan por `normalizeForMeta`). La ficha guarda «+57…».
+        to: String(contact.phone || '').replace(/[^\d]/g, ''),
         type: 'text',
         text: { preview_url: false, body: text },
     };
@@ -275,7 +298,20 @@ export async function sendWhatsAppTextMessage({
     } catch (err) {
         // El error queda en la CONEXIÓN, no sólo en la consola: es lo que hace
         // que el diagnóstico de esa línea diga qué le pasa sin reproducir nada.
-        if (conn) await markError(conn.id, err.message);
+        //
+        // ⚠️ PERO SÓLO DEGRADA LA LÍNEA SI EL ERROR ES DE LA LÍNEA (v4.1285).
+        // Hasta v4.1284 cualquier fallo la pasaba a `error`, y en `error`
+        // `sendGuard` bloquea TODO lo que sale por ella hasta que alguien pulse
+        // «Verificar». Un destinatario fuera de la ventana de 24 h (131047) o
+        // sin WhatsApp (131026) dejaba sin respuesta a todos los demás.
+        if (conn) {
+            const { classifyMetaSendError } = await import('../lib/whatsappInbound.js');
+            const k = classifyMetaSendError({
+                metaCode: err.metaCode, httpStatus: err.httpStatus,
+                network: !!(err.metaNetwork || err.metaTimeout),
+            });
+            await markError(conn.id, err.message, { degrade: k.lineLevel });
+        }
         throw err;
     }
 
@@ -917,9 +953,30 @@ export const sendMessageToContact = async (req, res) => {
         await db.query(`UPDATE "WhatsAppContact" SET "totalSent"="totalSent"+1,"updatedAt"=NOW() WHERE id=$1`, [contact.id]);
 
         // Intervención humana: pausar el agente automático para esta conversación.
+        //
+        // ⚠️ SÓLO SI UNA PERSONA ESCRIBIÓ (v4.1285). Hasta v4.1284 también
+        // pausaba al enviar una PLANTILLA desde el Chat: mandarle a alguien la
+        // invitación de la Feria (una plantilla de marketing) silenciaba al
+        // agente 120 minutos, y el «Hola» o el «Estoy interesado» con que esa
+        // persona contestaba —justo lo que la plantilla buscaba— quedaba sin
+        // respuesta. Una plantilla no es una persona tomando la conversación.
+        //
+        // Y los minutos son los del agente que ATIENDE ESTA LÍNEA (propio o
+        // heredado), no siempre los del agente del sitio.
         try {
-            const pauseR = await db.query(`SELECT "humanPauseMinutes" FROM "WhatsAppAgentConfig" WHERE "clubId"=$1`, [clubId]);
-            const mins = pauseR.rows[0]?.humanPauseMinutes ?? 120;
+            if (logTemplateName) throw new Error('plantilla: no pausa');
+            let mins = null;
+            if (conn) {
+                const { resolveAgentForConnection } = await import('../lib/whatsappConnectionStore.js');
+                const r = await resolveAgentForConnection(conn).catch(() => null);
+                if (r?.agent && r.agent.humanPauseMinutes !== undefined && r.agent.humanPauseMinutes !== null) {
+                    mins = Number(r.agent.humanPauseMinutes);
+                }
+            }
+            if (mins === null) {
+                const pauseR = await db.query(`SELECT "humanPauseMinutes" FROM "WhatsAppAgentConfig" WHERE "clubId"=$1`, [clubId]);
+                mins = pauseR.rows[0]?.humanPauseMinutes ?? 120;
+            }
             if (mins > 0) {
                 await db.query(
                     `UPDATE "WhatsAppContact" SET "autoReplyPausedUntil"=NOW() + make_interval(mins => $1::int),"updatedAt"=NOW() WHERE id=$2`,
@@ -2556,6 +2613,11 @@ export const verifyWebhook = async (req, res) => {
     try {
         const r = await db.query(`SELECT id FROM "WhatsAppConfig" WHERE "verifyToken"=$1 LIMIT 1`, [token]);
         if (r.rows.length) return res.status(200).send(challenge);
+        // Y el de cada línea conectada (v4.1285): «Dirigir el webhook a esta
+        // plataforma» suscribe una cuenta con su propio `verify_token`, y Meta
+        // lo comprueba con este GET antes de aceptar el override.
+        const c = await db.query(`SELECT id FROM "WhatsAppConnection" WHERE "verifyToken"=$1 LIMIT 1`, [token]).catch(() => ({ rows: [] }));
+        if (c.rows.length) return res.status(200).send(challenge);
     } catch (err) {
         // Table may not exist yet — try fallback
         console.error('Webhook verify DB check:', err.message);
@@ -2580,8 +2642,10 @@ export const verifyWebhook = async (req, res) => {
 
 export const handleWebhook = async (req, res) => {
     // Procesamos ANTES de responder 200 para que la automatización (LLM + envío)
-    // se complete de forma fiable en serverless. La idempotencia por messageId
-    // evita respuestas duplicadas si Meta reintenta el webhook.
+    // se complete de forma fiable en serverless. Meta reintenta si tardamos, y
+    // la idempotencia por `messageId` (índice ÚNICO de la traza, v4.1285) hace
+    // que un reintento no procese ni responda dos veces. Lo que una invocación
+    // no llegue a terminar lo retoma el cron (`retryStuckInbound`).
     //
     // Todo lo que entra se PERSISTE antes de procesarlo (v4.702). Hasta v4.701
     // el único rastro eran `console.warn`/`console.error`, efímeros en Vercel:
@@ -2592,376 +2656,108 @@ export const handleWebhook = async (req, res) => {
     const startedAt = Date.now();
     const body = req.body || {};
     let auditId = null;
-    let resolution = null;
+    const resolutions = [];
     let outcome = 'ok';
     let failure = null;
     let clubId = null;
 
     try {
         const signatureValid = verifySignature(req.rawBody, req.headers['x-hub-signature-256']);
+        const signature = signatureValid === true ? 'valida' : signatureValid === false ? 'invalida' : 'sin_comprobar';
         auditId = await openWebhookEvent({ body, headers: req.headers, signatureValid });
 
-        if (body.object !== 'whatsapp_business_account') { resolution = 'objeto_ajeno'; outcome = 'skipped'; return; }
-        const changes = body.entry?.[0]?.changes?.[0]?.value;
-        if (!changes) { resolution = 'sin_cambios'; outcome = 'skipped'; return; }
+        if (body.object !== 'whatsapp_business_account') { resolutions.push('objeto_ajeno'); outcome = 'skipped'; return; }
 
-        // ═══════════════════════════════════════════════════════════════════
-        // EL ROUTER (v4.992, multi-WABA).
-        // ═══════════════════════════════════════════════════════════════════
-        //
-        // La resolución termina en una CONEXIÓN —con su credencial y su
-        // agente— en vez de terminar en un `clubId`. Lo que NO cambió, porque
-        // ya estaba bien, es de dónde sale: del número empresarial RECEPTOR
-        // (`phone_number_id`), con respaldo por la cuenta (`waba_id`) cuando
-        // alguien migra el número en el panel de Meta. **Nunca del número de
-        // quien escribe**: eso pondría los mensajes de una persona en la
-        // organización de la que resultara ser cliente.
-        //
-        // `resolveForInbound` incluye la MIGRACIÓN PEREZOSA: si el número no
-        // tiene conexión, mira `WhatsAppConfig` —la tabla single-account de
-        // siempre— y crea la equivalente ahí mismo. Así la línea que ya estaba
-        // configurada se migra sola con el primer mensaje que reciba, y no hay
-        // ninguna ventana en la que no exista en ninguna de las dos tablas.
-        const phoneNumberId = changes.metadata?.phone_number_id;
-        const wabaId = body.entry?.[0]?.id || null;
-        let clubToken = null;
-        let connection = null;
-        let connectionId = null;
+        // ⚠️ TODAS las entradas y TODOS los cambios (v4.1285). Hasta v4.1284 se
+        // leía `entry[0].changes[0]` y nada más: Meta puede agrupar varias
+        // cuentas y varios cambios en una sola entrega, y con dos líneas en la
+        // misma App un mensaje de la Feria que viniera detrás de los estados
+        // del Distrito se perdía sin rastro.
+        const { flattenWebhook } = await import('../lib/whatsappInbound.js');
+        const items = flattenWebhook(body);
+        if (!items.length) { resolutions.push('sin_cambios'); outcome = 'skipped'; return; }
 
-        {
-            const { resolveForInbound, openToken, markInbound } =
-                await import('../lib/whatsappConnectionStore.js');
-            const resolved = await resolveForInbound({ phoneNumberId, wabaId });
-            connection = resolved.connection;
-            if (connection) {
-                clubId = connection.clubId;
-                connectionId = connection.id;
-                resolution = resolved.resolvedBy;
-                if (resolved.migrated) {
-                    resolution += '; conexión creada desde WhatsAppConfig (migración perezosa)';
-                }
-                if (resolved.resolvedBy === 'waba_id') {
-                    // Se anota en la bitácora, no sólo en la consola: es la señal
-                    // de que hay un `phoneNumberId` guardado que ya no
-                    // corresponde, y es lo único que lo destapa.
-                    resolution += `; ${resolved.reason}`;
-                    console.warn(`[WA-CRM] ${resolved.reason}`);
-                }
-                if (resolved.ambiguous > 1) {
-                    resolution += `; ${resolved.ambiguous} conexiones coincidían y se eligió «${connection.displayName}»`;
-                }
-                // El token de la LÍNEA, para descargar el multimedia entrante.
-                clubToken = openToken(connection.accessTokenEnc).token;
-                await markInbound(connection.id);
+        const { resolveForInbound, openToken, markInbound } =
+            await import('../lib/whatsappConnectionStore.js');
+        const routeCache = new Map();
+
+        for (const item of items) {
+            const changes = item.value;
+            const phoneNumberId = item.phoneNumberId;
+            const wabaId = item.wabaId;
+
+            // Cambios de la CUENTA (plantillas aprobadas, calidad, etc.) no
+            // traen número: no son mensajes ni estados y no se encaminan.
+            if (!changes.messages && !changes.statuses) {
+                resolutions.push(`campo ${item.field} sin mensajes ni estados`);
+                continue;
             }
-        }
 
-        if (!clubId) {
-            // Un webhook que no se puede encaminar es la avería que deja el módulo
-            // mudo sin dar la cara: los envíos salen, Meta confirma la entrega y
-            // acá no se anota nada. Se avisa y queda la fila con el payload.
-            resolution = 'unknown_phone_number_id';
-            outcome = 'skipped';
-            console.warn(`[WA-CRM] Webhook received for unknown phoneNumberId: ${phoneNumberId} (waba=${wabaId})`);
-            try {
-                const [{ raiseAlert }, { resolvePlatformClubId }] = await Promise.all([
-                    import('../lib/crmAlerts.js'),
-                    import('../lib/crmTenant.js'),
-                ]);
-                const platformClubId = await resolvePlatformClubId();
-                if (platformClubId) {
-                    await raiseAlert({
-                        clubId: platformClubId,
-                        type: 'webhook_unrouted',
-                        title: 'Llegó un webhook de WhatsApp que no corresponde a ningún sitio',
-                        detail: `Meta mandó un evento desde el número ${phoneNumberId || 'sin identificar'} (cuenta ${wabaId || 'sin identificar'}) y ninguna cuenta de WhatsApp conectada coincide. Mientras siga así, ni los mensajes entrantes ni los estados de entrega de esa línea se registran. Revisar el ID del número en Configuración → WhatsApp → Cuentas conectadas, o agregar la cuenta que falta: el identificador exacto está en la bitácora del webhook.`,
-                        dedupeKey: `webhook_unrouted:${phoneNumberId || wabaId || 'na'}:${new Date().toISOString().slice(0, 10)}`,
-                    });
+            // ═══════════════════════════════════════════════════════════════
+            // EL ROUTER (v4.992, multi-WABA).
+            // ═══════════════════════════════════════════════════════════════
+            //
+            // La resolución termina en una CONEXIÓN —con su credencial y su
+            // agente— en vez de terminar en un `clubId`. Sale del número
+            // empresarial RECEPTOR (`phone_number_id`), con respaldo por la
+            // cuenta (`waba_id`) cuando alguien migra el número en el panel de
+            // Meta. **Nunca del número de quien escribe**: eso pondría los
+            // mensajes de una persona en la organización de la que resultara
+            // ser cliente.
+            //
+            // `resolveForInbound` incluye la MIGRACIÓN PEREZOSA desde
+            // `WhatsAppConfig`, así que no hay ninguna ventana en la que la
+            // línea no exista en ninguna de las dos tablas.
+            const key = `${phoneNumberId || ''}|${wabaId || ''}`;
+            let route = routeCache.get(key);
+            if (!route) {
+                const resolved = await resolveForInbound({ phoneNumberId, wabaId });
+                route = { connection: resolved.connection || null, resolution: null };
+                if (route.connection) {
+                    let r = resolved.resolvedBy;
+                    if (resolved.migrated) r += '; conexión creada desde WhatsAppConfig (migración perezosa)';
+                    if (resolved.resolvedBy === 'waba_id') {
+                        // Se anota en la bitácora, no sólo en la consola: es la
+                        // señal de que hay un `phoneNumberId` guardado que ya no
+                        // corresponde, y es lo único que lo destapa.
+                        r += `; ${resolved.reason}`;
+                        console.warn(`[WA-CRM] ${resolved.reason}`);
+                    }
+                    if (resolved.ambiguous > 1) {
+                        r += `; ${resolved.ambiguous} conexiones coincidían y se eligió «${route.connection.displayName}»`;
+                    }
+                    route.resolution = r;
+                    // El token de la LÍNEA, para descargar el multimedia entrante.
+                    route.token = openToken(route.connection.accessTokenEnc).token;
+                    await markInbound(route.connection.id);
                 }
-            } catch (alertErr) {
-                console.error('[WA-CRM] No se pudo levantar la alerta de webhook sin encaminar:', alertErr.message);
+                routeCache.set(key, route);
             }
-            return;
-        }
 
-        // Handle incoming messages
-        if (changes.messages) {
-            for (const msg of changes.messages) {
-                const from = msg.from; // sender phone number
-                const normalizedPhone = from.startsWith('+') ? from : `+${from}`;
-                const messageId = msg.id;
-                const timestamp = msg.timestamp ? new Date(parseInt(msg.timestamp) * 1000) : new Date();
-
-                // Idempotencia: si ya registramos este mensaje (reintento de Meta), saltar
-                // para no procesar ni responder dos veces.
-                if (messageId) {
-                    const dup = await db.query(
-                        `SELECT 1 FROM "WhatsAppMessageLog" WHERE "messageId"=$1 AND direction='incoming' LIMIT 1`,
-                        [messageId]
-                    );
-                    if (dup.rows.length) {
-                        console.log(`[WA-Auto] Mensaje ${messageId} ya procesado, se omite.`);
-                        continue;
-                    }
-                }
-
-                // Find or create contact
-                let contactId = null;
-                let contactName = changes.contacts?.[0]?.profile?.name || normalizedPhone;
-                
-                const contactR = await db.query(
-                    `SELECT id, \"profilePictureUrl\", \"name\" FROM \"WhatsAppContact\" WHERE \"clubId\"=$1 AND phone=$2 LIMIT 1`,
-                    [clubId, normalizedPhone]
-                );
-                
-                if (contactR.rows.length) {
-                    contactId = contactR.rows[0].id;
-                    contactName = contactR.rows[0].name;
-                    // If no picture, try sync
-                    if (!contactR.rows[0].profilePictureUrl) {
-                        await trySyncContactPhoto(contactId, normalizedPhone, contactName, clubId);
-                    }
-                } else {
-                    // Auto-create
-                    try {
-                        const newContactId = crypto.randomUUID();
-                        const r = await db.query(
-                            `INSERT INTO \"WhatsAppContact\" (id, \"clubId\", name, phone, source, \"createdAt\", \"updatedAt\") 
-                             VALUES ($1, $2, $3, $4, 'whatsapp', NOW(), NOW()) RETURNING id`,
-                            [newContactId, clubId, contactName, normalizedPhone]
-                        );
-                        contactId = r.rows[0].id;
-                        await trySyncContactPhoto(contactId, normalizedPhone, contactName, clubId);
-                    } catch(e) { 
-                        // Race condition or other error
-                        const retryR = await db.query(`SELECT id FROM \"WhatsAppContact\" WHERE \"clubId\"=$1 AND phone=$2 LIMIT 1`, [clubId, normalizedPhone]);
-                        contactId = retryR.rows[0]?.id;
-                    }
-                }
-
-                if (!contactId) continue;
-
-                // Extract message text based on type
-                let bodyText = '';
-                const msgType = msg.type || 'text';
-                
-                if (msgType === 'text') {
-                    bodyText = msg.text?.body || '';
-                } else if (['image', 'video', 'audio', 'document'].includes(msgType)) {
-                    let mediaObj = msg[msgType];
-                    let mediaUrl = null;
-                    if (mediaObj && mediaObj.id && clubToken) {
-                        let ext = msgType === 'image' ? 'jpg' : msgType === 'video' ? 'mp4' : msgType === 'audio' ? 'ogg' : 'pdf';
-                        let mime = mediaObj.mime_type || (msgType === 'image' ? 'image/jpeg' : msgType === 'video' ? 'video/mp4' : 'application/pdf');
-                        if (msgType === 'document' && mediaObj.filename) {
-                            const parsedExt = mediaObj.filename.split('.').pop();
-                            if (parsedExt) ext = parsedExt;
-                        }
-                        mediaUrl = await syncMetaMediaToS3(mediaObj.id, clubToken, clubId, ext, 'wa-media-in', mime);
-                    }
-                    const caption = mediaObj?.caption || (msgType === 'document' ? mediaObj?.filename : '');
-                    if (mediaUrl) {
-                        bodyText = `[MEDIA|${msgType}|${mediaUrl}] ${caption}`.trim();
-                    } else {
-                        bodyText = caption ? `[${msgType.toUpperCase()}] ${caption}` : `[${msgType.toUpperCase()} adjunto]`;
-                    }
-                } else if (msgType === 'sticker') {
-                    bodyText = '[Sticker]';
-                } else if (msg.type === 'location') {
-                    bodyText = `[Ubicación: ${msg.location?.latitude}, ${msg.location?.longitude}]`;
-                } else if (msg.type === 'contacts') {
-                    bodyText = '[Contacto compartido]';
-                } else if (msg.type === 'reaction') {
-                    bodyText = `[Reacción: ${msg.reaction?.emoji || ''}]`;
-                } else if (msg.type === 'button') {
-                    bodyText = msg.button?.text || '[Botón]';
-                } else if (msg.type === 'interactive') {
-                    bodyText = msg.interactive?.button_reply?.title || msg.interactive?.list_reply?.title || '[Interactivo]';
-                } else {
-                    bodyText = `[${msgType}]`;
-                }
-
-
-
-                // Save incoming message
-                const incLogId = crypto.randomUUID();
-                const incRes = await db.query(
-                    `INSERT INTO "WhatsAppMessageLog" (id, "clubId","contactId",phone,"messageId","bodyText",direction,status,"connectionId","sentAt","createdAt","updatedAt")
-                     VALUES ($1,$2,$3,$4,$5,$6,'incoming','received',$8,$7,$7,NOW())
-                     ON CONFLICT DO NOTHING
-                     RETURNING id`,
-                    [incLogId, clubId, contactId, normalizedPhone, messageId, bodyText, timestamp, connectionId]
-                );
-
-                // El CANAL: por qué línea alcanzamos a esta persona, sin
-                // duplicar su ficha. `WhatsAppContact` tiene
-                // `@@unique([phone, clubId])`, así que la ficha es una y lo que
-                // se guarda por línea es esto. Es lo que contesta «esta persona
-                // nos escribió al Distrito y también a la Feria» sin fusionar
-                // nada a la fuerza ni crear dos contactos.
-                if (connectionId && contactId) {
-                    const { touchContactChannel } = await import('../lib/whatsappConnectionStore.js');
-                    await touchContactChannel({
-                        contactId, clubId, connectionId,
-                        address: normalizedPhone, inboundAt: timestamp,
-                    });
-                }
-
-                // Automatización: respuestas automáticas + agente IA.
-                // Sólo para mensajes de texto NUEVOS (evita re-disparar en reintentos de Meta).
-                const isNewMessage = incRes.rows.length > 0;
-
-                // Última interacción del contacto (v4.695). Se guarda en columna en
-                // vez de deducirse del log porque la segmentación del motor de
-                // automatización pregunta por ella en cada evaluación, y sacarla de
-                // un MAX() sobre `WhatsAppMessageLog` costaría un agregado por
-                // contacto y por consulta.
-                //
-                // También es la señal de "respondió" que usan las condiciones de los
-                // recorridos — incluidos los botones de respuesta rápida, que Meta
-                // entrega como un mensaje entrante y no como un clic.
-                if (isNewMessage && contactId) {
-                    await db.query(
-                        `UPDATE "WhatsAppContact" SET "lastInboundAt"=$1,"updatedAt"=NOW() WHERE id=$2`,
-                        [timestamp, contactId]
-                    ).catch(() => {});
-                }
-
-                // Bandeja, intención y enrutamiento (v4.696).
-                //
-                // Corre ANTES del respondedor histórico y, por defecto, NO manda
-                // nada: sólo abre la conversación, clasifica la intención y la
-                // enruta a un equipo. Eso deja intacto lo que el contacto recibe
-                // hoy —las reglas de palabra clave y el agente de IA de
-                // `whatsappAgent.js`— mientras la bandeja se llena.
-                //
-                // La única excepción es la BAJA: se atiende siempre, encendido o
-                // no el chatbot. Que la respuesta automática esté apagada no
-                // puede significar ignorar a quien pide no recibir más mensajes.
-                //
-                // Con `chatbot.enabled` en true, una intención reconocida se
-                // contesta acá y el respondedor histórico se saltea para no
-                // mandar dos mensajes por el mismo entrante.
-                let chatbotReplied = false;
-                let chatbotOptedOut = false;
-                if (isNewMessage && contactId) {
-                    try {
-                        const { handleInboundMessage } = await import('../lib/crmChatbot.js');
-                        const outcome = await handleInboundMessage({
-                            clubId, contactId, messageText: bodyText, at: timestamp,
-                            // La conversación se abre POR LÍNEA: sin esto, quien
-                            // escriba al Distrito y a la Feria caería en el mismo
-                            // hilo, con el agente de una leyendo el contexto de
-                            // la otra.
-                            connectionId,
-                        });
-                        chatbotOptedOut = !!outcome?.optedOut;
-                        if (outcome?.reply) {
-                            const contactRow = await db.query(
-                                `SELECT id, phone FROM "WhatsAppContact" WHERE id=$1`, [contactId]
-                            );
-                            if (contactRow.rows.length) {
-                                    // Se responde por la MISMA línea que recibió.
-                                await sendWhatsAppTextMessage({
-                                    clubId, contact: contactRow.rows[0], text: outcome.reply, connection,
-                                });
-                                chatbotReplied = true;
-                            }
-                        }
-                    } catch (botErr) {
-                        // La bandeja no puede tumbar el webhook: si falla, el
-                        // mensaje ya quedó guardado y el respondedor histórico
-                        // sigue funcionando como siempre.
-                        console.error('[WA-Inbox] Error en la bandeja:', botErr.message);
-                    }
-                }
-                // Se saltea si el chatbot ya contestó (no mandar dos respuestas al
-                // mismo entrante) o si la persona acaba de pedir la baja (a quien
-                // pide no recibir más mensajes no se le contesta con un agente).
-                if (isNewMessage && contactId && msgType === 'text' && bodyText && bodyText.trim()
-                    && !chatbotReplied && !chatbotOptedOut) {
-                    try {
-                        const { runWhatsAppAutomation } = await import('../services/whatsappAgent.js');
-                        console.log(`[WA-Auto] Procesando entrante club=${clubId} de=${normalizedPhone}: "${bodyText.slice(0, 80)}"`);
-                        const result = await runWhatsAppAutomation({
-                            clubId,
-                            contactId,
-                            phone: normalizedPhone,
-                            contactName,
-                            messageText: bodyText,
-                            // La línea viaja entera: de ella salen el agente que
-                            // atiende y la credencial con la que se responde.
-                            connection,
-                        });
-                        console.log('[WA-Auto] Resultado:', JSON.stringify(result));
-                    } catch (autoErr) {
-                        console.error('[WA-Auto] Error en automatización:', autoErr.message, autoErr.stack);
-                    }
-                }
+            const connection = route.connection;
+            if (!connection) {
+                await reportUnrouted({ phoneNumberId, wabaId, changes, signature, auditId });
+                resolutions.push('unknown_phone_number_id');
+                outcome = 'skipped';
+                continue;
             }
-        }
+            const lineClubId = connection.clubId;
+            clubId = clubId || lineClubId;
+            if (route.resolution && !resolutions.includes(route.resolution)) resolutions.push(route.resolution);
 
-        // Handle status updates
-        if (changes.statuses) {
-            let unmatched = 0;
-            for (const s of changes.statuses) {
-                const ts = s.timestamp ? new Date(parseInt(s.timestamp) * 1000) : new Date();
-                const status = { sent: 'sent', delivered: 'delivered', read: 'read', failed: 'failed' }[s.status] || s.status;
-                // ⚠️ ACOTADO POR LÍNEA. Hasta v4.991 era `WHERE "messageId"=$1
-                // LIMIT 1` sin acotar por cuenta, y ese índice NO es único: una
-                // colisión de `messageId` entre dos WABAs es improbable, pero el
-                // LIMIT 1 la resolvería EN SILENCIO y hacia el lado equivocado
-                // —el estado de entrega de una organización escrito sobre el
-                // mensaje de otra—. El OR conserva las filas anteriores a
-                // multi-cuenta, que tienen la columna nula.
-                const logR = await db.query(
-                    `SELECT id,"campaignId","contactId" FROM "WhatsAppMessageLog"
-                     WHERE "messageId"=$1 AND ("connectionId"=$2 OR "connectionId" IS NULL)
-                     ORDER BY ("connectionId" IS NOT NULL) DESC LIMIT 1`,
-                    [s.id, connectionId]
-                );
-                if (!logR.rows.length) {
-                    // El estado llegó pero no tenemos el envío. Significa que el
-                    // `messageId` que devolvió Meta al enviar no se guardó, o que
-                    // el envío salió desde otra herramienta. Antes era un `continue`
-                    // mudo, y es justo el caso en que la campaña queda en «0
-                    // entregados» pareciendo un fallo de entrega.
-                    unmatched++;
-                    console.warn(`[WA Webhook] Estado '${s.status}' de ${s.id} sin envío registrado.`);
-                    continue;
-                }
-                const log = logR.rows[0];
-                const tsField = `"${status}At"`;
-
-                // Capture error details if failed
-                const errorCode = s.errors?.[0]?.code || null;
-                const errorMsg = s.errors?.[0]?.title || s.errors?.[0]?.message || null;
-                if (status === 'failed' && (errorCode || errorMsg)) {
-                    await db.query(
-                        `UPDATE "WhatsAppMessageLog" SET status='failed',"failedAt"=$1,"errorCode"=$2,"errorMessage"=$3,"updatedAt"=NOW() WHERE id=$4`,
-                        [ts, String(errorCode), errorMsg, log.id]
-                    );
-                    console.error(`[WA Webhook] Message failed: ${s.id} - Code: ${errorCode} - ${errorMsg}`);
-                } else {
-                    // Por `id` y no por `messageId`: la fila ya se resolvió
-                    // arriba acotada por línea, así que volver a buscarla por
-                    // el identificador de Meta reabriría la ambigüedad que la
-                    // consulta de arriba acaba de cerrar.
-                    await db.query(`UPDATE "WhatsAppMessageLog" SET status=$1,${tsField}=$2,"updatedAt"=NOW() WHERE id=$3`, [status, ts, log.id]);
-                }
-
-                if (log.campaignId && ['delivered', 'read', 'failed'].includes(status)) {
-                    const cf = status === 'read' ? '"read"' : status;
-                    await db.query(`UPDATE "WhatsAppCampaign" SET ${cf}=${cf}+1,"updatedAt"=NOW() WHERE id=$1`, [log.campaignId]).catch(() => {});
-                }
-                if (log.contactId && ['delivered', 'read', 'failed'].includes(status)) {
-                    const fm = { delivered: '"totalDelivered"', read: '"totalRead"', failed: '"totalFailed"' };
-                    await db.query(`UPDATE "WhatsAppContact" SET ${fm[status]}=${fm[status]}+1,"updatedAt"=NOW() WHERE id=$1`, [log.contactId]).catch(() => {});
-                }
+            if (changes.messages) {
+                await handleInboundMessages({
+                    changes, connection, clubId: lineClubId, clubToken: route.token,
+                    phoneNumberId, wabaId, signature, auditId,
+                });
             }
-            if (unmatched) {
-                outcome = 'partial';
-                resolution = `${resolution || 'ok'}; ${unmatched} de ${changes.statuses.length} estados sin envío registrado`;
+
+            if (changes.statuses) {
+                const unmatched = await handleStatuses({ changes, connectionId: connection.id });
+                if (unmatched) {
+                    outcome = 'partial';
+                    resolutions.push(`${unmatched} de ${changes.statuses.length} estados sin envío registrado`);
+                }
             }
         }
     } catch (err) {
@@ -2974,10 +2770,296 @@ export const handleWebhook = async (req, res) => {
         // Cerrar la bitácora va DESPUÉS del 200: es registro nuestro, no puede
         // sumar latencia al acuse que Meta espera.
         await closeWebhookEvent(auditId, {
-            clubId, resolution, outcome, error: failure, durationMs: Date.now() - startedAt,
+            clubId, resolution: resolutions.join('; ') || null, outcome, error: failure,
+            durationMs: Date.now() - startedAt,
         });
     }
 };
+
+/**
+ * Un cambio cuyo número no corresponde a ninguna línea.
+ *
+ * Un webhook que no se puede encaminar es la avería que deja el módulo mudo
+ * sin dar la cara: los envíos salen, Meta confirma la entrega y acá no se
+ * anota nada. Se avisa, queda la fila con el payload y —desde v4.1285— cada
+ * mensaje queda además con su traza `failed`, para que aparezca en el reporte.
+ */
+async function reportUnrouted({ phoneNumberId, wabaId, changes, signature, auditId }) {
+    console.warn(`[WA-CRM] Webhook received for unknown phoneNumberId: ${phoneNumberId} (waba=${wabaId})`);
+    if (changes.messages) {
+        try {
+            const { claimInbound, finishTrace } = await import('../lib/whatsappInboundStore.js');
+            for (const msg of changes.messages) {
+                const { trace } = await claimInbound({
+                    messageId: msg.id, wabaId, phoneNumberId, waId: msg.from,
+                    phone: msg.from ? `+${String(msg.from).replace(/^\+/, '')}` : null,
+                    messageType: msg.type || 'text', text: msg.text?.body || '', signature,
+                    webhookEventId: auditId,
+                });
+                await finishTrace(trace, {
+                    outcome: 'failed', reason: 'error_interno',
+                    detail: `Ninguna línea conectada tiene el número ${phoneNumberId || 'sin identificar'} (cuenta ${wabaId || 'sin identificar'}). El mensaje no se pudo atribuir a ninguna organización.`,
+                });
+            }
+        } catch (_) { /* la traza no puede tumbar el webhook */ }
+    }
+    try {
+        const [{ raiseAlert }, { resolvePlatformClubId }] = await Promise.all([
+            import('../lib/crmAlerts.js'),
+            import('../lib/crmTenant.js'),
+        ]);
+        const platformClubId = await resolvePlatformClubId();
+        if (platformClubId) {
+            await raiseAlert({
+                clubId: platformClubId,
+                type: 'webhook_unrouted',
+                title: 'Llegó un webhook de WhatsApp que no corresponde a ningún sitio',
+                detail: `Meta mandó un evento desde el número ${phoneNumberId || 'sin identificar'} (cuenta ${wabaId || 'sin identificar'}) y ninguna cuenta de WhatsApp conectada coincide. Mientras siga así, ni los mensajes entrantes ni los estados de entrega de esa línea se registran. Revisar el ID del número en Configuración → WhatsApp → Cuentas conectadas, o agregar la cuenta que falta: el identificador exacto está en la bitácora del webhook.`,
+                dedupeKey: `webhook_unrouted:${phoneNumberId || wabaId || 'na'}:${new Date().toISOString().slice(0, 10)}`,
+            });
+        }
+    } catch (alertErr) {
+        console.error('[WA-CRM] No se pudo levantar la alerta de webhook sin encaminar:', alertErr.message);
+    }
+}
+
+/** Los mensajes entrantes de un cambio ya encaminado a su línea. */
+async function handleInboundMessages({ changes, connection, clubId, clubToken, phoneNumberId, wabaId, signature, auditId }) {
+    const connectionId = connection.id;
+    const { claimInbound, updateTrace, finishTrace } = await import('../lib/whatsappInboundStore.js');
+
+    for (const msg of changes.messages) {
+        const from = String(msg.from || ''); // sender phone number (wa_id)
+        const normalizedPhone = from.startsWith('+') ? from : `+${from}`;
+        const messageId = msg.id;
+        const timestamp = msg.timestamp ? new Date(parseInt(msg.timestamp) * 1000) : new Date();
+        const msgType = msg.type || 'text';
+        const profileName = (changes.contacts || []).find((c) => c.wa_id === msg.from)?.profile?.name
+            || changes.contacts?.[0]?.profile?.name || null;
+
+        // ── IDEMPOTENCIA (v4.1285) ───────────────────────────────────────
+        //
+        // Se RECLAMA el mensaje con un INSERT contra el índice único de
+        // `messageId`. Antes era un SELECT y después un INSERT con
+        // `ON CONFLICT DO NOTHING` sobre una tabla SIN índice único en
+        // `messageId`: dos entregas simultáneas del mismo mensaje pasaban las
+        // dos el SELECT y las dos respondían.
+        const { trace, duplicate } = await claimInbound({
+            messageId, wabaId, phoneNumberId, phone: normalizedPhone, waId: from,
+            contactName: profileName, messageType: msgType,
+            text: msg.text?.body || msg.button?.text || msg.interactive?.button_reply?.title || msg.interactive?.list_reply?.title || '',
+            signature, webhookEventId: auditId, receivedAt: timestamp,
+        });
+        if (duplicate) {
+            console.log(`[WA-Auto] Mensaje ${messageId} ya reclamado (reintento de Meta), se omite.`);
+            continue;
+        }
+        await updateTrace(trace, { stage: 'validated' });
+        await updateTrace(trace, { stage: 'line_identified', clubId, connectionId });
+
+        // Respaldo de la deduplicación de siempre, por si la traza no está
+        // disponible (su tabla no se pudo crear): no se responde dos veces.
+        if (!trace && messageId) {
+            const dup = await db.query(
+                `SELECT 1 FROM "WhatsAppMessageLog" WHERE "messageId"=$1 AND direction='incoming' LIMIT 1`,
+                [messageId]
+            );
+            if (dup.rows.length) {
+                console.log(`[WA-Auto] Mensaje ${messageId} ya procesado, se omite.`);
+                continue;
+            }
+        }
+
+        // Find or create contact
+        let contactId = null;
+        let contactName = profileName || normalizedPhone;
+
+        const contactR = await db.query(
+            `SELECT id, "profilePictureUrl", "name" FROM "WhatsAppContact" WHERE "clubId"=$1 AND phone=$2 LIMIT 1`,
+            [clubId, normalizedPhone]
+        );
+
+        if (contactR.rows.length) {
+            contactId = contactR.rows[0].id;
+            contactName = contactR.rows[0].name;
+            // If no picture, try sync
+            if (!contactR.rows[0].profilePictureUrl) {
+                await trySyncContactPhoto(contactId, normalizedPhone, contactName, clubId);
+            }
+        } else {
+            // Auto-create
+            try {
+                const newContactId = crypto.randomUUID();
+                const r = await db.query(
+                    `INSERT INTO "WhatsAppContact" (id, "clubId", name, phone, source, "createdAt", "updatedAt")
+                     VALUES ($1, $2, $3, $4, 'whatsapp', NOW(), NOW()) RETURNING id`,
+                    [newContactId, clubId, contactName, normalizedPhone]
+                );
+                contactId = r.rows[0].id;
+                await trySyncContactPhoto(contactId, normalizedPhone, contactName, clubId);
+            } catch (e) {
+                // Race condition or other error
+                const retryR = await db.query(`SELECT id FROM "WhatsAppContact" WHERE "clubId"=$1 AND phone=$2 LIMIT 1`, [clubId, normalizedPhone]);
+                contactId = retryR.rows[0]?.id;
+            }
+        }
+
+        if (!contactId) {
+            // Era un `continue` mudo: el mensaje se perdía sin rastro.
+            await finishTrace(trace, { outcome: 'failed', reason: 'error_interno', detail: 'No se pudo crear ni encontrar la ficha del contacto.' });
+            continue;
+        }
+        await updateTrace(trace, { contactId, contactName });
+
+        // Extract message text based on type
+        let bodyText = '';
+
+        if (msgType === 'text') {
+            bodyText = msg.text?.body || '';
+        } else if (['image', 'video', 'audio', 'document'].includes(msgType)) {
+            let mediaObj = msg[msgType];
+            let mediaUrl = null;
+            if (mediaObj && mediaObj.id && clubToken) {
+                let ext = msgType === 'image' ? 'jpg' : msgType === 'video' ? 'mp4' : msgType === 'audio' ? 'ogg' : 'pdf';
+                let mime = mediaObj.mime_type || (msgType === 'image' ? 'image/jpeg' : msgType === 'video' ? 'video/mp4' : 'application/pdf');
+                if (msgType === 'document' && mediaObj.filename) {
+                    const parsedExt = mediaObj.filename.split('.').pop();
+                    if (parsedExt) ext = parsedExt;
+                }
+                mediaUrl = await syncMetaMediaToS3(mediaObj.id, clubToken, clubId, ext, 'wa-media-in', mime);
+            }
+            const caption = mediaObj?.caption || (msgType === 'document' ? mediaObj?.filename : '');
+            if (mediaUrl) {
+                bodyText = `[MEDIA|${msgType}|${mediaUrl}] ${caption}`.trim();
+            } else {
+                bodyText = caption ? `[${msgType.toUpperCase()}] ${caption}` : `[${msgType.toUpperCase()} adjunto]`;
+            }
+        } else if (msgType === 'sticker') {
+            bodyText = '[Sticker]';
+        } else if (msgType === 'location') {
+            bodyText = `[Ubicación: ${msg.location?.latitude}, ${msg.location?.longitude}]`;
+        } else if (msgType === 'contacts') {
+            bodyText = '[Contacto compartido]';
+        } else if (msgType === 'reaction') {
+            bodyText = `[Reacción: ${msg.reaction?.emoji || ''}]`;
+        } else if (msgType === 'button') {
+            bodyText = msg.button?.text || '[Botón]';
+        } else if (msgType === 'interactive') {
+            bodyText = msg.interactive?.button_reply?.title || msg.interactive?.list_reply?.title || '[Interactivo]';
+        } else {
+            bodyText = `[${msgType}]`;
+        }
+
+        // Save incoming message
+        const incLogId = crypto.randomUUID();
+        const incRes = await db.query(
+            `INSERT INTO "WhatsAppMessageLog" (id, "clubId","contactId",phone,"messageId","bodyText",direction,status,"connectionId","sentAt","createdAt","updatedAt")
+             VALUES ($1,$2,$3,$4,$5,$6,'incoming','received',$8,$7,$7,NOW())
+             ON CONFLICT DO NOTHING
+             RETURNING id`,
+            [incLogId, clubId, contactId, normalizedPhone, messageId, bodyText, timestamp, connectionId]
+        );
+        await updateTrace(trace, { stage: 'stored', messageText: bodyText });
+
+        // El CANAL: por qué línea alcanzamos a esta persona, sin duplicar su
+        // ficha. `WhatsAppContact` tiene `@@unique([phone, clubId])`, así que
+        // la ficha es una y lo que se guarda por línea es esto.
+        if (connectionId && contactId) {
+            const { touchContactChannel } = await import('../lib/whatsappConnectionStore.js');
+            await touchContactChannel({
+                contactId, clubId, connectionId,
+                address: normalizedPhone, inboundAt: timestamp,
+            });
+        }
+
+        const isNewMessage = incRes.rows.length > 0;
+
+        // Última interacción del contacto (v4.695). Se guarda en columna porque
+        // la segmentación del motor la pregunta en cada evaluación. También es
+        // la señal de "respondió" que usan las condiciones de los recorridos.
+        if (isNewMessage && contactId) {
+            await db.query(
+                `UPDATE "WhatsAppContact" SET "lastInboundAt"=$1,"updatedAt"=NOW() WHERE id=$2`,
+                [timestamp, contactId]
+            ).catch(() => {});
+        }
+
+        if (!isNewMessage) {
+            await finishTrace(trace, { outcome: 'skipped', reason: 'error_interno', detail: 'El mensaje ya estaba guardado (reintento de Meta): no se responde dos veces.' });
+            continue;
+        }
+
+        // Bandeja → agente → Meta, con la traza de cada etapa (v4.1285).
+        const { processInbound } = await import('../services/whatsappInboundProcessor.js');
+        await processInbound({
+            trace, clubId, contactId, connection,
+            phone: normalizedPhone, contactName,
+            bodyText, msgType, timestamp, signature,
+        });
+    }
+}
+
+/** Los estados de entrega de un cambio ya encaminado. Devuelve los que no casaron. */
+async function handleStatuses({ changes, connectionId }) {
+    let unmatched = 0;
+    const { recordReplyStatus } = await import('../lib/whatsappInboundStore.js');
+    for (const s of changes.statuses) {
+        const ts = s.timestamp ? new Date(parseInt(s.timestamp) * 1000) : new Date();
+        const status = { sent: 'sent', delivered: 'delivered', read: 'read', failed: 'failed' }[s.status] || s.status;
+        // ⚠️ ACOTADO POR LÍNEA. Hasta v4.991 era `WHERE "messageId"=$1 LIMIT 1`
+        // sin acotar por cuenta, y ese índice NO es único: una colisión de
+        // `messageId` entre dos WABAs es improbable, pero el LIMIT 1 la
+        // resolvería EN SILENCIO y hacia el lado equivocado. El OR conserva las
+        // filas anteriores a multi-cuenta, que tienen la columna nula.
+        const logR = await db.query(
+            `SELECT id,"campaignId","contactId" FROM "WhatsAppMessageLog"
+             WHERE "messageId"=$1 AND ("connectionId"=$2 OR "connectionId" IS NULL)
+             ORDER BY ("connectionId" IS NOT NULL) DESC LIMIT 1`,
+            [s.id, connectionId]
+        );
+
+        const errorCode = s.errors?.[0]?.code || null;
+        const errorMsg = s.errors?.[0]?.error_data?.details || s.errors?.[0]?.title || s.errors?.[0]?.message || null;
+
+        // ¿Es el estado de una RESPUESTA AUTOMÁTICA? Cierra su traza: «Meta
+        // aceptó» no es «el usuario lo recibió» (v4.1285).
+        await recordReplyStatus({ messageId: s.id, status, at: ts, errorCode, errorMessage: errorMsg });
+
+        if (!logR.rows.length) {
+            // El estado llegó pero no tenemos el envío. Antes era un `continue`
+            // mudo, y es justo el caso en que la campaña queda en «0
+            // entregados» pareciendo un fallo de entrega.
+            unmatched++;
+            console.warn(`[WA Webhook] Estado '${s.status}' de ${s.id} sin envío registrado.`);
+            continue;
+        }
+        const log = logR.rows[0];
+        const tsField = `"${status}At"`;
+
+        if (status === 'failed' && (errorCode || errorMsg)) {
+            await db.query(
+                `UPDATE "WhatsAppMessageLog" SET status='failed',"failedAt"=$1,"errorCode"=$2,"errorMessage"=$3,"updatedAt"=NOW() WHERE id=$4`,
+                [ts, String(errorCode), errorMsg, log.id]
+            );
+            console.error(`[WA Webhook] Message failed: ${s.id} - Code: ${errorCode} - ${errorMsg}`);
+        } else if (['sent', 'delivered', 'read', 'failed'].includes(status)) {
+            // Por `id` y no por `messageId`: la fila ya se resolvió arriba
+            // acotada por línea. Y sólo los cuatro estados que tienen columna
+            // de fecha: interpolar uno desconocido rompía la sentencia.
+            await db.query(`UPDATE "WhatsAppMessageLog" SET status=$1,${tsField}=$2,"updatedAt"=NOW() WHERE id=$3`, [status, ts, log.id]);
+        }
+
+        if (log.campaignId && ['delivered', 'read', 'failed'].includes(status)) {
+            const cf = status === 'read' ? '"read"' : status;
+            await db.query(`UPDATE "WhatsAppCampaign" SET ${cf}=${cf}+1,"updatedAt"=NOW() WHERE id=$1`, [log.campaignId]).catch(() => {});
+        }
+        if (log.contactId && ['delivered', 'read', 'failed'].includes(status)) {
+            const fm = { delivered: '"totalDelivered"', read: '"totalRead"', failed: '"totalFailed"' };
+            await db.query(`UPDATE "WhatsAppContact" SET ${fm[status]}=${fm[status]}+1,"updatedAt"=NOW() WHERE id=$1`, [log.contactId]).catch(() => {});
+        }
+    }
+    return unmatched;
+}
 
 // ── Custom Fields CRUD ──────────────────────────────────────────────────────
 

@@ -614,6 +614,17 @@ router.get('/crm-automation-tick', async (req, res) => {
         const now = new Date();
         const clubId = await resolvePlatformClubId();
 
+        // Mensajes de WhatsApp que quedaron a medias (v4.1285). VA PRIMERO:
+        // es alguien esperando respuesta ahora, y lo demás puede esperar al
+        // minuto siguiente. Sólo retoma lo que no pudo haber salido.
+        let inboundRetry = { found: 0, retried: 0, closed: 0 };
+        try {
+            const { retryStuckInbound } = await import('../services/whatsappInboundProcessor.js');
+            inboundRetry = await retryStuckInbound({ limit: 10 });
+        } catch (e) {
+            console.error('[CRON crm-automation] reintento de entrantes:', e.message);
+        }
+
         // La observación corre SIEMPRE, haya o no cuenta de WhatsApp: el tablero
         // de ciclo de vida es útil por sí solo, y separar las dos cosas evita que
         // una integración a medias deje al panel sin datos.
@@ -637,12 +648,12 @@ router.get('/crm-automation-tick', async (req, res) => {
         }
 
         const elapsedMs = Date.now() - startedAt;
-        if (lifecycle.transitions || enrollment.enrolled || delivery.sent || alerts.created) {
+        if (lifecycle.transitions || enrollment.enrolled || delivery.sent || alerts.created || inboundRetry.found) {
             console.log(`[CRON crm-automation] sitios=${lifecycle.sites} transiciones=${lifecycle.transitions} ` +
                 `eventos=${lifecycle.eventsCreated} inscripciones=${enrollment.enrolled} enviados=${delivery.sent} ` +
-                `alertas=${alerts.created} en ${elapsedMs}ms`);
+                `alertas=${alerts.created} entrantes-retomados=${inboundRetry.retried}/${inboundRetry.found} en ${elapsedMs}ms`);
         }
-        res.json({ ok: true, clubId, lifecycle, seeds, enrollment, delivery, alerts, elapsedMs });
+        res.json({ ok: true, clubId, inboundRetry, lifecycle, seeds, enrollment, delivery, alerts, elapsedMs });
     } catch (e) {
         console.error('[CRON crm-automation] error:', e);
         res.status(500).json({ error: e.message });

@@ -32,7 +32,7 @@ const db = (await import('../server/lib/db.js')).default;
 // mitad deja filas, y la siguiente contaría las suyas más las de la anterior.
 // Limpiar al final sólo funciona cuando todo sale bien, que es justo cuando no
 // hace falta.
-const RESET = ['CrmWebhookEvent', 'CrmOutboundLog', 'WhatsAppMessageLog', 'WhatsAppTemplate', 'WhatsAppContact', 'CrmAlert'];
+const RESET = ['CrmWebhookEvent', 'CrmOutboundLog', 'WhatsAppMessageLog', 'WhatsAppTemplate', 'WhatsAppContact', 'CrmAlert', 'WhatsAppInboundTrace'];
 
 // ── Fixtures mínimos ────────────────────────────────────────────────────────
 const CLUB = 'club-diag-test';
@@ -310,7 +310,9 @@ let res = await post(msgBody);
 ok('1. responde 200 a Meta', res.statusCode === 200);
 let ev = await lastEvent();
 ok('1. deja la fila del webhook', !!ev);
-ok('1. lo encamina por phoneNumberId', ev.resolution === 'phone_number_id', ev.resolution);
+// Desde v4.992 la resolución lleva anotaciones detrás (la migración perezosa):
+// lo que se comprueba es CÓMO se encaminó, que es la primera palabra.
+ok('1. lo encamina por phoneNumberId', String(ev.resolution || '').startsWith('phone_number_id'), ev.resolution);
 ok('1. lo ata al sitio', ev.clubId === CLUB);
 ok('1. mide cuánto tardó', ev.durationMs !== null);
 ok('1. termina sin error', ev.outcome === 'ok', `${ev.outcome}: ${ev.errorMessage || ''}`);
@@ -333,7 +335,7 @@ otroNumero.entry[0].changes[0].value.messages[0].id = 'wamid.2';
 res = await post(otroNumero);
 ev = await lastEvent();
 ok('3. responde 200 igual', res.statusCode === 200);
-ok('3. lo rescata por el WABA', ev.resolution === 'waba_id', ev.resolution);
+ok('3. lo rescata por el WABA', String(ev.resolution || '').startsWith('waba_id'), ev.resolution);
 ok('3. y guarda el mensaje', (await db.query(`SELECT 1 FROM "WhatsAppMessageLog" WHERE "messageId"='wamid.2'`)).rows.length === 1);
 
 // Prueba 4 — ni el número ni la cuenta se reconocen: se descarta, PERO se anota.
