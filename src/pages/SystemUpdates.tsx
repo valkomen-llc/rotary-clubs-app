@@ -34,13 +34,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1281.0 | 2026-11-05 (Programas: la página pública por contenedores, fiel a la referencia)
+// UI V4.1282.0 | 2026-11-05 (Programas: la landing con los patrones institucionales del sitio)
 // Cache bust: 2026-11-04
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1282.0',
+        title: 'Programas: la landing de Clínicas Ponseti con los patrones institucionales del sitio 🎨',
+        description: 'La página pública por contenedores deja de usar medidas propias y pinta con lo mismo que el inicio y las páginas institucionales del distrito: el contenedor de siempre (ancho máximo 7xl, márgenes laterales y ritmo vertical de las secciones del inicio), la portada con las alturas y el comportamiento del hero del inicio (encuadre, acercamiento, superposición y Ken Burns cuando la imagen va de fondo), la banda bajo la portada con la textura geométrica institucional «Somos gente de acción», los botones de la portada (forma, celeste del sitio o colores configurables de un sitio Evento, estrella dorada), los títulos ligeros de las bandas, las tarjetas de cifras, de ícono, de causas y de proyectos, la composición de dos columnas de «Únete» y la caja flotante de La Fundación Rotaria. Conserva los once contenedores, su orden, sus contenidos y toda la personalización.',
+        date: new Date().toISOString(),
+        tags: ['programas', 'ponseti', 'página pública', 'diseño institucional', 'hero', 'fondos'],
+        type: 'improvement',
+        impact: 'Media: la landing se ve como una sección más del sitio del distrito, en escritorio, tablet y móvil, sin tocar estilos globales.',
+        changes: [
+            { type: 'changed', text: 'Portada: alturas h-[440px]/md:h-[540px] del HeroSection; nueva opción «Imagen de fondo a todo el ancho» con el encuadre (enfoque y acercamiento 100–200 %), la superposición del inicio y el acercamiento lento del tema (respeta «Reducir movimiento»); la opción «Al lado del texto» sigue siendo la de la referencia y la predeterminada.' },
+            { type: 'changed', text: 'Fondos: nueva variante «Azul institucional con textura» (SITE_ACTION_BG, la banda bajo la portada del inicio; en un sitio Evento usa su actionBg configurable con la textura encima), predeterminada para la presentación; «Gris con textura» usa bg-rotary-concrete como la sección de cifras. Lo ya guardado conserva su fondo.' },
+            { type: 'changed', text: 'Botones con la forma del inicio (px-8 py-3.5 rounded-full shadow-lg) y useCtaButton/ctaSkin; enlaces de tarjeta como los de Nuestras Causas; tarjetas de impacto como las de cifras; tarjetas informativas como las de ícono de Proyectos; historias como las tarjetas de causas; directorio como las tarjetas de proyecto; equipo y clubes como «Únete» (imagen rounded-[40px] sin recorte); donaciones como la caja flotante de La Fundación Rotaria; orientación como la banda de cierre de Quiénes Somos.' },
+            { type: 'added', text: 'En el editor: modo de imagen de la portada, superposición adicional y acercamiento de cada imagen. Compatible con las páginas ya guardadas (valores predeterminados sin pisar personalizaciones).' },
+        ],
+    },
     {
         version: '4.1281.0',
         title: 'Programas: la página pública de Clínicas Ponseti por contenedores, editable desde el panel 🧩',

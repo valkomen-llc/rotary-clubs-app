@@ -34,9 +34,10 @@ export const LANDING_SCHEMA_VERSION = 1;
 export const BACKGROUNDS = [
     { id: 'white', label: 'Blanco' },
     { id: 'light', label: 'Azul claro (portada)' },
+    { id: 'geo', label: 'Azul institucional con textura (como la banda bajo la portada del inicio)' },
     { id: 'blue', label: 'Azul institucional' },
     { id: 'navy', label: 'Azul marino' },
-    { id: 'gray', label: 'Gris claro' },
+    { id: 'gray', label: 'Gris con textura (como la sección de cifras del inicio)' },
 ];
 export const BACKGROUND_IDS = BACKGROUNDS.map(b => b.id);
 
@@ -101,6 +102,8 @@ export const shapeImage = (raw) => {
         mediaId: str(i.mediaId, 80) || null,
         focalX: clampInt(i.focalX, 0, 100, 50),
         focalY: clampInt(i.focalY, 0, 100, 50),
+        // Acercamiento 100–200 %, igual que el encuadre del hero del inicio (framing.zoom).
+        zoom: clampInt(i.zoom, 100, 200, 100),
         placeholder: str(i.placeholder, 60) || 'Fotografía real autorizada',
     };
 };
@@ -131,7 +134,7 @@ export const BLOCK_TYPE_IDS = Object.keys(BLOCK_TYPES);
 
 const STYLE_DEFAULTS = {
     hero: { background: 'light', align: 'left', imageSide: 'right' },
-    intro: { background: 'navy', align: 'center', imageSide: 'right' },
+    intro: { background: 'geo', align: 'center', imageSide: 'right' },
     cards: { background: 'white', align: 'center', imageSide: 'right' },
     feature: { background: 'blue', align: 'left', imageSide: 'right' },
     impact: { background: 'gray', align: 'center', imageSide: 'right' },
@@ -149,6 +152,10 @@ const shapeStyle = (type, raw) => {
         background: BACKGROUND_IDS.includes(s.background) ? s.background : d.background,
         align: ['left', 'center'].includes(s.align) ? s.align : d.align,
         imageSide: ['left', 'right'].includes(s.imageSide) ? s.imageSide : d.imageSide,
+        // Portada: la imagen al lado del texto (la referencia) o de FONDO a todo
+        // el ancho, con la altura, el encuadre, el acercamiento y la
+        // superposición del hero del inicio del sitio.
+        imageMode: ['side', 'background'].includes(s.imageMode) ? s.imageMode : 'side',
         overlay: clampInt(s.overlay, 0, 60, 0),
     };
 };
@@ -334,7 +341,7 @@ export const resolveButton = (btn, { slug, donation = null, landingBlocks = [] }
 
 const imageOrPlaceholder = (img, preview) => {
     const i = obj(img);
-    if (i.url) return { url: i.url, alt: i.alt || '', focalX: i.focalX ?? 50, focalY: i.focalY ?? 50, placeholder: false };
+    if (i.url) return { url: i.url, alt: i.alt || '', focalX: i.focalX ?? 50, focalY: i.focalY ?? 50, zoom: i.zoom ?? 100, placeholder: false };
     return preview ? { url: '', alt: '', focalX: 50, focalY: 50, placeholder: true, placeholderLabel: i.placeholder || 'Fotografía real autorizada' } : null;
 };
 

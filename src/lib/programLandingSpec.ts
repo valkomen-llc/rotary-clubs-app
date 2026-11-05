@@ -13,9 +13,10 @@ export interface Labeled { id: string; label: string }
 export const BACKGROUNDS: Labeled[] = [
     { id: 'white', label: 'Blanco' },
     { id: 'light', label: 'Azul claro (portada)' },
+    { id: 'geo', label: 'Azul institucional con textura (como la banda bajo la portada del inicio)' },
     { id: 'blue', label: 'Azul institucional' },
     { id: 'navy', label: 'Azul marino' },
-    { id: 'gray', label: 'Gris claro' },
+    { id: 'gray', label: 'Gris con textura (como la sección de cifras del inicio)' },
 ];
 export const ICONS: Labeled[] = [
     { id: 'book', label: 'Libro' }, { id: 'map-pin', label: 'Ubicación' }, { id: 'help', label: 'Pregunta' }, { id: 'users', label: 'Personas' },
@@ -69,25 +70,32 @@ export const SOURCE_TABS: Record<string, { tab: string; label: string }> = {
 
 export interface ButtonAction { type: string; target: string }
 export interface LandingButton { label: string; icon: string; variant: 'primary' | 'secondary' | 'gold'; action: ButtonAction }
-export interface LandingImage { url: string; alt: string; mediaId?: string | null; focalX: number; focalY: number; placeholder?: string }
-export interface LandingBlock { id: string; type: string; name: string; enabled: boolean; content: any; style: { background: string; align: 'left' | 'center'; imageSide: 'left' | 'right'; overlay: number } }
+export interface LandingImage { url: string; alt: string; mediaId?: string | null; focalX: number; focalY: number; zoom?: number; placeholder?: string }
+export interface LandingBlock { id: string; type: string; name: string; enabled: boolean; content: any; style: { background: string; align: 'left' | 'center'; imageSide: 'left' | 'right'; imageMode?: 'side' | 'background'; overlay: number } }
 export interface Landing { schemaVersion: number; blocks: LandingBlock[]; settings: { backLink: { label: string; href: string } } }
 
 /** Botón resuelto por el servidor para pintar. */
 export interface ResolvedButton { label: string; icon: string; variant: string; kind: 'anchor' | 'link' | 'external' | 'form' | 'donation'; href?: string; form?: string; donation?: any }
-export interface ResolvedImage { url: string; alt: string; focalX: number; focalY: number; placeholder: boolean; placeholderLabel?: string }
+export interface ResolvedImage { url: string; alt: string; focalX: number; focalY: number; zoom?: number; placeholder: boolean; placeholderLabel?: string }
 export interface ResolvedBlock { id: string; type: string; name: string; style: LandingBlock['style']; data: any; ready: boolean; notes: string[] }
 export interface ResolvedLanding { schemaVersion: number; blocks: ResolvedBlock[]; settings: Landing['settings'] }
 
-/** Clases de fondo y de texto por variante: los colores del sitio del distrito. */
-export const BACKGROUND_CLASS: Record<string, { section: string; text: string; muted: string; card: string }> = {
-    white: { section: 'bg-white', text: 'text-gray-900', muted: 'text-gray-600', card: 'bg-sky-50/70 border border-sky-100' },
-    light: { section: 'bg-gradient-to-br from-sky-100 via-sky-50 to-blue-100', text: 'text-rotary-blue', muted: 'text-slate-700', card: 'bg-white/80 border border-sky-100' },
-    blue: { section: 'bg-rotary-blue', text: 'text-white', muted: 'text-sky-100', card: 'bg-sky-200/90 border border-sky-200' },
-    navy: { section: 'bg-rotary-navy', text: 'text-white', muted: 'text-sky-100', card: 'bg-white border border-gray-100' },
-    gray: { section: 'bg-rotary-concrete bg-gray-100', text: 'text-gray-900', muted: 'text-gray-600', card: 'bg-white border border-gray-100' },
+/**
+ * Fondos por variante: los MISMOS del sitio del distrito.
+ *   geo   → la banda «Somos gente de acción» bajo la portada del inicio
+ *           (`SITE_ACTION_BG`, se aplica como estilo en línea: son tres propiedades).
+ *   gray  → la sección de cifras del inicio (`bg-rotary-concrete`).
+ *   blue/navy → `bg-rotary-blue` / `bg-rotary-navy` (clases del tema).
+ */
+export const BACKGROUND_CLASS: Record<string, { section: string; dark: boolean }> = {
+    white: { section: 'bg-white', dark: false },
+    light: { section: 'bg-gradient-to-br from-sky-100 via-sky-50 to-blue-100', dark: false },
+    geo: { section: 'bg-rotary-geo', dark: true },
+    blue: { section: 'bg-rotary-blue', dark: true },
+    navy: { section: 'bg-rotary-navy', dark: true },
+    gray: { section: 'bg-rotary-concrete', dark: false },
 };
-export const isDarkBackground = (bg: string) => bg === 'blue' || bg === 'navy';
+export const isDarkBackground = (bg: string) => Boolean(BACKGROUND_CLASS[bg]?.dark);
 
 export const validateLandingLight = (l: Landing): { blockId: string | null; message: string }[] => {
     const out: { blockId: string | null; message: string }[] = [];

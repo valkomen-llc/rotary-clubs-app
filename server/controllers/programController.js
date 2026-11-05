@@ -31,7 +31,7 @@ import {
 import { JWT_SECRET } from '../middleware/auth.js';
 import { shapeLanding, validateLanding, newBlock, resolveLanding, BLOCK_TYPES, BACKGROUNDS, ICONS, BUTTON_ACTIONS, DETAIL_ANCHORS, FORM_TARGETS } from '../lib/programLandingSpec.js';
 
-console.log('[programas] v4.1281.0 cargado — Programas: página pública por contenedores (borrador, vista previa, publicación) sobre las fuentes reales del programa');
+console.log('[programas] v4.1282.0 cargado — Programas: la landing por contenedores pinta con los patrones institucionales del sitio (hero del inicio, banda con textura, botones y tarjetas de siempre)');
 
 const fail = (res, e, code = 500) => {
     if (code >= 500) console.error('[programas]', e?.message || e);
