@@ -358,9 +358,17 @@ check('y pasa por la puerta de salida antes de enviar',
 grupo('11. El router resuelve por el número RECEPTOR, no por el remitente');
 
 const resolucion = ctl.slice(ctl.indexOf('EL ROUTER'), ctl.indexOf('EL ROUTER') + 2600);
+// v4.1285: el webhook recorre TODAS las entradas y cambios del lote con
+// `flattenWebhook`, que es quien lee la metadata. Se comprueban las dos mitades:
+// que el aplanado tome el número de la metadata y la cuenta de la entrada, y que
+// el router resuelva con ESOS dos datos.
+const inbound = leer('server/lib/whatsappInbound.js');
 check('la resolución usa el phone_number_id de la metadata',
-  /changes\.metadata\?\.phone_number_id/.test(resolucion));
-check('y la cuenta como respaldo', /body\.entry\?\.\[0\]\?\.id/.test(resolucion));
+  /change\.value\?\.metadata\?\.phone_number_id/.test(inbound)
+  && /resolveForInbound\(\{\s*phoneNumberId,\s*wabaId\s*\}\)/.test(resolucion)
+  && /const phoneNumberId = item\.phoneNumberId/.test(ctl));
+check('y la cuenta como respaldo',
+  /wabaId:\s*entry\?\.id/.test(inbound) && /const wabaId = item\.wabaId/.test(ctl));
 check('NUNCA el número de quien escribe (`msg.from`)',
   !/resolveForInbound[\s\S]{0,200}msg\.from/.test(resolucion));
 check('el motivo está escrito en el código',
@@ -372,10 +380,17 @@ grupo('12. Los tres emisores de respuesta pasan su línea');
 
 const agente = leer('server/services/whatsappAgent.js');
 const bandeja = leer('server/controllers/crm/inbox.controller.js');
-eq('el agente pasa la conexión en sus CUATRO envíos',
-  (agente.match(/await send\([^)]*connection\)/g) || []).length, 4);
+// v4.1285: los cuatro caminos de respuesta (bienvenida, regla, agente,
+// respaldo) pasan por `deliver`, que es el ÚNICO que llama a `send`, y `send`
+// lleva la conexión. Contar las dos cosas: si alguien agrega un quinto camino
+// que llame a `send` sin pasar por `deliver`, o le quita la conexión, falla.
+eq('el agente responde por CUATRO caminos, todos por `deliver`',
+  (agente.match(/return deliver\(/g) || []).length, 4);
+eq('y `deliver` es el único que envía, con la conexión',
+  (agente.match(/await send\([^)]*connection[^)]*\)/g) || []).length, 1);
+const procesador = leer('server/services/whatsappInboundProcessor.js');
 check('el chatbot responde por la línea que recibió',
-  /sendWhatsAppTextMessage\(\{[\s\S]{0,120}connection,/.test(ctl));
+  /sendWhatsAppTextMessage\(\{[\s\S]{0,120}connection\s*\}/.test(procesador));
 check('la bandeja resuelve la conexión de la conversación',
   /conv\.connectionId[\s\S]{0,400}getConnection\(conv\.connectionId/.test(bandeja));
 check('…y no responde por otra si esa línea se desconectó',

@@ -131,6 +131,9 @@
 // ProgramContent, ProgramContentVersion, ProgramChangeRequest, ProgramRequest,
 // ProgramSubscriber, ProgramFile, ProgramAuditLog, ProgramMetricDaily,
 // ProgramVisitor, ProgramLanding y ProgramLandingVersion.
+// Y la traza de cada mensaje entrante de WhatsApp (v4.1285):
+// WhatsAppInboundTrace — el recorrido de cada «Hola» de punta a punta y la
+// única evidencia de qué conversaciones quedaron sin respuesta.
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
 

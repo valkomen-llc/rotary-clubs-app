@@ -88,6 +88,14 @@ router.post('/connections/:id/agent/test', connections.testAgent);
 router.post('/connections/:id/verify', connections.verify);
 router.get('/connections/:id/diagnose', connections.diagnose);
 router.post('/connections/:id/subscribe', connections.subscribe);
+// La línea en funcionamiento REAL (v4.1285): salud medida, recorrido por
+// mensaje, prueba de punta a punta y conversaciones sin respuesta.
+router.get('/connections/:id/health', connections.health);
+router.get('/connections/:id/traces', connections.traces);
+router.post('/connections/:id/probe', connections.startProbe);
+router.get('/connections/:id/probe/:code', connections.probeStatus);
+router.get('/connections/:id/unanswered', connections.unanswered);
+router.post('/connections/:id/unanswered/:traceId/review', connections.reviewUnanswered);
 router.post('/connections/:id/default', connections.makeDefault);
 router.post('/connections/:id/status', connections.setStatus);
 router.put('/connections/:id', connections.update);

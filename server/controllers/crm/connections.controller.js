@@ -86,6 +86,22 @@ async function metaPost(path, token, body = {}) {
   }
 }
 
+// ── Lo que identifica a ESTA plataforma ante Meta (v4.1285) ────────────────
+
+/** La aplicación de Meta cuya URL de callback es /api/crm/webhook. */
+const platformAppId = () => process.env.META_APP_ID || process.env.WA_APP_ID || null;
+
+/**
+ * La URL del webhook de esta plataforma. `WA_WEBHOOK_URL` manda; si no está,
+ * se deduce del dominio por el que entró la petición del panel, que es el
+ * mismo despliegue que atiende el webhook.
+ */
+function platformWebhookUrl(req) {
+  if (process.env.WA_WEBHOOK_URL) return process.env.WA_WEBHOOK_URL;
+  const host = req.get?.('x-forwarded-host') || req.get?.('host') || req.headers?.host;
+  return host ? `https://${String(host).split(',')[0].trim()}/api/crm/webhook` : null;
+}
+
 // ── Listar ─────────────────────────────────────────────────────────────────
 
 /**
@@ -407,10 +423,24 @@ export const diagnose = async (req, res) => {
       tokenValid: null, phoneMatchesWaba: null, subscribed: null,
     };
 
+    // La RECEPCIÓN medida, no supuesta (v4.1285): si salen mensajes y no
+    // vuelve ningún evento de esta línea, la suscripción apunta a otra parte
+    // aunque Meta diga que está suscrita.
+    const { healthFacts } = await import('../../lib/whatsappInboundStore.js');
+    const hf = await healthFacts(conn).catch(() => null);
+    if (hf) {
+      facts.lastWebhookAt = hf.lastWebhookAt;
+      facts.outbound7d = hf.outbound7d;
+      facts.statusesBack7d = hf.statusesBack7d;
+    }
+
     if (opened.token) {
-      const [numero, suscripcion] = await Promise.all([
+      const [numero, suscripcion, appDelToken] = await Promise.all([
         metaGet(`/${conn.phoneNumberId}?fields=verified_name,display_phone_number`, opened.token),
         metaGet(`/${conn.wabaId}/subscribed_apps`, opened.token),
+        // De qué aplicación es el token: es la que queda suscrita al pulsar
+        // «Suscribir», y la que recibe los eventos si no hay override.
+        metaGet(`/app?fields=id,name`, opened.token),
       ]);
 
       facts.tokenValid = numero.ok || (numero.error?.code !== 190 && numero.status !== 401);
@@ -432,6 +462,27 @@ export const diagnose = async (req, res) => {
       }
       // Si la consulta de la suscripción falla por permiso, se queda en
       // `unknown` y el diagnóstico lo dice: es distinto de «no está suscrita».
+      const { judgeSubscription } = await import('../../lib/whatsappInbound.js');
+      const judged = judgeSubscription({
+        apps: suscripcion.ok ? (suscripcion.data?.data || []) : null,
+        platformAppId: platformAppId(),
+        callbackUrl: platformWebhookUrl(req),
+      });
+      facts.subscriptionState = judged.state;
+      facts.subscriptionDetail = judged.detail;
+      facts.subscribedApps = judged.apps;
+      if (appDelToken.ok) {
+        facts.tokenApp = { id: String(appDelToken.data?.id || ''), name: appDelToken.data?.name || null };
+      }
+
+      // Una comprobación real exitosa RECUPERA la línea, igual que «Verificar».
+      // Sin esto, el diagnóstico pintaba el token en verde mientras la línea
+      // seguía en `error` —bloqueada para enviar— por un fallo anterior.
+      if (numero.ok && conn.status === 'error') {
+        await markVerified(conn.id, { phoneNumber: numero.data?.display_phone_number || null });
+        facts.status = 'active';
+        facts.recovered = true;
+      }
     }
 
     const out = diagnoseConnection(facts);
@@ -443,6 +494,16 @@ export const diagnose = async (req, res) => {
       }),
       ...out,
       tokenNote: opened.reason === 'token_ilegible' ? opened.detail : null,
+      // Lo que hace falta para leer el punto de la suscripción sin adivinar.
+      webhook: {
+        platformAppId: platformAppId(),
+        callbackUrl: platformWebhookUrl(req),
+        subscriptionState: facts.subscriptionState || null,
+        subscribedApps: facts.subscribedApps || [],
+        tokenApp: facts.tokenApp || null,
+        tokenFromOtherApp: !!(facts.tokenApp?.id && platformAppId() && facts.tokenApp.id !== String(platformAppId())),
+      },
+      recovered: !!facts.recovered,
     });
   } catch (err) { fallo(res, err); }
 };
@@ -466,7 +527,27 @@ export const subscribe = async (req, res) => {
       return res.status(409).json({ error: 'Esta conexión no tiene token de acceso utilizable.' });
     }
 
-    const r = await metaPost(`/${conn.wabaId}/subscribed_apps`, opened.token);
+    // Dos modos (v4.1285):
+    //  · normal   — suscribe la aplicación DUEÑA DEL TOKEN. Si es la de la
+    //               plataforma, basta.
+    //  · override — además le dice a Meta que entregue los eventos de ESTA
+    //               cuenta a la URL de esta plataforma, sea cual sea la
+    //               aplicación del token. Es la salida cuando el token de la
+    //               línea es de otra aplicación de Meta. Meta verifica la URL
+    //               con un GET y el `verify_token`, que `verifyWebhook` acepta.
+    const override = String(req.body?.mode || '') === 'override';
+    let payload = {};
+    if (override) {
+      const callbackUrl = platformWebhookUrl(req);
+      const verifyToken = process.env.WA_VERIFY_TOKEN || conn.verifyToken || null;
+      if (!callbackUrl || !verifyToken) {
+        return res.status(409).json({
+          error: 'No se puede dirigir el webhook: falta la URL de callback (WA_WEBHOOK_URL) o el token de verificación (WA_VERIFY_TOKEN).',
+        });
+      }
+      payload = { override_callback_uri: callbackUrl, verify_token: verifyToken };
+    }
+    const r = await metaPost(`/${conn.wabaId}/subscribed_apps`, opened.token, payload);
     if (!r.ok) {
       const cause = describeFailure({ metaCode: r.error?.code, message: r.error?.message });
       await markError(conn.id, `No se pudo suscribir la cuenta: ${r.error?.message || 'sin detalle'}`);
@@ -481,9 +562,10 @@ export const subscribe = async (req, res) => {
     }
     res.json({
       ok: true,
-      note:
-        'La cuenta quedó suscrita a la aplicación. Los mensajes entrantes y los estados ' +
-        'de entrega de esta línea entran por el webhook central.',
+      mode: override ? 'override' : 'normal',
+      note: override
+        ? 'Meta entregará los eventos de esta cuenta a la URL de esta plataforma. Confírmalo con una prueba real por WhatsApp: es lo único que lo demuestra.'
+        : 'La cuenta quedó suscrita a la aplicación dueña del token. Si esa aplicación no es la de esta plataforma, usa «Dirigir el webhook a esta plataforma».',
     });
   } catch (err) { fallo(res, err); }
 };
@@ -613,4 +695,157 @@ export const testAgent = async (req, res) => {
 export default {
   list, create, update, remove, makeDefault, setStatus,
   verify, diagnose, subscribe, getAgent, putAgent, deleteAgent, testAgent,
+};
+
+// ════════════════════════════════════════════════════════════════════════════
+// La línea en FUNCIONAMIENTO REAL (v4.1285)
+// ════════════════════════════════════════════════════════════════════════════
+//
+// El diagnóstico de arriba mira la CONFIGURACIÓN. Lo de abajo mira lo que
+// PASÓ: los mensajes que llegaron, qué hizo el agente con cada uno y qué
+// contestó Meta. Un «Operativo» sale de acá, no de unas credenciales guardadas.
+
+/** La salud por bloques: Meta, recepción, IA, envío y automatización. */
+export const health = async (req, res) => {
+  try {
+    const { scope } = await alcance(req);
+    const conn = await getConnection(req.params.id, { clubId: scope });
+    if (!conn) return res.status(404).json({ error: 'Esa conexión no existe.' });
+
+    const { healthFacts } = await import('../../lib/whatsappInboundStore.js');
+    const { evaluateLineHealth, judgeSubscription } = await import('../../lib/whatsappInbound.js');
+    const opened = openToken(conn.accessTokenEnc);
+    const resolved = await resolveAgentForConnection(conn).catch(() => ({ agent: null, source: 'none' }));
+    const hf = await healthFacts(conn);
+
+    // Lo de Meta se consulta sólo si se pide (`live=1`): esta vista se
+    // refresca sola y no puede gastar tres llamadas a Meta cada vez.
+    let tokenValid = null; let phoneMatchesWaba = null; let subscription = null;
+    if (String(req.query?.live || '') === '1' && opened.token) {
+      const [numero, suscripcion] = await Promise.all([
+        metaGet(`/${conn.phoneNumberId}?fields=display_phone_number`, opened.token),
+        metaGet(`/${conn.wabaId}/subscribed_apps`, opened.token),
+      ]);
+      tokenValid = numero.ok ? true : (numero.error?.code === 190 ? false : null);
+      phoneMatchesWaba = numero.ok ? true : (numero.error?.code === 100 ? false : null);
+      subscription = judgeSubscription({
+        apps: suscripcion.ok ? (suscripcion.data?.data || []) : null,
+        platformAppId: platformAppId(), callbackUrl: platformWebhookUrl(req),
+      });
+    }
+
+    const out = evaluateLineHealth({
+      hasToken: !!opened.token,
+      tokenValid, phoneMatchesWaba, subscription,
+      status: conn.status, lastError: conn.lastError,
+      lastInboundAt: conn.lastInboundAt,
+      ...hf,
+      agent: {
+        source: resolved.source,
+        enabled: resolved.agent ? resolved.agent.enabled !== false : false,
+        hasInstruction: !!(resolved.agent?.systemPrompt || '').trim(),
+        name: resolved.agent?.name || null,
+        model: resolved.agent?.modelSlug || null,
+      },
+    });
+    res.json({ connection: publicConnection(conn), ...out, live: String(req.query?.live || '') === '1' });
+  } catch (err) { fallo(res, err); }
+};
+
+/** El recorrido de los últimos mensajes de la línea, uno por uno. */
+export const traces = async (req, res) => {
+  try {
+    const { scope } = await alcance(req);
+    const conn = await getConnection(req.params.id, { clubId: scope });
+    if (!conn) return res.status(404).json({ error: 'Esa conexión no existe.' });
+    const { listTraces } = await import('../../lib/whatsappInboundStore.js');
+    const { STAGES } = await import('../../lib/whatsappInbound.js');
+    const items = await listTraces({
+      connectionId: conn.id,
+      limit: req.query?.limit,
+      onlyProblems: String(req.query?.problemas || '') === '1',
+    });
+    res.json({ stages: STAGES, items });
+  } catch (err) { fallo(res, err); }
+};
+
+/**
+ * PRUEBA REAL de punta a punta. Genera un código; quien prueba lo manda por
+ * WhatsApp a la línea y el panel sigue su recorrido etapa por etapa.
+ *
+ * No se guarda nada al generarlo: el código viaja en el mensaje y el webhook
+ * lo anota en la traza. Así la prueba recorre EXACTAMENTE el camino de un
+ * mensaje real —no hay atajo que pueda dar un verde que la línea no tiene—.
+ */
+export const startProbe = async (req, res) => {
+  try {
+    const { scope } = await alcance(req);
+    const conn = await getConnection(req.params.id, { clubId: scope });
+    if (!conn) return res.status(404).json({ error: 'Esa conexión no existe.' });
+    const { newProbeCode } = await import('../../lib/whatsappInbound.js');
+    const code = newProbeCode();
+    const digits = String(conn.phoneNumber || '').replace(/\D/g, '');
+    res.json({
+      code,
+      phoneNumber: conn.phoneNumber || null,
+      waLink: digits ? `https://wa.me/${digits}?text=${encodeURIComponent(`Hola ${code}`)}` : null,
+      instructions: `Desde un WhatsApp autorizado, envía «Hola ${code}» al número ${conn.phoneNumber || 'de esta línea'}. El agente responde como a cualquier persona (sin ver el código) y aquí se ve cada etapa.`,
+    });
+  } catch (err) { fallo(res, err); }
+};
+
+export const probeStatus = async (req, res) => {
+  try {
+    const { scope } = await alcance(req);
+    const conn = await getConnection(req.params.id, { clubId: scope });
+    if (!conn) return res.status(404).json({ error: 'Esa conexión no existe.' });
+    const code = String(req.params.code || '').toUpperCase();
+    if (!/^PRUEBA-[A-Z0-9]{6}$/.test(code)) return res.status(400).json({ error: 'Código de prueba inválido.' });
+    const { findProbe } = await import('../../lib/whatsappInboundStore.js');
+    const { STAGES } = await import('../../lib/whatsappInbound.js');
+    const trace = await findProbe(code);
+    // Si el código llegó por OTRA línea, se dice: es justamente un hallazgo.
+    const otherLine = trace && trace.connectionId && trace.connectionId !== conn.id;
+    res.json({
+      stages: STAGES,
+      found: !!trace,
+      trace: trace && !otherLine ? trace : null,
+      otherLine: otherLine ? 'El código llegó, pero por otra línea de WhatsApp: el número al que escribiste no es el de esta conexión.' : null,
+    });
+  } catch (err) { fallo(res, err); }
+};
+
+/** Conversaciones que se pueden DEMOSTRAR sin respuesta. */
+export const unanswered = async (req, res) => {
+  try {
+    const { scope } = await alcance(req);
+    const conn = await getConnection(req.params.id, { clubId: scope });
+    if (!conn) return res.status(404).json({ error: 'Esa conexión no existe.' });
+    const { unansweredReport } = await import('../../lib/whatsappInboundStore.js');
+    const report = await unansweredReport({
+      connectionId: conn.id, clubId: conn.clubId,
+      days: req.query?.dias, limit: req.query?.limit,
+    });
+    res.json(report);
+  } catch (err) { fallo(res, err); }
+};
+
+/**
+ * Marca un caso como revisado por una persona. NO envía nada: responder a
+ * alguien que escribió hace días se hace desde el Chat, a mano y dentro de las
+ * reglas de Meta (fuera de 24 h, sólo con plantilla). Un reenvío masivo
+ * automático es justo lo que el pedido prohíbe.
+ */
+export const reviewUnanswered = async (req, res) => {
+  try {
+    const { scope } = await alcance(req);
+    const conn = await getConnection(req.params.id, { clubId: scope });
+    if (!conn) return res.status(404).json({ error: 'Esa conexión no existe.' });
+    const { markReviewed } = await import('../../lib/whatsappInboundStore.js');
+    const row = await markReviewed(req.params.traceId, {
+      connectionId: conn.id, userId: req.user?.id || null, note: req.body?.note || null,
+    });
+    if (!row) return res.status(404).json({ error: 'Ese caso no existe en esta línea.' });
+    res.json({ ok: true });
+  } catch (err) { fallo(res, err); }
 };
