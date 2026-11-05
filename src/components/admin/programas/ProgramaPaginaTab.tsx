@@ -64,7 +64,7 @@ const ButtonEditor = ({ value, onChange, blocks, label = 'Botón', fixedAction, 
 const ImageEditor = ({ value, onChange, clubId, label = 'Imagen', disabled }: { value: any; onChange: (v: any) => void; clubId: string | null; label?: string; disabled?: boolean }) => (
     <div className="space-y-2">
         <ImageField label={label} value={value?.url || ''} onChange={v => onChange({ ...value, url: v })} alt={value?.alt || ''} onAlt={v => onChange({ ...value, alt: v })} clubId={clubId} hint="Sólo fotografías reales autorizadas. Sin imagen, la vista previa muestra el marcador «Fotografía real autorizada» y en público la columna se omite." />
-        {value?.url ? <div className="grid grid-cols-2 gap-3 text-xs text-gray-600"><label>Enfoque horizontal ({value.focalX ?? 50}%)<input type="range" min={0} max={100} value={value.focalX ?? 50} disabled={disabled} onChange={e => onChange({ ...value, focalX: Number(e.target.value) })} className="w-full" /></label><label>Enfoque vertical ({value.focalY ?? 50}%)<input type="range" min={0} max={100} value={value.focalY ?? 50} disabled={disabled} onChange={e => onChange({ ...value, focalY: Number(e.target.value) })} className="w-full" /></label></div> : null}
+        {value?.url ? <div className="grid grid-cols-3 gap-3 text-xs text-gray-600"><label>Enfoque horizontal ({value.focalX ?? 50}%)<input type="range" min={0} max={100} value={value.focalX ?? 50} disabled={disabled} onChange={e => onChange({ ...value, focalX: Number(e.target.value) })} className="w-full" /></label><label>Enfoque vertical ({value.focalY ?? 50}%)<input type="range" min={0} max={100} value={value.focalY ?? 50} disabled={disabled} onChange={e => onChange({ ...value, focalY: Number(e.target.value) })} className="w-full" /></label><label>Acercamiento ({value.zoom ?? 100}%)<input type="range" min={100} max={200} value={value.zoom ?? 100} disabled={disabled} onChange={e => onChange({ ...value, zoom: Number(e.target.value) })} className="w-full" /></label></div> : null}
     </div>
 );
 
@@ -214,7 +214,10 @@ const ProgramaPaginaTab = ({ data }: { data: Detalle }) => {
                                 {['hero', 'feature', 'donation', 'clubs'].includes(block.type) ? <select className={campo} value={block.style.imageSide} disabled={ro} onChange={e => setBlock('style.imageSide', e.target.value)}><option value="right">Imagen a la derecha</option><option value="left">Imagen a la izquierda</option></select> : null}
                             </div>
                         </div>
-                        {block.type === 'hero' ? <Campo label={`Superposición oscura (${block.style.overlay}%)`} className="mb-4"><input type="range" min={0} max={60} value={block.style.overlay} disabled={ro} onChange={e => setBlock('style.overlay', Number(e.target.value))} className="w-full" /></Campo> : null}
+                        {block.type === 'hero' ? (<div className="grid md:grid-cols-2 gap-3 mb-4">
+                            <Campo label="Imagen de la portada" hint="«De fondo» usa la altura, el encuadre, el acercamiento y la superposición del hero del inicio del sitio."><select className={campo} value={block.style.imageMode || 'side'} disabled={ro} onChange={e => setBlock('style.imageMode', e.target.value)}><option value="side">Al lado del texto (como la referencia)</option><option value="background">De fondo, a todo el ancho (como la portada del inicio)</option></select></Campo>
+                            <Campo label={`Superposición oscura adicional (${block.style.overlay}%)`}><input type="range" min={0} max={60} value={block.style.overlay} disabled={ro} onChange={e => setBlock('style.overlay', Number(e.target.value))} className="w-full" /></Campo>
+                        </div>) : null}
 
                         {/* Campos por tipo */}
                         {block.type === 'hero' ? (<div className="space-y-3">

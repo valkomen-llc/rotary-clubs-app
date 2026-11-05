@@ -1,4 +1,4 @@
-# Programas — v4.1280 (página pública por contenedores: v4.1281)
+# Programas — v4.1280 (página pública por contenedores: v4.1281; patrones institucionales: v4.1282)
 
 Módulo para que un distrito publique los programas que respalda (el primero,
 **Clínicas Ponseti** para el Distrito 4281), su equipo gestione contenidos y
@@ -152,11 +152,24 @@ instancia única; los demás se pueden agregar varias veces con id propio.
   equipo, impacto, cómo ayudar, noticias, aliados, formularios), con anclas
   `#clinicas`, `#familias`, `#equipo`, etc. «Volver al menú» (configurable en
   `settings.backLink`) va al pie de la landing.
-- **Colores**: `bg-rotary-navy`, `bg-rotary-blue`, azul claro (degradado
-  sky), gris con textura `bg-rotary-concrete`; botones redondeados
-  `bg-sky-100 text-rotary-blue`; íconos lucide azules con detalle dorado
-  (`ProgramIcon`). ⚠️ `hover:bg-rotary-blue/90` no existe (v4.719): el hover
-  oscurece con `bg-rotary-navy`.
+- **Patrones institucionales (v4.1282)**: la landing NO tiene medidas
+  propias; `ProgramaLanding.tsx` reutiliza lo del inicio y las páginas
+  institucionales: contenedor `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8` y
+  `py-16 md:py-20`; portada con `h-[440px] md:h-[540px]` del `HeroSection`
+  (`style.imageMode = 'background'`: imagen `object-cover` + `objectPosition`
+  + `scale(zoom)`, superposición `from-black/40`, `motion-safe:animate-hero-zoom`;
+  `'side'`: la columna de la referencia); fondo `geo` = `SITE_ACTION_BG`
+  (`siteChrome.ts`) con el `colors.actionBg` de un sitio Evento y la textura
+  encima, como `ActionSection`; `gray` = `bg-rotary-concrete` (Stats);
+  botones `px-8 py-3.5 rounded-full shadow-lg` con `useCtaButton()` (celeste
+  o `.cta-btn`), `ctaSkin(CTA_SOLID)` para el principal sobre claro y
+  `CtaStarIcon` por omisión; títulos `text-3xl md:text-4xl font-light`;
+  tarjetas de Stats (impacto), de ícono de Proyectos (tarjetas), de Causas
+  (historias), de proyecto (directorio); dos columnas de Join
+  (`lg:grid-cols-2 gap-16`, imagen `rounded-[40px]` sin recorte); caja
+  flotante de Fundación (donaciones); banda de cierre de Quiénes Somos
+  (orientación). ⚠️ `hover:bg-rotary-blue/90` no existe (v4.719): el hover
+  oscurece con `bg-rotary-navy`. No se tocan estilos globales.
 
 ### Cómo personalizar cada contenedor (pestaña «Página pública»)
 
