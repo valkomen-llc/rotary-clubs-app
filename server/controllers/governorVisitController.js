@@ -25,10 +25,12 @@ import {
     shapeVisit, validateVisit, checkVisitFile, makeVisitRef, canTransitionVisit,
     visitNeedsReason, visitStateLabel, nextVisitStates, canPublishVisit, visitDateIso,
     visitToSubmissionData, visitFilesForSubmission, GOVERNOR_VISIT_CONSENT_TEXT,
+    VISIT_DESCRIPTION_MIN, VISIT_DESCRIPTION_MAX, visitTitleFor,
 } from '../lib/governorVisitSpec.js';
+import { currentDistrictGovernor } from '../lib/districtGovernor.js';
 import { resolveOrigin } from './rotaryEnAccionController.js';
 
-console.log('[governor-visits] v4.1262.0 cargado — Visitas del Gobernador (Rotary en Acción) en dominio.org/visitas-del-gobernador, formulario en tres pasos');
+console.log('[governor-visits] v4.1283.0 cargado — Visitas del Gobernador (Rotary en Acción) en dominio.org/visitas-del-gobernador: paso 1 con fecha, Gobernador del período, lugar y descripción (80–700); sin título ni motivo');
 
 const fail = (res, e, code = 500) => {
     if (code >= 500) console.error('[governor-visits]', e?.message || e);
@@ -144,19 +146,27 @@ export const getVisitConfig = async (req, res) => {
         const clubs = await catalogClubs();
         // Los gobernadores ya registrados, como sugerencia (no como lista
         // cerrada): son cargos públicos, no datos personales del reporte.
-        const { rows: gov } = await db.query(
-            `SELECT "governorName" AS name, MAX("visitDate") AS last
-               FROM "GovernorVisit" WHERE status <> 'rechazada'
-              GROUP BY 1 ORDER BY 2 DESC LIMIT 10`
-        ).catch(() => ({ rows: [] }));
+        const [{ rows: gov }, vigente] = await Promise.all([
+            db.query(
+                `SELECT "governorName" AS name, MAX("visitDate") AS last
+                   FROM "GovernorVisit" WHERE status <> 'rechazada'
+                  GROUP BY 1 ORDER BY 2 DESC LIMIT 10`
+            ).catch(() => ({ rows: [] })),
+            // v4.1283 — El Gobernador del período vigente, de la configuración
+            // institucional del distrito: es el valor predeterminado de una
+            // visita NUEVA. Las guardadas conservan el suyo.
+            currentDistrictGovernor(GOVERNOR_VISIT_DISTRICT),
+        ]);
         res.json({
             district: GOVERNOR_VISIT_DISTRICT,
             clubs: clubs.map(c => ({
                 id: c.id, name: c.officialName, shortName: c.shortName, city: c.city || '',
                 state: c.state || '', slug: c.slug, siteId: c.clubId || null,
             })),
-            governors: gov.map(g => g.name).filter(Boolean),
+            governors: [...new Set([vigente.name, ...gov.map(g => g.name)].filter(Boolean))],
+            currentGovernor: vigente.name ? { name: vigente.name, period: vigente.period, source: vigente.source } : null,
             limits: {
+                descriptionMin: VISIT_DESCRIPTION_MIN, descriptionMax: VISIT_DESCRIPTION_MAX,
                 maxPhotos: VISIT_MAX_PHOTOS, maxVideos: VISIT_MAX_VIDEOS, maxLinks: VISIT_MAX_LINKS,
                 captionMax: VISIT_CAPTION_MAX, imageMaxBytes: IMAGE_MAX_BYTES, videoMaxBytes: VIDEO_MAX_BYTES,
             },
@@ -203,7 +213,9 @@ export const submitVisit = async (req, res) => {
         ];
         const valores = (ref) => [
             ref, VISIT_INITIAL_STATE, GOVERNOR_VISIT_DISTRICT, club.id, club.officialName, club.city || null, club.state || null, club.slug || null, club.clubId || null,
-            v.visitDate, v.governorName, v.venue, v.title, v.reason,
+            // v4.1283: el formulario ya no pide título ni motivo; el título se
+            // compone con el club (la columna es NOT NULL y lo usa la publicación).
+            v.visitDate, v.governorName, v.venue, v.title || visitTitleFor({ clubName: club.officialName }), v.reason || null,
             v.description, v.activities || null, v.topics || null, v.recognitions || null, v.agreements || null, v.commitments || null, v.highlights || null,
             JSON.stringify(media.media), JSON.stringify(v.links), v.responsibleName, v.responsibleRole, v.responsibleEmail, v.responsiblePhone,
             v.truthConfirmed, v.publicationConsent, GOVERNOR_VISIT_CONSENT_TEXT, new Date(),
@@ -287,7 +299,8 @@ export const submitVisitCorrection = async (req, res) => {
               RETURNING *`,
             [
                 actual.id, club.id, club.officialName, club.city || null, club.state || null, club.slug || null, club.clubId || null,
-                v.visitDate, v.governorName, v.venue, v.title, v.reason,
+                // Título y motivo históricos se conservan: el formulario ya no los muestra.
+                v.visitDate, v.governorName, v.venue, v.title || actual.title || visitTitleFor({ clubName: club.officialName }), v.reason || actual.reason || null,
                 v.description, v.activities || null, v.topics || null, v.recognitions || null, v.agreements || null, v.commitments || null, v.highlights || null,
                 JSON.stringify(media.media), JSON.stringify(v.links), v.responsibleName, v.responsibleRole, v.responsibleEmail, v.responsiblePhone,
                 evento({ type: 'corrected', from: 'correcciones', to: 'en_revision', actorName: v.responsibleName, detail: 'Correcciones enviadas por el club desde el enlace de corrección.' }),
@@ -314,7 +327,7 @@ function filtros(q = {}) {
     if (q.governor) add('"governorName" ILIKE $?', `%${String(q.governor).slice(0, 120)}%`);
     if (/^\d{4}-\d{2}-\d{2}$/.test(String(q.from || ''))) add('"visitDate" >= $?::date', q.from);
     if (/^\d{4}-\d{2}-\d{2}$/.test(String(q.to || ''))) add('"visitDate" <= $?::date', q.to);
-    if (q.q) add(`(title ILIKE $? OR "clubName" ILIKE $? OR "governorName" ILIKE $? OR "publicRef" ILIKE $? OR "responsibleName" ILIKE $? OR venue ILIKE $?)`, `%${String(q.q).slice(0, 120)}%`);
+    if (q.q) add(`(title ILIKE $? OR "clubName" ILIKE $? OR "governorName" ILIKE $? OR "publicRef" ILIKE $? OR "responsibleName" ILIKE $? OR venue ILIKE $? OR description ILIKE $?)`, `%${String(q.q).slice(0, 120)}%`);
     return { where: cond.join(' AND '), params };
 }
 
@@ -476,7 +489,7 @@ export const adminUpdateVisit = async (req, res) => {
         if (body.clubProfileId) base.clubProfileId = body.clubProfileId;
         if (Array.isArray(body.links)) base.links = body.links;
         const v = shapeVisit({ ...base, media: [] });
-        const juicio = validateVisit(v, { admin: true });
+        const juicio = validateVisit(v, { admin: true, storedDescription: actual.description || '' });
         if (!juicio.ok) return res.status(400).json({ error: errorsMessage(juicio.errors), errors: juicio.errors });
 
         const club = v.clubProfileId === actual.clubProfileId
@@ -509,7 +522,7 @@ export const adminUpdateVisit = async (req, res) => {
               WHERE id = $1 AND status = $28 RETURNING id`,
             [
                 actual.id, club.id, club.officialName, club.city || null, club.state || null, club.slug || null, club.clubId || null,
-                v.visitDate, v.governorName, v.venue, v.title, v.reason,
+                v.visitDate, v.governorName, v.venue, v.title || actual.title || visitTitleFor({ clubName: club.officialName }), v.reason || null,
                 v.description, v.activities || null, v.topics || null, v.recognitions || null, v.agreements || null, v.commitments || null, v.highlights || null,
                 JSON.stringify(media), JSON.stringify(v.links), v.responsibleName, v.responsibleRole, v.responsibleEmail, v.responsiblePhone,
                 notas, evento({ type: 'edited', actor, actorName, detail: cambios.length ? `Editado: ${cambios.join(', ')}.` : 'Guardado sin cambios.' }),

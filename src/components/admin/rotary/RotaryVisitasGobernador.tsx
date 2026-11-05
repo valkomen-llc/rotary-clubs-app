@@ -6,6 +6,12 @@
 // historial con responsable y la cobertura del año rotario para los informes
 // de gestión. La publicación crea UNA solicitud de Rotary en Acción con el
 // mismo texto y los mismos archivos: desde la ficha se abre en Solicitudes.
+//
+// v4.1283.0 — La descripción de la visita es parte de la información
+// principal (junto a fecha, Gobernador y lugar) y se edita con el mismo rango
+// de 80 a 700 caracteres que el formulario público. Título y motivo del
+// encuentro ya no se piden: el título se compone con el club y el motivo sólo
+// aparece en las visitas anteriores que lo tienen.
 // ════════════════════════════════════════════════════════════════════════════
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -19,7 +25,7 @@ import { useAuth } from '../../../hooks/useAuth';
 import { leerJson } from '../../../lib/leerJson';
 import { stateLabel } from '../../../lib/contentSubmissionSpec';
 import {
-  VISIT_REASON_REQUIRED, VISIT_CAPTION_MAX, visitDateLabel, visitStateChip, visitStateLabel,
+  VISIT_REASON_REQUIRED, VISIT_CAPTION_MAX, VISIT_DESCRIPTION_MAX, visitDateLabel, visitDescriptionError, visitStateChip, visitStateLabel,
 } from '../../../lib/governorVisitSpec';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -39,8 +45,10 @@ interface Kpis { recibidas?: number; pendientes?: number; aprobadas?: number; pu
 interface Filtros { q: string; club: string; governor: string; status: string; from: string; to: string; sort: string; page: number }
 const FILTROS0: Filtros = { q: '', club: '', governor: '', status: '', from: '', to: '', sort: 'recientes', page: 1 };
 
+// La memoria opcional del paso 2. La descripción (paso 1) va aparte, en la
+// información principal de la visita.
 const TEXTOS: [string, string][] = [
-  ['description', 'Descripción de la visita'], ['activities', 'Actividades desarrolladas'], ['topics', 'Temas abordados'],
+  ['activities', 'Actividades desarrolladas'], ['topics', 'Temas abordados'],
   ['recognitions', 'Reconocimientos'], ['agreements', 'Acuerdos'], ['commitments', 'Compromisos'], ['highlights', 'Resultados destacados'],
 ];
 const HIST_LABEL: Record<string, string> = {
@@ -147,6 +155,12 @@ const DetalleVisita: React.FC<PanelProps> = ({ id, canEdit, canManage, canPublis
   };
 
   const guardar = async () => {
+    // Mismo rango que el formulario público, sólo si la descripción se tocó:
+    // una visita anterior con otro formato se sigue pudiendo editar en lo demás.
+    if (v.status !== 'publicada' && form.description.trim() !== String(v.description || '').trim()) {
+      const aviso = visitDescriptionError(form.description);
+      if (aviso) { toast.error(aviso); return; }
+    }
     setTrabajando(true);
     try {
       const body = v.status === 'publicada' ? { adminNotes: form.adminNotes } : { ...form, media: form.media.map((m: any) => ({ key: m.key, caption: m.caption })) };
@@ -258,13 +272,29 @@ const DetalleVisita: React.FC<PanelProps> = ({ id, canEdit, canManage, canPublis
                 <Seccion titulo={v.status === 'publicada' ? 'Notas internas' : 'Editar visita'}>
                   {v.status !== 'publicada' && (
                     <div className="grid sm:grid-cols-2 gap-3">
-                      {([['title', 'Título'], ['governorName', 'Gobernador'], ['visitDate', 'Fecha'], ['venue', 'Lugar'], ['responsibleName', 'Responsable'], ['responsibleRole', 'Cargo'], ['responsibleEmail', 'Correo'], ['responsiblePhone', 'WhatsApp']] as const).map(([k, l]) => (
+                      {([['visitDate', 'Fecha'], ['governorName', 'Gobernador'], ['venue', 'Lugar'], ['title', 'Título (interno y publicación)'], ['responsibleName', 'Responsable'], ['responsibleRole', 'Cargo'], ['responsibleEmail', 'Correo'], ['responsiblePhone', 'WhatsApp']] as const).map(([k, l]) => (
                         <div key={k}>
                           <label className={rotulo}>{l}</label>
                           <input type={k === 'visitDate' ? 'date' : 'text'} value={form[k]} onChange={(e) => setForm({ ...form, [k]: e.target.value })} className={campo} />
                         </div>
                       ))}
-                      {[['reason', 'Motivo del encuentro'] as [string, string], ...TEXTOS].map(([k, l]) => (
+                      <div className="sm:col-span-2">
+                        <label className={rotulo}>Descripción de la visita</label>
+                        <textarea rows={6} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className={campo}
+                          maxLength={Math.max(VISIT_DESCRIPTION_MAX, String(v.description || '').length)} />
+                        {(() => {
+                          const n = form.description.trim().length;
+                          const tocada = form.description.trim() !== String(v.description || '').trim();
+                          const aviso = tocada ? visitDescriptionError(form.description) : '';
+                          return (
+                            <p className={`text-[11px] mt-1 font-semibold flex justify-between gap-2 ${aviso ? 'text-red-600' : 'text-gray-400'}`}>
+                              <span>{aviso || (!tocada && n > VISIT_DESCRIPTION_MAX ? 'Registro anterior con otro formato: se conserva si no lo editas.' : 'Entre 80 y 700 caracteres.')}</span>
+                              <span className="tabular-nums shrink-0">{n} / {VISIT_DESCRIPTION_MAX} caracteres</span>
+                            </p>
+                          );
+                        })()}
+                      </div>
+                      {[...(String(v.reason || '').trim() ? [['reason', 'Motivo del encuentro (registro anterior)'] as [string, string]] : []), ...TEXTOS].map(([k, l]) => (
                         <div key={k} className="sm:col-span-2">
                           <label className={rotulo}>{l}</label>
                           <textarea rows={k === 'description' ? 5 : 2} value={form[k]} onChange={(e) => setForm({ ...form, [k]: e.target.value })} className={campo} />
@@ -310,15 +340,19 @@ const DetalleVisita: React.FC<PanelProps> = ({ id, canEdit, canManage, canPublis
                       <Dato k="Fecha de la visita" v={visitDateLabel(v.visitDate)} />
                       <Dato k="Gobernador visitante" v={v.governorName} />
                       <Dato k="Lugar" v={v.venue} />
-                      <div className="sm:col-span-2"><Dato k="Motivo del encuentro" v={<span className="whitespace-pre-line">{v.reason}</span>} /></div>
+                      <div className="sm:col-span-2"><Dato k="Descripción de la visita" v={v.description && <span className="whitespace-pre-line">{v.description}</span>} /></div>
+                      {/* Visitas anteriores a v4.1283: conservan su motivo, sólo para consulta. */}
+                      {String(v.reason || '').trim() && <div className="sm:col-span-2"><Dato k="Motivo del encuentro (registro anterior)" v={<span className="whitespace-pre-line">{v.reason}</span>} /></div>}
                     </dl>
                   </Seccion>
                   <Seccion titulo="Memoria institucional">
-                    <div className="space-y-3">
-                      {TEXTOS.filter(([k]) => String(v[k] || '').trim()).map(([k, l]) => (
-                        <div key={k}><p className="text-[10px] font-black uppercase tracking-wider text-gray-400">{l}</p><p className="text-sm text-gray-800 whitespace-pre-line">{v[k]}</p></div>
-                      ))}
-                    </div>
+                    {TEXTOS.some(([k]) => String(v[k] || '').trim()) ? (
+                      <div className="space-y-3">
+                        {TEXTOS.filter(([k]) => String(v[k] || '').trim()).map(([k, l]) => (
+                          <div key={k}><p className="text-[10px] font-black uppercase tracking-wider text-gray-400">{l}</p><p className="text-sm text-gray-800 whitespace-pre-line">{v[k]}</p></div>
+                        ))}
+                      </div>
+                    ) : <p className="text-xs text-gray-400">El club no agregó memoria adicional (actividades, temas, acuerdos…).</p>}
                   </Seccion>
                   <Seccion titulo={`Galería (${(v.media || []).length} archivo(s) · ${(v.links || []).length} enlace(s))`}>
                     {(v.media || []).length > 0 && (

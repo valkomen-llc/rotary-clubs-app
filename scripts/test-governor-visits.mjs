@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ════════════════════════════════════════════════════════════════════
-// Visitas del Gobernador — v4.1260.0
+// Visitas del Gobernador — v4.1260.0 (paso 1 simplificado: v4.1283.0)
 // npm run test:visitas-gobernador
 //
 // Sin base ni red: el criterio puro, la paridad con el espejo del navegador,
@@ -16,15 +16,17 @@ import {
     canTransitionVisit, visitNeedsReason, canPublishVisit, nextVisitStates,
     shapeVisit, validateVisit, normalizeVisitLink, makeVisitRef, visitDateIso,
     visitToSubmissionData, visitFilesForSubmission, visitMemoryText,
+    VISIT_DESCRIPTION_MIN, VISIT_DESCRIPTION_MAX, visitDescriptionError, visitTitleFor,
 } from '../server/lib/governorVisitSpec.js';
+import { DEFAULT_GOVERNOR, GOVERNOR_BY_PERIOD, rotaryPeriodOf, fallbackGovernorFor } from '../server/lib/districtGovernor.js';
 
 let n = 0;
 const ok = (cond, msg) => { assert.ok(cond, msg); n++; console.log(`  ✓ ${msg}`); };
 const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 
 const BASE = {
+    // v4.1283: sin título ni motivo — el formulario ya no los pide.
     clubProfileId: 'club-1', visitDate: '2026-10-01', governorName: 'Gobernador X', venue: 'Sede social',
-    title: 'Visita oficial', reason: 'Visita oficial del período rotario',
     description: 'x'.repeat(90), activities: 'Reunión', topics: '', recognitions: '', agreements: '', commitments: '', highlights: 'Logro',
     media: [{ key: 'k1', filename: 'a.jpg', contentType: 'image/jpeg' }], links: [],
     responsibleName: 'Ana Pérez', responsibleRole: 'Secretaria', responsibleEmail: 'ana@club.org', responsiblePhone: '+57 300 123 4567',
@@ -48,7 +50,19 @@ ok(errs({ ...BASE, clubProfileId: '' }).some(e => e.step === 1), 'sin club: paso
 ok(errs({ ...BASE, visitDate: '2026-11-01' }).some(e => e.step === 1 && e.field === 'visitDate'), 'fecha futura: paso 1 (club y visita)');
 ok(errs({ ...BASE, visitDate: '2026-02-31' }).some(e => e.field === 'visitDate'), 'fecha imposible (31 de febrero) rechazada');
 ok(errs({ ...BASE, governorName: '' }).some(e => e.field === 'governorName'), 'sin gobernador: rechazado');
-ok(errs({ ...BASE, description: 'corta' }).some(e => e.step === 2), 'descripción corta: paso 2 (memoria y galería)');
+ok(errs({ ...BASE, description: 'corta' }).some(e => e.step === 1 && e.field === 'description'), 'descripción corta: paso 1 (club y visita), v4.1283');
+ok(!errs({ ...BASE, description: 'corta' }).some(e => e.step === 2), 'la descripción ya no es un error del paso 2');
+ok(!errs(BASE).some(e => e.field === 'title' || e.field === 'reason'), 'título y motivo ya no se exigen');
+ok(errs({ ...BASE, description: 'x'.repeat(VISIT_DESCRIPTION_MIN - 1) }).some(e => e.field === 'description') && errs({ ...BASE, description: 'x'.repeat(VISIT_DESCRIPTION_MIN) }).length === 0, `mínimo exacto: ${VISIT_DESCRIPTION_MIN} caracteres`);
+ok(errs({ ...BASE, description: 'x'.repeat(VISIT_DESCRIPTION_MAX) }).length === 0 && errs({ ...BASE, description: 'x'.repeat(VISIT_DESCRIPTION_MAX + 1) }).some(e => e.step === 1 && e.field === 'description'), `máximo exacto: ${VISIT_DESCRIPTION_MAX} caracteres`);
+ok(errs({ ...BASE, description: `   ${'x'.repeat(VISIT_DESCRIPTION_MAX)}   ` }).length === 0, 'se cuenta el texto recortado (espacios de los extremos no suman)');
+ok(errs({ ...BASE, description: ' '.repeat(120) }).some(e => e.field === 'description'), 'sólo espacios no es una descripción');
+ok(visitDescriptionError('x'.repeat(10)).startsWith('La descripción debe tener al menos 80 caracteres') && visitDescriptionError('x'.repeat(701)).includes('700'), 'avisos claros de mínimo y máximo');
+const larga = 'y'.repeat(1200);
+ok(errs({ ...BASE, description: larga }, { admin: true, storedDescription: larga }).length === 0, 'edición administrativa: una descripción histórica más larga, sin tocar, no bloquea');
+ok(errs({ ...BASE, description: larga + '!' }, { admin: true, storedDescription: larga }).some(e => e.field === 'description'), 'edición administrativa: si se modifica, vale el rango 80–700');
+ok(errs({ ...BASE, description: 'corta' }, { admin: true, storedDescription: 'otra' }).some(e => e.field === 'description'), 'edición administrativa: una descripción nueva corta se rechaza');
+ok(shapeVisit({ ...BASE, description: larga }).description.length === 1200, 'shapeVisit no corta en silencio una descripción histórica');
 ok(errs({ ...BASE, media: [], links: [] }).some(e => e.step === 2), 'sin evidencias: paso 2 (memoria y galería)');
 ok(errs({ ...BASE, media: [], links: ['https://youtu.be/x'] }).length === 0, 'un enlace basta como evidencia');
 ok(errs({ ...BASE, media: Array.from({ length: VISIT_MAX_PHOTOS + 1 }, (_, i) => ({ key: `k${i}`, filename: `${i}.jpg`, contentType: 'image/jpeg' })) }).some(e => e.step === 2), `más de ${VISIT_MAX_PHOTOS} fotos: rechazado`);
@@ -78,10 +92,24 @@ console.log('── Hacia Rotary en Acción');
 const visit = { ...shapeVisit(BASE), publicRef: 'VG-2026-ABCDEF', clubName: 'Club Rotario X', clubCity: 'Cali', districtNumber: 4281, visitDate: new Date(2026, 9, 1),
     media: [{ key: 'k1', kind: 'image', filename: 'a.jpg', contentType: 'image/jpeg', bytes: 10 }, { key: 'k2', kind: 'video', filename: 'b.mp4', contentType: 'video/mp4', bytes: 20 }, { key: 'k3', kind: 'otro' }] };
 const d = visitToSubmissionData(visit);
-ok(d.title === 'Visita oficial' && d.club === 'Club Rotario X' && d.activityDate === '2026-10-01' && d.district === '4281', 'título, club, fecha y distrito reutilizados');
+ok(d.title === 'Visita oficial del Gobernador al Club Rotario X' && d.club === 'Club Rotario X' && d.activityDate === '2026-10-01' && d.district === '4281', 'título, club, fecha y distrito reutilizados');
 ok(d.story.startsWith('Descripción de la visita:') && d.story.includes('Resultados destacados:') && !d.story.includes('Temas abordados'), 'la memoria va por secciones y sin las vacías');
 ok(d.submissionType === 'governor_visit' && d.contentType === 'evento' && d.tags.includes('visita-del-gobernador'), 'se distingue por tipo de solicitud y etiqueta, sin tipo nuevo en el formulario general');
 ok(d.extra.includes('VG-2026-ABCDEF'), 'la referencia de la visita viaja con la solicitud');
+ok(d.description.startsWith(BASE.description) && d.description.includes('Lugar: Sede social'), 'visita nueva: la descripción del paso 1 resume la solicitud');
+const historica = visitToSubmissionData({ ...visit, title: 'Título del club', reason: 'Motivo anterior' });
+ok(historica.title === 'Título del club' && historica.description.startsWith('Motivo anterior'), 'visita anterior: conserva su título y su motivo al publicarse');
+ok(visitTitleFor({ clubName: 'Club Rotario Armenia' }) === 'Visita oficial del Gobernador al Club Rotario Armenia' && visitTitleFor({}).length > 10, 'el título se compone con el club');
+
+console.log('── Gobernador del período');
+ok(DEFAULT_GOVERNOR === 'Fabio Enrique Véjar Montañez' && GOVERNOR_BY_PERIOD['2026-2027'] === DEFAULT_GOVERNOR, 'Gobernador 2026-2027: Fabio Enrique Véjar Montañez');
+ok(rotaryPeriodOf('2026-07-01') === '2026-2027' && rotaryPeriodOf('2026-06-30') === '2025-2026' && rotaryPeriodOf(new Date(Date.UTC(2026, 10, 5))) === '2026-2027', 'el período cambia el 1 de julio');
+ok(fallbackGovernorFor('2025-2026') === '' && fallbackGovernorFor('2026-2027') === DEFAULT_GOVERNOR, 'el respaldo no inventa Gobernador para otro período');
+const { DEFAULT_GOVERNOR: deAniversarios } = await import('../server/lib/anniversarySpec.js');
+ok(deAniversarios === DEFAULT_GOVERNOR, 'Aniversarios IA usa el mismo nombre (escrito en un solo lugar)');
+const formulario = read('src/components/rotary/GovernorVisitForm.tsx');
+ok(!formulario.includes('Véjar') && formulario.includes('currentGovernor'), 'el formulario no escribe el nombre: lo recibe de la configuración');
+ok(read('server/controllers/governorVisitController.js').includes('currentDistrictGovernor(GOVERNOR_VISIT_DISTRICT)'), 'la configuración pública entrega el Gobernador vigente del distrito');
 const files = visitFilesForSubmission(visit);
 ok(files.length === 2 && files[0].key === 'k1' && files[1].kind === 'video', 'los MISMOS objetos de S3, sin lo que no es foto ni video');
 ok(visitMemoryText({}) === '', 'memoria vacía sin secciones fantasma');
@@ -89,10 +117,16 @@ ok(visitMemoryText({}) === '', 'memoria vacía sin secciones fantasma');
 console.log('── Paridad con el espejo del navegador');
 const ts = read('src/lib/governorVisitSpec.ts');
 const num = (name) => Number(ts.match(new RegExp(`export const ${name} = (\\d+)`))?.[1]);
+ok(num('VISIT_DESCRIPTION_MIN') === VISIT_DESCRIPTION_MIN && num('VISIT_DESCRIPTION_MAX') === VISIT_DESCRIPTION_MAX, 'mismo rango de la descripción en servidor y navegador');
 ok(num('VISIT_MAX_PHOTOS') === VISIT_MAX_PHOTOS && num('VISIT_MAX_VIDEOS') === VISIT_MAX_VIDEOS && num('VISIT_MAX_LINKS') === VISIT_MAX_LINKS && num('VISIT_CAPTION_MAX') === VISIT_CAPTION_MAX, 'mismos topes en servidor y navegador');
 for (const st of Object.values(VISIT_STATES)) ok(ts.includes(`${st.id}: { label: '${st.label}'`), `estado «${st.label}» con la misma etiqueta`);
 const mirror = await import('../src/lib/governorVisitSpec.ts');
 ok(mirror.VISIT_STEPS.join(' · ') === 'Club y visita · Memoria y galería · Responsable y envío', 'tres pasos en el formulario (v4.1262)');
+ok(!('title' in mirror.EMPTY_VISIT) && !('reason' in mirror.EMPTY_VISIT), 'el borrador del navegador ya no tiene título ni motivo');
+for (const t of ['corta', 'z'.repeat(80), 'z'.repeat(700), 'z'.repeat(701)]) ok(mirror.visitDescriptionError(t) === visitDescriptionError(t), `mismo aviso para ${t.length} caracteres`);
+ok('description' in mirror.validateVisitStep(1, mirror.EMPTY_VISIT) && !('description' in mirror.validateVisitStep(2, mirror.EMPTY_VISIT)), 'el navegador pide la descripción en el paso 1, no en el 2');
+ok(!/id="gv-titulo"|id="gv-motivo"/.test(formulario) && (formulario.match(/id="gv-desc"/g) || []).length === 1, 'el formulario no tiene Título ni Motivo y la descripción aparece una sola vez');
+ok(formulario.indexOf('id="gv-desc"') < formulario.indexOf('PASO 2 — Memoria y galería') || formulario.indexOf('<CampoDescripcion') < formulario.indexOf('PASO 2 — Memoria y galería'), 'la descripción se pinta en el paso 1');
 // Cada error del servidor lleva al MISMO paso en el que el navegador pinta ese campo.
 const vacio = shapeVisit({ media: [{ key: 'p', filename: 'a.pdf', contentType: 'application/pdf' }], responsiblePhone: '1' });
 const delServidor = validateVisit(vacio, { today }).errors;

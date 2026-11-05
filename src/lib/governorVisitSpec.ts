@@ -8,6 +8,19 @@ export const VISIT_MAX_VIDEOS = 3;
 export const VISIT_MAX_LINKS = 10;
 export const VISIT_CAPTION_MAX = 300;
 
+// v4.1283 — La descripción de la visita: paso 1, entre 80 y 700 caracteres
+// (texto recortado). Mismos topes y mismos avisos que el servidor.
+export const VISIT_DESCRIPTION_MIN = 80;
+export const VISIT_DESCRIPTION_MAX = 700;
+
+/** El aviso de la descripción, o '' si cumple. Mismo texto que el servidor. */
+export const visitDescriptionError = (text: string): string => {
+  const n = String(text ?? '').trim().length;
+  if (n < VISIT_DESCRIPTION_MIN) return `La descripción debe tener al menos ${VISIT_DESCRIPTION_MIN} caracteres (lleva ${n}).`;
+  if (n > VISIT_DESCRIPTION_MAX) return `La descripción no puede superar los ${VISIT_DESCRIPTION_MAX} caracteres (lleva ${n}).`;
+  return '';
+};
+
 export type VisitStatus = 'recibida' | 'en_revision' | 'correcciones' | 'aprobada' | 'rechazada' | 'publicada';
 
 export const VISIT_STATES: Record<VisitStatus, { label: string; chip: string }> = {
@@ -35,8 +48,7 @@ export interface VisitDraft {
   visitDate: string;
   governorName: string;
   venue: string;
-  title: string;
-  reason: string;
+  // v4.1283: sin `title` ni `reason` — el formulario ya no los pide.
   description: string;
   activities: string;
   topics: string;
@@ -54,7 +66,7 @@ export interface VisitDraft {
 }
 
 export const EMPTY_VISIT: VisitDraft = {
-  clubProfileId: '', visitDate: '', governorName: '', venue: '', title: '', reason: '',
+  clubProfileId: '', visitDate: '', governorName: '', venue: '',
   description: '', activities: '', topics: '', recognitions: '', agreements: '', commitments: '', highlights: '',
   links: [], responsibleName: '', responsibleRole: '', responsibleEmail: '', responsiblePhone: '',
   truthConfirmed: false, publicationConsent: false,
@@ -98,11 +110,10 @@ export const validateVisitStep = (
     else if (v.visitDate < '2000-01-01') e.visitDate = 'Revisa la fecha de la visita.';
     if (len(v.governorName) < 3) e.governorName = 'Escribe el nombre del Gobernador visitante.';
     if (len(v.venue) < 3) e.venue = 'Indica el lugar de la visita.';
-    if (len(v.title) < 5) e.title = 'Escribe un título (mínimo 5 caracteres).';
-    if (len(v.reason) < 10) e.reason = 'Describe brevemente el motivo del encuentro.';
+    const desc = visitDescriptionError(v.description);
+    if (desc) e.description = desc;
   }
   if (step === 2) {
-    if (len(v.description) < 80) e.description = `La descripción debe tener al menos 80 caracteres (llevas ${len(v.description)}).`;
     if (media.pending > 0) e.media = 'Espera a que terminen de cargarse los archivos.';
     else if (media.failed > 0) e.media = 'Hay archivos que no se cargaron: reintenta o quítalos.';
     else if (media.photos + media.videos + v.links.length === 0) e.media = 'Agrega al menos una fotografía, un video o un enlace audiovisual de la visita.';

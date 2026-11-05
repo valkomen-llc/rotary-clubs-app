@@ -83,6 +83,7 @@ import {
     cleanVisible, foldForCompare, hasDiacritics,
     diacriticWords, spellOut, sameButForDiacritics, diacriticDiff,
 } from './spanishText.js';
+import { DEFAULT_GOVERNOR } from './districtGovernor.js';
 
 export const ANNIVERSARY_DISTRICT = '4281';
 
@@ -1889,8 +1890,10 @@ export const spellingRetryClause = (officialName) => {
 // ════════════════════════════════════════════════════════════════════
 
 /** El Gobernador sale de la fila de `District` (dato real de la plataforma);
- *  esta constante es sólo el respaldo cuando esa fila no lo tiene cargado. */
-export const DEFAULT_GOVERNOR = 'Fabio Enrique Véjar Montañez';
+ *  esta constante es sólo el respaldo cuando esa fila no lo tiene cargado.
+ *  v4.1283: vive en `districtGovernor.js`, junto al de Visitas del
+ *  Gobernador, para que el nombre esté escrito en UN solo lugar. */
+export { DEFAULT_GOVERNOR };
 
 // Por CANAL (v4.930, pedido expreso): la versión de redes/WhatsApp es CORTA
 // y lleva 1-4 emojis sutiles; la de correo es completa y sin emojis.
