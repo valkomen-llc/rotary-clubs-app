@@ -228,6 +228,11 @@ const AgendaSoporte = lazyWithRetry(() => import('./pages/admin/AgendaSoporte'),
 const CapacitacionesAdmin = lazyWithRetry(() => import('./pages/admin/CapacitacionesAdmin'), 'CapacitacionesAdmin');
 const AgendarCapacitacion = lazyWithRetry(() => import('./pages/AgendarCapacitacion'), 'AgendarCapacitacion');
 const Capacitaciones = lazyWithRetry(() => import('./pages/Capacitaciones'), 'Capacitaciones');
+// Programas (v4.1280): catálogo del sitio y página de cada programa; administración en /admin/programas.
+const Programas = lazyWithRetry(() => import('./pages/Programas'), 'Programas');
+const ProgramaDetalle = lazyWithRetry(() => import('./pages/ProgramaDetalle'), 'ProgramaDetalle');
+const ProgramasAdmin = lazyWithRetry(() => import('./pages/admin/ProgramasAdmin'), 'ProgramasAdmin');
+const ProgramaAdminDetalle = lazyWithRetry(() => import('./pages/admin/ProgramaAdminDetalle'), 'ProgramaAdminDetalle');
 const CapacitacionDetalle = lazyWithRetry(() => import('./pages/CapacitacionDetalle'), 'CapacitacionDetalle');
 const MiCapacitacion = lazyWithRetry(() => import('./pages/MiCapacitacion'), 'MiCapacitacion');
 const SharedReport = lazyWithRetry(() => import('./pages/SharedReport'), 'SharedReport');
@@ -700,6 +705,8 @@ function App() {
                     por sitio y una dirección estable por video. */}
                 <Route path="/capacitaciones" element={<Capacitaciones />} />
                 <Route path="/capacitaciones/:slug" element={<CapacitacionDetalle />} />
+                <Route path="/programas" element={<Programas />} />
+                <Route path="/programas/:slug" element={<ProgramaDetalle />} />
                 <Route path="/proyectos" element={<Proyectos />} />
                 <Route path="/proyectos/:id" element={<ProyectoDetalle />} />
                 <Route path="/contacto" element={<Contacto />} />
@@ -940,6 +947,22 @@ function App() {
                   element={
                     <PrivateRoute>
                       <DistrictClubsAdmin />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/programas"
+                  element={
+                    <PrivateRoute>
+                      <ProgramasAdmin />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/programas/:id"
+                  element={
+                    <PrivateRoute>
+                      <ProgramaAdminDetalle />
                     </PrivateRoute>
                   }
                 />

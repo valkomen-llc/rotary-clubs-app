@@ -14,6 +14,8 @@ export interface ClubConfig {
     logoText: string;
     productsCount?: number;
     eventsCount?: number;
+    /** Programas (v4.1280): cuántos muestra este sitio en el menú y, si es uno solo, cuál. */
+    programsNav?: { count: number; single?: { slug: string; name: string } | null };
     storeActive?: boolean;
     logoHeaderSize?: number;
     onboardingCompleted?: boolean;

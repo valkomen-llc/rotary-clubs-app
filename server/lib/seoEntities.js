@@ -164,6 +164,7 @@ export async function resolvePage({ club, pathname, host }) {
         if (kind === 'project') return { ...base, ...(await projectMeta(club, path)) };
         if (kind === 'event') return { ...base, ...(await eventMeta(club, path)) };
         if (kind === 'product') return { ...base, ...(await productMeta(club, path)) };
+        if (kind === 'program') return { ...base, ...(await programMeta(club, path)) };
     } catch (e) {
         // Un fallo de base NO puede dejar la página sin <head>. Se degrada a la
         // ficha del sitio, que siempre es correcta aunque sea menos específica.
@@ -311,6 +312,31 @@ async function eventMeta(club, path) {
         entityType: 'event',
         entityId: event.id,
         entity: event,
+    };
+}
+
+/**
+ * Programas (v4.1280). El programa se resuelve por slug y SÓLO si este sitio lo
+ * muestra (vinculación del distrito o activación del club): un slug ajeno es
+ * 404 e `indexable:false`, como cualquier entidad de otro sitio.
+ */
+async function programMeta(club, path) {
+    const slug = decodeURIComponent(path.split('/').pop());
+    const { publicProgramForSite } = await import('./programStore.js');
+    const data = await publicProgramForSite(slug, club.id);
+    if (!data) return { found: false, indexable: false, title: 'Programa no encontrado' };
+    const p = data.program;
+    const body = stripHtml(p.description || p.summary);
+    return {
+        title: p.seo?.title || p.name,
+        description: truncateAtWord(p.seo?.description || p.summary || body || `${p.name} — ${club.name}`, LIMITS.description.max),
+        image: p.seo?.image || p.heroImageUrl || p.logoUrl || club.logo || null,
+        updatedAt: p.updatedAt,
+        wordCount: countWords(body),
+        bodyText: body,
+        entityType: 'program',
+        entityId: p.id,
+        entity: p,
     };
 }
 

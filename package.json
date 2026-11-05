@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1279.0",
-  "cache_bust": "4.1279.0",
+  "version": "4.1280.0",
+  "cache_bust": "4.1280.0",
   "type": "module",
-  "//": "UI V4.1274.0 | 2026-11-01 (Eventos: el carrusel lateral avanza solo de verdad)",
+  "//": "UI V4.1280.0 | 2026-11-04 (Programas: Clínicas Ponseti y otros programas respaldados por el distrito)",
   "scripts": {
     "dev": "vite",
     "bundle:server-blocks": "npx esbuild src/lib/emailBlocks.ts --bundle --platform=node --format=esm --target=node18 --outfile=server/lib/emailBlocks.js",
@@ -58,6 +58,9 @@
     "test:event-funds": "node scripts/test-event-funds.mjs",
     "test:registration-revenue": "node scripts/test-registration-revenue.mjs",
     "test:club-catalog": "node scripts/test-club-catalog.mjs",
+    "test:programas": "node scripts/test-programas.mjs",
+    "test:programas:e2e": "node scripts/test-programas-e2e.mjs",
+    "seed:programa-ponseti": "node scripts/seed-programa-ponseti.mjs",
     "test:version": "node scripts/check-version-parity.mjs",
     "test:visitas-gobernador": "node scripts/test-governor-visits.mjs",
     "test:completed": "node scripts/test-completed-registration.mjs",

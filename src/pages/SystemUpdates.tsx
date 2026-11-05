@@ -34,13 +34,30 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1279.0 | 2026-11-04 (Estadísticas de descarga de la guía de hoteles)
+// UI V4.1280.0 | 2026-11-04 (Programas: Clínicas Ponseti y otros programas respaldados por el distrito)
 // Cache bust: 2026-11-04
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1280.0',
+        title: 'Programas: los programas que respalda el distrito, en el sitio del distrito y de sus clubes 🩺',
+        description: 'Nuevo módulo «Programas». Un programa (el primero, Clínicas Ponseti para el Distrito 4281) es una identidad institucional única que se vincula con uno o varios distritos y que los clubes del distrito activan en su propio sitio. El contenido central tiene una sola fuente: un club que activa el programa recibe las actualizaciones aprobadas, agrega su contacto local y propone actividades locales, sin copiar ni modificar lo central. Todo cambio entra por el formato «Gestión de contenidos del programa» (¿Qué deseas gestionar?) y pasa por un flujo editorial; lo publicado sigue publicado hasta que se aprueba y publica su reemplazo.',
+        date: new Date().toISOString(),
+        tags: ['programas', 'ponseti', 'distrito 4281', 'clubes', 'flujo editorial', 'solicitudes', 'donaciones'],
+        type: 'feature',
+        impact: 'Alta: el Distrito 4281 puede cargar Clínicas Ponseti en borrador, completarlo con datos verificados y publicarlo; cualquier otro programa (Fundación Pequeño Corazón) entra sin tocar el código.',
+        changes: [
+            { type: 'added', text: 'Administración en /admin/programas: listado con búsqueda y filtros (estado, distrito, categoría), creación en borrador, ficha completa (identidad, gobernanza, atención, participación, secciones ordenables, llamados de acción, SEO, formularios y quién los atiende), responsables por perfil (coordinador, comunicaciones, revisor médico, gestor de solicitudes, colaborador), vinculaciones distritales, biblioteca de contenidos con versiones, revisión editorial, solicitudes públicas, clubes participantes, historial, métricas y vista previa firmada.' },
+            { type: 'added', text: 'Página pública /programas (catálogo del sitio) y /programas/:slug con secciones activables y ordenables: inicio, el programa, directorio de clínicas con búsqueda y filtros territoriales, información para familias, historias, equipo, impacto, cómo ayudar, noticias y eventos, aliados, contacto y formularios. Una sección sin contenido no se pinta; sólo sale lo aprobado y autorizado. Entrada «Programas» en el menú del sitio cuando el sitio muestra alguno.' },
+            { type: 'added', text: 'Cuatro formularios públicos separados: Necesito orientación (sin historia clínica, documentos ni fotos), Quiero apoyar, Mi club quiere participar (con los datos de la sesión cuando los hay) y Quiero recibir novedades, con consentimiento propio: nadie queda suscrito por pedir orientación o apoyo. Cada solicitud tiene referencia, responsable (asignación automática configurable), estados Nueva → Asignada → En contacto → Derivada → Cerrada, notas internas, primer contacto y motivo de cierre. El club de origen ve referencia, tipo y estado; nunca los datos de la familia.' },
+            { type: 'added', text: 'Donaciones sólo por enlace externo oficial, con entidad receptora, finalidad, texto aclaratorio y verificación; antes de salir se muestra quién recibe y administra el aporte. Un clic en «Donar» es una interacción, no una donación. Indicadores de impacto con definición, fuente, responsable de validación, período y distinción acumulado / por período.' },
+            { type: 'added', text: 'Multimedia: imágenes públicas por la Biblioteca del sitio; comprobantes de autorización y documentos de respaldo como archivos PRIVADOS (prefirmados, validados por bytes, sin URL pública, descarga firmada y auditada). YouTube y Spotify se embeben sólo desde la URL reconocida, nunca HTML pegado.' },
+            { type: 'changed', text: 'Permiso nuevo «Programas» (programs.view/create/edit/publish/export/manage) en el RBAC; la autorización por fila (distrito, club, perfil) la decide el servidor en cada petición. Trece tablas nuevas fuera de Prisma protegidas por el guardián de db:push. Notificaciones por el correo de la plataforma cuando está configurado; si no, el aviso queda registrado como omitido, nunca simulado. Pruebas: npm run test:programas (sin base) y test:programas:e2e (Postgres local). Semilla del piloto en borrador: npm run seed:programa-ponseti.' },
+        ],
+    },
     {
         version: '4.1279.0',
         title: 'Estadísticas de descarga de la guía de hoteles del evento 📥',

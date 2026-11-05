@@ -516,6 +516,13 @@ async function computeSiteConfig(domain, preview) {
             })(),
             productsCount: activeClub._count?.products || 0,
             eventsCount: activeClub._count?.events || 0,
+            // Programas (v4.1280): cuántos programas muestra este sitio en su menú
+            // (vinculación del distrito o activación del club). Nunca lanza; sin
+            // tablas devuelve 0 y el menú no cambia. ⚠️ TIENE QUE ESTAR EN ESTA LISTA.
+            programsNav: await (async () => {
+                try { const { programsNavFor } = await import('../lib/programStore.js'); return await programsNavFor(activeClub.id); }
+                catch { return { count: 0 }; }
+            })(),
             // Logo Size Inheritance: Priority 1: Club Setting, Priority 2: Master Club Setting, Priority 3: Default 200
             logoHeaderSize: parseInt(settings['logo_header_size']) || parseInt(masterSettings['logo_header_size']) || 200,
             // Versión del logo para los idiomas internacionales (rotulada en inglés).

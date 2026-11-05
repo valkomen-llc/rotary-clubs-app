@@ -61,6 +61,7 @@ const SYSTEM_NAV_SECTIONS: { label: string; href: string }[] = [
     { label: 'Interact', href: '/interact' },
     { label: 'Estados Financieros', href: '/estados-financieros' },
     { label: 'Proyectos', href: '/proyectos' },
+    { label: 'Programas', href: '/programas' },
     { label: 'Noticias', href: '/blog' },
     { label: 'Eventos', href: '/eventos' },
     { label: 'Calendario', href: '/calendario' },
