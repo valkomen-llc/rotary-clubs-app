@@ -13,7 +13,7 @@ import { PRIVATE_FILE_ACCEPT, fmtBytes, type StateSpec, stateChip } from '../../
 
 export const campo = 'w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-rotary-blue/30 focus:border-rotary-blue disabled:bg-gray-50 disabled:text-gray-500';
 export const rotulo = 'block text-xs font-semibold text-gray-600 mb-1';
-export const btnPrimario = 'inline-flex items-center gap-2 rounded-xl bg-rotary-blue text-white px-4 py-2 text-sm font-semibold hover:bg-rotary-blue/90 disabled:opacity-50';
+export const btnPrimario = 'inline-flex items-center gap-2 rounded-xl bg-rotary-blue text-white px-4 py-2 text-sm font-semibold hover:bg-rotary-navy disabled:opacity-50';
 export const btnSecundario = 'inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50';
 export const btnPeligro = 'inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50';
 

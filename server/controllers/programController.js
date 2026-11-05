@@ -29,8 +29,9 @@ import {
     isMetricKey, PUBLIC_REQUEST_TYPE_IDS, nextRequestStates, nextPublicRequestStates, requestNeedsMedicalReview, contentTitleOf, isPubliclyVisible, resolveEmbed,
 } from '../lib/programSpec.js';
 import { JWT_SECRET } from '../middleware/auth.js';
+import { shapeLanding, validateLanding, newBlock, resolveLanding, BLOCK_TYPES, BACKGROUNDS, ICONS, BUTTON_ACTIONS, DETAIL_ANCHORS, FORM_TARGETS } from '../lib/programLandingSpec.js';
 
-console.log('[programas] v4.1280.0 cargado — Programas: identidad única, vinculación distrital, activación por clubes, flujo editorial y solicitudes públicas');
+console.log('[programas] v4.1281.0 cargado — Programas: página pública por contenedores (borrador, vista previa, publicación) sobre las fuentes reales del programa');
 
 const fail = (res, e, code = 500) => {
     if (code >= 500) console.error('[programas]', e?.message || e);
@@ -793,6 +794,102 @@ export const adminDownloadFile = async (req, res) => {
     } catch (e) { return fail(res, e); }
 };
 
+// ─── La página pública por contenedores (v4.1281) ─────────────────────
+
+const landingCatalogs = () => ({ blockTypes: BLOCK_TYPES, backgrounds: BACKGROUNDS, icons: ICONS, buttonActions: BUTTON_ACTIONS, detailAnchors: DETAIL_ANCHORS, formTargets: FORM_TARGETS });
+
+/** Lo que el editor necesita: borrador, publicada, fuentes disponibles y los avisos de cada contenedor. */
+const landingPayload = async (L) => {
+    const { program, ctx } = L;
+    const link = ctx.links.find(l => l.status === 'activa') || null;
+    const state = await S.landingState(program, { districtNumber: link?.districtNumber || program.ownerDistrictNumber || null });
+    const sources = await S.landingSources(program, { districtNumber: link?.districtNumber || null, activationId: null });
+    const preview = resolveLanding(state.draft, sources, { preview: true });
+    return {
+        draft: state.draft, published: state.published, exists: state.exists, draftVersion: state.draftVersion, publishedVersion: state.publishedVersion,
+        updatedByName: state.updatedByName, updatedAt: state.updatedAt, publishedByName: state.publishedByName, publishedAt: state.publishedAt,
+        unpublishedChanges: state.exists && (!state.published || JSON.stringify(state.published) !== JSON.stringify(state.draft)),
+        notes: Object.fromEntries(preview.blocks.map(b => [b.id, { ready: b.ready, notes: b.notes }])),
+        sources: {
+            clinics: sources.clinics.length, stories: sources.stories.map(s => ({ id: s.id, title: s.title, date: s.date })), resources: sources.resources.length,
+            resourcesByType: sources.resources.reduce((acc, r) => ({ ...acc, [r.type]: (acc[r.type] || 0) + 1 }), {}),
+            indicators: sources.indicators.map(i => ({ id: i.id, name: i.name, value: i.value, unit: i.unit, period: i.period })),
+            donation: sources.donation ? { receiver: sources.donation.receiver, verifiedAt: sources.donation.verifiedAt, url: sources.donation.url } : null,
+            formsEnabled: sources.formsEnabled,
+        },
+        catalogs: landingCatalogs(), slug: program.slug,
+    };
+};
+
+// GET /admin/:id/landing
+export const adminGetLanding = async (req, res) => {
+    try {
+        const L = await loadProgram(req, res, 'view'); if (!L) return;
+        res.json({ ...(await landingPayload(L)), canEdit: L.grant.can('editProgram'), canPublish: L.grant.can('publish') });
+    } catch (e) { return fail(res, e); }
+};
+
+// PUT /admin/:id/landing  { landing, baseVersion }
+export const adminSaveLanding = async (req, res) => {
+    try {
+        const L = await loadProgram(req, res, 'editProgram'); if (!L) return;
+        const landing = shapeLanding(req.body?.landing);
+        const juicio = validateLanding(landing);
+        if (!juicio.ok) return res.status(400).json({ error: juicio.errors[0].message, errors: juicio.errors });
+        const r = await S.saveLandingDraft(L.program.id, landing, { actor: actorOf(req), baseVersion: req.body?.baseVersion });
+        if (!r.ok) return res.status(409).json({ error: 'Otra persona guardó esta página mientras la editabas. Recarga para ver sus cambios y vuelve a aplicar los tuyos.', code: 'LANDING_CONFLICT', current: r.current ? { draftVersion: r.current.draftVersion, updatedByName: r.current.updatedByName, updatedAt: r.current.updatedAt } : null });
+        res.json(await landingPayload(L));
+    } catch (e) { return fail(res, e); }
+};
+
+// POST /admin/:id/landing/publish  { baseVersion, note }
+export const adminPublishLanding = async (req, res) => {
+    try {
+        const L = await loadProgram(req, res, 'publish'); if (!L) return;
+        const r = await S.publishLanding(L.program.id, { actor: actorOf(req), baseVersion: req.body?.baseVersion, note: String(req.body?.note || '').slice(0, 300) });
+        if (!r.ok) return res.status(r.conflict ? 409 : 400).json({ error: r.conflict ? 'El borrador cambió mientras publicabas. Recarga y vuelve a intentar.' : r.error, code: r.conflict ? 'LANDING_CONFLICT' : undefined });
+        res.json(await landingPayload(L));
+    } catch (e) { return fail(res, e); }
+};
+
+// GET /admin/:id/landing/versions
+export const adminLandingVersions = async (req, res) => {
+    try {
+        const L = await loadProgram(req, res, 'view'); if (!L) return;
+        res.json({ versions: await S.landingVersions(L.program.id) });
+    } catch (e) { return fail(res, e); }
+};
+
+// POST /admin/:id/landing/restore  { version }
+export const adminRestoreLanding = async (req, res) => {
+    try {
+        const L = await loadProgram(req, res, 'editProgram'); if (!L) return;
+        const r = await S.restoreLandingVersion(L.program.id, req.body?.version, { actor: actorOf(req) });
+        if (!r.ok) return res.status(r.conflict ? 409 : 400).json({ error: r.error || 'No se pudo restaurar.' });
+        res.json(await landingPayload(L));
+    } catch (e) { return fail(res, e); }
+};
+
+// POST /admin/:id/landing/reset → vuelve el BORRADOR al diseño inicial (no publica)
+export const adminResetLanding = async (req, res) => {
+    try {
+        const L = await loadProgram(req, res, 'editProgram'); if (!L) return;
+        const { defaultLanding } = await import('../lib/programLandingSpec.js');
+        const link = L.ctx.links.find(l => l.status === 'activa') || null;
+        const cur = await S.getLanding(L.program.id);
+        const r = await S.saveLandingDraft(L.program.id, defaultLanding(L.program, { districtNumber: link?.districtNumber || L.program.ownerDistrictNumber || null }), { actor: actorOf(req), baseVersion: cur?.draftVersion ?? 0 });
+        if (!r.ok) return res.status(409).json({ error: 'El borrador cambió mientras tanto. Recarga.' });
+        res.json(await landingPayload(L));
+    } catch (e) { return fail(res, e); }
+};
+
+// GET /admin/landing/new-block?type=
+export const adminNewBlock = async (req, res) => {
+    const b = newBlock(String(req.query.type || ''));
+    if (!b) return res.status(400).json({ error: 'Tipo de contenedor desconocido.' });
+    res.json({ block: b });
+};
+
 // ─── Auditoría y métricas ─────────────────────────────────────────────
 
 // GET /admin/:id/audit
@@ -831,4 +928,5 @@ export default {
     adminListContent, adminGetContent, adminListChanges, adminCreateChange, adminGetChange, adminUpdateChange, adminTransitionChange, adminMedicalReview, adminPublishChange,
     adminListRequests, adminGetRequest, adminTransitionRequest, adminAssignRequest, adminNoteRequest, adminListClubs, adminActivateClub, adminUpdateActivation, adminDeactivateClub,
     adminPresignFile, adminRegisterFile, adminListFiles, adminDownloadFile, adminAudit, adminMetrics, adminClubsCatalog,
+    adminGetLanding, adminSaveLanding, adminPublishLanding, adminLandingVersions, adminRestoreLanding, adminResetLanding, adminNewBlock,
 };

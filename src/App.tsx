@@ -231,6 +231,7 @@ const Capacitaciones = lazyWithRetry(() => import('./pages/Capacitaciones'), 'Ca
 // Programas (v4.1280): catálogo del sitio y página de cada programa; administración en /admin/programas.
 const Programas = lazyWithRetry(() => import('./pages/Programas'), 'Programas');
 const ProgramaDetalle = lazyWithRetry(() => import('./pages/ProgramaDetalle'), 'ProgramaDetalle');
+const ProgramaLandingPage = lazyWithRetry(() => import('./pages/ProgramaLandingPage'), 'ProgramaLandingPage');
 const ProgramasAdmin = lazyWithRetry(() => import('./pages/admin/ProgramasAdmin'), 'ProgramasAdmin');
 const ProgramaAdminDetalle = lazyWithRetry(() => import('./pages/admin/ProgramaAdminDetalle'), 'ProgramaAdminDetalle');
 const CapacitacionDetalle = lazyWithRetry(() => import('./pages/CapacitacionDetalle'), 'CapacitacionDetalle');
@@ -706,7 +707,8 @@ function App() {
                 <Route path="/capacitaciones" element={<Capacitaciones />} />
                 <Route path="/capacitaciones/:slug" element={<CapacitacionDetalle />} />
                 <Route path="/programas" element={<Programas />} />
-                <Route path="/programas/:slug" element={<ProgramaDetalle />} />
+                <Route path="/programas/:slug" element={<ProgramaLandingPage />} />
+                <Route path="/programas/:slug/detalle" element={<ProgramaDetalle />} />
                 <Route path="/proyectos" element={<Proyectos />} />
                 <Route path="/proyectos/:id" element={<ProyectoDetalle />} />
                 <Route path="/contacto" element={<Contacto />} />

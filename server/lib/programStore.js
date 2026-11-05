@@ -16,6 +16,7 @@ import {
     defaultSections, isMetricKey,
 } from './programSpec.js';
 import { parseDistrictTags } from './districtEcosystem.js';
+import { shapeLanding, defaultLanding, resolveLanding } from './programLandingSpec.js';
 
 const actorCols = (actor = {}) => ({ id: actor.id || null, name: actor.name || 'Administración', clubId: actor.clubId || null });
 const evento = ({ type, from = null, to = null, actor = {}, detail = '' }) => JSON.stringify([{
@@ -732,6 +733,104 @@ export async function metricsSummary(programId, { from = null, to = null } = {})
     return { totals: rows, bySite, daily, requestsByStatus: requests, firstContact: { avgHours: firstContact?.avgHours ? Number(firstContact.avgHours) : null, measured: firstContact?.n || 0 }, activeClubs };
 }
 
+// ─── La página pública por contenedores (v4.1281) ─────────────────────
+
+const LANDING_COLS = `"programId", "schemaVersion", draft, published, "draftVersion", "publishedVersion", "updatedBy", "updatedByName", "updatedAt", "publishedBy", "publishedByName", "publishedAt"`;
+
+export async function getLanding(programId) {
+    await ensureProgramSchema();
+    return one(await db.query(`SELECT ${LANDING_COLS} FROM "ProgramLanding" WHERE "programId" = $1`, [programId]));
+}
+
+/** El borrador y la versión publicada; si nunca se guardó, el diseño inicial (sin escribir nada). */
+export async function landingState(program, { districtNumber = null } = {}) {
+    const row = await getLanding(program.id);
+    if (row) return { ...row, draft: shapeLanding(row.draft), published: row.published ? shapeLanding(row.published) : null, exists: true };
+    return { programId: program.id, schemaVersion: 1, draft: defaultLanding(program, { districtNumber }), published: null, draftVersion: 0, publishedVersion: null, updatedBy: null, updatedByName: null, updatedAt: null, publishedBy: null, publishedByName: null, publishedAt: null, exists: false };
+}
+
+/** Guarda el BORRADOR con bloqueo optimista: `baseVersion` es la que leyó quien edita. */
+export async function saveLandingDraft(programId, landing, { actor, baseVersion }) {
+    const a = actorCols(actor);
+    const cur = await getLanding(programId);
+    const base = Number(baseVersion ?? -1);
+    if (cur && base !== Number(cur.draftVersion)) return { ok: false, conflict: true, current: cur };
+    if (!cur && base > 0) return { ok: false, conflict: true, current: null };
+    const row = cur
+        ? one(await db.query(
+            `UPDATE "ProgramLanding" SET draft = $2::jsonb, "schemaVersion" = $3, "draftVersion" = "draftVersion" + 1, "updatedBy" = $4, "updatedByName" = $5, "updatedAt" = NOW()
+              WHERE "programId" = $1 AND "draftVersion" = $6 RETURNING ${LANDING_COLS}`,
+            [programId, JSON.stringify(landing), landing.schemaVersion, a.id, a.name, base]
+        ))
+        : one(await db.query(
+            `INSERT INTO "ProgramLanding" ("programId", "schemaVersion", draft, "draftVersion", "updatedBy", "updatedByName") VALUES ($1, $2, $3::jsonb, 1, $4, $5)
+             ON CONFLICT ("programId") DO NOTHING RETURNING ${LANDING_COLS}`,
+            [programId, landing.schemaVersion, JSON.stringify(landing), a.id, a.name]
+        ));
+    if (!row) return { ok: false, conflict: true, current: await getLanding(programId) };
+    await audit({ programId, entityType: 'landing', entityId: programId, action: 'draft_saved', actor, detail: { draftVersion: row.draftVersion, blocks: landing.blocks.length } });
+    return { ok: true, row };
+}
+
+/** Publica el borrador: lo copia a `published`, escribe la versión y audita. Hasta aquí el público veía la anterior. */
+export async function publishLanding(programId, { actor, baseVersion, note = '' }) {
+    const a = actorCols(actor);
+    const cur = await getLanding(programId);
+    if (!cur) return { ok: false, error: 'No hay borrador que publicar.' };
+    if (baseVersion !== undefined && Number(baseVersion) !== Number(cur.draftVersion)) return { ok: false, conflict: true, current: cur };
+    const client = await db.pool.connect();
+    try {
+        await client.query('BEGIN');
+        const r = await client.query(
+            `UPDATE "ProgramLanding" SET published = draft, "publishedVersion" = COALESCE("publishedVersion", 0) + 1, "publishedBy" = $2, "publishedByName" = $3, "publishedAt" = NOW()
+              WHERE "programId" = $1 AND "draftVersion" = $4 RETURNING ${LANDING_COLS}`,
+            [programId, a.id, a.name, cur.draftVersion]
+        );
+        if (!r.rows[0]) throw new Error('El borrador cambió mientras publicabas. Recarga y vuelve a intentar.');
+        await client.query(
+            `INSERT INTO "ProgramLandingVersion" ("programId", version, config, "publishedBy", "publishedByName", note) VALUES ($1, $2, $3::jsonb, $4, $5, $6)`,
+            [programId, r.rows[0].publishedVersion, JSON.stringify(r.rows[0].published), a.id, a.name, note || null]
+        );
+        await client.query('COMMIT');
+        await audit({ programId, entityType: 'landing', entityId: programId, action: 'published', actor, detail: { publishedVersion: r.rows[0].publishedVersion, note } });
+        return { ok: true, row: r.rows[0] };
+    } catch (e) {
+        await client.query('ROLLBACK').catch(() => {});
+        return { ok: false, error: e.message };
+    } finally { client.release(); }
+}
+
+export async function landingVersions(programId) {
+    const { rows } = await db.query(`SELECT id, version, "publishedByName", note, "publishedAt" FROM "ProgramLandingVersion" WHERE "programId" = $1 ORDER BY version DESC LIMIT 50`, [programId]);
+    return rows;
+}
+
+/** Restaura una versión publicada al BORRADOR (no publica). */
+export async function restoreLandingVersion(programId, version, { actor }) {
+    const v = one(await db.query(`SELECT config FROM "ProgramLandingVersion" WHERE "programId" = $1 AND version = $2`, [programId, Number(version)]));
+    if (!v) return { ok: false, error: 'Versión no encontrada.' };
+    const cur = await getLanding(programId);
+    const r = await saveLandingDraft(programId, shapeLanding(v.config), { actor, baseVersion: cur?.draftVersion ?? 0 });
+    if (r.ok) await audit({ programId, entityType: 'landing', entityId: programId, action: 'version_restored', actor, detail: { version: Number(version) } });
+    return r;
+}
+
+/** Las fuentes publicadas que la landing referencia, para ESTE sitio (central + distrital + local del club). */
+export async function landingSources(program, { districtNumber = null, activationId = null } = {}) {
+    const { rows } = await db.query(
+        `SELECT ${CONTENT_COLS} FROM "ProgramContent" WHERE "programId" = $1 AND status = 'publicado'
+            AND ("scopeType" = 'central' OR ("scopeType" = 'district' AND $2::int IS NOT NULL AND "districtNumber" = $2) OR ("scopeType" = 'club' AND $3::text IS NOT NULL AND "clubActivationId" = $3))
+          ORDER BY kind, "sortOrder", "publishedAt" DESC`,
+        [program.id, districtNumber, activationId]
+    );
+    const visible = rows.filter(c => isPubliclyVisible(c.kind, c.data)).map(publicContentView);
+    const by = (k) => visible.filter(c => c.kind === k);
+    const donation = by('donation')[0] || null;
+    return { slug: program.slug, clinics: by('clinic'), stories: by('story'), resources: by('resource'), indicators: by('indicator'), donation, formsEnabled: program.formsEnabled || {} };
+}
+
+export { resolveLanding, defaultLanding };
+
 // ─── Lectura pública ──────────────────────────────────────────────────
 
 /** El sitio como lo ve este módulo: id, nombre, si es de distrito y sus distritos. */
@@ -825,10 +924,18 @@ export async function publicProgramForSite(slug, clubId, { preview = false } = {
     });
     const byKind = {};
     for (const k of Object.keys(CONTENT_KINDS)) byKind[k] = visible.filter(c => c.kind === k).map(publicContentView);
+    // La landing por contenedores (v4.1281): la PUBLICADA para el público; en
+    // vista previa, el BORRADOR. Sin nada guardado, el diseño inicial. Sus
+    // fuentes son los mismos registros publicados de arriba.
+    const state = await landingState(program, { districtNumber: link?.districtNumber || program.ownerDistrictNumber || null });
+    const config = preview ? state.draft : (state.published || (state.exists ? null : state.draft));
+    const sources = { slug: program.slug, clinics: byKind.clinic, stories: byKind.story, resources: byKind.resource, indicators: byKind.indicator, donation: byKind.donation[0] || null, formsEnabled: view.formsEnabled };
+    const landing = config ? resolveLanding(config, sources, { preview }) : null;
     return {
         program: view, link: link ? publicLinkView(link) : null, activation: activation ? publicActivationView(activation) : null,
         site: site ? { id: site.id, name: site.name, isDistrict: site.isDistrict } : null,
-        sections, content: byKind, preview,
+        sections, content: byKind, preview, landing,
+        landingMeta: { published: Boolean(state.published), draftVersion: state.draftVersion, publishedVersion: state.publishedVersion },
     };
 }
 
@@ -851,4 +958,5 @@ export default {
     medicalApproveRequest, publishChangeRequest, createPublicRequest, listPublicRequests, originRequestsForClub, getPublicRequest, transitionPublicRequest,
     assignPublicRequest, notePublicRequest, subscribe, subscriberCount, registerFile, getFile, listFiles, recordMetric, metricsSummary,
     siteInfo, publicCatalogForSite, programsNavFor, publicProgramForSite, clinicFacets,
+    getLanding, landingState, saveLandingDraft, publishLanding, landingVersions, restoreLandingVersion, landingSources,
 };

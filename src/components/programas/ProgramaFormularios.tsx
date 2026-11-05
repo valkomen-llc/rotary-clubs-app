@@ -186,7 +186,7 @@ const ProgramaFormularios = ({ slug, clubId, formsEnabled, newsletterEnabled, di
                     </>)}
 
                     {fallo ? <p role="alert" className="flex items-center gap-2 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2"><AlertCircle className="w-4 h-4" /> {fallo}</p> : null}
-                    <button type="submit" disabled={enviando} className="inline-flex items-center gap-2 rounded-full bg-rotary-blue text-white px-6 py-2.5 text-sm font-semibold hover:bg-rotary-blue/90 disabled:opacity-60">
+                    <button type="submit" disabled={enviando} className="inline-flex items-center gap-2 rounded-full bg-rotary-blue text-white px-6 py-2.5 text-sm font-semibold hover:bg-rotary-navy disabled:opacity-60">
                         {enviando ? <Loader2 className="w-4 h-4 animate-spin" /> : null} {tab === 'novedades' ? 'Suscribirme' : 'Enviar solicitud'}
                     </button>
                 </form>

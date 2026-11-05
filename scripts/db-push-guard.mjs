@@ -126,10 +126,11 @@
 //
 // Para sincronizar de todos modos, a sabiendas:  npm run db:push:force
 // ════════════════════════════════════════════════════════════════════
-// Y las trece de Programas (v4.1280): Program, ProgramDistrictLink,
-// ProgramClubActivation, ProgramMember, ProgramContent, ProgramContentVersion,
-// ProgramChangeRequest, ProgramRequest, ProgramSubscriber, ProgramFile,
-// ProgramAuditLog, ProgramMetricDaily y ProgramVisitor.
+// Y las quince de Programas (v4.1280; la página pública por contenedores,
+// v4.1281): Program, ProgramDistrictLink, ProgramClubActivation, ProgramMember,
+// ProgramContent, ProgramContentVersion, ProgramChangeRequest, ProgramRequest,
+// ProgramSubscriber, ProgramFile, ProgramAuditLog, ProgramMetricDaily,
+// ProgramVisitor, ProgramLanding y ProgramLandingVersion.
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
 

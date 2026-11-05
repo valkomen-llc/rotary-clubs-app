@@ -1,4 +1,4 @@
-# Programas — v4.1280
+# Programas — v4.1280 (página pública por contenedores: v4.1281)
 
 Módulo para que un distrito publique los programas que respalda (el primero,
 **Clínicas Ponseti** para el Distrito 4281), su equipo gestione contenidos y
@@ -24,6 +24,7 @@ tocar código**: todo es datos.
 | Administración | `src/pages/admin/ProgramasAdmin.tsx`, `src/pages/admin/ProgramaAdminDetalle.tsx`, `src/components/admin/programas/` |
 | Menú público: `programsNav` en `by-domain` → `Navbar` | `server/routes/clubs.js`, `src/sections/Navbar.tsx` |
 | SEO del servidor (`kindOfPath` → `program`, `programMeta`) | `server/lib/seoSpec.js`, `server/lib/seoEntities.js` |
+| **Página pública por contenedores** (criterio puro, espejo, renderizador, editor) | `server/lib/programLandingSpec.js`, `src/lib/programLandingSpec.ts`, `src/components/programas/ProgramaLanding.tsx`, `src/components/programas/ProgramIcon.tsx`, `src/pages/ProgramaLandingPage.tsx`, `src/components/admin/programas/ProgramaPaginaTab.tsx` |
 | Pruebas | `npm run test:programas` (sin base) · `PROGRAMAS_E2E_DATABASE_URL=… npm run test:programas:e2e` (Postgres local) |
 | Semilla del piloto en borrador | `DATABASE_URL=… npm run seed:programa-ponseti` |
 
@@ -107,15 +108,78 @@ tocar código**: todo es datos.
   directo al único). `SYSTEM_NAV_SECTIONS` incluye `/programas` para menús
   personalizados.
 
+## La página pública por contenedores (v4.1281)
+
+La landing `/programas/:slug` reproduce la propuesta visual de Clínicas
+Ponseti con ONCE contenedores en una lista cerrada (`BLOCK_TYPES`): `hero`
+(portada), `intro` (presentación), `cards` (información para familias),
+`feature` (equipo), `impact`, `directory`, `donation`, `stories`, `resources`,
+`clubs` y `contact`. Portada, directorio, donaciones y contacto son de
+instancia única; los demás se pueden agregar varias veces con id propio.
+
+- **Persistencia**: `ProgramLanding` (una fila por programa: `draft`,
+  `published`, `draftVersion`, `publishedVersion`, quién y cuándo) y
+  `ProgramLandingVersion` (cada publicación). Sin fila, `landingState`
+  devuelve `defaultLanding(program)` sin escribir nada: el público ve el
+  diseño inicial con los contenedores que tengan datos; en cuanto se guarda
+  un borrador, el público ve sólo lo PUBLICADO (nada hasta publicar).
+- **Borrador ≠ publicado**: `PUT /admin/:id/landing` guarda el borrador con
+  bloqueo optimista (`baseVersion` = la `draftVersion` leída; otra edición
+  concurrente responde `409 LANDING_CONFLICT`). `POST …/landing/publish`
+  copia el borrador a `published`, escribe la versión y audita. La vista
+  previa (`?t=` firmado, 1 h) muestra el borrador; `…/landing/versions` y
+  `…/landing/restore` recuperan una versión al borrador; `…/landing/reset`
+  vuelve al diseño inicial. Permisos: `editProgram` para guardar, `publish`
+  para publicar; el club sólo mira.
+- **Saneado en servidor** (`shapeLanding`): textos recortados, íconos y
+  fondos de catálogo cerrado (`ICONS`, `BACKGROUNDS`), imágenes con URL
+  normalizada + alt + enfoque, botones con acción controlada
+  (`section` ancla de la página, `detail` ancla de `/programas/:slug/detalle`,
+  `form` orientación/apoyo/club/novedades, `donation` canal verificado,
+  `internal` ruta que empieza por «/», `external` http(s) sin credenciales).
+  Nunca HTML, CSS ni JS.
+- **Fuentes reales sin copias** (`resolveLanding` + `landingSources`): el
+  directorio toma las clínicas publicadas; `impact` referencia indicadores
+  por `indicatorId` (sin vínculo: «Indicadores por validar» en vista previa,
+  tarjeta omitida en público); `stories` últimas N o selección manual de
+  historias aprobadas; `resources` cuenta recursos publicados por tipo;
+  `donation` usa el primer enlace de donación publicado y VERIFICADO (sin
+  él: «Entidad receptora y enlace por confirmar», contenedor oculto en
+  público). Las imágenes vacías muestran «Fotografía real autorizada» sólo
+  en vista previa.
+- **Página de detalle**: la vista completa anterior vive en
+  `/programas/:slug/detalle` (directorio completo, recursos con embebidos,
+  equipo, impacto, cómo ayudar, noticias, aliados, formularios), con anclas
+  `#clinicas`, `#familias`, `#equipo`, etc. «Volver al menú» (configurable en
+  `settings.backLink`) va al pie de la landing.
+- **Colores**: `bg-rotary-navy`, `bg-rotary-blue`, azul claro (degradado
+  sky), gris con textura `bg-rotary-concrete`; botones redondeados
+  `bg-sky-100 text-rotary-blue`; íconos lucide azules con detalle dorado
+  (`ProgramIcon`). ⚠️ `hover:bg-rotary-blue/90` no existe (v4.719): el hover
+  oscurece con `bg-rotary-navy`.
+
+### Cómo personalizar cada contenedor (pestaña «Página pública»)
+
+1. Elegir el contenedor en la lista de la izquierda (activar/desactivar,
+   subir/bajar, quitar; «Agregar contenedor» para otra instancia).
+2. Editar nombre administrativo, fondo, alineación y lado de la imagen.
+3. Editar los campos del tipo: textos; imagen (Subir o Biblioteca, texto
+   alternativo, enfoque); tarjetas/accesos/indicadores (ícono, textos,
+   vínculo); botones (texto, ícono, estilo, acción y destino).
+4. Los contenedores con fuente muestran su acceso («Gestión de contenidos» o
+   «Biblioteca de contenidos») y los avisos de lo que falta.
+5. Guardar borrador → Vista previa → Publicar.
+
 ## Rutas
 
-Públicas: `/programas` (catálogo del sitio) y `/programas/:slug`
-(`?f=orientacion|apoyo|club|novedades` abre ese formulario; `?t=` vista
-previa firmada 1 h). API: `GET /api/programas/public/catalogo`,
+Públicas: `/programas` (catálogo del sitio), `/programas/:slug` (la landing
+por contenedores; `?f=orientacion|apoyo|club|novedades` abre ese formulario;
+`?t=` vista previa firmada 1 h) y `/programas/:slug/detalle` (toda la
+información). API: `GET /api/programas/public/catalogo`,
 `GET /public/:slug`, `POST /public/:slug/solicitud`, `POST /public/:slug/novedades`,
 `POST /public/:slug/metric`, `GET /public/:slug/solicitud/:ref`, `GET /public/clubes`.
 
-Administración: `/admin/programas` y `/admin/programas/:id?tab=ficha|vinculos|
+Administración: `/admin/programas` y `/admin/programas/:id?tab=ficha|pagina|vinculos|
 contenidos|gestion|revision|solicitudes|clubes|historial` (`&ref=` abre una
 solicitud). API bajo `/api/programas/admin/…` (ver `server/routes/programs.js`).
 
@@ -142,7 +206,7 @@ con el contenido central aprobado; «Gestión de contenidos» le deja proponer
 contenido local; «Solicitudes públicas» le muestra referencias y estados de lo
 que llegó desde su sitio; «Desactivar participación» lo retira.
 
-## Cómo se probó (v4.1280)
+## Cómo se probó (v4.1280; landing v4.1281: +22 puras, +6 e2e, capturas 1280/390 px contra el build)
 
 - `npm run test:programas`: 132 comprobaciones puras (estados, revisión
   médica por tipo, publicación, vistas públicas sin internos, embebidos,
@@ -165,7 +229,7 @@ que llegó desde su sitio; «Desactivar participación» lo retira.
 
 - Correo real: depende de `RESEND_API_KEY` o SMTP de plataforma; sin eso los
   avisos quedan como omitidos en la auditoría. WhatsApp y campañas: futuro.
-- Las secciones son una lista cerrada ordenable, no un constructor visual.
+- Los contenedores son una lista cerrada ordenable con opciones acotadas, no un constructor visual libre (a propósito).
 - Exportación (CSV) de solicitudes y métricas: no incluida en esta versión.
 - Un recurso con archivo privado (`fileId`) se muestra como «hasFile» sin
   descarga pública: la entrega de documentos a familias con registro queda

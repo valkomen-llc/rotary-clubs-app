@@ -14,6 +14,7 @@ import { api, can, type Grant } from '../../components/admin/programas/api';
 import { Chip, btnSecundario, Cargando } from '../../components/admin/programas/ui';
 import { PROGRAM_STATES } from '../../lib/programSpec';
 import ProgramaFichaTab from '../../components/admin/programas/ProgramaFichaTab';
+import ProgramaPaginaTab from '../../components/admin/programas/ProgramaPaginaTab';
 import ProgramaVinculosTab from '../../components/admin/programas/ProgramaVinculosTab';
 import ProgramaContenidosTab from '../../components/admin/programas/ProgramaContenidosTab';
 import GestionContenidosPrograma from '../../components/admin/programas/GestionContenidosPrograma';
@@ -31,6 +32,7 @@ export interface Detalle {
 
 const TABS = [
     { id: 'ficha', label: 'Información', needs: ['view'] },
+    { id: 'pagina', label: 'Página pública', needs: ['view'] },
     { id: 'vinculos', label: 'Responsables y distritos', needs: ['manageMembers', 'manageLinks'] },
     { id: 'contenidos', label: 'Biblioteca de contenidos', needs: ['view'] },
     { id: 'gestion', label: 'Gestión de contenidos', needs: ['submit', 'localSubmit'] },
@@ -102,6 +104,7 @@ const ProgramaAdminDetalle = () => {
                     </div>
 
                     {tab === 'ficha' ? <ProgramaFichaTab data={data} onChanged={cargar} /> : null}
+                    {tab === 'pagina' ? <ProgramaPaginaTab data={data} /> : null}
                     {tab === 'vinculos' ? <ProgramaVinculosTab data={data} onChanged={cargar} /> : null}
                     {tab === 'contenidos' ? <ProgramaContenidosTab data={data} onGoGestion={() => cambiarTab('gestion')} /> : null}
                     {tab === 'gestion' ? <GestionContenidosPrograma data={data} onChanged={cargar} refInicial={params.get('ref')} /> : null}
