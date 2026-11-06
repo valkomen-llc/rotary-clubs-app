@@ -62,7 +62,10 @@ check('es de sitio y protegido', preset?.scope === 'site' && preset?.protected =
 // v4.1271 — más el Directorio de Clubes y su Catálogo Maestro (ver y administrar).
 // v4.1288 — más Eventos, exactamente los de la llave legada `events` que tenía antes del rol.
 // v4.1289 — más Analíticas en sólo lectura (el `analytics.view` del menú base institucional).
-eq('⚠️ sus permisos son EXACTAMENTE ver, exportar, su buzón, el Directorio de Clubes, Eventos y Analíticas', [...preset.permissions].sort(), ['analytics.view', 'clubs.manage', 'clubs.view', 'email_inbox.use_own', 'events.create', 'events.edit', 'events.publish', 'events.view', 'finance.export', 'finance.view']);
+// v4.1290 — más el Estudio de Contenido (la llave legada `content_studio` sin el Hub Social).
+eq('⚠️ sus permisos son EXACTAMENTE ver, exportar, su buzón, el Directorio de Clubes, Eventos, Analíticas y el Estudio de Contenido', [...preset.permissions].sort(), ['analytics.view', 'clubs.manage', 'clubs.view', 'content_studio.create', 'content_studio.edit', 'content_studio.publish', 'content_studio.view', 'email_inbox.use_own', 'events.create', 'events.edit', 'events.publish', 'events.view', 'finance.export', 'finance.view']);
+eq('v4.1290 — el Estudio es la llave legada `content_studio` menos el Hub Social', preset.permissions.filter(p => p.startsWith('content_studio.')).sort(), S.LEGACY_PERMISSION_MAP.content_studio.filter(p => p.startsWith('content_studio.')).sort());
+check('v4.1290 — ⚠️ NO trae el Hub Social ni borra en el Estudio', !S.expandPermissions(preset.permissions).permissions.some(p => p.startsWith('social.') || p === 'content_studio.delete'));
 check('v4.1289 — Analíticas es el mismo `analytics.view` del menú base institucional', S.INSTITUTIONAL_BASE.includes('analytics.view') && preset.permissions.includes('analytics.view'));
 check('v4.1289 — ⚠️ Analíticas sólo en lectura: NO exporta', !S.expandPermissions(preset.permissions).permissions.includes('analytics.export'));
 eq('v4.1288 — Eventos son los MISMOS permisos que la llave legada `events`', preset.permissions.filter(p => p.startsWith('events.')).sort(), [...S.LEGACY_PERMISSION_MAP.events].sort());
@@ -104,6 +107,9 @@ check('v4.1288 — y «Eventos», como antes del rol', menu.includes('/admin/eve
 check('v4.1288 — abre /admin/eventos', S.canOpenPath(gJ, '/admin/eventos'));
 check('v4.1289 — y «Analíticas», como antes del rol', menu.includes('/admin/analytics'), JSON.stringify(menu));
 check('v4.1289 — abre /admin/analytics', S.canOpenPath(gJ, '/admin/analytics'));
+check('v4.1290 — y «Estudio de Contenido»', menu.includes('/admin/content-studio'), JSON.stringify(menu));
+check('v4.1290 — abre /admin/content-studio', S.canOpenPath(gJ, '/admin/content-studio'));
+check('v4.1290 — ⚠️ pero no el Hub Social', !S.canOpenPath(gJ, '/admin/social-hub'));
 check('⚠️ y ninguna pantalla de administración', !menu.some(p => ['/admin/usuarios', '/admin/configuracion', '/admin/integraciones', '/admin/roles'].includes(p)), JSON.stringify(menu));
 check('la entrada de la Bóveda vive en la categoría Finanzas', /label: esFeria \? 'Conciliaciones y Desembolsos' : 'Bóveda de Fondos',[\s\S]{0,200}category: 'Finanzas'/.test(LAYOUT));
 

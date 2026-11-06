@@ -34,13 +34,27 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1289.0 | 2026-11-06 (La Secretaría Digital vuelve a ver Analíticas)
+// UI V4.1290.0 | 2026-11-06 (La Secretaría Digital accede al Estudio de Contenido)
 // Cache bust: 2026-11-06
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1290.0',
+        title: 'Secretaría Digital: acceso al Estudio de Contenido 🎬',
+        description: 'Pedido del Distrito 4281: la cuenta de la Secretaría Digital suma el Estudio de Contenido (Content Studio) a su menú, junto a la Bóveda, Eventos, Analíticas y el Directorio de Clubes.',
+        date: new Date().toISOString(),
+        tags: ['permisos', 'secretaría digital', 'estudio de contenido', 'distrito 4281'],
+        type: 'improvement',
+        impact: 'Media: la Secretaría Digital puede crear, editar y publicar piezas con las herramientas del Estudio que tenga activas el sitio.',
+        changes: [
+            { type: 'added', text: 'El rol «Secretaría Digital — Control de Aportes» suma ver, crear, editar y publicar en el Estudio de Contenido. La entrada «Content Studio» aparece en la barra lateral, en «General».' },
+            { type: 'changed', text: 'Sin el Hub Social ni el borrado de piezas. Las herramientas disponibles dentro del Estudio siguen siendo las que el sitio tiene activas. La Bóveda sigue en sólo lectura y descarga.' },
+            { type: 'added', text: 'La prueba test:digital-secretary fija los permisos y que la barra lateral muestre el Estudio y no el Hub Social.' },
+        ],
+    },
     {
         version: '4.1289.0',
         title: 'Secretaría Digital: vuelve el módulo de Analíticas 📊',
