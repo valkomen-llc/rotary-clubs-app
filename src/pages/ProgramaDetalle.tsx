@@ -25,12 +25,13 @@ import { leerJson } from '../lib/leerJson';
 import { dateLabel, type Embed } from '../lib/programSpec';
 import ProgramEmbed from '../components/programas/ProgramEmbed';
 import ProgramaFormularios from '../components/programas/ProgramaFormularios';
+import { PerfilPrograma, AtencionExtra } from '../components/programas/ProgramaPerfil';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
 interface Clinic { id: string; name: string; institution?: string; region?: string; city?: string; address?: string; phone?: string; email?: string; url?: string; referenceContact?: string; careConditions?: string; schedule?: string; verifiedAt?: string; clubName?: string | null }
 interface Team { id: string; name: string; role?: string; institution?: string; bio?: string; photoUrl?: string; photoAlt?: string; clubName?: string | null }
-interface Story { id: string; title: string; summary?: string; body?: string; location?: string; date?: string; author?: string; media: { url?: string; kind: string; embed?: Embed | null; alt?: string; caption?: string; author?: string }[]; clubName?: string | null }
+interface Story { id: string; format?: string; displayName?: string; relation?: string; personLabel?: string; title: string; summary?: string; body?: string; location?: string; date?: string; author?: string; media: { url?: string; kind: string; embed?: Embed | null; alt?: string; caption?: string; author?: string }[]; clubName?: string | null }
 interface Resource { id: string; title: string; description?: string; type: string; url?: string; embed?: Embed | null; audience?: string; source?: string; reviewedAt?: string; medicalApprovedAt?: string; clinical?: boolean }
 interface News { id: string; type: string; title: string; summary?: string; body?: string; date?: string; endDate?: string; location?: string; url?: string; imageUrl?: string; imageAlt?: string; clubName?: string | null }
 interface Indicator { id: string; name: string; definition?: string; value: string; unit?: string; mode: string; period?: string; source?: string; updatedOn?: string }
@@ -188,7 +189,7 @@ const ProgramaDetalle = () => {
                 if (s.key === 'programa') return (
                     <Seccion key={s.key} id="programa" title={s.label} tone={tone}>
                         <div className="grid lg:grid-cols-3 gap-8">
-                            <div className="lg:col-span-2"><Parrafos texto={p.description} /></div>
+                            <div className="lg:col-span-2"><Parrafos texto={p.description} /><PerfilPrograma profile={p.profile} /></div>
                             <aside className="space-y-4">
                                 {data.link?.presentation ? <div className="rounded-2xl bg-sky-50 border border-sky-100 p-5"><h3 className="font-semibold text-gray-900 mb-2">Desde el Distrito {data.link.districtNumber}</h3><Parrafos texto={data.link.presentation} className="text-sm" /></div> : null}
                                 {data.link?.disclaimer ? <p className="text-xs text-gray-500">{data.link.disclaimer}</p> : null}
@@ -239,6 +240,7 @@ const ProgramaDetalle = () => {
                                 {p.care.accessConditions ? <div className="rounded-2xl bg-white border border-gray-100 p-5"><h3 className="font-semibold text-gray-900 mb-2">Condiciones de acceso</h3><Parrafos texto={p.care.accessConditions} className="text-sm" /></div> : null}
                                 {p.care.officialChannels ? <div className="rounded-2xl bg-white border border-gray-100 p-5"><h3 className="font-semibold text-gray-900 mb-2">Canales oficiales</h3><Parrafos texto={p.care.officialChannels} className="text-sm" /></div> : null}
                                 {p.care.costsText ? <div className="rounded-2xl bg-white border border-gray-100 p-5"><h3 className="font-semibold text-gray-900 mb-2">Costos y aseguramiento</h3><Parrafos texto={p.care.costsText} className="text-sm" /></div> : null}
+                                <div className="md:col-span-2"><AtencionExtra care={p.care} health={p.category === 'salud'} /></div>
                             </div>
                         ) : null}
                         {data.content.resource.length ? (
@@ -266,9 +268,18 @@ const ProgramaDetalle = () => {
                                     <li key={h.id} className="rounded-3xl bg-white border border-gray-100 shadow-sm overflow-hidden flex flex-col">
                                         {portada?.url ? <img src={portada.url} alt={portada.alt || ''} className="w-full aspect-[4/3] object-cover" loading="lazy" /> : null}
                                         <div className="p-5 flex flex-col flex-1">
-                                            <h3 className="font-bold text-gray-900">{h.title}</h3>
-                                            <p className="text-xs text-gray-500 mt-1">{[h.location, dateLabel(h.date), h.clubName].filter(Boolean).join(' · ')}</p>
-                                            <p className="text-sm text-gray-600 mt-2 flex-1">{h.summary}</p>
+                                            {h.format === 'testimonio' ? (
+                                                <>
+                                                    <p className="text-sm text-gray-700 italic flex-1">«{h.summary}»</p>
+                                                    <p className="text-xs font-semibold text-gray-800 mt-3">{h.displayName}{h.relation ? <span className="font-normal text-gray-500"> · {h.relation}</span> : null}</p>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <h3 className="font-bold text-gray-900">{h.title}</h3>
+                                                    <p className="text-xs text-gray-500 mt-1">{[h.personLabel, h.location, dateLabel(h.date), h.clubName].filter(Boolean).join(' · ')}</p>
+                                                    <p className="text-sm text-gray-600 mt-2 flex-1">{h.summary}</p>
+                                                </>
+                                            )}
                                             {(h.body || h.media.length > 1) ? <button type="button" onClick={() => setHistoria(h)} className="text-sm font-semibold text-rotary-blue mt-3 text-left hover:underline">Leer la historia</button> : null}
                                         </div>
                                     </li>
@@ -359,7 +370,10 @@ const ProgramaDetalle = () => {
                             {p.partners.map((a: any, i: number) => (
                                 <li key={i} className="rounded-2xl bg-white border border-gray-100 p-4 flex items-center gap-3 min-w-[200px]">
                                     {a.logoUrl ? <img src={a.logoUrl} alt={`Logo de ${a.name}`} className="h-10 w-auto max-w-[120px] object-contain" loading="lazy" /> : null}
-                                    {a.url ? <a href={a.url} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-gray-800 hover:text-rotary-blue">{a.name}</a> : <span className="text-sm font-semibold text-gray-800">{a.name}</span>}
+                                    <span>
+                                        {a.url ? <a href={a.url} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-gray-800 hover:text-rotary-blue">{a.name}</a> : <span className="text-sm font-semibold text-gray-800">{a.name}</span>}
+                                        {a.relationLabel ? <span className="block text-[11px] text-gray-500">{a.relationLabel}</span> : null}
+                                    </span>
                                 </li>
                             ))}
                         </ul>

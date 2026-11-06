@@ -209,7 +209,7 @@ console.log('── El atajo del ensure enumera todo ADD COLUMN');
 const ensure = read('server/lib/ensureProgramSchema.js');
 const adds = [...ensure.matchAll(/ALTER TABLE "(\w+)" ADD COLUMN IF NOT EXISTS "?(\w+)"?/g)].map(m => [m[1], m[2]]);
 ok(adds.every(([t, c]) => (OWNED_COLUMNS[t] || []).includes(c)), `los ${adds.length} ADD COLUMN del ensure están en OWNED_COLUMNS`);
-ok(PROGRAM_TABLES.length === 15 && [...ensure.matchAll(/CREATE TABLE IF NOT EXISTS "(\w+)"/g)].map(m => m[1]).every(t => PROGRAM_TABLES.includes(t)), 'las quince tablas están en OWNED_COLUMNS');
+ok(PROGRAM_TABLES.length === 17 && [...ensure.matchAll(/CREATE TABLE IF NOT EXISTS "(\w+)"/g)].map(m => m[1]).every(t => PROGRAM_TABLES.includes(t)), 'las diecisiete tablas están en OWNED_COLUMNS');
 
 console.log('── Lo que ninguna otra barrera ve');
 for (const f of ['server/lib/programStore.js', 'server/controllers/programController.js', 'server/lib/ensureProgramSchema.js', 'server/lib/programAccess.js', 'server/lib/programLandingSpec.js']) {
@@ -227,8 +227,8 @@ ok(app.indexOf('path="/programas"') < app.indexOf('path="*"'), 'antes del comod�
 ok(read('server/lib/rbacSpec.js').includes("key: 'programs'") && read('src/lib/rbacSpec.ts').includes('"key": "programs"'), 'el módulo programs está en el RBAC del servidor y en su espejo');
 ok(read('server/lib/seoSpec.js').includes("return 'program'") && read('server/lib/seoEntities.js').includes('programMeta'), 'SEO: la página del programa tiene su clase y su ficha');
 const guard = read('scripts/db-push-guard.mjs'); const claude = read('CLAUDE.md');
-ok(PROGRAM_TABLES.every(t => guard.includes(t)), 'las quince tablas están en el comentario del guardián de db:push');
-ok(PROGRAM_TABLES.every(t => claude.includes(`\`${t}\``)), 'las quince tablas están en CLAUDE.md');
+ok(PROGRAM_TABLES.every(t => guard.includes(t)), 'las diecisiete tablas están en el comentario del guardián de db:push');
+ok(PROGRAM_TABLES.every(t => claude.includes(`\`${t}\``)), 'las diecisiete tablas están en CLAUDE.md');
 ok(read('src/sections/Navbar.tsx').includes('programsNav') && read('server/routes/clubs.js').includes('programsNav'), 'el menú público lee programsNav y by-domain lo sirve');
 const api = read('api/index.js');
 ok(api.includes("'/api/programas'") && read('server/server.js').includes("'/api/programas'"), 'el router está montado en los dos entrypoints');

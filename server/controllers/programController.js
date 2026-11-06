@@ -31,7 +31,7 @@ import {
 import { JWT_SECRET } from '../middleware/auth.js';
 import { shapeLanding, validateLanding, newBlock, resolveLanding, BLOCK_TYPES, BACKGROUNDS, ICONS, BUTTON_ACTIONS, DETAIL_ANCHORS, FORM_TARGETS } from '../lib/programLandingSpec.js';
 
-console.log('[programas] v4.1282.0 cargado — Programas: la landing por contenedores pinta con los patrones institucionales del sitio (hero del inicio, banda con textura, botones y tarjetas de siempre)');
+console.log('[programas] v4.1286.0 cargado — Programas: perfil institucional, aliados por tipo de relación, historias y testimonios con identidad pública y canales autorizados, y el formulario institucional');
 
 const fail = (res, e, code = 500) => {
     if (code >= 500) console.error('[programas]', e?.message || e);
@@ -306,7 +306,8 @@ export const adminUpdate = async (req, res) => {
     try {
         const L = await loadProgram(req, res, 'editProgram'); if (!L) return;
         const { program } = L;
-        const p = shapeProgram({ ...req.body, status: program.status });
+        // v4.1286 — Un cuerpo sin `profile` (la ficha de antes) conserva el perfil vigente.
+        const p = shapeProgram({ ...req.body, status: program.status, profile: req.body?.profile ?? program.profile });
         const juicio = validateProgramDraft(p);
         if (!juicio.ok) return res.status(400).json({ error: firstError(juicio.errors, 'Revisa los datos.'), errors: juicio.errors });
         if (p.slug !== program.slug && await S.slugTaken(p.slug, program.id)) return res.status(409).json({ error: 'Ya existe un programa con esa dirección (slug).', errors: [{ field: 'slug', message: 'Elige otra dirección.' }] });

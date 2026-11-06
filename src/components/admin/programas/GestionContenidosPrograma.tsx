@@ -42,6 +42,7 @@ const FIELDS: Record<string, FieldDef[]> = {
         { key: 'title', label: 'Título', full: true }, { key: 'summary', label: 'Resumen', type: 'textarea', full: true }, { key: 'body', label: 'Contenido', type: 'textarea', full: true },
         { key: 'location', label: 'Ubicación' }, { key: 'date', label: 'Fecha', type: 'date' }, { key: 'author', label: 'Autor o responsable' },
         { key: 'minorsInvolved', label: 'Aparecen menores de edad', type: 'toggle', hint: 'Nunca nombres de menores junto a cifras; sin fotografías clínicas.' },
+        { key: 'guardianAuthorized', label: 'El representante legal autorizó la publicación', type: 'toggle', hint: 'Obligatorio para publicar si aparecen menores de edad (v4.1286).' },
         { key: 'usagePermission', label: 'Permiso de uso registrado', type: 'toggle' }, { key: 'usagePermissionScope', label: 'Alcance del permiso', type: 'select', options: PERMISSION_SCOPES },
         { key: 'authorizationFileId', label: 'Comprobante de permiso (privado)', type: 'file', fileKind: 'autorizacion', full: true },
     ],

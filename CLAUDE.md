@@ -203,6 +203,10 @@ privados: autorizaciones y respaldos), `ProgramAuditLog`, `ProgramMetricDaily` y
 `ProgramVisitor` (métricas sin IP), y la página pública por contenedores
 (v4.1281): `ProgramLanding` (borrador y versión publicada) y
 `ProgramLandingVersion`.
+Y las dos del formulario institucional de programas (v4.1286):
+`ProgramIntake` (cada envío: una PROPUESTA con borrador seguro y revisión por
+ítem; los datos del remitente son PRIVADOS) y `ProgramIntakeFile` (sus
+archivos, privados hasta que se aprueban y aplican).
 Y la traza de cada mensaje entrante de WhatsApp (v4.1285):
 `WhatsAppInboundTrace` (el recorrido de cada «Hola» y la única evidencia de
 qué conversaciones quedaron sin respuesta).
@@ -236,6 +240,7 @@ es **rotar la credencial en Neon**, no sólo borrar el archivo.
 
 | Módulo | Archivo |
 |---|---|
+| **Formulario institucional de programas** (`/formulario-programas`: un solo formulario guiado por esquema y configurable por programa, carga inicial / actualización / aporte, borrador en servidor con enlace secreto y recuperación por correo, archivos privados con carga directa o multiparte reanudable, revisión por ítem en la pestaña «Formulario institucional» que convierte lo aprobado en solicitudes del flujo editorial; nada se publica ni se sobrescribe solo) — v4.1286 | `docs/claude/formulario-institucional-de-programas.md` |
 | **Programas** (identidad única por programa, vinculación distrital, activación por clubes con contenido central compartido, formato «Gestión de contenidos» en tres pasos, flujo editorial con revisión médica sólo para lo clínico, página pública `/programas/:slug` por secciones, cuatro formularios públicos, solicitudes con seguimiento, donación por enlace externo, auditoría y métricas; piloto D4281 «Clínicas Ponseti» en borrador) — v4.1280 (**la landing por contenedores con borrador, vista previa y publicación, fiel a la referencia: v4.1281; con los patrones institucionales del sitio: v4.1282**) | `docs/claude/programas.md` |
 | **Estadísticas de descarga de los documentos de un evento** (la «Guía descargable» de hoteles: el botón público pasa por la plataforma, registro en una sentencia sin IP, histórico por versión que sobrevive a reemplazar/quitar/desactivar, cifra y panel «Ver estadísticas» sólo en el administrador, filtros por fecha) — v4.1279 | `docs/claude/estadisticas-de-descarga-de-documentos-de-un-evento.md` |
 | **Enlaces inteligentes y códigos QR dinámicos** (Configuración → Identidad; varios QR por enlace, vigencia 30/90/nunca/fecha calculada en el servidor, estados derivados del reloj, página institucional, analítica por QR frente a enlace directo, resumen del sitio; descargas PNG/SVG/PDF verificadas con dos codificadores) — v4.1278 | `docs/claude/enlaces-inteligentes-y-codigos-qr.md` |

@@ -192,6 +192,7 @@ const ContentActivationPage = lazyWithRetry(() => import('./pages/admin/ContentA
 const RotaryEnAccion = lazyWithRetry(() => import('./pages/RotaryEnAccion'), 'RotaryEnAccion');
 const VisitasGobernador = lazyWithRetry(() => import('./pages/VisitasGobernador'), 'VisitasGobernador');
 const VisitasGobernadorRedirect = lazyWithRetry(() => import('./pages/VisitasGobernadorRedirect'), 'VisitasGobernadorRedirect');
+const FormularioProgramas = lazyWithRetry(() => import('./pages/FormularioProgramas'), 'FormularioProgramas');
 const ActivarMiClub = lazyWithRetry(() => import('./pages/ActivarMiClub'), 'ActivarMiClub');
 const LegacyAportarRedirect = lazyWithRetry(() => import('./pages/LegacyAportarRedirect'), 'LegacyAportarRedirect');
 const RotaryEnAccionAdmin = lazyWithRetry(() => import('./pages/admin/RotaryEnAccionAdmin'), 'RotaryEnAccionAdmin');
@@ -780,6 +781,8 @@ function App() {
                     Dirección canónica: dominio.org/visitas-del-gobernador
                     (v4.1261). La anterior redirige conservando ?corregir=. */}
                 <Route path="/visitas-del-gobernador" element={<VisitasGobernador />} />
+                {/* v4.1286 — Formulario institucional de los programas que respalda el distrito. */}
+                <Route path="/formulario-programas" element={<FormularioProgramas />} />
                 <Route path="/rotary-en-accion/visitas-del-gobernador" element={<VisitasGobernadorRedirect />} />
                 <Route path="/activar-mi-club" element={<ActivarMiClub />} />
                 <Route path="/activar-club" element={<Navigate to="/activar-mi-club" replace />} />

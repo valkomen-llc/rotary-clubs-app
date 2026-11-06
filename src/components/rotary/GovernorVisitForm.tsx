@@ -29,8 +29,7 @@ import {
   Film, Image as ImageIcon, Link2, Loader2, MapPin, RotateCcw, ShieldCheck, Trash2, Upload, UserCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import Navbar from '../../sections/Navbar';
-import Footer from '../../sections/Footer';
+import { BarraDePasos, BTN_ANTERIOR, BTN_ENVIAR, BTN_SIGUIENTE, CAMPO, Campo, campoCon, CONTENEDOR, Marco, Resumen, ROTULO, TARJETA, TituloPaso } from '../common/InstitutionalFormKit';
 import { PublicPageHeader } from '../common/PublicInstitutionalComponents';
 import PhoneInputWithCountry from '../common/PhoneInputWithCountry';
 import { useSEO } from '../../hooks/useSEO';
@@ -48,11 +47,6 @@ const API = import.meta.env.VITE_API_URL || '/api';
 const BASE = `${API}/rotary-en-accion/visitas-gobernador`;
 const DRAFT_KEY = 'governor-visit-draft';
 
-const CAMPO = 'w-full p-3.5 rounded-xl border-2 border-gray-100 text-base bg-gray-50/60 outline-none focus:border-rotary-blue transition-colors';
-const ROTULO = 'block text-[11px] font-black text-gray-400 uppercase tracking-[0.15em] mb-2';
-const TARJETA = 'bg-white rounded-3xl p-6 sm:p-8 md:p-10 shadow-sm border border-gray-100';
-/** El campo con su estado de error visible (borde y fondo), no sólo el aviso. */
-const campoCon = (error?: string) => (error ? CAMPO.replace('border-gray-100', 'border-red-300').replace('bg-gray-50/60', 'bg-red-50/40') : CAMPO);
 
 interface Club { id: string; name: string; shortName: string; city: string; state: string; slug: string; siteId: string | null }
 interface Config {
@@ -81,23 +75,8 @@ const camposDelBorrador = (d: Record<string, unknown>): Partial<VisitDraft> => O
 const periodoDe = (iso: string) => (/^\d{4}-\d{2}-\d{2}$/.test(iso) ? rotaryPeriodFrom(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1) : null);
 
 // ── Piezas de presentación (fuera del componente: ver CLAUDE.md) ─────────
-const Marco: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div className="min-h-screen bg-rotary-concrete flex flex-col">
-    <Navbar />
-    <main className="flex-1">{children}</main>
-    <Footer />
-  </div>
-);
-
-const Campo: React.FC<{ label: string; htmlFor?: string; error?: string; hint?: string; children: React.ReactNode }> = ({ label, htmlFor, error, hint, children }) => (
-  <div>
-    <label className={ROTULO} htmlFor={htmlFor}>{label}</label>
-    {children}
-    {hint && !error && <p className="text-[11px] text-gray-400 mt-1">{hint}</p>}
-    {error && <p className="text-xs text-red-600 font-semibold mt-1" role="alert">{error}</p>}
-  </div>
-);
-
+// v4.1286 — Marco, Campo, TituloPaso, Resumen, la barra de pasos y las clases
+// viven en `InstitutionalFormKit` (las comparte el Formulario de programas).
 /**
  * v4.1283 — La descripción de la visita: área amplia, contador «125 / 700
  * caracteres» y el estado del rango debajo. El tope duro es `maxLength`; un
@@ -131,23 +110,6 @@ const CampoDescripcion: React.FC<{ value: string; error?: string; onChange: (v: 
     </div>
   );
 };
-
-const TituloPaso: React.FC<{ icon: React.ReactNode; titulo: string; texto: string }> = ({ icon, titulo, texto }) => (
-  <div className="flex items-start gap-3 mb-6">
-    <div className="w-11 h-11 rounded-2xl bg-rotary-blue/10 text-rotary-blue flex items-center justify-center shrink-0">{icon}</div>
-    <div>
-      <h2 className="text-lg sm:text-xl font-black text-gray-900">{titulo}</h2>
-      <p className="text-sm text-gray-500 mt-0.5">{texto}</p>
-    </div>
-  </div>
-);
-
-const Resumen: React.FC<{ etiqueta: string; valor?: string | null }> = ({ etiqueta, valor }) => (
-  <div className="flex gap-2 text-sm">
-    <dt className="text-gray-400 w-36 shrink-0">{etiqueta}</dt>
-    <dd className="font-semibold text-gray-800 min-w-0 break-words">{valor || '—'}</dd>
-  </div>
-);
 
 const MiniaturaArchivo: React.FC<{
   a: Archivo; onCaption: (id: string, v: string) => void; onRemove: (id: string) => void; onRetry: (id: string) => void;
@@ -512,31 +474,9 @@ export default function GovernorVisitForm() {
         title="Visitas del Gobernador"
         subtitle="Documenta la visita oficial del Gobernador a tu club: fecha, memoria institucional, resultados y evidencias. Rotary en Acción · Distrito 4281."
       />
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-10 md:py-12 pb-20 space-y-4">
+      <div className={CONTENEDOR}>
         {!enviado && (
-          <nav aria-label="Progreso" className="bg-white rounded-2xl border border-gray-100 px-4 sm:px-6 py-3.5 shadow-sm space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              {VISIT_STEPS.map((label, i) => {
-                const n = i + 1;
-                return (
-                  <button
-                    key={label} type="button" onClick={() => irA(n)} disabled={n > step} title={label}
-                    aria-current={n === step ? 'step' : undefined}
-                    className={`flex items-center gap-2 text-xs font-bold whitespace-nowrap px-3 py-1.5 rounded-full transition-all ${
-                      n === step ? 'bg-rotary-blue text-white shadow-sm' : n < step ? 'text-rotary-blue hover:bg-blue-50' : 'text-gray-400 disabled:opacity-60 cursor-default'
-                    }`}
-                  >
-                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${n === step ? 'bg-white/25 text-white' : n < step ? 'bg-rotary-blue text-white' : 'bg-gray-100 text-gray-500'}`}>{n}</span>
-                    <span className="hidden sm:inline">{label}</span>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-              <div className="h-full bg-rotary-blue transition-all duration-500" style={{ width: `${Math.max(4, pct)}%` }} />
-            </div>
-            <p className="sm:hidden text-[11px] font-bold text-gray-400">Paso {step} de {VISIT_STEPS.length}: {VISIT_STEPS[step - 1]}</p>
-          </nav>
+          <BarraDePasos pasos={[...VISIT_STEPS]} paso={step} pct={pct} onIr={irA} />
         )}
 
         {!enviado && correctionToken && motivoCorreccion && (
@@ -732,15 +672,15 @@ export default function GovernorVisitForm() {
         {/* Navegación */}
         {!enviado && (
           <div className="flex items-center justify-between gap-3">
-            <button onClick={() => irA(Math.max(1, step - 1))} disabled={step === 1} className="flex items-center gap-1.5 px-4 py-3 rounded-xl border text-sm font-bold text-gray-500 disabled:opacity-40 min-h-[52px] bg-white hover:bg-gray-50">
+            <button onClick={() => irA(Math.max(1, step - 1))} disabled={step === 1} className={BTN_ANTERIOR}>
               <ArrowLeft className="w-4 h-4" /> Anterior
             </button>
             {step < VISIT_STEPS.length ? (
-              <button onClick={() => irA(step + 1)} className="flex items-center gap-1.5 px-6 py-3 rounded-xl bg-rotary-blue text-white text-sm font-bold min-h-[52px] hover:bg-blue-900 transition-colors">
+              <button onClick={() => irA(step + 1)} className={BTN_SIGUIENTE}>
                 Siguiente <ArrowRight className="w-4 h-4" />
               </button>
             ) : (
-              <button onClick={enviar} disabled={enviando || conteo.pending > 0} className="flex items-center gap-2 px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold min-h-[52px] disabled:opacity-60 transition-colors">
+              <button onClick={enviar} disabled={enviando || conteo.pending > 0} className={BTN_ENVIAR}>
                 {enviando && <Loader2 className="w-4 h-4 animate-spin" />}
                 {correctionToken ? 'Enviar correcciones' : 'Enviar reporte'}
               </button>

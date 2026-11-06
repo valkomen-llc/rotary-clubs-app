@@ -1,7 +1,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 // Programas — el esquema, en runtime (v4.1280.0)
 //
-// QUINCE tablas fuera de Prisma, todas con prefijo `Program`. Sin claves
+// DIECISIETE tablas fuera de Prisma, todas con prefijo `Program`. Sin claves
 // foráneas hacia tablas existentes, por la regla de siempre: ninguna tabla
 // que ya exista gana una columna ni una restricción por esto. Los vínculos
 // van por id (`Club.id`, `User.id`, `DistrictClubProfile.id`, `District.number`).
@@ -21,6 +21,13 @@
 //   ProgramVisitor           visitante seudónimo (hash, nunca IP)
 //   ProgramLanding           la página pública por contenedores: borrador y publicada (v4.1281)
 //   ProgramLandingVersion    cada versión publicada de la página
+//   ProgramIntake            un envío del formulario institucional: PROPUESTA, nunca contenido vivo (v4.1286)
+//   ProgramIntakeFile        los archivos de un envío (privados hasta que se aprueban y aplican)
+//
+// v4.1286 también AMPLÍA tablas propias: `Program.profile` (perfil
+// institucional), `Program.intakeConfig` (cómo se adapta el formulario),
+// `ProgramChangeRequest.intakeId/intakeItemKey` (de qué envío salió una
+// solicitud) y `ProgramFile.meta` (título, tipo, emisor, vigencia y acceso).
 //
 // Están en la lista del guardián de `db:push` y en la de CLAUDE.md.
 // ════════════════════════════════════════════════════════════════════════════
@@ -33,21 +40,23 @@ let _ready = false;
 // mirando sólo la tabla un ALTER nuevo no correría NUNCA en producción. Lo
 // fija `scripts/test-programas.mjs`, que recorre los ADD COLUMN del archivo.
 export const OWNED_COLUMNS = {
-    Program: [],
+    Program: ['profile', 'intakeConfig'],
     ProgramDistrictLink: [],
     ProgramClubActivation: [],
     ProgramMember: [],
     ProgramContent: [],
     ProgramContentVersion: [],
-    ProgramChangeRequest: [],
+    ProgramChangeRequest: ['intakeId', 'intakeItemKey'],
     ProgramRequest: [],
     ProgramSubscriber: [],
-    ProgramFile: [],
+    ProgramFile: ['meta'],
     ProgramAuditLog: [],
     ProgramMetricDaily: [],
     ProgramVisitor: [],
     ProgramLanding: [],
     ProgramLandingVersion: [],
+    ProgramIntake: [],
+    ProgramIntakeFile: [],
 };
 export const PROGRAM_TABLES = Object.keys(OWNED_COLUMNS);
 
@@ -421,6 +430,83 @@ export async function ensureProgramSchema() {
         )
     `);
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "ProgramLandingVersion_program_version_key" ON "ProgramLandingVersion" ("programId", version)`);
+
+    // ── v4.1286 — El formulario institucional ─────────────────────────────
+    await db.query(`ALTER TABLE "Program" ADD COLUMN IF NOT EXISTS "profile" JSONB NOT NULL DEFAULT '{}'::jsonb`);
+    await db.query(`ALTER TABLE "Program" ADD COLUMN IF NOT EXISTS "intakeConfig" JSONB NOT NULL DEFAULT '{}'::jsonb`);
+    await db.query(`ALTER TABLE "ProgramChangeRequest" ADD COLUMN IF NOT EXISTS "intakeId" TEXT`);
+    await db.query(`ALTER TABLE "ProgramChangeRequest" ADD COLUMN IF NOT EXISTS "intakeItemKey" TEXT`);
+    await db.query(`ALTER TABLE "ProgramFile" ADD COLUMN IF NOT EXISTS "meta" JSONB NOT NULL DEFAULT '{}'::jsonb`);
+    await db.query(`CREATE INDEX IF NOT EXISTS "ProgramChangeRequest_intake_idx" ON "ProgramChangeRequest" ("intakeId") WHERE "intakeId" IS NOT NULL`);
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "ProgramIntake" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "publicRef" TEXT NOT NULL,
+            "programId" TEXT NOT NULL,
+            -- 'carga_inicial' | 'actualizacion' | 'aporte'
+            "submissionType" TEXT NOT NULL DEFAULT 'carga_inicial',
+            -- Las secciones que quien envía eligió (en una actualización, SÓLO esas).
+            sections JSONB NOT NULL DEFAULT '[]'::jsonb,
+            status TEXT NOT NULL DEFAULT 'borrador',
+            -- Datos del remitente: PRIVADOS (nunca a páginas, métricas ni auditoría).
+            sender JSONB NOT NULL DEFAULT '{}'::jsonb,
+            "senderEmail" TEXT,
+            -- Lo propuesto, por sección. Es una PROPUESTA: no toca el programa.
+            data JSONB NOT NULL DEFAULT '{}'::jsonb,
+            consents JSONB NOT NULL DEFAULT '{}'::jsonb,
+            "consentText" JSONB NOT NULL DEFAULT '{}'::jsonb,
+            -- Decisión por ítem: { [itemKey]: { status, note, by, byName, at, changeRequestIds, appliedAt, error } }
+            review JSONB NOT NULL DEFAULT '{}'::jsonb,
+            "reviewNote" TEXT,
+            -- El enlace para continuar: sólo los HASH (sha256) de los secretos vigentes.
+            "tokenHashes" JSONB NOT NULL DEFAULT '[]'::jsonb,
+            "ownerUserId" TEXT,
+            "originHost" TEXT,
+            "submittedAt" TIMESTAMPTZ,
+            "reviewedBy" TEXT,
+            "reviewedByName" TEXT,
+            "reviewedAt" TIMESTAMPTZ,
+            "appliedAt" TIMESTAMPTZ,
+            version INT NOT NULL DEFAULT 1,
+            history JSONB NOT NULL DEFAULT '[]'::jsonb,
+            "lastSavedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "ProgramIntake_publicRef_key" ON "ProgramIntake" ("publicRef")`);
+    await db.query(`CREATE INDEX IF NOT EXISTS "ProgramIntake_program_idx" ON "ProgramIntake" ("programId", status, "updatedAt" DESC)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS "ProgramIntake_email_idx" ON "ProgramIntake" ("senderEmail")`);
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "ProgramIntakeFile" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "intakeId" TEXT NOT NULL,
+            "programId" TEXT NOT NULL,
+            -- logo · brand · photo · media · document · authorization · support
+            purpose TEXT NOT NULL,
+            "storageKey" TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            "contentType" TEXT,
+            bytes BIGINT NOT NULL DEFAULT 0,
+            format TEXT,
+            kind TEXT,
+            -- 'uploading' (multiparte en curso) · 'ready' · 'deleted'
+            status TEXT NOT NULL DEFAULT 'uploading',
+            "uploadId" TEXT,
+            meta JSONB NOT NULL DEFAULT '{}'::jsonb,
+            -- Al aplicar: la versión web en la Biblioteca (el ORIGINAL sigue privado acá).
+            "mediaId" TEXT,
+            "mediaUrl" TEXT,
+            "programFileId" TEXT,
+            "promotedAt" TIMESTAMPTZ,
+            "promoteError" TEXT,
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            "deletedAt" TIMESTAMPTZ
+        )
+    `);
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "ProgramIntakeFile_storageKey_key" ON "ProgramIntakeFile" ("storageKey")`);
+    await db.query(`CREATE INDEX IF NOT EXISTS "ProgramIntakeFile_intake_idx" ON "ProgramIntakeFile" ("intakeId", "createdAt")`);
     _ready = true;
 }
 
