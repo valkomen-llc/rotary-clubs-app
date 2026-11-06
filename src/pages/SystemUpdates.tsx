@@ -34,13 +34,27 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1288.0 | 2026-11-06 (La Secretaría Digital vuelve a ver Eventos)
+// UI V4.1289.0 | 2026-11-06 (La Secretaría Digital vuelve a ver Analíticas)
 // Cache bust: 2026-11-06
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1289.0',
+        title: 'Secretaría Digital: vuelve el módulo de Analíticas 📊',
+        description: 'Después de Eventos (v4.1288), la cuenta de la Secretaría Digital del Distrito 4281 recupera también «Analíticas»: el rol «Secretaría Digital — Control de Aportes» había dejado de sumar el acceso de consulta a las estadísticas que tenía como cuenta institucional. Vuelve en sólo lectura, como antes.',
+        date: new Date().toISOString(),
+        tags: ['permisos', 'secretaría digital', 'analíticas', 'distrito 4281'],
+        type: 'fix',
+        impact: 'Media: la Secretaría Digital vuelve a consultar las estadísticas del sitio web y de las redes sociales del distrito.',
+        changes: [
+            { type: 'fixed', text: 'El rol «Secretaría Digital — Control de Aportes» suma ver Analíticas (sitio web y redes sociales), el mismo permiso de consulta que traía el menú base institucional. La entrada «Analíticas» vuelve a la barra lateral, en «General».' },
+            { type: 'changed', text: 'Sólo consulta: no exporta analíticas. La Bóveda, Eventos y el Directorio de Clubes siguen igual, y al entrar sigue llegando a la Bóveda de Fondos.' },
+            { type: 'added', text: 'La prueba test:digital-secretary fija el permiso y que la barra lateral muestre «Analíticas».' },
+        ],
+    },
     {
         version: '4.1288.0',
         title: 'Secretaría Digital: vuelve el módulo de Eventos 📅',

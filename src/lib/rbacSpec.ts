@@ -1351,7 +1351,7 @@ export const ROLE_PRESETS: RolePreset[] = [
         // decide el servidor (regla de v4.1093).
         "key": "digital_secretary",
         "label": "Secretaría Digital — Control de Aportes",
-        "description": "Supervisión documental y financiera de los aportes: consulta la Bóveda de Fondos, identifica a los aportantes, verifica estados de Stripe y traslados, descarga comprobantes y exporta informes. Administra además el Directorio de Clubes y su Catálogo Maestro, y los Eventos del sitio. No solicita retiros, no registra desembolsos ni modifica estados financieros.",
+        "description": "Supervisión documental y financiera de los aportes: consulta la Bóveda de Fondos, identifica a los aportantes, verifica estados de Stripe y traslados, descarga comprobantes y exporta informes. Administra además el Directorio de Clubes y su Catálogo Maestro, los Eventos y las Analíticas del sitio. No solicita retiros, no registra desembolsos ni modifica estados financieros.",
         "scope": "site",
         "protected": true,
         "permissions": [
@@ -1364,7 +1364,9 @@ export const ROLE_PRESETS: RolePreset[] = [
             "events.view",
             "events.create",
             "events.edit",
-            "events.publish"
+            "events.publish",
+            // v4.1289 — Analíticas (sólo ver), como antes del rol (ver el servidor).
+            "analytics.view"
         ]
     },
     {

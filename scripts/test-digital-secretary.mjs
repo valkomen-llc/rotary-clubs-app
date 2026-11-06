@@ -61,7 +61,10 @@ eq('su nombre es el del pedido', preset?.label, 'Secretaría Digital — Control
 check('es de sitio y protegido', preset?.scope === 'site' && preset?.protected === true);
 // v4.1271 — más el Directorio de Clubes y su Catálogo Maestro (ver y administrar).
 // v4.1288 — más Eventos, exactamente los de la llave legada `events` que tenía antes del rol.
-eq('⚠️ sus permisos son EXACTAMENTE ver, exportar, su buzón, el Directorio de Clubes y Eventos', [...preset.permissions].sort(), ['clubs.manage', 'clubs.view', 'email_inbox.use_own', 'events.create', 'events.edit', 'events.publish', 'events.view', 'finance.export', 'finance.view']);
+// v4.1289 — más Analíticas en sólo lectura (el `analytics.view` del menú base institucional).
+eq('⚠️ sus permisos son EXACTAMENTE ver, exportar, su buzón, el Directorio de Clubes, Eventos y Analíticas', [...preset.permissions].sort(), ['analytics.view', 'clubs.manage', 'clubs.view', 'email_inbox.use_own', 'events.create', 'events.edit', 'events.publish', 'events.view', 'finance.export', 'finance.view']);
+check('v4.1289 — Analíticas es el mismo `analytics.view` del menú base institucional', S.INSTITUTIONAL_BASE.includes('analytics.view') && preset.permissions.includes('analytics.view'));
+check('v4.1289 — ⚠️ Analíticas sólo en lectura: NO exporta', !S.expandPermissions(preset.permissions).permissions.includes('analytics.export'));
 eq('v4.1288 — Eventos son los MISMOS permisos que la llave legada `events`', preset.permissions.filter(p => p.startsWith('events.')).sort(), [...S.LEGACY_PERMISSION_MAP.events].sort());
 check('v4.1288 — ⚠️ NO puede eliminar eventos', !S.expandPermissions(preset.permissions).permissions.includes('events.delete'));
 check('⚠️ NO trae finance.manage (retiros, traslados, estados)', !S.expandPermissions(preset.permissions).permissions.includes('finance.manage'));
@@ -99,6 +102,8 @@ check('la barra lateral tiene «Finanzas → Bóveda de Fondos»', menu.includes
 check('v4.1271 — y «Directorio de Clubes»', menu.includes('/admin/directorio-clubes'), JSON.stringify(menu));
 check('v4.1288 — y «Eventos», como antes del rol', menu.includes('/admin/eventos'), JSON.stringify(menu));
 check('v4.1288 — abre /admin/eventos', S.canOpenPath(gJ, '/admin/eventos'));
+check('v4.1289 — y «Analíticas», como antes del rol', menu.includes('/admin/analytics'), JSON.stringify(menu));
+check('v4.1289 — abre /admin/analytics', S.canOpenPath(gJ, '/admin/analytics'));
 check('⚠️ y ninguna pantalla de administración', !menu.some(p => ['/admin/usuarios', '/admin/configuracion', '/admin/integraciones', '/admin/roles'].includes(p)), JSON.stringify(menu));
 check('la entrada de la Bóveda vive en la categoría Finanzas', /label: esFeria \? 'Conciliaciones y Desembolsos' : 'Bóveda de Fondos',[\s\S]{0,200}category: 'Finanzas'/.test(LAYOUT));
 
