@@ -174,7 +174,7 @@ export const EDITORIAL_REQUIREMENTS = {
     info: { medical: 'si_clinico', help: 'Médica sólo si cambia la ruta de orientación, las condiciones de acceso o el texto de costos.' },
     clinic: { medical: 'si_clinico', help: 'Médica sólo si trae o cambia las condiciones de atención.' },
     team: { medical: 'nunca' },
-    story: { medical: 'nunca' },
+    story: { medical: 'si_clinico', help: 'Médica sólo si trae la descripción del proceso asistencial (v4.1286).' },
     resource: { medical: 'si_clinico', help: 'Médica cuando el recurso se clasifica como información clínica.' },
     news: { medical: 'nunca' },
     indicator: { medical: 'nunca' },
@@ -195,8 +195,10 @@ export const requestNeedsMedicalReview = (request = {}) => {
     if (payload.clinical === true) return true;
     if (kind === 'info') {
         const care = obj(payload.care);
+        if (arr(care.faqsUpsert).some(f => obj(f).clinical === true)) return true;
         return CLINICAL_INFO_FIELDS.some(f => String(care[f] || '').trim());
     }
+    if (kind === 'story') return Boolean(String(payload.careProcess || '').trim());
     if (kind === 'clinic') return Boolean(String(payload.careConditions || '').trim());
     if (kind === 'resource') return payload.clinical === true;
     return false;
@@ -390,21 +392,147 @@ const shapePerson = (raw) => {
     return {
         name: str(p.name, 160), role: str(p.role, 120), email: str(p.email, 200).toLowerCase(),
         phone: str(p.phone, 40).replace(/[^\d+\s()-]/g, ''), userId: str(p.userId, 80) || null,
-        public: bool(p.public),
+        public: bool(p.public), institution: str(p.institution, 200),
     };
 };
+export const SOCIAL_NETWORKS = ['facebook', 'instagram', 'youtube', 'spotify', 'x', 'linkedin', 'tiktok', 'whatsapp'];
 const shapeSocial = (raw) => {
     const s = obj(raw);
     const out = {};
-    for (const k of ['facebook', 'instagram', 'youtube', 'x', 'linkedin', 'tiktok', 'whatsapp']) {
+    for (const k of SOCIAL_NETWORKS) {
         const v = normalizeLink(s[k]);
         if (v) out[k] = v;
     }
     return out;
 };
+/** v4.1286 — Qué hace cada entidad. Ninguna es financiadora ni operadora por omisión. */
+export const PARTNER_RELATION_TYPES = [
+    { id: 'respaldo_institucional', label: 'Respaldo institucional' },
+    { id: 'alianza_cientifica', label: 'Alianza científica o académica' },
+    { id: 'patrocinio', label: 'Patrocinio' },
+    { id: 'operacion', label: 'Operación del programa' },
+    { id: 'aliado_estrategico', label: 'Aliado estratégico' },
+    { id: 'difusion', label: 'Apoyo en difusión' },
+    { id: 'otra', label: 'Otra participación' },
+];
 const shapePartner = (raw) => {
     const p = obj(raw);
-    return { name: str(p.name, 160), logoUrl: normalizeLink(p.logoUrl) || '', url: normalizeLink(p.url) || '', logoAuthorized: bool(p.logoAuthorized), note: str(p.note, 300) };
+    const rel = str(p.relationType, 40);
+    return {
+        name: str(p.name, 160), logoUrl: normalizeLink(p.logoUrl) || '', url: normalizeLink(p.url) || '', logoAuthorized: bool(p.logoAuthorized), note: str(p.note, 300),
+        id: str(p.id, 64) || undefined,
+        relationType: PARTNER_RELATION_TYPES.some(r => r.id === rel) ? rel : '',
+        participation: multi(p.participation, 1500), validFrom: isoDate(p.validFrom), validUntil: isoDate(p.validUntil),
+        authorizationFileId: str(p.authorizationFileId, 80) || null,
+    };
+};
+const NA_STATES = ['texto', 'no_aplica', 'pendiente'];
+const shapeNa = (raw, max) => {
+    if (raw && typeof raw === 'object') {
+        const status = NA_STATES.includes(raw.status) ? raw.status : 'texto';
+        const text = status === 'texto' ? multi(raw.text, max) : '';
+        return status === 'texto' && !text ? null : { status, text };
+    }
+    const text = multi(raw, max);
+    return text ? { status: 'texto', text } : null;
+};
+/**
+ * v4.1286 — El perfil institucional del programa (lo que recoge el formulario
+ * institucional): nombre corto, frase, propósito, quiénes somos, reseña, hitos,
+ * misión/visión/valores/objetivos (que admiten «No aplica» o «Pendiente»),
+ * marca, entidad que lo opera y contacto público. JSONB en `Program.profile`.
+ */
+export const shapeProfile = (raw = {}) => {
+    const r = obj(raw);
+    const b = obj(r.brand); const oe = obj(r.operatingEntity); const pc = obj(r.publicContact);
+    const asset = (x) => { const o = obj(x); const url = normalizeLink(o.url) || ''; return url ? { url, description: str(o.description, 300), usage: str(o.usage, 300) } : null; };
+    const year = Number.parseInt(r.startYear, 10);
+    const LEGAL = ['personeria_propia', 'entidad_anfitriona', 'sin_personeria', 'otro'];
+    const CH = ['whatsapp', 'telefono', 'correo', 'formulario'];
+    return {
+        shortName: str(r.shortName, 60), tagline: str(r.tagline, 140), purpose: multi(r.purpose, 2000), whoWeAre: multi(r.whoWeAre, 3000),
+        about: multi(r.about, 4000), history: multi(r.history, 6000), startYear: year >= 1900 && year <= 2100 ? year : null,
+        mission: shapeNa(r.mission, 3000), vision: shapeNa(r.vision, 3000), values: shapeNa(r.values, 3000), objectives: shapeNa(r.objectives, 3000),
+        milestones: arr(r.milestones).slice(0, 60).map(m => { const o = obj(m); const y = Number.parseInt(o.year, 10); return { id: str(o.id, 64) || makeRef('H').slice(-6), year: y >= 1900 && y <= 2100 ? y : null, title: str(o.title, 200), description: multi(o.description, 800) }; }).filter(m => m.title),
+        brand: {
+            logo: asset(b.logo), variants: arr(b.variants).slice(0, 20).map(asset).filter(Boolean),
+            privateFiles: arr(b.privateFiles).slice(0, 40).map(f => ({ fileId: str(obj(f).fileId, 80), description: str(obj(f).description, 300), usage: str(obj(f).usage, 300) })).filter(f => f.fileId),
+        },
+        operatingEntity: { publicName: str(oe.publicName, 200), operatorName: str(oe.operatorName, 200), legalStatus: LEGAL.includes(oe.legalStatus) ? oe.legalStatus : '', legalNote: multi(oe.legalNote, 1000) },
+        publicContact: { hours: str(pc.hours, 300), preferredChannel: CH.includes(pc.preferredChannel) ? pc.preferredChannel : '' },
+    };
+};
+/** Lo PÚBLICO del perfil: sin archivos privados; «No aplica»/«Pendiente» no se pintan. */
+export const publicProfileView = (raw = {}) => {
+    const p = shapeProfile(raw);
+    const t = (v) => (v && v.status === 'texto' ? v.text : '');
+    return {
+        shortName: p.shortName, tagline: p.tagline, purpose: p.purpose, whoWeAre: p.whoWeAre, about: p.about, history: p.history, startYear: p.startYear,
+        mission: t(p.mission), vision: t(p.vision), values: t(p.values), objectives: t(p.objectives), milestones: p.milestones,
+        logoVariants: p.brand.variants, operatorName: p.operatingEntity.operatorName, publicContact: p.publicContact,
+    };
+};
+const shapeEntryList = (raw, fields, max = 60) => arr(raw).slice(0, max).map(x => {
+    const o = obj(x);
+    const out = { id: str(o.id, 64) || makeRef('E').slice(-6) };
+    for (const [k, n] of fields) out[k] = n > 400 ? multi(o[k], n) : str(o[k], n);
+    if (o.clinical === true) out.clinical = true;
+    return out;
+}).filter(e => fields.some(([k]) => e[k]));
+/** Fusiona por id (o por nombre) SIN borrar lo que no viene: un campo omitido no es una orden de borrado. */
+export const upsertById = (current = [], incoming = [], keyOf = (x) => x.id) => {
+    const out = arr(current).map(x => ({ ...x }));
+    for (const inc of arr(incoming)) {
+        const k = keyOf(inc);
+        const i = out.findIndex(x => (x.id && inc.id && x.id === inc.id) || (k && keyOf(x) === k));
+        const clean = Object.fromEntries(Object.entries(inc).filter(([, v]) => v !== undefined && v !== null && v !== ''));
+        if (i >= 0) out[i] = { ...out[i], ...clean };
+        else out.push(clean);
+    }
+    return out;
+};
+const lowerName = (x) => String(obj(x).name || '').trim().toLowerCase();
+const mergeShallow = (cur, inc) => ({ ...obj(cur), ...Object.fromEntries(Object.entries(obj(inc)).filter(([, v]) => v !== undefined && v !== null && v !== '')) });
+/**
+ * v4.1286 — Aplica una solicitud de «Información institucional» SOBRE lo
+ * vigente. Sólo cambian los campos que trae; las listas (`*Upsert`) se
+ * fusionan por id; personas y perfil se fusionan campo a campo. La dirección
+ * (slug) NO cambia aunque cambie el nombre. Puro: lo prueba test-programas.
+ */
+export const mergeInfoPayload = (cur = {}, payload = {}) => {
+    const identity = obj(payload.identity);
+    const { profile: idProfile, partnersUpsert, social: idSocial, slug: _ignored, ...plain } = identity;
+    void _ignored;
+    const curProfile = shapeProfile(cur.profile);
+    const ip = obj(idProfile);
+    const profile = {
+        ...curProfile,
+        ...Object.fromEntries(Object.entries(ip).filter(([k, v]) => !['brand', 'operatingEntity', 'publicContact', 'milestonesUpsert', 'milestones'].includes(k) && v !== undefined && v !== null && v !== '')),
+        milestones: upsertById(curProfile.milestones, ip.milestonesUpsert || [], (x) => String(x.title || '').toLowerCase()),
+        brand: { ...curProfile.brand, ...Object.fromEntries(Object.entries(obj(ip.brand)).filter(([, v]) => v)) },
+        operatingEntity: mergeShallow(curProfile.operatingEntity, ip.operatingEntity),
+        publicContact: mergeShallow(curProfile.publicContact, ip.publicContact),
+    };
+    if (obj(ip.brand).variants) profile.brand.variants = upsertById(curProfile.brand.variants, ip.brand.variants, (x) => x.url);
+    if (obj(ip.brand).privateFiles) profile.brand.privateFiles = upsertById(curProfile.brand.privateFiles, ip.brand.privateFiles, (x) => x.fileId);
+    const careIn = obj(payload.care); const curCare = obj(cur.care);
+    const { servicesUpsert, stepsUpsert, faqsUpsert, ...carePlain } = careIn;
+    const care = { ...mergeShallow(curCare, carePlain) };
+    if (servicesUpsert) care.services = upsertById(curCare.services, servicesUpsert, (x) => String(x.name || '').toLowerCase());
+    if (stepsUpsert) care.steps = upsertById(curCare.steps, stepsUpsert, (x) => String(x.title || '').toLowerCase());
+    if (faqsUpsert) care.faqs = upsertById(curCare.faqs, faqsUpsert, (x) => String(x.question || '').toLowerCase());
+    const g = obj(payload.governance); const curG = obj(cur.governance);
+    const governance = { ...curG };
+    for (const [k, v] of Object.entries(g)) governance[k] = v && typeof v === 'object' && !Array.isArray(v) ? mergeShallow(curG[k], v) : (v === undefined || v === '' ? curG[k] : v);
+    return {
+        ...cur, ...Object.fromEntries(Object.entries(plain).filter(([, v]) => v !== undefined && v !== null && v !== '')),
+        slug: cur.slug,
+        name: plain.name || cur.name,
+        social: mergeShallow(cur.social, idSocial),
+        partners: partnersUpsert ? upsertById(cur.partners, partnersUpsert, lowerName) : cur.partners,
+        profile, care, governance,
+        participation: mergeShallow(cur.participation, payload.participation),
+    };
 };
 const shapeCta = (raw) => {
     const c = obj(raw);
@@ -477,6 +605,10 @@ export const shapeProgram = (raw = {}) => {
             accessConditions: multi(care.accessConditions, 4000),
             officialChannels: multi(care.officialChannels, 1500),
             costsText: multi(care.costsText, 2000),
+            contactHours: str(care.contactHours, 300),
+            services: shapeEntryList(care.services, [['name', 200], ['description', 800]]),
+            steps: shapeEntryList(care.steps, [['title', 200], ['description', 800]]),
+            faqs: shapeEntryList(care.faqs, [['question', 300], ['answer', 2000]]),
             costsApproved: bool(care.costsApproved),
             costsApprovedBy: str(care.costsApprovedBy, 160),
             costsApprovedAt: isoDate(care.costsApprovedAt),
@@ -490,7 +622,10 @@ export const shapeProgram = (raw = {}) => {
             corporateAlliances: multi(part.corporateAlliances, 3000),
             donationsEnabled: bool(part.donationsEnabled),
             donationsIntro: multi(part.donationsIntro, 1500),
+            clubActions: multi(part.clubActions, 3000), currentNeeds: multi(part.currentNeeds, 3000),
+            inKindSupport: multi(part.inKindSupport, 3000), fundraising: multi(part.fundraising, 3000),
         },
+        profile: shapeProfile(raw.profile),
         sections: shapeSections(raw.sections),
         ctas: arr(raw.ctas).slice(0, 6).map(shapeCta).filter(c => c.label),
         seo: { title: str(seo.title, 70), description: str(seo.description, 170), image: normalizeLink(seo.image) || '' },
@@ -546,7 +681,11 @@ export const publicProgramView = (p = {}) => {
         categoryLabel: PROGRAM_CATEGORIES.find(c => c.id === p.category)?.label || '',
         logoUrl: p.logoUrl || '', heroImageUrl: p.heroImageUrl || '', heroImageAlt: p.heroImageAlt || '',
         website: p.website || '', social: obj(p.social),
-        partners: arr(p.partners).map(x => ({ name: x.name, url: x.url || '', logoUrl: x.logoAuthorized ? (x.logoUrl || '') : '' })),
+        partners: arr(p.partners).filter(x => !x.validUntil || x.validUntil >= new Date().toISOString().slice(0, 10)).map(x => ({
+            name: x.name, url: x.url || '', logoUrl: x.logoAuthorized ? (x.logoUrl || '') : '',
+            relationType: x.relationType || '', relationLabel: PARTNER_RELATION_TYPES.find(r => r.id === x.relationType)?.label || '', participation: x.participation || '',
+        })),
+        profile: publicProfileView(p.profile),
         contact: {
             email: g.institutionalEmailPublic ? (g.institutionalEmail || '') : '',
             phone: g.institutionalPhonePublic ? (g.institutionalPhone || '') : '',
@@ -557,11 +696,16 @@ export const publicProgramView = (p = {}) => {
             audience: care.audience || '', coverage: care.coverage || '', guidancePath: care.guidancePath || '',
             accessConditions: care.accessConditions || '', officialChannels: care.officialChannels || '',
             costsText: care.costsApproved ? (care.costsText || '') : '',
+            contactHours: care.contactHours || '',
+            services: arr(care.services), steps: arr(care.steps),
+            // Una respuesta clínica sólo se publica con la aprobación médica de la ficha.
+            faqs: arr(care.faqs).filter(f => !f.clinical || care.medicalApprovedAt),
         },
         participation: {
             waysToSupport: part.waysToSupport || '', clubParticipation: part.clubParticipation || '',
             volunteering: part.volunteering || '', corporateAlliances: part.corporateAlliances || '',
             donationsEnabled: part.donationsEnabled === true, donationsIntro: part.donationsIntro || '',
+            clubActions: part.clubActions || '', currentNeeds: part.currentNeeds || '', inKindSupport: part.inKindSupport || '', fundraising: part.fundraising || '',
         },
         sections: arr(p.sections), ctas: arr(p.ctas).filter(c => c.enabled !== false),
         seo: obj(p.seo), formsEnabled: obj(p.formsEnabled), newsletterEnabled: p.newsletterEnabled !== false,
@@ -637,18 +781,20 @@ const shapeMedia = (raw) => arr(raw).slice(0, 12).map(m => {
     };
 }).filter(Boolean);
 
+export const STORY_IDENTITY_MODES = ['nombre_completo', 'solo_nombre', 'seudonimo', 'anonima', 'testimonio'];
+
 const SHAPERS = {
     clinic: (r) => ({
         name: str(r.name, 160), institution: str(r.institution, 200), region: str(r.region, 120), city: str(r.city, 120),
         address: str(r.address, 300), phone: str(r.phone, 60), email: str(r.email, 200).toLowerCase(), url: normalizeLink(r.url) || '',
         referenceContact: str(r.referenceContact, 200), careConditions: multi(r.careConditions, 2000),
-        schedule: str(r.schedule, 300), active: r.active !== false,
+        schedule: str(r.schedule, 300), active: r.active !== false, services: multi(r.services, 1500),
         verifiedAt: isoDate(r.verifiedAt), verifiedBy: str(r.verifiedBy, 160),
         // Interno: NUNCA sale al público.
         internal: { contactName: str(obj(r.internal).contactName, 160), phone: str(obj(r.internal).phone, 60), email: str(obj(r.internal).email, 200).toLowerCase(), notes: multi(obj(r.internal).notes, 2000) },
     }),
     team: (r) => ({
-        name: str(r.name, 160), role: str(r.role, 160), institution: str(r.institution, 200), bio: multi(r.bio, 2000),
+        name: str(r.name, 160), role: str(r.role, 160), specialty: str(r.specialty, 160), institution: str(r.institution, 200), bio: multi(r.bio, 2000),
         photoUrl: normalizeLink(r.photoUrl) || '', photoAlt: str(r.photoAlt, 200), sortOrder: Number.parseInt(r.sortOrder, 10) || 0,
         publishAuthorized: bool(r.publishAuthorized), authorizationFileId: str(r.authorizationFileId, 80) || null,
     }),
@@ -657,6 +803,24 @@ const SHAPERS = {
         location: str(r.location, 160), date: isoDate(r.date), author: str(r.author, 160),
         usagePermission: bool(r.usagePermission), usagePermissionScope: PERMISSION_SCOPES.some(s => s.id === r.usagePermissionScope) ? r.usagePermissionScope : 'programa',
         authorizationFileId: str(r.authorizationFileId, 80) || null, minorsInvolved: bool(r.minorsInvolved),
+        // v4.1286 — Lo que agrega el formulario institucional. `format` separa
+        // historias de testimonios (registros independientes en la misma colección).
+        format: str(r.format, 20) === 'testimonio' ? 'testimonio' : 'historia',
+        context: multi(r.context, 3000), accompaniment: multi(r.accompaniment, 3000), stages: multi(r.stages, 3000), changes: multi(r.changes, 3000),
+        quotes: multi(r.quotes, 2000), careProcess: multi(r.careProcess, 3000),
+        identityMode: STORY_IDENTITY_MODES.includes(str(r.identityMode, 20)) ? str(r.identityMode, 20) : 'nombre_completo',
+        publicName: str(r.publicName, 160),
+        namePermission: bool(r.namePermission), imagePermission: bool(r.imagePermission), videoPermission: bool(r.videoPermission),
+        guardianAuthorized: bool(r.guardianAuthorized),
+        channels: arr(r.channels).map(c => str(c, 20)).filter(c => ['programa', 'distrito', 'clubes', 'redes'].includes(c)),
+        authorizationFileIds: arr(r.authorizationFileIds).map(x => str(x, 80)).filter(Boolean).slice(0, 10),
+        verifiedBy: str(r.verifiedBy, 160), verifiedAt: isoDate(r.verifiedAt),
+        testimonyMode: str(r.testimonyMode, 20), relation: str(r.relation, 160),
+        display: ['nombre_completo', 'solo_nombre', 'iniciales', 'anonimo'].includes(str(r.display, 20)) ? str(r.display, 20) : 'solo_nombre',
+        linkedStoryId: str(r.linkedStoryId, 80) || null,
+        withdrawalRequested: bool(r.withdrawalRequested),
+        // Interno: NUNCA sale al público (nombre real, referencia, representante).
+        internal: { personName: str(obj(r.internal).personName, 160), internalRef: str(obj(r.internal).internalRef, 80), guardianName: str(obj(r.internal).guardianName, 160), firstName: str(obj(r.internal).firstName, 120), lastName: str(obj(r.internal).lastName, 120) },
     }),
     resource: (r) => ({
         title: str(r.title, 160), description: multi(r.description, 2000),
@@ -664,6 +828,7 @@ const SHAPERS = {
         url: normalizeLink(r.url) || '', embed: resolveEmbed(r.url || ''), fileId: str(r.fileId, 80) || null,
         audience: str(r.audience, 160), source: str(r.source, 200), reviewedAt: isoDate(r.reviewedAt),
         clinical: bool(r.clinical), medicalApprovedBy: str(r.medicalApprovedBy, 160), medicalApprovedAt: isoDate(r.medicalApprovedAt),
+        category: str(r.category, 30), publishedOn: isoDate(r.publishedOn),
     }),
     news: (r) => ({
         type: str(r.type, 10) === 'evento' ? 'evento' : 'noticia', title: str(r.title, 160), summary: multi(r.summary, 500), body: multi(r.body, 8000),
@@ -674,10 +839,13 @@ const SHAPERS = {
         name: str(r.name, 160), definition: multi(r.definition, 1000), value: str(r.value, 40), unit: str(r.unit, 40),
         mode: INDICATOR_MODES.some(m => m.id === r.mode) ? r.mode : 'acumulado', period: str(r.period, 80),
         source: str(r.source, 200), validatedBy: str(r.validatedBy, 160), updatedOn: isoDate(r.updatedOn), sortOrder: Number.parseInt(r.sortOrder, 10) || 0,
+        geoScope: str(r.geoScope, 160), supportFileId: str(r.supportFileId, 80) || null,
     }),
     donation: (r) => ({
         buttonLabel: str(r.buttonLabel, 60), url: normalizeLink(r.url) || '', receiver: str(r.receiver, 200), purpose: multi(r.purpose, 600),
         disclaimer: multi(r.disclaimer, 1500), verifiedBy: str(r.verifiedBy, 160), verifiedAt: isoDate(r.verifiedAt), sortOrder: Number.parseInt(r.sortOrder, 10) || 0,
+        taxClaimPending: bool(r.taxClaimPending),
+        internal: { contactName: str(obj(r.internal).contactName, 160), email: str(obj(r.internal).email, 200).toLowerCase() },
     }),
 };
 
@@ -711,6 +879,8 @@ const VALIDATORS = {
         if (d.summary.length < 20) e('summary', 'Escribe un resumen (mínimo 20 caracteres).');
         if (publish && !d.usagePermission) e('usagePermission', 'No se publica una historia sin el permiso de uso registrado.');
         if (publish && d.media.some(m => !m.permissionGranted)) e('media', 'Hay piezas multimedia sin permiso de publicación.');
+        if (publish && d.minorsInvolved && !d.guardianAuthorized) e('guardianAuthorized', 'Aparecen menores de edad: registra la autorización de su representante legal antes de publicar.');
+        if (publish && d.withdrawalRequested) e('withdrawalRequested', 'Se pidió el retiro de esta historia: no se publica.');
         if (d.media.some(m => m.kind === 'image' && !m.alt)) e('media', 'Cada imagen necesita texto alternativo.');
     },
     resource: (d, e, { publish }) => {
@@ -741,6 +911,7 @@ const VALIDATORS = {
         if (!d.receiver) e('receiver', 'Indica la entidad que recibe y administra el aporte.');
         if (!d.purpose) e('purpose', 'Indica el destino o finalidad informada del aporte.');
         if (publish && (!d.verifiedBy || !d.verifiedAt)) e('verifiedAt', 'Registra responsable y fecha de verificación del enlace.');
+        if (publish && d.taxClaimPending && !/aprobad/i.test(d.disclaimer)) e('disclaimer', 'La afirmación sobre beneficios tributarios está pendiente de verificación: escribe el texto aprobado o quítala.');
         if (/\b(deducible|beneficio tributario|certificado de donaci)/i.test(`${d.purpose} ${d.disclaimer}`) && !/aprobad/i.test(d.disclaimer)) e('disclaimer', 'No afirmes beneficios tributarios ni certificaciones sin texto aprobado: indícalo en el texto aclaratorio.');
     },
 };
@@ -759,7 +930,7 @@ export const isPubliclyVisible = (kind, data = {}) => {
     const d = obj(data);
     if (kind === 'clinic') return d.active !== false;
     if (kind === 'team') return d.publishAuthorized === true;
-    if (kind === 'story') return d.usagePermission === true;
+    if (kind === 'story') return d.usagePermission === true && d.withdrawalRequested !== true;
     if (kind === 'resource') return !d.clinical || Boolean(d.medicalApprovedAt);
     if (kind === 'donation') return Boolean(d.url && d.receiver);
     return true;
@@ -771,18 +942,58 @@ export const publicContentView = (row = {}) => {
     const d = obj(row.data);
     const base = { id: row.id, kind, scopeType: row.scopeType, clubName: row.clubName || null, publishedAt: row.publishedAt || null };
     if (kind === 'clinic') {
-        return { ...base, name: d.name, institution: d.institution, region: d.region, city: d.city, address: d.address, phone: d.phone, email: d.email, url: d.url, referenceContact: d.referenceContact, careConditions: d.careConditions, schedule: d.schedule, verifiedAt: d.verifiedAt };
+        return { ...base, name: d.name, institution: d.institution, region: d.region, city: d.city, address: d.address, phone: d.phone, email: d.email, url: d.url, referenceContact: d.referenceContact, careConditions: d.careConditions, schedule: d.schedule, services: d.services || '', verifiedAt: d.verifiedAt };
     }
-    if (kind === 'team') return { ...base, name: d.name, role: d.role, institution: d.institution, bio: d.bio, photoUrl: d.photoUrl, photoAlt: d.photoAlt, sortOrder: d.sortOrder };
+    if (kind === 'team') return { ...base, name: d.name, role: d.role, specialty: d.specialty || '', institution: d.institution, bio: d.bio, photoUrl: d.photoUrl, photoAlt: d.photoAlt, sortOrder: d.sortOrder };
     if (kind === 'story') {
-        return { ...base, title: d.title, summary: d.summary, body: d.body, location: d.location, date: d.date, author: d.author,
-            media: arr(d.media).filter(m => m.permissionGranted).map(m => ({ url: m.url, kind: m.kind, embed: m.embed, alt: m.alt, caption: m.caption, author: m.author })) };
+        // v4.1286 — La identidad pública elegida se respeta en lo que sale: el
+        // nombre real, la referencia interna y el representante nunca viajan.
+        const media = arr(d.media).filter(m => m.permissionGranted)
+            .map(m => ({ url: m.url, kind: m.kind, embed: m.embed, alt: m.alt, caption: m.caption, author: m.author }));
+        const out = { ...base, format: d.format || 'historia', title: d.title, summary: d.summary, body: d.body, location: d.location, date: d.date, author: d.author, media };
+        if (d.format === 'historia' || !d.format) {
+            Object.assign(out, { context: d.context || '', accompaniment: d.accompaniment || '', stages: d.stages || '', changes: d.changes || '', quotes: d.quotes || '', careProcess: d.careProcess || '' });
+            out.personLabel = d.identityMode === 'anonima' ? '' : (d.identityMode === 'seudonimo' || d.identityMode === 'solo_nombre') ? (d.publicName || '') : '';
+        } else {
+            out.displayName = storyTestimonyName(d);
+            out.relation = d.relation || ''; out.testimonyMode = d.testimonyMode || ''; out.linkedStoryId = d.linkedStoryId || null;
+        }
+        return out;
     }
-    if (kind === 'resource') return { ...base, title: d.title, description: d.description, type: d.type, url: d.url, embed: d.embed, hasFile: Boolean(d.fileId), audience: d.audience, source: d.source, reviewedAt: d.reviewedAt, clinical: d.clinical, medicalApprovedAt: d.medicalApprovedAt };
+    if (kind === 'resource') return { ...base, title: d.title, description: d.description, type: d.type, url: d.url, embed: d.embed, hasFile: Boolean(d.fileId), audience: d.audience, source: d.source, reviewedAt: d.reviewedAt, clinical: d.clinical, medicalApprovedAt: d.medicalApprovedAt, category: d.category || '', publishedOn: d.publishedOn || '' };
     if (kind === 'news') return { ...base, type: d.type, title: d.title, summary: d.summary, body: d.body, date: d.date, endDate: d.endDate, location: d.location, url: d.url, imageUrl: d.imageUrl, imageAlt: d.imageAlt };
-    if (kind === 'indicator') return { ...base, name: d.name, definition: d.definition, value: d.value, unit: d.unit, mode: d.mode, period: d.period, source: d.source, updatedOn: d.updatedOn, sortOrder: d.sortOrder };
+    if (kind === 'indicator') return { ...base, name: d.name, definition: d.definition, value: d.value, unit: d.unit, mode: d.mode, period: d.period, source: d.source, updatedOn: d.updatedOn, sortOrder: d.sortOrder, geoScope: d.geoScope || '' };
     if (kind === 'donation') return { ...base, buttonLabel: d.buttonLabel, url: d.url, receiver: d.receiver, purpose: d.purpose, disclaimer: d.disclaimer, verifiedAt: d.verifiedAt, sortOrder: d.sortOrder };
     return base;
+};
+
+/** El nombre visible de un testimonio según lo autorizado (nunca el apellido si no se eligió). */
+export const storyTestimonyName = (d = {}) => {
+    const i = obj(d.internal);
+    const first = String(i.firstName || '').trim(); const last = String(i.lastName || '').trim();
+    const rel = d.relation || ({ beneficiario: 'Beneficiario del programa', familiar: 'Familiar', profesional: 'Profesional', voluntario: 'Voluntario', aliado: 'Aliado', donante: 'Donante' })[d.testimonyMode] || '';
+    if (d.display === 'nombre_completo' && first) return [first, last].filter(Boolean).join(' ');
+    if (d.display === 'solo_nombre' && first) return first;
+    if (d.display === 'iniciales' && first) return `${first[0]}.${last ? ` ${last[0]}.` : ''}`;
+    return rel || 'Testimonio';
+};
+
+/**
+ * v4.1286 — ¿Puede este registro verse en ESTE sitio? Una historia o un
+ * testimonio sólo llega a los canales que autorizó: «programa» = el sitio
+ * dueño del programa; «distrito» = además los sitios distritales vinculados;
+ * «clubes» = además los clubes que activaron el programa. Lo demás, igual
+ * que siempre.
+ */
+export const visibleOnSite = (kind, data = {}, siteKind = 'owner') => {
+    if (kind !== 'story') return true;
+    const d = obj(data);
+    const channels = arr(d.channels);
+    const scope = channels.length ? (channels.includes('clubes') ? 'clubes' : channels.includes('distrito') ? 'distrito' : 'programa') : (d.usagePermissionScope || 'programa');
+    if (siteKind === 'owner' || siteKind === 'preview') return true;
+    if (siteKind === 'district') return scope === 'distrito' || scope === 'clubes';
+    if (siteKind === 'club') return scope === 'clubes';
+    return false;
 };
 
 /** Qué secciones se pintan: activas, en su orden, y con contenido real. */
@@ -819,6 +1030,7 @@ export const shapeChangeRequest = (raw = {}) => {
     } else if (CONTENT_KINDS[kind]) {
         payload = op === 'retirar' ? { reason: multi(payloadRaw.reason, 1000) } : (shapeContent(kind, payloadRaw) || {});
         if (kind === 'resource' || kind === 'clinic') payload.clinical = kind === 'resource' ? bool(payloadRaw.clinical) : Boolean(payload.careConditions);
+        if (kind === 'story' && op !== 'retirar') payload.clinical = Boolean(payload.careProcess);
     } else payload = {};
     return {
         kind: CHANGE_KIND_IDS.includes(kind) ? kind : '',

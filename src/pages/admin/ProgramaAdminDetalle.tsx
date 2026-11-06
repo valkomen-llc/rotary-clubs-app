@@ -22,6 +22,7 @@ import ProgramaRevisionTab from '../../components/admin/programas/ProgramaRevisi
 import ProgramaSolicitudesTab from '../../components/admin/programas/ProgramaSolicitudesTab';
 import ProgramaClubesTab from '../../components/admin/programas/ProgramaClubesTab';
 import ProgramaHistorialTab from '../../components/admin/programas/ProgramaHistorialTab';
+import ProgramaFormularioTab from '../../components/admin/programas/ProgramaFormularioTab';
 
 export interface Detalle {
     program: any; links: any[]; members: any[]; activations: any[]; myActivation: any; grant: Grant;
@@ -37,6 +38,8 @@ const TABS = [
     { id: 'contenidos', label: 'Biblioteca de contenidos', needs: ['view'] },
     { id: 'gestion', label: 'Gestión de contenidos', needs: ['submit', 'localSubmit'] },
     { id: 'revision', label: 'Revisión editorial', needs: ['review', 'approve', 'medicalApprove', 'publish'] },
+    // v4.1286 — Los envíos del formulario institucional, su configuración y el banco multimedia.
+    { id: 'formulario', label: 'Formulario institucional', needs: ['review', 'editProgram'] },
     { id: 'solicitudes', label: 'Solicitudes públicas', needs: ['manageRequests', 'viewRequestsSummary'] },
     { id: 'clubes', label: 'Clubes participantes', needs: ['manageClubs', 'activateClub'] },
     { id: 'historial', label: 'Historial y métricas', needs: ['viewAudit', 'viewMetrics'] },
@@ -108,6 +111,7 @@ const ProgramaAdminDetalle = () => {
                     {tab === 'vinculos' ? <ProgramaVinculosTab data={data} onChanged={cargar} /> : null}
                     {tab === 'contenidos' ? <ProgramaContenidosTab data={data} onGoGestion={() => cambiarTab('gestion')} /> : null}
                     {tab === 'gestion' ? <GestionContenidosPrograma data={data} onChanged={cargar} refInicial={params.get('ref')} /> : null}
+                    {tab === 'formulario' ? <ProgramaFormularioTab data={data} onChanged={cargar} refInicial={params.get('ref')} /> : null}
                     {tab === 'revision' ? <ProgramaRevisionTab data={data} onChanged={cargar} refInicial={params.get('ref')} /> : null}
                     {tab === 'solicitudes' ? <ProgramaSolicitudesTab data={data} onChanged={cargar} refInicial={params.get('ref')} /> : null}
                     {tab === 'clubes' ? <ProgramaClubesTab data={data} onChanged={cargar} /> : null}

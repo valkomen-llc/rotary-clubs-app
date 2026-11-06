@@ -13,7 +13,7 @@ import ensureProgramSchema from './ensureProgramSchema.js';
 import {
     shapeProgram, shapeContent, contentTitleOf, makeRef, requestNeedsMedicalReview, isPubliclyVisible,
     publicContentView, publicProgramView, publicLinkView, publicActivationView, renderableSections, CONTENT_KINDS, SECTIONS,
-    defaultSections, isMetricKey,
+    defaultSections, isMetricKey, mergeInfoPayload, visibleOnSite,
 } from './programSpec.js';
 import { parseDistrictTags } from './districtEcosystem.js';
 import { shapeLanding, defaultLanding, resolveLanding } from './programLandingSpec.js';
@@ -54,7 +54,7 @@ export async function auditList(programId, { limit = 100, offset = 0, entityType
 
 const PROGRAM_COLS = `id, slug, name, summary, description, category, status, "logoUrl", "heroImageUrl", "heroImageAlt", website, social, partners,
     governance, care, participation, sections, ctas, seo, "requestRouting", "formsEnabled", "newsletterEnabled", "pendingValidation",
-    "ownerClubId", "ownerDistrictNumber", version, "publishedAt", "publishedBy", "archivedAt", "createdBy", "updatedBy", "createdAt", "updatedAt"`;
+    "ownerClubId", "ownerDistrictNumber", version, "publishedAt", "publishedBy", "archivedAt", "createdBy", "updatedBy", "createdAt", "updatedAt", profile, "intakeConfig"`;
 
 const programParams = (p) => [
     p.slug, p.name, p.summary, p.description, p.category, p.logoUrl || null, p.heroImageUrl || null, p.heroImageAlt || null, p.website || null,
@@ -80,6 +80,10 @@ export async function createProgram(p, { actor, ownerClubId = null, ownerDistric
          RETURNING ${PROGRAM_COLS}`,
         [...programParams(p), ownerClubId, ownerDistrictNumber, a.id]
     ));
+    if (p.profile) {
+        const r2 = await db.query(`UPDATE "Program" SET profile = $2::jsonb WHERE id = $1 RETURNING ${PROGRAM_COLS}`, [row.id, JSON.stringify(p.profile)]);
+        Object.assign(row, r2.rows[0] || {});
+    }
     await audit({ programId: row.id, entityType: 'program', entityId: row.id, action: 'created', actor, detail: { name: row.name, slug: row.slug } });
     return row;
 }
@@ -94,7 +98,20 @@ export async function updateProgram(id, p, { actor, note = '' }) {
           WHERE id=$22 RETURNING ${PROGRAM_COLS}`,
         [...programParams(p), id, a.id]
     ));
+    // v4.1286 — El perfil institucional va en su columna; sólo se escribe si viene.
+    if (row && p.profile) {
+        const r2 = await db.query(`UPDATE "Program" SET profile = $2::jsonb WHERE id = $1 RETURNING ${PROGRAM_COLS}`, [id, JSON.stringify(p.profile)]);
+        Object.assign(row, r2.rows[0] || {});
+    }
     if (row) await audit({ programId: id, entityType: 'program', entityId: id, action: 'updated', actor, detail: { version: row.version, note } });
+    return row;
+}
+
+/** v4.1286 — Cómo se adapta el formulario institucional a ESTE programa. */
+export async function setIntakeConfig(id, config, { actor }) {
+    const a = actorCols(actor);
+    const row = one(await db.query(`UPDATE "Program" SET "intakeConfig" = $2::jsonb, "updatedBy" = $3, "updatedAt" = NOW() WHERE id = $1 RETURNING ${PROGRAM_COLS}`, [id, JSON.stringify(config), a.id]));
+    if (row) await audit({ programId: id, entityType: 'program', entityId: id, action: 'intake_config', actor, detail: { enabled: config.enabled, vocabulary: config.vocabulary } });
     return row;
 }
 
@@ -333,9 +350,9 @@ export async function contentVersions(contentId) {
 const REQ_COLS = `id, "publicRef", "programId", kind, operation, "contentId", "scopeType", "districtNumber", "clubActivationId", "clubId", "targetSection", title, body, payload,
     attachments, links, "responsibleName", "responsibleEmail", "responsiblePhone", "requestedReach", "suggestedDate", observations, authorizations, status, "statusReason",
     "requiresMedicalReview", "medicalReviewedBy", "medicalReviewedByName", "medicalReviewedAt", "approvedPayload", "approvedBy", "approvedAt", "submittedBy", "submittedByName",
-    "submittedAt", "reviewedBy", "reviewedAt", "publishedAt", "publishedBy", "resultContentId", "resultVersion", "ownerUserId", "ownerClubId", history, "createdAt", "updatedAt"`;
+    "submittedAt", "reviewedBy", "reviewedAt", "publishedAt", "publishedBy", "resultContentId", "resultVersion", "ownerUserId", "ownerClubId", history, "createdAt", "updatedAt", "intakeId", "intakeItemKey"`;
 
-export async function createChangeRequest(programId, r, { actor, status = 'borrador' }) {
+export async function createChangeRequest(programId, r, { actor, status = 'borrador', origin = null }) {
     const a = actorCols(actor);
     let clubId = null;
     if (r.clubActivationId) clubId = (await getActivation(r.clubActivationId))?.clubId || null;
@@ -349,16 +366,17 @@ export async function createChangeRequest(programId, r, { actor, status = 'borra
     const row = one(await db.query(
         `INSERT INTO "ProgramChangeRequest" ("publicRef", "programId", kind, operation, "contentId", "scopeType", "districtNumber", "clubActivationId", "clubId", "targetSection", title, body, payload,
             attachments, links, "responsibleName", "responsibleEmail", "responsiblePhone", "requestedReach", "suggestedDate", observations, authorizations, status, "requiresMedicalReview",
-            "submittedBy", "submittedByName", "submittedAt", "ownerUserId", "ownerClubId", history)
+            "submittedBy", "submittedByName", "submittedAt", "ownerUserId", "ownerClubId", history, "intakeId", "intakeItemKey")
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14::jsonb,$15::jsonb,$16,$17,$18,$19,$20,$21,$22::jsonb,$23,$24,
-            CASE WHEN $23 = 'enviado' THEN $25 ELSE NULL END, CASE WHEN $23 = 'enviado' THEN $26 ELSE NULL END, CASE WHEN $23 = 'enviado' THEN NOW() ELSE NULL END, $25, $27, $28::jsonb)
+            CASE WHEN $23 = 'enviado' THEN $25 ELSE NULL END, CASE WHEN $23 = 'enviado' THEN $26 ELSE NULL END, CASE WHEN $23 = 'enviado' THEN NOW() ELSE NULL END, $25, $27, $28::jsonb, $29, $30)
          RETURNING ${REQ_COLS}`,
         [ref, programId, r.kind, r.operation, r.contentId, r.scopeType, r.districtNumber || null, r.clubActivationId, clubId, r.targetSection || null, r.title, r.body,
             JSON.stringify(r.payload), JSON.stringify(r.attachments), JSON.stringify(r.links), r.responsibleName, r.responsibleEmail, r.responsiblePhone || null, r.requestedReach || null,
             r.suggestedDate || null, r.observations || null, JSON.stringify(r.authorizations), status, needsMedical, a.id, a.name, a.clubId,
-            evento({ type: status === 'enviado' ? 'submitted' : 'draft', to: status, actor, detail: needsMedical ? 'Requiere revisión médica' : '' })]
+            evento({ type: status === 'enviado' ? 'submitted' : 'draft', to: status, actor, detail: [needsMedical ? 'Requiere revisión médica' : '', origin ? `Origen: formulario institucional ${origin.intakeRef || ''}` : ''].filter(Boolean).join(' · ') }),
+            origin?.intakeId || null, origin?.itemKey || null]
     ));
-    await audit({ programId, entityType: 'change_request', entityId: row.id, action: status === 'enviado' ? 'submitted' : 'draft_created', actor, detail: { ref, kind: r.kind, operation: r.operation, scopeType: r.scopeType } });
+    await audit({ programId, entityType: 'change_request', entityId: row.id, action: status === 'enviado' ? 'submitted' : 'draft_created', actor, detail: { ref, kind: r.kind, operation: r.operation, scopeType: r.scopeType, intakeRef: origin?.intakeRef || null, itemKey: origin?.itemKey || null } });
     return row;
 }
 
@@ -503,13 +521,20 @@ export async function publishChangeRequest(id, { actor, program }) {
             // Se aplica SOBRE lo vigente: sólo los bloques que la solicitud trae.
             const cur = (await client.query(`SELECT ${PROGRAM_COLS} FROM "Program" WHERE id = $1 FOR UPDATE`, [req.programId])).rows[0];
             if (!cur) throw new Error('El programa no existe.');
+            // v4.1286 — `mergeInfoPayload`: sólo cambia lo que la solicitud trae;
+            // listas por id, personas y perfil campo a campo. Un campo omitido
+            // NO es una orden de borrado. La dirección (slug) se respeta: un
+            // cambio de nombre no la mueve (la cambia la ficha, a propósito).
             const identity = payload.identity || {};
-            const merged = shapeProgram({
-                ...cur, ...identity, slug: identity.slug || cur.slug, name: identity.name || cur.name,
-                care: { ...cur.care, ...(payload.care || {}) },
-                participation: { ...cur.participation, ...(payload.participation || {}) },
-                governance: { ...cur.governance, ...(payload.governance || {}) },
-            });
+            const merged = shapeProgram({ ...mergeInfoPayload(cur, payload), slug: identity.slug || cur.slug });
+            // Un texto de costos NUEVO no hereda la aprobación del anterior: la
+            // aprobación es la de ESTA solicitud (revisada y aprobada en el flujo).
+            const careIn = payload.care || {};
+            if (careIn.costsText !== undefined && String(careIn.costsText || '') !== String((cur.care || {}).costsText || '')) {
+                merged.care.costsApproved = Boolean(req.approvedAt);
+                merged.care.costsApprovedBy = req.approvedAt ? a.name : '';
+                merged.care.costsApprovedAt = req.approvedAt ? new Date(req.approvedAt).toISOString().slice(0, 10) : '';
+            }
             if (merged.slug !== cur.slug) {
                 const dup = await client.query(`SELECT 1 FROM "Program" WHERE slug = $1 AND id <> $2`, [merged.slug, cur.id]);
                 if (dup.rows.length) throw new Error('La dirección (slug) propuesta ya la usa otro programa.');
@@ -525,6 +550,7 @@ export async function publishChangeRequest(id, { actor, program }) {
                     version = version + 1, "updatedBy"=$23, "updatedAt"=NOW() WHERE id=$22`,
                 [...programParams(merged), cur.id, a.id]
             );
+            await client.query(`UPDATE "Program" SET profile = $2::jsonb WHERE id = $1`, [cur.id, JSON.stringify(merged.profile)]);
             programPatch = { version: cur.version + 1 };
         }
         // Una corrección no aplica nada sola: quien publica ya hizo el cambio en el registro indicado.
@@ -650,14 +676,17 @@ export async function subscriberCount(programId) {
 
 // ─── Archivos privados ────────────────────────────────────────────────
 
-const FILE_COLS = `id, "programId", kind, "storageKey", filename, "contentType", bytes, format, label, "relatedType", "relatedId", "uploadedBy", "uploadedByName", "verifiedBy", "verifiedAt", "deletedAt", "createdAt"`;
+const FILE_COLS = `id, "programId", kind, "storageKey", filename, "contentType", bytes, format, label, "relatedType", "relatedId", "uploadedBy", "uploadedByName", "verifiedBy", "verifiedAt", "deletedAt", "createdAt", meta`;
 
-export async function registerFile({ programId, kind, storageKey, filename, contentType, bytes, format, label = '', relatedType = null, relatedId = null, actor }) {
+export async function registerFile({ programId, kind, storageKey, filename, contentType, bytes, format, label = '', relatedType = null, relatedId = null, actor, meta = {} }) {
     const a = actorCols(actor);
+    // Idempotente por clave: aplicar dos veces el mismo documento de un envío no lo duplica.
+    const prev = one(await db.query(`SELECT ${FILE_COLS} FROM "ProgramFile" WHERE "storageKey" = $1`, [storageKey]));
+    if (prev) return prev;
     const row = one(await db.query(
-        `INSERT INTO "ProgramFile" ("programId", kind, "storageKey", filename, "contentType", bytes, format, label, "relatedType", "relatedId", "uploadedBy", "uploadedByName")
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING ${FILE_COLS}`,
-        [programId, kind, storageKey, filename, contentType, bytes, format, label || null, relatedType, relatedId, a.id, a.name]
+        `INSERT INTO "ProgramFile" ("programId", kind, "storageKey", filename, "contentType", bytes, format, label, "relatedType", "relatedId", "uploadedBy", "uploadedByName", meta)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb) RETURNING ${FILE_COLS}`,
+        [programId, kind, storageKey, filename, contentType, bytes, format, label || null, relatedType, relatedId, a.id, a.name, JSON.stringify(meta || {})]
     ));
     await audit({ programId, entityType: 'file', entityId: row.id, action: 'registered', actor, detail: { kind, filename, bytes } });
     return row;
@@ -823,7 +852,7 @@ export async function landingSources(program, { districtNumber = null, activatio
           ORDER BY kind, "sortOrder", "publishedAt" DESC`,
         [program.id, districtNumber, activationId]
     );
-    const visible = rows.filter(c => isPubliclyVisible(c.kind, c.data)).map(publicContentView);
+    const visible = rows.filter(c => isPubliclyVisible(c.kind, c.data) && visibleOnSite(c.kind, c.data, 'preview')).map(publicContentView);
     const by = (k) => visible.filter(c => c.kind === k);
     const donation = by('donation')[0] || null;
     return { slug: program.slug, clinics: by('clinic'), stories: by('story'), resources: by('resource'), indicators: by('indicator'), donation, formsEnabled: program.formsEnabled || {} };
@@ -912,7 +941,9 @@ export async function publicProgramForSite(slug, clubId, { preview = false } = {
           ORDER BY kind, "sortOrder", "publishedAt" DESC`,
         [program.id, link?.districtNumber || null, activation?.id || null]
     );
-    const visible = contents.filter(c => isPubliclyVisible(c.kind, c.data));
+    // v4.1286 — Cada historia sólo en los canales que autorizó (programa · distrito · clubes).
+    const siteKind = preview ? 'preview' : owned ? 'owner' : site?.isDistrict ? 'district' : 'club';
+    const visible = contents.filter(c => isPubliclyVisible(c.kind, c.data) && visibleOnSite(c.kind, c.data, siteKind));
     const counts = {};
     for (const c of visible) counts[c.kind] = (counts[c.kind] || 0) + 1;
     const view = publicProgramView(program);

@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1285.0",
-  "cache_bust": "4.1285.0",
+  "version": "4.1286.0",
+  "cache_bust": "4.1286.0",
   "type": "module",
   "//": "UI V4.1282.0 | 2026-11-05 (Programas: la landing con los patrones institucionales del sitio)",
   "scripts": {
@@ -61,6 +61,8 @@
     "test:club-catalog": "node scripts/test-club-catalog.mjs",
     "test:programas": "node scripts/test-programas.mjs",
     "test:programas:e2e": "node scripts/test-programas-e2e.mjs",
+    "test:programas:formulario": "node scripts/test-programas-formulario.mjs",
+    "test:programas:formulario:e2e": "node scripts/test-programas-formulario-e2e.mjs",
     "seed:programa-ponseti": "node scripts/seed-programa-ponseti.mjs",
     "test:version": "node scripts/check-version-parity.mjs",
     "test:visitas-gobernador": "node scripts/test-governor-visits.mjs",

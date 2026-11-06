@@ -131,6 +131,9 @@
 // ProgramContent, ProgramContentVersion, ProgramChangeRequest, ProgramRequest,
 // ProgramSubscriber, ProgramFile, ProgramAuditLog, ProgramMetricDaily,
 // ProgramVisitor, ProgramLanding y ProgramLandingVersion.
+// Y las dos del formulario institucional de programas (v4.1286): ProgramIntake
+// (cada envío, una PROPUESTA con borrador y revisión por ítem) y
+// ProgramIntakeFile (sus archivos, privados hasta aplicarse).
 // Y la traza de cada mensaje entrante de WhatsApp (v4.1285):
 // WhatsAppInboundTrace — el recorrido de cada «Hola» de punta a punta y la
 // única evidencia de qué conversaciones quedaron sin respuesta.

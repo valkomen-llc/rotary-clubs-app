@@ -116,4 +116,35 @@ export async function notifyAssignment({ program, request, members, host }) {
     });
 }
 
-export default { notifyChangeSubmitted, notifyChangeStatus, notifyPublicRequest, notifyAssignment, teamEmails };
+// ─── Formulario institucional (v4.1286) ──────────────────────────────
+//
+// El enlace para continuar es un SECRETO: va sólo a quien envía, nunca al
+// equipo, y el correo no repite ningún dato del envío (sólo la referencia).
+
+/** El enlace para continuar el formulario → quien envía. */
+export async function sendIntakeLink({ program, intake, link, reason = 'start' }) {
+    const title = reason === 'recover' ? 'Tu enlace para continuar' : reason === 'ajustes' ? 'Te pedimos algunos ajustes' : 'Guarda este enlace para continuar';
+    const lines = reason === 'ajustes'
+        ? [`Programa: ${program.name}.`, `El equipo del programa revisó tu envío ${intake.publicRef} y pidió algunos ajustes. Abre el enlace para verlos y completar la información.`]
+        : [`Programa: ${program.name}.`, `Envío ${intake.publicRef}. Con este enlace puedes continuar el formulario desde cualquier dispositivo, cuando quieras.`, 'No lo compartas: da acceso a tu borrador.'];
+    return deliver({
+        programId: program.id, event: `intake_link_${reason}`, to: [intake.senderEmail || intake.sender?.email],
+        subject: `[${program.name}] ${title} (${intake.publicRef})`,
+        html: shell({ title, lines, cta: { href: link, label: reason === 'ajustes' ? 'Ver los ajustes' : 'Continuar el formulario' } }),
+        text: `${lines.join(' ')} ${link}`,
+    });
+}
+
+/** Un envío nuevo (o reenviado tras ajustes) → equipo del programa. Sin datos del remitente. */
+export async function notifyIntakeSubmitted({ program, intake, members, host }) {
+    const to = teamEmails(program, members, ['coordinador', 'comunicaciones']);
+    const href = panelUrl(host, `/admin/programas/${program.id}?tab=formulario&ref=${encodeURIComponent(intake.publicRef)}`);
+    return deliver({
+        programId: program.id, event: 'intake_submitted', to,
+        subject: `[${program.name}] Nuevo envío del formulario institucional ${intake.publicRef}`,
+        html: shell({ title: 'Nuevo envío de información', lines: [`Programa: ${program.name}.`, `Referencia ${intake.publicRef}. Revisa cada sección y registro en el panel; nada se aplica ni se publica solo.`], cta: { href, label: 'Revisar en el panel' } }),
+        text: `Nuevo envío ${intake.publicRef} en ${program.name}. ${href}`,
+    });
+}
+
+export default { notifyChangeSubmitted, notifyChangeStatus, notifyPublicRequest, notifyAssignment, teamEmails, sendIntakeLink, notifyIntakeSubmitted };

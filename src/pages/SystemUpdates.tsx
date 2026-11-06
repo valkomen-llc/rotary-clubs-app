@@ -34,13 +34,31 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1285.0 | 2026-11-05 (WhatsApp CRM: el agente responde los mensajes reales y el panel lo demuestra)
-// Cache bust: 2026-11-05
+// UI V4.1286.0 | 2026-11-06 (Formulario institucional de programas)
+// Cache bust: 2026-11-06
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1286.0',
+        title: 'Programas: el formulario institucional para los líderes de cada programa 📋',
+        description: 'Nuevo formulario público en dominio.org/formulario-programas para que los líderes de los programas que respalda el Distrito 4281 (Clínicas Ponseti, Fundación Pequeño Corazón y cualquier programa registrado) compartan textos, documentos y materiales para sus páginas. Un solo formulario adaptado a cada programa, por pasos, con guardado automático, enlace seguro para continuar y revisión por ítem: lo aprobado entra al flujo editorial de siempre y nada se publica ni reemplaza lo vigente sin aprobación.',
+        date: new Date().toISOString(),
+        tags: ['programas', 'formulario institucional', 'distrito 4281', 'clínicas ponseti', 'revisión editorial', 'biblioteca'],
+        type: 'feature',
+        impact: 'Alta: los programas entregan su información completa sin depender del administrador, y el equipo la revisa sección por sección antes de que llegue a la página.',
+        changes: [
+            { type: 'added', text: 'Formulario con la misma línea visual de Visitas del Gobernador (sus componentes reales, ahora compartidos): programa y tipo de envío (carga inicial, actualización de secciones elegidas o aporte de contenido), quién envía (club del catálogo o «No pertenezco a un club», datos internos aparte de lo público, precarga con sesión), identidad, identidad visual y aliados por tipo de relación, responsables y equipo, atención y acceso, sedes, participación y donaciones, documentos, banco multimedia, historias, testimonios, impacto, recursos y redes. Misión, visión, valores y objetivos admiten «No aplica» o «Pendiente».' },
+            { type: 'added', text: 'Guardado en el servidor mientras se escribe, progreso por sección, regreso a cualquier paso y envío parcial (sólo se exige lo indispensable de lo que se envía). El acceso al borrador es un enlace secreto (sólo se guarda su hash) que llega por correo; se recupera desde otro dispositivo con el correo, sin revelar si existe.' },
+            { type: 'added', text: 'Archivos: carga directa a S3 con progreso; los grandes por carga multiparte reanudable (partes de 16 MB, reintento automático y continuación tras un corte). Validación del contenido real en el servidor, topes configurables por entorno y explicados antes de cargar, y enlace externo como alternativa. Los originales quedan privados; lo autorizado se publica en la Biblioteca como versión web WebP sin EXIF ni GPS, con punto de enfoque.' },
+            { type: 'added', text: 'Administración: pestaña «Formulario institucional» del programa con la bandeja de envíos, revisión por sección o por registro con lo vigente al lado, aprobación parcial, ajustes con enlace nuevo para quien envió (correo, WhatsApp o copiar), «Aplicar lo aprobado» que crea solicitudes del flujo editorial con el envío como origen, la configuración del formulario (secciones aplicables, obligatorios, ocultos, ayudas, vocabulario de salud o general), el banco multimedia y la correspondencia con los contenedores de la página.' },
+            { type: 'changed', text: 'Programas amplía su ficha sin duplicar datos: perfil institucional (frase, propósito, quiénes somos, reseña, hitos, misión/visión/valores/objetivos, entidad que lo opera, contacto público), aliados con tipo de relación y vigencia, servicios/pasos/preguntas frecuentes, Spotify, especialidad del equipo, servicios de las sedes, alcance de los indicadores. Aplicar una información institucional fusiona sin borrar lo omitido y nunca cambia la dirección pública.' },
+            { type: 'changed', text: 'Historias y testimonios: identidad pública (nombre completo, solo nombre, seudónimo o anónima) aplicada al texto y a los pies de foto, nombre real interno, autorizaciones separadas de relato, nombre, imagen y video, representante de menores, canales autorizados (una historia sólo del programa no llega a los sitios de los clubes) y retiro. El proceso asistencial pasa por revisión médica; un texto de costos nuevo no hereda la aprobación del anterior; una afirmación tributaria en una donación queda pendiente.' },
+            { type: 'added', text: 'Dos tablas creadas en runtime y protegidas por el guardián de db:push (ProgramIntake, ProgramIntakeFile) y cinco columnas nuevas enumeradas en el atajo del ensure. Pruebas: test:programas:formulario (81 comprobaciones) y test:programas:formulario:e2e (33, Postgres real y S3 simulado con multiparte).' },
+        ],
+    },
     {
         version: '4.1285.0',
         title: 'WhatsApp CRM: el agente responde los mensajes reales y el panel lo demuestra 📲',

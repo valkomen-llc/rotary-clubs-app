@@ -1,4 +1,4 @@
-# Programas — v4.1280 (página pública por contenedores: v4.1281; patrones institucionales: v4.1282)
+# Programas — v4.1280 (página pública por contenedores: v4.1281; patrones institucionales: v4.1282; formulario institucional: v4.1286)
 
 Módulo para que un distrito publique los programas que respalda (el primero,
 **Clínicas Ponseti** para el Distrito 4281), su equipo gestione contenidos y
@@ -107,6 +107,18 @@ tocar código**: todo es datos.
   lanza); `Navbar` pinta «Programas» sólo si `count > 0` (a `/programas` o
   directo al único). `SYSTEM_NAV_SECTIONS` incluye `/programas` para menús
   personalizados.
+
+## El formulario institucional (v4.1286)
+
+Los líderes de cada programa entregan su información en
+`/formulario-programas`; llega como PROPUESTA a la pestaña «Formulario
+institucional» y lo aprobado se aplica como solicitudes de este mismo flujo
+editorial. Amplió el modelo sin duplicar: `Program.profile` (perfil
+institucional), `Program.intakeConfig`, aliados con `relationType`, historias
+con `format` (historia/testimonio), identidad pública, autorizaciones
+separadas y `channels` (`visibleOnSite`), `mergeInfoPayload` (fusión sin
+borrados que respeta el slug). Todo en
+`docs/claude/formulario-institucional-de-programas.md`.
 
 ## La página pública por contenedores (v4.1281)
 
