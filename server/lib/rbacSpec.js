@@ -776,7 +776,7 @@ export const ROLE_PRESETS = [
         // «Usuarios y permisos», que queda auditada.
         key: 'digital_secretary',
         label: 'Secretaría Digital — Control de Aportes',
-        description: 'Supervisión documental y financiera de los aportes: consulta la Bóveda de Fondos, identifica a los aportantes, verifica estados de Stripe y traslados, descarga comprobantes y exporta informes. Administra además el Directorio de Clubes y su Catálogo Maestro. No solicita retiros, no registra desembolsos ni modifica estados financieros.',
+        description: 'Supervisión documental y financiera de los aportes: consulta la Bóveda de Fondos, identifica a los aportantes, verifica estados de Stripe y traslados, descarga comprobantes y exporta informes. Administra además el Directorio de Clubes y su Catálogo Maestro, y los Eventos del sitio. No solicita retiros, no registra desembolsos ni modifica estados financieros.',
         scope: 'site',
         protected: true,
         permissions: [
@@ -788,6 +788,19 @@ export const ROLE_PRESETS = [
             // `finance.manage`: mover dinero no entra en este rol.
             'clubs.view',
             'clubs.manage',
+            // v4.1288 — EVENTOS, como los veía antes de recibir este rol. La
+            // cuenta de la Secretaría (secretaria@rotary4281.org) entraba como
+            // institucional con la llave legada `events`; al darle la membresía
+            // de v4.1265 esa lista dejó de leerse (la membresía gana, paso 2 de
+            // `resolveGrant`) y la entrada «Eventos» desapareció del menú. Son
+            // EXACTAMENTE los permisos de `LEGACY_PERMISSION_MAP.events`: ni
+            // `events.delete` ni nada de la Bóveda. Las rutas de eventos y de
+            // inscripciones ya los exigen (`eventAccess.js`); sigue SIN
+            // `finance.manage`.
+            'events.view',
+            'events.create',
+            'events.edit',
+            'events.publish',
         ],
         // Su trabajo es la Bóveda: el resumen del panel no le dice nada.
         landing: '/admin/boveda',
