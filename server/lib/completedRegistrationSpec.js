@@ -350,6 +350,10 @@ export const PARTICIPANT_HISTORY = {
     account_linked: 'Inscripción vinculada a tu cuenta',
     completed_status_changed: 'Revisión del Equipo de Registro',
     checkin: 'Acreditación en la sede',
+    // v4.1291 — subir o reemplazar el comprobante (lo haga el participante o
+    // el Equipo de Registro). Es un hecho que le toca: el nombre del archivo
+    // anterior y la clave de S3 NO viajan (ver `participantHistoryEntry`).
+    receipt_replaced: 'Comprobante de pago actualizado',
 };
 
 /** Una entrada del historial, ya filtrada para el participante (o `null`). */
@@ -369,6 +373,49 @@ export const participantHistoryEntry = (h) => {
         comment: isStatus && !automatic && ['needs_correction', 'rejected'].includes(h.toStatus) ? h.comment : null,
         createdAt: h.createdAt,
     };
+};
+
+// ── Subir o reemplazar el comprobante después del envío (v4.1291) ────
+//
+// Pedido del Distrito 4281 para la Conferencia Distrital: el Equipo de
+// Registro sube, cambia o reemplaza el comprobante de un asistente desde la
+// ficha, y el asistente hace lo mismo desde «Mis eventos».
+//
+// ⚠️ UNA INSCRIPCIÓN TIENE UN COMPROBANTE VIGENTE (las cuatro columnas
+// `receipt*`). Reemplazar NO borra el archivo anterior de S3: es un documento
+// financiero y el historial (`receipt_replaced`) guarda cuál era, para la
+// auditoría. Lo que cambia es cuál es el VIGENTE.
+//
+// ⚠️ EL PARTICIPANTE SÓLO MIENTRAS NADIE LO HAYA RESUELTO. Con la inscripción
+// validada, con el pago confirmado o rechazada, cambiar el soporte cambiaría
+// la evidencia de una decisión ya tomada: eso lo hace el Equipo de Registro.
+// El equipo puede siempre, y queda en el historial con su nombre.
+//
+// ⚠️ REEMPLAZAR NO CAMBIA EL ESTADO. Un «Requiere corrección» no vuelve solo
+// a «Pendiente»: la corrección pedida pudo ser otra cosa, y lo decide quien
+// revisa. El historial le avisa al equipo que hay un soporte nuevo.
+
+/** Los estados en que el PARTICIPANTE puede subir o reemplazar su comprobante. */
+export const PARTICIPANT_RECEIPT_EDITABLE = ['submitted', 'needs_correction'];
+
+export const canParticipantReplaceReceipt = (status) =>
+    PARTICIPANT_RECEIPT_EDITABLE.includes(String(status || ''));
+
+/** Por qué el participante ya no puede cambiarlo (o `null` si puede). */
+export const participantReceiptLock = (status) => {
+    if (canParticipantReplaceReceipt(status)) return null;
+    return `Tu inscripción ya está «${completedStatusMeta(status).label}». Si necesitas cambiar el comprobante, escríbele al Equipo de Registro.`;
+};
+
+/**
+ * El texto del historial. Sin claves de S3: el nombre del archivo es lo que la
+ * persona reconoce. `via` = 'team' | 'participant'.
+ */
+export const describeReceiptChange = ({ previousName = null, nextName = '', via = 'team' } = {}) => {
+    const quien = via === 'participant' ? 'El participante' : 'El Equipo de Registro';
+    const nuevo = String(nextName || '').trim() || 'comprobante';
+    if (!previousName) return `${quien} subió el comprobante «${nuevo}».`;
+    return `${quien} reemplazó el comprobante «${String(previousName).trim() || 'anterior'}» por «${nuevo}».`;
 };
 
 // ── La guía de pago externo del paso 4 (v4.1268) ─────────────────────
@@ -964,5 +1011,6 @@ export default {
     BULK_MAX, SELECT_ALL_MAX, chunkIds,
     ACCOUNT_MODES, DEFAULT_ACCOUNT_MODE, ACCESS_PASSWORD_MIN, validateAccessPassword,
     participantStages, PARTICIPANT_HISTORY, participantHistoryEntry,
+    PARTICIPANT_RECEIPT_EDITABLE, canParticipantReplaceReceipt, participantReceiptLock, describeReceiptChange,
     safePaymentUrl, normalizePaymentGuide, publicPaymentGuide, paymentGuideSteps,
 };

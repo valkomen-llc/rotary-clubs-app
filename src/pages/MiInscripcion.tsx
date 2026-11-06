@@ -29,14 +29,14 @@
 // registro enviado ANTES de tener cuenta se vincula sólo demostrando el correo
 // (enlace `?vincular=`), nunca por coincidencia.
 // ════════════════════════════════════════════════════════════════════
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useLang } from '../contexts/LanguageContext';
 import { activeLocale } from '../lib/locale';
 import {
     AlertCircle, ArrowLeft, ArrowRight, CalendarDays, CheckCircle2, Clock, CreditCard,
     Circle, ExternalLink, FileText, History, KeyRound, LayoutDashboard, Link2, Loader2, LogOut, Mail, MapPin,
-    Paperclip, QrCode, ShieldCheck, Ticket, Users, Wallet,
+    Paperclip, QrCode, ShieldCheck, Ticket, Upload, Users, Wallet,
 } from 'lucide-react';
 import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
 import { openLoginModal } from '../lib/loginModal';
@@ -44,6 +44,8 @@ import { forgetSession, rememberProfile, emitSessionChange, useSiteSessions } fr
 import { qrToSvg } from '../lib/qrcode';
 import { money, statusMeta } from '../lib/eventRegistrationSpec';
 import { Field } from '../components/forms/FairField';
+import { RECEIPT_ACCEPT } from '../lib/completedRegistrationSpec';
+import { subirComprobante } from '../lib/subirComprobante';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 
@@ -139,6 +141,8 @@ interface CompletedView {
     district: string | null; clubName: string | null;
     membershipLabel: string | null; paymentMethodLabel: string | null;
     hasReceipt: boolean; receiptName: string | null;
+    /** v4.1291 — lo decide el servidor: si puede subir o reemplazar, y si no, por qué. */
+    canReplaceReceipt?: boolean; receiptLock?: string | null;
     checkedInAt: string | null;
     registeredAt: string | null;
     history: { id: string; type: string; label: string; toStatus: string | null; comment: string | null; createdAt: string }[];
@@ -465,6 +469,7 @@ const MiInscripcion = () => {
                         token={token}
                         loading={detailLoading}
                         onBack={() => openCompleted(null)}
+                        onUpdated={setCompletedDetail}
                     />
                 ) : current ? (
                     <RegistrationDetail
@@ -779,12 +784,42 @@ const STAGE_TONE: Record<string, string> = {
     slate: 'bg-slate-500 text-white',
 };
 
-const CompletedDetail = ({ registration, token, loading, onBack }: {
+const CompletedDetail = ({ registration, token, loading, onBack, onUpdated }: {
     registration: CompletedView; token: string | null; loading: boolean; onBack: () => void;
+    onUpdated: (view: CompletedView) => void;
 }) => {
     const r = registration;
     const [receiptBusy, setReceiptBusy] = useState(false);
     const [receiptError, setReceiptError] = useState('');
+    const [uploading, setUploading] = useState(false);
+    const [uploadNotice, setUploadNotice] = useState('');
+    const receiptInput = useRef<HTMLInputElement>(null);
+
+    // v4.1291 — Subir o reemplazar SU comprobante. El servidor decide si puede
+    // (inscripción aún sin resolver) y comprueba el archivo real.
+    const uploadReceipt = async (file: File | undefined) => {
+        if (receiptInput.current) receiptInput.current.value = '';
+        if (!file || !token) return;
+        if (r.hasReceipt && !window.confirm(`¿Reemplazar «${r.receiptName || 'tu comprobante actual'}» por «${file.name}»?`)) return;
+        setUploading(true);
+        setReceiptError('');
+        setUploadNotice('');
+        try {
+            const base = `${API}/event-registrations/portal/completed/${encodeURIComponent(r.id)}`;
+            const view = await subirComprobante<CompletedView & { unchanged?: boolean }>({
+                file, prepararUrl: `${base}/receipt-url`, confirmarUrl: `${base}/receipt`,
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            setUploadNotice(r.hasReceipt
+                ? 'Listo: reemplazamos tu comprobante. El Equipo de Registro lo revisará.'
+                : 'Listo: recibimos tu comprobante. El Equipo de Registro lo revisará.');
+            onUpdated(view);
+        } catch (e: any) {
+            setReceiptError(e?.message || 'No pudimos subir el comprobante.');
+        } finally {
+            setUploading(false);
+        }
+    };
 
     // El enlace firmado se pide al pulsar y vence en 2 minutos: no queda
     // ninguna URL permanente del comprobante en la página.
@@ -909,6 +944,24 @@ const CompletedDetail = ({ registration, token, loading, onBack }: {
                     </div>
                 ) : (
                     <p className="text-sm text-slate-500">Esta inscripción no tiene comprobante cargado.</p>
+                )}
+                {/* v4.1291 — subir o reemplazar, mientras la inscripción no esté resuelta. */}
+                {r.canReplaceReceipt ? (
+                    <div className="mt-4">
+                        <input ref={receiptInput} type="file" accept={RECEIPT_ACCEPT} className="hidden"
+                            onChange={e => uploadReceipt(e.target.files?.[0])} />
+                        <button type="button" onClick={() => receiptInput.current?.click()} disabled={uploading}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60">
+                            {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                            {uploading ? 'Subiendo…' : r.hasReceipt ? 'Reemplazar comprobante' : 'Subir comprobante'}
+                        </button>
+                        <p className="mt-2 text-[12px] text-slate-500">PDF, JPG, PNG o WebP · máximo 10 MB.</p>
+                    </div>
+                ) : r.receiptLock ? (
+                    <p className="mt-3 text-[13px] text-slate-500">{r.receiptLock}</p>
+                ) : null}
+                {uploadNotice && (
+                    <p className="mt-2 flex items-center gap-1.5 text-[13px] font-medium text-emerald-700"><CheckCircle2 size={13} /> {uploadNotice}</p>
                 )}
                 {receiptError && (
                     <p className="mt-2 flex items-center gap-1.5 text-[13px] font-medium text-red-600"><AlertCircle size={13} /> {receiptError}</p>
