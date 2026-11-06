@@ -12,6 +12,7 @@
 import db from './db.js';
 import { ensureEventRegistrationSchema } from './ensureEventRegistrationSchema.js';
 import { clean, parseJson, ensureEdition, updateEdition } from './eventRegistrationStore.js';
+import { applyCompletedFormTextFixes } from './completedFormTextFixes.js';
 import {
     normalizeCompletedConfig, normalizeCompletedSlug, buildCompletedCode,
     seedForSlug, matchSeedEvent, COMPLETED_SOURCE,
@@ -121,6 +122,10 @@ export const findCompletedFormBySlug = async (slug) => {
     catch (error) { console.warn('[completed-registrations] ensure en la lectura:', error?.message); }
     const value = normalizeCompletedSlug(slug);
     if (!value) return null;
+    // v4.1292 — ajustes puntuales de texto pedidos por el equipo (condicionales
+    // e idempotentes; ver completedFormTextFixes.js). Antes de leer, para que
+    // la página pública ya muestre el texto nuevo.
+    await applyCompletedFormTextFixes();
 
     const { rows } = await db.query(
         `SELECT * FROM "EventEdition"

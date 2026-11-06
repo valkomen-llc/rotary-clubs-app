@@ -34,13 +34,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1291.0 | 2026-11-06 (Subir o reemplazar el comprobante de pago de una inscripción)
+// UI V4.1292.0 | 2026-11-06 (Nuevo texto introductorio del formulario de la Conferencia)
 // Cache bust: 2026-11-06
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1292.0',
+        title: 'Conferencia Distrital: nuevo texto introductorio del formulario de inscripción ✏️',
+        description: 'El texto que aparece debajo del logo de la XIII Conferencia en «Completar inscripción» se reemplaza por el que pidió el Distrito 4281: datos completos del participante, un formulario por persona, el comprobante compartido indicado en «Comentarios» y el contacto del «Comité de Inscripciones».',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'conferencia distrital', 'distrito 4281'],
+        type: 'update',
+        impact: 'Media: las instrucciones del formulario quedan como las definió el Comité de Inscripciones.',
+        changes: [
+            { type: 'changed', text: 'Nuevo «Texto introductorio» del formulario /inscripcion-conferencia-distrital-villavicencio-2027. Se escribe en la misma configuración que edita «Formulario público», así que después se sigue cambiando desde el panel como siempre.' },
+            { type: 'added', text: 'Ajuste puntual y seguro: sólo reemplaza si el texto todavía es el anterior; si alguien ya lo cambió desde el panel, lo respeta, y no vuelve a escribir. Prueba test:completed:text-fixes.' },
+        ],
+    },
     {
         version: '4.1291.0',
         title: 'Inscripciones: subir o reemplazar el comprobante de pago 🧾',
