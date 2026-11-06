@@ -776,7 +776,7 @@ export const ROLE_PRESETS = [
         // «Usuarios y permisos», que queda auditada.
         key: 'digital_secretary',
         label: 'Secretaría Digital — Control de Aportes',
-        description: 'Supervisión documental y financiera de los aportes: consulta la Bóveda de Fondos, identifica a los aportantes, verifica estados de Stripe y traslados, descarga comprobantes y exporta informes. Administra además el Directorio de Clubes y su Catálogo Maestro, y los Eventos del sitio. No solicita retiros, no registra desembolsos ni modifica estados financieros.',
+        description: 'Supervisión documental y financiera de los aportes: consulta la Bóveda de Fondos, identifica a los aportantes, verifica estados de Stripe y traslados, descarga comprobantes y exporta informes. Administra además el Directorio de Clubes y su Catálogo Maestro, los Eventos y las Analíticas del sitio. No solicita retiros, no registra desembolsos ni modifica estados financieros.',
         scope: 'site',
         protected: true,
         permissions: [
@@ -801,6 +801,12 @@ export const ROLE_PRESETS = [
             'events.create',
             'events.edit',
             'events.publish',
+            // v4.1289 — ANALÍTICAS, también como las veía antes del rol: es el
+            // `analytics.view` del menú base institucional (INSTITUTIONAL_BASE)
+            // que la membresía dejó de sumar. Sólo mirar: sin `analytics.export`.
+            // Las rutas de `/api/analytics` y de la analítica social ya acotan
+            // por sitio; esto abre la entrada del menú y la ruta del panel.
+            'analytics.view',
         ],
         // Su trabajo es la Bóveda: el resumen del panel no le dice nada.
         landing: '/admin/boveda',

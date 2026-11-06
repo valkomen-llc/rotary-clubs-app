@@ -148,6 +148,15 @@ el preset no traía. El preset suma EXACTAMENTE `LEGACY_PERMISSION_MAP.events`
 preset, lo que tenía por la lista legada NO se arrastra; si el preset no lo
 cubre, va en el preset (si es del cargo) o como excepción individual.
 
+**v4.1289 — Analíticas, también como antes.** Mismo origen que v4.1288: la
+cuenta institucional recibía `analytics.view` del menú base
+(`INSTITUTIONAL_BASE`), que la membresía ya no suma. El preset lo incluye en
+sólo lectura (sin `analytics.export`). Las rutas de `/api/analytics` y la
+analítica social acotan por sitio por su cuenta; el permiso abre la entrada del
+menú y la ruta del panel. Si vuelve a faltar otro módulo «que antes veía», la
+referencia es `INSTITUTIONAL_BASE` + la lista legada de la cuenta: comparar con
+el preset antes de agregar nada.
+
 **Pendientes conocidos:** el listado de `/financial/donations` trae hasta 200
 aportes por consulta (suficiente hoy; paginar si un sitio lo supera); el club y
 el distrito del aportante no existen como dato en `Donation` (se ven cuando el
