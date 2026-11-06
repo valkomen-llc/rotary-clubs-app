@@ -7,14 +7,14 @@
 // Pendiente», el punto de enfoque y el selector de club viven acá, todos
 // declarados fuera de otros componentes (regla del repo).
 // ════════════════════════════════════════════════════════════════════════════
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   CheckCircle2, ChevronDown, ChevronUp, Eye, FileText, Film, Globe2, Image as ImageIcon, Loader2, Lock, Music, Plus, RotateCcw, ShieldCheck, Stethoscope, Trash2, Upload,
 } from 'lucide-react';
 import PhoneInputWithCountry from '../../common/PhoneInputWithCountry';
 import ClubSelector from '../../clubs/ClubSelector';
 import { CAMPO, ROTULO, campoCon } from '../../common/InstitutionalFormKit';
-import { fmtBytes, newRowId, showIfOk, type FieldDef, type IntakeFile, type RecordRef, type UploadState } from '../../../lib/programIntakeClient';
+import { fmtBytes, isEmptyValue, newRowId, showIfOk, type BlockDef, type FieldDef, type IntakeFile, type RecordRef, type UploadState } from '../../../lib/programIntakeClient';
 
 export interface FieldCtx {
   section: string;
@@ -150,6 +150,9 @@ export const CampoArchivos: React.FC<{ f: FieldDef; value: any[] | undefined; on
   const max = f.max || 1;
   const p = ctx.purposes[f.purpose || ''] || { label: '', exts: [] };
   const accept = p.exts.map(e => `.${e}`).join(',');
+  // v4.1287 — Un archivo ya cargado (p. ej. el logo o la imagen principal) se
+  // reutiliza en otra parte del envío por referencia: no se sube dos veces.
+  const reutilizables = Object.values(ctx.files).filter(x => x.status === 'ready' && !lista.some(e => e.id === x.id) && p.exts.includes(String(x.format || x.filename.split('.').pop() || '').toLowerCase()));
   const agregar = async (files: FileList | null) => {
     if (!files?.length) return;
     let actual = [...lista];
@@ -163,6 +166,15 @@ export const CampoArchivos: React.FC<{ f: FieldDef; value: any[] | undefined; on
       {lista.length > 0 && (
         <div className="grid sm:grid-cols-2 gap-3 mb-3">
           {lista.map((entry, i) => <FilaArchivo key={entry.id} entry={entry} f={f} ctx={ctx} onMeta={(k, v) => onChange(lista.map((x, j) => (j === i ? { ...x, [k]: v } : x)))} />)}
+        </div>
+      )}
+      {!ctx.readOnly && lista.length < max && reutilizables.length > 0 && (
+        <div className="mb-2 flex flex-col sm:flex-row sm:items-center gap-2">
+          <label className="text-[11px] font-bold text-gray-500 shrink-0" htmlFor={`reuso-${f.k}-${ctx.section}`}>Usar un archivo ya cargado en este envío:</label>
+          <select id={`reuso-${f.k}-${ctx.section}`} value="" onChange={(e) => { if (e.target.value) onChange([...lista, { id: e.target.value }]); }} className="flex-1 min-w-0 px-2.5 py-2 rounded-lg border border-gray-200 text-xs bg-white">
+            <option value="">Elegir… (no se vuelve a subir)</option>
+            {reutilizables.map(x => <option key={x.id} value={x.id}>{x.filename}</option>)}
+          </select>
         </div>
       )}
       {!ctx.readOnly && lista.length < max && (
@@ -184,6 +196,7 @@ export const CampoArchivos: React.FC<{ f: FieldDef; value: any[] | undefined; on
 // ── Un campo ─────────────────────────────────────────────────────────────
 export const CampoIntake: React.FC<{ f: FieldDef; value: any; onChange: (v: any) => void; row: Record<string, any>; path: string; ctx: FieldCtx }> = ({ f, value, onChange, row, path, ctx }) => {
   if (!showIfOk(f, row)) return null;
+  if (f.legacy && isEmptyValue(value)) return null;
   const id = `fi-${ctx.section}-${path.replace(/[^\w-]/g, '-')}`;
   const e = err(ctx, path);
   const ro = ctx.readOnly;
@@ -378,14 +391,61 @@ export const ListaRepetible: React.FC<{ f: FieldDef; value: any[] | undefined; o
   );
 };
 
-/** Una sección completa: campos sueltos en rejilla y listas a todo el ancho. */
-export const CamposDeSeccion: React.FC<{ fields: FieldDef[]; data: Record<string, any>; onChange: (k: string, v: any) => void; ctx: FieldCtx }> = ({ fields, data, onChange, ctx }) => (
+const Rejilla: React.FC<{ fields: FieldDef[]; data: Record<string, any>; onChange: (k: string, v: any) => void; ctx: FieldCtx }> = ({ fields, data, onChange, ctx }) => (
   <div className="grid sm:grid-cols-2 gap-5">
     {fields.map(f => (f.t === 'list'
       ? <ListaRepetible key={f.k} f={f} value={data[f.k]} onChange={(v) => onChange(f.k, v)} ctx={ctx} />
       : <CampoIntake key={f.k} f={f} value={data[f.k]} row={data} path={f.k} onChange={(v) => onChange(f.k, v)} ctx={ctx} />))}
   </div>
 );
+
+/**
+ * v4.1287 — Un bloque interno DESPLEGABLE: subtítulo, cuántos apartados tienen
+ * información y su contenido. Cerrado por omisión salvo lo esencial; se abre
+ * solo si trae datos o un aviso. Nunca es un paso ni lleva número.
+ */
+export const BloqueDesplegable: React.FC<{ titulo: string; texto?: string; abierto: boolean; llenos: number; total: number; conError: boolean; children: React.ReactNode }> = ({ titulo, texto, abierto, llenos, total, conError, children }) => {
+  const [open, setOpen] = useState(abierto || conError);
+  useEffect(() => { if (conError) setOpen(true); }, [conError]);
+  return (
+    <section className={`rounded-2xl border-2 ${conError ? 'border-red-200' : 'border-gray-100'} bg-white`}>
+      <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open} className="w-full flex items-center gap-3 px-4 sm:px-5 py-3.5 text-left">
+        <span className="flex-1 min-w-0">
+          <span className="block text-sm font-black text-gray-800">{titulo}</span>
+          {texto && <span className="block text-[11px] text-gray-500 mt-0.5">{texto}</span>}
+        </span>
+        {conError ? <span className="text-[10px] font-bold text-red-600 shrink-0">Revisar</span>
+          : <span className={`text-[10px] font-bold shrink-0 ${llenos ? 'text-emerald-600' : 'text-gray-400'}`}>{llenos ? `${llenos} de ${total}` : 'Opcional'}</span>}
+        {open ? <ChevronUp className="w-4 h-4 text-gray-400 shrink-0" /> : <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />}
+      </button>
+      {open && <div className="px-4 sm:px-5 pb-5 pt-1 border-t border-gray-100"><div className="pt-4">{children}</div></div>}
+    </section>
+  );
+};
+
+/** Una sección completa: sus bloques desplegables (o, sin bloques, la rejilla de siempre). */
+export const CamposDeSeccion: React.FC<{ fields: FieldDef[]; blocks?: BlockDef[]; data: Record<string, any>; onChange: (k: string, v: any) => void; ctx: FieldCtx }> = ({ fields, blocks = [], data, onChange, ctx }) => {
+  if (!blocks.length) return <Rejilla fields={fields} data={data} onChange={onChange} ctx={ctx} />;
+  const enBloques = new Set(blocks.flatMap(b => b.f));
+  const sueltos = fields.filter(f => !enBloques.has(f.k));
+  return (
+    <div className="space-y-3">
+      {sueltos.length > 0 && <Rejilla fields={sueltos} data={data} onChange={onChange} ctx={ctx} />}
+      {blocks.map(b => {
+        const fs = b.f.map(k => fields.find(f => f.k === k)).filter((f): f is FieldDef => Boolean(f));
+        const visibles = fs.filter(f => !(f.legacy && isEmptyValue(data[f.k])) && showIfOk(f, data));
+        if (!visibles.length) return null;
+        const llenos = visibles.filter(f => !isEmptyValue(data[f.k])).length;
+        const conError = Object.keys(ctx.errors).some(k => b.f.some(fk => k === `${ctx.section}:${fk}` || k.startsWith(`${ctx.section}:${fk}.`)));
+        return (
+          <BloqueDesplegable key={b.t} titulo={b.t} texto={b.d} abierto={b.open || llenos > 0} llenos={llenos} total={visibles.length} conError={conError}>
+            <Rejilla fields={fs} data={data} onChange={onChange} ctx={ctx} />
+          </BloqueDesplegable>
+        );
+      })}
+    </div>
+  );
+};
 
 export const AvisoPrivacidad: React.FC<{ texto: string }> = ({ texto }) => (
   <p className="text-[11px] text-gray-400 flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5 shrink-0" /> {texto}</p>

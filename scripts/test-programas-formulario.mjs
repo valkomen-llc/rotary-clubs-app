@@ -38,10 +38,10 @@ ok(!field(fc, 'identidad', 'history') && field(fc, 'identidad', 'mission').requi
 ok(Boolean(field(fc, 'remitente', 'email')), 'lo indispensable para identificar un envío no se puede ocultar');
 
 console.log('── Forma de los valores');
-const sh = F.shapeIntakeSection('identidad', { name: '  Clínicas   Ponseti ', inventado: 'x', mission: { status: 'no_aplica', text: 'ignorado' }, vision: { status: 'texto', text: '' }, website: 'clinicas.org', startYear: '2015', milestones: [{ _id: 'h1', title: 'Primera clínica', year: 2016 }, { _id: '<script>', title: 'x' }] });
+const sh = F.shapeIntakeSection('identidad', { name: '  Clínicas   Ponseti ', inventado: 'x', mission: { status: 'no_aplica', text: 'ignorado' }, vision: { status: 'texto', text: '' }, startYear: '2015', milestones: [{ _id: 'h1', title: 'Primera clínica', year: 2016 }, { _id: '<script>', title: 'x' }] });
 ok(sh.name === 'Clínicas Ponseti' && !('inventado' in sh), 'sólo los campos de la sección; espacios normalizados');
 ok(sh.mission.status === 'no_aplica' && sh.mission.text === '' && !('vision' in sh), '«No aplica» se guarda sin texto; un texto vacío no viaja');
-ok(sh.website === 'https://clinicas.org/' && sh.startYear === 2015, 'enlace normalizado y año numérico');
+ok(F.shapeIntakeSection('contacto', { website: 'clinicas.org' }).website === 'https://clinicas.org/' && sh.startYear === 2015, 'enlace normalizado (el sitio web vive en «Contacto», paso 4) y año numérico');
 ok(sh.milestones.length === 1 && sh.milestones[0]._id === 'h1', 'un registro sin id válido se descarta');
 const files = F.shapeIntakeSection('visual', { officialLogo: [{ id: 'f_12345678', description: 'Versión a color', usage: 'Fondos claros', alt: 'no-va' }, { id: 'f_otro0000' }] });
 ok(files.officialLogo.length === 1 && files.officialLogo[0].usage === 'Fondos claros' && !('alt' in files.officialLogo[0]), 'archivos: tope por campo y sólo sus metadatos (descripción e indicaciones de uso)');
@@ -68,7 +68,8 @@ ok(F.validateIntakeSubmit(fs, { ...parcial, consents: {} }).some(e => e.field ==
 const conArchivo = { ...parcial, data: { ...parcial.data, visual: { officialLogo: [{ id: 'f_12345678' }] } } };
 ok(F.validateIntakeSubmit(fs, conArchivo).some(e => e.field === 'consents.rights') && F.validateIntakeSubmit(fs, { ...conArchivo, consents: { data: true, rights: true } }).length === 0, 'derechos de uso: sólo si se adjuntan materiales, y aparte del tratamiento de datos');
 const act = { ...parcial, submissionType: 'actualizacion', sections: ['identidad', 'sedes'] };
-ok(F.validateIntakeSubmit(fs, act).some(e => e.section === 'sedes'), 'en una actualización, una sección elegida y vacía se avisa');
+ok(F.validateIntakeSubmit(fs, act).some(e => e.section === 'atencion' && /Atención, cobertura y directorio/.test(e.message)), 'en una actualización, un PASO elegido sin ningún dato se avisa');
+ok(!F.validateIntakeSubmit(fs, { ...act, sections: ['identidad', 'atencion', 'sedes'], data: { ...act.data, sedes: F.shapeIntakeSection('sedes', { clinics: [{ _id: 'c9', name: 'Sede Norte', city: 'Pasto' }] }) } }).length, 'un paso con datos en UNA de sus secciones no exige completar la otra');
 ok(!F.validateIntakeSubmit(fs, { ...act, sections: ['identidad'] }).length, 'lo que no se eligió no bloquea');
 
 console.log('── Historias: identidad pública y autorizaciones');
@@ -86,7 +87,7 @@ const intake = {
         testimonios: F.shapeIntakeSection('testimonios', { testimonies: [{ _id: 't1', firstName: 'Carlos', lastName: 'Gómez', mode: 'familiar', text: 'El programa nos devolvió la tranquilidad como familia.', display: 'iniciales', publishAuthorized: true }] }),
         visual: F.shapeIntakeSection('visual', { sponsors: [{ _id: 'p1', name: 'Fundación Amiga', relationType: 'patrocinio', logo: [{ id: 'f_logo0001' }] }] }),
         participacion: F.shapeIntakeSection('participacion', { donations: [{ _id: 'd1', receiver: 'Fundación Ponseti', url: 'https://dona.org', taxClaim: true, purpose: 'Yesos' }] }),
-        recursos: F.shapeIntakeSection('recursos', { resources: [{ _id: 'r1', category: 'jornada', title: 'Jornada en Pasto', date: '2026-12-01', location: 'Pasto' }] }),
+        impacto: F.shapeIntakeSection('impacto', { news: [{ _id: 'r1', category: 'jornada', title: 'Jornada en Pasto', date: '2026-12-01', location: 'Pasto' }] }),
         contacto: F.shapeIntakeSection('contacto', { instagram: 'instagram.com/ponseti', publicEmail: 'info@ponseti.org', publicHours: 'L-V 8-5' }),
         atencion: F.shapeIntakeSection('atencion', { costsText: 'Gratuito para afiliados', faqs: [{ _id: 'q1', question: '¿Duele?', answer: 'No', clinical: true }] }),
     },
@@ -123,8 +124,8 @@ ok(pp.requests[0].payload.identity.partnersUpsert[0].relationType === 'patrocini
 const pd = F.planForItem(key('participacion:donations:d1'), { program });
 const don = S.shapeContent('donation', pd.requests[0].payload);
 ok(don.taxClaimPending === true && !S.validateContent('donation', { ...don, verifiedBy: 'A', verifiedAt: '2026-11-01' }, { publish: true }).ok, 'una afirmación tributaria queda pendiente y bloquea la publicación hasta tener texto aprobado');
-const pr = F.planForItem(key('recursos:resources:r1'), { program });
-ok(pr.requests[0].kind === 'news' && pr.requests[0].payload.type === 'evento', 'una jornada se aplica a la colección existente de noticias y eventos');
+const pr = F.planForItem(key('impacto:news:r1'), { program });
+ok(pr.requests[0].kind === 'news' && pr.requests[0].payload.type === 'evento', 'una jornada («Noticias y actividades», paso 9) se aplica a la colección existente de noticias y eventos');
 const pco = F.planForItem(key('contacto'), { program });
 ok(pco.requests[0].payload.identity.social.instagram && pco.requests[0].payload.governance.institutionalEmailPublic === true, 'redes y contacto público van a la ficha, aparte de los datos del remitente');
 const pat = F.planForItem(key('atencion'), { program });
@@ -152,6 +153,30 @@ ok(merged.profile.milestones.length === 2 && merged.profile.mission.text === 'Mi
 ok(merged.care.faqs.length === 2 && merged.care.coverage === 'Nariño', 'preguntas frecuentes por id; cobertura nueva');
 const pv = S.publicProgramView({ ...merged, profile: { ...merged.profile, vision: { status: 'no_aplica' }, brand: { privateFiles: [{ fileId: 'pf9' }] } } });
 ok(pv.profile.vision === '' && pv.profile.mission === 'Misión vigente' && !JSON.stringify(pv).includes('pf9'), 'la ficha pública no pinta «No aplica» ni expone archivos privados');
+
+console.log('── Diez pasos (v4.1287)');
+ok(fs.steps.length === 10 && fs.steps[9].k === 'resumen' && fs.steps[9].title === 'Resumen y envío' && fs.steps[0].sections.join() === 'remitente', 'exactamente diez pasos; el 1 es programa y responsable y el 10 el resumen');
+ok(F.INTAKE_SECTIONS.every(sec => fs.steps.filter(st => st.sections.includes(sec.k)).length === 1), 'cada una de las 15 secciones vive en UN solo paso (nada se pide dos veces)');
+ok(fs.steps.map(st => st.sections.join('+')).join(' | ') === 'remitente | identidad | visual | equipo+contacto | atencion+sedes | participacion+documentos | multimedia+recursos | historias+testimonios | impacto | ', 'la distribución pedida: equipo con contacto, atención con directorio, participación con documentos, multimedia con recursos, historias con testimonios');
+ok(fg.steps[4].title === 'Participantes, cobertura y sedes', 'el título del paso 5 se adapta a un programa no médico');
+const ident = fs.sections.find(x => x.k === 'identidad');
+ok(!ident.fields.some(f => f.k === 'website') && fs.sections.find(x => x.k === 'contacto').fields[0].k === 'website', 'el sitio web se pide una sola vez, en «Equipo, contacto y canales»');
+ok(ident.fields.find(f => f.k === 'about').legacy && ident.fields.find(f => f.k === 'purpose').legacy, '«Sobre nosotros» y «Propósito» ya no se piden (se muestran sólo si un borrador anterior los trae)');
+ok(ident.blocks.length === 4 && ident.blocks[0].open && !ident.blocks[3].open, 'bloques internos desplegables: lo esencial abierto, lo complementario cerrado');
+ok(!fg.sections.find(x => x.k === 'equipo').blocks.some(b => b.t === 'Revisor médico') && fs.sections.find(x => x.k === 'equipo').blocks.some(b => b.t === 'Revisor médico'), 'el bloque del revisor médico sólo aparece en programas de salud');
+ok(fs.sections.find(x => x.k === 'documentos').collapsible === true, 'la documentación es un bloque complementario desplegable del paso 6');
+ok(!fs.sections.find(x => x.k === 'recursos').fields[0].fields[0].opt.some(o => ['noticia', 'jornada', 'evento'].includes(o.id)) && fs.sections.find(x => x.k === 'impacto').fields.some(f => f.k === 'news'), 'recursos educativos (paso 7) separados de noticias y actividades (paso 9)');
+ok(F.stepOfSection('sedes') === 5 && F.stepOfSection('documentos') === 6 && F.stepOfSection('testimonios') === 8, 'cada sección sabe a qué paso pertenece (resumen y avisos)');
+const viejo = { identidad: { website: 'https://ponseti.org/', tagline: 'X' }, recursos: { resources: [{ _id: 'g1', category: 'guia', title: 'Guía' }, { _id: 'n1', category: 'jornada', title: 'Jornada', location: 'Pasto', audience: 'x' }] } };
+const mg = F.migrateIntakeData(viejo, { 'recursos:resources:n1': { status: 'ajustes', note: 'Falta fecha' }, 'recursos:resources:g1': { status: 'aprobado' } });
+ok(mg.changed && mg.data.contacto.website === 'https://ponseti.org/' && !('website' in mg.data.identidad) && mg.data.identidad.tagline === 'X', 'borrador anterior: el sitio web pasa a «Contacto» sin perder lo demás');
+ok(mg.data.impacto.news[0]._id === 'n1' && mg.data.impacto.news[0].location === 'Pasto' && mg.data.recursos.resources.length === 1 && mg.review['impacto:news:n1'].note === 'Falta fecha' && mg.review['recursos:resources:g1'], 'borrador anterior: la jornada pasa a «Noticias y actividades» con su id y su decisión de revisión');
+ok(!F.migrateIntakeData(mg.data, mg.review).changed && !F.migrateIntakeData({ contacto: { website: 'a' }, identidad: {} }).changed, 'la migración es idempotente');
+ok(F.migrateIntakeData({ identidad: { website: 'https://a.org/' }, contacto: { website: 'https://b.org/' } }).data.contacto.website === 'https://b.org/', 'si ya había sitio web en «Contacto», no se pisa');
+const pv2 = F.planForItem({ kind: 'fields', section: 'visual', data: { heroImage: [{ id: 'f_hero0001', alt: 'Niño caminando' }] } }, { program, urlOf: () => 'https://cdn.example.org/h.webp' });
+ok(pv2.requests[0].payload.identity.heroImageUrl === 'https://cdn.example.org/h.webp' && pv2.requests[0].payload.identity.heroImageAlt === 'Niño caminando', 'la imagen principal (paso 3) se propone con su texto alternativo');
+const pc2b = F.planForItem({ kind: 'fields', section: 'contacto', data: { website: 'https://ponseti.org/' } }, { program });
+ok(pc2b.requests[0].payload.identity.website === 'https://ponseti.org/', 'el sitio web del paso 4 llega a la ficha');
 
 console.log('── Archivos: tipo real y topes configurables');
 const lim = F.intakeLimits();

@@ -31,14 +31,14 @@ import {
     SUBMISSION_TYPES, SUBMISSION_TYPE_IDS, INTAKE_STATES, ITEM_DECISIONS, REVIEWABLE_DECISIONS, INTAKE_SECTION_KEYS, INTAKE_EDITABLE, FILE_PURPOSES,
     intakeLimits, checkIntakeFile, shapeIntakeConfig, resolveIntakeForm, shapeIntakeSection, validateIntakeSection, validateIntakeSubmit, intakeItems,
     currentValuesFor, newIntakeToken, hashIntakeToken, isTokenShape, shapeConsents, canTransitionIntake, sectionSpec, fmtSize, EMAIL_RE,
-    INTAKE_DATA_CONSENT, INTAKE_RIGHTS_CONSENT, INTAKE_NEWSLETTER_CONSENT, INTAKE_SECTIONS,
+    INTAKE_DATA_CONSENT, INTAKE_RIGHTS_CONSENT, INTAKE_NEWSLETTER_CONSENT, INTAKE_SECTIONS, INTAKE_STEPS, stepOfSection,
 } from '../lib/programIntakeSpec.js';
 import {
     newIntakeKey, intakeKeyBelongs, presignSinglePut, startMultipart, presignParts, listUploadedParts, completeMultipart, abortMultipart,
     inspectIntakeObject, signedIntakeUrl, deleteIntakeObject,
 } from '../lib/programIntakeFiles.js';
 
-console.log('[programas] v4.1286.0 cargado — Formulario institucional de programas: envíos por secciones con borrador seguro, archivos privados con carga reanudable y revisión por ítem hacia el flujo editorial');
+console.log('[programas] v4.1287.0 cargado — Formulario institucional de programas en DIEZ pasos con bloques desplegables, resumen con edición y borradores anteriores migrados sin pérdida');
 
 const fail = (res, e, code = 500) => {
     if (code >= 500) console.error('[programas:formulario]', e?.message || e);
@@ -251,6 +251,27 @@ export const publicIntakeSubmit = async (req, res) => {
     } catch (e) { return fail(res, e); }
 };
 
+// POST /public/intake/draft/check → lo que el resumen debe advertir, sin enviar nada (v4.1287)
+export const publicIntakeCheck = async (req, res) => {
+    try {
+        const L = await loadByToken(req, res); if (!L) return;
+        const form = formFor(L.program);
+        const consents = req.body?.consents ? shapeConsents(req.body.consents) : L.intake.consents;
+        const files = await I.filesOf(L.intake.id);
+        const pendientes = [];
+        for (const s of form.sections) {
+            const d = (L.intake.data || {})[s.k] || {};
+            for (const f of s.fields) if (f.t === 'na' && d[f.k]?.status === 'pendiente') pendientes.push({ section: s.k, field: f.k, label: f.l });
+        }
+        res.setHeader('Cache-Control', 'no-store');
+        res.json({
+            errors: validateIntakeSubmit(form, { ...L.intake, consents }),
+            pending: pendientes,
+            unfinishedFiles: files.filter(f => f.status !== 'ready').map(f => ({ id: f.id, filename: f.filename })),
+        });
+    } catch (e) { return fail(res, e); }
+};
+
 // POST /public/intake/recover  { email }  → siempre la misma respuesta
 export const publicIntakeRecover = async (req, res) => {
     const same = { ok: true, message: 'Si hay borradores asociados a ese correo, te enviamos un enlace para continuarlos. Revisa también la carpeta de correo no deseado.' };
@@ -412,7 +433,7 @@ async function loadIntake(req, res, ability = 'review') {
 
 const catalogs = () => ({
     states: INTAKE_STATES, decisions: ITEM_DECISIONS, submissionTypes: SUBMISSION_TYPES,
-    sections: INTAKE_SECTIONS.map(s => ({ k: s.k, title: s.title, always: Boolean(s.always), target: s.target, landing: s.landing })),
+    sections: INTAKE_SECTIONS.map(s => ({ k: s.k, title: s.title, always: Boolean(s.always), target: s.target, landing: s.landing, step: stepOfSection(s.k), stepTitle: INTAKE_STEPS[stepOfSection(s.k) - 1]?.title || '' })),
 });
 
 // GET /admin/:id/intake-config
@@ -561,6 +582,6 @@ export const _internals = { optionalUser, existingRecords, openPrograms, linkFor
 
 export default {
     publicIntakePrograms, publicIntakeForm, publicIntakeStart, publicIntakeDraft, publicIntakeSaveMeta, publicIntakeSaveSection, publicIntakeSubmit,
-    publicIntakeRecover, publicIntakeMine, publicIntakeOpenMine, publicIntakePresign, publicIntakeParts, publicIntakeComplete, publicIntakeDeleteFile, publicIntakeFileUrl,
+    publicIntakeRecover, publicIntakeCheck, publicIntakeMine, publicIntakeOpenMine, publicIntakePresign, publicIntakeParts, publicIntakeComplete, publicIntakeDeleteFile, publicIntakeFileUrl,
     adminIntakeConfig, adminSaveIntakeConfig, adminListIntakes, adminGetIntake, adminDecideItem, adminIntakeStatus, adminApplyIntake, adminIntakeFileUrl, adminMediaBank,
 };

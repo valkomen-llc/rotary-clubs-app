@@ -105,3 +105,62 @@ export const BarraDePasos: React.FC<{
   </nav>
   );
 };
+
+/**
+ * v4.1287 — La barra de un formulario largo con un número FIJO de pasos (el de
+ * programas: diez). En escritorio, los diez a la vista en una rejilla —sin
+ * desplazamiento ni recortes— con número y título corto. En el móvil, «Paso 3
+ * de 10» con el título y un botón que despliega la lista de pasos.
+ * `estado(n)`: 'hecho' (con información), 'excluido' (no va en este envío) o ''.
+ */
+export const PasosNumerados: React.FC<{
+  pasos: { short: string; title: string }[]; paso: number; pct: number; onIr: (n: number) => void;
+  alcanzable?: (n: number) => boolean; estado?: (n: number) => '' | 'hecho' | 'excluido';
+}> = ({ pasos, paso, pct, onIr, alcanzable, estado }) => {
+  const [lista, setLista] = React.useState(false);
+  const puede = (n: number) => (alcanzable ? alcanzable(n) : n <= paso);
+  const actual = pasos[paso - 1];
+  return (
+    <nav aria-label="Progreso" className="bg-white rounded-2xl border border-gray-100 px-4 sm:px-6 py-3.5 shadow-sm space-y-3">
+      <ol className="hidden md:grid gap-1" style={{ gridTemplateColumns: `repeat(${pasos.length}, minmax(0, 1fr))` }}>
+        {pasos.map((p, i) => {
+          const n = i + 1; const e = estado?.(n) || '';
+          return (
+            <li key={p.short + n} className="min-w-0">
+              <button type="button" onClick={() => onIr(n)} disabled={!puede(n)} title={`${n}. ${p.title}${e === 'excluido' ? ' (no incluido en este envío)' : ''}`}
+                aria-current={n === paso ? 'step' : undefined}
+                className={`w-full flex flex-col items-center gap-1 rounded-xl px-1 py-1.5 transition-colors disabled:cursor-default ${n === paso ? 'bg-rotary-blue/10' : 'hover:bg-blue-50'}`}>
+                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black ${n === paso ? 'bg-rotary-blue text-white' : e === 'hecho' ? 'bg-rotary-blue/80 text-white' : e === 'excluido' ? 'bg-gray-50 text-gray-300 border border-dashed border-gray-200' : 'bg-gray-100 text-gray-500'}`}>{n}</span>
+                <span className={`text-[10px] leading-tight font-bold text-center truncate w-full ${n === paso ? 'text-rotary-blue' : e === 'excluido' ? 'text-gray-300' : 'text-gray-500'}`}>{p.short}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+      <div className="md:hidden flex items-center justify-between gap-3">
+        <p className="min-w-0"><span className="block text-[11px] font-black text-rotary-blue uppercase tracking-wider">Paso {paso} de {pasos.length}</span><span className="block text-sm font-bold text-gray-800 truncate">{actual?.title}</span></p>
+        <button type="button" onClick={() => setLista(v => !v)} aria-expanded={lista} aria-controls="pasos-lista" className="shrink-0 text-xs font-bold text-rotary-blue px-3 py-2 rounded-xl border border-rotary-blue/30">{lista ? 'Cerrar' : 'Ver pasos'}</button>
+      </div>
+      {lista && (
+        <ol id="pasos-lista" className="md:hidden divide-y divide-gray-100 border border-gray-100 rounded-xl overflow-hidden">
+          {pasos.map((p, i) => {
+            const n = i + 1; const e = estado?.(n) || '';
+            return (
+              <li key={p.short + n}>
+                <button type="button" disabled={!puede(n)} aria-current={n === paso ? 'step' : undefined} onClick={() => { setLista(false); onIr(n); }}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm disabled:opacity-50 ${n === paso ? 'bg-rotary-blue/10 font-bold text-rotary-blue' : 'text-gray-700'}`}>
+                  <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 ${n === paso ? 'bg-rotary-blue text-white' : e === 'hecho' ? 'bg-rotary-blue/80 text-white' : 'bg-gray-100 text-gray-500'}`}>{n}</span>
+                  <span className="flex-1 min-w-0 truncate">{p.title}</span>
+                  {e === 'excluido' && <span className="text-[10px] text-gray-400 shrink-0">No incluido</span>}
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`Paso ${paso} de ${pasos.length}`}>
+        <div className="h-full bg-rotary-blue transition-all duration-500" style={{ width: `${Math.max(4, pct)}%` }} />
+      </div>
+    </nav>
+  );
+};

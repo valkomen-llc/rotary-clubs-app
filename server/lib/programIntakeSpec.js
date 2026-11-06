@@ -351,6 +351,12 @@ export const INTAKE_SECTIONS = [
             T('publicRole', 'Cargo como debe aparecer públicamente', { showIf: ['publicCredit', true], pub: 'publico' }),
         ],
         need: ['firstName', 'lastName', 'email', 'role', 'relation'],
+        blocks: [
+            { t: 'Tus datos', f: ['firstName', 'lastName', 'role', 'organization', 'relation', 'relationOther'], open: true },
+            { t: 'Distrito y club rotario', f: ['districtNumber', 'clubMode', 'clubProfileId', 'otherOrganization'], open: true },
+            { t: 'Contacto (interno, no se publica)', f: ['email', 'phone'], open: true },
+            { t: 'Crédito público (opcional)', f: ['publicCredit', 'publicName', 'publicRole'] },
+        ],
     },
     {
         k: 'identidad', title: 'Identidad y presentación del programa', icon: 'book',
@@ -363,10 +369,12 @@ export const INTAKE_SECTIONS = [
             T('tagline', 'Frase principal', { max: 140, h: 'Una sola frase que resuma el programa (aparece en la portada).' }),
             TA('summary', 'Resumen', { max: 400, rows: 3, h: 'Dos o tres frases para el catálogo y redes (mínimo 40 caracteres para publicar).' }),
             TA('description', 'Descripción', { max: 12000, rows: 7, h: 'Qué es el programa, cómo funciona y a quién acompaña.' }),
-            { k: 'website', t: 'url', l: 'Sitio web oficial' },
-            TA('purpose', 'Propósito', { max: 2000, rows: 3, h: 'Para qué existe el programa.' }),
-            TA('whoWeAre', 'Quiénes somos', { max: 3000, h: 'Las personas y organizaciones detrás del programa.' }),
-            TA('about', 'Sobre nosotros', { max: 4000, h: 'Texto institucional ampliado.' }),
+            TA('whoWeAre', 'Quiénes somos', { max: 3000, h: 'Quiénes están detrás del programa y qué hacen. Un solo texto: no hace falta repetirlo en otro campo.' }),
+            // v4.1287 — «Propósito» y «Sobre nosotros» decían lo mismo que «Quiénes
+            // somos» y la misión: ya no se piden. Un borrador que los traía los
+            // conserva y los sigue mostrando (`legacy`: sólo con valor).
+            TA('purpose', 'Propósito (registrado antes)', { max: 2000, rows: 3, legacy: true }),
+            TA('about', 'Sobre nosotros (registrado antes)', { max: 4000, legacy: true }),
             TA('history', 'Reseña histórica', { max: 6000, rows: 5 }),
             { k: 'startYear', t: 'year', l: 'Año de inicio' },
             NA('mission', 'Misión', { h: 'Si el programa no tiene misión formal, marca «No aplica»; no hace falta inventarla.' }),
@@ -376,6 +384,12 @@ export const INTAKE_SECTIONS = [
                 fields: [{ k: 'year', t: 'year', l: 'Año' }, T('title', 'Hito'), TA('description', 'Descripción', { max: 800, rows: 2 })],
             },
         ],
+        blocks: [
+            { t: 'Lo esencial', f: ['name', 'shortName', 'category', 'tagline', 'summary', 'description'], open: true },
+            { t: 'Quiénes somos', f: ['whoWeAre', 'purpose', 'about'] },
+            { t: 'Reseña histórica e hitos', f: ['history', 'startYear', 'milestones'] },
+            { t: 'Misión, visión, valores y objetivos', f: ['mission', 'vision', 'values', 'objectives'], d: 'Cada uno admite «No aplica» o «Pendiente de suministrar».' },
+        ],
     },
     {
         k: 'visual', title: 'Identidad visual, aliados y patrocinadores', icon: 'palette',
@@ -383,6 +397,7 @@ export const INTAKE_SECTIONS = [
         target: 'Logo del programa, Biblioteca (originales privados) y aliados del programa', landing: 'Portada · Aliados',
         fields: [
             { k: 'officialLogo', t: 'files', l: 'Logo oficial', purpose: 'logo', max: 1, fileMeta: ['description', 'usage'], full: true },
+            { k: 'heroImage', t: 'files', l: 'Imagen principal del programa', purpose: 'photo', max: 1, fileMeta: ['alt', 'description'], full: true, h: 'Una fotografía real y autorizada. Queda también en el banco multimedia, sin volver a cargarla.' },
             { k: 'logoVariants', t: 'files', l: 'Variantes del logo (horizontal, vertical, monocromo…)', purpose: 'logo', max: 12, fileMeta: ['description', 'usage'], full: true },
             { k: 'brandManual', t: 'files', l: 'Manual de identidad', purpose: 'brand', max: 3, fileMeta: ['description', 'usage'], full: true },
             { k: 'originals', t: 'files', l: 'Archivos originales disponibles (AI, EPS, SVG, PSD…)', purpose: 'brand', max: 20, fileMeta: ['description', 'usage'], full: true },
@@ -390,16 +405,21 @@ export const INTAKE_SECTIONS = [
             { k: 'sponsors', t: 'list', l: 'Patrocinadores', item: 'Patrocinador', add: 'Agregar patrocinador', need: ['name', 'relationType'], target: 'partners', fields: PARTNER_FIELDS(['patrocinio', 'otra']) },
             { k: 'backers', t: 'list', l: 'Entidades de respaldo', item: 'Entidad de respaldo', add: 'Agregar entidad de respaldo', need: ['name', 'relationType'], target: 'partners', fields: PARTNER_FIELDS(['respaldo_institucional', 'alianza_cientifica', 'otra']) },
         ],
+        blocks: [
+            { t: 'Logo e imagen principal', f: ['officialLogo', 'heroImage', 'logoVariants'], open: true },
+            { t: 'Manual de identidad y archivos originales', f: ['brandManual', 'originals'] },
+            { t: 'Organizaciones aliadas', f: ['allies'] },
+            { t: 'Patrocinadores', f: ['sponsors'] },
+            { t: 'Entidades de respaldo', f: ['backers'] },
+        ],
     },
     {
         k: 'equipo', title: 'Responsables y equipo', icon: 'users',
         desc: 'Quién coordina y quiénes pueden aparecer públicamente. Registrar un nombre aquí no da permisos: la aprobación de contenidos la hacen usuarios autorizados en la plataforma.',
         target: 'Gobernanza del programa (interna) y colección «Equipo»', landing: 'Equipo',
         fields: [
-            { k: 'h_coord', t: 'heading', l: 'Coordinador o coordinadora' }, ...PERSON_FIELDS('coordinator'),
-            { k: 'h_comms', t: 'heading', l: 'Responsable de comunicaciones' }, ...PERSON_FIELDS('communications'),
-            { k: 'h_req', t: 'heading', l: 'Responsable de solicitudes' }, ...PERSON_FIELDS('requests'),
-            { k: 'h_med', t: 'heading', l: 'Revisor médico', health: true }, ...PERSON_FIELDS('medical').map(f => ({ ...f, health: true })),
+            ...PERSON_FIELDS('coordinator'), ...PERSON_FIELDS('communications'), ...PERSON_FIELDS('requests'),
+            ...PERSON_FIELDS('medical').map(f => ({ ...f, health: true })),
             {
                 k: 'members', t: 'list', l: 'Integrantes que pueden aparecer públicamente', item: 'Integrante', add: 'Agregar integrante', need: ['name', 'role'], target: 'team', refKind: 'team', actions: ['crear', 'actualizar', 'retirar'],
                 fields: [
@@ -410,6 +430,13 @@ export const INTAKE_SECTIONS = [
                     { k: 'authorizationFile', t: 'files', l: 'Soporte de la autorización (privado)', purpose: 'authorization', max: 3, pub: 'interno' },
                 ],
             },
+        ],
+        blocks: [
+            { t: 'Coordinación del programa', f: ['coordinatorName', 'coordinatorRole', 'coordinatorInstitution', 'coordinatorEmail', 'coordinatorPhone'], d: 'Datos internos: no se publican.' },
+            { t: 'Responsable de comunicaciones', f: ['communicationsName', 'communicationsRole', 'communicationsInstitution', 'communicationsEmail', 'communicationsPhone'], d: 'Datos internos: no se publican.' },
+            { t: 'Responsable de solicitudes', f: ['requestsName', 'requestsRole', 'requestsInstitution', 'requestsEmail', 'requestsPhone'], d: 'Datos internos: no se publican.' },
+            { t: 'Revisor médico', f: ['medicalName', 'medicalRole', 'medicalInstitution', 'medicalEmail', 'medicalPhone'], d: 'Datos internos. La aprobación médica la hacen usuarios autorizados en la plataforma.' },
+            { t: 'Integrantes que pueden aparecer públicamente', f: ['members'], open: true },
         ],
     },
     {
@@ -429,6 +456,13 @@ export const INTAKE_SECTIONS = [
             { k: 'services', t: 'list', l: 'Servicios o actividades del programa', lg: 'Servicios o actividades', item: 'Servicio', add: 'Agregar servicio', need: ['name'], target: 'care', fields: [T('name', 'Nombre'), TA('description', 'Descripción', { max: 800, rows: 2 })] },
             { k: 'steps', t: 'list', l: 'Pasos para una persona interesada', item: 'Paso', add: 'Agregar paso', need: ['title'], target: 'care', fields: [T('title', 'Paso'), TA('description', 'Detalle', { max: 800, rows: 2 })] },
             { k: 'faqs', t: 'list', l: 'Preguntas frecuentes', item: 'Pregunta', add: 'Agregar pregunta', need: ['question', 'answer'], target: 'care', fields: [T('question', 'Pregunta', { max: 300 }), TA('answer', 'Respuesta', { max: 2000, rows: 3 }), { k: 'clinical', t: 'checkbox', l: 'La respuesta contiene información clínica', health: true, full: true }] },
+        ],
+        blocks: [
+            { t: 'Público y cobertura', f: ['audience', 'coverage'], open: true },
+            { t: 'Servicios', f: ['services'] },
+            { t: 'Ruta de orientación y acceso', f: ['guidancePath', 'accessConditions', 'steps', 'officialChannels', 'contactHours'] },
+            { t: 'Costos, gratuidad o aseguramiento', f: ['costsText', 'costsSupport'] },
+            { t: 'Preguntas frecuentes', f: ['faqs'] },
         ],
     },
     {
@@ -477,9 +511,14 @@ export const INTAKE_SECTIONS = [
                 ],
             },
         ],
+        blocks: [
+            { t: 'Formas de apoyar', f: ['waysToSupport', 'currentNeeds', 'volunteering', 'corporateAlliances', 'inKindSupport', 'fundraising'], open: true },
+            { t: 'Participación de clubes', f: ['clubParticipation', 'clubActions'] },
+            { t: 'Donaciones', f: ['donations'], d: 'Entidad receptora, enlace oficial y texto aclaratorio. La plataforma no cobra ni procesa pagos.' },
+        ],
     },
     {
-        k: 'documentos', title: 'Información institucional y documentos', icon: 'file',
+        k: 'documentos', title: 'Información institucional y documentos', icon: 'file', collapsible: true,
         desc: 'Quién opera el programa y sus soportes. Los documentos son privados por defecto: publicarlos requiere la decisión explícita de una persona autorizada.',
         target: 'Archivos privados del programa · Información del programa (entidad que lo opera)', landing: null,
         fields: [
@@ -496,6 +535,10 @@ export const INTAKE_SECTIONS = [
                     { k: 'file', t: 'files', l: 'Archivo', purpose: 'document', max: 1, full: true },
                 ],
             },
+        ],
+        blocks: [
+            { t: 'Entidad que opera el programa', f: ['publicName', 'operatorName', 'legalStatus', 'legalNote'], open: true },
+            { t: 'Documentos institucionales, legales y soportes', f: ['docs'], open: true },
         ],
     },
     {
@@ -594,20 +637,35 @@ export const INTAKE_SECTIONS = [
                     T('validatedBy', 'Responsable de validación'), { k: 'updatedOn', t: 'date', l: 'Fecha del dato' },
                 ],
             },
+            {
+                // v4.1287 — Noticias, jornadas y eventos salen de «Recursos» (paso 7)
+                // y quedan con el impacto: es actualidad, no material educativo.
+                k: 'news', t: 'list', l: 'Noticias y actividades', item: 'Noticia o actividad', add: 'Agregar noticia o actividad', need: ['title', 'category'], target: 'news', actions: ['crear'],
+                fields: [
+                    { k: 'category', t: 'select', l: 'Tipo', opt: RESOURCE_KINDS.filter(r => r.target === 'news').map(r => ({ id: r.id, label: r.label })) },
+                    T('title', 'Título'), TA('description', 'Descripción', { max: 2000, rows: 3 }),
+                    { k: 'date', t: 'date', l: 'Fecha' }, T('location', 'Lugar'), { k: 'url', t: 'url', l: 'Enlace (opcional)' },
+                    { k: 'file', t: 'files', l: 'Imagen o archivo (opcional)', purpose: 'media', max: 1, fileMeta: ['alt'] },
+                ],
+            },
+        ],
+        blocks: [
+            { t: 'Indicadores de impacto', f: ['indicators'], open: true },
+            { t: 'Noticias y actividades', f: ['news'], open: true },
         ],
     },
     {
-        k: 'recursos', title: 'Recursos y actualidad', icon: 'library',
-        desc: 'Guías, videos, podcast, publicaciones, noticias, jornadas y eventos. Lo aprobado se muestra en la página sin volver a cargarlo.',
-        target: 'Colecciones «Recursos educativos» y «Noticias y eventos»', landing: 'Recursos',
+        k: 'recursos', title: 'Recursos educativos', icon: 'library',
+        desc: 'Guías, preguntas frecuentes, videos educativos, podcast y publicaciones. No son los documentos legales del paso de participación. Lo aprobado se muestra en la página sin volver a cargarlo.',
+        target: 'Colección «Recursos educativos»', landing: 'Recursos',
         fields: [
             {
                 k: 'resources', t: 'list', l: 'Recursos', item: 'Recurso', add: 'Agregar recurso', need: ['title', 'category'], target: 'resource', actions: ['crear'],
                 fields: [
-                    { k: 'category', t: 'select', l: 'Categoría', opt: RESOURCE_KINDS.map(r => ({ id: r.id, label: r.label })) },
+                    { k: 'category', t: 'select', l: 'Categoría', opt: RESOURCE_KINDS.filter(r => r.target === 'resource').map(r => ({ id: r.id, label: r.label })) },
                     T('title', 'Título'), TA('description', 'Descripción', { max: 2000, rows: 3 }),
                     { k: 'file', t: 'files', l: 'Archivo', purpose: 'media', max: 1 }, { k: 'url', t: 'url', l: 'O enlace' },
-                    T('audience', 'Público objetivo'), T('source', 'Fuente'), { k: 'date', t: 'date', l: 'Fecha' }, T('location', 'Lugar (jornadas y eventos)'),
+                    T('audience', 'Público objetivo'), T('source', 'Fuente'), { k: 'date', t: 'date', l: 'Fecha' },
                     { k: 'clinical', t: 'checkbox', l: 'Contiene información clínica (la revisa el equipo médico)', health: true, full: true },
                 ],
             },
@@ -618,15 +676,78 @@ export const INTAKE_SECTIONS = [
         desc: 'Los canales que aparecerán en la página. Son distintos de tus datos de contacto como remitente.',
         target: 'Información del programa: redes y contacto institucional', landing: 'Contacto · Pie de la página',
         fields: [
+            { k: 'website', t: 'url', l: 'Sitio web oficial', pub: 'publico' },
             ...SOCIAL_KEYS.map(k => ({ k, t: 'url', l: { facebook: 'Facebook', instagram: 'Instagram', youtube: 'YouTube', spotify: 'Spotify', linkedin: 'LinkedIn', tiktok: 'TikTok', x: 'X (Twitter)', whatsapp: 'WhatsApp (enlace wa.me)' }[k], pub: 'publico' })),
             { k: 'publicEmail', t: 'email', l: 'Correo público', pub: 'publico' }, { k: 'publicPhone', t: 'phone', l: 'Teléfono público', pub: 'publico' },
             T('publicHours', 'Horarios de atención', { max: 300, pub: 'publico' }),
             { k: 'preferredChannel', t: 'select', l: 'Canal preferido para orientación', opt: opts(PREFERRED_CHANNELS) },
         ],
+        blocks: [
+            { t: 'Sitio web y redes sociales', f: ['website', ...SOCIAL_KEYS], open: true },
+            { t: 'Contacto público', f: ['publicEmail', 'publicPhone', 'publicHours', 'preferredChannel'], open: true },
+        ],
     },
 ];
 export const INTAKE_SECTION_KEYS = INTAKE_SECTIONS.map(s => s.k);
 export const CONTENT_SECTION_KEYS = ['multimedia', 'historias', 'testimonios', 'recursos', 'impacto'];
+
+/**
+ * v4.1287 — Los DIEZ pasos del formulario. Agrupan las secciones (que siguen
+ * siendo la unidad de guardado, validación, revisión y aplicación: sus
+ * claves no cambiaron, así que un borrador anterior abre igual). El paso 10
+ * es el resumen. Un bloque interno nunca es un paso.
+ */
+export const INTAKE_STEPS = [
+    { k: 'programa', short: 'Programa', title: 'Programa y datos del responsable', desc: 'Elige el programa y el tipo de envío, y cuéntanos quién suministra la información.', sections: ['remitente'] },
+    { k: 'identidad', short: 'Identidad', title: 'Identidad e historia del programa', desc: 'Cómo se llama el programa, qué hace y de dónde viene. Lo complementario es opcional o admite «No aplica».', sections: ['identidad'] },
+    { k: 'imagen', short: 'Imagen', title: 'Imagen institucional, aliados y patrocinadores', desc: 'Logo, imagen principal y las organizaciones que participan. Indica qué hace cada una: no todas financian ni prestan el servicio.', sections: ['visual'] },
+    { k: 'equipo', short: 'Equipo', title: 'Equipo, contacto y canales oficiales', desc: 'Responsables (datos internos), integrantes que aparecen públicamente y los canales que se publicarán.', sections: ['equipo', 'contacto'] },
+    { k: 'atencion', short: 'Atención', title: 'Atención, cobertura y directorio', titleGeneral: 'Participantes, cobertura y sedes', desc: 'Primero la información general del programa; después el directorio, sede por sede.', sections: ['atencion', 'sedes'] },
+    { k: 'participacion', short: 'Participación', title: 'Participación, donaciones y documentación', desc: 'Cómo apoyar y cómo donar. La documentación institucional va aparte, en un bloque complementario.', sections: ['participacion', 'documentos'] },
+    { k: 'multimedia', short: 'Multimedia', title: 'Banco multimedia y recursos', desc: 'Fotografías, videos, audios y enlaces, y los recursos educativos. Un archivo ya cargado se reutiliza sin volver a subirlo.', sections: ['multimedia', 'recursos'] },
+    { k: 'historias', short: 'Historias', title: 'Historias de vida y testimonios', desc: 'Relatos editoriales y testimonios, cada uno con su identidad pública y sus autorizaciones.', sections: ['historias', 'testimonios'] },
+    { k: 'impacto', short: 'Impacto', title: 'Impacto y actualidad', desc: 'Indicadores con su fuente y quién los valida, y las noticias, jornadas y eventos. La reseña histórica está en el paso 2.', sections: ['impacto'] },
+    { k: 'resumen', short: 'Resumen', title: 'Resumen y envío', desc: 'Revisa lo que incluye tu envío, completa las declaraciones y envíalo a revisión.', sections: [] },
+];
+export const stepOfSection = (sectionKey) => INTAKE_STEPS.findIndex(st => st.sections.includes(sectionKey)) + 1;
+
+/**
+ * v4.1287 — Lleva un borrador anterior a la forma actual SIN perder nada:
+ * el sitio web pasa de «Identidad» a «Contacto» (si allí no había uno) y las
+ * noticias, jornadas y eventos que estaban en «Recursos» pasan a «Noticias y
+ * actividades» (mismo id de registro; la decisión de revisión, si la había,
+ * viaja con su clave nueva). Puro: `{ data, review, changed }`.
+ */
+export const migrateIntakeData = (rawData = {}, rawReview = {}) => {
+    const data = JSON.parse(JSON.stringify(obj(rawData)));
+    const review = { ...obj(rawReview) };
+    let changed = false;
+    const ident = obj(data.identidad);
+    if (ident.website) {
+        data.contacto = obj(data.contacto);
+        if (!data.contacto.website) data.contacto.website = ident.website;
+        delete ident.website; data.identidad = ident; changed = true;
+    }
+    const rec = obj(data.recursos);
+    const newsIds = RESOURCE_KINDS.filter(r => r.target === 'news').map(r => r.id);
+    const moving = arr(rec.resources).filter(r => newsIds.includes(r?.category));
+    if (moving.length) {
+        data.impacto = obj(data.impacto);
+        const news = arr(data.impacto.news);
+        for (const r of moving) {
+            const { audience, source, clinical, ...rest } = r; void audience; void source; void clinical;
+            if (!news.some(n => n._id === r._id)) news.push(rest);
+            const oldKey = `recursos:resources:${r._id}`;
+            if (review[oldKey]) { review[`impacto:news:${r._id}`] = review[oldKey]; delete review[oldKey]; }
+        }
+        data.impacto.news = news;
+        rec.resources = arr(rec.resources).filter(r => !newsIds.includes(r?.category));
+        if (!rec.resources.length) delete rec.resources;
+        data.recursos = rec;
+        changed = true;
+    }
+    return { data, review, changed };
+};
 
 export const sectionSpec = (k) => INTAKE_SECTIONS.find(s => s.k === k) || null;
 const fieldsOf = (section) => arr(section?.fields);
@@ -696,10 +817,17 @@ export const resolveIntakeForm = (program = {}, rawConfig = {}, { categories = [
             k: s.k, icon: s.icon, always: Boolean(s.always),
             title: !health && s.titleGeneral ? s.titleGeneral : s.title,
             desc: config.sections[s.k]?.help || (!health && s.descGeneral ? s.descGeneral : s.desc),
-            target: s.target, landing: s.landing, need: s.need || [],
+            target: s.target, landing: s.landing, need: s.need || [], collapsible: Boolean(s.collapsible),
             fields: s.fields.map(f => adapt(s.k, f, f.k)).filter(Boolean),
-        }));
-    return { health, intro: config.intro, sections, contentSections: CONTENT_SECTION_KEYS.filter(k => sections.some(s => s.k === k)) };
+            blocks: arr(s.blocks).map(b => ({ t: b.t, d: b.d || '', open: Boolean(b.open), f: b.f })),
+        }))
+        .map(s => ({ ...s, blocks: s.blocks.map(b => ({ ...b, f: b.f.filter(k => s.fields.some(f => f.k === k)) })).filter(b => b.f.length) }));
+    // v4.1287 — Siempre DIEZ pasos; un paso sin secciones aplicables queda como «no aplica».
+    const steps = INTAKE_STEPS.map((st, i) => ({
+        k: st.k, n: i + 1, short: st.short, title: !health && st.titleGeneral ? st.titleGeneral : st.title, desc: st.desc,
+        sections: st.sections.filter(k => sections.some(s => s.k === k)),
+    }));
+    return { health, intro: config.intro, sections, steps, contentSections: CONTENT_SECTION_KEYS.filter(k => sections.some(s => s.k === k)) };
 };
 
 // ─── Forma de los valores ─────────────────────────────────────────────
@@ -837,7 +965,7 @@ export const validateIntakeSection = (form, key, data, { required = false } = {}
         if (!showIfMatches(f, row)) return;
         if (isEmpty(v)) {
             const need = (s.need || []).includes(f.k) && path === f.k;
-            if (enforce && (f.required || need)) push(path, `Completa «${f.l}».`);
+            if (enforce && !f.legacy && (f.required || need)) push(path, `Completa «${f.l}».`);
             return;
         }
         if (f.t === 'email' && !EMAIL_RE.test(v)) push(path, `Revisa el correo de «${f.l}».`);
@@ -908,13 +1036,23 @@ export const validateIntakeSubmit = (form, intake) => {
     const sel = new Set(arr(intake.sections));
     errors.push(...validateIntakeSection(form, 'remitente', obj(intake.sender), { required: true }));
     let algo = false;
+    const parcial = intake.submissionType !== 'carga_inicial';
     for (const s of arr(form?.sections)) {
         if (s.always) continue;
-        const chosen = sel.has(s.k);
         const has = sectionHasData(s.k, data[s.k]);
         if (has) algo = true;
-        if (intake.submissionType !== 'carga_inicial' && chosen && !has) errors.push({ section: s.k, field: '', message: `«${s.title}»: agrega al menos un dato o quita la sección de tu envío.` });
-        if (has || (chosen && intake.submissionType !== 'carga_inicial')) errors.push(...validateIntakeSection(form, s.k, data[s.k], { required: chosen }));
+        // Lo obligatorio configurado sólo se exige a la sección que trae datos:
+        // una actualización parcial nunca pide completar otra sección.
+        if (has) errors.push(...validateIntakeSection(form, s.k, data[s.k], { required: sel.has(s.k) }));
+    }
+    // v4.1287 — En una actualización se eligen PASOS: un paso elegido sin
+    // ningún dato en ninguna de sus secciones se avisa (no cada sección).
+    if (parcial) {
+        for (const st of arr(form?.steps)) {
+            const secs = st.sections.filter(k => !sectionSpec(k)?.always);
+            if (!secs.length || !secs.some(k => sel.has(k))) continue;
+            if (!secs.some(k => sectionHasData(k, data[k]))) errors.push({ section: secs[0], field: '', message: `«${st.title}»: agrega al menos un dato o quita ese paso de tu envío.` });
+        }
     }
     if (!algo) errors.push({ section: 'resumen', field: '', message: 'El envío no tiene información todavía: completa al menos una sección.' });
     const c = shapeConsents(intake.consents);
@@ -968,6 +1106,7 @@ export const intakeItems = (intake = {}) => {
     }
     return items;
 };
+// `identidad.website` de un borrador anterior sigue aplicándose (lo mueve `migrateIntakeData`).
 const sectionTarget = (k) => ({ identidad: 'info', visual: 'brand', equipo: 'governance', atencion: 'care', participacion: 'participation', documentos: 'operator', contacto: 'contact' }[k] || 'info');
 export const recordTitle = (target, row = {}) => {
     if (target === 'testimony') return [row.firstName, row.mode].filter(Boolean).join(' · ') || String(row.text || '').slice(0, 40);
@@ -1013,7 +1152,11 @@ export const planForItem = (item, { program = {}, health = true, urlOf = () => '
                 variants: fileUrls(d.logoVariants, urlOf).map(f => ({ url: f.url, description: f.description || '', usage: f.usage || '' })),
                 privateFiles: [...arr(d.brandManual), ...arr(d.originals)].map(f => ({ fileId: fileIdOf(f.id), description: f.description || '', usage: f.usage || '' })).filter(f => f.fileId),
             });
-            const identity = nonEmpty({ logoUrl: logo ? urlOf(logo.id) : undefined, profile: Object.keys(brand).length ? { brand } : undefined });
+            const hero = arr(d.heroImage)[0];
+            const identity = nonEmpty({
+                logoUrl: logo ? urlOf(logo.id) : undefined, profile: Object.keys(brand).length ? { brand } : undefined,
+                heroImageUrl: hero ? urlOf(hero.id) : undefined, heroImageAlt: hero && urlOf(hero.id) ? (hero.alt || hero.description || `Imagen del programa ${program.name || ''}`.trim()) : undefined,
+            });
             if (logo && !urlOf(logo.id)) notes.push('El logo oficial no tiene versión web (formato de diseño): se conserva el original privado y el logo de la ficha no cambia.');
             return { requests: Object.keys(identity).length ? [req({ kind: 'info', title: 'Identidad visual', payload: { identity } })] : [], notes };
         }
@@ -1053,7 +1196,7 @@ export const planForItem = (item, { program = {}, health = true, urlOf = () => '
                 institutionalPhone: d.publicPhone, institutionalPhonePublic: d.publicPhone ? true : undefined,
             });
             const publicContact = nonEmpty({ hours: d.publicHours, preferredChannel: d.preferredChannel });
-            const identity = nonEmpty({ social: Object.keys(social).length ? social : undefined, profile: Object.keys(publicContact).length ? { publicContact } : undefined });
+            const identity = nonEmpty({ website: d.website, social: Object.keys(social).length ? social : undefined, profile: Object.keys(publicContact).length ? { publicContact } : undefined });
             const payload = nonEmpty({ identity: Object.keys(identity).length ? identity : undefined, governance: Object.keys(governance).length ? governance : undefined });
             return { requests: Object.keys(payload).length ? [req({ kind: 'info', title: 'Redes y contacto público', payload })] : [], notes };
         }
@@ -1124,6 +1267,12 @@ export const planForItem = (item, { program = {}, health = true, urlOf = () => '
         const payload = t === 'story' ? storyPayload(d, { urlOf, fileIdOf }) : testimonyPayload(d, { urlOf, fileIdOf });
         const imageRights = t === 'story' ? (d.authImage === true || d.authVideo === true || !(arr(d.photos).length || arr(d.videos).length)) : (d.imageAuthorized === true || !(arr(d.photo).length || arr(d.media).length));
         return { requests: [req({ kind: 'story', operation: op, contentId, title: payload.title, payload, authorizations: { ...base, imageRights, dataConsent: true } })], notes };
+    }
+    if (t === 'news') {
+        const file = arr(d.file)[0];
+        const rk = RESOURCE_KINDS.find(r => r.id === d.category && r.target === 'news') || RESOURCE_KINDS.find(r => r.id === 'noticia');
+        const imageUrl = file ? urlOf(file.id) : '';
+        return { requests: [req({ kind: 'news', title: d.title, payload: nonEmpty({ type: rk.type, title: d.title, summary: String(d.description || '').slice(0, 500), body: d.description, date: d.date, location: d.location, url: d.url, imageUrl, imageAlt: imageUrl ? (file.alt || d.title) : undefined }) })], notes };
     }
     if (t === 'resource') {
         const rk = RESOURCE_KINDS.find(r => r.id === d.category) || RESOURCE_KINDS[0];
@@ -1203,13 +1352,13 @@ export const currentValuesFor = (item, program = {}) => {
         identidad: { name: p.name, shortName: prof.shortName, category: p.category, tagline: prof.tagline, summary: p.summary, description: p.description, website: p.website, purpose: prof.purpose, whoWeAre: prof.whoWeAre, about: prof.about, history: prof.history, startYear: prof.startYear, mission: naText(prof.mission), vision: naText(prof.vision), values: naText(prof.values), objectives: naText(prof.objectives) },
         atencion: { audience: care.audience, coverage: care.coverage, guidancePath: care.guidancePath, accessConditions: care.accessConditions, officialChannels: care.officialChannels, costsText: care.costsText, contactHours: care.contactHours },
         participacion: { ...part },
-        contacto: { ...obj(p.social), publicEmail: g.institutionalEmail, publicPhone: g.institutionalPhone, publicHours: obj(prof.publicContact).hours, preferredChannel: obj(prof.publicContact).preferredChannel },
+        contacto: { website: p.website, ...obj(p.social), publicEmail: g.institutionalEmail, publicPhone: g.institutionalPhone, publicHours: obj(prof.publicContact).hours, preferredChannel: obj(prof.publicContact).preferredChannel },
         documentos: { ...obj(prof.operatingEntity) },
         equipo: Object.fromEntries(['coordinator', 'communications', 'requests', 'medical'].flatMap(k => {
             const src = obj(g[{ coordinator: 'coordinator', communications: 'communications', requests: 'requestsManager', medical: 'medicalReviewer' }[k]]);
             return [[`${k}Name`, src.name], [`${k}Role`, src.role], [`${k}Institution`, src.institution], [`${k}Email`, src.email], [`${k}Phone`, src.phone]];
         })),
-        visual: { officialLogo: p.logoUrl },
+        visual: { officialLogo: p.logoUrl, heroImage: p.heroImageUrl },
     }[item.section] || {};
     return Object.fromEntries(Object.keys(obj(item.data)).map(k => [k, map[k] ?? '']));
 };
@@ -1224,5 +1373,5 @@ export const isTokenShape = (t) => /^[A-Za-z0-9_-]{40,60}$/.test(String(t || '')
 export default {
     SUBMISSION_TYPES, INTAKE_STATES, ITEM_DECISIONS, INTAKE_SECTIONS, FILE_PURPOSES, intakeLimits, checkIntakeFile, sniffIntakeFile,
     shapeIntakeConfig, resolveIntakeForm, shapeIntakeSection, validateIntakeSection, validateIntakeSubmit, intakeItems, planForItem,
-    currentValuesFor, newIntakeToken, hashIntakeToken, storyIdentityErrors, testimonyDisplayName,
+    currentValuesFor, newIntakeToken, hashIntakeToken, storyIdentityErrors, testimonyDisplayName, INTAKE_STEPS, migrateIntakeData,
 };
