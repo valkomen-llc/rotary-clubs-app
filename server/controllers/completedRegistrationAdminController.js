@@ -40,7 +40,8 @@ import {
     mapCompleted, findCompleted, findDuplicates, assignCompletedCode, hasSentMessage,
     eventBrandingFor,
 } from '../lib/completedRegistrationStore.js';
-import { signedReceiptUrl, deleteReceiptObject } from '../lib/completedReceipts.js';
+import { signedReceiptUrl, deleteReceiptObject, presignReceiptUpload, receiptKeyBelongs } from '../lib/completedReceipts.js';
+import { replaceCompletedReceipt } from '../lib/completedReceiptChange.js';
 import { rotaryCatalogFor } from '../lib/eventRegistrationSpec.js';
 import {
     IMPORT_SOURCE, IMPORT_SOURCE_LABEL, IMPORT_INITIAL_STATUSES, DEFAULT_IMPORT_STATUS,
@@ -59,7 +60,7 @@ import { sendCompletedConfirmation, PLATFORM_SENDER } from './completedRegistrat
 import { assertEventCapability, holdsCapability } from '../lib/eventAccess.js';
 import { attachGrant } from '../middleware/institutionalGuard.js';
 
-console.log('[completedRegistrationAdminController] v4.965.0 cargado — tablero, fichas, validación, exportación, acciones en bloque, la notificación de confirmación y el motor de importación de inscripciones históricas.');
+console.log('[completedRegistrationAdminController] v4.1291.0 cargado — tablero, fichas, validación, exportación, acciones en bloque, la notificación de confirmación, el motor de importación de inscripciones históricas y subir o reemplazar el comprobante desde la ficha (con el anterior conservado en el historial).');
 
 // ── Acceso ───────────────────────────────────────────────────────────
 // El mismo criterio del panel de inscripciones: el evento tiene que pertenecer
@@ -631,11 +632,34 @@ export const notificationTest = async (req, res) => {
 };
 
 // GET /admin/completed/:id/receipt — enlace firmado, caduca a los 5 minutos.
+//
+// v4.1291 — Con `?version=<id del historial>` abre el comprobante que estaba
+// vigente ANTES de ese reemplazo. La clave sale del historial de ESTE
+// registro y tiene que ser del prefijo de ESTE evento: un id de historial
+// ajeno no firma nada.
 export const receiptUrl = async (req, res) => {
     try {
         const found = await loadDetail(req, res);
         if (!found) return;
-        const { row } = found;
+        const { row, event } = found;
+
+        const version = clean(req.query.version, 60);
+        if (version) {
+            const { rows } = await db.query(
+                `SELECT payload FROM "EventRegistrationHistory"
+                  WHERE id = $1 AND "registrationId" = $2 AND type = 'receipt_replaced' LIMIT 1`,
+                [version, row.id]);
+            let payload = rows[0]?.payload || null;
+            if (typeof payload === 'string') { try { payload = JSON.parse(payload); } catch { payload = null; } }
+            const previous = payload?.previous;
+            if (!previous?.key || !receiptKeyBelongs(previous.key, event.id)) {
+                return res.status(404).json({ error: 'No encontramos ese comprobante anterior.' });
+            }
+            const url = await signedReceiptUrl(previous.key);
+            if (!url) return res.status(502).json({ error: 'No se pudo firmar el enlace del comprobante' });
+            return res.json({ url, name: previous.name || 'comprobante anterior', mime: previous.mime || null, expiresInSeconds: 300 });
+        }
+
         if (!row.receiptKey) return res.status(404).json({ error: 'Este registro no tiene comprobante' });
 
         const url = await signedReceiptUrl(row.receiptKey);
@@ -644,6 +668,49 @@ export const receiptUrl = async (req, res) => {
     } catch (error) {
         console.error('[completed-registrations][admin] receiptUrl:', error);
         res.status(500).json({ error: 'No se pudo abrir el comprobante' });
+    }
+};
+
+// ── Subir o reemplazar el comprobante desde la ficha (v4.1291) ───────
+//
+// Misma capacidad que editar la información (`completed`). El archivo sube
+// directo a S3 con la URL prefirmada; el PUT confirma la clave y el servidor
+// comprueba el objeto real (`replaceCompletedReceipt`).
+
+// POST /admin/completed/:id/receipt-url
+export const receiptUploadUrl = async (req, res) => {
+    try {
+        const found = await loadDetail(req, res);
+        if (!found) return;
+        const { filename, contentType, size } = req.body || {};
+        const result = await presignReceiptUpload({
+            eventId: found.event.id,
+            contentType: clean(contentType, 100),
+            filename: clean(filename, 200),
+            size: Number(size),
+        });
+        if (!result.ok) return res.status(422).json({ error: result.errores[0], errores: result.errores });
+        res.json({ key: result.key, uploadUrl: result.uploadUrl, contentType: result.contentType });
+    } catch (error) {
+        console.error('[completed-registrations][admin] receiptUploadUrl:', error);
+        res.status(500).json({ error: 'No se pudo preparar la subida del comprobante', detail: error?.message });
+    }
+};
+
+// PUT /admin/completed/:id/receipt — { receipt: { key, name, contentType } }
+export const replaceReceipt = async (req, res) => {
+    try {
+        const found = await loadDetail(req, res);
+        if (!found) return;
+        const { row, event } = found;
+        const result = await replaceCompletedReceipt({
+            row, eventId: event.id, receipt: req.body?.receipt, actor: actorOf(req), via: 'team',
+        });
+        if (!result.ok) return res.status(result.status).json({ error: result.error });
+        res.json({ registration: mapCompleted(result.row), unchanged: Boolean(result.unchanged) });
+    } catch (error) {
+        console.error('[completed-registrations][admin] replaceReceipt:', error);
+        res.status(500).json({ error: 'No se pudo guardar el comprobante' });
     }
 };
 
@@ -1493,7 +1560,7 @@ export const importRevert = async (req, res) => {
 export default {
     getConfig, saveConfig,
     list, getSummary, detail,
-    changeStatus, update, resend, receiptUrl, checkIn,
+    changeStatus, update, resend, receiptUrl, receiptUploadUrl, replaceReceipt, checkIn,
     selectAll,
     bulkStatus, bulkEdit, bulkDelete,
     notificationPreview, notificationTest,

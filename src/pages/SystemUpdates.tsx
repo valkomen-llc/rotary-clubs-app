@@ -34,13 +34,29 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1290.0 | 2026-11-06 (La Secretaría Digital accede al Estudio de Contenido)
+// UI V4.1291.0 | 2026-11-06 (Subir o reemplazar el comprobante de pago de una inscripción)
 // Cache bust: 2026-11-06
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1291.0',
+        title: 'Inscripciones: subir o reemplazar el comprobante de pago 🧾',
+        description: 'Pedido del Distrito 4281 para la Conferencia Distrital: el Equipo de Registro puede subir, cambiar o reemplazar el comprobante de pago de un asistente desde su ficha en «Inscripciones COLROTARIOS», y el asistente puede hacer lo mismo desde «Mis eventos» mientras su inscripción no haya sido resuelta. El comprobante anterior nunca se borra: queda en el historial de la inscripción y se puede abrir desde ahí.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'comprobantes', 'conferencia distrital', 'distrito 4281'],
+        type: 'feature',
+        impact: 'Alta: los comprobantes equivocados, borrosos o faltantes se corrigen sin volver a inscribirse ni escribir al soporte técnico.',
+        changes: [
+            { type: 'added', text: 'Ficha del panel: botón «Subir comprobante» (si no tiene) o «Reemplazar comprobante», con confirmación antes de reemplazar. Funciona en cualquier estado, incluso con la inscripción validada, y no cambia el estado.' },
+            { type: 'added', text: 'Historial de la ficha: cada cambio dice quién lo hizo (el participante o el Equipo de Registro) y qué archivo reemplazó por cuál, con «Ver el anterior» para abrir el comprobante que estaba vigente antes.' },
+            { type: 'added', text: '«Mis eventos» del participante: «Subir comprobante» o «Reemplazar comprobante» en «Mis comprobantes» mientras la inscripción esté «Pendiente de validación» o «Requiere corrección». Validada, con el pago confirmado o rechazada, se muestra el motivo y que lo cambia el Equipo de Registro.' },
+            { type: 'changed', text: 'El archivo sube directo al almacenamiento privado, como en el formulario; el servidor comprueba el archivo real (que exista, sea del mismo evento, no pertenezca a otra inscripción y pese hasta 10 MB) y sólo la cuenta dueña de la inscripción puede cambiar el suyo. PDF, JPG, PNG o WebP.' },
+            { type: 'added', text: 'Prueba test:completed:receipt: 62 comprobaciones, con Postgres real y el router real por HTTP.' },
+        ],
+    },
     {
         version: '4.1290.0',
         title: 'Secretaría Digital: acceso al Estudio de Contenido 🎬',

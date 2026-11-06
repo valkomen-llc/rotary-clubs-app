@@ -86,6 +86,9 @@ router.patch('/admin/completed/:id', authMiddleware, json, completedAdmin.update
 router.patch('/admin/completed/:id/status', authMiddleware, json, completedAdmin.changeStatus);
 router.post('/admin/completed/:id/resend', authMiddleware, json, completedAdmin.resend);
 router.get('/admin/completed/:id/receipt', authMiddleware, completedAdmin.receiptUrl);
+// v4.1291 — subir o reemplazar el comprobante desde la ficha del panel.
+router.post('/admin/completed/:id/receipt-url', authMiddleware, json, completedAdmin.receiptUploadUrl);
+router.put('/admin/completed/:id/receipt', authMiddleware, json, completedAdmin.replaceReceipt);
 router.post('/admin/completed/:id/checkin', authMiddleware, json, completedAdmin.checkIn);
 
 // v4.1263 — Selección y acciones en bloque del listado. Literales ANTES de
@@ -133,6 +136,12 @@ router.post('/portal/completed/claim', attendeeAuth,
     requireAttendeePermission(ATTENDEE_PERMISSIONS.VIEW_OWN_REGISTRATION), attendee.requestCompletedClaim);
 router.get('/portal/completed/:id/receipt', attendeeAuth,
     requireAttendeePermission(ATTENDEE_PERMISSIONS.VIEW_OWN_REGISTRATION), attendee.getOwnCompletedReceipt);
+// v4.1291 — el participante sube o reemplaza SU comprobante mientras la
+// inscripción no esté resuelta (validada, pago confirmado o rechazada).
+router.post('/portal/completed/:id/receipt-url', attendeeAuth, json,
+    requireAttendeePermission(ATTENDEE_PERMISSIONS.UPDATE_OWN_RECEIPT), attendee.ownCompletedReceiptUploadUrl);
+router.put('/portal/completed/:id/receipt', attendeeAuth, json,
+    requireAttendeePermission(ATTENDEE_PERMISSIONS.UPDATE_OWN_RECEIPT), attendee.replaceOwnCompletedReceipt);
 router.get('/portal/completed/:id', attendeeAuth,
     requireAttendeePermission(ATTENDEE_PERMISSIONS.VIEW_OWN_REGISTRATION), attendee.getOwnCompleted);
 

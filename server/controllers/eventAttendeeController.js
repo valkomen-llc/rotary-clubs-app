@@ -41,11 +41,12 @@ import {
 } from '../lib/eventRegistrationStore.js';
 import {
     completedStatusMeta, paymentMethodLabel, membershipLabel,
-    participantStages, participantHistoryEntry,
+    participantStages, participantHistoryEntry, participantReceiptLock,
 } from '../lib/completedRegistrationSpec.js';
-import { signedReceiptUrl } from '../lib/completedReceipts.js';
+import { signedReceiptUrl, presignReceiptUpload } from '../lib/completedReceipts.js';
+import { replaceCompletedReceipt } from '../lib/completedReceiptChange.js';
 
-console.log('[eventAttendeeController] v4.1267.0 cargado — rol "Asistente al Evento": cuenta propia por correo, panel de sólo lectura de su inscripción y auditoría de ingresos. Desde v4.1267 también los registros de «Completar inscripción» (COLROTARIOS): misma cuenta, vinculación de lo anterior sólo con el correo demostrado.');
+console.log('[eventAttendeeController] v4.1291.0 cargado — rol "Asistente al Evento": cuenta propia por correo, panel de sólo lectura de su inscripción y auditoría de ingresos. Desde v4.1267 también los registros de «Completar inscripción» (COLROTARIOS): misma cuenta, vinculación de lo anterior sólo con el correo demostrado. Desde v4.1291 el participante sube o reemplaza su comprobante mientras la inscripción no esté resuelta.');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'rotary_secret_key_2026';
 /** Audiencia propia: un token de plataforma o del panel del club no sirve aquí. */
@@ -82,6 +83,8 @@ export const ATTENDEE_PERMISSIONS = {
     VIEW_OWN_REGISTRATION: 'event_registration:read_own',
     VIEW_OWN_PROFILE: 'event_attendee_profile:read_own',
     UPDATE_OWN_PROFILE: 'event_attendee_profile:update_own',
+    // v4.1291 — subir o reemplazar el comprobante de SU inscripción COLROTARIOS.
+    UPDATE_OWN_RECEIPT: 'event_registration_receipt:update_own',
 };
 
 const ROLE_PERMISSIONS = {
@@ -89,6 +92,7 @@ const ROLE_PERMISSIONS = {
         ATTENDEE_PERMISSIONS.VIEW_OWN_REGISTRATION,
         ATTENDEE_PERMISSIONS.VIEW_OWN_PROFILE,
         ATTENDEE_PERMISSIONS.UPDATE_OWN_PROFILE,
+        ATTENDEE_PERMISSIONS.UPDATE_OWN_RECEIPT,
     ],
     // Una cuenta suspendida conserva la lectura de su propia inscripción —
     // necesita ver por qué quedó así— pero no puede modificar nada.
@@ -1299,6 +1303,10 @@ const completedParticipantView = (row, { history = [], messages = [] } = {}) => 
         paymentMethodLabel: row.paymentMethod ? paymentMethodLabel(row.paymentMethod) : null,
         hasReceipt: Boolean(row.receiptKey),
         receiptName: row.receiptName || null,
+        // v4.1291 — si puede subir o reemplazar el comprobante, y si no, por qué.
+        // Lo decide el servidor; la pantalla sólo obedece.
+        canReplaceReceipt: !participantReceiptLock(row.status),
+        receiptLock: participantReceiptLock(row.status),
         checkedInAt: row.checkedInAt,
         registeredAt: row.submittedAt || row.createdAt,
         history,
@@ -1357,6 +1365,71 @@ export const getOwnCompletedReceipt = async (req, res) => {
     } catch (error) {
         console.error('[event-attendee] getOwnCompletedReceipt:', error);
         res.status(500).json({ error: 'No pudimos abrir el comprobante.' });
+    }
+};
+
+// ── Subir o reemplazar SU comprobante (v4.1291) ──────────────────────
+//
+// La pertenencia va en el WHERE (`loadOwnCompletedRow`), como todo este
+// archivo. Y sólo mientras nadie haya resuelto la inscripción
+// (`participantReceiptLock`): una validada, confirmada o rechazada la cambia
+// el Equipo de Registro.
+
+const loadOwnEditableCompleted = async (req, res) => {
+    await ensureEventRegistrationSchema();
+    const row = await loadOwnCompletedRow(req.params.id, req.attendee.account.id);
+    if (!row) {
+        res.status(404).json({ error: 'No encontramos esa inscripción en tu cuenta.' });
+        return null;
+    }
+    const lock = participantReceiptLock(row.status);
+    if (lock) {
+        res.status(409).json({ error: lock });
+        return null;
+    }
+    return row;
+};
+
+// POST /portal/completed/:id/receipt-url
+export const ownCompletedReceiptUploadUrl = async (req, res) => {
+    try {
+        const row = await loadOwnEditableCompleted(req, res);
+        if (!row) return;
+        const { filename, contentType, size } = req.body || {};
+        const result = await presignReceiptUpload({
+            eventId: row.eventId,
+            contentType: clean(contentType, 100),
+            filename: clean(filename, 200),
+            size: Number(size),
+        });
+        if (!result.ok) return res.status(422).json({ error: result.errores[0], errores: result.errores });
+        res.json({ key: result.key, uploadUrl: result.uploadUrl, contentType: result.contentType });
+    } catch (error) {
+        console.error('[event-attendee] ownCompletedReceiptUploadUrl:', error);
+        res.status(500).json({ error: 'No pudimos preparar la subida del comprobante. Intenta de nuevo.' });
+    }
+};
+
+// PUT /portal/completed/:id/receipt — { receipt: { key, name, contentType } }
+export const replaceOwnCompletedReceipt = async (req, res) => {
+    try {
+        const row = await loadOwnEditableCompleted(req, res);
+        if (!row) return;
+        const account = req.attendee.account;
+        const result = await replaceCompletedReceipt({
+            row, eventId: row.eventId, receipt: req.body?.receipt, via: 'participant',
+            actor: { id: null, name: [row.firstName, row.lastName].filter(Boolean).join(' ') || account.email || 'Participante', email: account.email || null },
+        });
+        if (!result.ok) return res.status(result.status).json({ error: result.error });
+        const fresh = await loadOwnCompletedRow(row.id, account.id);
+        const history = (await listHistory(row.id)).map(participantHistoryEntry).filter(Boolean);
+        const messages = (await listMessages(row.id))
+            .filter(m => m.status !== 'failed')
+            .map(m => ({ id: m.id, channel: m.channel, subject: m.subject, createdAt: m.createdAt }));
+        res.json({ ...completedParticipantView(fresh || result.row, { history, messages }), unchanged: Boolean(result.unchanged) });
+    } catch (error) {
+        console.error('[event-attendee] replaceOwnCompletedReceipt:', error);
+        res.status(500).json({ error: 'No pudimos guardar el comprobante. Intenta de nuevo.' });
     }
 };
 
@@ -1462,7 +1535,7 @@ export default {
     resolveParticipantAccess,
     attachOrphanCompleted,
     getOwnCompleted,
-    getOwnCompletedReceipt,
+    getOwnCompletedReceipt, ownCompletedReceiptUploadUrl, replaceOwnCompletedReceipt,
     requestCompletedClaim,
     confirmCompletedClaim,
 };

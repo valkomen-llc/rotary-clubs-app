@@ -89,10 +89,46 @@ autoriza nada por sí solo.
 - La ficha del panel administrativo muestra «Cuenta del participante»
   (`hasAccount`); el id de la cuenta no sale del servidor.
 
+## Subir o reemplazar el comprobante — v4.1291
+
+Pedido del Distrito 4281 para la Conferencia Distrital: el Equipo de Registro
+sube, cambia o reemplaza el comprobante de un asistente desde la ficha del
+panel, y el asistente lo hace desde «Mis eventos».
+
+| Pieza | Qué es |
+|---|---|
+| `completedReceiptChange.js` → `replaceCompletedReceipt` | **El único camino** para las dos puertas: clave del prefijo del evento, no reclamada por otra inscripción, objeto real (`headReceipt`), `UPDATE` condicionado a la clave anterior (409 si cambió entretanto) e historial `receipt_replaced` |
+| `completedRegistrationSpec.js` | `PARTICIPANT_RECEIPT_EDITABLE`, `canParticipantReplaceReceipt`, `participantReceiptLock`, `describeReceiptChange` (puros) |
+| Panel: `POST /admin/completed/:id/receipt-url` · `PUT /admin/completed/:id/receipt` · `GET …/receipt?version=<historial>` | Capacidad `completed` del evento (`loadDetail`), como editar la ficha |
+| Participante: `POST /portal/completed/:id/receipt-url` · `PUT /portal/completed/:id/receipt` | Permiso `UPDATE_OWN_RECEIPT` (no lo tiene una cuenta suspendida) y la cuenta en el WHERE |
+| `src/lib/subirComprobante.ts` | Preparar → PUT directo a S3 → confirmar, con `leerJson` y un reintento ante 5xx |
+| `scripts/test-completed-receipt.mjs` | `npm run test:completed:receipt` (62; la parte HTTP con `COMPLETED_E2E_DATABASE_URL`). Verificada a la inversa: sin el candado → 5 fallos; clave de otra inscripción permitida → 1; versión de otro registro → 1 |
+
+**Reglas durables:**
+
+- **⚠️ UN COMPROBANTE VIGENTE, Y EL ANTERIOR NO SE BORRA.** Reemplazar cambia
+  las cuatro columnas `receipt*`; el objeto anterior queda en S3 y su clave en
+  el `payload.previous` del historial. El panel lo abre con
+  `?version=<id del historial>`, que sólo firma si la entrada es de ESE
+  registro y la clave es del prefijo de ESE evento. Es un documento financiero.
+  (Eliminar el registro, v4.952, sigue borrando sólo el VIGENTE: los anteriores
+  quedan huérfanos para la regla de ciclo de vida del prefijo.)
+- **⚠️ EL PARTICIPANTE SÓLO MIENTRAS NADIE LO HAYA RESUELTO**: `submitted` y
+  `needs_correction`. Validada, pago confirmado o rechazada → 409 con el motivo
+  y la salida («escríbele al Equipo de Registro»); la ficha lo dice
+  (`canReplaceReceipt`, `receiptLock`, decididos por el servidor). El equipo
+  puede siempre.
+- **⚠️ REEMPLAZAR NO CAMBIA EL ESTADO.** Un «Requiere corrección» no vuelve
+  solo a «Pendiente»: la corrección pudo ser de otro dato. El historial le
+  avisa al equipo.
+- **El participante ve «Comprobante de pago actualizado» y nada más**: ni el
+  comentario (lleva los nombres de los archivos) ni la clave. El panel ve quién
+  y qué archivo por cuál.
+- **Una clave reclamada por otra inscripción no se comparte** (409).
+
 ### Fase 2 propuesta
 
-Centro del Participante: actualizar datos y subir una corrección del
-comprobante desde «Mis eventos», acreditación con QR, documentos oficiales,
+Centro del Participante: actualizar datos desde «Mis eventos», acreditación con QR, documentos oficiales,
 notificaciones y agenda; pantalla para `accountMode` por evento; reforzar
 `ensureAttendeeAccount` del registro en línea con la misma regla de cuentas sin
 contraseña.
