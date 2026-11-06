@@ -21,6 +21,7 @@ router.get('/public/intake/draft', lightPublicLimit, intake.publicIntakeDraft);
 router.put('/public/intake/draft/meta', lightPublicLimit, intake.publicIntakeSaveMeta);
 router.put('/public/intake/draft/section/:key', lightPublicLimit, intake.publicIntakeSaveSection);
 router.post('/public/intake/draft/submit', lightPublicLimit, intake.publicIntakeSubmit);
+router.post('/public/intake/draft/check', lightPublicLimit, intake.publicIntakeCheck);
 router.post('/public/intake/recover', lightPublicLimit, intake.publicIntakeRecover);
 router.get('/public/intake/mine', lightPublicLimit, intake.publicIntakeMine);
 router.post('/public/intake/mine/:ref/open', lightPublicLimit, intake.publicIntakeOpenMine);

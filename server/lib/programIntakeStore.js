@@ -16,7 +16,7 @@ import db from './db.js';
 import ensureProgramSchema from './ensureProgramSchema.js';
 import { audit, createChangeRequest, getProgram, registerFile } from './programStore.js';
 import { makeRef, shapeChangeRequest, validateChangeRequest } from './programSpec.js';
-import { intakeItems, planForItem, isHealthProgram, shapeIntakeConfig, INTAKE_EDITABLE, PRIVATE_PURPOSES, SENDER_RELATIONS, INTAKE_FORMATS } from './programIntakeSpec.js';
+import { intakeItems, planForItem, isHealthProgram, shapeIntakeConfig, INTAKE_EDITABLE, PRIVATE_PURPOSES, SENDER_RELATIONS, INTAKE_FORMATS, migrateIntakeData } from './programIntakeSpec.js';
 import { publishIntakeObject } from './programIntakeFiles.js';
 
 const one = (r) => r.rows[0] || null;
@@ -50,15 +50,32 @@ export async function createIntake({ programId, submissionType, sections, sender
     return row;
 }
 
+/**
+ * v4.1287 — Un borrador guardado con la forma anterior (16 pasos) se lleva a la
+ * actual al leerlo, SIN perder respuestas ni archivos (`migrateIntakeData`), y
+ * se guarda así una sola vez. Sólo mientras quien envía puede editarlo: un
+ * envío ya en revisión conserva sus claves tal como se revisaron.
+ */
+async function migrated(row) {
+    if (!row || !INTAKE_EDITABLE.includes(row.status)) return row;
+    const m = migrateIntakeData(row.data, row.review);
+    if (!m.changed) return row;
+    const r = one(await db.query(
+        `UPDATE "ProgramIntake" SET data = $2::jsonb, review = $3::jsonb, history = history || $4::jsonb WHERE id = $1 AND version = $5 RETURNING ${INTAKE_COLS}`,
+        [row.id, JSON.stringify(m.data), JSON.stringify(m.review), evento({ type: 'migrated', actor: { name: 'Sistema' }, detail: 'Formulario de 10 pasos: sitio web a «Contacto»; noticias y actividades a «Impacto y actualidad».' }), row.version]
+    ));
+    return r || { ...row, data: m.data, review: m.review };
+}
+
 export async function getIntake(idOrRef) {
     await ensureProgramSchema();
-    return one(await db.query(`SELECT ${INTAKE_COLS} FROM "ProgramIntake" WHERE id = $1 OR "publicRef" = $1 LIMIT 1`, [String(idOrRef || '')]));
+    return migrated(one(await db.query(`SELECT ${INTAKE_COLS} FROM "ProgramIntake" WHERE id = $1 OR "publicRef" = $1 LIMIT 1`, [String(idOrRef || '')])));
 }
 
 /** El envío al que da acceso ESTE secreto (se compara su hash; el secreto no se guarda). */
 export async function getIntakeByTokenHash(hash) {
     await ensureProgramSchema();
-    return one(await db.query(`SELECT ${INTAKE_COLS} FROM "ProgramIntake" WHERE "tokenHashes" @> $1::jsonb LIMIT 1`, [JSON.stringify([hash])]));
+    return migrated(one(await db.query(`SELECT ${INTAKE_COLS} FROM "ProgramIntake" WHERE "tokenHashes" @> $1::jsonb LIMIT 1`, [JSON.stringify([hash])])));
 }
 
 /** Agrega un secreto nuevo (recuperación desde otro dispositivo) y conserva los cuatro anteriores. */
@@ -298,7 +315,8 @@ async function registerPrivate(file, { intake, actor, meta = {} }) {
 const publicFileIds = (item) => {
     const d = item.data || {};
     const ids = (v) => (Array.isArray(v) ? v.map(x => x.id) : []);
-    if (item.section === 'visual' && item.kind === 'fields') return [...ids(d.officialLogo), ...ids(d.logoVariants)];
+    if (item.section === 'visual' && item.kind === 'fields') return [...ids(d.officialLogo), ...ids(d.heroImage), ...ids(d.logoVariants)];
+    if (item.target === 'news') return ids(d.file);
     if (item.target === 'partners') return d.identityAuthorized ? ids(d.logo) : [];
     if (item.target === 'team') return d.publishAuthorized ? ids(d.photo) : [];
     if (item.target === 'story') return [...(d.authImage ? ids(d.photos) : []), ...(d.authVideo ? ids(d.videos) : [])];
@@ -421,7 +439,10 @@ export async function mediaBank(programId) {
         [programId]
     );
     return rows.map(r => {
-        const piece = ((r.data?.multimedia || {}).items || []).find(x => (x.file || []).some(y => y.id === r.id)) || null;
+        const piece = ((r.data?.multimedia || {}).items || []).find(x => (x.file || []).some(y => y.id === r.id))
+            // v4.1287 — El logo y la imagen principal del paso 3 quedan en el banco sin volver a cargarlos.
+            || (((r.data?.visual || {}).heroImage || []).some(y => y.id === r.id) ? { title: 'Imagen principal del programa', alt: ((r.data.visual.heroImage || [])[0] || {}).alt || '', uses: ['portada', 'presentacion'] } : null)
+            || (((r.data?.visual || {}).officialLogo || []).some(y => y.id === r.id) ? { title: 'Logo oficial', uses: ['portada'] } : null);
         return {
             id: r.id, filename: r.filename, kind: r.kind, url: r.mediaUrl, mediaId: r.mediaId, promotedAt: r.promotedAt, intakeRef: r.publicRef,
             title: piece?.title || '', alt: piece?.alt || '', credit: piece?.credit || '', uses: piece?.uses || [], focus: piece?.focus || null, tags: piece?.tags || '',

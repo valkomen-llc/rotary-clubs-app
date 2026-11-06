@@ -1,4 +1,4 @@
-# Formulario institucional de programas — v4.1286
+# Formulario institucional de programas — v4.1286 (diez pasos: v4.1287)
 
 Formulario público para que los líderes de los programas que respalda un
 distrito (piloto: Distrito 4281 — Clínicas Ponseti, Fundación Pequeño Corazón
@@ -22,6 +22,55 @@ que ya existían.
 | Pestaña administrativa | `src/components/admin/programas/ProgramaFormularioTab.tsx` |
 | Perfil en la página de detalle | `src/components/programas/ProgramaPerfil.tsx` (en `ProgramaDetalle.tsx`) |
 | Pruebas | `npm run test:programas:formulario` (81, sin base) · `PROGRAMAS_E2E_DATABASE_URL=… npm run test:programas:formulario:e2e` (33, Postgres + S3 simulado) |
+
+## Diez pasos (v4.1287)
+
+El formulario tenía 16 pasos (programa, remitente, una por sección y el
+resumen). Pasó a **exactamente diez** (`INTAKE_STEPS` en el criterio; el
+navegador los recibe en `form.steps`). La unidad de guardado, validación,
+revisión y aplicación SIGUE siendo la sección, con sus claves de siempre: un
+paso sólo agrupa secciones, y cada sección organiza sus campos en **bloques
+desplegables** (`blocks`: subtítulo, ayuda, abierto por omisión sólo lo
+esencial; se abre solo si trae datos o un aviso). Un bloque nunca es un paso.
+
+| Antes (16) | Ahora (10) |
+|---|---|
+| 1 Programa y envío · 2 Quién envía | **1 Programa y datos del responsable** |
+| 3 Identidad y presentación | **2 Identidad e historia** (sin el sitio web; «Propósito» y «Sobre nosotros» ya no se piden) |
+| 4 Identidad visual, aliados | **3 Imagen institucional, aliados y patrocinadores** (+ imagen principal) |
+| 5 Responsables y equipo · 15 Redes y contacto | **4 Equipo, contacto y canales oficiales** (+ sitio web) |
+| 6 Atención · 7 Directorio | **5 Atención, cobertura y directorio** |
+| 8 Participación · 9 Documentos | **6 Participación, donaciones y documentación** (documentos: bloque complementario desplegable) |
+| 10 Banco multimedia · 14 Recursos (guías, FAQ, video, podcast, publicaciones) | **7 Banco multimedia y recursos** |
+| 11 Historias · 12 Testimonios | **8 Historias de vida y testimonios** |
+| 13 Impacto · 14 Recursos (noticias, jornadas, eventos) | **9 Impacto y actualidad** («Indicadores» y «Noticias y actividades») |
+| 16 Resumen | **10 Resumen y envío** |
+
+- **Navegación** (`PasosNumerados` en el kit; Visitas sigue con `BarraDePasos`):
+  escritorio, los diez en una rejilla sin desplazamiento; móvil, «Paso 3 de
+  10» + «Ver pasos». En una actualización se eligen PASOS (cada uno marca sus
+  secciones); los no incluidos se saltan con Siguiente/Anterior y se pueden
+  incluir desde el propio paso. Un paso sin secciones aplicables (configuración
+  del programa) dice «no aplica».
+- **Validación de una actualización por paso**: sólo avisa un paso elegido sin
+  ningún dato en ninguna de sus secciones; lo obligatorio configurado se exige
+  a la sección que trae datos.
+- **Resumen**: una tarjeta por paso con estado, archivos, «Pendiente de
+  suministrar», avisos (`POST /public/intake/draft/check`, sin enviar nada) y
+  ajustes pedidos; «Editar» lleva al paso con «Volver al resumen». Declaraciones
+  finales sin reemplazar las autorizaciones de cada contenido. «Guardar
+  borrador» en todos los pasos.
+- **Sin pedir dos veces**: sitio web sólo en el paso 4; un archivo ya cargado
+  se reutiliza por referencia («Usar un archivo ya cargado en este envío»); la
+  imagen principal y el logo aplicados aparecen en el banco multimedia.
+- **Borradores anteriores** (`migrateIntakeData`, al leer un envío editable,
+  idempotente, guardado una vez): `identidad.website` → `contacto.website` (si
+  allí no había); noticias/jornadas/eventos de `recursos.resources` →
+  `impacto.news` con el mismo `_id`, y su decisión de revisión viaja con la
+  clave nueva. Un envío ya en revisión NO se migra. «Propósito» y «Sobre
+  nosotros» con valor se siguen mostrando (`legacy`) y aplicando. El paso en
+  que se dejó se recuerda por CLAVE (`LocalDraft.step`); un borrador sin paso
+  abre en el 2 y uno con ajustes en el resumen.
 
 ## Decisiones (no deshacer sin razón)
 
@@ -169,8 +218,9 @@ URL y el enfoque sugerido).
 
 ## Cómo se probó (v4.1286)
 
-- `npm run test:programas:formulario`: 81 comprobaciones puras.
-- `test:programas:formulario:e2e`: 33 con Postgres 16 local (con SSL) y S3
+- `npm run test:programas:formulario`: 81 comprobaciones puras (99 con los diez pasos, v4.1287).
+- `test:programas:formulario:e2e`: 33 (36 desde v4.1287: migración de un borrador
+  anterior con archivo, envío ya en revisión sin migrar, actualización por pasos) con Postgres 16 local (con SSL) y S3
   simulado con multiparte y copia: guardado/recuperación, parcial, carga
   directa, multiparte cortada y reanudada, PDF disfrazado, tope configurable,
   separación entre envíos y programas, consentimientos, revisión por ítem,

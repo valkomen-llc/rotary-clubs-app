@@ -26,9 +26,14 @@ export interface FieldDef {
   k: string; t: FieldType; l: string; h?: string; max?: number; rows?: number; full?: boolean; opt?: { id: string; label: string }[];
   pub?: 'publico' | 'interno' | ''; clinical?: boolean; required?: boolean; purpose?: string; fileMeta?: string[];
   showIf?: [string, unknown]; fields?: FieldDef[]; item?: string; add?: string; need?: string[]; target?: string; refKind?: string; actions?: string[]; bulk?: string;
+  /** v4.1287 — Campo que ya no se pide: sólo se muestra si un borrador anterior lo trae. */
+  legacy?: boolean;
 }
-export interface SectionDef { k: string; icon: string; always: boolean; title: string; desc: string; target: string; landing: string | null; need: string[]; fields: FieldDef[] }
-export interface IntakeForm { health: boolean; intro: string; sections: SectionDef[]; contentSections: string[] }
+/** v4.1287 — Un bloque interno desplegable de una sección (nunca un paso). */
+export interface BlockDef { t: string; d: string; open: boolean; f: string[] }
+export interface StepDef { k: string; n: number; short: string; title: string; desc: string; sections: string[] }
+export interface SectionDef { k: string; icon: string; always: boolean; title: string; desc: string; target: string; landing: string | null; need: string[]; fields: FieldDef[]; blocks: BlockDef[]; collapsible?: boolean }
+export interface IntakeForm { health: boolean; intro: string; sections: SectionDef[]; steps: StepDef[]; contentSections: string[] }
 export interface ProgramLite { slug: string; name: string; category: string; categoryLabel: string; shortName: string; logoUrl: string }
 export interface RecordRef { id: string; kind: string; title: string; detail: string; format?: string }
 export interface FormPayload {
@@ -72,12 +77,16 @@ export async function intakeApi<T = any>(path: string, { method = 'GET', body, t
 }
 
 // ── Borradores de ESTE dispositivo ──────────────────────────────────────
-export interface LocalDraft { ref: string; slug: string; programName: string; token: string; savedAt: string }
+/** `step`: la clave del paso en el que se dejó (v4.1287); un borrador anterior no la trae. */
+export interface LocalDraft { ref: string; slug: string; programName: string; token: string; savedAt: string; step?: string }
 export const localDrafts = (): LocalDraft[] => {
   try { const v = JSON.parse(localStorage.getItem(DRAFTS_KEY) || '[]'); return Array.isArray(v) ? v.filter(d => d && d.token && d.ref) : []; } catch { return []; }
 };
 export const rememberDraft = (d: LocalDraft) => {
   try { localStorage.setItem(DRAFTS_KEY, JSON.stringify([d, ...localDrafts().filter(x => x.ref !== d.ref)].slice(0, 10))); } catch { /* sin almacenamiento */ }
+};
+export const rememberStep = (ref: string, step: string) => {
+  try { localStorage.setItem(DRAFTS_KEY, JSON.stringify(localDrafts().map(d => (d.ref === ref ? { ...d, step } : d)))); } catch { /* noop */ }
 };
 export const forgetDraft = (ref: string) => {
   try { localStorage.setItem(DRAFTS_KEY, JSON.stringify(localDrafts().filter(x => x.ref !== ref))); } catch { /* noop */ }

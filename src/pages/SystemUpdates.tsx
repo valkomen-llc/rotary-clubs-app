@@ -34,13 +34,31 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1286.0 | 2026-11-06 (Formulario institucional de programas)
+// UI V4.1287.0 | 2026-11-06 (Formulario institucional de programas en diez pasos)
 // Cache bust: 2026-11-06
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1287.0',
+        title: 'Programas: el formulario institucional en diez pasos 🧭',
+        description: 'El formulario de información de los programas (/formulario-programas) pasa de 16 a exactamente 10 pasos agrupando campos relacionados, con bloques internos desplegables para no mostrar todo abierto a la vez. Los borradores ya empezados abren igual, sin perder respuestas ni archivos, y nada cambia en las páginas, los permisos ni el flujo editorial.',
+        date: new Date().toISOString(),
+        tags: ['programas', 'formulario institucional', 'usabilidad', 'distrito 4281'],
+        type: 'improvement',
+        impact: 'Alta: los líderes de los programas diligencian la información en menos pasos, con lo esencial a la vista y lo complementario desplegable.',
+        changes: [
+            { type: 'changed', text: 'Diez pasos: 1 Programa y datos del responsable · 2 Identidad e historia · 3 Imagen institucional, aliados y patrocinadores · 4 Equipo, contacto y canales oficiales · 5 Atención, cobertura y directorio · 6 Participación, donaciones y documentación (documentación en bloque complementario) · 7 Banco multimedia y recursos · 8 Historias de vida y testimonios · 9 Impacto y actualidad · 10 Resumen y envío.' },
+            { type: 'changed', text: 'Cada paso organiza sus campos en bloques desplegables con subtítulo y cuántos apartados tienen información; los especializados (revisor médico, documentos, aliados, listas) se abren cuando corresponden o cuando se decide agregarlos.' },
+            { type: 'changed', text: 'Navegación: en escritorio los diez pasos visibles sin desplazamiento ni recortes; en el móvil «Paso 3 de 10» con la lista desplegable de pasos. En una actualización se eligen pasos; los no incluidos se saltan y se pueden incluir después.' },
+            { type: 'added', text: 'Resumen por paso con «Editar» y «Volver al resumen», archivos adjuntos, datos pendientes, avisos y ajustes pedidos; declaraciones finales; «Guardar borrador» y «Enviar a revisión», con la aclaración de que todo se revisa antes de publicarse.' },
+            { type: 'added', text: 'Imagen principal del programa en el paso 3 (queda en el banco multimedia sin volver a cargarla) y opción de reutilizar un archivo ya cargado en otra parte del envío sin subirlo de nuevo.' },
+            { type: 'changed', text: 'Nada se pide dos veces: el sitio web vive en el paso 4; «Propósito» y «Sobre nosotros» ya no se piden (se conservan si un borrador los traía); las noticias, jornadas y eventos pasan a «Noticias y actividades» del paso 9, aparte de los recursos educativos.' },
+            { type: 'fixed', text: 'Los borradores anteriores se migran al abrirlos sin perder respuestas, archivos ni decisiones de revisión, y se vuelve al paso en el que se dejó. Pruebas: 99 puras y 36 de extremo a extremo.' },
+        ],
+    },
     {
         version: '4.1286.0',
         title: 'Programas: el formulario institucional para los líderes de cada programa 📋',

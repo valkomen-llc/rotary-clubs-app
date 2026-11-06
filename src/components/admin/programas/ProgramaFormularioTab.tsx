@@ -158,7 +158,9 @@ const DetalleEnvio = ({ programId, intakeId, onClose, onChanged, puedeRevisar }:
     const enRevision = ['enviado', 'en_revision', 'aplicado'].includes(i.status);
     const porSeccion: Record<string, any[]> = {};
     for (const it of d.items) (porSeccion[it.section] = porSeccion[it.section] || []).push(it);
-    const titulos = Object.fromEntries((d.form?.sections || []).map((x: any) => [x.k, x.title]));
+    // v4.1287 — Cada sección dice a qué de los diez pasos del formulario pertenece.
+    const pasoDe = Object.fromEntries((d.catalogs?.sections || []).map((x: any) => [x.k, x.step]));
+    const titulos = Object.fromEntries((d.form?.sections || []).map((x: any) => [x.k, pasoDe[x.k] ? `Paso ${pasoDe[x.k]} · ${x.title}` : x.title]));
     return (
         <Drawer wide title={`Envío ${i.publicRef}`} subtitle={`${d.catalogs.submissionTypes.find((t: any) => t.id === i.submissionType)?.label || ''} · recibido ${fmtFecha(i.submittedAt)}`} onClose={onClose}
             footer={puedeRevisar ? <>
@@ -360,8 +362,8 @@ const ProgramaFormularioTab = ({ data, onChanged, refInicial }: { data: Detalle;
                 <Tarjeta title="Correspondencia: de cada sección a su destino">
                     {!mapa ? <Cargando /> : (
                         <table className="w-full text-sm">
-                            <thead><tr className="text-left text-[11px] uppercase tracking-wider text-gray-400"><th className="py-2">Sección del formulario</th><th>Destino en el administrador</th><th>Contenedor de la página</th></tr></thead>
-                            <tbody>{mapa.map((s: any) => <tr key={s.k} className="border-t border-gray-100"><td className="py-2 font-semibold">{s.title}</td><td className="text-xs text-gray-600">{s.target}</td><td className="text-xs text-gray-600">{s.landing || '—'}</td></tr>)}</tbody>
+                            <thead><tr className="text-left text-[11px] uppercase tracking-wider text-gray-400"><th className="py-2">Paso</th><th>Sección del formulario</th><th>Destino en el administrador</th><th>Contenedor de la página</th></tr></thead>
+                            <tbody>{mapa.map((s: any) => <tr key={s.k} className="border-t border-gray-100"><td className="py-2 text-xs text-gray-500 pr-2">{s.step}. {s.stepTitle}</td><td className="py-2 font-semibold">{s.title}</td><td className="text-xs text-gray-600">{s.target}</td><td className="text-xs text-gray-600">{s.landing || '—'}</td></tr>)}</tbody>
                         </table>
                     )}
                     <p className="text-xs text-gray-500 mt-3">Aplicar nunca cambia la diagramación de la página: los contenedores con fuente (directorio, historias, impacto, recursos, donaciones) se llenan solos con lo PUBLICADO; los textos y las imágenes de los demás se eligen en «Página pública».</p>

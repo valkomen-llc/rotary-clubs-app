@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1286.0",
-  "cache_bust": "4.1286.0",
+  "version": "4.1287.0",
+  "cache_bust": "4.1287.0",
   "type": "module",
   "//": "UI V4.1282.0 | 2026-11-05 (Programas: la landing con los patrones institucionales del sitio)",
   "scripts": {

@@ -1,5 +1,12 @@
 // ════════════════════════════════════════════════════════════════════════════
-// Formulario institucional de programas — v4.1286.0
+// Formulario institucional de programas — v4.1286.0 (DIEZ pasos: v4.1287.0)
+//
+// v4.1287 — Diez pasos fijos (`form.steps`, del servidor): 1 programa y
+// responsable · 2 identidad · 3 imagen y aliados · 4 equipo y canales ·
+// 5 atención y directorio · 6 participación y documentación · 7 multimedia y
+// recursos · 8 historias y testimonios · 9 impacto y actualidad · 10 resumen.
+// Cada paso agrupa SECCIONES (la unidad de guardado y revisión, con sus
+// claves de siempre) y cada sección se organiza en bloques desplegables.
 //
 // `dominio.org/formulario-programas` (`?programa=<slug>` lo preselecciona;
 // `?continuar=<secreto>` reabre un borrador). Un SOLO formulario para todos
@@ -23,13 +30,32 @@ import { PublicPageHeader } from '../../common/PublicInstitutionalComponents';
 import { useSEO } from '../../../hooks/useSEO';
 import { useAuth } from '../../../hooks/useAuth';
 import {
-  BarraDePasos, BTN_ANTERIOR, BTN_ENVIAR, BTN_SIGUIENTE, CAMPO, CONTENEDOR, Marco, Resumen, ROTULO, TARJETA, TituloPaso,
+  BTN_ANTERIOR, BTN_ENVIAR, BTN_SIGUIENTE, CAMPO, CONTENEDOR, Marco, PasosNumerados, Resumen, ROTULO, TARJETA, TituloPaso,
 } from '../../common/InstitutionalFormKit';
-import { AvisoPrivacidad, CamposDeSeccion, type FieldCtx } from './IntakeFields';
+import { AvisoPrivacidad, BloqueDesplegable, CamposDeSeccion, type FieldCtx } from './IntakeFields';
 import {
-  forgetDraft, intakeApi, IntakeError, isEmptyValue, localDrafts, rememberDraft, uploadIntakeFile,
-  type ApiErr, type FormPayload, type IntakeFile, type IntakeView, type LocalDraft, type ProgramLite, type SectionDef, type UploadState,
+  forgetDraft, intakeApi, IntakeError, isEmptyValue, localDrafts, rememberDraft, rememberStep, uploadIntakeFile,
+  type ApiErr, type FormPayload, type IntakeFile, type IntakeView, type LocalDraft, type ProgramLite, type SectionDef, type StepDef, type UploadState,
 } from '../../../lib/programIntakeClient';
+
+/** Los diez pasos antes de elegir un programa (después manda `form.steps`, del servidor). */
+const PASOS_BASE: StepDef[] = [
+  ['programa', 'Programa', 'Programa y datos del responsable'], ['identidad', 'Identidad', 'Identidad e historia del programa'],
+  ['imagen', 'Imagen', 'Imagen institucional, aliados y patrocinadores'], ['equipo', 'Equipo', 'Equipo, contacto y canales oficiales'],
+  ['atencion', 'Atención', 'Atención, cobertura y directorio'], ['participacion', 'Participación', 'Participación, donaciones y documentación'],
+  ['multimedia', 'Multimedia', 'Banco multimedia y recursos'], ['historias', 'Historias', 'Historias de vida y testimonios'],
+  ['impacto', 'Impacto', 'Impacto y actualidad'], ['resumen', 'Resumen', 'Resumen y envío'],
+].map(([k, short, title], i) => ({ k, n: i + 1, short, title, desc: '', sections: [] }));
+const RESUMEN = 10;
+const idsDeArchivos = (v: any): string[] => {
+  const out: string[] = [];
+  const walk = (x: any) => {
+    if (Array.isArray(x)) { if (x.length && x.every(y => y && typeof y === 'object' && typeof y.id === 'string' && Object.keys(y).every(k => ['id', 'description', 'usage', 'alt', 'caption'].includes(k)))) x.forEach(y => out.push(y.id)); else x.forEach(walk); }
+    else if (x && typeof x === 'object') Object.values(x).forEach(walk);
+  };
+  walk(v);
+  return Array.from(new Set(out));
+};
 
 const ICONOS: Record<string, React.ComponentType<{ className?: string }>> = {
   user: UserCheck, book: BookOpen, palette: Palette, users: Users, compass: Compass, map: MapPin, heart: HeartHandshake, file: FileText,
@@ -118,12 +144,20 @@ export default function ProgramIntakeForm() {
   const tokenRef = useRef(token); tokenRef.current = token;
   const reelegir = useRef<HTMLInputElement>(null);
   const reelegirDe = useRef<{ id: string; purpose: string } | null>(null);
+  const [desdeResumen, setDesdeResumen] = useState(false);
+  const [revision, setRevision] = useState<{ errors: ApiErr[]; pending: { section: string; field: string; label: string }[]; unfinishedFiles: { id: string; filename: string }[] } | null>(null);
 
   const form = payload?.form || null;
-  const seccionesForm = useMemo(() => (form?.sections || []).filter(s => !s.always), [form]);
-  const seccionesEnvio = useMemo(() => (tipo === 'carga_inicial' ? seccionesForm : seccionesForm.filter(s => elegidas.includes(s.k))), [tipo, seccionesForm, elegidas]);
-  const pasos = useMemo(() => ['Programa y envío', 'Quién envía', ...seccionesEnvio.map(s => s.title), 'Resumen y envío'], [seccionesEnvio]);
-  const seccionActual: SectionDef | undefined = step >= 3 && step <= pasos.length - 1 ? seccionesEnvio[step - 3] : undefined;
+  const pasos: StepDef[] = form?.steps?.length === RESUMEN ? form.steps : PASOS_BASE;
+  const secDe = useCallback((k: string): SectionDef | undefined => form?.sections.find(s => s.k === k), [form]);
+  /** ¿Este paso va en el envío? Carga inicial: todos los que aplican al programa; si no, los elegidos. */
+  const incluido = useCallback((n: number) => {
+    if (n === 1 || n === RESUMEN) return true;
+    const secs = pasos[n - 1]?.sections || [];
+    if (!secs.length) return false;
+    return !tipo || tipo === 'carga_inicial' || secs.some(k => elegidas.includes(k));
+  }, [pasos, tipo, elegidas]);
+  const pasoDeSeccion = useCallback((k: string) => (k === 'remitente' || k === 'inicio' ? 1 : (pasos.findIndex(p => p.sections.includes(k)) + 1) || RESUMEN), [pasos]);
   const editable = !intake || intake.editable;
 
   // ── Carga ────────────────────────────────────────────────────────────
@@ -142,9 +176,14 @@ export default function ProgramIntakeForm() {
     setData(r.intake.data || {}); setConsents(r.intake.consents || {});
     setFiles(Object.fromEntries(r.intake.files.map(f => [f.id, f])));
     setVigenciaOk(true);
-    rememberDraft({ ref: r.intake.publicRef, slug: r.program.slug, programName: r.program.name, token: t, savedAt: r.intake.lastSavedAt });
+    // v4.1287 — Se vuelve al paso en el que se dejó (por su CLAVE, que sobrevive a
+    // la reorganización). Un borrador anterior, sin paso guardado, abre en el
+    // primer paso de contenido; uno devuelto con ajustes, en el resumen.
+    const previo = localDrafts().find(d => d.ref === r.intake.publicRef);
+    rememberDraft({ ref: r.intake.publicRef, slug: r.program.slug, programName: r.program.name, token: t, savedAt: r.intake.lastSavedAt, step: previo?.step });
     if (!r.intake.editable) setEnviado(r.intake.status !== 'borrador');
-    setStep(r.intake.editable ? (r.intake.status === 'ajustes' ? pasosPara(p, r.intake).length : 3) : 1);
+    const guardado = (p.form.steps || []).findIndex(st => st.k === previo?.step) + 1;
+    setStep(!r.intake.editable ? 1 : r.intake.status === 'ajustes' ? RESUMEN : guardado > 1 ? guardado : 2);
     return r;
   }, [cargarFormulario]);
 
@@ -309,6 +348,9 @@ export default function ProgramIntakeForm() {
     for (const [k, l] of [['firstName', 'Nombres'], ['lastName', 'Apellidos'], ['email', 'Correo electrónico'], ['role', 'Cargo o función'], ['relation', 'Relación con el programa']]) if (!String(sender[k] || '').trim()) faltan[`remitente:${k}`] = `Completa «${l}».`;
     if (sender.email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(sender.email)) faltan['remitente:email'] = 'Revisa el correo.';
     if (sender.clubMode === 'club' && !sender.clubProfileId) faltan['remitente:clubProfileId'] = 'Elige tu club o indica que no perteneces a uno.';
+    if (!slug || !payload) faltan['inicio:program'] = 'Elige el programa.';
+    if (!tipo) faltan['inicio:submissionType'] = 'Elige el tipo de envío.';
+    if (tipo && tipo !== 'carga_inicial' && !elegidas.length) faltan['inicio:sections'] = 'Elige al menos un paso para actualizar o aportar.';
     if (precargado && !vigenciaOk) faltan['remitente:vigencia'] = 'Confirma que tus datos están vigentes.';
     if (Object.keys(faltan).length) { setErrores(faltan); alPrimerError(); return false; }
     if (token) { await guardarMeta(); return true; }
@@ -334,19 +376,32 @@ export default function ProgramIntakeForm() {
 
   const irA = async (n: number) => {
     if (n === step) return;
-    if (step === 1 && n > 1) {
-      if (!slug || !payload) { setErrores({ 'inicio:program': 'Elige el programa.' }); alPrimerError(); return; }
-      if (!tipo) { setErrores({ 'inicio:submissionType': 'Elige el tipo de envío.' }); alPrimerError(); return; }
-      if (tipo !== 'carga_inicial' && !elegidas.length) { setErrores({ 'inicio:sections': 'Elige al menos una sección para actualizar o aportar.' }); alPrimerError(); return; }
-      setErrores({});
-      if (token) await guardarMeta();
-    }
-    if (step === 2 && n > 2) { if (!(await empezar())) return; }
-    if (step >= 3) await vaciar();
-    if (n > 2 && !tokenRef.current) return;
+    if (step === 1 && n > 1) { if (!(await empezar())) return; }
+    if (step > 1) await vaciar();
+    if (n > 1 && !tokenRef.current) return;
+    if (n === RESUMEN) setDesdeResumen(false);
     setStep(n);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+  /** Siguiente / Anterior saltan los pasos que no van en este envío. */
+  const vecino = (dir: 1 | -1) => { let n = step + dir; while (n > 1 && n < RESUMEN && !incluido(n)) n += dir; return Math.min(RESUMEN, Math.max(1, n)); };
+  const incluirPaso = (n: number) => { setElegidas(e => Array.from(new Set([...e, ...(pasos[n - 1]?.sections || [])]))); };
+  const guardarAhora = async () => { await vaciar(); await guardarMeta(); toast.success('Borrador guardado. Puedes continuar cuando quieras con tu enlace.'); };
+
+  // El paso actual queda recordado en este dispositivo (por su clave) y lo elegido se guarda.
+  useEffect(() => { if (token && intake?.publicRef) rememberStep(intake.publicRef, pasos[step - 1]?.k || ''); }, [step, token, intake?.publicRef, pasos]);
+  useEffect(() => { if (token && editable) guardarMeta(); }, [elegidas]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Al llegar al resumen: lo que falta y lo que conviene revisar, sin enviar nada.
+  useEffect(() => {
+    if (step !== RESUMEN || !token || enviado) return;
+    let vivo = true;
+    (async () => {
+      await vaciar();
+      try { const r = await intakeApi<any>('/draft/check', { method: 'POST', token, body: { consents } }); if (vivo) setRevision(r); } catch { /* el envío lo vuelve a comprobar */ }
+    })();
+    return () => { vivo = false; };
+  }, [step, token, enviado]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const enviar = async () => {
     await vaciar();
@@ -359,11 +414,7 @@ export default function ProgramIntakeForm() {
     } catch (e: any) {
       if (e instanceof IntakeError && e.errors.length) {
         setErrores(errorsMap(e.errors));
-        const primera = e.errors.find(x => x.section && x.section !== 'resumen');
-        if (primera) {
-          const idx = primera.section === 'remitente' ? 2 : seccionesEnvio.findIndex(s => s.k === primera.section) + 3;
-          if (idx >= 2) setStep(idx);
-        }
+        try { const r = await intakeApi<any>('/draft/check', { method: 'POST', token, body: { consents } }); setRevision(r); } catch { /* noop */ }
         alPrimerError();
       }
       toast.error(e?.message || 'No se pudo enviar.');
@@ -417,10 +468,12 @@ export default function ProgramIntakeForm() {
     </Marco>
   );
 
-  const pct = enviado ? 100 : Math.round(((step - 1) / Math.max(1, pasos.length)) * 100);
-  const marcas = pasos.map((_, i) => (i === 0 ? Boolean(slug && tipo) : i === 1 ? Boolean(token) : i === pasos.length - 1 ? enviado : contar(seccionesEnvio[i - 2], data[seccionesEnvio[i - 2]?.k]).filled > 0));
+  const pct = enviado ? 100 : Math.round(((step - 1) / (RESUMEN - 1)) * 100);
   const remitente = form?.sections.find(s => s.always);
-  const errSec = (k: string) => Object.keys(errores).filter(x => x.startsWith(`${k}:`)).length;
+  const datosDePaso = (n: number) => (pasos[n - 1]?.sections || []).reduce((a, k) => { const c = contar(secDe(k), data[k]); return { filled: a.filled + c.filled, total: a.total + c.total }; }, { filled: 0, total: 0 });
+  const estadoPaso = (n: number): '' | 'hecho' | 'excluido' => (n === 1 ? (token ? 'hecho' : '') : n === RESUMEN ? '' : !incluido(n) ? 'excluido' : datosDePaso(n).filled > 0 ? 'hecho' : '');
+  const avisosDePaso = (n: number) => Array.from(new Set([...Object.entries(errores).filter(([k]) => pasoDeSeccion(k.split(':')[0]) === n).map(([, m]) => m), ...(revision?.errors || []).filter(e => pasoDeSeccion(e.section || 'resumen') === n).map(e => e.message)]));
+  const pasoActual = pasos[step - 1];
 
   return (
     <Marco>
@@ -430,7 +483,7 @@ export default function ProgramIntakeForm() {
       />
       <input ref={reelegir} type="file" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; const t = reelegirDe.current; e.target.value = ''; if (f && t) reintentarCon(t.id, f, t.purpose); }} />
       <div className={CONTENEDOR}>
-        {!enviado && <BarraDePasos pasos={pasos} paso={step} pct={pct} onIr={irA} alcanzable={(n) => n <= 2 || Boolean(token)} marcas={marcas} compacta={pasos.length > 5} />}
+        {!enviado && <PasosNumerados pasos={pasos} paso={step} pct={pct} onIr={irA} alcanzable={(n) => n === 1 || Boolean(token)} estado={estadoPaso} />}
 
         {!enviado && token && (
           <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold px-1">
@@ -448,9 +501,10 @@ export default function ProgramIntakeForm() {
           </Aviso>
         )}
 
-        {/* PASO 1 — Programa y tipo de envío */}
+        {/* PASO 1 — Programa y datos del responsable (antes: pasos 1 y 2) */}
         {step === 1 && !enviado && (
-          <div className={TARJETA} data-pi-step="1">
+          <div className="space-y-4" data-pi-step="1">
+          <div className={TARJETA}>
             {(locales.length > 0 || mios.length > 0) && !token && (
               <div className="mb-8 rounded-2xl bg-sky-50 border border-sky-100 p-4">
                 <p className="text-sm font-black text-sky-900">Continuar un borrador</p>
@@ -483,16 +537,16 @@ export default function ProgramIntakeForm() {
                 {errores['inicio:submissionType'] && <p className="text-xs text-red-600 font-semibold mt-2" role="alert">{errores['inicio:submissionType']}</p>}
                 {tipo && tipo !== 'carga_inicial' && (
                   <div className="mt-6">
-                    <p className={ROTULO}>{tipo === 'actualizacion' ? 'Secciones que quieres actualizar' : 'Qué vas a aportar'}</p>
-                    <p className="text-xs text-gray-500 mb-3">Solo se revisan las secciones que elijas. Lo que no envíes conserva su valor actual: un campo vacío no borra nada.</p>
+                    <p className={ROTULO}>{tipo === 'actualizacion' ? 'Pasos que quieres actualizar' : 'Qué vas a aportar'}</p>
+                    <p className="text-xs text-gray-500 mb-3">Solo se revisan los pasos que elijas. Lo que no envíes conserva su valor actual: un campo vacío no borra nada.</p>
                     <div className="grid sm:grid-cols-2 gap-2">
-                      {seccionesForm.map(s => {
-                        const on = elegidas.includes(s.k);
+                      {pasos.slice(1, RESUMEN - 1).filter(p => p.sections.length).map(p => {
+                        const on = p.sections.some(k => elegidas.includes(k));
                         return (
-                          <label key={s.k} className={`flex items-center gap-3 rounded-xl border-2 px-3 py-2.5 cursor-pointer text-sm ${on ? 'border-rotary-blue bg-blue-50/40' : 'border-gray-100'}`}>
-                            <input type="checkbox" checked={on} disabled={!editable} onChange={() => setElegidas(e => (on ? e.filter(x => x !== s.k) : [...e, s.k]))} className="w-4 h-4 accent-rotary-blue" />
-                            <span className="text-rotary-blue"><Icono name={s.icon} /></span>
-                            <span className="font-semibold text-gray-800">{s.title}</span>
+                          <label key={p.k} className={`flex items-center gap-3 rounded-xl border-2 px-3 py-2.5 cursor-pointer text-sm ${on ? 'border-rotary-blue bg-blue-50/40' : 'border-gray-100'}`}>
+                            <input type="checkbox" checked={on} disabled={!editable} onChange={() => setElegidas(e => (on ? e.filter(x => !p.sections.includes(x)) : Array.from(new Set([...e, ...p.sections]))))} className="w-4 h-4 accent-rotary-blue" />
+                            <span className="w-6 h-6 rounded-full bg-rotary-blue/10 text-rotary-blue text-[11px] font-black flex items-center justify-center shrink-0">{p.n}</span>
+                            <span className="font-semibold text-gray-800">{p.title}</span>
                           </label>
                         );
                       })}
@@ -516,11 +570,8 @@ export default function ProgramIntakeForm() {
               </div>
             )}
           </div>
-        )}
-
-        {/* PASO 2 — Quién envía */}
-        {step === 2 && !enviado && remitente && (
-          <div className={TARJETA} data-pi-step="2">
+          {remitente && (
+          <div className={TARJETA}>
             <TituloPaso icon={<UserCheck className="w-5 h-5" />} titulo={remitente.title} texto={remitente.desc} />
             {precargado && !token && (
               <div className="mb-5 rounded-2xl bg-sky-50 border border-sky-100 p-4 text-sm text-sky-900">
@@ -529,52 +580,103 @@ export default function ProgramIntakeForm() {
                 {errores['remitente:vigencia'] && <p className="text-xs text-red-600 font-semibold mt-1" role="alert">{errores['remitente:vigencia']}</p>}
               </div>
             )}
-            <CamposDeSeccion fields={remitente.fields} data={sender} ctx={ctxDe('remitente')} onChange={(k, v) => setSender(s => { const n = { ...s }; if (v === undefined) delete n[k]; else n[k] = v; return n; })} />
+            <CamposDeSeccion fields={remitente.fields} blocks={remitente.blocks} data={sender} ctx={ctxDe('remitente')} onChange={(k, v) => setSender(s => { const n = { ...s }; if (v === undefined) delete n[k]; else n[k] = v; return n; })} />
             <div className="mt-6"><AvisoPrivacidad texto="Tu correo y tu teléfono son internos: sirven para revisar el envío y contactarte. Solo se muestra lo que autorices arriba." /></div>
           </div>
-        )}
-
-        {/* PASOS DE SECCIÓN */}
-        {seccionActual && !enviado && (
-          <div className={TARJETA} data-pi-step={step}>
-            <TituloPaso icon={<Icono name={seccionActual.icon} />} titulo={seccionActual.title} texto={seccionActual.desc} />
-            <div className="mb-6 rounded-xl bg-gray-50 border border-gray-100 px-3 py-2 text-[11px] text-gray-500 flex flex-wrap gap-x-4 gap-y-1">
-              <span><b className="text-gray-700">Destino:</b> {seccionActual.target}</span>
-              {seccionActual.landing && <span><b className="text-gray-700">En la página:</b> {seccionActual.landing}</span>}
-              <span>{contar(seccionActual, data[seccionActual.k]).filled} de {contar(seccionActual, data[seccionActual.k]).total} apartados con información</span>
-            </div>
-            {seccionActual.fields.some(f => f.t === 'files' || (f.fields || []).some(x => x.t === 'files')) && <p className="text-[11px] text-gray-400 mb-4">{payload?.limits.label}</p>}
-            <CamposDeSeccion fields={seccionActual.fields} data={data[seccionActual.k] || {}} ctx={ctxDe(seccionActual.k)} onChange={(k, v) => setCampo(seccionActual.k, k, v)} />
+          )}
           </div>
         )}
 
-        {/* RESUMEN Y ENVÍO */}
-        {step === pasos.length && step > 2 && !enviado && (
+        {/* PASOS 2 A 9 — cada uno agrupa sus secciones en bloques desplegables */}
+        {step > 1 && step < RESUMEN && !enviado && pasoActual && (
           <div className={TARJETA} data-pi-step={step}>
-            <TituloPaso icon={<ShieldCheck className="w-5 h-5" />} titulo="Resumen y envío" texto="Revisa qué incluye tu envío. Se revisa por sección y por registro: puedes enviar aunque falten secciones." />
+            <TituloPaso icon={<Icono name={secDe(pasoActual.sections[0])?.icon || 'book'} />} titulo={`${step}. ${pasoActual.title}`} texto={pasoActual.desc} />
+            {!pasoActual.sections.length ? (
+              <p className="text-sm text-gray-500 rounded-2xl bg-gray-50 border border-gray-100 p-4">Este paso no aplica a este programa (lo definió la administración). Puedes continuar.</p>
+            ) : !incluido(step) ? (
+              <div className="rounded-2xl bg-gray-50 border border-gray-100 p-4 text-sm text-gray-600 space-y-3">
+                <p>Este paso no está incluido en tu envío. Lo que no envíes conserva su valor actual.</p>
+                {editable && <button type="button" onClick={() => incluirPaso(step)} className="px-4 py-2.5 rounded-xl bg-rotary-blue text-white text-sm font-bold">Incluir este paso</button>}
+              </div>
+            ) : (
+              <div className="space-y-8">
+                {pasoActual.sections.map((k, i) => {
+                  const sec = secDe(k);
+                  if (!sec) return null;
+                  const cuerpo = <CamposDeSeccion fields={sec.fields} blocks={sec.blocks} data={data[k] || {}} ctx={ctxDe(k)} onChange={(fk, v) => setCampo(k, fk, v)} />;
+                  if (sec.collapsible) {
+                    const c = contar(sec, data[k]);
+                    return (
+                      <div key={k} className={i ? 'pt-8 border-t border-gray-100' : ''}>
+                        <BloqueDesplegable titulo={`${sec.title} (complementario)`} texto={sec.desc} abierto={c.filled > 0} llenos={c.filled} total={c.total} conError={Object.keys(errores).some(e => e.startsWith(`${k}:`))}>
+                          {cuerpo}
+                        </BloqueDesplegable>
+                      </div>
+                    );
+                  }
+                  return (
+                    <section key={k} className={i ? 'pt-8 border-t border-gray-100' : ''} aria-labelledby={`sec-${k}`}>
+                      {pasoActual.sections.length > 1 && (
+                        <div className="mb-4">
+                          <h3 id={`sec-${k}`} className="text-base font-black text-gray-900">{sec.title}</h3>
+                          <p className="text-xs text-gray-500 mt-0.5">{sec.desc}</p>
+                        </div>
+                      )}
+                      {cuerpo}
+                    </section>
+                  );
+                })}
+                {pasoActual.sections.some(k => secDe(k)?.fields.some(f => f.t === 'files' || (f.fields || []).some(x => x.t === 'files'))) && <p className="text-[11px] text-gray-400">{payload?.limits.label}</p>}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* PASO 10 — RESUMEN Y ENVÍO */}
+        {step === RESUMEN && !enviado && (
+          <div className={TARJETA} data-pi-step={step}>
+            <TituloPaso icon={<ShieldCheck className="w-5 h-5" />} titulo="10. Resumen y envío" texto="Revisa lo que incluye tu envío. Puedes editar cualquier paso y volver aquí. Puedes enviar aunque falten pasos: cada uno se revisa por separado." />
             <dl className="rounded-2xl bg-gray-50 border border-gray-100 p-4 space-y-1.5">
               <Resumen etiqueta="Programa" valor={payload?.program.name} />
               <Resumen etiqueta="Tipo de envío" valor={tipos.find(t => t.id === tipo)?.label} />
-              <Resumen etiqueta="Quién envía" valor={[sender.firstName, sender.lastName].filter(Boolean).join(' ') + (sender.role ? ` · ${sender.role}` : '')} />
               <Resumen etiqueta="Referencia" valor={intake?.publicRef} />
             </dl>
-            <ul className="mt-5 divide-y divide-gray-100 border border-gray-100 rounded-2xl overflow-hidden">
-              {seccionesEnvio.map((s, i) => {
-                const c = contar(s, data[s.k]); const e = errSec(s.k);
+            <ol className="mt-5 space-y-3">
+              {pasos.slice(0, RESUMEN - 1).map((p) => {
+                const n = p.n;
+                const inc = incluido(n);
+                const c = n === 1 ? null : datosDePaso(n);
+                const archivos = n === 1 ? [] : idsDeArchivos(p.sections.map(k => data[k])).map(id => files[id]).filter(Boolean);
+                const pendientes = (revision?.pending || []).filter(x => pasoDeSeccion(x.section) === n);
+                const avisos = avisosDePaso(n);
+                const ajustes = (intake?.adjustments || []).filter(a => pasoDeSeccion(a.section) === n);
                 return (
-                  <li key={s.k} className="flex items-center gap-3 px-4 py-3 bg-white">
-                    <span className="text-rotary-blue"><Icono name={s.icon} /></span>
-                    <span className="flex-1 min-w-0">
-                      <span className="block text-sm font-bold text-gray-800 truncate">{s.title}</span>
-                      <span className={`block text-[11px] font-semibold ${e ? 'text-red-600' : c.filled ? 'text-emerald-600' : 'text-gray-400'}`}>{e ? `${e} aviso(s) por revisar` : c.filled ? `${c.filled} de ${c.total} apartados con información` : 'Sin información (no se enviará)'}</span>
-                    </span>
-                    <button type="button" onClick={() => irA(i + 3)} className="text-xs font-bold text-rotary-blue px-2 py-1 rounded-lg hover:bg-blue-50">Ir</button>
+                  <li key={p.k} className={`rounded-2xl border-2 p-4 ${avisos.length || ajustes.length ? 'border-amber-200 bg-amber-50/30' : 'border-gray-100 bg-white'}`}>
+                    <div className="flex items-start gap-3">
+                      <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${estadoPaso(n) === 'hecho' ? 'bg-rotary-blue text-white' : 'bg-gray-100 text-gray-500'}`}>{n}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-black text-gray-900">{p.title}</p>
+                        <p className={`text-[11px] font-semibold mt-0.5 ${!inc ? 'text-gray-400' : n === 1 || (c && c.filled) ? 'text-emerald-600' : 'text-gray-400'}`}>
+                          {n === 1 ? [sender.firstName, sender.lastName].filter(Boolean).join(' ') + (sender.role ? ` · ${sender.role}` : '')
+                            : !inc ? 'No incluido en este envío' : c && c.filled ? `${c.filled} de ${c.total} apartados con información` : 'Sin información (no se enviará)'}
+                        </p>
+                        {archivos.length > 0 && <p className="text-[11px] text-gray-500 mt-1 break-words">Archivos: {archivos.map(f => f.filename).join(', ')}</p>}
+                        {pendientes.length > 0 && <p className="text-[11px] text-sky-700 mt-1">Pendiente de suministrar: {pendientes.map(x => x.label).join(', ')}</p>}
+                        {ajustes.map(a => <p key={a.key} className="text-[11px] text-orange-700 mt-1">Ajuste pedido · {a.label}{a.note ? `: ${a.note}` : ''}</p>)}
+                        {avisos.slice(0, 4).map((m, i) => <p key={i} className="text-[11px] text-amber-800 mt-1" role="alert">⚠ {m}</p>)}
+                        {avisos.length > 4 && <p className="text-[11px] text-amber-800 mt-1">…y {avisos.length - 4} aviso(s) más.</p>}
+                      </div>
+                      {editable && <button type="button" onClick={() => { setDesdeResumen(true); irA(n); }} aria-label={`Editar el paso ${n}: ${p.title}`} className="text-xs font-bold text-rotary-blue px-2.5 py-1.5 rounded-lg hover:bg-blue-50 shrink-0">Editar</button>}
+                    </div>
                   </li>
                 );
               })}
-            </ul>
+            </ol>
+            {(revision?.unfinishedFiles || []).length > 0 && <p className="text-xs text-amber-800 mt-3" role="alert">Hay archivos que no terminaron de cargar: {(revision?.unfinishedFiles || []).map(f => f.filename).join(', ')}. Reintenta o quítalos antes de enviar.</p>}
             {Object.entries(errores).filter(([k]) => k.startsWith('resumen:') && !k.startsWith('resumen:consents.')).map(([k, m]) => <p key={k} className="text-xs text-red-600 font-semibold mt-3" role="alert">{m}</p>)}
-            <div className="mt-6 space-y-3">
+            <div className="mt-6 pt-6 border-t border-gray-100 space-y-3">
+              <p className={ROTULO}>Declaraciones finales</p>
+              <p className="text-[11px] text-gray-500">Las autorizaciones de cada historia, testimonio, integrante y pieza multimedia siguen junto a ese contenido; estas declaraciones no las reemplazan.</p>
               {payload && ([['data', payload.consents.data, true], ['rights', payload.consents.rights, false], ['newsletter', payload.consents.newsletter, false]] as const).map(([k, texto, oblig]) => (
                 <div key={k}>
                   <label className="flex items-start gap-3 text-sm text-gray-700 cursor-pointer">
@@ -584,13 +686,13 @@ export default function ProgramIntakeForm() {
                   {errores[`resumen:consents.${k}`] && <p className="text-xs text-red-600 font-semibold ml-7" role="alert">{errores[`resumen:consents.${k}`]}</p>}
                 </div>
               ))}
-              <AvisoPrivacidad texto="Nada se publica sin la revisión y aprobación del equipo del programa. Los documentos y soportes son privados." />
+              <div className="rounded-2xl bg-sky-50 border border-sky-100 p-3 text-xs text-sky-900 flex gap-2"><ShieldCheck className="w-4 h-4 shrink-0" /> Tu envío será revisado por el equipo del programa antes de publicarse. Nada reemplaza la información vigente ni aparece en la página sin esa aprobación. Los documentos y soportes son privados.</div>
             </div>
           </div>
         )}
 
         {/* El enlace para continuar */}
-        {!enviado && token && step >= 2 && (
+        {!enviado && token && (
           <div className="rounded-2xl border border-gray-100 bg-white px-4 sm:px-6 py-4 shadow-sm">
             <p className="text-sm font-black text-gray-800 flex items-center gap-2"><Save className="w-4 h-4 text-rotary-blue" /> Puedes salir y continuar después</p>
             <p className="text-xs text-gray-500 mt-1">{correoEnlace ? `Te enviamos el enlace a ${sender.email}.` : 'Guarda este enlace personal (no lo compartas: da acceso a tu borrador). También puedes pedirlo con tu correo.'}</p>
@@ -619,15 +721,19 @@ export default function ProgramIntakeForm() {
 
         {/* Navegación */}
         {!enviado && (
-          <div className="flex items-center justify-between gap-3">
-            <button onClick={() => irA(Math.max(1, step - 1))} disabled={step === 1} className={BTN_ANTERIOR}><ArrowLeft className="w-4 h-4" /> Anterior</button>
-            {step < pasos.length || pasos.length <= 2 ? (
-              <button onClick={() => irA(step + 1)} className={BTN_SIGUIENTE}>{step === 2 && !token ? 'Empezar borrador' : 'Siguiente'} <ArrowRight className="w-4 h-4" /></button>
-            ) : (
-              <button onClick={enviar} disabled={enviando || !editable || Object.values(uploads).some(u => u.status === 'uploading')} className={BTN_ENVIAR}>
-                {enviando && <Loader2 className="w-4 h-4 animate-spin" />} {intake?.status === 'ajustes' ? 'Enviar ajustes' : 'Enviar para revisión'}
-              </button>
-            )}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <button onClick={() => irA(vecino(-1))} disabled={step === 1} className={BTN_ANTERIOR}><ArrowLeft className="w-4 h-4" /> Anterior</button>
+            <div className="flex flex-wrap items-center justify-end gap-2 ml-auto">
+              {token && editable && <button type="button" onClick={guardarAhora} className={BTN_ANTERIOR}><Save className="w-4 h-4" /> Guardar borrador</button>}
+              {desdeResumen && step !== RESUMEN && <button type="button" onClick={() => irA(RESUMEN)} className={BTN_ANTERIOR}>Volver al resumen</button>}
+              {step < RESUMEN ? (
+                <button onClick={() => irA(vecino(1))} className={BTN_SIGUIENTE}>{step === 1 && !token ? 'Empezar borrador' : 'Siguiente'} <ArrowRight className="w-4 h-4" /></button>
+              ) : (
+                <button onClick={enviar} disabled={enviando || !editable || Object.values(uploads).some(u => u.status === 'uploading')} className={BTN_ENVIAR}>
+                  {enviando && <Loader2 className="w-4 h-4 animate-spin" />} {intake?.status === 'ajustes' ? 'Enviar ajustes a revisión' : 'Enviar a revisión'}
+                </button>
+              )}
+            </div>
           </div>
         )}
         <p className="text-center text-[11px] text-gray-400 flex items-center justify-center gap-1">
@@ -637,11 +743,3 @@ export default function ProgramIntakeForm() {
     </Marco>
   );
 }
-
-/** Los pasos de un borrador abierto (para llevarlo al resumen si volvió con ajustes). */
-function pasosPara(p: FormPayload, intake: IntakeView) {
-  const secs = p.form.sections.filter(s => !s.always);
-  const env = intake.submissionType === 'carga_inicial' ? secs : secs.filter(s => intake.sections.includes(s.k));
-  return ['Programa y envío', 'Quién envía', ...env.map(s => s.title), 'Resumen y envío'];
-}
-

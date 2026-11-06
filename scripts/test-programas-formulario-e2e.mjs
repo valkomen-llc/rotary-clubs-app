@@ -172,9 +172,11 @@ await check('ni la referencia pública ni un secreto inventado abren el borrador
     assert.equal((await call(IC.publicIntakeDraft, {})).status, 404);
 });
 await check('guardar una sección es parcial y se recupera tal cual', async () => {
-    const r = await call(IC.publicIntakeSaveSection, { headers: T(), params: { key: 'identidad' }, body: { data: { name: 'Clínicas Ponseti Colombia', tagline: 'Pasos firmes', mission: { status: 'pendiente' }, website: 'nota válida' } } });
+    const r = await call(IC.publicIntakeSaveSection, { headers: T(), params: { key: 'identidad' }, body: { data: { name: 'Clínicas Ponseti Colombia', tagline: 'Pasos firmes', mission: { status: 'pendiente' } } } });
     assert.equal(r.status, 200);
-    assert.ok(r.body.warnings.some(w => w.field === 'website'), 'el formato inválido se avisa sin bloquear el guardado');
+    const w = await call(IC.publicIntakeSaveSection, { headers: T(), params: { key: 'contacto' }, body: { data: { website: 'nota válida' } } });
+    assert.ok(w.body.warnings.some(x => x.field === 'website'), 'el formato inválido se avisa sin bloquear el guardado');
+    await call(IC.publicIntakeSaveSection, { headers: T(), params: { key: 'contacto' }, body: { data: {} } });
     const d = await call(IC.publicIntakeDraft, { headers: T() });
     assert.equal(d.body.intake.data.identidad.tagline, 'Pasos firmes');
     assert.equal(d.body.intake.data.identidad.mission.status, 'pendiente');
@@ -394,6 +396,47 @@ await check('los archivos privados se abren sólo con enlace firmado y auditado 
     const r = await call(IC.adminIntakeFileUrl, { user: D4281, params: { id: ponseti.id, intakeId, fileId: bigId } });
     assert.equal(r.status, 200); assert.ok(/X-Amz-Expires=120/.test(r.body.url));
     assert.equal((await call(IC.adminIntakeFileUrl, { user: D4290, params: { id: ponseti.id, intakeId, fileId: bigId } })).status, 403);
+});
+
+grupo('── Diez pasos: borradores anteriores y resumen (v4.1287)');
+await check('un borrador con la forma anterior se migra al abrirlo, sin perder respuestas ni archivos', async () => {
+    const st = await call(IC.publicIntakeStart, { body: { slug: 'clinicas-ponseti', submissionType: 'carga_inicial', sender: { ...SENDER, email: 'viejo@ponseti.org' } } });
+    const t3 = st.body.token; const id3 = st.body.intake.id;
+    const p = await call(IC.publicIntakePresign, { headers: T(t3), body: { filename: 'jornada.jpg', size: jpeg.length, purpose: 'media' } });
+    await put(p.body.uploadUrl, jpeg, { 'Content-Type': 'image/jpeg' });
+    await call(IC.publicIntakeComplete, { headers: T(t3), body: { fileId: p.body.fileId } });
+    // Lo que guardaba el formulario de 16 pasos: sitio web en Identidad y una jornada en Recursos.
+    await db.query(`UPDATE "ProgramIntake" SET data = $2::jsonb WHERE id = $1`, [id3, JSON.stringify({
+        identidad: { website: 'https://ponseti.org/', tagline: 'Antes' },
+        recursos: { resources: [{ _id: 'g1', _action: 'crear', category: 'guia', title: 'Guía para familias' }, { _id: 'n1', _action: 'crear', category: 'jornada', title: 'Jornada en Pasto', location: 'Pasto', file: [{ id: p.body.fileId }] }] },
+    })]);
+    const d = await call(IC.publicIntakeDraft, { headers: T(t3) });
+    assert.equal(d.body.intake.data.contacto.website, 'https://ponseti.org/');
+    assert.equal(d.body.intake.data.identidad.tagline, 'Antes');
+    assert.equal(d.body.intake.data.impacto.news[0].title, 'Jornada en Pasto');
+    assert.equal(d.body.intake.data.impacto.news[0].file[0].id, p.body.fileId, 'el archivo sigue citado');
+    assert.equal(d.body.intake.data.recursos.resources.length, 1);
+    const row = (await db.query(`SELECT data FROM "ProgramIntake" WHERE id = $1`, [id3])).rows[0];
+    assert.ok(row.data.impacto && !row.data.identidad.website, 'la forma nueva quedó guardada');
+    assert.ok(d.body.intake.files.some(f => f.id === p.body.fileId && f.status === 'ready'));
+    // El resumen: avisos y pendientes sin enviar nada.
+    await call(IC.publicIntakeSaveSection, { headers: T(t3), params: { key: 'identidad' }, body: { data: { tagline: 'Antes', mission: { status: 'pendiente' } } } });
+    const c = await call(IC.publicIntakeCheck, { headers: T(t3), body: {} });
+    assert.equal(c.status, 200);
+    assert.ok(c.body.pending.some(x => x.field === 'mission'));
+    assert.ok(c.body.errors.some(e => e.field === 'consents.data'));
+    assert.equal((await db.query(`SELECT status FROM "ProgramIntake" WHERE id = $1`, [id3])).rows[0].status, 'borrador', 'revisar el resumen no envía');
+});
+await check('un envío YA en revisión no se migra (sus decisiones conservan sus claves)', async () => {
+    await db.query(`UPDATE "ProgramIntake" SET data = data || '{"identidad":{"website":"https://x.org/"}}'::jsonb WHERE id = $1`, [intakeId]);
+    const row = await (await import(`${REPO}/server/lib/programIntakeStore.js`)).getIntake(intakeId);
+    assert.equal(row.data.identidad.website, 'https://x.org/');
+});
+await check('una actualización por pasos: un paso con datos en una sola de sus secciones se envía', async () => {
+    const st = await call(IC.publicIntakeStart, { body: { slug: 'clinicas-ponseti', submissionType: 'actualizacion', sections: ['atencion', 'sedes'], sender: SENDER } });
+    await call(IC.publicIntakeSaveSection, { headers: T(st.body.token), params: { key: 'atencion' }, body: { data: { coverage: 'Nariño y Cauca' } } });
+    const r = await call(IC.publicIntakeSubmit, { headers: T(st.body.token), body: { consents: { data: true } } });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
 });
 
 console.log(`\n${malos.length ? '❌' : '✅'} test:programas:formulario:e2e — ${ok} comprobaciones OK${malos.length ? `, ${malos.length} fallidas:\n   · ${malos.join('\n   · ')}` : ''}`);
