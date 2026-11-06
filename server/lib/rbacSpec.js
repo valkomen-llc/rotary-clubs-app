@@ -776,7 +776,7 @@ export const ROLE_PRESETS = [
         // «Usuarios y permisos», que queda auditada.
         key: 'digital_secretary',
         label: 'Secretaría Digital — Control de Aportes',
-        description: 'Supervisión documental y financiera de los aportes: consulta la Bóveda de Fondos, identifica a los aportantes, verifica estados de Stripe y traslados, descarga comprobantes y exporta informes. Administra además el Directorio de Clubes y su Catálogo Maestro, los Eventos y las Analíticas del sitio. No solicita retiros, no registra desembolsos ni modifica estados financieros.',
+        description: 'Supervisión documental y financiera de los aportes: consulta la Bóveda de Fondos, identifica a los aportantes, verifica estados de Stripe y traslados, descarga comprobantes y exporta informes. Administra además el Directorio de Clubes y su Catálogo Maestro, los Eventos, las Analíticas y el Estudio de Contenido del sitio. No solicita retiros, no registra desembolsos ni modifica estados financieros.',
         scope: 'site',
         protected: true,
         permissions: [
@@ -807,6 +807,15 @@ export const ROLE_PRESETS = [
             // Las rutas de `/api/analytics` y de la analítica social ya acotan
             // por sitio; esto abre la entrada del menú y la ruta del panel.
             'analytics.view',
+            // v4.1290 — ESTUDIO DE CONTENIDO, pedido del Distrito 4281. Es la
+            // llave legada `content_studio` (LEGACY_PERMISSION_MAP) SIN
+            // `social.view`: se pidió el Estudio, no el Hub Social. Sin
+            // `delete`, como Eventos. Las herramientas que ve las sigue
+            // decidiendo el SITIO (`requireStudioTool`), no este rol.
+            'content_studio.view',
+            'content_studio.create',
+            'content_studio.edit',
+            'content_studio.publish',
         ],
         // Su trabajo es la Bóveda: el resumen del panel no le dice nada.
         landing: '/admin/boveda',

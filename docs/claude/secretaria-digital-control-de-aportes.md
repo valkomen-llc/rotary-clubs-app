@@ -157,6 +157,14 @@ menú y la ruta del panel. Si vuelve a faltar otro módulo «que antes veía», 
 referencia es `INSTITUTIONAL_BASE` + la lista legada de la cuenta: comparar con
 el preset antes de agregar nada.
 
+**v4.1290 — Estudio de Contenido, por pedido.** A diferencia de Eventos y
+Analíticas no es una restitución: lo pidió el Distrito. El preset suma la llave
+legada `content_studio` **sin `social.view`** (se pidió el Estudio, no el Hub
+Social) y sin `content_studio.delete`. Las rutas de `/api/content-studio` no
+miran el RBAC: las acota `requireStudioTool` según las herramientas activas del
+SITIO, así que el permiso abre la entrada del menú y la ruta del panel, y lo que
+ve adentro lo decide la configuración del sitio.
+
 **Pendientes conocidos:** el listado de `/financial/donations` trae hasta 200
 aportes por consulta (suficiente hoy; paginar si un sitio lo supera); el club y
 el distrito del aportante no existen como dato en `Donation` (se ven cuando el
