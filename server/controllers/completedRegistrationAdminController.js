@@ -42,6 +42,7 @@ import {
 } from '../lib/completedRegistrationStore.js';
 import { signedReceiptUrl, deleteReceiptObject, presignReceiptUpload, receiptKeyBelongs } from '../lib/completedReceipts.js';
 import { replaceCompletedReceipt } from '../lib/completedReceiptChange.js';
+import { applyCompletedFormTextFixes } from '../lib/completedFormTextFixes.js';
 import { rotaryCatalogFor } from '../lib/eventRegistrationSpec.js';
 import {
     IMPORT_SOURCE, IMPORT_SOURCE_LABEL, IMPORT_INITIAL_STATUSES, DEFAULT_IMPORT_STATUS,
@@ -119,6 +120,8 @@ export const getConfig = async (req, res) => {
     try {
         const event = await requireEvent(req, res);
         if (!event) return;
+        // v4.1292 — el panel también muestra el texto ya ajustado.
+        await applyCompletedFormTextFixes();
         const edition = await ensureEdition(event);
         const config = getCompletedConfig(edition);
 

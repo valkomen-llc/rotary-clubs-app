@@ -126,6 +126,27 @@ panel, y el asistente lo hace desde «Mis eventos».
   y qué archivo por cuál.
 - **Una clave reclamada por otra inscripción no se comparte** (409).
 
+## Ajustes puntuales de texto — v4.1292
+
+`server/lib/completedFormTextFixes.js` (`COMPLETED_FORM_TEXT_FIXES`): cuando el
+equipo pide un texto nuevo del formulario y no logra guardarlo desde
+«Formulario público», se agrega un ajuste `{ slug, field, ifStartsWith, value }`.
+Corre una vez por instancia antes de leer (`findCompletedFormBySlug` y el
+`getConfig` del panel) y escribe con `jsonb_set` SÓLO esa clave de
+`settings.completedForm`.
+
+- **⚠️ Condicional e idempotente**: reemplaza sólo si el campo aún empieza con
+  el texto viejo. Lo que el equipo guardó después desde el panel manda; la
+  prueba (`npm run test:completed:text-fixes`, 8 con base local) lo fija, y
+  también que el valor nuevo no cumpla su propia condición.
+- **No es una segunda fuente del texto**: es la misma clave que edita el panel.
+- Campos permitidos: `intro`, `title`, `successMessage` (lista cerrada).
+- Primer uso (2026-11-06): el texto introductorio de Villavicencio 2027. En
+  producción no se encontró ningún `PUT /admin/completed/config` en los logs
+  de Vercel: el bloque «Formulario público» está plegado y el equipo había
+  guardado la ficha del evento (`PUT /api/calendar/events/…`), donde ese texto
+  no vive.
+
 ### Fase 2 propuesta
 
 Centro del Participante: actualizar datos desde «Mis eventos», acreditación con QR, documentos oficiales,
