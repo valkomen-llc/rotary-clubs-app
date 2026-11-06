@@ -136,6 +136,18 @@ existía en el registro: ninguna cuenta acotada podía pasar. Escribir en el
 catálogo exige además ser del sitio del distrito (`catalogScopeFromRecords`,
 incluye `institutional_user`). Sigue SIN `finance.manage`.
 
+**v4.1288 — Eventos, como los veía antes del rol.** Reporte del Distrito
+4281: a `secretaria@rotary4281.org` no le aparecía «Eventos». Causa: la cuenta
+era institucional con la llave legada `events` (v4.932); al darle la membresía
+`digital_secretary`, `resolveGrant` resuelve por la membresía (paso 2) y la
+lista legada deja de leerse, así que se perdieron los permisos de eventos que
+el preset no traía. El preset suma EXACTAMENTE `LEGACY_PERMISSION_MAP.events`
+(`events.view/create/edit/publish`) — sin `events.delete` y sin
+`finance.manage`. La prueba fija ambas cosas y que la barra lateral pinte
+`/admin/eventos`. **Regla durable:** al pasar una cuenta institucional a un
+preset, lo que tenía por la lista legada NO se arrastra; si el preset no lo
+cubre, va en el preset (si es del cargo) o como excepción individual.
+
 **Pendientes conocidos:** el listado de `/financial/donations` trae hasta 200
 aportes por consulta (suficiente hoy; paginar si un sitio lo supera); el club y
 el distrito del aportante no existen como dato en `Donation` (se ven cuando el

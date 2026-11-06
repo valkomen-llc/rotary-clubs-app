@@ -34,13 +34,27 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1287.0 | 2026-11-06 (Formulario institucional de programas en diez pasos)
+// UI V4.1288.0 | 2026-11-06 (La Secretaría Digital vuelve a ver Eventos)
 // Cache bust: 2026-11-06
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1288.0',
+        title: 'Secretaría Digital: vuelve el módulo de Eventos 📅',
+        description: 'La cuenta de la Secretaría Digital del Distrito 4281 dejó de ver «Eventos» en su menú al recibir el rol «Secretaría Digital — Control de Aportes»: ese rol reemplazó los permisos institucionales que tenía antes, entre ellos Eventos. El rol vuelve a incluir Eventos con los mismos permisos de antes, y la Bóveda sigue en sólo lectura y descarga.',
+        date: new Date().toISOString(),
+        tags: ['permisos', 'secretaría digital', 'eventos', 'distrito 4281'],
+        type: 'fix',
+        impact: 'Alta: la Secretaría Digital recupera Eventos (fichas, inscripciones y registro) sin perder nada de lo que ya tenía.',
+        changes: [
+            { type: 'fixed', text: 'El rol «Secretaría Digital — Control de Aportes» suma ver, crear, editar y publicar eventos: exactamente lo que daba el permiso «Eventos» de la cuenta institucional antes del rol. La entrada «Eventos» vuelve a la barra lateral, debajo de «Contenido».' },
+            { type: 'changed', text: 'Sin cambios en lo demás: sigue sin eliminar eventos, sin administrar usuarios y sin mover dinero en la Bóveda (no solicita retiros ni registra desembolsos). Sigue entrando directo a la Bóveda de Fondos.' },
+            { type: 'added', text: 'La prueba test:digital-secretary fija los permisos de Eventos del rol y que la barra lateral los muestre (134 comprobaciones).' },
+        ],
+    },
     {
         version: '4.1287.0',
         title: 'Programas: el formulario institucional en diez pasos 🧭',

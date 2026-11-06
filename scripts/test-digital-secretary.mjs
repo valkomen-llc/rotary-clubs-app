@@ -60,7 +60,10 @@ check('existe como preset del código (no fila sembrada)', !!preset);
 eq('su nombre es el del pedido', preset?.label, 'Secretaría Digital — Control de Aportes');
 check('es de sitio y protegido', preset?.scope === 'site' && preset?.protected === true);
 // v4.1271 — más el Directorio de Clubes y su Catálogo Maestro (ver y administrar).
-eq('⚠️ sus permisos son EXACTAMENTE ver, exportar, su buzón y el Directorio de Clubes', [...preset.permissions].sort(), ['clubs.manage', 'clubs.view', 'email_inbox.use_own', 'finance.export', 'finance.view']);
+// v4.1288 — más Eventos, exactamente los de la llave legada `events` que tenía antes del rol.
+eq('⚠️ sus permisos son EXACTAMENTE ver, exportar, su buzón, el Directorio de Clubes y Eventos', [...preset.permissions].sort(), ['clubs.manage', 'clubs.view', 'email_inbox.use_own', 'events.create', 'events.edit', 'events.publish', 'events.view', 'finance.export', 'finance.view']);
+eq('v4.1288 — Eventos son los MISMOS permisos que la llave legada `events`', preset.permissions.filter(p => p.startsWith('events.')).sort(), [...S.LEGACY_PERMISSION_MAP.events].sort());
+check('v4.1288 — ⚠️ NO puede eliminar eventos', !S.expandPermissions(preset.permissions).permissions.includes('events.delete'));
 check('⚠️ NO trae finance.manage (retiros, traslados, estados)', !S.expandPermissions(preset.permissions).permissions.includes('finance.manage'));
 check('no es un rol administrativo (no administra usuarios)', !S.isAdministrativeRole(preset));
 eq('entra directo a la Bóveda', preset.landing, '/admin/boveda');
@@ -94,6 +97,8 @@ const RUTAS = [...new Set([...LAYOUT.matchAll(/path:\s*(?:esFeria \? '[^']*' : )
 const menu = RUTAS.filter(p => S.canOpenPath(gJ, p));
 check('la barra lateral tiene «Finanzas → Bóveda de Fondos»', menu.includes('/admin/boveda'), JSON.stringify(menu));
 check('v4.1271 — y «Directorio de Clubes»', menu.includes('/admin/directorio-clubes'), JSON.stringify(menu));
+check('v4.1288 — y «Eventos», como antes del rol', menu.includes('/admin/eventos'), JSON.stringify(menu));
+check('v4.1288 — abre /admin/eventos', S.canOpenPath(gJ, '/admin/eventos'));
 check('⚠️ y ninguna pantalla de administración', !menu.some(p => ['/admin/usuarios', '/admin/configuracion', '/admin/integraciones', '/admin/roles'].includes(p)), JSON.stringify(menu));
 check('la entrada de la Bóveda vive en la categoría Finanzas', /label: esFeria \? 'Conciliaciones y Desembolsos' : 'Bóveda de Fondos',[\s\S]{0,200}category: 'Finanzas'/.test(LAYOUT));
 
