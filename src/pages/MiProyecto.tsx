@@ -335,10 +335,18 @@ const MiProyecto = () => {
         if (key) url.searchParams.set('form', key); else url.searchParams.delete('form');
         window.history.pushState(null, '', url.toString());
     };
-    const openVideoPitchView = (open: boolean) => {
+    // v4.1296 — La tarjeta puede abrir la vista pidiendo pagar o cambiar de
+    // plan (`?vp_action=`); la vista lo lee una vez y lo ejecuta.
+    const [vpAction, setVpAction] = useState<'pay' | 'plan' | null>(() => {
+        const a = new URLSearchParams(window.location.search).get('vp_action');
+        return a === 'pay' || a === 'plan' ? a : null;
+    });
+    const openVideoPitchView = (open: boolean, action: 'pay' | 'plan' | null = null) => {
         setOpenVideoPitch(open);
+        setVpAction(open ? action : null);
         const url = new URL(window.location.href);
         if (open) url.searchParams.set('videoPitch', '1'); else url.searchParams.delete('videoPitch');
+        if (open && action) url.searchParams.set('vp_action', action); else url.searchParams.delete('vp_action');
         window.history.pushState(null, '', url.toString());
         if (!open) setVpRefresh(n => n + 1);
     };
@@ -457,7 +465,9 @@ const MiProyecto = () => {
             <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
                 {openVideoPitch ? (
                     <VideoPitchRequestView
+                        key={vpAction || 'open'}
                         token={token}
+                        initialAction={vpAction}
                         onBack={() => openVideoPitchView(false)}
                         onChanged={() => setVpRefresh(n => n + 1)}
                         onSessionExpired={logout}
@@ -592,7 +602,7 @@ const MiProyecto = () => {
                                 {/* v4.1293 — Video Pitch Profesional: ocupa las dos
                                     columnas, debajo de la plantilla y de 31A. Su
                                     estado llega resuelto del servidor. */}
-                                <VideoPitchCard token={token} onSessionExpired={logout} onOpen={() => openVideoPitchView(true)} refreshKey={vpRefresh} />
+                                <VideoPitchCard token={token} onSessionExpired={logout} onOpen={action => openVideoPitchView(true, action === 'pay' ? 'pay' : action === 'plan' ? 'plan' : null)} refreshKey={vpRefresh} />
                             </div>
                         </section>
                     </>

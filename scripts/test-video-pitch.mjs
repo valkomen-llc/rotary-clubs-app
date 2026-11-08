@@ -22,6 +22,10 @@ import {
 } from '../server/lib/videoPitchSpec.js';
 import { buildDossier, buildUserPrompt, parseModelJson, auditScript } from '../server/lib/videoPitchAI.js';
 import { OWNED_COLUMNS } from '../server/lib/ensureVideoPitchSchema.js';
+import {
+    COMMERCIAL_STATUSES, DEFAULT_PLANS, normalizePlanInput, planNeedsNewVersion, planSnapshot, toStripeAmount, fromStripeAmount, readSessionOutcome,
+    reusableSession, commercialStatusOf, productionGate, canChoosePlan, cardCopyOf, formatMoney,
+} from '../server/lib/videoPitchCommerce.js';
 
 let n = 0;
 const ok = (cond, msg) => { assert.ok(cond, msg); n++; console.log(`  ✓ ${msg}`); };
@@ -105,6 +109,45 @@ ok(notificationFor('submitted').kind === 'received' && notificationFor('in_revie
 ok(requestNumber(2027, 7) === 'VP-2027-0007', 'número de solicitud');
 const csv = requestsCsv([{ number: 'VP-2027-0001', projectName: 'P; uno', clubName: 'C', district: '4271', responsibleName: 'R', email: 'e', whatsapp: 'w', status: 'submitted', materialCount: 2, assigneeName: null, submittedAt: 'x', updatedAt: 'y' }]);
 ok(csv.startsWith('﻿Número;Proyecto') && csv.includes('"P; uno"') && csv.includes('Solicitud enviada'), 'CSV con BOM, «;» y el estado en palabras');
+
+console.log('── Capa comercial (v4.1296)');
+ok(COMMERCIAL_STATUSES.length === 8 && DEFAULT_PLANS.length === 2 && DEFAULT_PLANS[0].priceAmount === 99 && DEFAULT_PLANS[1].priceAmount === 135, 'ocho estados comerciales; dos planes iniciales: USD 99 y USD 135');
+ok(DEFAULT_PLANS[1].deliverables.join() === '16:9,9:16' && DEFAULT_PLANS[0].deliverables.join() === '16:9', 'el Integral entrega horizontal y vertical; el Esencial sólo horizontal');
+ok(!DEFAULT_PLANS.some(p => p.features.some(f => /garantiza/i.test(f))) && DEFAULT_PLANS[1].features.some(f => /sujeto a sus políticas editoriales/.test(f)), 'la publicación en redes no se promete como garantizada');
+const np = normalizePlanInput({ code: 'Mi Plan!', name: 'X', priceAmount: '12.345', currency: 'usd', features: 'a\n\nb', deliverables: ['16:9', 'raro'], maxDurationSec: 9999, revisionRounds: -1 });
+ok(np.ok && np.plan.code === 'miplan' && np.plan.priceAmount === 12.35 && np.plan.currency === 'USD' && np.plan.features.join() === 'a,b' && np.plan.deliverables.join() === '16:9' && np.plan.maxDurationSec === 600 && np.plan.revisionRounds === 0, 'un plan se normaliza: código limpio, dos decimales, características por línea, formatos conocidos, topes');
+ok(!normalizePlanInput({ code: 'x', name: 'X', priceAmount: -1, deliverables: ['16:9'] }).ok && !normalizePlanInput({ code: 'x', name: 'X', priceAmount: 1, currency: 'EUR', deliverables: ['16:9'] }).ok && !normalizePlanInput({ code: 'x', name: 'X', priceAmount: 1, deliverables: [] }).ok, 'precio negativo, moneda ajena y sin formatos: rechazados');
+const base = planSnapshot({ code: 'a', name: 'A', priceAmount: 99, currency: 'USD', features: ['x'], deliverables: ['16:9'], maxDurationSec: 180, revisionRounds: 3 });
+ok(planNeedsNewVersion(base, { ...base, priceAmount: 100 }) && planNeedsNewVersion(base, { ...base, features: ['x', 'y'] }) && !planNeedsNewVersion(base, { ...base }), 'cambiar precio o características exige versión nueva; nada más, no');
+ok(toStripeAmount(99, 'USD') === 9900 && toStripeAmount(135.5, 'USD') === 13550 && toStripeAmount(400000, 'COP') === 400000 && fromStripeAmount(9900, 'USD') === 99, 'unidad mínima de Stripe: centavos en USD, enteros en COP');
+ok(formatMoney(99, 'USD') === 'USD 99' && formatMoney(135, 'USD') === 'USD 135' && /COP/.test(formatMoney(400000, 'COP')), 'importes para leer');
+ok(readSessionOutcome({ status: 'complete', payment_status: 'unpaid' }) === 'unpaid' && readSessionOutcome({ status: 'complete', payment_status: 'paid' }) === 'paid' && readSessionOutcome({ status: 'expired' }) === 'expired', 'una sesión completa NO es una sesión pagada');
+const open = { status: 'open', payment_status: 'unpaid', url: 'u', expires_at: Math.floor(Date.now() / 1000) + 3600, currency: 'usd', amount_total: 9900 };
+ok(reusableSession(open, { amount: 99, currency: 'USD' }) && !reusableSession(open, { amount: 135, currency: 'USD' }) && !reusableSession({ ...open, currency: 'cop' }, { amount: 99, currency: 'USD' }) && !reusableSession({ ...open, expires_at: Math.floor(Date.now() / 1000) + 60 }, { amount: 99, currency: 'USD' }), 'una sesión se reutiliza sólo con el mismo importe, la misma moneda y vida suficiente');
+ok(commercialStatusOf({ request: {}, order: null }) === 'no_plan' && commercialStatusOf({ request: { planId: 'p' }, order: null }) === 'plan_selected' && commercialStatusOf({ request: {}, order: { status: 'processing' } }) === 'processing' && commercialStatusOf({ request: {}, order: { status: 'paid' } }) === 'paid' && commercialStatusOf({ request: { planId: 'p' }, order: { status: 'cancelled' } }) === 'plan_selected', 'el estado comercial se deriva de la orden vigente');
+ok(/pago confirmado/.test(productionGate('script_in_progress', { commercialStatus: 'pending_payment' })) && productionGate('script_in_progress', { commercialStatus: 'paid' }) === null && productionGate('script_in_progress', { commercialStatus: 'pending_payment', paymentWaived: true }) === null && productionGate('in_review', { commercialStatus: 'no_plan' }) === null, 'la compuerta: producir exige pago o exoneración; revisar no');
+ok(canChoosePlan({ commercialStatus: 'pending_payment', requestStatus: 'draft' }) && !canChoosePlan({ commercialStatus: 'paid', requestStatus: 'submitted' }) && !canChoosePlan({ commercialStatus: 'no_plan', requestStatus: 'cancelled' }), 'el plan se cambia hasta pagar; nunca en una solicitud cancelada');
+const cB = cardCopyOf({ exists: true, requestStatus: 'draft', commercialStatus: 'pending_payment', available: true });
+ok(cB.headline === 'Tu solicitud y materiales están guardados. Solo falta completar el pago.' && cB.actions.map(a => a.key).join() === 'pay,open,plan' && cB.actions[0].label === 'Pagar Video Pitch', 'tarjeta caso B: pendiente de pago con Pagar, Completar información y Cambiar plan');
+ok(cardCopyOf({ exists: true, requestStatus: 'draft', commercialStatus: 'no_plan', available: true }).actions[0].label === 'Continuar solicitud', 'tarjeta caso A: borrador');
+ok(cardCopyOf({ exists: true, requestStatus: 'in_review', commercialStatus: 'paid', available: true }).headline === 'Pago confirmado. Estamos revisando la información de tu proyecto.', 'tarjeta caso C: pagado');
+ok(cardCopyOf({ exists: true, requestStatus: 'in_production', commercialStatus: 'paid', available: true }).headline === 'Tu Video Pitch está en proceso de producción.', 'tarjeta caso D: en producción');
+ok(cardCopyOf({ exists: true, requestStatus: 'delivered', commercialStatus: 'paid', available: true }).actions[0].label === 'Ver video' && cardCopyOf({ exists: false, requestStatus: 'not_requested', commercialStatus: 'no_plan', available: true }).actions[0].label === 'Solicitar Video Pitch', 'tarjeta caso E: entregado; y sin solicitud: «Solicitar Video Pitch»');
+const commerceCtrl = read('server/controllers/videoPitchCommerceController.js');
+ok((commerceCtrl.match(/SET status = 'paid'/g) || []).length === 1 && commerceCtrl.indexOf("SET status = 'paid'") > commerceCtrl.indexOf('export const applyStripeOutcome'), 'una orden se marca pagada en UN solo sitio: applyStripeOutcome, con lo que Stripe dice');
+ok(/unit_amount: toStripeAmount\(order\.amount, order\.currency\)/.test(commerceCtrl) && !/req\.body\?\.amount|req\.body\.amount|body\.price/.test(commerceCtrl), 'el importe de Checkout sale de la ORDEN, nunca del cuerpo de la petición');
+ok(/ON CONFLICT \("stripeEventId"\) DO NOTHING/.test(commerceCtrl), 'cada evento de Stripe se registra una vez');
+ok(!/metadata: \{[^}]*submissionId/.test(commerceCtrl), 'la metadata de la sesión no lleva submissionId: no se cruza con el enrutador de la Feria');
+const pay = read('server/controllers/paymentController.js');
+ok(pay.includes("metadata.type === 'video_pitch_order'") && pay.includes('routeVideoPitchEvent(event, \'refunded\')') && pay.includes('routeVideoPitchEvent(event, \'expired\')'), 'el webhook único de la plataforma enruta pagos, fallos, expiraciones y reembolsos del Video Pitch');
+const ensure2 = read('server/lib/ensureVideoPitchSchema.js');
+ok(/WHERE status IN \('pending_payment', 'processing', 'failed'\)/.test(ensure2), 'una sola orden abierta por solicitud: lo garantiza un índice único parcial');
+const viewSrc = read('src/components/project-forms/VideoPitchRequestView.tsx');
+ok(viewSrc.includes('Solicitar Video Pitch') && !viewSrc.includes("'Enviar solicitud'") && viewSrc.includes('Elige tu Video Pitch Profesional') && viewSrc.includes('Guardar y pagar después') && viewSrc.includes('Pagar ahora'), 'el botón dice «Solicitar Video Pitch» y abre el modal de planes con pagar ahora o después');
+ok(!/USD 99|USD 135|\$99|\$135/.test(viewSrc) && !/USD 99|USD 135|\$99|\$135/.test(read('src/components/admin/feria/VideoPitchAdmin.tsx')), 'ningún precio escrito en el frontend: vienen de la configuración');
+ok(viewSrc.includes("'vp_session'") && viewSrc.includes('/checkout/sync') && viewSrc.includes('clientRevision'), 'al volver de Stripe el servidor verifica la sesión; el autoguardado manda su revisión');
+const adminSrc = read('src/components/admin/feria/VideoPitchAdmin.tsx');
+ok(adminSrc.includes("['commerce', 'Plan y pago', CreditCard]") && adminSrc.includes('const PlansConfig = ') && adminSrc.includes('Autorizar sin pago'), 'la ficha tiene «Plan y pago», el módulo tiene Configuración de planes y la exoneración auditada');
 
 console.log('── Invariantes del controlador');
 const ctrl = read('server/controllers/videoPitchController.js');

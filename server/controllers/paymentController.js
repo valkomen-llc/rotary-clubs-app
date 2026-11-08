@@ -175,12 +175,14 @@ export const stripeWebhook = async (req, res) => {
                 const paymentIntent = event.data.object;
                 await handleSuccessfulPayment(paymentIntent);
                 await routeProjectFairEvent(event, 'succeeded');
+                await routeVideoPitchEvent(event, 'paid');
                 break;
             case 'payment_intent.payment_failed':
                 const failedIntent = event.data.object;
                 await handleFailedPayment(failedIntent);
                 await routeProjectFairEvent(event, 'failed');
                 await routeEventRegistration(event, 'failed');
+                await routeVideoPitchEvent(event, 'failed');
                 break;
             case 'checkout.session.completed':
                 const session = event.data.object;
@@ -193,12 +195,14 @@ export const stripeWebhook = async (req, res) => {
             case 'checkout.session.async_payment_failed':
                 await routeProjectFairEvent(event, 'failed');
                 await routeEventRegistration(event, 'failed');
+                await routeVideoPitchEvent(event, 'failed');
                 break;
             // v4.598 — Desenlaces del pago de la Feria de Proyectos. La fuente
             // de verdad es el webhook, no el retorno del navegador.
             case 'checkout.session.expired':
                 await routeProjectFairEvent(event, 'expired');
                 await routeEventRegistration(event, 'expired');
+                await routeVideoPitchEvent(event, 'expired');
                 break;
             case 'charge.refunded':
                 await routeProjectFairEvent(event, 'refunded');
@@ -208,6 +212,7 @@ export const stripeWebhook = async (req, res) => {
                 // reembolsada seguía figurando como ingreso del club para
                 // siempre, y quien había aportado no recibía ningún aviso.
                 await routeDonationRefund(event);
+                await routeVideoPitchEvent(event, 'refunded');
                 break;
             case 'invoice.paid':
                 const invoice = event.data.object;
@@ -275,8 +280,30 @@ async function routeEventRegistration(event, kind) {
     }
 }
 
+// v4.1296 — Órdenes del Video Pitch Profesional de la Feria de Proyectos.
+// Sólo atiende `metadata.type === 'video_pitch_order'` (y los reembolsos cuyo
+// cargo pertenezca a una orden suya). El evento se registra una vez y el
+// estado «pagado» sólo sale de lo que Stripe dice (`applyStripeOutcome`).
+async function routeVideoPitchEvent(event, kind) {
+    const object = event?.data?.object || {};
+    const isOurs = object?.metadata?.type === 'video_pitch_order' || Boolean(object?.metadata?.videoPitchOrderId);
+    if (!isOurs && kind !== 'refunded') return;
+    try {
+        const mod = await import('./videoPitchCommerceController.js');
+        await mod.routeVideoPitchStripeEvent(event, kind);
+    } catch (error) {
+        console.error(`[Stripe Webhook] ERROR procesando orden de Video Pitch (${kind}):`, error?.message);
+    }
+}
+
 async function handleSuccessfulCheckoutSession(session, event = null) {
     console.log(`[Stripe Webhook] Checkout session completed: ${session.id}`);
+
+    // 0.a v4.1296 — Video Pitch Profesional: la sesión completada y PAGADA
+    //     confirma la orden; completada sin pagar no marca nada.
+    if (session.metadata && session.metadata.type === 'video_pitch_order') {
+        await routeVideoPitchEvent(event || { data: { object: session } }, 'paid');
+    }
 
     // 0. Donación pública (v4.409) — Maneras de Contribuir.
     //    Registra Payment + Donation directo, sin Order intermedio. El balance

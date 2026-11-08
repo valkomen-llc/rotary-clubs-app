@@ -216,6 +216,12 @@ respuestas, guion aprobado y video entregado), `VideoPitchFile` (materiales
 del club, video final y miniatura), `VideoPitchScript` (cada versión de
 guion, inmutable), `VideoPitchEvent` (quién hizo qué y cuándo) y
 `VideoPitchNotification` (qué aviso salió por qué cambio: evita duplicados).
+Y las cinco de su capa COMERCIAL (v4.1296): `VideoPitchPlan` (el catálogo que
+vende el comité, editable desde el panel), `VideoPitchPlanVersion` (cada cambio
+de precio o características, inmutable), `VideoPitchOrder` (la fotografía de
+cada compra y su recorrido en Stripe: lo que se cobró NO se reconstruye),
+`VideoPitchStripeEvent` (cada evento de Stripe ya aplicado: idempotencia) y
+`VideoPitchUploadIntent` (cada URL de subida emitida, para limpiar huérfanos).
 (Más las del registro de eventos que enumera su propia sección:
 `EventEdition`, `EventRegistrationCategory`, `EventRegistrationCompanion`,
 `EventRegistrationPayment`, `EventRegistrationHistory`,
@@ -246,7 +252,7 @@ es **rotar la credencial en Neon**, no sólo borrar el archivo.
 
 | Módulo | Archivo |
 |---|---|
-| **Video Pitch Profesional de la Feria de Proyectos** (tarjeta en `/mi-proyecto`, formulario precargado en cuatro bloques con materiales al almacenamiento privado, bandeja «Video Pitch» en Postulación de Proyectos, guiones con IA sobre el expediente real, aprobación del club, producción y entrega auditadas) — v4.1293 | `docs/claude/video-pitch.md` |
+| **Video Pitch Profesional de la Feria de Proyectos** (tarjeta en `/mi-proyecto`, formulario precargado con materiales al almacenamiento privado, bandeja «Video Pitch» en Postulación de Proyectos, guiones con IA sobre el expediente real, aprobación del club, producción y entrega auditadas) — v4.1293 (paso B = un campo: v4.1295; **capa comercial: planes administrables, órdenes con precio histórico, Stripe por el webhook único, pagar después, compuerta de producción y exoneración auditada: v4.1296**) | `docs/claude/video-pitch.md` |
 | **Formulario institucional de programas** (`/formulario-programas`: un solo formulario guiado por esquema y configurable por programa, carga inicial / actualización / aporte, borrador en servidor con enlace secreto y recuperación por correo, archivos privados con carga directa o multiparte reanudable, revisión por ítem en la pestaña «Formulario institucional» que convierte lo aprobado en solicitudes del flujo editorial; nada se publica ni se sobrescribe solo) — v4.1286 (**diez pasos con bloques desplegables, resumen con edición y borradores anteriores migrados: v4.1287**) | `docs/claude/formulario-institucional-de-programas.md` |
 | **Programas** (identidad única por programa, vinculación distrital, activación por clubes con contenido central compartido, formato «Gestión de contenidos» en tres pasos, flujo editorial con revisión médica sólo para lo clínico, página pública `/programas/:slug` por secciones, cuatro formularios públicos, solicitudes con seguimiento, donación por enlace externo, auditoría y métricas; piloto D4281 «Clínicas Ponseti» en borrador) — v4.1280 (**la landing por contenedores con borrador, vista previa y publicación, fiel a la referencia: v4.1281; con los patrones institucionales del sitio: v4.1282**) | `docs/claude/programas.md` |
 | **Estadísticas de descarga de los documentos de un evento** (la «Guía descargable» de hoteles: el botón público pasa por la plataforma, registro en una sentencia sin IP, histórico por versión que sobrevive a reemplazar/quitar/desactivar, cifra y panel «Ver estadísticas» sólo en el administrador, filtros por fecha) — v4.1279 | `docs/claude/estadisticas-de-descarga-de-documentos-de-un-evento.md` |

@@ -17,16 +17,21 @@
 // ════════════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    AlertCircle, AlertTriangle, ArrowLeft, Check, CheckCircle2, Clapperboard, Download, FileText, Image as ImageIcon,
-    Loader2, Lock, MessageSquare, PlayCircle, RefreshCw, Send, Sparkles, Trash2, Upload, Video, X,
+    AlertCircle, AlertTriangle, ArrowLeft, Check, CheckCircle2, Clapperboard, CreditCard, Download, ExternalLink, FileText, Image as ImageIcon,
+    Loader2, Lock, MessageSquare, PlayCircle, RefreshCw, Send, ShieldCheck, Sparkles, Trash2, Upload, Video, X,
 } from 'lucide-react';
 import { BLUE, inputCls } from './FormFields';
 import {
     vpFetch, vpFmtDateTime, vpFmtSeconds, vpPutWithProgress, vpReadMediaMeta, vpTone,
-    type VpAnswers, type VpFile, type VpPortalView, type VpScript, type VpStatus,
+    type VpAnswers, type VpCommercial, type VpFile, type VpPlan, type VpPortalView, type VpScript, type VpStatus,
 } from '../../lib/videoPitch';
 
-interface Props { token: string; onBack: () => void; onChanged?: () => void; onSessionExpired: () => void }
+interface Props {
+    token: string; onBack: () => void; onChanged?: () => void; onSessionExpired: () => void;
+    /** v4.1296 — Lo que la tarjeta pidió al abrir: pagar la orden abierta o elegir/cambiar el plan. */
+    initialAction?: 'pay' | 'plan' | null;
+}
+type SaveState = 'idle' | 'saving' | 'saved' | 'retrying' | 'error' | 'conflict';
 
 interface UploadItem { localId: string; name: string; pct: number; status: 'uploading' | 'done' | 'error'; error?: string; file: File }
 
@@ -193,8 +198,115 @@ const EventList = ({ events }: { events: VpPortalView['events'] }) => (
     </ol>
 );
 
+// ── Planes (v4.1296) ─────────────────────────────────────────────────
+/**
+ * El modal de planes. Los precios y las características llegan del servidor
+ * (la configuración del comité): acá no hay un número escrito. «Pagar ahora»
+ * y «Guardar y pagar después» guardan primero la solicitud y el plan: la
+ * compra nunca es lo que guarda la información.
+ */
+const PlanPickerModal = ({ plans, selected, onSelect, onPayNow, onPayLater, onClose, busy, currentPlanId }: {
+    plans: VpPlan[]; selected: string | null; onSelect: (code: string) => void; onPayNow: () => void; onPayLater: () => void; onClose: () => void;
+    busy: null | 'pay' | 'later'; currentPlanId: string | null;
+}) => (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 p-0 sm:items-center sm:p-4" role="dialog" aria-modal="true" onClick={onClose}>
+        <div className="max-h-[94vh] w-full max-w-4xl overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-8" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3">
+                <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Feria de Proyectos Rotary Colombia</p>
+                    <h3 className="mt-1 text-2xl font-bold text-slate-900">Elige tu Video Pitch Profesional</h3>
+                    <p className="mt-1 text-[14px] text-slate-600">Transforma tu proyecto en una presentación audiovisual diseñada para comunicar su impacto y facilitar la búsqueda de aliados y apoyo.</p>
+                </div>
+                <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100" aria-label="Cerrar"><X size={18} /></button>
+            </div>
+
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+                {plans.map(plan => {
+                    const active = selected === plan.code;
+                    return (
+                        <button key={plan.id} type="button" onClick={() => onSelect(plan.code)}
+                            className={`relative flex h-full flex-col rounded-2xl border-2 p-5 text-left transition ${active ? 'border-[#17458F] bg-blue-50/40 shadow-md' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+                            {plan.badge && <span className="absolute -top-3 left-5 rounded-full px-3 py-1 text-[11px] font-bold text-white" style={{ background: '#F7A81B' }}>{plan.badge}</span>}
+                            {currentPlanId === plan.id && <span className="absolute -top-3 right-5 rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-bold text-white">Tu plan actual</span>}
+                            <div className="flex items-start justify-between gap-3">
+                                <div>
+                                    <h4 className="text-[17px] font-bold text-slate-900">{plan.name}</h4>
+                                    <p className="mt-0.5 text-[13px] text-slate-500">{plan.description}</p>
+                                </div>
+                                <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 ${active ? 'border-[#17458F] bg-[#17458F] text-white' : 'border-slate-300'}`}>{active && <Check size={14} />}</span>
+                            </div>
+                            <p className="mt-4 text-3xl font-bold text-slate-900">{plan.priceLabel}</p>
+                            <ul className="mt-4 space-y-1.5">
+                                {plan.features.map((f, i) => <li key={i} className="flex items-start gap-2 text-[13px] text-slate-700"><CheckCircle2 size={14} className="mt-0.5 shrink-0 text-emerald-600" /> {f}</li>)}
+                            </ul>
+                            <span className={`mt-5 inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-bold ${active ? 'text-white' : 'border border-slate-300 text-slate-700'}`} style={active ? { background: BLUE } : undefined}>
+                                {active ? 'Plan seleccionado' : 'Seleccionar plan'}
+                            </span>
+                        </button>
+                    );
+                })}
+                {!plans.length && <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500 md:col-span-2">Todavía no hay planes publicados. Escríbele al comité organizador.</p>}
+            </div>
+
+            <div className="mt-6 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-[12px] text-slate-600">
+                    <p className="flex items-center gap-1.5 font-semibold text-slate-800"><ShieldCheck size={14} className="text-emerald-600" /> Tu solicitud está protegida</p>
+                    <p>Tus datos y archivos permanecen guardados aunque decidas pagar después. La producción comienza tras la confirmación del pago y con los materiales necesarios.</p>
+                </div>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                    <button type="button" onClick={onPayLater} disabled={!selected || busy !== null} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+                        {busy === 'later' ? <Loader2 size={15} className="animate-spin" /> : null} Guardar y pagar después
+                    </button>
+                    <button type="button" onClick={onPayNow} disabled={!selected || busy !== null} className="inline-flex items-center gap-1.5 rounded-xl px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50" style={{ background: BLUE }}>
+                        {busy === 'pay' ? <Loader2 size={15} className="animate-spin" /> : <CreditCard size={15} />} Pagar ahora
+                    </button>
+                </div>
+            </div>
+            <p className="mt-3 text-[11px] text-slate-400">Los impuestos o cargos aplicables, si los hubiera, se muestran en la pasarela antes de confirmar el pago. La publicación en redes institucionales depende de la aprobación de sus administradores.</p>
+        </div>
+    </div>
+);
+
+/** El estado comercial, con lo que el club puede hacer: pagar, cambiar de plan, ver el comprobante. */
+const CommercialBanner = ({ commercial, onPay, onChangePlan, paying }: { commercial: VpCommercial; onPay: () => void; onChangePlan: () => void; paying: boolean }) => {
+    const t = vpTone(commercial.tone);
+    const o = commercial.order;
+    if (commercial.status === 'no_plan' && !commercial.paymentWaived) return null;
+    return (
+        <section className={`rounded-2xl border p-5 shadow-sm ${commercial.status === 'paid' ? 'border-emerald-200 bg-emerald-50/50' : commercial.status === 'failed' ? 'border-red-200 bg-red-50/40' : 'border-amber-200 bg-amber-50/40'}`}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <p className="flex items-center gap-2 text-[16px] font-bold text-slate-900">
+                        <CreditCard size={17} style={{ color: BLUE }} />
+                        {commercial.status === 'paid' ? 'Pago confirmado' : commercial.status === 'processing' ? 'Pago en proceso' : commercial.status === 'failed' ? 'El pago no se completó' : commercial.status === 'refunded' ? 'Pago reembolsado' : commercial.paymentWaived ? 'Producción autorizada por el comité' : 'Video Pitch pendiente de pago'}
+                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${t.badge}`}>{commercial.label}</span>
+                    </p>
+                    {o && <p className="mt-1 text-[13px] text-slate-700"><strong>{o.planName}</strong> · {o.amountLabel}{o.paidAt ? ` · pagado el ${vpFmtDateTime(o.paidAt)}` : ''}</p>}
+                    {commercial.status === 'pending_payment' && <p className="mt-1 text-[13px] text-slate-600">Tu solicitud y materiales están guardados. Solo falta completar el pago para iniciar la producción.</p>}
+                    {commercial.status === 'processing' && <p className="mt-1 text-[13px] text-slate-600">Tienes una sesión de pago abierta. Si ya pagaste, la confirmación llega en unos segundos; si no, puedes continuar el pago.</p>}
+                    {commercial.status === 'failed' && <p className="mt-1 text-[13px] text-slate-700">{o?.failureMessage || 'La pasarela rechazó el pago.'} Tus datos siguen guardados: puedes intentarlo de nuevo.</p>}
+                    {commercial.paymentWaived && commercial.status !== 'paid' && <p className="mt-1 text-[13px] text-slate-600">El comité autorizó continuar sin pago confirmado.</p>}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                    {commercial.canPay && (
+                        <button type="button" onClick={onPay} disabled={paying} className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60" style={{ background: BLUE }}>
+                            {paying ? <Loader2 size={15} className="animate-spin" /> : <CreditCard size={15} />} {commercial.status === 'processing' ? 'Continuar el pago' : commercial.status === 'failed' ? 'Reintentar el pago' : 'Pagar ahora'}
+                        </button>
+                    )}
+                    {commercial.canChoosePlan && (
+                        <button type="button" onClick={onChangePlan} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">Cambiar plan</button>
+                    )}
+                    {o?.receiptUrl && commercial.status === 'paid' && (
+                        <a href={o.receiptUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50"><ExternalLink size={14} /> Ver comprobante</a>
+                    )}
+                </div>
+            </div>
+        </section>
+    );
+};
+
 // ── La vista ─────────────────────────────────────────────────────────
-const VideoPitchRequestView = ({ token, onBack, onChanged, onSessionExpired }: Props) => {
+const VideoPitchRequestView = ({ token, onBack, onChanged, onSessionExpired, initialAction = null }: Props) => {
     const [view, setView] = useState<VpPortalView | null>(null);
     const [loading, setLoading] = useState(true);
     const [answers, setAnswers] = useState<VpAnswers>(emptyAnswers(null));
@@ -212,6 +324,17 @@ const VideoPitchRequestView = ({ token, onBack, onChanged, onSessionExpired }: P
     const [videoBusy, setVideoBusy] = useState(false);
     const dirty = useRef(false);
     const fileInput = useRef<HTMLInputElement | null>(null);
+    // v4.1296 — Capa comercial: revisión del borrador (ediciones simultáneas),
+    // estado del autoguardado, modal de planes y pago.
+    const revision = useRef<string | null>(null);
+    const [saveState, setSaveState] = useState<SaveState>('idle');
+    const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const [planModal, setPlanModal] = useState(false);
+    const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+    const [planBusy, setPlanBusy] = useState<null | 'pay' | 'later'>(null);
+    const [paying, setPaying] = useState(false);
+    const [requesting, setRequesting] = useState(false);
+    const initialActionDone = useRef(false);
 
     const load = useCallback(async (silent = false) => {
         if (!silent) setLoading(true);
@@ -220,7 +343,9 @@ const VideoPitchRequestView = ({ token, onBack, onChanged, onSessionExpired }: P
             if (res.status === 401) { onSessionExpired(); return; }
             if (!res.ok || !data) throw new Error((data as any)?.error || 'No pudimos cargar tu solicitud.');
             setView(data);
+            revision.current = data.revision || null;
             if (!dirty.current) setAnswers(data.request ? data.request.answers : emptyAnswers(data.prefill));
+            if (data.commercial?.planId && !selectedPlan) setSelectedPlan(data.plans?.find(p => p.id === data.commercial?.planId)?.code || null);
         } catch (e: any) {
             setNotice({ kind: 'error', text: e?.message || 'No pudimos cargar tu solicitud.' });
         } finally {
@@ -236,20 +361,47 @@ const VideoPitchRequestView = ({ token, onBack, onChanged, onSessionExpired }: P
     const catalog = view?.catalog;
 
     // ── Guardado ─────────────────────────────────────────────────────
-    const save = useCallback(async (silent = false) => {
-        if (!canEdit) return;
-        setSaving(true);
+    const save = useCallback(async (silent = false): Promise<boolean> => {
+        if (!canEdit) return true;
+        setSaving(true); setSaveState('saving');
+        if (retryTimer.current) { clearTimeout(retryTimer.current); retryTimer.current = null; }
         try {
-            const { res, data } = await vpFetch<{ savedAt?: string; completionPct?: number; error?: string }>('/project-fair/portal/video-pitch', token, { method: 'PUT', body: JSON.stringify({ answers }) });
-            if (res.status === 401) { onSessionExpired(); return; }
+            const { res, data } = await vpFetch<{ savedAt?: string; revision?: string; completionPct?: number; error?: string; conflict?: boolean; answers?: VpAnswers }>('/project-fair/portal/video-pitch', token, {
+                method: 'PUT', body: JSON.stringify({ answers, clientRevision: revision.current }),
+            });
+            if (res.status === 401) { onSessionExpired(); return false; }
+            if (res.status === 409 && data?.conflict) {
+                // Otra pestaña o dispositivo guardó después: no se pisa. Se muestra lo guardado y la persona decide.
+                dirty.current = false;
+                revision.current = data.revision || null;
+                if (data.answers) setAnswers(data.answers);
+                setSaveState('conflict');
+                setNotice({ kind: 'info', text: data.error || 'La solicitud se guardó desde otra pestaña o dispositivo. Mostramos la versión más reciente.' });
+                return false;
+            }
             if (!res.ok) throw new Error(data?.error || 'No pudimos guardar.');
             setSavedAt(data?.savedAt || new Date().toISOString());
+            revision.current = data?.revision || data?.savedAt || revision.current;
             dirty.current = false;
+            setSaveState('saved');
             if (!view?.exists) await load(true);
             onChanged?.();
             if (!silent) setNotice({ kind: 'ok', text: 'Cambios guardados.' });
+            return true;
         } catch (e: any) {
-            setNotice({ kind: 'error', text: e?.message || 'No pudimos guardar.' });
+            // Un fallo de red no borra nada: se reintenta UNA vez en 5 s y, si vuelve a fallar, se dice.
+            setSaveState('retrying');
+            retryTimer.current = setTimeout(async () => {
+                retryTimer.current = null;
+                try {
+                    const { res } = await vpFetch('/project-fair/portal/video-pitch', token, { method: 'PUT', body: JSON.stringify({ answers, clientRevision: revision.current }) });
+                    if (res.ok) { dirty.current = false; setSaveState('saved'); setSavedAt(new Date().toISOString()); return; }
+                } catch { /* sigue */ }
+                setSaveState('error');
+                setNotice({ kind: 'error', text: 'No pudimos guardar tus cambios. Revisa tu conexión: lo que escribiste sigue en esta pantalla.' });
+            }, 5000);
+            if (!silent) setNotice({ kind: 'error', text: e?.message || 'No pudimos guardar.' });
+            return false;
         } finally {
             setSaving(false);
         }
@@ -264,8 +416,34 @@ const VideoPitchRequestView = ({ token, onBack, onChanged, onSessionExpired }: P
     useEffect(() => {
         const handler = (e: BeforeUnloadEvent) => { if (dirty.current) { e.preventDefault(); e.returnValue = ''; } };
         window.addEventListener('beforeunload', handler);
-        return () => window.removeEventListener('beforeunload', handler);
+        return () => { window.removeEventListener('beforeunload', handler); if (retryTimer.current) clearTimeout(retryTimer.current); };
     }, []);
+
+    // ── Volver de Stripe ─────────────────────────────────────────────
+    // El servidor consulta la sesión y aplica el desenlace: la URL no decide nada.
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const sessionId = params.get('vp_session');
+        const cancelled = params.get('vp_pago') === 'cancelado';
+        if (!sessionId && !cancelled) return;
+        const url = new URL(window.location.href);
+        url.searchParams.delete('vp_session'); url.searchParams.delete('vp_pago');
+        window.history.replaceState(null, '', url.toString());
+        if (cancelled) { setNotice({ kind: 'info', text: 'No se realizó el pago. Tu solicitud y tus materiales siguen guardados: puedes pagar cuando quieras.' }); return; }
+        (async () => {
+            setNotice({ kind: 'info', text: 'Verificando tu pago con la pasarela…' });
+            try {
+                const { data } = await vpFetch<{ outcome?: string; error?: string }>('/project-fair/portal/video-pitch/checkout/sync', token, { method: 'POST', body: JSON.stringify({ sessionId }) });
+                if (data?.outcome === 'paid') setNotice({ kind: 'ok', text: 'Pago confirmado. Tu solicitud quedó enviada al comité, que revisará la información de tu proyecto.' });
+                else if (data?.outcome === 'open') setNotice({ kind: 'info', text: 'El pago todavía no se confirmó. Si lo completaste, la confirmación llega en unos segundos; si no, puedes continuar el pago.' });
+                else setNotice({ kind: 'info', text: 'Todavía no vemos el pago confirmado. Si Stripe lo aceptó, la confirmación llega en unos segundos.' });
+            } catch {
+                setNotice({ kind: 'error', text: 'No pudimos verificar el pago en este momento. Vuelve a cargar la página en unos segundos.' });
+            }
+            await load(true);
+            onChanged?.();
+        })();
+    }, [token, load, onChanged]);
 
     const set = <K extends keyof VpAnswers>(block: K, key: string, value: any) => {
         dirty.current = true;
@@ -367,6 +545,85 @@ const VideoPitchRequestView = ({ token, onBack, onChanged, onSessionExpired }: P
         }
     };
 
+    // ── Solicitar Video Pitch: validar → guardar → planes ───────────
+    const requestVideoPitch = async () => {
+        if (requesting) return;
+        setRequesting(true); setErrors([]);
+        try {
+            const saved = await save(true);
+            if (!saved && saveState === 'conflict') return;
+            const { res, data } = await vpFetch<VpPortalView>('/project-fair/portal/video-pitch', token);
+            if (res.status === 401) { onSessionExpired(); return; }
+            if (!res.ok || !data) throw new Error('No pudimos comprobar la solicitud.');
+            setView(data);
+            if (data.validation && !data.validation.ok) {
+                setErrors(data.validation.errors);
+                setNotice({ kind: 'error', text: 'Revisa los campos marcados antes de solicitar el video.' });
+                const first = data.validation.errors[0]?.field;
+                const el = first ? document.getElementById(`vp-${first.split('.')[1] === 'responsibleName' ? 'responsible' : first.split('.')[1] === 'whatsapp' ? 'wa' : first.split('.')[1] === 'language' ? 'lang' : first.split('.')[1] === 'objective' ? 'obj' : first.split('.')[1] === 'objectiveOther' ? 'obj-other' : first.split('.')[1]}`) : null;
+                el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                return;
+            }
+            setPlanModal(true);
+        } catch (e: any) {
+            setNotice({ kind: 'error', text: e?.message || 'No pudimos continuar.' });
+        } finally {
+            setRequesting(false);
+        }
+    };
+
+    const payNow = useCallback(async () => {
+        setPaying(true);
+        try {
+            const { res, data } = await vpFetch<{ url?: string; alreadyPaid?: boolean; error?: string; code?: string }>('/project-fair/portal/video-pitch/checkout', token, {
+                method: 'POST', body: JSON.stringify({ returnUrl: window.location.href }),
+            });
+            if (res.status === 401) { onSessionExpired(); return; }
+            if (data?.alreadyPaid) { setNotice({ kind: 'ok', text: 'Este pago ya estaba confirmado.' }); await load(true); return; }
+            if (data?.code === 'no_plan') { setPlanModal(true); return; }
+            if (!res.ok || !data?.url) throw new Error(data?.error || 'No pudimos iniciar el pago.');
+            window.location.assign(data.url);
+        } catch (e: any) {
+            setNotice({ kind: 'error', text: e?.message || 'No pudimos iniciar el pago.' });
+        } finally {
+            setPaying(false);
+        }
+    }, [token, onSessionExpired, load]);
+
+    const choosePlan = async (mode: 'pay' | 'later') => {
+        if (!selectedPlan) return;
+        setPlanBusy(mode);
+        try {
+            const { res, data } = await vpFetch<{ error?: string; errors?: { field: string; message: string }[] }>('/project-fair/portal/video-pitch/plan', token, {
+                method: 'POST', body: JSON.stringify({ planCode: selectedPlan, answers: canEdit ? answers : undefined }),
+            });
+            if (res.status === 401) { onSessionExpired(); return; }
+            if (!res.ok) {
+                if (data?.errors?.length) { setErrors(data.errors); setPlanModal(false); setNotice({ kind: 'error', text: 'Revisa los campos marcados antes de solicitar el video.' }); return; }
+                throw new Error(data?.error || 'No pudimos guardar el plan.');
+            }
+            dirty.current = false;
+            if (mode === 'pay') { await payNow(); return; }
+            setPlanModal(false);
+            setNotice({ kind: 'ok', text: 'Tu solicitud y tu plan quedaron guardados. Puedes pagar cuando quieras desde esta pantalla o desde la tarjeta de «Mi proyecto».' });
+            await load(true);
+            onChanged?.();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        } catch (e: any) {
+            setNotice({ kind: 'error', text: e?.message || 'No pudimos guardar el plan.' });
+        } finally {
+            setPlanBusy(null);
+        }
+    };
+
+    // Lo que la tarjeta pidió al abrir: pagar o elegir plan.
+    useEffect(() => {
+        if (!view || initialActionDone.current || !initialAction) return;
+        initialActionDone.current = true;
+        if (initialAction === 'plan') setPlanModal(true);
+        if (initialAction === 'pay') { if (view.commercial?.canPay) payNow(); else setPlanModal(true); }
+    }, [view, initialAction, payNow]);
+
     // ── Decisión sobre el guion ──────────────────────────────────────
     const decide = async (decision: 'approve' | 'changes') => {
         if (decision === 'changes' && !decisionComment.trim()) { setNotice({ kind: 'error', text: 'Cuéntanos qué ajustes necesita el guion.' }); return; }
@@ -439,7 +696,16 @@ const VideoPitchRequestView = ({ token, onBack, onChanged, onSessionExpired }: P
                 </div>
                 <div className="flex flex-col items-end gap-1">
                     {meta && <Badge label={meta.label} tone={meta.tone} />}
-                    {canEdit && <span className="text-[11px] text-slate-400">{saving ? 'Guardando…' : savedAt ? `Guardado ${vpFmtDateTime(savedAt)}` : 'Se guarda solo'}</span>}
+                    {canEdit && (
+                        <span className={`inline-flex items-center gap-1 text-[11px] ${saveState === 'error' ? 'text-red-600' : saveState === 'retrying' ? 'text-amber-700' : 'text-slate-400'}`}>
+                            {saveState === 'saving' && <><Loader2 size={11} className="animate-spin" /> Guardando…</>}
+                            {saveState === 'saved' && <><CheckCircle2 size={11} className="text-emerald-600" /> Todos los cambios guardados</>}
+                            {saveState === 'retrying' && <><RefreshCw size={11} className="animate-spin" /> Sin conexión: reintentando…</>}
+                            {saveState === 'error' && <><AlertCircle size={11} /> Error al guardar</>}
+                            {saveState === 'conflict' && <><AlertCircle size={11} /> Actualizado desde otra pestaña</>}
+                            {saveState === 'idle' && (savedAt ? `Guardado ${vpFmtDateTime(savedAt)}` : 'Se guarda solo')}
+                        </span>
+                    )}
                 </div>
             </div>
 
@@ -454,6 +720,9 @@ const VideoPitchRequestView = ({ token, onBack, onChanged, onSessionExpired }: P
             {view && !view.available && (
                 <div className={BLOCK}><p className="flex items-start gap-2 text-sm text-slate-700"><Lock size={16} className="mt-0.5 shrink-0 text-slate-400" /> {view.reason}</p></div>
             )}
+
+            {/* ── Plan y pago (v4.1296) ─────────────────────────────── */}
+            {view?.commercial && view.exists && <CommercialBanner commercial={view.commercial} onPay={payNow} onChangePlan={() => setPlanModal(true)} paying={paying} />}
 
             {/* ── Seguimiento (solicitud enviada) ───────────────────── */}
             {view && view.exists && status !== 'draft' && (
@@ -671,16 +940,26 @@ const VideoPitchRequestView = ({ token, onBack, onChanged, onSessionExpired }: P
 
                     <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                         <div className="text-[13px] text-slate-600">
-                            {view?.validation && !view.validation.ok && status === 'draft' && <p>Faltan {view.validation.errors.length} dato(s) obligatorio(s) para enviar.</p>}
+                            {view?.validation && !view.validation.ok && status === 'draft' && <p>Faltan {view.validation.errors.length} dato(s) obligatorio(s) para solicitar el video.</p>}
                             {files.length === 0 && <p className="flex items-center gap-1.5 text-amber-700"><AlertTriangle size={13} /> Sin fotografías ni videos el comité te los pedirá después.</p>}
                             {!context.hasProjectContext && !answers.story.description && <p className="flex items-center gap-1.5 text-amber-700"><AlertTriangle size={13} /> Sin Formulación ni información adicional, el guion no tendrá con qué contar el proyecto.</p>}
                             {saving ? <p className="text-slate-400">Guardando…</p> : savedAt ? <p className="text-slate-400">Borrador guardado {vpFmtDateTime(savedAt)}</p> : null}
                         </div>
                         <div className="flex flex-wrap gap-2">
                             <button type="button" onClick={() => save(false)} disabled={saving} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60">Guardar borrador</button>
-                            <button type="button" onClick={submit} disabled={submitting || saving} className="inline-flex items-center gap-1.5 rounded-xl px-5 py-2.5 text-sm font-bold text-white disabled:opacity-60" style={{ background: BLUE }}>
-                                {submitting ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />} {status === 'info_required' ? 'Reenviar solicitud' : 'Enviar solicitud'}
-                            </button>
+                            {status === 'info_required' ? (
+                                <button type="button" onClick={submit} disabled={submitting || saving} className="inline-flex items-center gap-1.5 rounded-xl px-5 py-2.5 text-sm font-bold text-white disabled:opacity-60" style={{ background: BLUE }}>
+                                    {submitting ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />} Reenviar solicitud
+                                </button>
+                            ) : view?.commercial?.canPay ? (
+                                <button type="button" onClick={payNow} disabled={paying || saving} className="inline-flex items-center gap-1.5 rounded-xl px-5 py-2.5 text-sm font-bold text-white disabled:opacity-60" style={{ background: BLUE }}>
+                                    {paying ? <Loader2 size={15} className="animate-spin" /> : <CreditCard size={15} />} Pagar Video Pitch
+                                </button>
+                            ) : (
+                                <button type="button" onClick={requestVideoPitch} disabled={requesting || saving} className="inline-flex items-center gap-1.5 rounded-xl px-5 py-2.5 text-sm font-bold text-white disabled:opacity-60" style={{ background: BLUE }}>
+                                    {requesting ? <Loader2 size={15} className="animate-spin" /> : <Clapperboard size={15} />} Solicitar Video Pitch
+                                </button>
+                            )}
                         </div>
                     </div>
                 </>
@@ -722,6 +1001,14 @@ const VideoPitchRequestView = ({ token, onBack, onChanged, onSessionExpired }: P
                         </div>
                     )}
                 </section>
+            )}
+
+            {planModal && view && (
+                <PlanPickerModal
+                    plans={view.plans || []} selected={selectedPlan} onSelect={setSelectedPlan}
+                    currentPlanId={view.commercial?.planId || null}
+                    onPayNow={() => choosePlan('pay')} onPayLater={() => choosePlan('later')}
+                    onClose={() => { if (!planBusy) setPlanModal(false); }} busy={planBusy} />
             )}
         </div>
     );

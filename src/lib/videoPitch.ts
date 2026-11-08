@@ -65,6 +65,7 @@ export interface VpRequest {
     assigneeId: string | null; assigneeName: string | null; currentScriptId: string | null; approvedScriptId: string | null;
     deliverableFileId: string | null; thumbnailFileId: string | null; infoRequest: string | null; adminNotes: string | null;
     submittedAt: string | null; deliveredAt: string | null; lastEditedAt: string | null; createdAt: string; updatedAt: string;
+    commercialStatus?: VpCommercialStatus; planId?: string | null; currentOrderId?: string | null; paymentWaived?: boolean; paymentWaivedNote?: string | null; paymentWaivedBy?: string | null;
     identity: { district: string; clubName: string; projectName: string; publicRef: string; submissionId: string | null };
 }
 export interface VpCatalog {
@@ -85,7 +86,30 @@ export interface VpPortalView {
     canEdit: boolean; canDecideScript?: boolean;
     validation?: { ok: boolean; errors: { field: string; message: string }[]; warnings: string[] };
     deliverable: VpFile | null; thumbnail?: VpFile | null;
+    /** v4.1296 — Catálogo activo, estado comercial resuelto, la tarjeta y la revisión del borrador (para ediciones simultáneas). */
+    plans?: VpPlan[]; commercial?: VpCommercial; card?: VpCardCopy; revision?: string | null;
 }
+
+// ── Capa comercial (v4.1296) ──────────────────────────────────────────
+export type VpCommercialStatus = 'no_plan' | 'plan_selected' | 'pending_payment' | 'processing' | 'paid' | 'failed' | 'cancelled' | 'refunded';
+export interface VpPlan {
+    id: string; code: string; name: string; description: string; badge: string; priceAmount: number; currency: string; priceLabel: string;
+    features: string[]; deliverables: string[]; maxDurationSec: number; revisionRounds: number; sortOrder: number; active: boolean;
+    currentVersionId: string | null; updatedAt?: string; updatedBy?: string | null;
+    versions?: { id: string; versionNumber: number; snapshot: any; createdAt: string; createdByName: string | null }[]; orders?: number; paidOrders?: number;
+}
+export interface VpOrder {
+    id: string; requestId: string; planId: string; planVersionId: string | null; planCode: string; planName: string; snapshot: any;
+    amount: number; currency: string; amountLabel: string; status: 'pending_payment' | 'processing' | 'paid' | 'failed' | 'cancelled' | 'refunded'; statusLabel: string;
+    stripeSessionId: string | null; stripePaymentIntentId: string | null; stripeChargeId: string | null; receiptUrl: string | null; paidAt: string | null;
+    failureCode: string | null; failureMessage: string | null; refundedAmount: number | null; refundedAt: string | null; cancelledAt: string | null; cancelReason: string | null;
+    createdAt: string; updatedAt: string;
+}
+export interface VpCommercial {
+    status: VpCommercialStatus; label: string; tone: string; planId: string | null; order: VpOrder | null;
+    paymentWaived: boolean; paymentWaivedNote?: string | null; canChoosePlan: boolean; canPay: boolean;
+}
+export interface VpCardCopy { headline: string | null; actions: { key: 'start' | 'open' | 'pay' | 'plan'; label: string }[] }
 
 export const vpFmtDateTime = (iso?: string | null) =>
     (iso ? new Date(iso).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' }) : '—');

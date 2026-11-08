@@ -55,6 +55,53 @@ const s3 = http.createServer((req, res) => {
 await new Promise(r => s3.listen(0, '127.0.0.1', r));
 const S3_PORT = s3.address().port;
 
+// ── Stripe simulado (v4.1296) ─────────────────────────────────────────
+// Lo mínimo que usa el módulo: crear una Checkout Session, leerla (con el
+// PaymentIntent expandido), expirarla y leer un PaymentIntent con su cargo.
+// La prueba decide cuándo una sesión «se paga» (`stripeState.pay(id)`).
+const stripeSessions = new Map();
+const stripeIntents = new Map();
+let stripeSeq = 0;
+const parseForm = (txt) => { const out = {}; for (const [k, v] of new URLSearchParams(txt)) out[k] = v; return out; };
+const stripeState = {
+    pay(id) {
+        const sess = stripeSessions.get(id); if (!sess) throw new Error('sesión inexistente');
+        const pi = `pi_${++stripeSeq}`;
+        stripeIntents.set(pi, { id: pi, object: 'payment_intent', status: 'succeeded', amount: sess.amount_total, currency: sess.currency, metadata: sess.metadata, latest_charge: { id: `ch_${stripeSeq}`, receipt_url: `https://pay.stripe.test/receipts/${pi}` } });
+        Object.assign(sess, { status: 'complete', payment_status: 'paid', payment_intent: pi });
+        return sess;
+    },
+    expire(id) { const sess = stripeSessions.get(id); if (sess && sess.status === 'open') sess.status = 'expired'; return sess; },
+    sessions: stripeSessions,
+};
+const stripeSrv = http.createServer((req, res) => {
+    const chunks = [];
+    req.on('data', c => chunks.push(c));
+    req.on('end', () => {
+        const body = parseForm(Buffer.concat(chunks).toString());
+        const u = new URL(req.url, 'http://x');
+        const json = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
+        let m;
+        if (req.method === 'POST' && u.pathname === '/v1/checkout/sessions') {
+            const id = `cs_test_${++stripeSeq}`;
+            const metadata = {}; for (const [k, v] of Object.entries(body)) { const mm = /^metadata\[(.+)\]$/.exec(k); if (mm) metadata[mm[1]] = v; }
+            const sess = { id, object: 'checkout.session', status: 'open', payment_status: 'unpaid', url: `https://checkout.stripe.test/${id}`, currency: body['line_items[0][price_data][currency]'], amount_total: Number(body['line_items[0][price_data][unit_amount]']), expires_at: Math.floor(Date.now() / 1000) + 86400, metadata, client_reference_id: body.client_reference_id || null, payment_intent: null };
+            stripeSessions.set(id, sess); return json(200, sess);
+        }
+        if ((m = /^\/v1\/checkout\/sessions\/([^/]+)\/expire$/.exec(u.pathname)) && req.method === 'POST') { const sess = stripeState.expire(m[1]); return sess ? json(200, sess) : json(404, { error: { message: 'No such session' } }); }
+        if ((m = /^\/v1\/checkout\/sessions\/([^/]+)$/.exec(u.pathname)) && req.method === 'GET') {
+            const sess = stripeSessions.get(m[1]); if (!sess) return json(404, { error: { message: 'No such session' } });
+            const expandPi = [...u.searchParams.values()].includes('payment_intent');
+            return json(200, { ...sess, payment_intent: expandPi && sess.payment_intent ? stripeIntents.get(sess.payment_intent) : sess.payment_intent });
+        }
+        if ((m = /^\/v1\/payment_intents\/([^/]+)$/.exec(u.pathname)) && req.method === 'GET') { const pi = stripeIntents.get(m[1]); return pi ? json(200, pi) : json(404, { error: { message: 'No such payment_intent' } }); }
+        json(404, { error: { message: `sin ruta ${req.method} ${u.pathname}` } });
+    });
+});
+await new Promise(r => stripeSrv.listen(0, '127.0.0.1', r));
+process.env.STRIPE_API_BASE = `http://127.0.0.1:${stripeSrv.address().port}`;
+process.env.STRIPE_SECRET_KEY = 'sk_test_fake';
+
 process.env.DATABASE_URL = E2E_DB;
 process.env.AWS_ENDPOINT_URL_S3 = `http://127.0.0.1:${S3_PORT}`;
 process.env.AWS_BUCKET_NAME = 'test_bucket';
@@ -201,10 +248,118 @@ ok(r.data.total === 1 && (await call('GET', `/admin/video-pitch${EV}&q=inexisten
 r = await call('GET', `/admin/video-pitch/${reqId}${EV}`, admin);
 ok(r.status === 200 && r.data.dossier.some(l => /\[Formulación\]/.test(l)) && r.data.files.length === 2 && r.data.files.filter(f => !f.deletedAt).length === 1, 'ficha: expediente con la Formulación y el archivo retirado conservado en el historial');
 
+console.log('── Planes y pago (v4.1296)');
+const { routeVideoPitchStripeEvent } = await import(`${REPO}/server/controllers/videoPitchCommerceController.js`);
+r = await call('GET', '/portal/video-pitch/plans', portal(A));
+ok(r.status === 200 && r.data.plans.length === 2 && r.data.plans[0].code === 'essential' && r.data.plans[0].priceAmount === 99 && r.data.plans[1].priceAmount === 135, 'el catálogo se siembra una vez: Esencial USD 99 e Integral USD 135');
+r = await call('GET', '/portal/video-pitch', portal(A));
+ok(r.data.commercial.status === 'no_plan' && r.data.plans.length === 2 && r.data.card.actions[0].key === 'open', 'enviada sin plan: comercial «sin plan», la tarjeta ofrece ver el seguimiento');
+ok((await call('POST', '/portal/video-pitch/plan', portal(A), { planCode: 'inexistente' })).status === 404, 'un plan que no existe: 404');
+r = await call('POST', '/portal/video-pitch/plan', portal(A), { planCode: 'integral' });
+ok(r.status === 200 && r.data.order.status === 'pending_payment' && r.data.order.amount === 135 && r.data.order.currency === 'USD' && r.data.commercial.status === 'pending_payment', 'elegir plan crea la orden con la fotografía del precio: pendiente de pago');
+const orderIntegral = r.data.order.id;
+r = await call('POST', '/portal/video-pitch/plan', portal(A), { planCode: 'essential' });
+ok(r.status === 200 && r.data.order.id !== orderIntegral && r.data.order.amount === 99, 'cambiar de plan antes de pagar crea otra orden…');
+ok((await db.query('SELECT status FROM "VideoPitchOrder" WHERE id = $1', [orderIntegral])).rows[0].status === 'cancelled', '…y cancela la anterior');
+const orderEssential = r.data.order.id;
+ok((await call('POST', `/admin/video-pitch/${reqId}/status${EV}`, admin, { status: 'in_review' })).status === 200, 'enviada → en revisión (la revisión no exige pago)');
+r = await call('POST', `/admin/video-pitch/${reqId}/status${EV}`, admin, { status: 'script_in_progress' });
+ok(r.status === 409 && /pago confirmado/.test(r.data.error), 'sin pago, el comité NO puede pasar a preparar el guion (409: la compuerta comercial)');
+r = await call('GET', `/admin/video-pitch/${reqId}${EV}`, admin);
+ok(r.data.commercial.status === 'pending_payment' && r.data.orders.length === 2 && r.data.allowedTransitions.find(t => t.key === 'script_in_progress')?.requirement, 'la ficha muestra la orden vigente, las dos órdenes y el candado de la transición');
+// Pagar: Checkout contra el Stripe simulado
+r = await call('POST', '/portal/video-pitch/checkout', portal(A), { returnUrl: 'https://feria.test/mi-proyecto?videoPitch=1' });
+ok(r.status === 200 && /checkout\.stripe\.test/.test(r.data.url) && r.data.sessionId, 'Checkout creado: la URL de Stripe vuelve al club');
+const sessA = stripeState.sessions.get(r.data.sessionId);
+ok(sessA.amount_total === 9900 && sessA.currency === 'usd' && sessA.metadata.type === 'video_pitch_order' && sessA.metadata.videoPitchOrderId === orderEssential && !('submissionId' in sessA.metadata), 'la sesión cobra el importe de la ORDEN (9900 centavos), con metadata propia y SIN submissionId (no se confunde con la Feria)');
+r = await call('POST', '/portal/video-pitch/checkout', portal(A), {});
+ok(r.status === 200 && r.data.reused === true && r.data.sessionId === sessA.id, 'un segundo clic reutiliza la sesión abierta: no hay dos cobros');
+r = await call('GET', '/portal/video-pitch', portal(A));
+ok(r.data.commercial.status === 'processing' && r.data.commercial.canPay, 'con sesión abierta: «pago en proceso», y se puede continuar');
+r = await call('POST', '/portal/video-pitch/checkout/sync', portal(A), { sessionId: sessA.id });
+ok(r.status === 200 && r.data.outcome === 'open' && r.data.commercial.status === 'processing', 'volver sin pagar: la sesión sigue abierta, nada se marca pagado');
+// El webhook con la sesión aún SIN pagar no marca nada
+let applied = await routeVideoPitchStripeEvent({ id: 'evt_unpaid_1', type: 'checkout.session.completed', data: { object: { ...sessA, status: 'complete', payment_status: 'unpaid' } } }, 'paid');
+ok(applied.applied === false && (await db.query('SELECT status FROM "VideoPitchOrder" WHERE id = $1', [orderEssential])).rows[0].status === 'processing', 'una sesión completa pero NO pagada no marca la orden como pagada');
+// Ahora sí: Stripe cobra
+stripeState.pay(sessA.id);
+applied = await routeVideoPitchStripeEvent({ id: 'evt_paid_1', type: 'checkout.session.completed', data: { object: stripeState.sessions.get(sessA.id) } }, 'paid');
+ok(applied.applied === true && applied.status === 'paid', 'el webhook (firma ya verificada por la plataforma) confirma la orden');
+applied = await routeVideoPitchStripeEvent({ id: 'evt_paid_1', type: 'checkout.session.completed', data: { object: stripeState.sessions.get(sessA.id) } }, 'paid');
+ok(applied.applied === false && /ya procesado/.test(applied.reason), 'el MISMO evento reenviado por Stripe no se procesa dos veces');
+applied = await routeVideoPitchStripeEvent({ id: 'evt_paid_2', type: 'payment_intent.succeeded', data: { object: stripeIntents.get(sessA.payment_intent) } }, 'paid');
+ok(applied.applied === false && /ya pagada/.test(applied.reason), 'otro evento del mismo cobro tampoco duplica nada');
+r = await call('GET', `/admin/video-pitch/${reqId}${EV}`, admin);
+ok(r.data.commercial.status === 'paid' && r.data.commercial.order.receiptUrl && r.data.commercial.order.stripePaymentIntentId === sessA.payment_intent, 'pagada: comprobante y referencias de Stripe en la ficha');
+ok(r.data.commercial.canChoosePlan === false && (await call('POST', '/portal/video-pitch/plan', portal(A), { planCode: 'integral' })).status === 409, 'pagada: ya no se cambia el plan');
+r = await call('POST', '/portal/video-pitch/checkout/sync', portal(A), { sessionId: sessA.id });
+ok(r.data.outcome === 'paid' && r.data.commercial.status === 'paid', 'volver de Stripe después del webhook: sincroniza sin duplicar');
+notif = await db.query(`SELECT kind FROM "VideoPitchNotification" WHERE "requestId" = $1`, [reqId]);
+ok(notif.rows.some(x => x.kind === 'pending_payment') && notif.rows.filter(x => x.kind === 'payment_confirmed').length === 1, 'avisos: pendiente de pago al elegir plan y UN «pago confirmado»');
+r = await call('GET', `/admin/video-pitch${EV}&commercial=paid`, admin);
+ok(r.data.total === 1 && r.data.rows[0].planName === 'Video Pitch Esencial' && r.data.rows[0].amount === 99 && r.data.kpis.paid === 1 && r.data.kpis.revenue === 99, 'bandeja: plan, precio, filtro por pago e ingresos');
+
+console.log('── Pagar después, pago fallido, precio histórico y exoneración');
+// B: borrador con plan («guardar y pagar después»)
+r = await call('POST', '/portal/video-pitch/plan', portal(B), { planCode: 'integral', answers });
+ok(r.status === 200 && r.data.commercial.status === 'pending_payment', 'guardar y pagar después: el borrador queda pendiente de pago');
+r = await call('GET', '/portal/video-pitch', portal(B));
+ok(r.data.status === 'draft' && r.data.canEdit && r.data.card.headline === 'Tu solicitud y materiales están guardados. Solo falta completar el pago.' && r.data.card.actions.map(a => a.key).join() === 'pay,open,plan', 'la tarjeta (caso B): pendiente de pago con Pagar, Completar información y Cambiar plan; el formulario sigue editable');
+const reqB0 = r.data.request.id;
+r = await call('GET', `/admin/video-pitch${EV}`, admin);
+ok(r.data.total === 2 && r.data.rows.some(x => x.id === reqB0 && x.status === 'draft' && x.commercialStatus === 'pending_payment') && r.data.kpis.pending_payment === 1, 'el comité ve el borrador con plan como venta por cerrar');
+// Pago fallido de B
+r = await call('POST', '/portal/video-pitch/checkout', portal(B), {});
+const sessB = stripeState.sessions.get(r.data.sessionId);
+const orderB = (await db.query('SELECT * FROM "VideoPitchOrder" WHERE "requestId" = $1 AND status = $2', [reqB0, 'processing'])).rows[0];
+applied = await routeVideoPitchStripeEvent({ id: 'evt_fail_1', type: 'payment_intent.payment_failed', data: { object: { id: 'pi_fail', object: 'payment_intent', metadata: { type: 'video_pitch_order', videoPitchOrderId: orderB.id }, last_payment_error: { code: 'card_declined', decline_code: 'insufficient_funds', message: 'Fondos insuficientes.' } } } }, 'failed');
+ok(applied.applied === true && applied.status === 'failed', 'un pago rechazado deja la orden «fallida»…');
+r = await call('GET', '/portal/video-pitch', portal(B));
+ok(r.data.commercial.status === 'failed' && r.data.commercial.canPay && r.data.commercial.order.failureMessage === 'Fondos insuficientes.' && r.data.status === 'draft', '…el club ve el motivo y puede reintentar; nada se perdió');
+r = await call('POST', '/portal/video-pitch/checkout', portal(B), {});
+ok(r.status === 200 && r.data.url && (await call('GET', '/portal/video-pitch', portal(B))).data.commercial.status === 'processing', 'reintentar vuelve a abrir el pago (la sesión abierta se reutiliza, como hace Stripe con una tarjeta rechazada) y el estado vuelve a «en proceso»');
+// Precio histórico: el admin cambia el precio del Integral; la orden de B conserva 135
+r = await call('GET', `/admin/video-pitch/plans${EV}`, admin);
+const integral = r.data.plans.find(p => p.code === 'integral');
+ok(r.status === 200 && integral.versions.length === 1 && integral.orders === 2, 'configuración: el plan con su versión y sus órdenes');
+ok((await call('PUT', `/admin/video-pitch/plans/${integral.id}${EV}`, viewer, { priceAmount: 1 })).status === 403, 'un perfil de lectura no cambia precios');
+r = await call('PUT', `/admin/video-pitch/plans/${integral.id}${EV}`, admin, { priceAmount: 149 });
+ok(r.status === 200 && r.data.plan.priceAmount === 149 && r.data.newVersion === true, 'el administrador cambia el precio: versión nueva del plan');
+r = await call('GET', `/admin/video-pitch/${reqB0}${EV}`, admin);
+ok(r.data.commercial.order.amount === 135, 'la orden existente conserva su precio (135), aunque el catálogo diga 149');
+ok((await call('GET', '/portal/video-pitch/plans', portal(B))).data.plans.find(p => p.code === 'integral').priceAmount === 149, 'un club que elija el plan AHORA ve 149');
+ok((await call('PUT', `/admin/video-pitch/plans/${integral.id}${EV}`, admin, { badge: 'Nuevo' })).data.newVersion === false, 'cambiar sólo la etiqueta no crea versión');
+r = await call('PUT', `/admin/video-pitch/plans/${integral.id}${EV}`, admin, { priceAmount: -5 });
+ok(r.status === 400, 'un precio negativo se rechaza');
+r = await call('POST', `/admin/video-pitch/plans${EV}`, admin, { code: 'essential', name: 'Duplicado', priceAmount: 10, deliverables: ['16:9'] });
+ok(r.status === 409, 'un código repetido se rechaza');
+r = await call('POST', `/admin/video-pitch/plans${EV}`, admin, { code: 'pro', name: 'Video Pitch Pro', priceAmount: 200, currency: 'USD', deliverables: ['16:9', '9:16'], features: ['Todo', 'Más'], active: false });
+ok(r.status === 201 && (await call('GET', '/portal/video-pitch/plans', portal(B))).data.plans.length === 2, 'un plan inactivo no se ofrece a los clubes');
+r = await call('GET', `/admin/video-pitch/plans/history${EV}`, admin);
+ok(r.data.history.some(h => h.type === 'plan_price_changed') && r.data.history.some(h => h.type === 'plan_created'), 'el historial del catálogo registra precios y planes nuevos');
+// Exoneración administrativa: B sin pagar → producción autorizada
+ok((await call('POST', `/admin/video-pitch/${reqB0}/payment/waive${EV}`, admin, {})).status === 400, 'exonerar sin motivo: 400');
+r = await call('POST', `/admin/video-pitch/${reqB0}/payment/waive${EV}`, admin, { note: 'Proyecto patrocinado por el Distrito.' });
+ok(r.status === 200 && r.data.commercial.paymentWaived === true, 'el administrador autoriza la producción sin pago, con motivo');
+r = await call('GET', `/admin/video-pitch/${reqB0}${EV}`, admin);
+ok(r.data.request.status === 'submitted' && r.data.request.number && r.data.events.some(e => e.type === 'payment_waived'), 'exonerado: el borrador se envía solo, con número, y queda auditado');
+// Limpieza de subidas huérfanas
+const pre = await call('POST', '/portal/video-pitch/files/presign', portal(B), { filename: 'huerfana.jpg', size: 100 });
+ok(pre.status === 409, 'B ya no está en borrador: no admite materiales nuevos (la limpieza se prueba con lo que quedó)');
+await db.query(`UPDATE "VideoPitchUploadIntent" SET "createdAt" = NOW() - INTERVAL '3 days' WHERE registered = FALSE`);
+r = await call('POST', `/admin/video-pitch/maintenance/cleanup${EV}`, admin, { confirm: false });
+ok(r.status === 200 && r.data.planned === true && r.data.candidates >= 1, 'la limpieza primero cuenta los huérfanos (la subida disfrazada que se rechazó)');
+r = await call('POST', `/admin/video-pitch/maintenance/cleanup${EV}`, admin, { confirm: true });
+ok(r.status === 200 && r.data.planned === false && (await db.query('SELECT COUNT(*)::int AS n FROM "VideoPitchUploadIntent" WHERE registered = FALSE AND "cleanedAt" IS NULL')).rows[0].n === 0, 'confirmada: los huérfanos se marcan limpios y ningún archivo registrado se toca');
+ok(objects.size === 1 && r.data.deleted === 0 && r.data.missing >= 1, 'el único material registrado (la foto) sigue en el almacenamiento; el huérfano ya no existía (se borró al rechazarlo)');
+// Ediciones simultáneas
+r = await call('PUT', '/portal/video-pitch', portal(C), { answers });
+ok(r.status === 403, 'C sigue sin poder (borrador de postulación)');
+
 console.log('── Revisión e información requerida');
-ok((await call('POST', `/admin/video-pitch/${reqId}/status${EV}`, admin, { status: 'in_production' })).status === 409, 'saltar a producción desde enviada: 409');
-r = await call('POST', `/admin/video-pitch/${reqId}/status${EV}`, admin, { status: 'in_review' });
-ok(r.status === 200 && r.data.request.status === 'in_review', 'enviada → en revisión');
+ok((await call('POST', `/admin/video-pitch/${reqId}/status${EV}`, admin, { status: 'in_production' })).status === 409, 'saltar a producción desde la revisión: 409');
+r = await call('GET', `/admin/video-pitch/${reqId}${EV}`, admin);
+ok(r.data.request.status === 'in_review', 'sigue en revisión (pasó ahí en la sección de pago)');
 ok((await call('POST', `/admin/video-pitch/${reqId}/status${EV}`, admin, { status: 'info_required' })).status === 400, 'pedir información sin decir cuál: 400');
 r = await call('POST', `/admin/video-pitch/${reqId}/status${EV}`, admin, { status: 'info_required', note: 'Necesitamos fotos de la comunidad.' });
 ok(r.status === 200 && r.data.request.infoRequest === 'Necesitamos fotos de la comunidad.', 'información requerida, con lo que se pide');
@@ -218,7 +373,7 @@ r = await call('GET', `/admin/video-pitch/${reqId}${EV}`, admin);
 ok(r.data.request.infoRequest === null && r.data.events.some(e => e.metadata?.resubmission === true), 'el pedido de información se limpia y el reenvío queda marcado');
 r = await call('POST', `/admin/video-pitch/${reqId}/status${EV}`, admin, { status: 'in_review' });
 r = await call('POST', `/admin/video-pitch/${reqId}/status${EV}`, admin, { status: 'script_in_progress' });
-ok(r.status === 200 && r.data.request.status === 'script_in_progress', 'en revisión → guion en preparación');
+ok(r.status === 200 && r.data.request.status === 'script_in_progress', 'en revisión → guion en preparación (pagada: la compuerta deja pasar)');
 
 console.log('── Guion');
 r = await call('POST', `/admin/video-pitch/${reqId}/scripts/generate${EV}`, admin, { language: 'es' });
@@ -277,10 +432,9 @@ r = await call('POST', `/admin/video-pitch/${reqId}/comments${EV}`, admin, { tex
 ok(r.status === 201 && !(await call('GET', '/portal/video-pitch', portal(A))).data.events.some(e => e.detail === 'Nota privada'), 'una nota interna no la ve el club');
 
 console.log('── Bloque, asignación y CSV');
-r = await call('PUT', '/portal/video-pitch', portal(B), { answers });
-r = await call('POST', '/portal/video-pitch/submit', portal(B), { answers });
-ok(r.status === 200 && /0002$/.test(r.data.number), 'segunda solicitud: número consecutivo');
-const reqB = (await call('GET', '/portal/video-pitch', portal(B))).data.request.id;
+const reqB = reqB0;
+ok(/0002$/.test((await call('GET', '/portal/video-pitch', portal(B))).data.request.number), 'segunda solicitud: número consecutivo');
+ok((await call('POST', '/portal/video-pitch/submit', portal(B), { answers })).status === 409, 'ya enviada por la exoneración: un envío manual no duplica');
 r = await call('POST', `/admin/video-pitch/bulk${EV}`, admin, { ids: [reqId, reqB], action: 'status', status: 'in_review', confirm: false });
 ok(r.status === 200 && r.data.planned === true && r.data.done === 1 && r.data.skipped.length === 1, 'el plan en bloque dice cuál sí y cuál no, sin tocar nada');
 ok((await call('GET', `/admin/video-pitch/${reqB}${EV}`, admin)).data.request.status === 'submitted', '…y de verdad no tocó nada');
@@ -297,6 +451,6 @@ r = await call('GET', `/admin/video-pitch/export.csv${EV}`, admin);
 ok(r.status === 200 && /text\/csv/.test(r.headers.get('content-type')) && r.data.includes(number) && r.data.includes('Entregado'), 'CSV con las dos solicitudes');
 
 console.log(`\n✅ ${n} comprobaciones, todas en verde (Postgres real, S3 simulado, router real).`);
-srv.close(); s3.close();
+srv.close(); s3.close(); stripeSrv.close();
 await db.end?.().catch(() => {});
 process.exit(0);

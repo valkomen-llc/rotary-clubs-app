@@ -13,6 +13,19 @@
 //   VideoPitchEvent         el historial completo: quién hizo qué y cuándo.
 //   VideoPitchNotification  qué aviso salió por qué cambio: evita duplicados.
 //
+// Y la capa COMERCIAL (v4.1296), separada de la producción:
+//
+//   VideoPitchPlan          el catálogo que vende el comité, editable desde el
+//                           panel. El precio NUNCA viene del navegador.
+//   VideoPitchPlanVersion   cada cambio de precio o características es una
+//                           versión INMUTABLE; las órdenes apuntan a la suya.
+//   VideoPitchOrder         la fotografía de una compra (plan, versión, importe,
+//                           moneda) y su recorrido en Stripe. Una solicitud
+//                           puede tener varias (cambios de plan), una vigente.
+//   VideoPitchStripeEvent   cada evento de Stripe ya aplicado (idempotencia).
+//   VideoPitchUploadIntent  cada URL prefirmada que se emitió: lo que nunca se
+//                           registró es un huérfano que la limpieza puede borrar.
+//
 // Sin claves foráneas, por la regla de siempre: ninguna tabla existente gana
 // una columna ni una restricción por esto. Están en la lista del guardián de
 // `db:push` y en la de CLAUDE.md.
@@ -26,11 +39,18 @@ let _ready = false;
 // mirando sólo las tablas un ALTER nuevo no correría NUNCA en producción. Lo
 // fija `npm run test:video-pitch`, que recorre los ADD COLUMN del archivo.
 export const OWNED_COLUMNS = {
-    VideoPitchRequest: [],
+    // v4.1296 — la capa comercial sobre la solicitud: estado comercial
+    // derivado, plan y orden vigentes, pago, exoneración administrativa.
+    VideoPitchRequest: ['commercialStatus', 'planId', 'currentOrderId', 'paidAt', 'paymentWaived', 'paymentWaivedBy', 'paymentWaivedNote', 'paymentWaivedAt'],
     VideoPitchFile: [],
     VideoPitchScript: [],
     VideoPitchEvent: [],
     VideoPitchNotification: [],
+    VideoPitchPlan: [],
+    VideoPitchPlanVersion: [],
+    VideoPitchOrder: [],
+    VideoPitchStripeEvent: [],
+    VideoPitchUploadIntent: [],
 };
 
 const TABLES = Object.keys(OWNED_COLUMNS);
@@ -153,6 +173,115 @@ export async function ensureVideoPitchSchema() {
         )
     `);
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "VideoPitchNotification_dedupe_key" ON "VideoPitchNotification" ("requestId", "dedupeKey")`);
+
+    // ── v4.1296 — Capa comercial ─────────────────────────────────────
+    const addColumn = async (sql) => { await db.query(sql).catch(() => {}); };
+    await addColumn(`ALTER TABLE "VideoPitchRequest" ADD COLUMN IF NOT EXISTS "commercialStatus" TEXT NOT NULL DEFAULT 'no_plan'`);
+    await addColumn(`ALTER TABLE "VideoPitchRequest" ADD COLUMN IF NOT EXISTS "planId" TEXT`);
+    await addColumn(`ALTER TABLE "VideoPitchRequest" ADD COLUMN IF NOT EXISTS "currentOrderId" TEXT`);
+    await addColumn(`ALTER TABLE "VideoPitchRequest" ADD COLUMN IF NOT EXISTS "paidAt" TIMESTAMPTZ`);
+    await addColumn(`ALTER TABLE "VideoPitchRequest" ADD COLUMN IF NOT EXISTS "paymentWaived" BOOLEAN NOT NULL DEFAULT FALSE`);
+    await addColumn(`ALTER TABLE "VideoPitchRequest" ADD COLUMN IF NOT EXISTS "paymentWaivedBy" TEXT`);
+    await addColumn(`ALTER TABLE "VideoPitchRequest" ADD COLUMN IF NOT EXISTS "paymentWaivedNote" TEXT`);
+    await addColumn(`ALTER TABLE "VideoPitchRequest" ADD COLUMN IF NOT EXISTS "paymentWaivedAt" TIMESTAMPTZ`);
+
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "VideoPitchPlan" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            code TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            badge TEXT,
+            "priceAmount" NUMERIC(14,2) NOT NULL DEFAULT 0,
+            currency TEXT NOT NULL DEFAULT 'USD',
+            features JSONB NOT NULL DEFAULT '[]'::jsonb,
+            deliverables JSONB NOT NULL DEFAULT '[]'::jsonb,
+            "maxDurationSec" INT NOT NULL DEFAULT 180,
+            "revisionRounds" INT NOT NULL DEFAULT 3,
+            "sortOrder" INT NOT NULL DEFAULT 0,
+            active BOOLEAN NOT NULL DEFAULT TRUE,
+            "currentVersionId" TEXT,
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            "updatedBy" TEXT
+        )
+    `);
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "VideoPitchPlan_code_key" ON "VideoPitchPlan" (code)`);
+
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "VideoPitchPlanVersion" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "planId" TEXT NOT NULL,
+            "versionNumber" INT NOT NULL,
+            snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            "createdById" TEXT,
+            "createdByName" TEXT
+        )
+    `);
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "VideoPitchPlanVersion_number_key" ON "VideoPitchPlanVersion" ("planId", "versionNumber")`);
+
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "VideoPitchOrder" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "requestId" TEXT NOT NULL,
+            "submissionId" TEXT NOT NULL,
+            "planId" TEXT NOT NULL,
+            "planVersionId" TEXT,
+            "planCode" TEXT,
+            "planName" TEXT,
+            snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
+            amount NUMERIC(14,2) NOT NULL,
+            currency TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending_payment',
+            "stripeSessionId" TEXT,
+            "stripePaymentIntentId" TEXT,
+            "stripeChargeId" TEXT,
+            "receiptUrl" TEXT,
+            "paidAt" TIMESTAMPTZ,
+            "failureCode" TEXT,
+            "failureMessage" TEXT,
+            "refundedAmount" NUMERIC(14,2),
+            "refundedAt" TIMESTAMPTZ,
+            "cancelledAt" TIMESTAMPTZ,
+            "cancelReason" TEXT,
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS "VideoPitchOrder_request_idx" ON "VideoPitchOrder" ("requestId", "createdAt" DESC)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS "VideoPitchOrder_session_idx" ON "VideoPitchOrder" ("stripeSessionId")`);
+    await db.query(`CREATE INDEX IF NOT EXISTS "VideoPitchOrder_intent_idx" ON "VideoPitchOrder" ("stripePaymentIntentId")`);
+    // Una sola orden ABIERTA por solicitud: la carrera de dos clics la pierde el índice, no el cliente.
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "VideoPitchOrder_open_key" ON "VideoPitchOrder" ("requestId") WHERE status IN ('pending_payment', 'processing', 'failed')`);
+
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "VideoPitchStripeEvent" (
+            "stripeEventId" TEXT PRIMARY KEY,
+            type TEXT NOT NULL,
+            "orderId" TEXT,
+            "objectId" TEXT,
+            payload JSONB,
+            "receivedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "VideoPitchUploadIntent" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "requestId" TEXT NOT NULL,
+            "storageKey" TEXT NOT NULL,
+            role TEXT NOT NULL,
+            "fileName" TEXT,
+            "declaredBytes" BIGINT,
+            registered BOOLEAN NOT NULL DEFAULT FALSE,
+            "cleanedAt" TIMESTAMPTZ,
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "VideoPitchUploadIntent_key" ON "VideoPitchUploadIntent" ("storageKey")`);
+    await db.query(`CREATE INDEX IF NOT EXISTS "VideoPitchUploadIntent_pending_idx" ON "VideoPitchUploadIntent" ("createdAt") WHERE registered = FALSE AND "cleanedAt" IS NULL`);
     _ready = true;
 }
 

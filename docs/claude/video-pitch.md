@@ -130,10 +130,71 @@ salidas posibles. **Producir exige guion aprobado; entregar exige el video**
   (TTS), `reelFfmpeg.js` y `reelRenderProviders.js` existen para una Fase 4; la
   separación guion/escenas/materiales ya la prepara.
 
+### La capa comercial (v4.1296)
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/videoPitchCommerce.js` | Criterio puro: estados comerciales, planes por defecto, `normalizePlanInput`, versión nueva (`planNeedsNewVersion`), importes de Stripe, `readSessionOutcome`/`reusableSession`, `commercialStatusOf`, la compuerta `productionGate`, `cardCopyOf` (casos A–E) |
+| `server/controllers/videoPitchCommerceController.js` | Planes (siembra, CRUD con versiones), órdenes, Checkout, `applyStripeOutcome`, `routeVideoPitchStripeEvent`, sincronización al volver, exoneración, limpieza |
+| `server/controllers/paymentController.js` | El webhook ÚNICO de la plataforma enruta `metadata.type = 'video_pitch_order'` (pagado, fallido, expirado, reembolsado) |
+
+Rutas: `GET /portal/video-pitch/plans` · `POST …/plan` (elegir o cambiar; con
+`answers` guarda y valida antes) · `POST …/checkout` · `POST …/checkout/sync`;
+`GET/POST /admin/video-pitch/plans` · `PUT …/plans/:planId` · `GET
+…/plans/history` · `POST …/maintenance/cleanup` (todas literales ANTES de
+`/:id`) · `POST …/:id/payment/waive` · `POST …/:id/payment/sync`.
+
+Tablas: `VideoPitchPlan`, `VideoPitchPlanVersion`, `VideoPitchOrder`,
+`VideoPitchStripeEvent`, `VideoPitchUploadIntent`; columnas nuevas de
+`VideoPitchRequest` enumeradas en `OWNED_COLUMNS` (`commercialStatus`,
+`planId`, `currentOrderId`, `paidAt`, `paymentWaived*`).
+
+**Reglas durables:**
+
+- **⚠️ «PAGADO» SÓLO SALE DE STRIPE.** `applyStripeOutcome` es la única función
+  que escribe `paid`/`failed`/`refunded`; la llaman el webhook (evento
+  registrado antes en `VideoPitchStripeEvent`, idempotente) y la
+  sincronización al volver (`checkout/sync`, que LEE la sesión del servidor).
+  La URL de éxito no decide nada. Una sesión `complete` con
+  `payment_status = 'unpaid'` no marca nada.
+- **El importe sale de la ORDEN**, que copia el precio de la VERSIÓN del plan al
+  elegirlo. Cambiar el catálogo crea una versión nueva y no toca órdenes
+  existentes (la prueba lo fija con 135 → 149). Cambiar de plan antes de pagar
+  cancela la orden abierta, expira su sesión y crea otra. Un índice único
+  parcial garantiza UNA orden abierta por solicitud.
+- **La metadata de la sesión NO lleva `submissionId`**: el enrutador de la
+  Feria toma como suyo todo lo que trae esa clave. Lleva `type` y
+  `videoPitchOrderId`.
+- **Dos estados, nunca uno**: `status` (producción) y `commercialStatus`
+  (derivado de la orden vigente por `refreshCommercial`). La compuerta
+  `productionGate` exige pago o exoneración para `script_in_progress` en
+  adelante; revisar y pedir información no lo exigen.
+- **Pagar después mantiene el borrador editable**; al confirmarse el pago la
+  solicitud se envía sola (`applyStatus` → `submitted`, número y avisos de
+  siempre). La exoneración (`payment/waive`, motivo obligatorio, auditada)
+  hace lo mismo sin pago. Un borrador con plan SÍ aparece en la bandeja.
+- **Ediciones simultáneas**: el navegador manda `clientRevision`
+  (`lastEditedAt` que cargó); si otro guardó después y las respuestas
+  difieren, 409 `conflict` con lo guardado, y la vista lo muestra en vez de
+  pisarlo. El autoguardado reintenta UNA vez a los 5 s y luego avisa.
+- **Limpieza de huérfanos**: cada presign anota un `VideoPitchUploadIntent`;
+  `maintenance/cleanup` borra sólo objetos de intenciones no registradas con
+  más de `VIDEO_PITCH_UPLOAD_RETENTION_HOURS` (48) que ningún `VideoPitchFile`
+  use. Primero cuenta (`confirm: false`), después borra.
+- **Para probar sin Stripe real**: `STRIPE_API_BASE` apunta el SDK a un
+  servidor local (sólo la fábrica `getStripe` del módulo lo lee). En
+  producción no existe.
+- Los correos comerciales (`notifyParticipantKind`) no llevan datos de pago:
+  plan, importe y el enlace al perfil.
+
 ### Cómo se probó
 
 - `npm run test:video-pitch` — criterio e invariantes, sin base ni red.
 - `FAIR_E2E_DATABASE_URL=postgres://…@127.0.0.1/… npm run test:video-pitch:e2e`
+  (v4.1296: con un Stripe simulado en memoria: catálogo, elegir y cambiar plan,
+  Checkout con el importe de la orden, reutilización de sesión, volver sin
+  pagar, sesión completa sin pagar, webhook duplicado, pago fallido y reintento,
+  precio histórico, plan inactivo, exoneración, limpieza de huérfanos)
   — Postgres REAL (con SSL: `db.js` lo exige), S3 simulado y el router real por
   HTTP: disponibilidad, borrador precargado, materiales válidos/disfrazados/
   verticales, envío con número y doble envío, permisos (sin sesión, token de la
@@ -149,6 +210,12 @@ salidas posibles. **Producir exige guion aprobado; entregar exige el video**
 
 - **Renderizado automático** (TTS, subtítulos, composición, música, marca,
   miniaturas): Fase 4. Hoy el video se produce fuera y se sube.
+- **Stripe Price objects**: la plataforma cobra con `price_data` en cada
+  sesión (como la Feria), así que no se crean objetos Price en Stripe; la
+  versión del plan cumple ese papel en la base.
+- **Campos del formulario configurables desde el panel**: no en esta fase.
+- **Reembolsos**: se reflejan cuando llegan de Stripe (`charge.refunded`); no se
+  emiten desde el panel.
 - **CORS del bucket**: la subida es un PUT del navegador a S3, como la plantilla
   y los documentos; si falla con «Se cortó la conexión con el almacenamiento»,
   revisar la política del bucket para el dominio del sitio.

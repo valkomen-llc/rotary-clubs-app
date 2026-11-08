@@ -52,8 +52,13 @@ import {
     deleteVideoPitchObject,
 } from '../lib/videoPitchStorage.js';
 import { buildDossier, generateVideoPitchScript, auditScript } from '../lib/videoPitchAI.js';
+import { productionGate, commercialMeta, cardCopyOf } from '../lib/videoPitchCommerce.js';
 
-console.log('[videoPitchController] v4.1295.0 cargado — Video Pitch Profesional: solicitud precargada con materiales, bandeja administrativa, guiones con IA sobre hechos verificados, aprobación, producción y entrega auditadas.');
+// La capa comercial vive en su propio controlador y nos importa a nosotros: se
+// carga perezosamente para que el ciclo de importación no evalúe nada a medias.
+const commerce = async () => import('./videoPitchCommerceController.js');
+
+console.log('[videoPitchController] v4.1296.0 cargado — Video Pitch Profesional: solicitud precargada con materiales, planes y pago por Stripe (o pagar después), bandeja administrativa, guiones con IA sobre hechos verificados, aprobación, producción y entrega auditadas.');
 
 const clean = (v, max = 250) => String(v ?? '').trim().slice(0, max);
 const refOf = (id) => String(id || '').replace(/-/g, '').slice(0, 8).toUpperCase();
@@ -62,7 +67,7 @@ const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').
 const ensureAll = async () => { await ensureTables(); await ensureVideoPitchSchema(); };
 
 // ── Lectura ──────────────────────────────────────────────────────────
-const loadRequest = async (id) => {
+export const loadRequest = async (id) => {
     const { rows } = await db.query('SELECT * FROM "VideoPitchRequest" WHERE id = $1 LIMIT 1', [id]);
     return rows[0] || null;
 };
@@ -70,20 +75,20 @@ const loadRequestBySubmission = async (submissionId) => {
     const { rows } = await db.query('SELECT * FROM "VideoPitchRequest" WHERE "submissionId" = $1 LIMIT 1', [submissionId]);
     return rows[0] || null;
 };
-const loadSubmission = async (id) => {
+export const loadSubmission = async (id) => {
     const { rows } = await db.query(`
         SELECT id, "publicRef", "eventId", "firstName", "lastName", email, phone, "clubName", district, "projectName",
                "projectDescription", "focusArea", "focusAreaLabel", "budgetUsd", status, "workflowStatus", "archivedAt", metadata, "createdAt"
         FROM "ProjectFairSubmission" WHERE id = $1 LIMIT 1`, [id]);
     return rows[0] || null;
 };
-const loadMasterAnswers = async (submissionId) => {
+export const loadMasterAnswers = async (submissionId) => {
     try {
         const { rows } = await db.query('SELECT answers FROM "ProjectFairMasterForm" WHERE "submissionId" = $1 LIMIT 1', [submissionId]);
         return rows[0]?.answers || null;
     } catch { return null; }
 };
-const loadFiles = async (requestId, { includeDeleted = false } = {}) => {
+export const loadFiles = async (requestId, { includeDeleted = false } = {}) => {
     const { rows } = await db.query(
         `SELECT * FROM "VideoPitchFile" WHERE "requestId" = $1 ${includeDeleted ? '' : 'AND "deletedAt" IS NULL'} ORDER BY "createdAt" ASC`, [requestId]);
     return rows;
@@ -103,7 +108,7 @@ const loadEvents = async (requestId, { participant = false } = {}) => {
     return rows;
 };
 
-const logVpEvent = async (requestId, { type, title, detail = null, metadata = {}, actor = null, visibility = 'all' }) => {
+export const logVpEvent = async (requestId, { type, title, detail = null, metadata = {}, actor = null, visibility = 'all' }) => {
     try {
         const { rows } = await db.query(`
             INSERT INTO "VideoPitchEvent" ("requestId", type, title, detail, metadata, "actorId", "actorName", "actorRole", visibility)
@@ -143,6 +148,8 @@ const shapeRequest = (r, submission) => ({
     currentScriptId: r.currentScriptId || null, approvedScriptId: r.approvedScriptId || null,
     deliverableFileId: r.deliverableFileId || null, thumbnailFileId: r.thumbnailFileId || null,
     infoRequest: r.infoRequest || null, adminNotes: r.adminNotes || null,
+    commercialStatus: r.commercialStatus || 'no_plan', planId: r.planId || null, currentOrderId: r.currentOrderId || null,
+    paymentWaived: Boolean(r.paymentWaived), paymentWaivedNote: r.paymentWaivedNote || null, paymentWaivedBy: r.paymentWaivedBy || null,
     submittedAt: r.submittedAt, deliveredAt: r.deliveredAt, lastEditedAt: r.lastEditedAt, createdAt: r.createdAt, updatedAt: r.updatedAt,
     identity: lockedIdentity(submission),
 });
@@ -214,6 +221,51 @@ const notifyParticipant = async ({ request, submission, cfg, status, eventId, no
     }
 };
 
+export const systemActor = (name = 'Sistema') => ({ id: null, name, role: 'system' });
+
+/** Avisos COMERCIALES al club (pendiente de pago, pago confirmado, pago fallido): misma deduplicación por clave. */
+const COMMERCIAL_MAIL = {
+    pending_payment: { subject: 'Tu solicitud de Video Pitch está guardada: falta el pago', body: ({ request, order }) => `Guardamos tu solicitud de <strong>Video Pitch Profesional</strong>${request.number ? ` (${esc(request.number)})` : ''} con el plan <strong>${esc(order?.planName || '')}</strong>${order ? ` por <strong>${esc(order.amountLabel || '')}</strong>` : ''}. Tus datos y materiales quedan guardados: cuando estés listo, entra a tu perfil y completa el pago. La producción empieza con el pago confirmado y los materiales necesarios.` },
+    payment_confirmed: { subject: 'Pago confirmado: tu Video Pitch entra en revisión', body: ({ order }) => `Recibimos tu pago del plan <strong>${esc(order?.planName || '')}</strong>${order ? ` (${esc(order.amountLabel || '')})` : ''}. Tu solicitud quedó enviada al comité, que revisará la información de tu proyecto y te avisará de cada avance. El comprobante de pago está disponible en tu perfil.` },
+    payment_failed: { subject: 'El pago de tu Video Pitch no se completó', body: () => `El pago no se pudo procesar. Tu solicitud y tus materiales siguen guardados: entra a tu perfil e intenta pagar de nuevo cuando quieras.` },
+};
+export const notifyParticipantKind = async ({ request, submission, cfg, kind, eventKey }) => {
+    const spec = COMMERCIAL_MAIL[kind];
+    if (!spec || !submission?.email) return;
+    const dedupeKey = `${kind}:${eventKey || 'manual'}`;
+    const inserted = await db.query(`
+        INSERT INTO "VideoPitchNotification" ("requestId", kind, "dedupeKey", channel, recipient, status)
+        VALUES ($1, $2, $3, 'email', $4, 'pending') ON CONFLICT ("requestId", "dedupeKey") DO NOTHING RETURNING id
+    `, [request.id, kind, dedupeKey, submission.email]).catch(() => ({ rows: [] }));
+    const notifId = inserted.rows[0]?.id;
+    if (!notifId) return;
+    const { shapeOrder, currentOrderOf } = await commerce();
+    const order = shapeOrder(await currentOrderOf(request));
+    const primary = '#17458F';
+    const edition = cfg?.edition?.name || 'Feria de Proyectos Rotary Colombia';
+    const link = `${portalLinkFor(submission, cfg)}?videoPitch=1`;
+    const name = [submission.firstName, submission.lastName].filter(Boolean).join(' ') || 'equipo del proyecto';
+    // Nada sensible del pago viaja por correo: ni tarjeta, ni referencias de Stripe.
+    const html = `
+<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1f2937;max-width:620px;margin:0 auto;padding:24px 0">
+  <div style="background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb">
+    <div style="background:${primary};color:#fff;padding:26px 32px"><div style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;opacity:.8">Video Pitch Profesional</div><div style="font-size:18px;font-weight:700">${esc(edition)}</div></div>
+    <div style="padding:30px 32px">
+      <p style="font-size:15px;line-height:1.6;margin:0 0 14px">Hola, ${esc(name)}:</p>
+      <p style="font-size:15px;line-height:1.6;margin:0 0 14px">${spec.body({ request, order })}</p>
+      <p style="margin:22px 0"><a href="${esc(link)}" style="display:inline-block;background:${primary};color:#fff;padding:12px 26px;border-radius:8px;text-decoration:none;font-weight:bold">Ir a mi solicitud</a></p>
+      <p style="font-size:13px;line-height:1.6;color:#6b7280;margin:0">Proyecto: ${esc(submission.projectName)} · ${esc(submission.clubName)} · ${esc(submission.district)}</p>
+    </div>
+  </div>
+</div>`;
+    try {
+        const result = await sendFairEmail({ to: submission.email, subject: `${spec.subject} — ${edition}`, html, cfg });
+        await db.query('UPDATE "VideoPitchNotification" SET status = $2, error = $3 WHERE id = $1', [notifId, result?.success ? 'sent' : 'failed', result?.success ? null : clean(result?.error, 500) || 'sin detalle']);
+    } catch (e) {
+        await db.query('UPDATE "VideoPitchNotification" SET status = $2, error = $3 WHERE id = $1', [notifId, 'failed', clean(e?.message, 500)]).catch(() => {});
+    }
+};
+
 const notifyAdmins = async ({ request, submission, cfg, eventId }) => {
     const emails = Array.isArray(cfg?.notifications?.adminEmails) ? cfg.notifications.adminEmails.filter(Boolean) : [];
     if (!emails.length) return;
@@ -244,7 +296,7 @@ const nextNumber = async () => {
  * Aplica una transición. `actorKind` decide qué tabla de transiciones manda.
  * Devuelve la solicitud actualizada; lanza con `.code` 409 si no se puede.
  */
-const applyStatus = async ({ request, submission, cfg, to, actor, actorKind = 'admin', note = null, metadata = {} }) => {
+export const applyStatus = async ({ request, submission, cfg, to, actor, actorKind = 'admin', note = null, metadata = {} }) => {
     const from = request.status;
     if (!isStatus(to)) { const e = new Error('Estado desconocido.'); e.code = 400; throw e; }
     if (!canTransition(from, to, { actor: actorKind })) {
@@ -254,6 +306,10 @@ const applyStatus = async ({ request, submission, cfg, to, actor, actorKind = 'a
     }
     const requirement = transitionRequirements(to, { hasApprovedScript: Boolean(request.approvedScriptId), hasDeliverable: Boolean(request.deliverableFileId) });
     if (requirement) { const e = new Error(requirement); e.code = 409; throw e; }
+    // v4.1296 — La compuerta COMERCIAL: sin pago confirmado (o exoneración
+    // expresa de un administrador) no se pasa de la revisión a producir.
+    const gate = productionGate(to, { commercialStatus: request.commercialStatus, paymentWaived: request.paymentWaived });
+    if (gate) { const e = new Error(gate); e.code = 409; throw e; }
 
     const sets = ['status = $2', '"updatedAt" = NOW()'];
     const params = [request.id, to];
@@ -302,13 +358,13 @@ const applyStatus = async ({ request, submission, cfg, to, actor, actorKind = 'a
 // ════════════════════════════════════════════════════════════════════
 // PORTAL DEL PARTICIPANTE
 // ════════════════════════════════════════════════════════════════════
-const portalIdentity = async (req) => {
+export const portalIdentity = async (req) => {
     const submission = await loadSubmission(req.portal.submissionId);
     if (!submission) return { submission: null, account: null };
     const acc = await db.query('SELECT id, email FROM "ProjectFairAccount" WHERE id = $1 AND "submissionId" = $2 LIMIT 1', [req.portal.sub, submission.id]);
     return { submission, account: acc.rows[0] || null };
 };
-const participantActor = (account, submission) => ({ id: account?.id || null, name: account?.email || submission?.email || 'Club', role: 'club' });
+export const participantActor = (account, submission) => ({ id: account?.id || null, name: account?.email || submission?.email || 'Club', role: 'club' });
 
 /**
  * El club puede pedir el video cuando su proyecto está POSTULADO (no en
@@ -318,7 +374,7 @@ const participantActor = (account, submission) => ({ id: account?.id || null, na
  * que no le decía qué hacer. La bandeja marca la postulación «Archivada» y el
  * comité decide si cancela la solicitud.
  */
-const availabilityOf = (submission) => {
+export const availabilityOf = (submission) => {
     if (!isApplied(submission)) return { available: false, reason: 'Podrás solicitar el Video Pitch cuando tu proyecto esté postulado.' };
     return { available: true, reason: null };
 };
@@ -330,13 +386,18 @@ const portalView = async ({ request, submission, account }) => {
     // v4.1295 — Lo que el sistema YA sabe del proyecto, para mostrarlo en
     // sólo lectura: el club agrega sólo lo que falte.
     const context = projectContextOf({ submission, masterAnswers });
+    const { listPlans, commercialViewOf } = await commerce();
+    const plans = await listPlans({ onlyActive: true });
     if (!request) {
         return {
             exists: false, status: 'not_requested', statusLabel: statusMeta('not_requested').label, ...availability,
             identity: lockedIdentity(submission), prefill, context, catalog: CATALOG, request: null, files: [], scripts: [], events: [],
-            canEdit: availability.available, deliverable: null,
+            canEdit: availability.available, deliverable: null, plans,
+            commercial: { status: 'no_plan', label: commercialMeta('no_plan').label, tone: 'slate', planId: null, order: null, paymentWaived: false, canChoosePlan: true, canPay: false },
+            card: cardCopyOf({ exists: false, requestStatus: 'not_requested', commercialStatus: 'no_plan', available: availability.available }),
         };
     }
+    const commercial = await commercialViewOf(request);
     const [files, scripts, events] = await Promise.all([loadFiles(request.id), loadScripts(request.id), loadEvents(request.id, { participant: true })]);
     const materials = files.filter(f => f.role === 'material');
     const deliverable = files.find(f => f.id === request.deliverableFileId) || null;
@@ -348,7 +409,9 @@ const portalView = async ({ request, submission, account }) => {
         exists: true, ...availability,
         status: request.status, statusLabel: statusMeta(request.status).label,
         request: shapeRequest(request, submission),
-        identity: lockedIdentity(submission), prefill, context, catalog: CATALOG,
+        identity: lockedIdentity(submission), prefill, context, catalog: CATALOG, plans, commercial,
+        card: cardCopyOf({ exists: true, requestStatus: request.status, commercialStatus: commercial.status, available: availability.available }),
+        revision: request.lastEditedAt ? new Date(request.lastEditedAt).toISOString() : null,
         files: materials.map(shapeFile),
         scripts: visibleScripts.map(s => shapeScript(s, request)),
         events,
@@ -375,7 +438,7 @@ export const portalGet = async (req, res) => {
 };
 
 /** Crea el borrador si no existe, precargado. Idempotente: el índice único por postulación lo garantiza. */
-const ensureDraft = async ({ submission, account }) => {
+export const ensureDraft = async ({ submission, account }) => {
     const existing = await loadRequestBySubmission(submission.id);
     if (existing) return existing;
     const masterAnswers = await loadMasterAnswers(submission.id);
@@ -401,12 +464,21 @@ export const portalSave = async (req, res) => {
         if (!availability.available) return res.status(403).json({ error: availability.reason });
         const request = await ensureDraft({ submission, account });
         if (!participantCanEdit(request.status)) return res.status(409).json({ error: `La solicitud está «${statusMeta(request.status).label}» y ya no se puede editar.` });
+        // v4.1296 — Ediciones simultáneas: el navegador manda la revisión que
+        // cargó (`lastEditedAt`). Si otro guardó después, no se pisa: 409 con lo
+        // guardado para que la pantalla lo muestre y la persona decida.
+        const clientRevision = clean(req.body?.clientRevision, 40);
+        if (clientRevision && request.lastEditedAt && new Date(request.lastEditedAt).getTime() > new Date(clientRevision).getTime() + 1500
+            && JSON.stringify(normalizeAnswers(request.answers)) !== JSON.stringify(normalizeAnswers(req.body?.answers || {}))) {
+            return res.status(409).json({ conflict: true, error: 'La solicitud se guardó desde otra pestaña o dispositivo. Mostramos la versión más reciente.', answers: normalizeAnswers(request.answers), revision: new Date(request.lastEditedAt).toISOString() });
+        }
         const answers = normalizeAnswers(req.body?.answers || request.answers);
         const files = await loadFiles(request.id);
         const pct = completionOf(answers, { fileCount: files.filter(f => f.role === 'material').length });
-        await db.query('UPDATE "VideoPitchRequest" SET answers = $2::jsonb, "completionPct" = $3, "lastEditedAt" = NOW(), "updatedAt" = NOW() WHERE id = $1',
+        const { rows: saved } = await db.query('UPDATE "VideoPitchRequest" SET answers = $2::jsonb, "completionPct" = $3, "lastEditedAt" = NOW(), "updatedAt" = NOW() WHERE id = $1 RETURNING "lastEditedAt"',
             [request.id, JSON.stringify(answers), pct]);
-        res.json({ ok: true, savedAt: new Date().toISOString(), completionPct: pct, status: request.status, requestId: request.id });
+        const revision = saved[0]?.lastEditedAt ? new Date(saved[0].lastEditedAt).toISOString() : new Date().toISOString();
+        res.json({ ok: true, savedAt: revision, revision, completionPct: pct, status: request.status, requestId: request.id });
     } catch (error) {
         console.error('[video-pitch] portalSave:', error);
         res.status(500).json({ error: 'No pudimos guardar tu solicitud.' });
@@ -457,6 +529,10 @@ const presignFor = async ({ request, role, body, actorRole }) => {
     }
     try {
         const signed = await presignVideoPitchUpload({ requestId: request.id, role, ext: juicio.ext, contentType: juicio.contentType });
+        // v4.1296 — Cada URL emitida queda anotada: lo que nunca se registre es
+        // un huérfano que la limpieza administrativa puede borrar.
+        await db.query('INSERT INTO "VideoPitchUploadIntent" ("requestId", "storageKey", role, "fileName", "declaredBytes") VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING',
+            [request.id, signed.storageKey, role, filename, Number(body?.size) || null]).catch(() => {});
         return { status: 200, body: { ...signed, kind: juicio.kind, role, maxMb: maxMbFor(juicio.kind), actorRole } };
     } catch (e) {
         console.error('[video-pitch] no pude prefirmar la subida:', e?.message);
@@ -484,6 +560,7 @@ const registerFor = async ({ request, role, body, actor }) => {
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, $14, $15) RETURNING *
     `, [request.id, role, juicio.kind, storageKey, fileName, juicio.contentType, inspected.bytes, width, height, durationSec, JSON.stringify(warnings), clean(body?.caption, 300) || null, actor.id, actor.name, actor.role]);
     const file = rows[0];
+    await db.query('UPDATE "VideoPitchUploadIntent" SET registered = TRUE WHERE "storageKey" = $1', [storageKey]).catch(() => {});
     await logVpEvent(request.id, {
         type: role === 'material' ? 'file_added' : role === 'deliverable' ? 'deliverable_uploaded' : 'thumbnail_uploaded',
         title: role === 'material' ? `Material adjuntado: ${fileName}` : role === 'deliverable' ? `Video final cargado: ${fileName}` : `Miniatura cargada: ${fileName}`,
@@ -682,10 +759,12 @@ const withSchema = (handler, capability) => withAccess(async (req, res, ctx) => 
 const LIST_SELECT = `
     SELECT r.*, s."publicRef", s."projectName", s."clubName", s.district, s.email AS "submissionEmail", s."firstName", s."lastName",
            s."workflowStatus", s."archivedAt",
+           o."planName" AS "orderPlanName", o.amount AS "orderAmount", o.currency AS "orderCurrency", o.status AS "orderStatus", o."paidAt" AS "orderPaidAt",
            (SELECT COUNT(*) FROM "VideoPitchFile" f WHERE f."requestId" = r.id AND f.role = 'material' AND f."deletedAt" IS NULL)::int AS "materialCount",
            (SELECT COUNT(*) FROM "VideoPitchScript" sc WHERE sc."requestId" = r.id)::int AS "scriptCount"
     FROM "VideoPitchRequest" r
-    JOIN "ProjectFairSubmission" s ON s.id = r."submissionId"`;
+    JOIN "ProjectFairSubmission" s ON s.id = r."submissionId"
+    LEFT JOIN "VideoPitchOrder" o ON o.id = r."currentOrderId"`;
 
 const shapeRow = (r) => {
     const a = normalizeAnswers(r.answers);
@@ -699,6 +778,9 @@ const shapeRow = (r) => {
         assigneeId: r.assigneeId || null, assigneeName: r.assigneeName || null,
         hasApprovedScript: Boolean(r.approvedScriptId), hasDeliverable: Boolean(r.deliverableFileId),
         completionPct: Number(r.completionPct) || 0,
+        commercialStatus: r.commercialStatus || 'no_plan', commercialLabel: commercialMeta(r.commercialStatus || 'no_plan').label, commercialTone: commercialMeta(r.commercialStatus || 'no_plan').tone,
+        planName: r.orderPlanName || null, amount: r.orderAmount === null || r.orderAmount === undefined ? null : Number(r.orderAmount), currency: r.orderCurrency || null,
+        paidAt: r.orderPaidAt || null, paymentWaived: Boolean(r.paymentWaived),
         projectStateLabel: r.archivedAt ? 'Archivada' : projectStateMeta(projectStateOf(r)).label,
         submittedAt: r.submittedAt, deliveredAt: r.deliveredAt, createdAt: r.createdAt, updatedAt: r.updatedAt,
     };
@@ -706,14 +788,19 @@ const shapeRow = (r) => {
 
 const listRows = async (query, cfg) => {
     const params = [];
-    // Los borradores son trabajo privado del club: la bandeja no los lista.
-    const cond = ['r.status <> \'draft\''];
+    // Los borradores son trabajo privado del club: la bandeja no los lista…
+    // salvo que ya tengan un plan elegido (v4.1296): un «pendiente de pago» es
+    // una venta por cerrar y el comité tiene que verla.
+    const cond = ['(r.status <> \'draft\' OR COALESCE(r."commercialStatus", \'no_plan\') <> \'no_plan\')'];
     // `$?` se reemplaza —TODAS sus apariciones— por el índice del parámetro recién agregado.
     const add = (sql, v) => { params.push(v); cond.push(sql.split('$?').join(`$${params.length}`)); };
     const evento = clean(query.evento, 60);
     if (evento) add('r."eventId" = $?', evento);
     const status = clean(query.status, 40);
     if (status && isStatus(status)) add('r.status = $?', status);
+    const commercial = clean(query.commercial, 40);
+    if (commercial === 'open') cond.push(`COALESCE(r."commercialStatus", 'no_plan') IN ('pending_payment', 'processing', 'failed', 'plan_selected')`);
+    else if (commercial) add('COALESCE(r."commercialStatus", \'no_plan\') = $?', commercial);
     const district = clean(query.district, 120);
     if (district) add('s.district = $?', district);
     const assignee = clean(query.assignee, 160);
@@ -745,13 +832,18 @@ export const adminList = withSchema(async (req, res, { access, cfg }) => {
     ].filter(Boolean).map(String))].sort();
     res.json({
         rows, total: all.length, page, pageSize,
-        kpis: summarizeRequests(base),
+        kpis: {
+            ...summarizeRequests(base),
+            pending_payment: base.filter(r => ['pending_payment', 'processing', 'failed', 'plan_selected'].includes(r.commercialStatus)).length,
+            paid: base.filter(r => r.commercialStatus === 'paid').length,
+            revenue: base.filter(r => r.commercialStatus === 'paid').reduce((a, r) => a + (Number(r.amount) || 0), 0),
+        },
         filters: {
             statuses: STATUSES.filter(s => s.key !== 'not_requested'),
             districts: [...new Set(base.map(r => r.district).filter(Boolean))].sort(),
             assignees: assigneeOptions,
         },
-        access: { view: !!access.view, comment: !!access.comment, manage: !!access.changeStatus, export: !!access.export, remove: !!access.remove },
+        access: { view: !!access.view, comment: !!access.comment, manage: !!access.changeStatus, export: !!access.export, remove: !!access.remove, config: !!access.config },
         catalog: CATALOG,
         transitions: ADMIN_TRANSITIONS,
     });
@@ -780,8 +872,12 @@ const detailOf = async (request, submission, access) => {
         loadMasterAnswers(submission.id),
     ]);
     const dossier = buildDossier({ request, submission, masterAnswers, files });
+    const { commercialViewOf, loadOrders, shapeOrder } = await commerce();
+    const commercial = await commercialViewOf(request);
+    const orders = (await loadOrders(request.id)).map(shapeOrder);
     return {
         request: shapeRequest(request, submission),
+        commercial, orders,
         submission: {
             id: submission.id, publicRef: submission.publicRef, projectName: submission.projectName, clubName: submission.clubName,
             district: submission.district, responsible: [submission.firstName, submission.lastName].filter(Boolean).join(' '),
@@ -794,8 +890,12 @@ const detailOf = async (request, submission, access) => {
         scripts: scripts.map(s => shapeScript(s, request)),
         events, notifications,
         dossier: dossier.lines,
-        allowedTransitions: (ADMIN_TRANSITIONS[request.status] || []).map(k => ({ key: k, label: statusMeta(k).label, requirement: transitionRequirements(k, { hasApprovedScript: Boolean(request.approvedScriptId), hasDeliverable: Boolean(request.deliverableFileId) }) })),
-        access: { view: !!access.view, comment: !!access.comment, manage: !!access.changeStatus, export: !!access.export, remove: !!access.remove },
+        allowedTransitions: (ADMIN_TRANSITIONS[request.status] || []).map(k => ({
+            key: k, label: statusMeta(k).label,
+            requirement: transitionRequirements(k, { hasApprovedScript: Boolean(request.approvedScriptId), hasDeliverable: Boolean(request.deliverableFileId) })
+                || productionGate(k, { commercialStatus: request.commercialStatus, paymentWaived: request.paymentWaived }),
+        })),
+        access: { view: !!access.view, comment: !!access.comment, manage: !!access.changeStatus, export: !!access.export, remove: !!access.remove, config: !!access.config },
         catalog: CATALOG,
     };
 };

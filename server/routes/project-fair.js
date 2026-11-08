@@ -99,6 +99,14 @@ router.delete('/portal/video-pitch/files/:fileId', portal.portalAuth, videoPitch
 router.get('/portal/video-pitch/files/:fileId/url', portal.portalAuth, videoPitch.portalFileUrl);
 router.post('/portal/video-pitch/script/decision', portal.portalAuth, vpJson, videoPitch.portalScriptDecision);
 router.post('/portal/video-pitch/messages', portal.portalAuth, vpJson, videoPitch.portalMessage);
+// v4.1296 — La capa comercial: catálogo, elegir plan (o pagar después),
+// Checkout de Stripe y verificación al volver. El importe sale de la ORDEN.
+import videoPitchCommerce from '../controllers/videoPitchCommerceController.js';
+
+router.get('/portal/video-pitch/plans', portal.portalAuth, videoPitchCommerce.portalPlans);
+router.post('/portal/video-pitch/plan', portal.portalAuth, express.json({ limit: '512kb' }), videoPitchCommerce.portalSelectPlan);
+router.post('/portal/video-pitch/checkout', portal.portalAuth, vpJson, videoPitchCommerce.portalCheckout);
+router.post('/portal/video-pitch/checkout/sync', portal.portalAuth, vpJson, videoPitchCommerce.portalSyncCheckout);
 
 // ── Gestión de Postulaciones y Pagos (v4.598) ────────────────────────
 // Estas rutas devuelven las postulaciones y los pagos de TODOS los clubes, así
@@ -197,7 +205,16 @@ router.get('/admin/recursos/:key/analytics.csv', authMiddleware, fairRead, resou
 router.get('/admin/video-pitch', authMiddleware, fairRead, videoPitch.adminList);
 router.get('/admin/video-pitch/export.csv', authMiddleware, fairRead, videoPitch.adminExportCsv);
 router.post('/admin/video-pitch/bulk', authMiddleware, fairEdit, vpJson, videoPitch.adminBulk);
+// v4.1296 — Planes (configuración del módulo), historial del catálogo y
+// limpieza de subidas huérfanas. Literales ANTES de `/:id`.
+router.get('/admin/video-pitch/plans', authMiddleware, fairRead, videoPitchCommerce.adminListPlans);
+router.post('/admin/video-pitch/plans', authMiddleware, fairManage, vpJson, videoPitchCommerce.adminCreatePlan);
+router.get('/admin/video-pitch/plans/history', authMiddleware, fairRead, videoPitchCommerce.adminPlanHistory);
+router.put('/admin/video-pitch/plans/:planId', authMiddleware, fairManage, vpJson, videoPitchCommerce.adminUpdatePlan);
+router.post('/admin/video-pitch/maintenance/cleanup', authMiddleware, fairManage, vpJson, videoPitchCommerce.adminCleanupUploads);
 router.get('/admin/video-pitch/:id', authMiddleware, fairRead, videoPitch.adminGet);
+router.post('/admin/video-pitch/:id/payment/waive', authMiddleware, fairEdit, vpJson, videoPitchCommerce.adminWaivePayment);
+router.post('/admin/video-pitch/:id/payment/sync', authMiddleware, fairEdit, vpJson, videoPitchCommerce.adminSyncPayment);
 router.patch('/admin/video-pitch/:id', authMiddleware, fairEdit, vpJson, videoPitch.adminUpdate);
 router.post('/admin/video-pitch/:id/status', authMiddleware, fairEdit, vpJson, videoPitch.adminSetStatus);
 router.post('/admin/video-pitch/:id/comments', authMiddleware, fairEdit, vpJson, videoPitch.adminComment);
