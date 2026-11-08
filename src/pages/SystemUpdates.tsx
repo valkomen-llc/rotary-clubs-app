@@ -34,13 +34,32 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1292.0 | 2026-11-06 (Nuevo texto introductorio del formulario de la Conferencia)
-// Cache bust: 2026-11-06
+// UI V4.1293.0 | 2026-11-08 (Video Pitch Profesional de la Feria de Proyectos)
+// Cache bust: 2026-11-08
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1293.0',
+        title: 'Feria de Proyectos: Video Pitch Profesional 🎬',
+        description: 'Los clubes que postularon un proyecto pueden solicitar desde «Mi proyecto» un video de presentación para movilizar apoyo de donantes, clubes patrocinadores, distritos, fundaciones y aliados. El formulario llega precargado con la postulación y sugiere respuestas desde la Formulación; el comité lo gestiona en la pestaña «Video Pitch» de Postulación de Proyectos: bandeja, guion con IA sobre hechos verificados, aprobación del club, producción y entrega.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'video pitch', 'ia', 'guiones', 'mi proyecto', 'postulación de proyectos'],
+        type: 'feature',
+        impact: 'Alta: una postulación se convierte en una solicitud organizada de producción audiovisual, y después en un video pitch que ayuda a conseguir apoyo.',
+        changes: [
+            { type: 'added', text: 'Tarjeta «Video Pitch Profesional» en «Formularios y recursos del proyecto», con el estado de la solicitud, la fecha y el botón que corresponde: Solicitar, Continuar solicitud, Ver seguimiento o Ver video.' },
+            { type: 'added', text: 'Formulario en cuatro bloques: Identificación precargada (el proyecto, el club y el distrito salen de la postulación), Información para el video con siete preguntas guiadas y sugerencias importables desde la Formulación, Material multimedia (JPG, PNG, MP4, MOV y PDF directo al almacenamiento privado, con avance, miniaturas, advertencias de calidad que no rechazan y confirmación de autorización) y Preferencias (idioma y objetivo). Se guarda solo y se envía con número único VP-AAAA-0001.' },
+            { type: 'added', text: 'Seguimiento del participante: línea de tiempo de estados, lo que el comité pidió, aprobar o pedir ajustes al guion, mensajes al comité y el video final para ver y descargar cuando está entregado.' },
+            { type: 'added', text: 'Pestaña «Video Pitch» en Postulación de Proyectos (y entrada en el menú): indicadores, búsqueda, filtros, ordenamiento, paginación, selección múltiple para asignar responsable o avanzar estados compatibles, exportación CSV y ficha con el proyecto, la galería, el guion, la producción y el historial.' },
+            { type: 'added', text: 'Rotary Video Pitch AI: genera el guion de cinco escenas (gancho, contexto y problema, solución, impacto, llamado a la acción; objetivo 2:30, máximo 3:00) usando la IA que ya tiene la plataforma y SOLO el expediente real del proyecto. No inventa beneficiarios, presupuesto, donantes ni resultados: lo que falta lo señala, y toda cifra que no esté en el expediente se marca para verificar. Idioma, tono, duración, instrucciones, regenerar una escena o el guion completo, editar a mano, versiones, comparar, enviar al club y aprobar.' },
+            { type: 'added', text: 'Producción y entrega: el estado sólo avanza por transiciones válidas (producir exige guion aprobado; entregar exige el video), el video final sube al almacenamiento privado y el club lo ve con un enlace firmado sólo cuando está entregado. El renderizado automático queda para una fase posterior: la arquitectura ya separa guion, materiales y entrega.' },
+            { type: 'added', text: 'Avisos por correo al club en cada hito (recibida, información requerida, guion listo, guion aprobado, en producción, finalizado, entregado), una sola vez por cambio, y al comité cuando llega una solicitud nueva. Auditoría completa de quién hizo qué y cuándo, con dos entradas en el historial de la postulación.' },
+            { type: 'added', text: 'Pruebas test:video-pitch (criterio e invariantes, sin base) y test:video-pitch:e2e (Postgres real, S3 simulado y el router real por HTTP).' },
+        ],
+    },
     {
         version: '4.1292.0',
         title: 'Conferencia Distrital: nuevo texto introductorio del formulario de inscripción ✏️',

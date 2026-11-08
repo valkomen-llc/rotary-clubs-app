@@ -81,6 +81,25 @@ import resources from '../controllers/projectFairResourceController.js';
 router.get('/portal/resources', portal.portalAuth, resources.portalListResources);
 router.post('/portal/resources/:key/download', portal.portalAuth, express.json(), resources.portalDownload);
 
+// ── Video Pitch Profesional (v4.1293) ────────────────────────────────
+// El club pide, con SU sesión, un video de presentación de su proyecto: la
+// postulación sale del token, nunca del cuerpo. Guardado automático, archivos
+// por PUT prefirmado validados después por sus bytes, envío, decisión sobre el
+// guion y lectura firmada del video entregado.
+import videoPitch from '../controllers/videoPitchController.js';
+
+const vpJson = express.json({ limit: '512kb' });
+router.get('/portal/video-pitch', portal.portalAuth, videoPitch.portalGet);
+router.put('/portal/video-pitch', portal.portalAuth, vpJson, videoPitch.portalSave);
+router.post('/portal/video-pitch/submit', portal.portalAuth, vpJson, videoPitch.portalSubmit);
+router.post('/portal/video-pitch/files/presign', portal.portalAuth, vpJson, videoPitch.portalPresign);
+router.post('/portal/video-pitch/files', portal.portalAuth, vpJson, videoPitch.portalRegisterFile);
+router.patch('/portal/video-pitch/files/:fileId', portal.portalAuth, vpJson, videoPitch.portalUpdateFile);
+router.delete('/portal/video-pitch/files/:fileId', portal.portalAuth, videoPitch.portalDeleteFile);
+router.get('/portal/video-pitch/files/:fileId/url', portal.portalAuth, videoPitch.portalFileUrl);
+router.post('/portal/video-pitch/script/decision', portal.portalAuth, vpJson, videoPitch.portalScriptDecision);
+router.post('/portal/video-pitch/messages', portal.portalAuth, vpJson, videoPitch.portalMessage);
+
 // ── Gestión de Postulaciones y Pagos (v4.598) ────────────────────────
 // Estas rutas devuelven las postulaciones y los pagos de TODOS los clubes, así
 // que exigen sesión de plataforma CON rol administrativo del sitio o permiso
@@ -170,6 +189,28 @@ router.post('/admin/recursos/:key/versions', authMiddleware, fairManage, express
 router.get('/admin/recursos/:key/versions/:versionId/download', authMiddleware, fairRead, resources.adminDownloadVersion);
 router.get('/admin/recursos/:key/analytics', authMiddleware, fairRead, resources.adminAnalytics);
 router.get('/admin/recursos/:key/analytics.csv', authMiddleware, fairRead, resources.adminAnalyticsCsv);
+
+// Video Pitch Profesional (v4.1293). Ver la bandeja y la ficha exige acceso al
+// módulo; exportar, el permiso de exportación; asignar, cambiar el estado, los
+// guiones y los archivos, el de cambiar estado (lo resuelve `withAccess`).
+// ⚠️ Las literales (`export.csv`, `bulk`) VAN ANTES de `/:id` (`check:routes`).
+router.get('/admin/video-pitch', authMiddleware, fairRead, videoPitch.adminList);
+router.get('/admin/video-pitch/export.csv', authMiddleware, fairRead, videoPitch.adminExportCsv);
+router.post('/admin/video-pitch/bulk', authMiddleware, fairEdit, vpJson, videoPitch.adminBulk);
+router.get('/admin/video-pitch/:id', authMiddleware, fairRead, videoPitch.adminGet);
+router.patch('/admin/video-pitch/:id', authMiddleware, fairEdit, vpJson, videoPitch.adminUpdate);
+router.post('/admin/video-pitch/:id/status', authMiddleware, fairEdit, vpJson, videoPitch.adminSetStatus);
+router.post('/admin/video-pitch/:id/comments', authMiddleware, fairEdit, vpJson, videoPitch.adminComment);
+router.get('/admin/video-pitch/:id/files/:fileId/url', authMiddleware, fairRead, videoPitch.adminFileUrl);
+router.post('/admin/video-pitch/:id/files/presign', authMiddleware, fairEdit, vpJson, videoPitch.adminPresign);
+router.post('/admin/video-pitch/:id/files', authMiddleware, fairEdit, vpJson, videoPitch.adminRegisterFile);
+router.delete('/admin/video-pitch/:id/files/:fileId', authMiddleware, fairEdit, videoPitch.adminDeleteFile);
+router.post('/admin/video-pitch/:id/scripts/generate', authMiddleware, fairEdit, vpJson, videoPitch.adminGenerateScript);
+router.post('/admin/video-pitch/:id/scripts', authMiddleware, fairEdit, express.json({ limit: '2mb' }), videoPitch.adminSaveScript);
+router.get('/admin/video-pitch/:id/scripts/:scriptId', authMiddleware, fairRead, videoPitch.adminGetScript);
+router.post('/admin/video-pitch/:id/scripts/:scriptId/current', authMiddleware, fairEdit, vpJson, videoPitch.adminSetCurrentScript);
+router.post('/admin/video-pitch/:id/scripts/:scriptId/send', authMiddleware, fairEdit, vpJson, videoPitch.adminSendScript);
+router.post('/admin/video-pitch/:id/scripts/:scriptId/approve', authMiddleware, fairEdit, vpJson, videoPitch.adminApproveScript);
 
 router.get('/admin/tags', authMiddleware, fairRead, fair.listTags);
 router.post('/admin/tags', authMiddleware, fairEdit, express.json(), fair.createTag);
