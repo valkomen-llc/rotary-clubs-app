@@ -50,6 +50,36 @@ export const DELIVERABLE_FORMATS = [
     { key: '9:16', label: 'Versión vertical 9:16 (Reel)' },
 ];
 
+/**
+ * Los CRÉDITOS DE PRODUCCIÓN IA (v4.1297): lo que el club compra es el trabajo
+ * de la IA integrada —generar el guion, dar voz, animar y componer las escenas
+ * con sus materiales, renderizar y ajustar—. Cada plan trae un cupo de
+ * créditos y un reparto por etapa que se MUESTRA en el modal, para que el
+ * precio se lea como producción y no como una tarifa arbitraria. Es
+ * explicativo y configurable; el cobro sigue saliendo del precio del plan.
+ */
+export const CREDIT_UNIT_LABEL = 'créditos de producción IA';
+export const CREDIT_STAGES = [
+    { key: 'script',    label: 'Guion y storytelling',                 hint: 'La IA convierte tu postulación, tu Formulación y tu información adicional en un guion de cinco escenas.' },
+    { key: 'voice',     label: 'Narración y subtítulos',               hint: 'Voz sintética profesional en el idioma elegido y subtítulos sincronizados.' },
+    { key: 'scenes',    label: 'Animación y composición de escenas',   hint: 'Tus fotos y videos cobran vida: movimiento, transiciones, textos en pantalla e identidad gráfica.' },
+    { key: 'vertical',  label: 'Versión vertical 9:16 (Reel)',        hint: 'Recomposición de encuadres y textos para el móvil y las redes sociales.' },
+    { key: 'render',    label: 'Render y rondas de ajustes',           hint: 'Generación del video final y las rondas de ajustes incluidas.' },
+];
+export const creditStageMeta = (key) => CREDIT_STAGES.find(s => s.key === key) || null;
+/** Normaliza el reparto: etapas conocidas, porcentajes enteros, suma 100 (la última absorbe el redondeo). */
+export const normalizeCreditsBreakdown = (input) => {
+    const rows = (Array.isArray(input) ? input : []).map(r => ({ key: String(r?.key || ''), share: Math.max(0, Math.round(Number(r?.share) || 0)) }))
+        .filter(r => creditStageMeta(r.key) && r.share > 0);
+    const seen = new Set(); const uniq = rows.filter(r => (seen.has(r.key) ? false : (seen.add(r.key), true)));
+    const total = uniq.reduce((a, r) => a + r.share, 0);
+    if (!uniq.length || total <= 0) return [];
+    const scaled = uniq.map(r => ({ ...r, share: Math.round((r.share / total) * 100) }));
+    const diff = 100 - scaled.reduce((a, r) => a + r.share, 0);
+    scaled[scaled.length - 1].share += diff;
+    return scaled.map(r => ({ ...r, label: creditStageMeta(r.key).label }));
+};
+
 /** El catálogo inicial. Se siembra UNA vez si la tabla está vacía; después manda el panel. */
 export const DEFAULT_PLANS = [
     {
@@ -57,6 +87,8 @@ export const DEFAULT_PLANS = [
         description: 'Presentación profesional para pantallas grandes.',
         priceAmount: 99, currency: 'USD', sortOrder: 1, active: true,
         maxDurationSec: 180, revisionRounds: 3, deliverables: ['16:9'],
+        creditsIncluded: 1000,
+        creditsBreakdown: [{ key: 'script', share: 20 }, { key: 'voice', share: 15 }, { key: 'scenes', share: 45 }, { key: 'render', share: 20 }],
         features: [
             'Un video profesional horizontal, formato 16:9 para pantallas grandes.',
             'Duración máxima de 3 minutos.',
@@ -73,6 +105,8 @@ export const DEFAULT_PLANS = [
         description: 'Presentación y difusión digital del proyecto.',
         priceAmount: 135, currency: 'USD', sortOrder: 2, active: true,
         maxDurationSec: 180, revisionRounds: 3, deliverables: ['16:9', '9:16'],
+        creditsIncluded: 1400,
+        creditsBreakdown: [{ key: 'script', share: 15 }, { key: 'voice', share: 15 }, { key: 'scenes', share: 40 }, { key: 'vertical', share: 15 }, { key: 'render', share: 15 }],
         features: [
             'Todo lo del plan Esencial.',
             'Una versión vertical en formato 9:16, tipo Reel para redes sociales.',
@@ -104,18 +138,21 @@ export const normalizePlanInput = (input = {}, { existingCode = null } = {}) => 
     const maxDurationSec = Math.max(30, Math.min(600, Math.round(Number(input.maxDurationSec) || 180)));
     const revisionRounds = Math.max(0, Math.min(10, Math.round(Number(input.revisionRounds) || 0)));
     const sortOrder = Math.max(0, Math.min(99, Math.round(Number(input.sortOrder) || 0)));
+    const creditsIncluded = Math.max(0, Math.min(1000000, Math.round(Number(input.creditsIncluded) || 0)));
+    const creditsBreakdown = normalizeCreditsBreakdown(input.creditsBreakdown);
     return {
         ok: errores.length === 0, errores,
         plan: {
             code, name, description: str(input.description, 300), badge: str(input.badge, 40),
             priceAmount, currency, features, deliverables, maxDurationSec, revisionRounds, sortOrder,
+            creditsIncluded, creditsBreakdown,
             active: input.active === undefined ? true : Boolean(input.active),
         },
     };
 };
 
 /** Lo que define una VERSIÓN: si cambia algo de esto, la compra siguiente es otra versión. */
-export const VERSIONED_FIELDS = ['name', 'description', 'priceAmount', 'currency', 'features', 'deliverables', 'maxDurationSec', 'revisionRounds'];
+export const VERSIONED_FIELDS = ['name', 'description', 'priceAmount', 'currency', 'features', 'deliverables', 'maxDurationSec', 'revisionRounds', 'creditsIncluded', 'creditsBreakdown'];
 export const planNeedsNewVersion = (before, after) =>
     !before || VERSIONED_FIELDS.some(f => JSON.stringify(before[f] ?? null) !== JSON.stringify(after[f] ?? null));
 
@@ -124,6 +161,7 @@ export const planSnapshot = (plan) => ({
     code: plan.code, name: plan.name, description: plan.description || '', priceAmount: Number(plan.priceAmount), currency: plan.currency,
     features: Array.isArray(plan.features) ? plan.features : [], deliverables: Array.isArray(plan.deliverables) ? plan.deliverables : [],
     maxDurationSec: Number(plan.maxDurationSec) || 180, revisionRounds: Number(plan.revisionRounds) || 0,
+    creditsIncluded: Number(plan.creditsIncluded) || 0, creditsBreakdown: normalizeCreditsBreakdown(plan.creditsBreakdown),
 });
 
 // ── Importes ─────────────────────────────────────────────────────────
@@ -225,6 +263,7 @@ export const cardCopyOf = ({ exists, requestStatus, commercialStatus, available 
 export default {
     COMMERCIAL_STATUSES, COMMERCIAL_KEYS, commercialMeta, isCommercialStatus, ORDER_STATUSES, ORDER_LABELS, OPEN_ORDER_STATUSES,
     SUPPORTED_CURRENCIES, DELIVERABLE_FORMATS, DEFAULT_PLANS, normalizePlanInput, VERSIONED_FIELDS, planNeedsNewVersion, planSnapshot,
+    CREDIT_UNIT_LABEL, CREDIT_STAGES, creditStageMeta, normalizeCreditsBreakdown,
     ZERO_DECIMAL, toStripeAmount, fromStripeAmount, formatMoney, readSessionOutcome, REUSE_MARGIN_MS, reusableSession,
     commercialStatusOf, commerciallyCleared, GATED_PRODUCTION_STATUSES, productionGate, canChoosePlan, cardCopyOf,
 };

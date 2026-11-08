@@ -186,6 +186,15 @@ Tablas: `VideoPitchPlan`, `VideoPitchPlanVersion`, `VideoPitchOrder`,
   producción no existe.
 - Los correos comerciales (`notifyParticipantKind`) no llevan datos de pago:
   plan, importe y el enlace al perfil.
+- **El precio se explica como producción con IA (v4.1297).** Cada plan lleva
+  `creditsIncluded` y `creditsBreakdown` (reparto por etapa sobre
+  `CREDIT_STAGES`: guion, voz, escenas, vertical, render; normalizado a 100
+  por `normalizeCreditsBreakdown`). El modal muestra «¿Qué cubre el precio?» y
+  una barra por plan; son campos VERSIONADOS (cambiarlos crea versión) y
+  editables desde Configuración. Es explicativo: el cobro sigue saliendo de
+  `priceAmount`. Los planes sembrados antes de v4.1297 reciben los créditos
+  iniciales UNA vez en `ensurePlansSeeded` (sólo si están en cero), sin tocar
+  el precio.
 
 ### Cómo se probó
 

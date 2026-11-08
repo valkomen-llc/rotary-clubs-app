@@ -34,7 +34,7 @@ import { ensureVideoPitchSchema } from '../lib/ensureVideoPitchSchema.js';
 import {
     DEFAULT_PLANS, normalizePlanInput, planNeedsNewVersion, planSnapshot, OPEN_ORDER_STATUSES, ORDER_LABELS, commercialMeta,
     commercialStatusOf, canChoosePlan, toStripeAmount, fromStripeAmount, readSessionOutcome, reusableSession, formatMoney,
-    DELIVERABLE_FORMATS, SUPPORTED_CURRENCIES,
+    DELIVERABLE_FORMATS, SUPPORTED_CURRENCIES, CREDIT_STAGES, CREDIT_UNIT_LABEL, normalizeCreditsBreakdown,
 } from '../lib/videoPitchCommerce.js';
 import { statusMeta, validateForSubmit, normalizeAnswers, projectContextOf } from '../lib/videoPitchSpec.js';
 import { deleteVideoPitchObject, videoPitchObjectExists } from '../lib/videoPitchStorage.js';
@@ -43,7 +43,7 @@ import {
     applyStatus, notifyParticipantKind, systemActor,
 } from './videoPitchController.js';
 
-console.log('[videoPitchCommerceController] v4.1296.0 cargado — planes administrables, órdenes con precio histórico, Stripe Checkout por el webhook único, pagar después, exoneración y limpieza de subidas.');
+console.log('[videoPitchCommerceController] v4.1297.0 cargado — planes administrables, órdenes con precio histórico, Stripe Checkout por el webhook único, pagar después, exoneración y limpieza de subidas.');
 
 const clean = (v, max = 250) => String(v ?? '').trim().slice(0, max);
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
@@ -69,6 +69,7 @@ const shapePlan = (p) => ({
     priceAmount: Number(p.priceAmount), currency: p.currency, priceLabel: formatMoney(p.priceAmount, p.currency),
     features: Array.isArray(p.features) ? p.features : [], deliverables: Array.isArray(p.deliverables) ? p.deliverables : [],
     maxDurationSec: Number(p.maxDurationSec) || 180, revisionRounds: Number(p.revisionRounds) || 0,
+    creditsIncluded: Number(p.creditsIncluded) || 0, creditsBreakdown: normalizeCreditsBreakdown(p.creditsBreakdown),
     sortOrder: Number(p.sortOrder) || 0, active: Boolean(p.active), currentVersionId: p.currentVersionId || null,
     updatedAt: p.updatedAt, updatedBy: p.updatedBy || null,
 });
@@ -87,12 +88,25 @@ const insertVersion = async (plan, actor) => {
 export const ensurePlansSeeded = async () => {
     await ensureVideoPitchSchema();
     const { rows } = await db.query('SELECT COUNT(*)::int AS n FROM "VideoPitchPlan"');
-    if (rows[0].n > 0) return false;
+    if (rows[0].n > 0) {
+        // v4.1297 — Los planes sembrados en v4.1296 no traían créditos: se les
+        // ponen los iniciales UNA vez (sólo si siguen en cero y con su código
+        // original). Sólo toca créditos y reparto, nunca el precio; queda como
+        // versión nueva porque lo que se muestra al club cambia.
+        const { rows: sinCreditos } = await db.query(`SELECT * FROM "VideoPitchPlan" WHERE COALESCE("creditsIncluded", 0) = 0 AND code = ANY($1::text[])`, [DEFAULT_PLANS.map(d => d.code)]);
+        for (const p of sinCreditos) {
+            const d = DEFAULT_PLANS.find(x => x.code === p.code);
+            const { rows: upd } = await db.query(`UPDATE "VideoPitchPlan" SET "creditsIncluded" = $2, "creditsBreakdown" = $3::jsonb, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
+                [p.id, d.creditsIncluded, JSON.stringify(normalizeCreditsBreakdown(d.creditsBreakdown))]);
+            if (upd[0]) await insertVersion(upd[0], { name: 'sistema' });
+        }
+        return false;
+    }
     for (const d of DEFAULT_PLANS) {
         const { rows: ins } = await db.query(`
-            INSERT INTO "VideoPitchPlan" (code, name, description, badge, "priceAmount", currency, features, deliverables, "maxDurationSec", "revisionRounds", "sortOrder", active, "updatedBy")
-            VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,'sistema') ON CONFLICT (code) DO NOTHING RETURNING *
-        `, [d.code, d.name, d.description, d.badge, d.priceAmount, d.currency, JSON.stringify(d.features), JSON.stringify(d.deliverables), d.maxDurationSec, d.revisionRounds, d.sortOrder, d.active]);
+            INSERT INTO "VideoPitchPlan" (code, name, description, badge, "priceAmount", currency, features, deliverables, "maxDurationSec", "revisionRounds", "sortOrder", active, "creditsIncluded", "creditsBreakdown", "updatedBy")
+            VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13,$14::jsonb,'sistema') ON CONFLICT (code) DO NOTHING RETURNING *
+        `, [d.code, d.name, d.description, d.badge, d.priceAmount, d.currency, JSON.stringify(d.features), JSON.stringify(d.deliverables), d.maxDurationSec, d.revisionRounds, d.sortOrder, d.active, d.creditsIncluded, JSON.stringify(normalizeCreditsBreakdown(d.creditsBreakdown))]);
         if (ins[0]) await insertVersion(ins[0], { name: 'sistema' });
     }
     return true;
@@ -482,7 +496,7 @@ export const portalSyncCheckout = async (req, res) => {
 
 // GET /portal/video-pitch/plans — el catálogo activo (los precios salen de acá, nunca del navegador).
 export const portalPlans = async (_req, res) => {
-    try { res.json({ plans: await listPlans({ onlyActive: true }), formats: DELIVERABLE_FORMATS }); }
+    try { res.json({ plans: await listPlans({ onlyActive: true }), formats: DELIVERABLE_FORMATS, creditStages: CREDIT_STAGES, creditUnitLabel: CREDIT_UNIT_LABEL }); }
     catch (error) { console.error('[video-pitch-commerce] portalPlans:', error); res.status(500).json({ error: 'No pudimos cargar los planes.' }); }
 };
 
@@ -498,7 +512,7 @@ export const adminListPlans = withSchema(async (req, res, { access }) => {
     const usage = (await db.query(`SELECT "planId", COUNT(*)::int AS orders, COUNT(*) FILTER (WHERE status = 'paid')::int AS paid FROM "VideoPitchOrder" GROUP BY "planId"`)).rows;
     res.json({
         plans: plans.map(p => ({ ...p, versions: versions.filter(v => v.planId === p.id), orders: usage.find(u => u.planId === p.id)?.orders || 0, paidOrders: usage.find(u => u.planId === p.id)?.paid || 0 })),
-        formats: DELIVERABLE_FORMATS, currencies: SUPPORTED_CURRENCIES,
+        formats: DELIVERABLE_FORMATS, currencies: SUPPORTED_CURRENCIES, creditStages: CREDIT_STAGES, creditUnitLabel: CREDIT_UNIT_LABEL,
         access: { config: !!access.config },
     });
 }, 'view');
@@ -511,9 +525,9 @@ export const adminCreatePlan = withSchema(async (req, res, { access }) => {
     const p = juicio.plan;
     try {
         const { rows } = await db.query(`
-            INSERT INTO "VideoPitchPlan" (code, name, description, badge, "priceAmount", currency, features, deliverables, "maxDurationSec", "revisionRounds", "sortOrder", active, "updatedBy")
-            VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13) RETURNING *
-        `, [p.code, p.name, p.description, p.badge, p.priceAmount, p.currency, JSON.stringify(p.features), JSON.stringify(p.deliverables), p.maxDurationSec, p.revisionRounds, p.sortOrder, p.active, actor.name]);
+            INSERT INTO "VideoPitchPlan" (code, name, description, badge, "priceAmount", currency, features, deliverables, "maxDurationSec", "revisionRounds", "sortOrder", active, "creditsIncluded", "creditsBreakdown", "updatedBy")
+            VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13,$14::jsonb,$15) RETURNING *
+        `, [p.code, p.name, p.description, p.badge, p.priceAmount, p.currency, JSON.stringify(p.features), JSON.stringify(p.deliverables), p.maxDurationSec, p.revisionRounds, p.sortOrder, p.active, p.creditsIncluded, JSON.stringify(p.creditsBreakdown), actor.name]);
         await insertVersion(rows[0], actor);
         await db.query(`INSERT INTO "VideoPitchEvent" ("requestId", type, title, detail, metadata, "actorId", "actorName", "actorRole", visibility) VALUES ('catalog', 'plan_created', $1, NULL, $2::jsonb, $3, $4, $5, 'internal')`,
             [`Plan creado: ${p.name} (${formatMoney(p.priceAmount, p.currency)})`, JSON.stringify({ planId: rows[0].id, code: p.code }), actor.id, actor.name, actor.role]);
@@ -535,9 +549,9 @@ export const adminUpdatePlan = withSchema(async (req, res, { access }) => {
     const p = juicio.plan;
     const { rows } = await db.query(`
         UPDATE "VideoPitchPlan" SET name = $2, description = $3, badge = $4, "priceAmount" = $5, currency = $6, features = $7::jsonb, deliverables = $8::jsonb,
-               "maxDurationSec" = $9, "revisionRounds" = $10, "sortOrder" = $11, active = $12, "updatedAt" = NOW(), "updatedBy" = $13
+               "maxDurationSec" = $9, "revisionRounds" = $10, "sortOrder" = $11, active = $12, "creditsIncluded" = $14, "creditsBreakdown" = $15::jsonb, "updatedAt" = NOW(), "updatedBy" = $13
         WHERE id = $1 RETURNING *
-    `, [before.id, p.name, p.description, p.badge, p.priceAmount, p.currency, JSON.stringify(p.features), JSON.stringify(p.deliverables), p.maxDurationSec, p.revisionRounds, p.sortOrder, p.active, actor.name]);
+    `, [before.id, p.name, p.description, p.badge, p.priceAmount, p.currency, JSON.stringify(p.features), JSON.stringify(p.deliverables), p.maxDurationSec, p.revisionRounds, p.sortOrder, p.active, actor.name, p.creditsIncluded, JSON.stringify(p.creditsBreakdown)]);
     const after = rows[0];
     const newVersion = planNeedsNewVersion(planSnapshot(before), planSnapshot(after));
     if (newVersion) await insertVersion(after, actor);

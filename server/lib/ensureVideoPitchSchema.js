@@ -46,7 +46,8 @@ export const OWNED_COLUMNS = {
     VideoPitchScript: [],
     VideoPitchEvent: [],
     VideoPitchNotification: [],
-    VideoPitchPlan: [],
+    // v4.1297 — los créditos de producción IA del plan y su reparto por etapa.
+    VideoPitchPlan: ['creditsIncluded', 'creditsBreakdown'],
     VideoPitchPlanVersion: [],
     VideoPitchOrder: [],
     VideoPitchStripeEvent: [],
@@ -207,6 +208,8 @@ export async function ensureVideoPitchSchema() {
         )
     `);
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "VideoPitchPlan_code_key" ON "VideoPitchPlan" (code)`);
+    await addColumn(`ALTER TABLE "VideoPitchPlan" ADD COLUMN IF NOT EXISTS "creditsIncluded" INT NOT NULL DEFAULT 0`);
+    await addColumn(`ALTER TABLE "VideoPitchPlan" ADD COLUMN IF NOT EXISTS "creditsBreakdown" JSONB NOT NULL DEFAULT '[]'::jsonb`);
 
     await db.query(`
         CREATE TABLE IF NOT EXISTS "VideoPitchPlanVersion" (

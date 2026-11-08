@@ -252,6 +252,10 @@ console.log('── Planes y pago (v4.1296)');
 const { routeVideoPitchStripeEvent } = await import(`${REPO}/server/controllers/videoPitchCommerceController.js`);
 r = await call('GET', '/portal/video-pitch/plans', portal(A));
 ok(r.status === 200 && r.data.plans.length === 2 && r.data.plans[0].code === 'essential' && r.data.plans[0].priceAmount === 99 && r.data.plans[1].priceAmount === 135, 'el catálogo se siembra una vez: Esencial USD 99 e Integral USD 135');
+ok(r.data.plans[0].creditsIncluded === 1000 && r.data.plans[1].creditsIncluded === 1400 && r.data.plans[1].creditsBreakdown.length === 5 && r.data.creditStages.length === 5, 'cada plan trae sus créditos de producción IA y su reparto por etapa');
+await db.query(`UPDATE "VideoPitchPlan" SET "creditsIncluded" = 0, "creditsBreakdown" = '[]'::jsonb WHERE code = 'integral'`);
+r = await call('GET', '/portal/video-pitch/plans', portal(A));
+ok(r.data.plans[1].creditsIncluded === 1400 && (await db.query('SELECT COUNT(*)::int AS n FROM "VideoPitchPlanVersion" v JOIN "VideoPitchPlan" p ON p.id = v."planId" WHERE p.code = $1', ['integral'])).rows[0].n === 2, 'un plan sembrado antes sin créditos recibe los iniciales una vez, como versión nueva, sin tocar su precio');
 r = await call('GET', '/portal/video-pitch', portal(A));
 ok(r.data.commercial.status === 'no_plan' && r.data.plans.length === 2 && r.data.card.actions[0].key === 'open', 'enviada sin plan: comercial «sin plan», la tarjeta ofrece ver el seguimiento');
 ok((await call('POST', '/portal/video-pitch/plan', portal(A), { planCode: 'inexistente' })).status === 404, 'un plan que no existe: 404');
@@ -321,7 +325,7 @@ ok(r.status === 200 && r.data.url && (await call('GET', '/portal/video-pitch', p
 // Precio histórico: el admin cambia el precio del Integral; la orden de B conserva 135
 r = await call('GET', `/admin/video-pitch/plans${EV}`, admin);
 const integral = r.data.plans.find(p => p.code === 'integral');
-ok(r.status === 200 && integral.versions.length === 1 && integral.orders === 2, 'configuración: el plan con su versión y sus órdenes');
+ok(r.status === 200 && integral.versions.length === 2 && integral.orders === 2, 'configuración: el plan con sus versiones (la inicial y la de los créditos) y sus órdenes');
 ok((await call('PUT', `/admin/video-pitch/plans/${integral.id}${EV}`, viewer, { priceAmount: 1 })).status === 403, 'un perfil de lectura no cambia precios');
 r = await call('PUT', `/admin/video-pitch/plans/${integral.id}${EV}`, admin, { priceAmount: 149 });
 ok(r.status === 200 && r.data.plan.priceAmount === 149 && r.data.newVersion === true, 'el administrador cambia el precio: versión nueva del plan');

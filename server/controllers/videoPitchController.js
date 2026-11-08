@@ -52,7 +52,7 @@ import {
     deleteVideoPitchObject,
 } from '../lib/videoPitchStorage.js';
 import { buildDossier, generateVideoPitchScript, auditScript } from '../lib/videoPitchAI.js';
-import { productionGate, commercialMeta, cardCopyOf } from '../lib/videoPitchCommerce.js';
+import { productionGate, commercialMeta, cardCopyOf, CREDIT_STAGES, CREDIT_UNIT_LABEL } from '../lib/videoPitchCommerce.js';
 
 // La capa comercial vive en su propio controlador y nos importa a nosotros: se
 // carga perezosamente para que el ciclo de importación no evalúe nada a medias.
@@ -159,6 +159,7 @@ const CATALOG = {
     descriptionMin: DESCRIPTION_MIN, accept: ACCEPTED_EXTENSIONS.join(','), maxFiles: MAX_FILES_PER_REQUEST,
     limits: Object.fromEntries(Object.keys(FILE_KINDS).map(k => [k, maxMbFor(k)])), tips: MATERIAL_TIPS,
     scenePlan: SCENE_PLAN, targetSecondsDefault: TARGET_SECONDS_DEFAULT, targetSecondsMax: TARGET_SECONDS_MAX,
+    creditStages: CREDIT_STAGES, creditUnitLabel: CREDIT_UNIT_LABEL,
 };
 
 // ── Notificaciones ───────────────────────────────────────────────────

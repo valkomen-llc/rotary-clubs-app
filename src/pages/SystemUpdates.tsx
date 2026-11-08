@@ -34,13 +34,27 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1296.0 | 2026-11-08 (Video Pitch: planes, Stripe, pagar después y configuración de precios)
+// UI V4.1297.0 | 2026-11-08 (Video Pitch: el precio explicado en créditos de producción IA por etapa)
 // Cache bust: 2026-11-08
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1297.0',
+        title: 'Video Pitch: el precio explicado como producción con IA, en créditos por etapa 🎞️',
+        description: 'Pedido del comité: que el club entienda que lo que paga es la producción de su video con la inteligencia artificial integrada —guion y storytelling, voz y subtítulos, animación y composición de sus fotos y videos, render y ajustes— y no una tarifa arbitraria. Cada plan muestra ahora los créditos de producción IA que incluye y cómo se reparten por etapa.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'video pitch', 'planes', 'créditos', 'ia'],
+        type: 'improvement',
+        impact: 'Media: el modal de planes deja claro qué cubre cada precio y por qué el Integral cuesta más (la versión vertical consume más producción).',
+        changes: [
+            { type: 'added', text: 'Bloque «¿Qué cubre el precio?» en el modal de planes: la producción asistida por IA del video, medida en créditos de producción IA, con las cinco etapas explicadas (guion y storytelling, narración y subtítulos, animación y composición de escenas, versión vertical 9:16 y render con rondas de ajustes).' },
+            { type: 'added', text: 'Cada tarjeta de plan muestra sus créditos incluidos y una barra con el reparto por etapa (porcentaje y créditos). Valores iniciales: Esencial 1.000 créditos (20% guion, 15% narración, 45% animación, 20% render); Integral 1.400 créditos (15% guion, 15% narración, 40% animación, 15% versión vertical, 15% render).' },
+            { type: 'added', text: 'Configuración del módulo: los créditos incluidos y el reparto por etapa se editan por plan desde el panel, como el precio y las características. Cambiarlos crea una versión nueva del plan (es lo que se le mostró al club); los planes ya sembrados reciben los valores iniciales una sola vez, sin tocar su precio.' },
+        ],
+    },
     {
         version: '4.1296.0',
         title: 'Video Pitch: planes, pago con Stripe o pagar después, y configuración de precios 💳',
