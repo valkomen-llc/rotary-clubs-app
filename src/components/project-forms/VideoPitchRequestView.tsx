@@ -205,9 +205,40 @@ const EventList = ({ events }: { events: VpPortalView['events'] }) => (
  * y «Guardar y pagar después» guardan primero la solicitud y el plan: la
  * compra nunca es lo que guarda la información.
  */
-const PlanPickerModal = ({ plans, selected, onSelect, onPayNow, onPayLater, onClose, busy, currentPlanId }: {
+/** Colores de las etapas de producción, en el orden del reparto. */
+const CREDIT_COLORS = ['#17458F', '#0EA5A4', '#F7A81B', '#7C3AED', '#64748B'];
+const fmtCredits = (n: number) => Number(n || 0).toLocaleString('es-CO');
+
+/**
+ * El cupo de créditos de producción IA de un plan y su reparto por etapa
+ * (v4.1297): es lo que hace legible el precio —se paga la producción asistida
+ * por IA—, no una tarifa arbitraria.
+ */
+const CreditsMeter = ({ plan, stages }: { plan: VpPlan; stages: { key: string; label: string; hint: string }[] }) => {
+    if (!plan.creditsIncluded || !plan.creditsBreakdown?.length) return null;
+    const hintOf = (key: string) => stages.find(s => s.key === key)?.hint || '';
+    return (
+        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-[12px] font-bold text-slate-800">{fmtCredits(plan.creditsIncluded)} créditos de producción IA incluidos</p>
+            <div className="mt-2 flex h-2.5 w-full overflow-hidden rounded-full bg-slate-200">
+                {plan.creditsBreakdown.map((b, i) => <span key={b.key} title={`${b.label}: ${b.share}%`} style={{ width: `${b.share}%`, background: CREDIT_COLORS[i % CREDIT_COLORS.length] }} />)}
+            </div>
+            <ul className="mt-2 space-y-1">
+                {plan.creditsBreakdown.map((b, i) => (
+                    <li key={b.key} className="flex items-start gap-2 text-[11.5px] text-slate-600" title={hintOf(b.key)}>
+                        <span className="mt-1 h-2 w-2 shrink-0 rounded-full" style={{ background: CREDIT_COLORS[i % CREDIT_COLORS.length] }} />
+                        <span className="flex-1">{b.label}</span>
+                        <span className="shrink-0 font-semibold text-slate-700">{fmtCredits(Math.round((plan.creditsIncluded * b.share) / 100))} <span className="font-normal text-slate-400">· {b.share}%</span></span>
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
+};
+
+const PlanPickerModal = ({ plans, selected, onSelect, onPayNow, onPayLater, onClose, busy, currentPlanId, creditStages }: {
     plans: VpPlan[]; selected: string | null; onSelect: (code: string) => void; onPayNow: () => void; onPayLater: () => void; onClose: () => void;
-    busy: null | 'pay' | 'later'; currentPlanId: string | null;
+    busy: null | 'pay' | 'later'; currentPlanId: string | null; creditStages: { key: string; label: string; hint: string }[];
 }) => (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 p-0 sm:items-center sm:p-4" role="dialog" aria-modal="true" onClick={onClose}>
         <div className="max-h-[94vh] w-full max-w-4xl overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-8" onClick={e => e.stopPropagation()}>
@@ -218,6 +249,19 @@ const PlanPickerModal = ({ plans, selected, onSelect, onPayNow, onPayLater, onCl
                     <p className="mt-1 text-[14px] text-slate-600">Transforma tu proyecto en una presentación audiovisual diseñada para comunicar su impacto y facilitar la búsqueda de aliados y apoyo.</p>
                 </div>
                 <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100" aria-label="Cerrar"><X size={18} /></button>
+            </div>
+
+            {/* v4.1297 — Qué se paga: la producción asistida por IA, medida en créditos. */}
+            <div className="mt-5 rounded-2xl border border-blue-100 bg-blue-50/50 p-4">
+                <p className="flex items-center gap-2 text-[14px] font-bold text-slate-900"><Sparkles size={15} style={{ color: BLUE }} /> ¿Qué cubre el precio?</p>
+                <p className="mt-1 text-[13px] leading-relaxed text-slate-700">
+                    La producción de tu video con la inteligencia artificial integrada en la plataforma: convertir la información de tu proyecto y los materiales que subes en un guion con storytelling, darle voz y subtítulos, animar y componer las escenas con tus fotos y videos, y renderizar el resultado con sus rondas de ajustes. Cada plan incluye un cupo de <strong>créditos de producción IA</strong>, la capacidad de procesamiento que esa producción consume: a más entregables (por ejemplo, la versión vertical para redes), más créditos.
+                </p>
+                {creditStages.length > 0 && (
+                    <ul className="mt-3 grid gap-1.5 sm:grid-cols-2">
+                        {creditStages.map(s => <li key={s.key} className="text-[12px] text-slate-600"><strong className="text-slate-800">{s.label}:</strong> {s.hint}</li>)}
+                    </ul>
+                )}
             </div>
 
             <div className="mt-5 grid gap-4 md:grid-cols-2">
@@ -236,6 +280,7 @@ const PlanPickerModal = ({ plans, selected, onSelect, onPayNow, onPayLater, onCl
                                 <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 ${active ? 'border-[#17458F] bg-[#17458F] text-white' : 'border-slate-300'}`}>{active && <Check size={14} />}</span>
                             </div>
                             <p className="mt-4 text-3xl font-bold text-slate-900">{plan.priceLabel}</p>
+                            <CreditsMeter plan={plan} stages={creditStages} />
                             <ul className="mt-4 space-y-1.5">
                                 {plan.features.map((f, i) => <li key={i} className="flex items-start gap-2 text-[13px] text-slate-700"><CheckCircle2 size={14} className="mt-0.5 shrink-0 text-emerald-600" /> {f}</li>)}
                             </ul>
@@ -1008,6 +1053,7 @@ const VideoPitchRequestView = ({ token, onBack, onChanged, onSessionExpired, ini
                     plans={view.plans || []} selected={selectedPlan} onSelect={setSelectedPlan}
                     currentPlanId={view.commercial?.planId || null}
                     onPayNow={() => choosePlan('pay')} onPayLater={() => choosePlan('later')}
+                    creditStages={view.catalog?.creditStages || []}
                     onClose={() => { if (!planBusy) setPlanModal(false); }} busy={planBusy} />
             )}
         </div>

@@ -552,17 +552,20 @@ const CommercePanel = ({ detail, eventId, onUpdated }: { detail: Detail; eventId
 };
 
 // ── Configuración de planes (v4.1296) ────────────────────────────────
-const EMPTY_PLAN: Partial<VpPlan> = { code: '', name: '', description: '', badge: '', priceAmount: 0, currency: 'USD', features: [], deliverables: ['16:9'], maxDurationSec: 180, revisionRounds: 3, sortOrder: 0, active: true };
+const EMPTY_PLAN: Partial<VpPlan> = { code: '', name: '', description: '', badge: '', priceAmount: 0, currency: 'USD', features: [], deliverables: ['16:9'], maxDurationSec: 180, revisionRounds: 3, sortOrder: 0, active: true, creditsIncluded: 0, creditsBreakdown: [] };
 
-const PlanEditor = ({ plan, formats, currencies, onSaved, onCancel }: { plan: Partial<VpPlan>; formats: { key: string; label: string }[]; currencies: string[]; onSaved: () => void; onCancel?: () => void }) => {
+const PlanEditor = ({ plan, formats, currencies, creditStages, onSaved, onCancel }: { plan: Partial<VpPlan>; formats: { key: string; label: string }[]; currencies: string[]; creditStages: { key: string; label: string; hint: string }[]; onSaved: () => void; onCancel?: () => void }) => {
     const [draft, setDraft] = useState<Partial<VpPlan>>(plan);
     const [featuresText, setFeaturesText] = useState((plan.features || []).join('\n'));
+    // v4.1297 — reparto de créditos por etapa (porcentajes; el servidor los normaliza a 100).
+    const [shares, setShares] = useState<Record<string, number>>(() => Object.fromEntries(creditStages.map(s => [s.key, (plan.creditsBreakdown || []).find(b => b.key === s.key)?.share || 0])));
+    const sharesTotal = Object.values(shares).reduce((a, b) => a + (Number(b) || 0), 0);
     const [busy, setBusy] = useState(false);
     const isNew = !plan.id;
     const save = async () => {
         setBusy(true);
         try {
-            const body = { ...draft, features: featuresText.split('\n').map(f => f.trim()).filter(Boolean) };
+            const body = { ...draft, features: featuresText.split('\n').map(f => f.trim()).filter(Boolean), creditsBreakdown: creditStages.map(s => ({ key: s.key, share: Number(shares[s.key]) || 0 })).filter(b => b.share > 0) };
             const { res, data } = await api<{ error?: string; newVersion?: boolean }>(isNew ? '/project-fair/admin/video-pitch/plans' : `/project-fair/admin/video-pitch/plans/${plan.id}`, { method: isNew ? 'POST' : 'PUT', body: JSON.stringify(body) });
             if (!res.ok) throw new Error(data?.error || 'No se pudo guardar');
             toast.success(isNew ? 'Plan creado' : data?.newVersion ? 'Plan guardado: versión nueva (las órdenes anteriores conservan su precio)' : 'Plan guardado');
@@ -593,6 +596,17 @@ const PlanEditor = ({ plan, formats, currencies, onSaved, onCancel }: { plan: Pa
                 {field('Rondas de ajustes', <input type="number" min={0} max={10} value={draft.revisionRounds ?? 3} onChange={e => setDraft({ ...draft, revisionRounds: Number(e.target.value) })} className={input} />)}
                 {field('Orden de visualización', <input type="number" min={0} max={99} value={draft.sortOrder ?? 0} onChange={e => setDraft({ ...draft, sortOrder: Number(e.target.value) })} className={input} />)}
                 {field('Etiqueta destacada (opcional)', <input value={draft.badge || ''} onChange={e => setDraft({ ...draft, badge: e.target.value })} className={input} placeholder="Recomendado" />)}
+                {field('Créditos de producción IA incluidos', <input type="number" min={0} step={50} value={draft.creditsIncluded ?? 0} onChange={e => setDraft({ ...draft, creditsIncluded: Number(e.target.value) })} className={input} />)}
+                {field(`Reparto por etapa (porcentajes · suma ${sharesTotal}%${sharesTotal && sharesTotal !== 100 ? ', se normaliza a 100' : ''})`, (
+                    <div className="mt-1 grid gap-1.5">
+                        {creditStages.map(s => (
+                            <div key={s.key} className="flex items-center gap-2 text-sm font-normal text-slate-700" title={s.hint}>
+                                <input type="number" min={0} max={100} value={shares[s.key] ?? 0} onChange={e => setShares({ ...shares, [s.key]: Number(e.target.value) })} className="w-20 rounded-lg border border-slate-300 px-2 py-1 text-sm" />
+                                <span className="text-[13px]">% {s.label}</span>
+                            </div>
+                        ))}
+                    </div>
+                ), true)}
                 <label className="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2"><input type="checkbox" checked={draft.active !== false} onChange={e => setDraft({ ...draft, active: e.target.checked })} /> Plan activo (visible para los clubes)</label>
             </div>
             <div className="mt-3 flex gap-2">
@@ -605,7 +619,7 @@ const PlanEditor = ({ plan, formats, currencies, onSaved, onCancel }: { plan: Pa
 };
 
 const PlansConfig = () => {
-    const [data, setData] = useState<{ plans: VpPlan[]; formats: { key: string; label: string }[]; currencies: string[]; access: { config: boolean } } | null>(null);
+    const [data, setData] = useState<{ plans: VpPlan[]; formats: { key: string; label: string }[]; currencies: string[]; creditStages?: { key: string; label: string; hint: string }[]; access: { config: boolean } } | null>(null);
     const [history, setHistory] = useState<{ id: string; type: string; title: string; actorName: string | null; createdAt: string }[]>([]);
     const [editing, setEditing] = useState<string | null>(null);
     const [creating, setCreating] = useState(false);
@@ -635,12 +649,12 @@ const PlansConfig = () => {
         <div className="space-y-4">
             <Card title="Planes comerciales" icon={Settings} right={canEdit && !creating ? <Btn kind="primary" onClick={() => setCreating(true)}><Plus size={13} /> Nuevo plan</Btn> : undefined}>
                 <p className="mb-4 text-[12px] text-slate-500">Los clubes eligen entre estos planes al solicitar el video. El precio que ven y el que se cobra en Stripe sale de aquí; nunca del navegador. {!canEdit && 'Tu perfil puede consultar, no editar.'}</p>
-                {creating && <div className="mb-4"><PlanEditor plan={EMPTY_PLAN} formats={data.formats} currencies={data.currencies} onSaved={() => { setCreating(false); load(); }} onCancel={() => setCreating(false)} /></div>}
+                {creating && <div className="mb-4"><PlanEditor plan={EMPTY_PLAN} formats={data.formats} currencies={data.currencies} creditStages={data.creditStages || []} onSaved={() => { setCreating(false); load(); }} onCancel={() => setCreating(false)} /></div>}
                 <div className="grid gap-3 md:grid-cols-2">
                     {data.plans.map(p => (
                         <div key={p.id} className={`rounded-xl border p-4 ${p.active ? 'border-slate-200 bg-white' : 'border-dashed border-slate-300 bg-slate-50'}`}>
                             {editing === p.id ? (
-                                <PlanEditor plan={p} formats={data.formats} currencies={data.currencies} onSaved={() => { setEditing(null); load(); }} onCancel={() => setEditing(null)} />
+                                <PlanEditor plan={p} formats={data.formats} currencies={data.currencies} creditStages={data.creditStages || []} onSaved={() => { setEditing(null); load(); }} onCancel={() => setEditing(null)} />
                             ) : (
                                 <>
                                     <div className="flex items-start justify-between gap-2">
@@ -651,7 +665,7 @@ const PlansConfig = () => {
                                         <p className="text-xl font-bold text-slate-900">{p.priceLabel}</p>
                                     </div>
                                     <ul className="mt-3 space-y-1">{p.features.map((f, i) => <li key={i} className="flex items-start gap-1.5 text-[12px] text-slate-700"><CheckCircle2 size={12} className="mt-0.5 shrink-0 text-emerald-600" /> {f}</li>)}</ul>
-                                    <p className="mt-3 text-[11px] text-slate-500">{p.deliverables.join(' + ')} · hasta {Math.round(p.maxDurationSec / 60)} min · {p.revisionRounds} rondas de ajustes · {p.versions?.length || 0} versión(es) · {p.orders || 0} orden(es), {p.paidOrders || 0} pagada(s)</p>
+                                    <p className="mt-3 text-[11px] text-slate-500">{p.deliverables.join(' + ')} · hasta {Math.round(p.maxDurationSec / 60)} min · {p.revisionRounds} rondas de ajustes · {p.creditsIncluded ? `${p.creditsIncluded.toLocaleString('es-CO')} créditos IA (${p.creditsBreakdown.map(b => `${b.share}% ${b.label.toLowerCase()}`).join(', ')})` : 'sin créditos definidos'} · {p.versions?.length || 0} versión(es) · {p.orders || 0} orden(es), {p.paidOrders || 0} pagada(s)</p>
                                     {canEdit && <div className="mt-3"><Btn onClick={() => setEditing(p.id)}>Editar</Btn></div>}
                                 </>
                             )}

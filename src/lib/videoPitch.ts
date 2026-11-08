@@ -75,6 +75,7 @@ export interface VpCatalog {
     descriptionMin: number; accept: string; maxFiles: number; limits: Record<string, number>;
     tips: { photos: string[]; videos: string[] }; scenePlan: { number: number; key: string; title: string; share: number; goal: string }[];
     targetSecondsDefault: number; targetSecondsMax: number;
+    creditStages?: { key: string; label: string; hint: string }[]; creditUnitLabel?: string;
 }
 export interface VpPortalView {
     exists: boolean; available: boolean; reason: string | null; status: VpStatus; statusLabel: string;
@@ -95,6 +96,8 @@ export type VpCommercialStatus = 'no_plan' | 'plan_selected' | 'pending_payment'
 export interface VpPlan {
     id: string; code: string; name: string; description: string; badge: string; priceAmount: number; currency: string; priceLabel: string;
     features: string[]; deliverables: string[]; maxDurationSec: number; revisionRounds: number; sortOrder: number; active: boolean;
+    /** v4.1297 — créditos de producción IA incluidos y su reparto por etapa (suma 100). */
+    creditsIncluded: number; creditsBreakdown: { key: string; share: number; label: string }[];
     currentVersionId: string | null; updatedAt?: string; updatedBy?: string | null;
     versions?: { id: string; versionNumber: number; snapshot: any; createdAt: string; createdByName: string | null }[]; orders?: number; paidOrders?: number;
 }

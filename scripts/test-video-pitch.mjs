@@ -24,7 +24,7 @@ import { buildDossier, buildUserPrompt, parseModelJson, auditScript } from '../s
 import { OWNED_COLUMNS } from '../server/lib/ensureVideoPitchSchema.js';
 import {
     COMMERCIAL_STATUSES, DEFAULT_PLANS, normalizePlanInput, planNeedsNewVersion, planSnapshot, toStripeAmount, fromStripeAmount, readSessionOutcome,
-    reusableSession, commercialStatusOf, productionGate, canChoosePlan, cardCopyOf, formatMoney,
+    reusableSession, commercialStatusOf, productionGate, canChoosePlan, cardCopyOf, formatMoney, normalizeCreditsBreakdown, CREDIT_STAGES,
 } from '../server/lib/videoPitchCommerce.js';
 
 let n = 0;
@@ -114,6 +114,11 @@ console.log('── Capa comercial (v4.1296)');
 ok(COMMERCIAL_STATUSES.length === 8 && DEFAULT_PLANS.length === 2 && DEFAULT_PLANS[0].priceAmount === 99 && DEFAULT_PLANS[1].priceAmount === 135, 'ocho estados comerciales; dos planes iniciales: USD 99 y USD 135');
 ok(DEFAULT_PLANS[1].deliverables.join() === '16:9,9:16' && DEFAULT_PLANS[0].deliverables.join() === '16:9', 'el Integral entrega horizontal y vertical; el Esencial sólo horizontal');
 ok(!DEFAULT_PLANS.some(p => p.features.some(f => /garantiza/i.test(f))) && DEFAULT_PLANS[1].features.some(f => /sujeto a sus políticas editoriales/.test(f)), 'la publicación en redes no se promete como garantizada');
+ok(DEFAULT_PLANS[0].creditsIncluded === 1000 && DEFAULT_PLANS[1].creditsIncluded === 1400 && CREDIT_STAGES.length === 5, 'créditos de producción IA: 1.000 el Esencial, 1.400 el Integral; cinco etapas');
+ok(DEFAULT_PLANS.every(p => normalizeCreditsBreakdown(p.creditsBreakdown).reduce((a, b) => a + b.share, 0) === 100) && normalizeCreditsBreakdown(DEFAULT_PLANS[1].creditsBreakdown).some(b => b.key === 'vertical') && !normalizeCreditsBreakdown(DEFAULT_PLANS[0].creditsBreakdown).some(b => b.key === 'vertical'), 'el reparto de cada plan suma 100 y sólo el Integral lleva la etapa vertical');
+ok(normalizeCreditsBreakdown([{ key: 'script', share: 1 }, { key: 'scenes', share: 2 }, { key: 'nope', share: 9 }]).map(b => `${b.key}:${b.share}`).join() === 'script:33,scenes:67' && normalizeCreditsBreakdown([]).length === 0, 'el reparto se normaliza a 100 y descarta etapas desconocidas');
+ok(planNeedsNewVersion({ ...planSnapshot({ code: 'a', name: 'A', priceAmount: 99, currency: 'USD', features: [], deliverables: ['16:9'], creditsIncluded: 1000, creditsBreakdown: [{ key: 'script', share: 100 }] }) }, { ...planSnapshot({ code: 'a', name: 'A', priceAmount: 99, currency: 'USD', features: [], deliverables: ['16:9'], creditsIncluded: 1200, creditsBreakdown: [{ key: 'script', share: 100 }] }) }), 'cambiar los créditos también crea versión: es lo que se le mostró al club');
+ok(read('src/components/project-forms/VideoPitchRequestView.tsx').includes('¿Qué cubre el precio?') && read('src/components/project-forms/VideoPitchRequestView.tsx').includes('créditos de producción IA incluidos'), 'el modal explica qué cubre el precio y muestra los créditos por plan');
 const np = normalizePlanInput({ code: 'Mi Plan!', name: 'X', priceAmount: '12.345', currency: 'usd', features: 'a\n\nb', deliverables: ['16:9', 'raro'], maxDurationSec: 9999, revisionRounds: -1 });
 ok(np.ok && np.plan.code === 'miplan' && np.plan.priceAmount === 12.35 && np.plan.currency === 'USD' && np.plan.features.join() === 'a,b' && np.plan.deliverables.join() === '16:9' && np.plan.maxDurationSec === 600 && np.plan.revisionRounds === 0, 'un plan se normaliza: código limpio, dos decimales, características por línea, formatos conocidos, topes');
 ok(!normalizePlanInput({ code: 'x', name: 'X', priceAmount: -1, deliverables: ['16:9'] }).ok && !normalizePlanInput({ code: 'x', name: 'X', priceAmount: 1, currency: 'EUR', deliverables: ['16:9'] }).ok && !normalizePlanInput({ code: 'x', name: 'X', priceAmount: 1, deliverables: [] }).ok, 'precio negativo, moneda ajena y sin formatos: rechazados');
