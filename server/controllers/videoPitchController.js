@@ -41,8 +41,8 @@ import { isApplied, projectStateOf, projectStateMeta } from '../lib/projectFairL
 import { ensureVideoPitchSchema } from '../lib/ensureVideoPitchSchema.js';
 import {
     STATUSES, statusMeta, isStatus, canTransition, participantCanEdit, bulkStatusAllowed, transitionRequirements,
-    ADMIN_TRANSITIONS, PARTICIPANT_TRANSITIONS, summarizeRequests, LANGUAGES, OBJECTIVES, TONES, GUIDED_QUESTIONS,
-    DESCRIPTION_MIN, normalizeAnswers, lockedIdentity, prefillFrom, completionOf, validateForSubmit,
+    ADMIN_TRANSITIONS, PARTICIPANT_TRANSITIONS, summarizeRequests, LANGUAGES, OBJECTIVES, TONES, GUIDED_QUESTIONS, CONTEXT_TOPICS,
+    DESCRIPTION_MIN, normalizeAnswers, lockedIdentity, prefillFrom, projectContextOf, completionOf, validateForSubmit,
     FILE_KINDS, FILE_ROLES, MAX_FILES_PER_REQUEST, ACCEPTED_EXTENSIONS, maxMbFor, checkUploadMeta, judgeUploadedFile,
     qualityWarnings, fmtBytes, MATERIAL_TIPS, TARGET_SECONDS_DEFAULT, TARGET_SECONDS_MAX, clampTargetSeconds,
     SCENE_PLAN, normalizeScript, narrationFits, notificationFor, requestNumber, normalizeSort, requestsCsv,
@@ -53,7 +53,7 @@ import {
 } from '../lib/videoPitchStorage.js';
 import { buildDossier, generateVideoPitchScript, auditScript } from '../lib/videoPitchAI.js';
 
-console.log('[videoPitchController] v4.1294.0 cargado — Video Pitch Profesional: solicitud precargada con materiales, bandeja administrativa, guiones con IA sobre hechos verificados, aprobación, producción y entrega auditadas.');
+console.log('[videoPitchController] v4.1295.0 cargado — Video Pitch Profesional: solicitud precargada con materiales, bandeja administrativa, guiones con IA sobre hechos verificados, aprobación, producción y entrega auditadas.');
 
 const clean = (v, max = 250) => String(v ?? '').trim().slice(0, max);
 const refOf = (id) => String(id || '').replace(/-/g, '').slice(0, 8).toUpperCase();
@@ -148,7 +148,7 @@ const shapeRequest = (r, submission) => ({
 });
 
 const CATALOG = {
-    statuses: STATUSES, languages: LANGUAGES, objectives: OBJECTIVES, tones: TONES, guidedQuestions: GUIDED_QUESTIONS,
+    statuses: STATUSES, languages: LANGUAGES, objectives: OBJECTIVES, tones: TONES, guidedQuestions: GUIDED_QUESTIONS, contextTopics: CONTEXT_TOPICS,
     descriptionMin: DESCRIPTION_MIN, accept: ACCEPTED_EXTENSIONS.join(','), maxFiles: MAX_FILES_PER_REQUEST,
     limits: Object.fromEntries(Object.keys(FILE_KINDS).map(k => [k, maxMbFor(k)])), tips: MATERIAL_TIPS,
     scenePlan: SCENE_PLAN, targetSecondsDefault: TARGET_SECONDS_DEFAULT, targetSecondsMax: TARGET_SECONDS_MAX,
@@ -327,10 +327,13 @@ const portalView = async ({ request, submission, account }) => {
     const availability = availabilityOf(submission);
     const masterAnswers = await loadMasterAnswers(submission.id);
     const prefill = prefillFrom({ submission, masterAnswers });
+    // v4.1295 — Lo que el sistema YA sabe del proyecto, para mostrarlo en
+    // sólo lectura: el club agrega sólo lo que falte.
+    const context = projectContextOf({ submission, masterAnswers });
     if (!request) {
         return {
             exists: false, status: 'not_requested', statusLabel: statusMeta('not_requested').label, ...availability,
-            identity: lockedIdentity(submission), prefill, catalog: CATALOG, request: null, files: [], scripts: [], events: [],
+            identity: lockedIdentity(submission), prefill, context, catalog: CATALOG, request: null, files: [], scripts: [], events: [],
             canEdit: availability.available, deliverable: null,
         };
     }
@@ -345,13 +348,13 @@ const portalView = async ({ request, submission, account }) => {
         exists: true, ...availability,
         status: request.status, statusLabel: statusMeta(request.status).label,
         request: shapeRequest(request, submission),
-        identity: lockedIdentity(submission), prefill, catalog: CATALOG,
+        identity: lockedIdentity(submission), prefill, context, catalog: CATALOG,
         files: materials.map(shapeFile),
         scripts: visibleScripts.map(s => shapeScript(s, request)),
         events,
         canEdit,
         canDecideScript: request.status === 'script_pending_approval' && Boolean(request.currentScriptId),
-        validation: validateForSubmit(request.answers, { fileCount: materials.length }),
+        validation: validateForSubmit(request.answers, { fileCount: materials.length, hasProjectContext: context.hasProjectContext }),
         deliverable: deliverable ? shapeFile(deliverable) : null,
         thumbnail: thumbnail ? shapeFile(thumbnail) : null,
     };
@@ -377,7 +380,8 @@ const ensureDraft = async ({ submission, account }) => {
     if (existing) return existing;
     const masterAnswers = await loadMasterAnswers(submission.id);
     const prefill = prefillFrom({ submission, masterAnswers });
-    const answers = normalizeAnswers({ identification: prefill.identification, story: { description: prefill.suggestions.description }, preferences: { language: 'es' } });
+    // La descripción de la postulación NO se copia al campo: ya está en el expediente; el campo es para lo adicional.
+    const answers = normalizeAnswers({ identification: prefill.identification, preferences: { language: 'es' } });
     await db.query(`
         INSERT INTO "VideoPitchRequest" ("submissionId", "accountId", "eventId", status, answers, "completionPct", "lastEditedAt")
         VALUES ($1, $2, $3, 'draft', $4::jsonb, $5, NOW()) ON CONFLICT ("submissionId") DO NOTHING
@@ -422,7 +426,7 @@ export const portalSubmit = async (req, res) => {
         const answers = normalizeAnswers(req.body?.answers !== undefined ? req.body.answers : request.answers);
         const files = await loadFiles(request.id);
         const materials = files.filter(f => f.role === 'material').length;
-        const verdict = validateForSubmit(answers, { fileCount: materials });
+        const verdict = validateForSubmit(answers, { fileCount: materials, hasProjectContext: projectContextOf({ submission, masterAnswers: await loadMasterAnswers(submission.id) }).hasProjectContext });
         if (!verdict.ok) return res.status(400).json({ error: 'Faltan datos para enviar la solicitud.', errors: verdict.errors });
         const pct = completionOf(answers, { fileCount: materials });
         await db.query('UPDATE "VideoPitchRequest" SET answers = $2::jsonb, "completionPct" = $3, "lastEditedAt" = NOW(), "updatedAt" = NOW() WHERE id = $1',

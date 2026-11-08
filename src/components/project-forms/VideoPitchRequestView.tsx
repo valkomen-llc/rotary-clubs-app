@@ -32,7 +32,8 @@ interface UploadItem { localId: string; name: string; pct: number; status: 'uplo
 
 const emptyAnswers = (prefill: VpPortalView['prefill'] | null): VpAnswers => ({
     identification: { responsibleName: prefill?.identification.responsibleName || '', email: prefill?.identification.email || '', whatsapp: prefill?.identification.whatsapp || '' },
-    story: { description: prefill?.suggestions.description || '', problem: '', location: '', beneficiaries: '', solution: '', results: '', resources: '', support: '' },
+    // v4.1295 — El campo es para lo ADICIONAL: no se siembra con la descripción de la postulación, que ya está en el contexto.
+    story: { description: '' },
     preferences: { language: 'es', objective: '', objectiveOther: '', notes: '' },
     consent: { mediaAuthorization: false },
 });
@@ -421,7 +422,7 @@ const VideoPitchRequestView = ({ token, onBack, onChanged, onSessionExpired }: P
     const currentScript = useMemo(() => (view?.scripts || []).find(s => s.id === req?.currentScriptId) || (view?.scripts || [])[0] || null, [view?.scripts, req?.currentScriptId]);
     const approvedScript = useMemo(() => (view?.scripts || []).find(s => s.id === req?.approvedScriptId) || null, [view?.scripts, req?.approvedScriptId]);
     const showForm = Boolean(view && view.available && (canEdit || !view.exists));
-    const suggestions = view?.prefill.suggestions || {};
+    const context = view?.context || { items: [], hasFormulation: false, hasProjectContext: false };
 
     if (loading && !view) {
         return <div className="flex items-center justify-center py-20 text-slate-500"><Loader2 className="mr-2 animate-spin" size={20} /> Cargando tu solicitud…</div>;
@@ -548,38 +549,36 @@ const VideoPitchRequestView = ({ token, onBack, onChanged, onSessionExpired }: P
                         <p className={`${HINT} mt-3`}>¿Necesitas el video para otro proyecto o club? Escríbele al comité organizador desde tu correo registrado para vincularlo a tu cuenta.</p>
                     </Block>
 
-                    <Block letter="B" title="Información para el video" intro="Explica qué problema enfrenta la comunidad, a quién beneficia tu proyecto, cómo esperan solucionarlo y qué apoyo necesitan para hacerlo realidad.">
-                        <div>
-                            <label className={LABEL} htmlFor="vp-description">Cuéntanos sobre tu proyecto <span className="text-red-500">*</span></label>
-                            <textarea id="vp-description" rows={7} value={answers.story.description} onChange={e => set('story', 'description', e.target.value)} className={inputCls(false, Boolean(errorOf('story.description')))} placeholder="Con tus palabras: el problema, a quién afecta, la solución, el impacto esperado y el apoyo que buscan." />
-                            <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
-                                <p className={HINT}>{answers.story.description.length} caracteres · mínimo {catalog.descriptionMin}</p>
-                                {suggestions.description && suggestions.description !== answers.story.description && (
-                                    <button type="button" onClick={() => set('story', 'description', suggestions.description)} className="inline-flex items-center gap-1 text-[12px] font-bold hover:underline" style={{ color: BLUE }}><Sparkles size={12} /> Importar la descripción de la postulación</button>
-                                )}
-                            </div>
-                            {errorOf('story.description') && <p className="mt-1 text-[12px] text-red-600">{errorOf('story.description')}</p>}
-                        </div>
-                        <details className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4" open>
-                            <summary className="cursor-pointer text-sm font-bold text-slate-800">Preguntas guiadas (opcionales, ayudan a escribir un mejor guion)</summary>
-                            <div className="mt-3 grid gap-4">
-                                {catalog.guidedQuestions.map(q => {
-                                    const sug = suggestions[q.key];
-                                    return (
-                                        <div key={q.key}>
-                                            <label className={LABEL} htmlFor={`vp-q-${q.key}`}>{q.label}</label>
-                                            <textarea id={`vp-q-${q.key}`} rows={2} value={answers.story[q.key] || ''} onChange={e => set('story', q.key, e.target.value)} className={inputCls(false)} />
-                                            {sug && sug !== answers.story[q.key] && (
-                                                <div className="mt-1.5 rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2 text-[12px] text-slate-600">
-                                                    <span className="font-semibold text-slate-500">Sugerencia de tu Formulación:</span> <span className="line-clamp-2">{sug}</span>
-                                                    <button type="button" onClick={() => set('story', q.key, sug)} className="ml-2 font-bold hover:underline" style={{ color: BLUE }}>Importar</button>
-                                                </div>
-                                            )}
+                    <Block letter="B" title="Información para el video" intro="El guion se construye con tu postulación y con la Formulación del proyecto: no hace falta repetirlas. Revisa lo que ya tenemos y agrega sólo lo que falte.">
+                        {/* v4.1295 — Lo que el sistema YA sabe del proyecto, en sólo
+                            lectura. Es lo mismo que lee la IA para escribir el guion;
+                            mostrarlo evita que el club vuelva a contar lo que ya contó. */}
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                            <p className="flex items-center gap-1.5 text-sm font-bold text-slate-800"><Sparkles size={14} style={{ color: BLUE }} /> Lo que ya sabemos de tu proyecto</p>
+                            {context.items.length > 0 ? (
+                                <dl className="mt-3 grid gap-2.5 text-[13px]">
+                                    {context.items.map(item => (
+                                        <div key={item.key}>
+                                            <dt className="font-semibold text-slate-500">{item.label}</dt>
+                                            <dd className="line-clamp-3 whitespace-pre-wrap text-slate-800" title={item.value}>{item.value}</dd>
                                         </div>
-                                    );
-                                })}
-                            </div>
-                        </details>
+                                    ))}
+                                </dl>
+                            ) : (
+                                <p className="mt-2 text-[13px] text-slate-600">Todavía no tenemos la descripción de tu proyecto.</p>
+                            )}
+                            <p className="mt-3 text-[12px] text-slate-500">
+                                {context.hasFormulation
+                                    ? 'Sale de tu postulación y de la Formulación del proyecto. Si algo cambió, corrígelo allí: el guion lo tomará actualizado.'
+                                    : 'Sale de tu postulación. Cuando diligencies la Formulación del proyecto en «Mi proyecto» (objetivos, necesidades, beneficiarios, presupuesto), el guion la usará también.'}
+                            </p>
+                        </div>
+                        <div className="mt-4">
+                            <label className={LABEL} htmlFor="vp-description">Información adicional para el video <span className="font-normal text-slate-400">(opcional)</span></label>
+                            <textarea id="vp-description" rows={6} value={answers.story.description} onChange={e => set('story', 'description', e.target.value)} className={inputCls(false)}
+                                placeholder="Lo que no esté arriba y quieras que el video cuente: una historia concreta de la comunidad, un dato reciente, el apoyo exacto que buscan de aliados internacionales, personas o aliados que deban aparecer…" />
+                            <p className={HINT}>Si lo esencial ya está en tu postulación y en la Formulación, puedes dejarlo vacío.</p>
+                        </div>
                     </Block>
 
                     <Block letter="C" title="Material multimedia" intro="Fotografías JPG/PNG, videos MP4/MOV y, si quieres, documentos PDF de apoyo. Puedes subir varios y quitarlos antes de enviar.">
@@ -674,6 +673,7 @@ const VideoPitchRequestView = ({ token, onBack, onChanged, onSessionExpired }: P
                         <div className="text-[13px] text-slate-600">
                             {view?.validation && !view.validation.ok && status === 'draft' && <p>Faltan {view.validation.errors.length} dato(s) obligatorio(s) para enviar.</p>}
                             {files.length === 0 && <p className="flex items-center gap-1.5 text-amber-700"><AlertTriangle size={13} /> Sin fotografías ni videos el comité te los pedirá después.</p>}
+                            {!context.hasProjectContext && !answers.story.description && <p className="flex items-center gap-1.5 text-amber-700"><AlertTriangle size={13} /> Sin Formulación ni información adicional, el guion no tendrá con qué contar el proyecto.</p>}
                             {saving ? <p className="text-slate-400">Guardando…</p> : savedAt ? <p className="text-slate-400">Borrador guardado {vpFmtDateTime(savedAt)}</p> : null}
                         </div>
                         <div className="flex flex-wrap gap-2">
@@ -693,7 +693,7 @@ const VideoPitchRequestView = ({ token, onBack, onChanged, onSessionExpired }: P
                     <dl className="mt-3 grid gap-3 text-[13px] sm:grid-cols-2">
                         <div><dt className="font-semibold text-slate-500">Responsable</dt><dd className="text-slate-800">{answers.identification.responsibleName} · {answers.identification.email} · {answers.identification.whatsapp}</dd></div>
                         <div><dt className="font-semibold text-slate-500">Idioma y objetivo</dt><dd className="text-slate-800">{catalog?.languages.find(l => l.key === answers.preferences.language)?.label || '—'} · {catalog?.objectives.find(o => o.key === answers.preferences.objective)?.label || '—'}{answers.preferences.objectiveOther ? ` (${answers.preferences.objectiveOther})` : ''}</dd></div>
-                        <div className="sm:col-span-2"><dt className="font-semibold text-slate-500">Sobre el proyecto</dt><dd className="whitespace-pre-wrap text-slate-800">{answers.story.description}</dd></div>
+                        <div className="sm:col-span-2"><dt className="font-semibold text-slate-500">Información adicional para el video</dt><dd className="whitespace-pre-wrap text-slate-800">{answers.story.description || <span className="text-slate-400">Sin información adicional: el guion se basa en tu postulación y tu Formulación.</span>}</dd></div>
                         {catalog?.guidedQuestions.filter(q => answers.story[q.key]).map(q => (
                             <div key={q.key} className="sm:col-span-2"><dt className="font-semibold text-slate-500">{q.label}</dt><dd className="whitespace-pre-wrap text-slate-800">{answers.story[q.key]}</dd></div>
                         ))}

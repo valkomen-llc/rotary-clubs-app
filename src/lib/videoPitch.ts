@@ -70,6 +70,7 @@ export interface VpRequest {
 export interface VpCatalog {
     statuses: VpStatusMeta[]; languages: { key: string; label: string }[]; objectives: { key: string; label: string }[];
     tones: { key: string; label: string }[]; guidedQuestions: { key: string; label: string; source: string | null }[];
+    contextTopics?: { key: string; label: string; source: string | null }[];
     descriptionMin: number; accept: string; maxFiles: number; limits: Record<string, number>;
     tips: { photos: string[]; videos: string[] }; scenePlan: { number: number; key: string; title: string; share: number; goal: string }[];
     targetSecondsDefault: number; targetSecondsMax: number;
@@ -78,6 +79,8 @@ export interface VpPortalView {
     exists: boolean; available: boolean; reason: string | null; status: VpStatus; statusLabel: string;
     request: VpRequest | null; identity: VpRequest['identity'];
     prefill: { identification: VpAnswers['identification']; suggestions: Record<string, string> };
+    /** v4.1295 — Lo que el sistema YA sabe del proyecto (postulación + Formulación), en sólo lectura. */
+    context?: { items: { key: string; label: string; value: string }[]; hasFormulation: boolean; hasProjectContext: boolean };
     catalog: VpCatalog; files: VpFile[]; scripts: VpScript[]; events: VpEvent[];
     canEdit: boolean; canDecideScript?: boolean;
     validation?: { ok: boolean; errors: { field: string; message: string }[]; warnings: string[] };

@@ -34,13 +34,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1294.0 | 2026-11-08 (Video Pitch: tarjeta usable y entrada del menú directa a la pestaña)
+// UI V4.1295.0 | 2026-11-08 (Video Pitch: el paso B es un solo campo de información adicional)
 // Cache bust: 2026-11-08
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1295.0',
+        title: 'Video Pitch: el paso B es un solo campo de información adicional ✂️',
+        description: 'Pedido del comité: la información del proyecto ya está sincronizada con la postulación y la Formulación, así que el paso «Información para el video» deja de pedirla otra vez. Ahora muestra en sólo lectura lo que el sistema ya sabe del proyecto y pide únicamente lo adicional, en un solo campo opcional.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'video pitch', 'mi proyecto', 'formulario'],
+        type: 'improvement',
+        impact: 'Media: el club no repite lo que ya escribió; el guion sigue usando la postulación y la Formulación completas.',
+        changes: [
+            { type: 'changed', text: 'Paso B: panel «Lo que ya sabemos de tu proyecto» (descripción, problema, lugar, beneficiarios, solución, resultados, recursos, sostenibilidad, participación de la comunidad), tomado de la postulación y de la Formulación, con la indicación de corregirlo allí si algo cambió. Debajo, un único campo opcional «Información adicional para el video».' },
+            { type: 'removed', text: 'Las siete preguntas guiadas y el mínimo de 80 caracteres de «Cuéntanos sobre tu proyecto». Lo que un borrador anterior ya hubiera respondido se conserva y el expediente de la IA lo sigue leyendo.' },
+            { type: 'added', text: 'Si la Formulación está vacía y el club tampoco agrega información, se le advierte (sin bloquear el envío) que el guion no tendrá con qué contar el proyecto. El campo ya no se siembra con la descripción de la postulación: eso ya está en el contexto.' },
+            { type: 'changed', text: 'Ficha del comité: la tarjeta pasa a llamarse «Información adicional del club para el video» y dice cuando no hay nada agregado; el expediente verificado sigue abajo.' },
+        ],
+    },
     {
         version: '4.1294.0',
         title: 'Video Pitch: la tarjeta se puede usar y la entrada del menú abre su pestaña 🔧',

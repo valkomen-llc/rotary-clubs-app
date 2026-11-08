@@ -132,8 +132,18 @@ export const TONES = [
 export const languageLabel = (k) => LANGUAGES.find(l => l.key === k)?.label || '';
 export const objectiveLabel = (k) => OBJECTIVES.find(o => o.key === k)?.label || '';
 
-/** Las preguntas guiadas del bloque B. `source` dice de dónde se sugiere. */
-export const GUIDED_QUESTIONS = [
+/**
+ * Los temas del CONTEXTO del proyecto: lo que el sistema YA sabe por la
+ * postulación y la Formulación, y le muestra al club en sólo lectura antes de
+ * pedirle información adicional (v4.1295). Hasta v4.1294 eran «preguntas
+ * guiadas» que el club tenía que volver a responder; el comité pidió que el
+ * bloque B fuera UN solo campo, porque esa información ya está sincronizada
+ * con el proyecto. `source` es de dónde sale cada tema. Las respuestas
+ * guiadas que un borrador anterior haya guardado se conservan y el expediente
+ * de la IA las sigue leyendo (`LEGACY_STORY_KEYS`).
+ */
+export const CONTEXT_TOPICS = [
+    { key: 'description',   label: 'Descripción del proyecto',                      source: 'postulación / objetivos.projectDescription' },
     { key: 'problem',       label: '¿Cuál es el problema más importante que quieren resolver?', source: 'necesidades.needs' },
     { key: 'location',      label: '¿Dónde se desarrollará el proyecto?',                      source: 'identificacion.city' },
     { key: 'beneficiaries', label: '¿Cuántas personas se beneficiarán?',                        source: 'necesidades.beneficiariesCount' },
@@ -141,9 +151,16 @@ export const GUIDED_QUESTIONS = [
     { key: 'results',       label: '¿Qué resultados esperan conseguir?',                        source: 'objetivos.generalObjective' },
     { key: 'resources',     label: '¿Qué recursos o financiación necesitan?',                   source: 'presupuesto.budgetTable' },
     { key: 'support',       label: '¿Qué tipo de apoyo buscan de aliados internacionales?',     source: null },
+    { key: 'sustainability', label: 'Sostenibilidad',                                          source: 'sostenibilidad.sustainability' },
+    { key: 'communityRole', label: 'Participación de la comunidad',                            source: 'sostenibilidad.communityRole' },
 ];
+/** Compatibilidad: claves de las preguntas guiadas de v4.1293–v4.1294. */
+export const LEGACY_STORY_KEYS = ['problem', 'location', 'beneficiaries', 'solution', 'results', 'resources', 'support'];
+/** @deprecated desde v4.1295: el bloque B es un solo campo. Se mantiene para el expediente de la IA. */
+export const GUIDED_QUESTIONS = CONTEXT_TOPICS.filter(t => LEGACY_STORY_KEYS.includes(t.key));
 
-export const DESCRIPTION_MIN = 80;
+/** La información adicional es OPCIONAL: el guion se nutre de la postulación y la Formulación. */
+export const DESCRIPTION_MIN = 0;
 export const DESCRIPTION_MAX = 6000;
 export const TEXT_MAX = 2500;
 
@@ -159,7 +176,8 @@ export const normalizeAnswers = (input = {}) => {
     const pr = a.preferences || {};
     const co = a.consent || {};
     const story = { description: str(st.description, DESCRIPTION_MAX) };
-    for (const q of GUIDED_QUESTIONS) story[q.key] = str(st[q.key]);
+    // Respuestas guiadas de borradores anteriores: se conservan si existen, nunca se piden.
+    for (const k of LEGACY_STORY_KEYS) { const v = str(st[k]); if (v) story[k] = v; }
     return {
         identification: {
             responsibleName: str(id.responsibleName, 160),
@@ -233,6 +251,21 @@ export const prefillFrom = ({ submission, masterAnswers = null }) => {
     };
 };
 
+/**
+ * El CONTEXTO del proyecto tal como se le muestra al club (v4.1295): los temas
+ * con valor, en el orden de `CONTEXT_TOPICS`, y si la Formulación ya aporta
+ * algo. Es lo mismo que lee la IA; por eso se muestra: para que el club agregue
+ * sólo lo que falte.
+ */
+export const projectContextOf = ({ submission, masterAnswers = null }) => {
+    const { suggestions } = prefillFrom({ submission, masterAnswers });
+    const items = CONTEXT_TOPICS
+        .map(t => ({ key: t.key, label: t.label, value: String(suggestions[t.key] || '').trim() }))
+        .filter(t => t.value);
+    const hasFormulation = Boolean(masterAnswers && Object.values(masterAnswers).some(sec => sec && typeof sec === 'object' && Object.values(sec).some(v => String(v ?? '').trim())));
+    return { items, hasFormulation, hasProjectContext: items.length > 0 };
+};
+
 /** Avance del formulario, en %: lo obligatorio pesa más que lo opcional. */
 export const completionOf = (answers, { fileCount = 0 } = {}) => {
     const a = normalizeAnswers(answers);
@@ -240,26 +273,29 @@ export const completionOf = (answers, { fileCount = 0 } = {}) => {
         [3, Boolean(a.identification.responsibleName)],
         [3, isEmail(a.identification.email)],
         [3, isPhone(a.identification.whatsapp)],
-        [20, a.story.description.length >= DESCRIPTION_MIN],
-        ...GUIDED_QUESTIONS.map(q => [4, Boolean(a.story[q.key])]),
-        [8, Boolean(a.preferences.language)],
-        [8, Boolean(a.preferences.objective)],
-        [12, fileCount > 0],
-        [15, a.consent.mediaAuthorization],
+        // La información adicional es opcional: pesa poco y no bloquea.
+        [6, a.story.description.length > 0],
+        [16, Boolean(a.preferences.language)],
+        [16, Boolean(a.preferences.objective)],
+        [20, fileCount > 0],
+        [20, a.consent.mediaAuthorization],
     ];
     const total = checks.reduce((s, [w]) => s + w, 0);
     const done = checks.reduce((s, [w, ok]) => s + (ok ? w : 0), 0);
     return Math.round((done / total) * 100);
 };
 
-/** Lo que impide ENVIAR. Vacío = se puede enviar. */
-export const validateForSubmit = (answers, { fileCount = 0 } = {}) => {
+/**
+ * Lo que impide ENVIAR. Vacío = se puede enviar. `hasProjectContext` dice si
+ * la postulación o la Formulación ya cuentan el proyecto: si no, y el club
+ * tampoco escribió nada, se ADVIERTE (no se bloquea: el comité puede pedirlo).
+ */
+export const validateForSubmit = (answers, { fileCount = 0, hasProjectContext = true } = {}) => {
     const a = normalizeAnswers(answers);
     const errors = [];
     if (!a.identification.responsibleName) errors.push({ field: 'identification.responsibleName', message: 'Indica quién es la persona responsable de la solicitud.' });
     if (!isEmail(a.identification.email)) errors.push({ field: 'identification.email', message: 'Escribe un correo electrónico válido.' });
     if (!isPhone(a.identification.whatsapp)) errors.push({ field: 'identification.whatsapp', message: 'Escribe un número de WhatsApp de contacto.' });
-    if (a.story.description.length < DESCRIPTION_MIN) errors.push({ field: 'story.description', message: `Cuéntanos sobre tu proyecto en al menos ${DESCRIPTION_MIN} caracteres.` });
     if (!a.preferences.language) errors.push({ field: 'preferences.language', message: 'Elige el idioma de la narración.' });
     if (!a.preferences.objective) errors.push({ field: 'preferences.objective', message: 'Elige el objetivo principal del video.' });
     if (a.preferences.objective === 'other' && !a.preferences.objectiveOther) errors.push({ field: 'preferences.objectiveOther', message: 'Describe el objetivo del video.' });
@@ -267,6 +303,7 @@ export const validateForSubmit = (answers, { fileCount = 0 } = {}) => {
     // Los materiales no bloquean el envío: el comité puede pedirlos después.
     // Pero se advierte, porque sin ellos no hay video.
     const warnings = fileCount === 0 ? ['No adjuntaste fotografías ni videos. El comité te los pedirá para producir el video.'] : [];
+    if (!hasProjectContext && !a.story.description) warnings.push('Tu Formulación del proyecto está vacía y no agregaste información: el guion no tendrá con qué contar el proyecto. Completa la Formulación o escribe aquí lo esencial.');
     return { ok: errors.length === 0, errors, warnings };
 };
 
@@ -481,8 +518,8 @@ export const requestsCsv = (rows) => {
 export default {
     STATUSES, STATUS_KEYS, STORED_STATUS_KEYS, statusMeta, isStatus, ADMIN_TRANSITIONS, PARTICIPANT_TRANSITIONS,
     canTransition, EDITABLE_STATUSES, participantCanEdit, BULK_STATUS_PAIRS, bulkStatusAllowed, transitionRequirements,
-    KPI_GROUPS, summarizeRequests, LANGUAGES, OBJECTIVES, TONES, languageLabel, objectiveLabel, GUIDED_QUESTIONS,
-    DESCRIPTION_MIN, normalizeAnswers, lockedIdentity, prefillFrom, completionOf, validateForSubmit,
+    KPI_GROUPS, summarizeRequests, LANGUAGES, OBJECTIVES, TONES, languageLabel, objectiveLabel, CONTEXT_TOPICS, LEGACY_STORY_KEYS, GUIDED_QUESTIONS,
+    DESCRIPTION_MIN, normalizeAnswers, lockedIdentity, prefillFrom, projectContextOf, completionOf, validateForSubmit,
     FILE_KINDS, FILE_ROLES, MAX_FILES_PER_REQUEST, ACCEPTED_EXTENSIONS, extensionOf, kindOfExtension, maxMbFor,
     checkUploadMeta, sniffKind, judgeUploadedFile, qualityWarnings, fmtBytes, MATERIAL_TIPS,
     TARGET_SECONDS_DEFAULT, TARGET_SECONDS_MAX, TARGET_SECONDS_MIN, clampTargetSeconds, SCENE_PLAN, sceneDurations,

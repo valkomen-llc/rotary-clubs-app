@@ -134,6 +134,8 @@ let r = await call('GET', '/portal/video-pitch', portal(A));
 ok(r.status === 200 && r.data.exists === false && r.data.status === 'not_requested' && r.data.available === true, 'postulado sin solicitud: «No solicitado» y disponible');
 ok(r.data.prefill.identification.responsibleName === 'Nombre FP-A Pérez' && r.data.prefill.identification.whatsapp === '+57 300 1234567', 'bloque A precargado');
 ok(r.data.prefill.suggestions.problem === 'No hay agua potable en la zona.' && r.data.identity.projectName === 'Proyecto FP-A', 'sugerencias de la Formulación e identidad del proyecto');
+ok(r.data.context.hasProjectContext && r.data.context.hasFormulation && r.data.context.items.some(i => i.key === 'problem'), 'el contexto del proyecto (postulación + Formulación) llega para mostrarse en sólo lectura');
+ok((await call('GET', '/portal/video-pitch', portal(B))).data.context.hasFormulation === false, 'sin Formulación, el contexto lo dice');
 r = await call('GET', '/portal/video-pitch', portal(C));
 ok(r.status === 200 && r.data.available === false && /postulado/.test(r.data.reason), 'un borrador de postulación todavía no puede pedir el video');
 r = await call('GET', '/portal/video-pitch', portal(D));
