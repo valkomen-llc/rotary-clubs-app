@@ -16,7 +16,7 @@ import {
     CreditCard, Download, ExternalLink, Eye, FileSpreadsheet, FileText, Filter,
     Loader2, Mail, MessageSquarePlus, RefreshCw, Search,
     TrendingUp, Wallet, X, ShieldCheck, Paperclip, Settings, FileSignature, Lock, Unlock, FileDown,
-    Archive, ArchiveRestore, CheckSquare, Square, Trash2, TagIcon, Banknote, ArrowRight, History, Users,
+    Archive, ArchiveRestore, CheckSquare, Square, Trash2, TagIcon, Banknote, ArrowRight, History, Users, Clapperboard,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -33,6 +33,8 @@ import AdminLayout from '../../components/admin/AdminLayout';
 import ConvocatoriaConfig from '../../components/admin/feria/ConvocatoriaConfig';
 // v4.1264 — La plantilla oficial de presentación: subir, publicar, versiones y analítica.
 import RecursosPlantillas from '../../components/admin/feria/RecursosPlantillas';
+// v4.1293 — Video Pitch Profesional: bandeja de solicitudes, guiones con IA, producción y entrega.
+import VideoPitchAdmin from '../../components/admin/feria/VideoPitchAdmin';
 import EdicionesList from '../../components/admin/feria/EdicionesList';
 import ProjectFormApproval from '../../components/admin/feria/ProjectFormApproval';
 // ⚠️ v4.1026 — LA MISMA BARRA DE LA BÓVEDA, no una copia. Registrar un traslado
@@ -243,7 +245,7 @@ const RankPanel = ({ title, rows, priceMode }: { title: string; rows: any[]; pri
 
 // ════════════════════════════════════════════════════════════════════
 const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = false, eventId: embedEventId }) => {
-    type Tab = 'dashboard' | 'submissions' | 'forms' | 'alerts' | 'config' | 'resources';
+    type Tab = 'dashboard' | 'submissions' | 'forms' | 'alerts' | 'config' | 'resources' | 'videopitch';
     // ?tab=config permite enlazar directo a la configuración (y mantiene vivos
     // los enlaces a la antigua entrada de menú "Postulación de Proyectos").
     const [tab, setTab] = useState<Tab>(() => {
@@ -251,7 +253,7 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
         // sigue en su página.
         if (embedded) return 'submissions';
         const requested = new URLSearchParams(window.location.search).get('tab');
-        return (['dashboard', 'submissions', 'forms', 'alerts', 'config', 'resources'] as const).includes(requested as Tab)
+        return (['dashboard', 'submissions', 'forms', 'alerts', 'config', 'resources', 'videopitch'] as const).includes(requested as Tab)
             ? (requested as Tab) : 'dashboard';
     });
     // Edición abierta. Vive en la URL para que el enlace se pueda compartir y
@@ -866,7 +868,8 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                        ['forms', 'Formulación', FileSignature],
                        ['alerts', 'Alertas', AlertTriangle],
                        ['config', 'Convocatoria', Settings],
-                       ['resources', 'Recursos y plantillas', FileDown]] as const).map(([key, label, Icon]) => (
+                       ['resources', 'Recursos y plantillas', FileDown],
+                       ['videopitch', 'Video Pitch', Clapperboard]] as const).map(([key, label, Icon]) => (
                         <button key={key} onClick={() => setTab(key)}
                             className={`inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-semibold transition ${
                                 tab === key ? 'border-blue-700 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
@@ -1825,6 +1828,9 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
 
                 {/* ── Recursos y plantillas (v4.1264) ──────────────────── */}
                 {tab === 'resources' && <RecursosPlantillas eventId={eventId} />}
+
+                {/* ── Video Pitch Profesional (v4.1293) ─────────────────── */}
+                {tab === 'videopitch' && <VideoPitchAdmin eventId={eventId} />}
 
                 {/* ── Configuración de la convocatoria ──────────────────── */}
                 {tab === 'config' && (

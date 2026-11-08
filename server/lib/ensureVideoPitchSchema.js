@@ -1,0 +1,159 @@
+// ════════════════════════════════════════════════════════════════════════════
+// Video Pitch Profesional — el esquema, en runtime (v4.1293.0)
+//
+// CINCO tablas fuera de Prisma:
+//
+//   VideoPitchRequest       una solicitud por postulación: número, estado,
+//                           respuestas del formulario (JSONB), responsable de
+//                           producción, guion aprobado y video entregado.
+//   VideoPitchFile          cada archivo (material del club, video final o
+//                           miniatura). Las dimensiones las declara el navegador.
+//   VideoPitchScript        cada VERSIÓN de guion: inmutable una vez guardada;
+//                           la vigente la señala la solicitud.
+//   VideoPitchEvent         el historial completo: quién hizo qué y cuándo.
+//   VideoPitchNotification  qué aviso salió por qué cambio: evita duplicados.
+//
+// Sin claves foráneas, por la regla de siempre: ninguna tabla existente gana
+// una columna ni una restricción por esto. Están en la lista del guardián de
+// `db:push` y en la de CLAUDE.md.
+// ════════════════════════════════════════════════════════════════════════════
+import db from './db.js';
+
+let _ready = false;
+
+// ⚠️ TODO `ADD COLUMN` VA ENUMERADO ACÁ (la trampa de v4.908): `CREATE TABLE
+// IF NOT EXISTS` no amplía una tabla que ya existe, así que con el atajo
+// mirando sólo las tablas un ALTER nuevo no correría NUNCA en producción. Lo
+// fija `npm run test:video-pitch`, que recorre los ADD COLUMN del archivo.
+export const OWNED_COLUMNS = {
+    VideoPitchRequest: [],
+    VideoPitchFile: [],
+    VideoPitchScript: [],
+    VideoPitchEvent: [],
+    VideoPitchNotification: [],
+};
+
+const TABLES = Object.keys(OWNED_COLUMNS);
+
+export async function ensureVideoPitchSchema() {
+    if (_ready) return;
+    const columnas = Object.entries(OWNED_COLUMNS).flatMap(([t, cols]) => cols.map(c => `${t}.${c}`));
+    const { rows } = await db.query(
+        `SELECT (SELECT COUNT(*) FROM unnest($1::text[]) AS t(name) WHERE to_regclass('public."' || t.name || '"') IS NOT NULL)::int AS tablas,
+                (SELECT COUNT(*) FROM information_schema.columns
+                  WHERE table_name || '.' || column_name = ANY($2))::int AS columnas`,
+        [TABLES, columnas]
+    );
+    if (rows[0]?.tablas === TABLES.length && rows[0]?.columnas === columnas.length) { _ready = true; return; }
+
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "VideoPitchRequest" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            number TEXT,
+            "submissionId" TEXT NOT NULL,
+            "accountId" TEXT,
+            "eventId" TEXT,
+            status TEXT NOT NULL DEFAULT 'draft',
+            answers JSONB NOT NULL DEFAULT '{}'::jsonb,
+            "completionPct" INT NOT NULL DEFAULT 0,
+            "assigneeId" TEXT,
+            "assigneeName" TEXT,
+            "currentScriptId" TEXT,
+            "approvedScriptId" TEXT,
+            "deliverableFileId" TEXT,
+            "thumbnailFileId" TEXT,
+            "infoRequest" TEXT,
+            "adminNotes" TEXT,
+            "submittedAt" TIMESTAMPTZ,
+            "deliveredAt" TIMESTAMPTZ,
+            "lastEditedAt" TIMESTAMPTZ,
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "VideoPitchRequest_submission_key" ON "VideoPitchRequest" ("submissionId")`);
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "VideoPitchRequest_number_key" ON "VideoPitchRequest" (number) WHERE number IS NOT NULL`);
+    await db.query(`CREATE INDEX IF NOT EXISTS "VideoPitchRequest_event_status_idx" ON "VideoPitchRequest" ("eventId", status, "updatedAt" DESC)`);
+
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "VideoPitchFile" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "requestId" TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'material',
+            kind TEXT NOT NULL,
+            "storageKey" TEXT NOT NULL,
+            "fileName" TEXT NOT NULL,
+            "contentType" TEXT NOT NULL,
+            "sizeBytes" BIGINT NOT NULL,
+            width INT,
+            height INT,
+            "durationSec" NUMERIC(10,2),
+            warnings JSONB NOT NULL DEFAULT '[]'::jsonb,
+            caption TEXT,
+            "uploadedById" TEXT,
+            "uploadedByName" TEXT,
+            "uploadedByRole" TEXT,
+            "deletedAt" TIMESTAMPTZ,
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "VideoPitchFile_storage_key" ON "VideoPitchFile" ("storageKey")`);
+    await db.query(`CREATE INDEX IF NOT EXISTS "VideoPitchFile_request_idx" ON "VideoPitchFile" ("requestId", role, "createdAt")`);
+
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "VideoPitchScript" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "requestId" TEXT NOT NULL,
+            "versionNumber" INT NOT NULL,
+            source TEXT NOT NULL DEFAULT 'ai',
+            status TEXT NOT NULL DEFAULT 'draft',
+            language TEXT,
+            tone TEXT,
+            "targetSeconds" INT,
+            instructions TEXT,
+            content JSONB NOT NULL DEFAULT '{}'::jsonb,
+            provider TEXT,
+            model TEXT,
+            "basedOnId" TEXT,
+            "createdById" TEXT,
+            "createdByName" TEXT,
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "VideoPitchScript_version_key" ON "VideoPitchScript" ("requestId", "versionNumber")`);
+
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "VideoPitchEvent" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "requestId" TEXT NOT NULL,
+            type TEXT NOT NULL,
+            title TEXT,
+            detail TEXT,
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+            "actorId" TEXT,
+            "actorName" TEXT,
+            "actorRole" TEXT,
+            visibility TEXT NOT NULL DEFAULT 'all',
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS "VideoPitchEvent_request_idx" ON "VideoPitchEvent" ("requestId", "createdAt" DESC)`);
+
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "VideoPitchNotification" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "requestId" TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            "dedupeKey" TEXT NOT NULL,
+            channel TEXT NOT NULL DEFAULT 'email',
+            recipient TEXT,
+            status TEXT NOT NULL DEFAULT 'sent',
+            error TEXT,
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "VideoPitchNotification_dedupe_key" ON "VideoPitchNotification" ("requestId", "dedupeKey")`);
+    _ready = true;
+}
+
+export default ensureVideoPitchSchema;

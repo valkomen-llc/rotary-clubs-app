@@ -131,6 +131,10 @@
 // ProgramContent, ProgramContentVersion, ProgramChangeRequest, ProgramRequest,
 // ProgramSubscriber, ProgramFile, ProgramAuditLog, ProgramMetricDaily,
 // ProgramVisitor, ProgramLanding y ProgramLandingVersion.
+// Y las cinco del Video Pitch Profesional de la Feria de Proyectos (v4.1293):
+// VideoPitchRequest, VideoPitchFile, VideoPitchScript, VideoPitchEvent y
+// VideoPitchNotification — las solicitudes de los clubes, sus materiales, cada
+// versión de guion, el historial y qué aviso ya salió: nada se reconstruye.
 // Y las dos del formulario institucional de programas (v4.1286): ProgramIntake
 // (cada envío, una PROPUESTA con borrador y revisión por ítem) y
 // ProgramIntakeFile (sus archivos, privados hasta aplicarse).

@@ -70,7 +70,8 @@ import {
     Inbox,
     Film,
     Sliders,
-    Landmark
+    Landmark,
+    Clapperboard,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useSiteModulesConfig } from '../../hooks/useSiteModulesConfig';
@@ -639,6 +640,8 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                 { icon: Briefcase, label: 'Programas de Intercambio', path: '/admin/programas-intercambio', category: 'Management', keywords: ['programa', 'intercambio'] },
                 { icon: FolderKanban, label: 'Ferias de Proyectos', path: '/admin/ferias-proyectos', category: 'Management', keywords: ['feria', 'proyectos'] },
                 { icon: Wallet, label: 'Postulación de Proyectos', path: '/admin/postulaciones-pagos', category: 'Management', keywords: ['postulacion de proyectos', 'postulaciones y pagos', 'ediciones', 'versiones', 'postulaciones', 'pagos', 'stripe', 'trazabilidad', 'feria', 'proyectos', 'recaudo', 'alertas', 'reportes', 'auditoria', 'convocatoria', 'configuracion', 'inscripcion', 'trm', 'grants'] },
+                // v4.1293 — Video Pitch Profesional: la pestaña del módulo, con entrada propia en el menú.
+                { icon: Clapperboard, label: 'Video Pitch', path: '/admin/postulaciones-pagos?tab=videopitch', category: 'Management', keywords: ['video pitch', 'video', 'pitch', 'guion', 'guiones', 'produccion', 'feria', 'proyectos', 'solicitudes de video', 'storytelling'] },
                 { icon: Calendar, label: 'Eventos/Convenciones', path: '/admin/eventos-convenciones', category: 'Management', keywords: ['evento', 'convencion'] },
                 { icon: Users, label: 'Super Users', path: '/admin/usuarios', category: 'Management', keywords: ['usuario', 'admin'] },
                 { icon: HeartHandshake, label: 'Donaciones Globales', path: '/admin/donaciones', category: 'Management', keywords: ['donacion', 'aportes'] },
@@ -720,6 +723,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
             // entre ellas — por eso los módulos se calculaban pero no se veían.
             items.push(
                 { icon: Wallet, label: 'Postulación de Proyectos', path: '/admin/postulaciones-pagos', category: 'General', keywords: ['postulacion de proyectos', 'postulaciones y pagos', 'ediciones', 'versiones', 'postulaciones', 'pagos', 'stripe', 'trazabilidad', 'feria', 'proyectos', 'recaudo', 'alertas', 'reportes', 'auditoria', 'convocatoria', 'configuracion', 'inscripcion', 'formulario', 'trm', 'grants'] },
+                { icon: Clapperboard, label: 'Video Pitch', path: '/admin/postulaciones-pagos?tab=videopitch', category: 'General', keywords: ['video pitch', 'video', 'pitch', 'guion', 'guiones', 'produccion', 'feria', 'proyectos', 'solicitudes de video', 'storytelling'] },
             );
         }
 

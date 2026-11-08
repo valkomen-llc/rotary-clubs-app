@@ -45,6 +45,8 @@ import { FORM_STATE_META, fmtDateTime, type FormCard, type FormState } from '../
 import { inputCls, BLUE } from '../components/project-forms/FormFields';
 import ProjectFormView from '../components/project-forms/ProjectFormView';
 import { PresentationTemplateCard, NextStepCard } from '../components/project-forms/ProjectResourceCards';
+import { VideoPitchCard } from '../components/project-forms/VideoPitchCard';
+import VideoPitchRequestView from '../components/project-forms/VideoPitchRequestView';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 
@@ -181,6 +183,14 @@ const MiProyecto = () => {
     const [openForm, setOpenForm] = useState<string | null>(
         () => new URLSearchParams(window.location.search).get('form')
     );
+    // v4.1293 — La solicitud de Video Pitch, abierta a pantalla completa como
+    // un formulario más. También vive en la URL (?videoPitch=1): es el enlace
+    // que mandan los correos del módulo.
+    const [openVideoPitch, setOpenVideoPitch] = useState<boolean>(
+        () => new URLSearchParams(window.location.search).get('videoPitch') === '1'
+    );
+    // Cada cambio en la vista de Video Pitch repinta su tarjeta al volver.
+    const [vpRefresh, setVpRefresh] = useState(0);
     // El otro panel de esta misma persona, si tiene esa sesión abierta.
     const sessions = useSiteSessions();
     const otherPanel = sessions.find(x => x.realm === 'attendee') || null;
@@ -325,8 +335,19 @@ const MiProyecto = () => {
         if (key) url.searchParams.set('form', key); else url.searchParams.delete('form');
         window.history.pushState(null, '', url.toString());
     };
+    const openVideoPitchView = (open: boolean) => {
+        setOpenVideoPitch(open);
+        const url = new URL(window.location.href);
+        if (open) url.searchParams.set('videoPitch', '1'); else url.searchParams.delete('videoPitch');
+        window.history.pushState(null, '', url.toString());
+        if (!open) setVpRefresh(n => n + 1);
+    };
     useEffect(() => {
-        const onPop = () => setOpenForm(new URLSearchParams(window.location.search).get('form'));
+        const onPop = () => {
+            const params = new URLSearchParams(window.location.search);
+            setOpenForm(params.get('form'));
+            setOpenVideoPitch(params.get('videoPitch') === '1');
+        };
         window.addEventListener('popstate', onPop);
         return () => window.removeEventListener('popstate', onPop);
     }, []);
@@ -434,7 +455,14 @@ const MiProyecto = () => {
             </header>
 
             <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-                {current ? (
+                {openVideoPitch ? (
+                    <VideoPitchRequestView
+                        token={token}
+                        onBack={() => openVideoPitchView(false)}
+                        onChanged={() => setVpRefresh(n => n + 1)}
+                        onSessionExpired={logout}
+                    />
+                ) : current ? (
                     <ProjectFormView
                         token={token}
                         formKey={current.key}
@@ -561,6 +589,10 @@ const MiProyecto = () => {
                                     formularios: es un recurso de apoyo. */}
                                 <PresentationTemplateCard token={token} onSessionExpired={logout} />
                                 {data.nextStep?.url && <NextStepCard nextStep={data.nextStep} />}
+                                {/* v4.1293 — Video Pitch Profesional: ocupa las dos
+                                    columnas, debajo de la plantilla y de 31A. Su
+                                    estado llega resuelto del servidor. */}
+                                <VideoPitchCard token={token} onSessionExpired={logout} onOpen={() => openVideoPitchView(true)} refreshKey={vpRefresh} />
                             </div>
                         </section>
                     </>
