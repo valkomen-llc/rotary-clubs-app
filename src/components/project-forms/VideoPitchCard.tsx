@@ -18,9 +18,10 @@ import { AlertCircle, ChevronRight, Clapperboard, CreditCard, Loader2, PenLine, 
 import { BLUE } from './FormFields';
 import { vpFetch, vpFmtDateTime, vpTone, type VpCardCopy, type VpPortalView, type VpStatus } from '../../lib/videoPitch';
 
-const CARD = 'flex h-full min-w-0 flex-col rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm sm:col-span-2';
+// v4.1298 — Una columna: comparte fila con la tarjeta del video PROPIO del club (dos caminos, lado a lado).
+const CARD = 'flex h-full min-w-0 flex-col rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm';
 
-export const VIDEO_PITCH_DESCRIPTION = 'Presenta tu proyecto ante potenciales aliados y donantes mediante un video profesional que explique el problema, la solución, el impacto esperado y el apoyo que necesita tu comunidad.';
+export const VIDEO_PITCH_DESCRIPTION = '¿Necesitas un video de alto impacto para presentar tu proyecto ante potenciales aliados y donantes? Solicita nuestro servicio de producción profesional: guion, narración, animación y entrega lista para compartir.';
 
 /** Respaldo cuando el servidor (anterior a v4.1296) no manda la tarjeta resuelta. */
 const fallbackCard = (status: VpStatus, available: boolean): VpCardCopy => {
@@ -73,6 +74,7 @@ export const VideoPitchCard = ({ token, onSessionExpired, onOpen, refreshKey = 0
                 </span>
                 {state && (
                     <span className="flex flex-wrap justify-end gap-1.5">
+                        <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-blue-800">Producción profesional · Servicio de pago</span>
                         {commercial && commercial.status !== 'no_plan' && (
                             <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${vpTone(commercial.tone).badge}`}>
                                 <CreditCard size={11} /> {commercial.label}

@@ -139,6 +139,10 @@
 // VideoPitchOrder, VideoPitchStripeEvent y VideoPitchUploadIntent — el catálogo,
 // sus versiones, QUÉ SE COBRÓ a cada club y con qué precio, y qué evento de
 // Stripe ya se aplicó: perderlas es perder la contabilidad del servicio.
+// Y las cinco de los Videos de proyectos, el video propio del club (v4.1298):
+// ProjectVideo, ProjectVideoVersion, ProjectVideoEvent, ProjectVideoNotification
+// y ProjectVideoConfig — qué video subió cada club, qué versión, qué autorizó
+// y qué decidió el comité: no se reconstruye de ninguna parte.
 // Y las dos del formulario institucional de programas (v4.1286): ProgramIntake
 // (cada envío, una PROPUESTA con borrador y revisión por ítem) y
 // ProgramIntakeFile (sus archivos, privados hasta aplicarse).

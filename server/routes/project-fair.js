@@ -108,6 +108,20 @@ router.post('/portal/video-pitch/plan', portal.portalAuth, express.json({ limit:
 router.post('/portal/video-pitch/checkout', portal.portalAuth, vpJson, videoPitchCommerce.portalCheckout);
 router.post('/portal/video-pitch/checkout/sync', portal.portalAuth, vpJson, videoPitchCommerce.portalSyncCheckout);
 
+// ── Videos de proyectos: el video PROPIO del club (v4.1298) ─────────
+// Sin costo y sin Stripe: ficha, subida privada prefirmada validada por bytes,
+// versiones, envío a revisión, retiro y lectura firmada. La postulación sale
+// del token, nunca del cuerpo. Independiente del Video Pitch Profesional.
+import projectVideo from '../controllers/projectVideoController.js';
+
+router.get('/portal/project-video', portal.portalAuth, projectVideo.portalGet);
+router.post('/portal/project-video', portal.portalAuth, vpJson, projectVideo.portalSave);
+router.post('/portal/project-video/:id/presign', portal.portalAuth, vpJson, projectVideo.portalPresign);
+router.post('/portal/project-video/:id/versions', portal.portalAuth, vpJson, projectVideo.portalRegisterVersion);
+router.post('/portal/project-video/:id/submit', portal.portalAuth, vpJson, projectVideo.portalSubmit);
+router.post('/portal/project-video/:id/withdraw', portal.portalAuth, vpJson, projectVideo.portalWithdraw);
+router.get('/portal/project-video/:id/url', portal.portalAuth, projectVideo.portalUrl);
+
 // ── Gestión de Postulaciones y Pagos (v4.598) ────────────────────────
 // Estas rutas devuelven las postulaciones y los pagos de TODOS los clubes, así
 // que exigen sesión de plataforma CON rol administrativo del sitio o permiso
@@ -228,6 +242,18 @@ router.get('/admin/video-pitch/:id/scripts/:scriptId', authMiddleware, fairRead,
 router.post('/admin/video-pitch/:id/scripts/:scriptId/current', authMiddleware, fairEdit, vpJson, videoPitch.adminSetCurrentScript);
 router.post('/admin/video-pitch/:id/scripts/:scriptId/send', authMiddleware, fairEdit, vpJson, videoPitch.adminSendScript);
 router.post('/admin/video-pitch/:id/scripts/:scriptId/approve', authMiddleware, fairEdit, vpJson, videoPitch.adminApproveScript);
+
+// Videos de proyectos (v4.1298): la bandeja de videos propios, la ficha con su
+// reproducción, la revisión (estado con motivo, observaciones) y la
+// configuración por edición. `config` es LITERAL: antes de `/:id`.
+router.get('/admin/project-videos', authMiddleware, fairRead, projectVideo.adminList);
+router.get('/admin/project-videos/config', authMiddleware, fairRead, projectVideo.adminGetConfig);
+router.put('/admin/project-videos/config', authMiddleware, fairManage, vpJson, projectVideo.adminSaveConfig);
+router.get('/admin/project-videos/:id', authMiddleware, fairRead, projectVideo.adminGet);
+router.patch('/admin/project-videos/:id', authMiddleware, fairEdit, vpJson, projectVideo.adminUpdate);
+router.post('/admin/project-videos/:id/status', authMiddleware, fairEdit, vpJson, projectVideo.adminSetStatus);
+router.post('/admin/project-videos/:id/comments', authMiddleware, fairEdit, vpJson, projectVideo.adminComment);
+router.get('/admin/project-videos/:id/versions/:versionId/url', authMiddleware, fairRead, projectVideo.adminUrl);
 
 router.get('/admin/tags', authMiddleware, fairRead, fair.listTags);
 router.post('/admin/tags', authMiddleware, fairEdit, express.json(), fair.createTag);
