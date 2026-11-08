@@ -135,6 +135,10 @@
 // VideoPitchRequest, VideoPitchFile, VideoPitchScript, VideoPitchEvent y
 // VideoPitchNotification — las solicitudes de los clubes, sus materiales, cada
 // versión de guion, el historial y qué aviso ya salió: nada se reconstruye.
+// Y las cinco de su capa comercial (v4.1296): VideoPitchPlan, VideoPitchPlanVersion,
+// VideoPitchOrder, VideoPitchStripeEvent y VideoPitchUploadIntent — el catálogo,
+// sus versiones, QUÉ SE COBRÓ a cada club y con qué precio, y qué evento de
+// Stripe ya se aplicó: perderlas es perder la contabilidad del servicio.
 // Y las dos del formulario institucional de programas (v4.1286): ProgramIntake
 // (cada envío, una PROPUESTA con borrador y revisión por ítem) y
 // ProgramIntakeFile (sus archivos, privados hasta aplicarse).

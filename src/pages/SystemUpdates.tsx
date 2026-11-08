@@ -34,13 +34,32 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1295.0 | 2026-11-08 (Video Pitch: el paso B es un solo campo de información adicional)
+// UI V4.1296.0 | 2026-11-08 (Video Pitch: planes, Stripe, pagar después y configuración de precios)
 // Cache bust: 2026-11-08
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1296.0',
+        title: 'Video Pitch: planes, pago con Stripe o pagar después, y configuración de precios 💳',
+        description: 'El módulo de Video Pitch se convierte en un servicio con capa comercial: el club completa su solicitud, pulsa «Solicitar Video Pitch», elige entre los planes que el comité configura (al inicio Esencial USD 99 e Integral USD 135) y paga con Stripe ahora o después. Nada se pierde al cerrar la ventana, cambiar de plan o interrumpir un pago; la producción empieza con el pago confirmado.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'video pitch', 'stripe', 'pagos', 'planes', 'configuración'],
+        type: 'feature',
+        impact: 'Alta: el comité vende y cobra el servicio desde la plataforma, con precios que cambia sin tocar código y con trazabilidad completa de cada orden.',
+        changes: [
+            { type: 'changed', text: 'El botón principal del formulario dice «Solicitar Video Pitch»: valida los campos obligatorios, guarda la solicitud y abre la ventana «Elige tu Video Pitch Profesional» con las tarjetas comparativas de los planes, «Pagar ahora» y «Guardar y pagar después». Los precios y características vienen de la configuración, no del navegador.' },
+            { type: 'added', text: 'Pago con Stripe reutilizando la cuenta y el webhook único de la plataforma: el importe sale de la ORDEN (fotografía del precio al elegir el plan), el estado «pagado» sólo lo decide lo que Stripe confirma (webhook verificado e idempotente, o la sesión consultada al volver), un segundo clic reutiliza la sesión abierta, una sesión completa sin pagar no marca nada, y los pagos fallidos, vencidos y reembolsados quedan registrados con su comprobante.' },
+            { type: 'added', text: '«Guardar y pagar después»: la solicitud, el plan y los materiales quedan guardados; la tarjeta de «Mi proyecto» dice «Video Pitch pendiente de pago» con Pagar, Completar información y Cambiar plan. Cambiar de plan antes de pagar cancela la orden anterior y crea otra con el precio vigente. Al confirmarse el pago, la solicitud se envía sola al comité.' },
+            { type: 'added', text: 'Dos estados separados: el comercial (sin plan, plan seleccionado, pendiente de pago, en proceso, pagado, fallido, cancelado, reembolsado) y el de producción. Compuerta: el comité no pasa de la revisión a preparar el guion sin pago confirmado, salvo «Autorizar sin pago» con motivo, que queda auditado.' },
+            { type: 'added', text: 'Panel: pestaña «Configuración» del módulo para crear y editar planes (nombre, código, descripción, precio, moneda, características, formatos de entrega, duración, rondas de ajustes, orden, activo, etiqueta). Un cambio de precio o características crea una versión nueva; las órdenes anteriores conservan su precio. Historial del catálogo y limpieza de subidas huérfanas con política de retención.' },
+            { type: 'added', text: 'Bandeja: columna «Plan · Pago», filtro por estado de pago, indicadores de pendientes de pago, pagadas e ingresos; ficha con pestaña «Plan y pago» (plan contratado, precio, referencias y comprobante de Stripe, historial de órdenes, consultar a Stripe, autorizar sin pago).' },
+            { type: 'improved', text: 'Autoguardado con estado visible («Guardando…», «Todos los cambios guardados», reintento ante fallo de red) y protección frente a ediciones simultáneas: si otra pestaña guardó después, no se pisa y se muestra la versión más reciente.' },
+            { type: 'added', text: 'Avisos al club sin datos sensibles de pago: solicitud pendiente de pago, pago confirmado y pago fallido, una sola vez por hecho. Pruebas: test:video-pitch (criterio comercial) y test:video-pitch:e2e con Stripe simulado (checkout, webhook duplicado, pago fallido y reintento, cambio de plan, precio histórico, exoneración, limpieza).' },
+        ],
+    },
     {
         version: '4.1295.0',
         title: 'Video Pitch: el paso B es un solo campo de información adicional ✂️',

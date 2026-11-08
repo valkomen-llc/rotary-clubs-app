@@ -22,15 +22,15 @@
 // ════════════════════════════════════════════════════════════════════
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    AlertTriangle, ArrowUpDown, CheckCircle2, ChevronLeft, ChevronRight, Clapperboard, Download, FileSpreadsheet, FileText,
-    GitCompare, History, Image as ImageIcon, Loader2, MessageSquare, PlayCircle, RefreshCw, Save, Search, Send, Sparkles,
+    AlertTriangle, ArrowUpDown, CheckCircle2, ChevronLeft, ChevronRight, Clapperboard, CreditCard, Download, ExternalLink, FileSpreadsheet, FileText,
+    GitCompare, History, Image as ImageIcon, Loader2, MessageSquare, PlayCircle, Plus, RefreshCw, Save, Search, Send, Settings, ShieldCheck, Sparkles,
     Trash2, Upload, UserCheck, Video, Wand2, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { leerJson } from '../../../lib/leerJson';
 import {
     VP_API, vpFmtDateTime, vpFmtSeconds, vpPutWithProgress, vpReadMediaMeta, vpTone,
-    type VpCatalog, type VpEvent, type VpFile, type VpRequest, type VpScene, type VpScript, type VpScriptContent, type VpStatus, type VpStatusMeta,
+    type VpCatalog, type VpCommercial, type VpEvent, type VpFile, type VpOrder, type VpPlan, type VpRequest, type VpScene, type VpScript, type VpScriptContent, type VpStatus, type VpStatusMeta,
 } from '../../../lib/videoPitch';
 
 const BLUE = '#17458F';
@@ -45,8 +45,10 @@ interface Row {
     language: string; objective: string; materialCount: number; scriptCount: number; assigneeId: string | null; assigneeName: string | null;
     hasApprovedScript: boolean; hasDeliverable: boolean; completionPct: number; projectStateLabel: string;
     submittedAt: string | null; deliveredAt: string | null; createdAt: string; updatedAt: string;
+    // v4.1296 — capa comercial
+    commercialStatus: string; commercialLabel: string; commercialTone: string; planName: string | null; amount: number | null; currency: string | null; paidAt: string | null; paymentWaived: boolean;
 }
-interface Access { view: boolean; comment: boolean; manage: boolean; export: boolean; remove: boolean }
+interface Access { view: boolean; comment: boolean; manage: boolean; export: boolean; remove: boolean; config?: boolean }
 interface ListResponse {
     rows: Row[]; total: number; page: number; pageSize: number;
     kpis: Record<string, number>;
@@ -55,6 +57,7 @@ interface ListResponse {
 }
 interface Detail {
     request: VpRequest;
+    commercial: VpCommercial; orders: VpOrder[];
     submission: { id: string; publicRef: string; projectName: string; clubName: string; district: string; responsible: string; email: string; phone: string | null; focusAreaLabel: string | null; budgetUsd: number | null; projectDescription: string; projectStateLabel: string; hasMasterForm: boolean };
     files: VpFile[]; scripts: VpScript[]; events: VpEvent[];
     notifications: { kind: string; recipient: string; status: string; error: string | null; createdAt: string }[];
@@ -64,9 +67,10 @@ interface Detail {
 }
 
 const KPI_LABELS: [string, string][] = [
-    ['total', 'Total'], ['new', 'Nuevas'], ['pending_info', 'Pendientes de información'], ['pending_script', 'Pendientes de guion'],
-    ['in_production', 'En producción'], ['finished', 'Finalizadas'], ['delivered', 'Entregadas'],
+    ['total', 'Total'], ['new', 'Nuevas'], ['pending_payment', 'Pendientes de pago'], ['paid', 'Pagadas'], ['pending_info', 'Pendientes de información'], ['pending_script', 'Pendientes de guion'],
+    ['in_production', 'En producción'], ['delivered', 'Entregadas'],
 ];
+const fmtMoney = (n: number | null | undefined, cur?: string | null) => (n === null || n === undefined ? '—' : cur === 'COP' ? `$${Math.round(n).toLocaleString('es-CO')} COP` : `USD ${Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 })}`);
 
 const api = async <T,>(path: string, init: RequestInit = {}): Promise<{ res: Response; data: T | null }> => {
     const res = await fetch(`${VP_API}${path}`, { ...init, headers: { ...(init.body ? jsonHeaders() : authHeaders()), ...(init.headers || {}) }, signal: timeoutSignal() });
@@ -484,6 +488,191 @@ const Production = ({ detail, eventId, onUpdated }: { detail: Detail; eventId: s
     );
 };
 
+// ── Plan y pago (v4.1296) ────────────────────────────────────────────
+const CommercePanel = ({ detail, eventId, onUpdated }: { detail: Detail; eventId: string; onUpdated: () => void }) => {
+    const { commercial, orders, access, request } = detail;
+    const [note, setNote] = useState('');
+    const [busy, setBusy] = useState<null | 'waive' | 'sync'>(null);
+    const post = async (path: string, body: any, label: 'waive' | 'sync') => {
+        setBusy(label);
+        try {
+            const { res, data } = await api<{ error?: string; outcome?: string }>(withEvento(`/project-fair/admin/video-pitch/${request.id}${path}`, eventId), { method: 'POST', body: JSON.stringify(body) });
+            if (!res.ok) throw new Error(data?.error || 'No se pudo completar');
+            if (label === 'sync') toast.success(data?.outcome === 'paid' ? 'Pago confirmado por Stripe' : `Stripe: ${data?.outcome || 'sin cambios'}`);
+            else toast.success('Producción autorizada sin pago');
+            onUpdated();
+        } catch (e: any) { toast.error(e?.message); } finally { setBusy(null); }
+    };
+    const o = commercial.order;
+    return (
+        <div className="space-y-4">
+            <Card title="Plan contratado y estado del pago" icon={CreditCard} right={<Badge label={commercial.label} tone={commercial.tone} />}>
+                {o ? (
+                    <dl className="grid gap-3 text-[13px] sm:grid-cols-2">
+                        <div><dt className="font-semibold text-slate-500">Plan</dt><dd className="text-slate-800">{o.planName} <span className="text-slate-400">({o.planCode}{o.snapshot?.deliverables?.length ? ` · ${o.snapshot.deliverables.join(' + ')}` : ''})</span></dd></div>
+                        <div><dt className="font-semibold text-slate-500">Precio contratado</dt><dd className="text-slate-800">{o.amountLabel} <span className="text-[11px] text-slate-400">fotografía al elegir el plan; cambiar el catálogo no la mueve</span></dd></div>
+                        <div><dt className="font-semibold text-slate-500">Estado de la orden</dt><dd className="text-slate-800">{o.statusLabel}{o.paidAt ? ` · ${vpFmtDateTime(o.paidAt)}` : ''}</dd></div>
+                        <div><dt className="font-semibold text-slate-500">Referencias de Stripe</dt><dd className="break-all font-mono text-[11px] text-slate-600">{o.stripePaymentIntentId || o.stripeSessionId || '—'}{o.stripeChargeId ? ` · ${o.stripeChargeId}` : ''}</dd></div>
+                        {o.failureMessage && <div className="sm:col-span-2"><dt className="font-semibold text-slate-500">Último fallo</dt><dd className="text-red-700">{o.failureMessage}{o.failureCode ? ` (${o.failureCode})` : ''}</dd></div>}
+                        {o.receiptUrl && <div className="sm:col-span-2"><a href={o.receiptUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[13px] font-semibold hover:underline" style={{ color: BLUE }}><ExternalLink size={13} /> Comprobante de Stripe</a></div>}
+                        {o.snapshot?.features?.length > 0 && <div className="sm:col-span-2"><dt className="font-semibold text-slate-500">Características contratadas</dt><dd><ul className="mt-1 list-disc pl-5 text-slate-700">{o.snapshot.features.map((f: string, i: number) => <li key={i}>{f}</li>)}</ul></dd></div>}
+                    </dl>
+                ) : <p className="text-sm text-slate-500">El club todavía no eligió un plan.</p>}
+                {commercial.paymentWaived && <p className="mt-3 flex items-start gap-1.5 rounded-lg bg-violet-50 px-3 py-2 text-[12px] text-violet-900"><ShieldCheck size={13} className="mt-0.5 shrink-0" /> Producción autorizada sin pago por {request.paymentWaivedBy || 'un administrador'}: {request.paymentWaivedNote}</p>}
+                {access.manage && (
+                    <div className="mt-4 flex flex-wrap items-start gap-2 border-t border-slate-200 pt-4">
+                        {o && ['pending_payment', 'processing', 'failed'].includes(o.status) && <Btn onClick={() => post('/payment/sync', {}, 'sync')} disabled={busy !== null}>{busy === 'sync' ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Consultar a Stripe</Btn>}
+                        {!commercial.paymentWaived && commercial.status !== 'paid' && (
+                            <div className="flex min-w-[260px] flex-1 flex-col gap-2 rounded-lg bg-slate-50 p-3">
+                                <p className="text-[12px] font-semibold text-slate-700">Autorizar la producción sin pago confirmado</p>
+                                <input value={note} onChange={e => setNote(e.target.value)} placeholder="Motivo (obligatorio, queda en el historial)" className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs" />
+                                <div><Btn kind="danger" onClick={() => { if (note.trim() && window.confirm('¿Autorizar la producción sin pago? Queda registrado con tu nombre.')) post('/payment/waive', { note }, 'waive'); }} disabled={busy !== null || !note.trim()}>{busy === 'waive' ? <Loader2 size={13} className="animate-spin" /> : <ShieldCheck size={13} />} Autorizar sin pago</Btn></div>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </Card>
+            <Card title={`Historial de órdenes (${orders.length})`} icon={History}>
+                {!orders.length && <p className="text-sm text-slate-400">Sin órdenes.</p>}
+                <ul className="space-y-2 text-[12px]">
+                    {orders.map(x => (
+                        <li key={x.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 px-3 py-2">
+                            <span className="font-semibold text-slate-800">{x.planName}</span>
+                            <span className="text-slate-600">{x.amountLabel}</span>
+                            <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${x.status === 'paid' ? 'bg-emerald-50 text-emerald-700' : x.status === 'cancelled' ? 'bg-slate-100 text-slate-500' : x.status === 'failed' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-800'}`}>{x.statusLabel}</span>
+                            <span className="text-slate-400">{vpFmtDateTime(x.createdAt)}</span>
+                            {x.cancelReason && <span className="text-slate-400">· {x.cancelReason}</span>}
+                            {x.paidAt && <span className="text-emerald-700">· pagada {vpFmtDateTime(x.paidAt)}</span>}
+                        </li>
+                    ))}
+                </ul>
+            </Card>
+        </div>
+    );
+};
+
+// ── Configuración de planes (v4.1296) ────────────────────────────────
+const EMPTY_PLAN: Partial<VpPlan> = { code: '', name: '', description: '', badge: '', priceAmount: 0, currency: 'USD', features: [], deliverables: ['16:9'], maxDurationSec: 180, revisionRounds: 3, sortOrder: 0, active: true };
+
+const PlanEditor = ({ plan, formats, currencies, onSaved, onCancel }: { plan: Partial<VpPlan>; formats: { key: string; label: string }[]; currencies: string[]; onSaved: () => void; onCancel?: () => void }) => {
+    const [draft, setDraft] = useState<Partial<VpPlan>>(plan);
+    const [featuresText, setFeaturesText] = useState((plan.features || []).join('\n'));
+    const [busy, setBusy] = useState(false);
+    const isNew = !plan.id;
+    const save = async () => {
+        setBusy(true);
+        try {
+            const body = { ...draft, features: featuresText.split('\n').map(f => f.trim()).filter(Boolean) };
+            const { res, data } = await api<{ error?: string; newVersion?: boolean }>(isNew ? '/project-fair/admin/video-pitch/plans' : `/project-fair/admin/video-pitch/plans/${plan.id}`, { method: isNew ? 'POST' : 'PUT', body: JSON.stringify(body) });
+            if (!res.ok) throw new Error(data?.error || 'No se pudo guardar');
+            toast.success(isNew ? 'Plan creado' : data?.newVersion ? 'Plan guardado: versión nueva (las órdenes anteriores conservan su precio)' : 'Plan guardado');
+            onSaved();
+        } catch (e: any) { toast.error(e?.message); } finally { setBusy(false); }
+    };
+    const field = (label: string, el: React.ReactNode, span = false) => <label className={`text-[11px] font-semibold text-slate-500 ${span ? 'sm:col-span-2' : ''}`}>{label}{el}</label>;
+    const input = 'mt-1 w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-normal text-slate-900';
+    return (
+        <div className="rounded-xl border border-blue-200 bg-blue-50/30 p-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+                {field('Nombre del plan', <input value={draft.name || ''} onChange={e => setDraft({ ...draft, name: e.target.value })} className={input} />)}
+                {field('Código interno', <input value={draft.code || ''} disabled={!isNew} onChange={e => setDraft({ ...draft, code: e.target.value })} className={`${input} disabled:bg-slate-100`} placeholder="essential" />)}
+                {field('Descripción', <input value={draft.description || ''} onChange={e => setDraft({ ...draft, description: e.target.value })} className={input} />, true)}
+                {field('Precio', <input type="number" min={0} step="0.01" value={draft.priceAmount ?? 0} onChange={e => setDraft({ ...draft, priceAmount: Number(e.target.value) })} className={input} />)}
+                {field('Moneda', <select value={draft.currency || 'USD'} onChange={e => setDraft({ ...draft, currency: e.target.value })} className={input}>{currencies.map(c => <option key={c} value={c}>{c}</option>)}</select>)}
+                {field('Características incluidas (una por línea)', <textarea value={featuresText} onChange={e => setFeaturesText(e.target.value)} rows={6} className={input} />, true)}
+                {field('Formatos de entrega', (
+                    <div className="mt-1 flex flex-wrap gap-3">
+                        {formats.map(f => (
+                            <label key={f.key} className="flex items-center gap-1.5 text-sm font-normal text-slate-700">
+                                <input type="checkbox" checked={(draft.deliverables || []).includes(f.key)} onChange={e => setDraft({ ...draft, deliverables: e.target.checked ? [...(draft.deliverables || []), f.key] : (draft.deliverables || []).filter(x => x !== f.key) })} /> {f.label}
+                            </label>
+                        ))}
+                    </div>
+                ), true)}
+                {field('Duración máxima (segundos)', <input type="number" min={30} max={600} value={draft.maxDurationSec ?? 180} onChange={e => setDraft({ ...draft, maxDurationSec: Number(e.target.value) })} className={input} />)}
+                {field('Rondas de ajustes', <input type="number" min={0} max={10} value={draft.revisionRounds ?? 3} onChange={e => setDraft({ ...draft, revisionRounds: Number(e.target.value) })} className={input} />)}
+                {field('Orden de visualización', <input type="number" min={0} max={99} value={draft.sortOrder ?? 0} onChange={e => setDraft({ ...draft, sortOrder: Number(e.target.value) })} className={input} />)}
+                {field('Etiqueta destacada (opcional)', <input value={draft.badge || ''} onChange={e => setDraft({ ...draft, badge: e.target.value })} className={input} placeholder="Recomendado" />)}
+                <label className="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2"><input type="checkbox" checked={draft.active !== false} onChange={e => setDraft({ ...draft, active: e.target.checked })} /> Plan activo (visible para los clubes)</label>
+            </div>
+            <div className="mt-3 flex gap-2">
+                <Btn kind="primary" onClick={save} disabled={busy}>{busy ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} {isNew ? 'Crear plan' : 'Guardar cambios'}</Btn>
+                {onCancel && <Btn onClick={onCancel}>Cancelar</Btn>}
+            </div>
+            {!isNew && <p className="mt-2 text-[11px] text-slate-500">Cambiar el precio o las características crea una versión nueva del plan. Las órdenes ya creadas conservan el precio con el que se compraron.</p>}
+        </div>
+    );
+};
+
+const PlansConfig = () => {
+    const [data, setData] = useState<{ plans: VpPlan[]; formats: { key: string; label: string }[]; currencies: string[]; access: { config: boolean } } | null>(null);
+    const [history, setHistory] = useState<{ id: string; type: string; title: string; actorName: string | null; createdAt: string }[]>([]);
+    const [editing, setEditing] = useState<string | null>(null);
+    const [creating, setCreating] = useState(false);
+    const [cleanBusy, setCleanBusy] = useState(false);
+    const load = useCallback(async () => {
+        const [{ res, data }, hist] = await Promise.all([api<any>('/project-fair/admin/video-pitch/plans'), api<any>('/project-fair/admin/video-pitch/plans/history')]);
+        if (!res.ok || !data?.plans) { toast.error(data?.error || 'No se pudo cargar la configuración'); return; }
+        setData(data); setHistory(hist.data?.history || []);
+    }, []);
+    useEffect(() => { load(); }, [load]);
+    const cleanup = async () => {
+        setCleanBusy(true);
+        try {
+            const plan = await api<{ candidates: number; hours: number; error?: string }>('/project-fair/admin/video-pitch/maintenance/cleanup', { method: 'POST', body: JSON.stringify({ confirm: false }) });
+            if (!plan.res.ok) throw new Error(plan.data?.error || 'No se pudo planear');
+            if (!plan.data?.candidates) { toast.success('No hay subidas huérfanas que limpiar'); return; }
+            if (!window.confirm(`${plan.data.candidates} subida(s) sin registrar con más de ${plan.data.hours} horas. Sólo se borran objetos que ningún archivo registrado usa. ¿Continuar?`)) return;
+            const { res, data } = await api<{ deleted: number; missing: number; error?: string }>('/project-fair/admin/video-pitch/maintenance/cleanup', { method: 'POST', body: JSON.stringify({ confirm: true }) });
+            if (!res.ok) throw new Error(data?.error || 'No se pudo limpiar');
+            toast.success(`${data?.deleted || 0} objeto(s) borrados · ${data?.missing || 0} ya no existían`);
+            load();
+        } catch (e: any) { toast.error(e?.message); } finally { setCleanBusy(false); }
+    };
+    if (!data) return <div className="flex items-center gap-2 py-10 text-slate-500"><Loader2 className="animate-spin" size={18} /> Cargando configuración…</div>;
+    const canEdit = data.access.config;
+    return (
+        <div className="space-y-4">
+            <Card title="Planes comerciales" icon={Settings} right={canEdit && !creating ? <Btn kind="primary" onClick={() => setCreating(true)}><Plus size={13} /> Nuevo plan</Btn> : undefined}>
+                <p className="mb-4 text-[12px] text-slate-500">Los clubes eligen entre estos planes al solicitar el video. El precio que ven y el que se cobra en Stripe sale de aquí; nunca del navegador. {!canEdit && 'Tu perfil puede consultar, no editar.'}</p>
+                {creating && <div className="mb-4"><PlanEditor plan={EMPTY_PLAN} formats={data.formats} currencies={data.currencies} onSaved={() => { setCreating(false); load(); }} onCancel={() => setCreating(false)} /></div>}
+                <div className="grid gap-3 md:grid-cols-2">
+                    {data.plans.map(p => (
+                        <div key={p.id} className={`rounded-xl border p-4 ${p.active ? 'border-slate-200 bg-white' : 'border-dashed border-slate-300 bg-slate-50'}`}>
+                            {editing === p.id ? (
+                                <PlanEditor plan={p} formats={data.formats} currencies={data.currencies} onSaved={() => { setEditing(null); load(); }} onCancel={() => setEditing(null)} />
+                            ) : (
+                                <>
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div>
+                                            <p className="flex flex-wrap items-center gap-2 text-sm font-bold text-slate-900">{p.name} {p.badge && <span className="rounded-full px-2 py-0.5 text-[10px] font-bold text-white" style={{ background: '#F7A81B' }}>{p.badge}</span>} {!p.active && <span className="rounded bg-slate-200 px-1.5 text-[10px] font-bold text-slate-600">Inactivo</span>}</p>
+                                            <p className="text-[12px] text-slate-500">{p.code} · {p.description}</p>
+                                        </div>
+                                        <p className="text-xl font-bold text-slate-900">{p.priceLabel}</p>
+                                    </div>
+                                    <ul className="mt-3 space-y-1">{p.features.map((f, i) => <li key={i} className="flex items-start gap-1.5 text-[12px] text-slate-700"><CheckCircle2 size={12} className="mt-0.5 shrink-0 text-emerald-600" /> {f}</li>)}</ul>
+                                    <p className="mt-3 text-[11px] text-slate-500">{p.deliverables.join(' + ')} · hasta {Math.round(p.maxDurationSec / 60)} min · {p.revisionRounds} rondas de ajustes · {p.versions?.length || 0} versión(es) · {p.orders || 0} orden(es), {p.paidOrders || 0} pagada(s)</p>
+                                    {canEdit && <div className="mt-3"><Btn onClick={() => setEditing(p.id)}>Editar</Btn></div>}
+                                </>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            </Card>
+            <Card title="Historial del catálogo" icon={History}>
+                {!history.length && <p className="text-sm text-slate-400">Sin cambios registrados.</p>}
+                <ul className="space-y-1 text-[12px]">{history.map(h => <li key={h.id} className="flex flex-wrap gap-2"><span className="font-semibold text-slate-700">{h.title}</span><span className="text-slate-400">{h.actorName || ''} · {vpFmtDateTime(h.createdAt)}</span></li>)}</ul>
+            </Card>
+            {canEdit && (
+                <Card title="Mantenimiento" icon={Trash2}>
+                    <p className="text-[12px] text-slate-500">Las subidas que el navegador inició pero nunca registró (cerró la pestaña a mitad) quedan en el almacenamiento privado. Esta limpieza sólo borra objetos de más de 48 horas que ningún archivo registrado use; nunca materiales ni videos vinculados a una solicitud.</p>
+                    <div className="mt-3"><Btn onClick={cleanup} disabled={cleanBusy}>{cleanBusy ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Limpiar subidas huérfanas</Btn></div>
+                </Card>
+            )}
+        </div>
+    );
+};
+
 // ── Historial ────────────────────────────────────────────────────────
 const HistoryPanel = ({ detail, eventId, onUpdated }: { detail: Detail; eventId: string; onUpdated: () => void }) => {
     const [text, setText] = useState('');
@@ -542,7 +731,7 @@ const HistoryPanel = ({ detail, eventId, onUpdated }: { detail: Detail; eventId:
 };
 
 // ── Ficha ────────────────────────────────────────────────────────────
-type DetailTab = 'summary' | 'materials' | 'script' | 'production' | 'history';
+type DetailTab = 'summary' | 'commerce' | 'materials' | 'script' | 'production' | 'history';
 const DetailDrawer = ({ id, eventId, assignees, onClose, onChanged }: { id: string; eventId: string; assignees: string[]; onClose: () => void; onChanged: () => void }) => {
     const [detail, setDetail] = useState<Detail | null>(null);
     const [tab, setTab] = useState<DetailTab>('summary');
@@ -589,6 +778,7 @@ const DetailDrawer = ({ id, eventId, assignees, onClose, onChanged }: { id: stri
                                     <div className="flex flex-wrap items-center gap-2">
                                         <span className="font-mono text-sm font-bold text-slate-500">{r.number || 'Sin número'}</span>
                                         <Badge label={r.statusLabel} tone={r.statusTone} />
+                                        <Badge label={detail.commercial.label} tone={detail.commercial.tone} />
                                         <span className="text-[11px] text-slate-400">Postulación {detail.submission.publicRef} · {detail.submission.projectStateLabel}</span>
                                     </div>
                                     <h2 className="mt-1 truncate text-xl font-bold text-slate-900">{detail.submission.projectName}</h2>
@@ -597,7 +787,7 @@ const DetailDrawer = ({ id, eventId, assignees, onClose, onChanged }: { id: stri
                                 <button onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><X size={18} /></button>
                             </div>
                             <nav className="mt-3 flex gap-1 overflow-x-auto">
-                                {([['summary', 'Resumen', FileText], ['materials', `Materiales (${detail.files.filter(f => f.role === 'material' && !f.deletedAt).length})`, ImageIcon], ['script', `Guion (${detail.scripts.length})`, Sparkles], ['production', 'Producción', Clapperboard], ['history', 'Historial', History]] as const).map(([key, label, Icon]) => (
+                                {([['summary', 'Resumen', FileText], ['commerce', 'Plan y pago', CreditCard], ['materials', `Materiales (${detail.files.filter(f => f.role === 'material' && !f.deletedAt).length})`, ImageIcon], ['script', `Guion (${detail.scripts.length})`, Sparkles], ['production', 'Producción', Clapperboard], ['history', 'Historial', History]] as const).map(([key, label, Icon]) => (
                                     <button key={key} onClick={() => setTab(key)} className={`inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 text-xs font-semibold ${tab === key ? 'border-blue-700 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><Icon size={13} /> {label}</button>
                                 ))}
                             </nav>
@@ -647,6 +837,7 @@ const DetailDrawer = ({ id, eventId, assignees, onClose, onChanged }: { id: stri
                             {tab === 'materials' && <Gallery detail={detail} eventId={eventId} onDelete={deleteFile} />}
                             {tab === 'script' && <ScriptEditor detail={detail} eventId={eventId} onUpdated={updated} />}
                             {tab === 'production' && <Production detail={detail} eventId={eventId} onUpdated={updated} />}
+                            {tab === 'commerce' && <CommercePanel detail={detail} eventId={eventId} onUpdated={() => { load(); onChanged(); }} />}
                             {tab === 'history' && <HistoryPanel detail={detail} eventId={eventId} onUpdated={() => { load(); onChanged(); }} />}
                         </div>
                     </>
@@ -665,6 +856,8 @@ const SortableTh = ({ k, sort, onToggle, children }: { k: string; sort: string; 
 
 // ── Bandeja ──────────────────────────────────────────────────────────
 const VideoPitchAdmin = ({ eventId }: { eventId: string }) => {
+    const [mode, setMode] = useState<'requests' | 'config'>('requests');
+    const [commercialFilter, setCommercialFilter] = useState('');
     const [data, setData] = useState<ListResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -691,7 +884,7 @@ const VideoPitchAdmin = ({ eventId }: { eventId: string }) => {
     const load = useCallback(async () => {
         setLoading(true); setError(null);
         try {
-            const params = new URLSearchParams({ evento: eventId || '', q: qApplied, status, district, assignee, sort, dir, page: String(page), pageSize: '20' });
+            const params = new URLSearchParams({ evento: eventId || '', q: qApplied, status, district, assignee, commercial: commercialFilter, sort, dir, page: String(page), pageSize: '20' });
             const { res, data } = await api<ListResponse & { error?: string }>(`/project-fair/admin/video-pitch?${params}`);
             if (!res.ok || !data?.rows) throw new Error((data as any)?.error || 'No se pudo cargar la bandeja');
             setData(data);
@@ -700,7 +893,7 @@ const VideoPitchAdmin = ({ eventId }: { eventId: string }) => {
         } finally {
             setLoading(false);
         }
-    }, [eventId, qApplied, status, district, assignee, sort, dir, page]);
+    }, [eventId, qApplied, status, district, assignee, commercialFilter, sort, dir, page]);
     useEffect(() => { load(); }, [load]);
 
     const openDetail = (id: string | null) => {
@@ -732,7 +925,7 @@ const VideoPitchAdmin = ({ eventId }: { eventId: string }) => {
     };
 
     const exportCsv = async () => {
-        const params = new URLSearchParams({ evento: eventId || '', q: qApplied, status, district, assignee, sort, dir });
+        const params = new URLSearchParams({ evento: eventId || '', q: qApplied, status, district, assignee, commercial: commercialFilter, sort, dir });
         const res = await fetch(`${VP_API}/project-fair/admin/video-pitch/export.csv?${params}`, { headers: authHeaders() });
         if (!res.ok) { toast.error('No se pudo exportar'); return; }
         const blob = await res.blob();
@@ -750,21 +943,31 @@ const VideoPitchAdmin = ({ eventId }: { eventId: string }) => {
                     <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900"><Clapperboard size={20} style={{ color: BLUE }} /> Video Pitch Profesional</h2>
                     <p className="text-sm text-slate-500">Solicitudes de video de presentación que los clubes envían desde «Mi proyecto»: revisión, guion con IA, aprobación, producción y entrega.</p>
                 </div>
-                <div className="flex gap-2">
-                    <Btn onClick={load} disabled={loading}><RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Actualizar</Btn>
-                    {data?.access.export && <Btn onClick={exportCsv}><FileSpreadsheet size={13} /> Exportar CSV</Btn>}
+                <div className="flex flex-wrap gap-2">
+                    <div className="flex rounded-lg border border-slate-300 p-0.5">
+                        <button type="button" onClick={() => setMode('requests')} className={`rounded-md px-3 py-1 text-xs font-semibold ${mode === 'requests' ? 'bg-slate-900 text-white' : 'text-slate-600'}`}>Solicitudes</button>
+                        <button type="button" onClick={() => setMode('config')} className={`inline-flex items-center gap-1 rounded-md px-3 py-1 text-xs font-semibold ${mode === 'config' ? 'bg-slate-900 text-white' : 'text-slate-600'}`}><Settings size={12} /> Configuración</button>
+                    </div>
+                    {mode === 'requests' && <Btn onClick={load} disabled={loading}><RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Actualizar</Btn>}
+                    {mode === 'requests' && data?.access.export && <Btn onClick={exportCsv}><FileSpreadsheet size={13} /> Exportar CSV</Btn>}
                 </div>
             </div>
+
+            {mode === 'config' && <PlansConfig />}
+            {mode === 'requests' && <>
 
             {error && <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"><AlertTriangle size={16} className="mt-0.5 shrink-0" /> {error} <button onClick={load} className="ml-auto font-bold underline">Reintentar</button></div>}
 
             {data && (
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
                     {KPI_LABELS.map(([k, label]) => (
-                        <button key={k} type="button" onClick={() => { setStatus(k === 'new' ? 'submitted' : k === 'pending_info' ? 'info_required' : k === 'finished' ? 'finished' : k === 'delivered' ? 'delivered' : ''); setPage(1); }}
-                            className="rounded-xl border border-slate-200 bg-white p-3 text-left hover:border-slate-300">
+                        <button key={k} type="button" onClick={() => {
+                            setCommercialFilter(k === 'pending_payment' ? 'open' : k === 'paid' ? 'paid' : '');
+                            setStatus(k === 'new' ? 'submitted' : k === 'pending_info' ? 'info_required' : k === 'delivered' ? 'delivered' : ''); setPage(1);
+                        }} className="rounded-xl border border-slate-200 bg-white p-3 text-left hover:border-slate-300">
                             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
                             <p className="mt-1 text-2xl font-bold text-slate-900">{data.kpis[k] ?? 0}</p>
+                            {k === 'paid' && <p className="text-[11px] text-emerald-700">{fmtMoney(data.kpis.revenue, 'USD')}</p>}
                         </button>
                     ))}
                 </div>
@@ -782,6 +985,14 @@ const VideoPitchAdmin = ({ eventId }: { eventId: string }) => {
                 <select value={district} onChange={e => { setDistrict(e.target.value); setPage(1); }} className="rounded-lg border border-slate-300 px-2 py-2 text-sm">
                     <option value="">Todos los distritos</option>
                     {data?.filters.districts.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+                <select value={commercialFilter} onChange={e => { setCommercialFilter(e.target.value); setPage(1); }} className="rounded-lg border border-slate-300 px-2 py-2 text-sm">
+                    <option value="">Cualquier pago</option>
+                    <option value="open">Pendientes de pago</option>
+                    <option value="paid">Pagadas</option>
+                    <option value="failed">Pago fallido</option>
+                    <option value="refunded">Reembolsadas</option>
+                    <option value="no_plan">Sin plan</option>
                 </select>
                 <select value={assignee} onChange={e => { setAssignee(e.target.value); setPage(1); }} className="rounded-lg border border-slate-300 px-2 py-2 text-sm">
                     <option value="">Cualquier responsable</option>
@@ -815,15 +1026,16 @@ const VideoPitchAdmin = ({ eventId }: { eventId: string }) => {
                             <SortableTh sort={sort} onToggle={toggleSort} k="district">Distrito</SortableTh>
                             <th className="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wide text-slate-500">Responsable</th>
                             <SortableTh sort={sort} onToggle={toggleSort} k="updatedAt">Actualizada</SortableTh>
-                            <SortableTh sort={sort} onToggle={toggleSort} k="status">Estado</SortableTh>
+                            <th className="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wide text-slate-500">Plan · Pago</th>
+                            <SortableTh sort={sort} onToggle={toggleSort} k="status">Producción</SortableTh>
                             <th className="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wide text-slate-500">Materiales</th>
                             <th className="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wide text-slate-500">Producción</th>
                             <th className="px-3 py-2" />
                         </tr>
                     </thead>
                     <tbody>
-                        {loading && !data && <tr><td colSpan={11} className="px-3 py-10 text-center text-slate-400"><Loader2 className="mr-2 inline animate-spin" size={16} /> Cargando…</td></tr>}
-                        {data && !data.rows.length && <tr><td colSpan={11} className="px-3 py-10 text-center text-slate-400">No hay solicitudes con estos filtros.</td></tr>}
+                        {loading && !data && <tr><td colSpan={12} className="px-3 py-10 text-center text-slate-400"><Loader2 className="mr-2 inline animate-spin" size={16} /> Cargando…</td></tr>}
+                        {data && !data.rows.length && <tr><td colSpan={12} className="px-3 py-10 text-center text-slate-400">No hay solicitudes con estos filtros.</td></tr>}
                         {data?.rows.map(r => (
                             <tr key={r.id} className="border-b border-slate-100 hover:bg-slate-50">
                                 <td className="px-3 py-2"><input type="checkbox" checked={selected.has(r.id)} onChange={e => { const n = new Set(selected); if (e.target.checked) n.add(r.id); else n.delete(r.id); setSelected(n); }} /></td>
@@ -833,6 +1045,11 @@ const VideoPitchAdmin = ({ eventId }: { eventId: string }) => {
                                 <td className="px-3 py-2 text-slate-700">{r.district}</td>
                                 <td className="max-w-[180px] px-3 py-2"><p className="truncate text-slate-700">{r.responsibleName}</p><p className="truncate text-[11px] text-slate-400">{r.email}</p></td>
                                 <td className="px-3 py-2 text-[12px] text-slate-500">{vpFmtDateTime(r.updatedAt)}</td>
+                                <td className="px-3 py-2">
+                                    <p className="text-[12px] font-semibold text-slate-800">{r.planName || <span className="font-normal text-slate-400">Sin plan</span>}{r.amount !== null ? <span className="font-normal text-slate-500"> · {fmtMoney(r.amount, r.currency)}</span> : null}</p>
+                                    <div className="mt-0.5 flex flex-wrap items-center gap-1"><Badge label={r.commercialLabel} tone={r.commercialTone} />{r.paymentWaived && <span title="Producción autorizada sin pago"><ShieldCheck size={13} className="text-violet-600" /></span>}</div>
+                                    {r.paidAt && <p className="text-[11px] text-slate-400">{vpFmtDateTime(r.paidAt)}</p>}
+                                </td>
                                 <td className="px-3 py-2"><Badge label={r.statusLabel} tone={r.statusTone} /></td>
                                 <td className="px-3 py-2 text-slate-700">{r.materialCount}</td>
                                 <td className="px-3 py-2 text-[12px] text-slate-600">
@@ -857,6 +1074,7 @@ const VideoPitchAdmin = ({ eventId }: { eventId: string }) => {
             )}
 
             {detailId && <DetailDrawer id={detailId} eventId={eventId} assignees={data?.filters.assignees || []} onClose={() => openDetail(null)} onChanged={load} />}
+            </>}
         </div>
     );
 };

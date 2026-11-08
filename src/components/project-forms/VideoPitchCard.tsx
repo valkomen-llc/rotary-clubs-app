@@ -14,23 +14,27 @@
 // en cada render (v4.971).
 // ════════════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useState } from 'react';
-import { AlertCircle, ChevronRight, Clapperboard, Loader2, PenLine, PlayCircle, RefreshCw, Video } from 'lucide-react';
+import { AlertCircle, ChevronRight, Clapperboard, CreditCard, Loader2, PenLine, RefreshCw, Video } from 'lucide-react';
 import { BLUE } from './FormFields';
-import { vpFetch, vpFmtDateTime, vpTone, type VpPortalView, type VpStatus } from '../../lib/videoPitch';
+import { vpFetch, vpFmtDateTime, vpTone, type VpCardCopy, type VpPortalView, type VpStatus } from '../../lib/videoPitch';
 
 const CARD = 'flex h-full min-w-0 flex-col rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm sm:col-span-2';
 
 export const VIDEO_PITCH_DESCRIPTION = 'Presenta tu proyecto ante potenciales aliados y donantes mediante un video profesional que explique el problema, la solución, el impacto esperado y el apoyo que necesita tu comunidad.';
 
-const actionFor = (status: VpStatus, available: boolean) => {
-    if (!available) return null;
-    if (status === 'not_requested') return { label: 'Solicitar video pitch', Icon: Clapperboard };
-    if (status === 'draft' || status === 'info_required') return { label: 'Continuar solicitud', Icon: PenLine };
-    if (status === 'delivered') return { label: 'Ver video', Icon: PlayCircle };
-    return { label: 'Ver seguimiento', Icon: ChevronRight };
+/** Respaldo cuando el servidor (anterior a v4.1296) no manda la tarjeta resuelta. */
+const fallbackCard = (status: VpStatus, available: boolean): VpCardCopy => {
+    if (!available) return { headline: null, actions: [] };
+    if (status === 'not_requested') return { headline: null, actions: [{ key: 'start', label: 'Solicitar Video Pitch' }] };
+    if (status === 'draft' || status === 'info_required') return { headline: null, actions: [{ key: 'open', label: 'Continuar solicitud' }] };
+    if (status === 'delivered') return { headline: null, actions: [{ key: 'open', label: 'Ver video' }] };
+    return { headline: null, actions: [{ key: 'open', label: 'Ver seguimiento' }] };
 };
+const ICONS = { start: Clapperboard, open: ChevronRight, pay: CreditCard, plan: PenLine } as const;
 
-export const VideoPitchCard = ({ token, onSessionExpired, onOpen, refreshKey = 0 }: { token: string; onSessionExpired: () => void; onOpen: () => void; refreshKey?: number }) => {
+export type VpCardAction = 'start' | 'open' | 'pay' | 'plan';
+
+export const VideoPitchCard = ({ token, onSessionExpired, onOpen, refreshKey = 0 }: { token: string; onSessionExpired: () => void; onOpen: (action: VpCardAction) => void; refreshKey?: number }) => {
     const [state, setState] = useState<VpPortalView | null>(null);
     const [loadError, setLoadError] = useState(false);
 
@@ -51,7 +55,10 @@ export const VideoPitchCard = ({ token, onSessionExpired, onOpen, refreshKey = 0
     const status: VpStatus = state?.status || 'not_requested';
     const meta = state?.catalog?.statuses.find(s => s.key === status);
     const tone = vpTone(meta?.tone);
-    const action = state ? actionFor(status, state.available) : null;
+    // v4.1296 — Qué dice la tarjeta y qué botones ofrece lo decide el servidor
+    // (casos A–E: borrador, pendiente de pago, pagado, en producción, entregado).
+    const card: VpCardCopy | null = state ? (state.card || fallbackCard(status, state.available)) : null;
+    const commercial = state?.commercial || null;
     const req = state?.request || null;
     const dateLine = !req ? null
         : req.deliveredAt ? `Entregado el ${vpFmtDateTime(req.deliveredAt)}`
@@ -65,8 +72,15 @@ export const VideoPitchCard = ({ token, onSessionExpired, onOpen, refreshKey = 0
                     <Video size={19} />
                 </span>
                 {state && (
-                    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${tone.badge}`}>
-                        <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} /> {meta?.label || state.statusLabel}
+                    <span className="flex flex-wrap justify-end gap-1.5">
+                        {commercial && commercial.status !== 'no_plan' && (
+                            <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${vpTone(commercial.tone).badge}`}>
+                                <CreditCard size={11} /> {commercial.label}
+                            </span>
+                        )}
+                        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${tone.badge}`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} /> {meta?.label || state.statusLabel}
+                        </span>
                     </span>
                 )}
             </div>
@@ -95,18 +109,28 @@ export const VideoPitchCard = ({ token, onSessionExpired, onOpen, refreshKey = 0
                     <span className="text-xs font-bold text-slate-600">{req.completionPct}%</span>
                 </div>
             )}
+            {card?.headline && (
+                <p className={`mt-3 rounded-lg px-3 py-2 text-[12px] ${commercial && ['pending_payment', 'failed', 'processing'].includes(commercial.status) ? 'bg-amber-50 text-amber-900' : commercial?.status === 'paid' ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-50 text-slate-700'}`}>
+                    {card.headline}{commercial?.order ? <span className="block text-[11px] opacity-80">{commercial.order.planName} · {commercial.order.amountLabel}</span> : null}
+                </p>
+            )}
             {state?.request?.infoRequest && state.status === 'info_required' && (
                 <p className="mt-3 rounded-lg bg-orange-50 px-3 py-2 text-[12px] text-orange-900"><strong>El comité necesita:</strong> {state.request.infoRequest}</p>
             )}
             {dateLine && <p className="mt-2 text-[12px] text-slate-400">{dateLine}</p>}
 
-            <div className="mt-auto pt-4">
-                {action ? (
-                    <button type="button" onClick={onOpen} className="inline-flex items-center gap-1.5 text-sm font-bold hover:underline" style={{ color: BLUE }}>
-                        <action.Icon size={15} /> {action.label}
-                    </button>
-                ) : (
-                    <span className="inline-flex cursor-not-allowed items-center gap-1.5 text-sm font-bold text-slate-400"><Clapperboard size={15} /> Solicitar video pitch</span>
+            <div className="mt-auto flex flex-wrap gap-x-5 gap-y-2 pt-4">
+                {card && card.actions.length > 0 ? card.actions.map((a, i) => {
+                    const Icon = ICONS[a.key] || ChevronRight;
+                    return (
+                        <button key={a.key} type="button" onClick={() => onOpen(a.key)}
+                            className={`inline-flex items-center gap-1.5 text-sm font-bold hover:underline ${i === 0 ? '' : 'text-slate-600'}`}
+                            style={i === 0 ? { color: BLUE } : undefined}>
+                            <Icon size={15} /> {a.label}
+                        </button>
+                    );
+                }) : (
+                    <span className="inline-flex cursor-not-allowed items-center gap-1.5 text-sm font-bold text-slate-400"><Clapperboard size={15} /> Solicitar Video Pitch</span>
                 )}
             </div>
         </div>
