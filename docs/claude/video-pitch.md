@@ -107,6 +107,15 @@ salidas posibles. **Producir exige guion aprobado; entregar exige el video**
   resolución, clip muy corto) NUNCA rechazan.
 - **Los materiales no bloquean el envío**: se avisa y el comité los pide con
   `info_required`. El consentimiento sobre los materiales SÍ es obligatorio.
+- **El bloque B es UN campo opcional (v4.1295).** El comité pidió no volver a
+  pedir lo que ya está en la postulación y la Formulación. La vista muestra el
+  CONTEXTO en sólo lectura (`projectContextOf`: los `CONTEXT_TOPICS` con valor,
+  y si hay Formulación) y debajo «Información adicional para el video», sin
+  mínimo. Las claves de las preguntas guiadas de v4.1293–v4.1294
+  (`LEGACY_STORY_KEYS`) se conservan si un borrador las trae y el expediente de
+  la IA las sigue leyendo; no se piden ni se crean vacías. Sin contexto y sin
+  información adicional se ADVIERTE (`hasProjectContext`), no se bloquea. El
+  borrador ya no se siembra con la descripción de la postulación.
 - **Las versiones de guion no se pisan**: editar guarda una versión nueva
   (`basedOnId`), aprobar marca `superseded` la aprobada anterior; «Hacer
   vigente» vuelve a una versión sin borrar nada. Reemplazar el video final deja

@@ -629,8 +629,10 @@ const DetailDrawer = ({ id, eventId, assignees, onClose, onChanged }: { id: stri
                                         )}
                                     </Card>
                                     {r.infoRequest && r.status === 'info_required' && <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 text-[13px] text-orange-950"><p className="font-bold">Se le pidió al club:</p><p className="mt-1 whitespace-pre-wrap">{r.infoRequest}</p></div>}
-                                    <Card title="Lo que el club cuenta del proyecto" icon={FileText}>
-                                        <p className="whitespace-pre-wrap text-[14px] leading-relaxed text-slate-800">{a.story.description}</p>
+                                    <Card title="Información adicional del club para el video" icon={FileText}>
+                                        {a.story.description
+                                            ? <p className="whitespace-pre-wrap text-[14px] leading-relaxed text-slate-800">{a.story.description}</p>
+                                            : <p className="text-[13px] text-slate-400">El club no agregó información: el guion se basa en la postulación y la Formulación (abajo, en el expediente).</p>}
                                         <dl className="mt-4 grid gap-3 text-[13px]">
                                             {detail.catalog.guidedQuestions.filter(q => a.story[q.key]).map(q => <div key={q.key}><dt className="font-semibold text-slate-500">{q.label}</dt><dd className="whitespace-pre-wrap text-slate-800">{a.story[q.key]}</dd></div>)}
                                             {a.preferences.notes && <div><dt className="font-semibold text-slate-500">Observaciones para producción</dt><dd className="whitespace-pre-wrap text-slate-800">{a.preferences.notes}</dd></div>}

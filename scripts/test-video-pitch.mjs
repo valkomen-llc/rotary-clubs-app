@@ -18,7 +18,7 @@ import {
     STATUSES, STORED_STATUS_KEYS, statusMeta, canTransition, participantCanEdit, bulkStatusAllowed, transitionRequirements,
     ADMIN_TRANSITIONS, summarizeRequests, normalizeAnswers, prefillFrom, completionOf, validateForSubmit, checkUploadMeta,
     sniffKind, judgeUploadedFile, qualityWarnings, sceneDurations, normalizeScript, narrationFits, notificationFor,
-    requestNumber, requestsCsv, clampTargetSeconds, GUIDED_QUESTIONS,
+    requestNumber, requestsCsv, clampTargetSeconds, GUIDED_QUESTIONS, CONTEXT_TOPICS, projectContextOf,
 } from '../server/lib/videoPitchSpec.js';
 import { buildDossier, buildUserPrompt, parseModelJson, auditScript } from '../server/lib/videoPitchAI.js';
 import { OWNED_COLUMNS } from '../server/lib/ensureVideoPitchSchema.js';
@@ -50,14 +50,19 @@ const pre = prefillFrom({ submission, masterAnswers: master });
 ok(pre.identification.responsibleName === 'Ana Ruiz' && pre.identification.email === 'ana@club.org' && pre.identification.whatsapp === '+57 300 1234567', 'bloque A precargado desde la postulación');
 ok(pre.suggestions.problem === 'No hay agua potable.' && pre.suggestions.beneficiaries.includes('450 personas') && pre.suggestions.location === 'Valledupar · 4271', 'sugerencias desde la Formulación');
 ok(/100000000 COP/.test(pre.suggestions.resources) && /25.000 USD|25,000 USD/.test(pre.suggestions.resources), 'recursos: costo de la Formulación y presupuesto de la postulación');
-ok(GUIDED_QUESTIONS.length === 7, 'siete preguntas guiadas');
+ok(GUIDED_QUESTIONS.length === 7 && CONTEXT_TOPICS.length === 10, 'siete claves heredadas de las preguntas guiadas; diez temas de contexto');
+const ctx = projectContextOf({ submission, masterAnswers: master });
+ok(ctx.hasProjectContext && ctx.hasFormulation && ctx.items.some(i => i.key === 'problem' && i.value === 'No hay agua potable.'), 'el contexto que se le muestra al club sale de la postulación y la Formulación');
+ok(!projectContextOf({ submission: { id: 'x' }, masterAnswers: null }).hasProjectContext, 'sin postulación descrita ni Formulación no hay contexto');
+ok(normalizeAnswers({ story: { problem: 'viejo', description: '' } }).story.problem === 'viejo' && !('location' in normalizeAnswers({ story: {} }).story), 'las respuestas guiadas de un borrador anterior se conservan, pero no se crean vacías');
 const empty = normalizeAnswers({});
 ok(empty.story.description === '' && empty.preferences.language === '' && empty.consent.mediaAuthorization === false, 'respuestas vacías normalizadas');
 ok(normalizeAnswers({ preferences: { language: 'klingon' }, consent: { mediaAuthorization: 'yes' } }).preferences.language === '' && normalizeAnswers({ consent: { mediaAuthorization: 'yes' } }).consent.mediaAuthorization === false, 'nada fuera del catálogo entra');
 const full = { identification: pre.identification, story: { description: 'x'.repeat(120), problem: 'p' }, preferences: { language: 'es', objective: 'funding' }, consent: { mediaAuthorization: true } };
 ok(completionOf({}) === 0 && completionOf(full, { fileCount: 0 }) > 60 && completionOf(full, { fileCount: 2 }) > completionOf(full, { fileCount: 0 }), 'el avance crece con lo obligatorio y con los materiales');
 const bad = validateForSubmit({ identification: { responsibleName: 'A', email: 'nope', whatsapp: '12' }, story: { description: 'corto' }, preferences: {}, consent: {} });
-ok(!bad.ok && bad.errors.length >= 6 && bad.errors.some(e => e.field === 'consent.mediaAuthorization'), 'enviar incompleto: errores por campo, incluido el consentimiento');
+ok(!bad.ok && bad.errors.length === 5 && bad.errors.some(e => e.field === 'consent.mediaAuthorization') && !bad.errors.some(e => e.field === 'story.description'), 'enviar incompleto: errores por campo, incluido el consentimiento; la información adicional NO es obligatoria');
+ok(validateForSubmit({ ...full, story: { description: '' } }, { fileCount: 1, hasProjectContext: false }).warnings.some(w => /Formulación/.test(w)) && validateForSubmit({ ...full, story: { description: '' } }, { fileCount: 1, hasProjectContext: true }).warnings.length === 0, 'sin contexto del proyecto y sin información adicional se ADVIERTE, no se bloquea');
 ok(validateForSubmit(full, { fileCount: 0 }).ok && validateForSubmit(full, { fileCount: 0 }).warnings.length === 1 && validateForSubmit(full, { fileCount: 1 }).warnings.length === 0, 'sin materiales se puede enviar, con advertencia');
 ok(!validateForSubmit({ ...full, preferences: { language: 'es', objective: 'other' } }).ok, '«Otro» objetivo exige describirlo');
 
@@ -152,6 +157,7 @@ const view = read('src/components/project-forms/VideoPitchRequestView.tsx');
 ok(!/^\s+const [A-Z]\w* = \(\{[^)]*\}\) => \(?\s*</m.test(view.slice(view.indexOf('const VideoPitchRequestView'))), 'ningún componente declarado dentro de la vista');
 ok(/setTimeout\(\(\) => \{ save\(true\); \}, 3000\)/.test(view), 'autoguardado tres segundos después de dejar de escribir');
 ok(view.includes('Confirmo que el club cuenta con autorización'), 'consentimiento sobre los materiales, junto a la carga');
+ok(!view.includes('vp-q-') && view.includes('Lo que ya sabemos de tu proyecto') && view.includes('Información adicional para el video'), 'el bloque B es UN campo opcional, con el contexto del proyecto en sólo lectura (v4.1295)');
 const admin = read('src/components/admin/feria/VideoPitchAdmin.tsx');
 ok(!/^\s+const [A-Z]\w* = \(\{[^)]*\}\) => \(?\s*</m.test(admin.slice(admin.indexOf('const VideoPitchAdmin = '))), 'ningún componente declarado dentro de la bandeja');
 ok(read('src/pages/admin/PostulacionesPagos.tsx').includes("['videopitch', 'Video Pitch', Clapperboard]") && read('src/components/admin/AdminLayout.tsx').includes("path: '/admin/postulaciones-pagos?tab=videopitch'"), 'pestaña «Video Pitch» y entrada en el menú lateral');

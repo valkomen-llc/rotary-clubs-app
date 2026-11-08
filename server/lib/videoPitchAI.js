@@ -18,6 +18,7 @@
 import { generateCopy } from '../services/copywritingService.js';
 import {
     SCENE_PLAN, sceneDurations, clampTargetSeconds, normalizeScript, GUIDED_QUESTIONS, languageLabel, objectiveLabel,
+    LEGACY_STORY_KEYS,
     TONES, LANGUAGES,
 } from './videoPitchSpec.js';
 
@@ -45,8 +46,9 @@ export const buildDossier = ({ request, submission, masterAnswers = null, files 
     if (submission?.budgetUsd) push('Presupuesto declarado (USD)', Number(submission.budgetUsd).toLocaleString('en-US'), 'postulación');
     push('Edición de la Feria', edition?.name, 'edición');
 
-    push('Lo que el club cuenta del proyecto', st.description, 'solicitud');
-    for (const q of GUIDED_QUESTIONS) push(q.label, st[q.key], 'solicitud');
+    push('Información adicional del club para el video', st.description, 'solicitud');
+    // Respuestas guiadas de solicitudes anteriores a v4.1295, si las hay.
+    for (const q of GUIDED_QUESTIONS) if (LEGACY_STORY_KEYS.includes(q.key)) push(q.label, st[q.key], 'solicitud');
     push('Objetivo principal del video', objectiveLabel(pr.objective) + (pr.objective === 'other' && pr.objectiveOther ? ` (${pr.objectiveOther})` : ''), 'solicitud');
     push('Observaciones para producción', pr.notes, 'solicitud');
     push('Contacto', [id.responsibleName, id.email, id.whatsapp].filter(Boolean).join(' · '), 'solicitud');
