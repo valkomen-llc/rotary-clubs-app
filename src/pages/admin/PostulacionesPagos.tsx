@@ -34,7 +34,8 @@ import ConvocatoriaConfig from '../../components/admin/feria/ConvocatoriaConfig'
 // v4.1264 — La plantilla oficial de presentación: subir, publicar, versiones y analítica.
 import RecursosPlantillas from '../../components/admin/feria/RecursosPlantillas';
 // v4.1293 — Video Pitch Profesional: bandeja de solicitudes, guiones con IA, producción y entrega.
-import VideoPitchAdmin from '../../components/admin/feria/VideoPitchAdmin';
+// v4.1298 — Videos de proyectos: videos propios (sin costo) + Video Pitch Profesional, en un solo módulo.
+import ProjectVideosHub from '../../components/admin/feria/ProjectVideosAdmin';
 import EdicionesList from '../../components/admin/feria/EdicionesList';
 import ProjectFormApproval from '../../components/admin/feria/ProjectFormApproval';
 // ⚠️ v4.1026 — LA MISMA BARRA DE LA BÓVEDA, no una copia. Registrar un traslado
@@ -876,7 +877,7 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                        ['alerts', 'Alertas', AlertTriangle],
                        ['config', 'Convocatoria', Settings],
                        ['resources', 'Recursos y plantillas', FileDown],
-                       ['videopitch', 'Video Pitch', Clapperboard]] as const).map(([key, label, Icon]) => (
+                       ['videopitch', 'Videos de proyectos', Clapperboard]] as const).map(([key, label, Icon]) => (
                         <button key={key} onClick={() => setTab(key)}
                             className={`inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-semibold transition ${
                                 tab === key ? 'border-blue-700 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
@@ -1837,7 +1838,7 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                 {tab === 'resources' && <RecursosPlantillas eventId={eventId} />}
 
                 {/* ── Video Pitch Profesional (v4.1293) ─────────────────── */}
-                {tab === 'videopitch' && <VideoPitchAdmin eventId={eventId} />}
+                {tab === 'videopitch' && <ProjectVideosHub eventId={eventId} />}
 
                 {/* ── Configuración de la convocatoria ──────────────────── */}
                 {tab === 'config' && (

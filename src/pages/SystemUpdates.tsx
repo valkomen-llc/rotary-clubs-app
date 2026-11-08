@@ -34,13 +34,30 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1297.0 | 2026-11-08 (Video Pitch: el precio explicado en créditos de producción IA por etapa)
+// UI V4.1298.0 | 2026-11-08 (Videos de proyectos: el video propio del club, sin costo, junto al Video Pitch)
 // Cache bust: 2026-11-08
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1298.0',
+        title: 'Feria de Proyectos: Videos de proyectos — subir el video propio del club, sin costo 📹',
+        description: 'Los clubes que ya tienen un video de su proyecto pueden subirlo desde «Mi proyecto» para que el comité lo revise, sin contratar producción. Convive con el Video Pitch Profesional como dos caminos claramente distintos, y el comité administra ambos desde un solo módulo: «Videos de proyectos».',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'videos de proyectos', 'video propio', 'mi proyecto', 'postulación de proyectos'],
+        type: 'feature',
+        impact: 'Alta: un club con video propio lo comparte en minutos y comprueba que quedó guardado; el comité recibe, revisa y aprueba todo el material audiovisual en un solo lugar.',
+        changes: [
+            { type: 'added', text: '«Mi proyecto»: dos tarjetas lado a lado. «Video del proyecto · Video propio · Sin costo» (subir el video ya producido) y «Video Pitch Profesional · Producción profesional · Servicio de pago» (el servicio existente). Ninguna acción borra información de la otra; un mismo proyecto puede tener ambos.' },
+            { type: 'added', text: 'Vista del video propio: ficha (título, descripción, idioma, año, notas) con proyecto, club, distrito y responsable precargados; recomendaciones del comité; zona de arrastrar y soltar con avance real; «Recibido» sólo cuando el servidor confirma el archivo (tipo real por sus bytes, MP4/MOV/WebM); reproductor y descarga con enlace firmado; versiones anteriores conservadas; autorización de uso del material con evidencia (texto y versión aceptados); enviar a revisión, retirar, observaciones del comité e historial.' },
+            { type: 'added', text: 'Estados de revisión separados del Video Pitch: Borrador, Recibido, En revisión, Correcciones solicitadas, Aprobado, Rechazado, Retirado. Pedir correcciones o rechazar exige motivo; el club lo ve en su perfil y recibe correo. Nada se publica solo: la aprobación y la autorización de difusión son decisiones distintas.' },
+            { type: 'added', text: 'Panel: la pestaña pasa a llamarse «Videos de proyectos» (también en el menú) con un resumen de las dos modalidades y dos pestañas: «Videos propios» (indicadores, búsqueda, filtros, ordenamiento, ficha con reproductor, versiones, aprobar / pedir correcciones / rechazar, notas internas, historial) y «Video Pitch Profesional» (el módulo de producción de pago, sin cambios).' },
+            { type: 'added', text: 'Configuración de videos propios por edición: formatos, tamaño máximo (500 MB inicial), duraciones sugerida y máxima, resolución, máximo de videos activos, fecha límite, recomendaciones editables, política de reemplazo, autorización y su texto, flujo de revisión y llave de visibilidad pública (apagada). Separada de la configuración comercial de los planes.' },
+            { type: 'added', text: 'Cinco tablas nuevas fuera de Prisma (ProjectVideo, ProjectVideoVersion, ProjectVideoEvent, ProjectVideoNotification, ProjectVideoConfig). Pruebas test:project-videos (criterio e invariantes) y test:project-videos:e2e (Postgres real: las doce pruebas del pedido, incluido que el Video Pitch pendiente de pago quede intacto y que el video propio no genere ningún cobro).' },
+        ],
+    },
     {
         version: '4.1297.0',
         title: 'Video Pitch: el precio explicado como producción con IA, en créditos por etapa 🎞️',

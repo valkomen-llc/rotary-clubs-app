@@ -199,7 +199,7 @@ const iNext = grid.indexOf('<NextStepCard');
 const iVp = grid.indexOf('<VideoPitchCard');
 const iClose = grid.indexOf('</div>', grid.indexOf('forms.map(form => <FormCardTile'));
 ok(iNext > 0 && iNext < iVp && iVp < iClose, 'la tarjeta de Video Pitch cierra la cuadrícula, después de la plantilla y de 31A');
-ok(read('src/components/project-forms/VideoPitchCard.tsx').includes('sm:col-span-2'), 'ocupa las dos columnas en escritorio');
+ok(!read('src/components/project-forms/VideoPitchCard.tsx').includes('sm:col-span-2') && mp.indexOf('<ProjectVideoCard') < mp.indexOf('<VideoPitchCard'), 'una columna, al lado de la tarjeta del video propio (v4.1298)');
 ok(mp.includes("get('videoPitch') === '1'") && mp.includes('<VideoPitchRequestView'), 'la solicitud vive en la URL (?videoPitch=1) y se abre a pantalla completa');
 const view = read('src/components/project-forms/VideoPitchRequestView.tsx');
 ok(!/^\s+const [A-Z]\w* = \(\{[^)]*\}\) => \(?\s*</m.test(view.slice(view.indexOf('const VideoPitchRequestView'))), 'ningún componente declarado dentro de la vista');
@@ -208,6 +208,6 @@ ok(view.includes('Confirmo que el club cuenta con autorización'), 'consentimien
 ok(!view.includes('vp-q-') && view.includes('Lo que ya sabemos de tu proyecto') && view.includes('Información adicional para el video'), 'el bloque B es UN campo opcional, con el contexto del proyecto en sólo lectura (v4.1295)');
 const admin = read('src/components/admin/feria/VideoPitchAdmin.tsx');
 ok(!/^\s+const [A-Z]\w* = \(\{[^)]*\}\) => \(?\s*</m.test(admin.slice(admin.indexOf('const VideoPitchAdmin = '))), 'ningún componente declarado dentro de la bandeja');
-ok(read('src/pages/admin/PostulacionesPagos.tsx').includes("['videopitch', 'Video Pitch', Clapperboard]") && read('src/components/admin/AdminLayout.tsx').includes("path: '/admin/postulaciones-pagos?tab=videopitch'"), 'pestaña «Video Pitch» y entrada en el menú lateral');
+ok(read('src/pages/admin/PostulacionesPagos.tsx').includes("['videopitch', 'Videos de proyectos', Clapperboard]") && read('src/components/admin/AdminLayout.tsx').includes("path: '/admin/postulaciones-pagos?tab=videopitch'"), 'pestaña «Videos de proyectos» (que monta el Video Pitch) y entrada en el menú lateral');
 
 console.log(`\n✅ ${n} comprobaciones, todas en verde.`);

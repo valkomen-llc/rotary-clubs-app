@@ -47,6 +47,8 @@ import ProjectFormView from '../components/project-forms/ProjectFormView';
 import { PresentationTemplateCard, NextStepCard } from '../components/project-forms/ProjectResourceCards';
 import { VideoPitchCard } from '../components/project-forms/VideoPitchCard';
 import VideoPitchRequestView from '../components/project-forms/VideoPitchRequestView';
+import { ProjectVideoCard } from '../components/project-forms/ProjectVideoCard';
+import ProjectVideoView from '../components/project-forms/ProjectVideoView';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 
@@ -191,6 +193,23 @@ const MiProyecto = () => {
     );
     // Cada cambio en la vista de Video Pitch repinta su tarjeta al volver.
     const [vpRefresh, setVpRefresh] = useState(0);
+    // v4.1298 — El video PROPIO del club (modalidad A, sin costo): otra vista a
+    // pantalla completa, también en la URL (?projectVideo=1&pv_action=).
+    const [openProjectVideo, setOpenProjectVideo] = useState<boolean>(() => new URLSearchParams(window.location.search).get('projectVideo') === '1');
+    const [pvAction, setPvAction] = useState<'edit' | 'replace' | null>(() => {
+        const a = new URLSearchParams(window.location.search).get('pv_action');
+        return a === 'edit' || a === 'replace' ? a : null;
+    });
+    const [pvRefresh, setPvRefresh] = useState(0);
+    const openProjectVideoView = (open: boolean, action: 'edit' | 'replace' | null = null) => {
+        setOpenProjectVideo(open);
+        setPvAction(open ? action : null);
+        const url = new URL(window.location.href);
+        if (open) url.searchParams.set('projectVideo', '1'); else url.searchParams.delete('projectVideo');
+        if (open && action) url.searchParams.set('pv_action', action); else url.searchParams.delete('pv_action');
+        window.history.pushState(null, '', url.toString());
+        if (!open) setPvRefresh(n => n + 1);
+    };
     // El otro panel de esta misma persona, si tiene esa sesión abierta.
     const sessions = useSiteSessions();
     const otherPanel = sessions.find(x => x.realm === 'attendee') || null;
@@ -355,6 +374,7 @@ const MiProyecto = () => {
             const params = new URLSearchParams(window.location.search);
             setOpenForm(params.get('form'));
             setOpenVideoPitch(params.get('videoPitch') === '1');
+            setOpenProjectVideo(params.get('projectVideo') === '1');
         };
         window.addEventListener('popstate', onPop);
         return () => window.removeEventListener('popstate', onPop);
@@ -463,7 +483,16 @@ const MiProyecto = () => {
             </header>
 
             <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-                {openVideoPitch ? (
+                {openProjectVideo ? (
+                    <ProjectVideoView
+                        key={pvAction || 'open'}
+                        token={token}
+                        initialAction={pvAction}
+                        onBack={() => openProjectVideoView(false)}
+                        onChanged={() => setPvRefresh(n => n + 1)}
+                        onSessionExpired={logout}
+                    />
+                ) : openVideoPitch ? (
                     <VideoPitchRequestView
                         key={vpAction || 'open'}
                         token={token}
@@ -599,9 +628,12 @@ const MiProyecto = () => {
                                     formularios: es un recurso de apoyo. */}
                                 <PresentationTemplateCard token={token} onSessionExpired={logout} />
                                 {data.nextStep?.url && <NextStepCard nextStep={data.nextStep} />}
-                                {/* v4.1293 — Video Pitch Profesional: ocupa las dos
-                                    columnas, debajo de la plantilla y de 31A. Su
-                                    estado llega resuelto del servidor. */}
+                                {/* v4.1298 — El video de presentación del proyecto, DOS caminos
+                                    lado a lado: subir el video propio (sin costo) o solicitar el
+                                    Video Pitch Profesional (servicio de pago). Cada tarjeta trae
+                                    su estado resuelto del servidor y sus procesos son
+                                    independientes: ninguna acción borra información de la otra. */}
+                                <ProjectVideoCard token={token} onSessionExpired={logout} onOpen={action => openProjectVideoView(true, action === 'edit' ? 'edit' : action === 'replace' ? 'replace' : null)} refreshKey={pvRefresh} />
                                 <VideoPitchCard token={token} onSessionExpired={logout} onOpen={action => openVideoPitchView(true, action === 'pay' ? 'pay' : action === 'plan' ? 'plan' : null)} refreshKey={vpRefresh} />
                             </div>
                         </section>

@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1297.0",
-  "cache_bust": "4.1297.0",
+  "version": "4.1298.0",
+  "cache_bust": "4.1298.0",
   "type": "module",
   "//": "UI V4.1282.0 | 2026-11-05 (Programas: la landing con los patrones institucionales del sitio)",
   "scripts": {
@@ -212,6 +212,8 @@
     "test:fair:resources": "node scripts/test-fair-resources.mjs",
     "test:video-pitch": "node scripts/test-video-pitch.mjs",
     "test:video-pitch:e2e": "node scripts/test-video-pitch-e2e.mjs",
+    "test:project-videos": "node scripts/test-project-videos.mjs",
+    "test:project-videos:e2e": "node scripts/test-project-videos-e2e.mjs",
     "test:fair:resources:e2e": "node scripts/test-fair-resources-e2e.mjs",
     "test:fair:resources:ui": "node scripts/test-fair-resources-ui.mjs",
     "test:fair:bulk:ui": "node scripts/test-project-fair-bulk-ui.mjs",
