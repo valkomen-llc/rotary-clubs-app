@@ -793,12 +793,19 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
     if (!eventId) {
         return (
             <Frame embedded={embedded}>
-                <EdicionesList onOpen={id => {
-                    const url = new URL(window.location.href);
-                    url.searchParams.set('evento', id);
-                    url.searchParams.delete('tab');
-                    window.location.assign(url.toString());
-                }} />
+                <EdicionesList
+                    // v4.1294 — La pestaña pedida en la URL (p. ej. la entrada
+                    // «Video Pitch» del menú, `?tab=videopitch`) se CONSERVA al
+                    // abrir la edición: borrarla mandaba siempre al Centro de
+                    // Inteligencia y el enlace del menú parecía roto. Y si la
+                    // URL ya pide una pestaña, la edición se abre sola cuando
+                    // hay una única (o una única abierta).
+                    autoOpen={Boolean(new URLSearchParams(window.location.search).get('tab'))}
+                    onOpen={id => {
+                        const url = new URL(window.location.href);
+                        url.searchParams.set('evento', id);
+                        window.location.assign(url.toString());
+                    }} />
             </Frame>
         );
     }

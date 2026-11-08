@@ -12,7 +12,7 @@
 // plataforma —con su registro de asistentes y su convocatoria de proyectos—
 // y no dos entidades paralelas que alguien tenga que mantener sincronizadas.
 // ════════════════════════════════════════════════════════════════════
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     AlertTriangle, ArrowRight, CalendarDays, CheckCircle2, ClipboardList,
     Loader2, Lock, MapPin, Plus, Unlink, Wallet, X,
@@ -47,8 +47,25 @@ const fmtDate = (v?: string | null) => {
 };
 const fmtUsd = (n: number) => `$${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-const EdicionesList = ({ onOpen }: { onOpen: (eventId: string) => void }) => {
+/**
+ * Con `autoOpen`, al cargar se abre sola la edición cuando la elección es
+ * obvia: una sola vinculada, o una sola con la convocatoria abierta. Si hay
+ * varias candidatas se muestra el listado, como siempre (v4.1294).
+ */
+const obviousEdition = (list: Edition[]): string | null => {
+    const linked = list.filter(e => e.eventId);
+    if (linked.length === 1) return linked[0].eventId;
+    const open = linked.filter(e => e.enabled);
+    return open.length === 1 ? open[0].eventId : null;
+};
+
+const EdicionesList = ({ onOpen, autoOpen = false }: { onOpen: (eventId: string) => void; autoOpen?: boolean }) => {
     const [editions, setEditions] = useState<Edition[] | null>(null);
+    // `onOpen` llega como función nueva en cada render del padre: va en una ref
+    // para que la carga no dependa de ella (si no, se volvería a pedir el
+    // listado en cada render).
+    const onOpenRef = useRef(onOpen);
+    onOpenRef.current = onOpen;
     const [error, setError] = useState<string | null>(null);
     const [creating, setCreating] = useState(false);
     const [available, setAvailable] = useState<AvailableEvent[] | null>(null);
@@ -68,9 +85,14 @@ const EdicionesList = ({ onOpen }: { onOpen: (eventId: string) => void }) => {
                 if (!r.ok) throw new Error(body?.error || 'No pudimos cargar las ediciones.');
                 return body;
             })
-            .then(body => setEditions(body.editions || []))
+            .then(body => {
+                const list: Edition[] = body.editions || [];
+                setEditions(list);
+                const obvious = autoOpen ? obviousEdition(list) : null;
+                if (obvious) onOpenRef.current(obvious);
+            })
             .catch(e => { setEditions([]); setError(e?.message || 'No pudimos cargar las ediciones.'); });
-    }, []);
+    }, [autoOpen]);
 
     useEffect(load, [load]);
 

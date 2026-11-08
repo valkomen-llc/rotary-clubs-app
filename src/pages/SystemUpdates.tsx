@@ -34,13 +34,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1293.0 | 2026-11-08 (Video Pitch Profesional de la Feria de Proyectos)
+// UI V4.1294.0 | 2026-11-08 (Video Pitch: tarjeta usable y entrada del menú directa a la pestaña)
 // Cache bust: 2026-11-08
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1294.0',
+        title: 'Video Pitch: la tarjeta se puede usar y la entrada del menú abre su pestaña 🔧',
+        description: 'Dos arreglos tras la primera prueba del equipo en producción: la tarjeta «Video Pitch Profesional» de «Mi proyecto» quedaba apagada con el aviso «Esta postulación está archivada», y la entrada «Video Pitch» del menú del panel caía en el listado de ediciones y de ahí al Centro de Inteligencia, nunca en la pestaña.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'video pitch', 'mi proyecto', 'postulación de proyectos', 'hotfix'],
+        type: 'fix',
+        impact: 'Alta: sin esto el módulo nuevo no se podía usar ni desde el club ni desde el panel.',
+        changes: [
+            { type: 'fixed', text: 'Una postulación archivada ya NO bloquea la solicitud del video: archivar es una decisión administrativa que el club no ve ni puede revertir. La bandeja marca la postulación «Archivada» y el comité decide si cancela la solicitud. Sigue exigiéndose que el proyecto esté postulado (no en borrador).' },
+            { type: 'fixed', text: 'El listado de ediciones conserva la pestaña pedida en la URL al abrir una edición (antes la borraba) y, si la URL ya pide una pestaña y la elección es obvia (una sola edición vinculada o una sola con convocatoria abierta), abre esa edición sola. La entrada del menú llega directo a «Video Pitch».' },
+        ],
+    },
     {
         version: '4.1293.0',
         title: 'Feria de Proyectos: Video Pitch Profesional 🎬',

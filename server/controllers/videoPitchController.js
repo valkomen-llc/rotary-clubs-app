@@ -53,7 +53,7 @@ import {
 } from '../lib/videoPitchStorage.js';
 import { buildDossier, generateVideoPitchScript, auditScript } from '../lib/videoPitchAI.js';
 
-console.log('[videoPitchController] v4.1293.0 cargado — Video Pitch Profesional: solicitud precargada con materiales, bandeja administrativa, guiones con IA sobre hechos verificados, aprobación, producción y entrega auditadas.');
+console.log('[videoPitchController] v4.1294.0 cargado — Video Pitch Profesional: solicitud precargada con materiales, bandeja administrativa, guiones con IA sobre hechos verificados, aprobación, producción y entrega auditadas.');
 
 const clean = (v, max = 250) => String(v ?? '').trim().slice(0, max);
 const refOf = (id) => String(id || '').replace(/-/g, '').slice(0, 8).toUpperCase();
@@ -310,9 +310,15 @@ const portalIdentity = async (req) => {
 };
 const participantActor = (account, submission) => ({ id: account?.id || null, name: account?.email || submission?.email || 'Club', role: 'club' });
 
-/** El club puede pedir el video cuando su proyecto está POSTULADO (no en borrador) y no archivado. No depende del pago. */
+/**
+ * El club puede pedir el video cuando su proyecto está POSTULADO (no en
+ * borrador). No depende del pago, y una postulación ARCHIVADA tampoco lo
+ * impide (v4.1294): archivar es una decisión administrativa que el club no ve
+ * ni puede revertir, y bloquearlo acá dejaba la tarjeta muerta con un aviso
+ * que no le decía qué hacer. La bandeja marca la postulación «Archivada» y el
+ * comité decide si cancela la solicitud.
+ */
 const availabilityOf = (submission) => {
-    if (submission.archivedAt) return { available: false, reason: 'Esta postulación está archivada.' };
     if (!isApplied(submission)) return { available: false, reason: 'Podrás solicitar el Video Pitch cuando tu proyecto esté postulado.' };
     return { available: true, reason: null };
 };

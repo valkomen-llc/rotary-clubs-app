@@ -80,9 +80,15 @@ salidas posibles. **Producir exige guion aprobado; entregar exige el video**
   postulación (`ProjectFairAccount.submissionId` único), así que «otros
   proyectos autorizados» no existe en el modelo de hoy: el formulario lo dice y
   manda a escribir al comité para vincular.
-- **Disponible = postulado (`isApplied`) y no archivado.** NO depende del pago,
-  igual que la plantilla de presentación. Un borrador de postulación ve el
-  motivo.
+- **Disponible = postulado (`isApplied`).** NO depende del pago ni de que la
+  postulación esté archivada (v4.1294: archivar es administrativo y el club no
+  lo ve; bloquearlo dejaba la tarjeta muerta). La bandeja marca «Archivada» y
+  el comité cancela si corresponde. Un borrador de postulación ve el motivo.
+- **La entrada «Video Pitch» del menú lleva a `?tab=videopitch` sin edición**:
+  el listado de ediciones conserva la pestaña al abrir una y, si la elección es
+  obvia (una sola vinculada o una sola abierta), la abre solo (`autoOpen`).
+  Antes `onOpen` borraba `tab` y el enlace del menú caía siempre en el Centro
+  de Inteligencia.
 - **La IA NO inventa.** `buildDossier` arma el expediente con FUENTE por línea
   (postulación, Formulación, solicitud); el prompt prohíbe afirmar lo que no
   está y obliga a `missingInfo`; `auditScript` marca toda cifra del guion que

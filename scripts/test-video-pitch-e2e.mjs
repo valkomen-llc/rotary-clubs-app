@@ -137,7 +137,7 @@ ok(r.data.prefill.suggestions.problem === 'No hay agua potable en la zona.' && r
 r = await call('GET', '/portal/video-pitch', portal(C));
 ok(r.status === 200 && r.data.available === false && /postulado/.test(r.data.reason), 'un borrador de postulación todavía no puede pedir el video');
 r = await call('GET', '/portal/video-pitch', portal(D));
-ok(r.data.available === false && /archivada/.test(r.data.reason), 'una postulación archivada tampoco');
+ok(r.data.available === true, 'una postulación archivada SÍ puede pedirlo: archivar es administrativo y la bandeja lo marca');
 ok((await call('PUT', '/portal/video-pitch', portal(C), { answers: {} })).status === 403, 'guardar sin disponibilidad: 403');
 ok((await call('GET', '/portal/video-pitch', null)).status === 401 && (await call('GET', '/portal/video-pitch', admin)).status === 401, 'sin sesión del panel: 401 (el token de la plataforma no sirve)');
 
