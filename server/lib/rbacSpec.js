@@ -776,7 +776,7 @@ export const ROLE_PRESETS = [
         // «Usuarios y permisos», que queda auditada.
         key: 'digital_secretary',
         label: 'Secretaría Digital — Control de Aportes',
-        description: 'Supervisión documental y financiera de los aportes: consulta la Bóveda de Fondos, identifica a los aportantes, verifica estados de Stripe y traslados, descarga comprobantes y exporta informes. Administra además el Directorio de Clubes y su Catálogo Maestro, los Eventos, las Analíticas y el Estudio de Contenido del sitio. No solicita retiros, no registra desembolsos ni modifica estados financieros.',
+        description: 'Supervisión documental y financiera de los aportes: consulta la Bóveda de Fondos, identifica a los aportantes, verifica estados de Stripe y traslados, descarga comprobantes y exporta informes. Administra además el Directorio de Clubes y su Catálogo Maestro, los Eventos, las Analíticas, el Estudio de Contenido y Rotary en Acción del sitio. No solicita retiros, no registra desembolsos ni modifica estados financieros.',
         scope: 'site',
         protected: true,
         permissions: [
@@ -816,6 +816,24 @@ export const ROLE_PRESETS = [
             'content_studio.create',
             'content_studio.edit',
             'content_studio.publish',
+            // v4.1303 — ROTARY EN ACCIÓN, pedido del Distrito 4281: el módulo
+            // completo (resumen, solicitudes, Centro de Control, Marketing
+            // Inteligente, Activación y Visitas del Gobernador). Todas las
+            // acciones del módulo, incluido `manage` (taxonomías, configuración
+            // del formulario y el estado de una visita). La pestaña
+            // «Solicitudes» lee y gestiona la bandeja de las campañas, que pide
+            // `contribution_campaigns.view` / `.edit`: SIN `.manage` (el
+            // contenido central de una campaña sigue siendo del operador). El
+            // SITIO sigue decidiendo si el módulo existe
+            // (`requireSubmissionInboxAccess`); sigue SIN `finance.manage`.
+            'rotary_en_accion.view',
+            'rotary_en_accion.create',
+            'rotary_en_accion.edit',
+            'rotary_en_accion.publish',
+            'rotary_en_accion.export',
+            'rotary_en_accion.manage',
+            'contribution_campaigns.view',
+            'contribution_campaigns.edit',
         ],
         // Su trabajo es la Bóveda: el resumen del panel no le dice nada.
         landing: '/admin/boveda',
