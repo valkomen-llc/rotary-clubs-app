@@ -1,6 +1,6 @@
 # Rotary Clubs App — guía para Claude
 
-## Cómo está organizada esta guía (v4.1299)
+## Cómo está organizada esta guía (v4.1302)
 
 Este archivo se carga ENTERO en cada conversación. Llegó a pesar 1,48 MB
 (~21.000 líneas) y llenaba la ventana de contexto antes de empezar a trabajar.
@@ -230,6 +230,13 @@ duplicar) y `ProjectVideoConfig` (la configuración por edición).
 Y la de la INSCRIPCIÓN de un club a la Feria (v4.1299): `ProjectFairRegistration`
 (uno o dos proyectos por club, un solo pago; es PADRE de `ProjectFairSubmission`,
 que suma `registrationId` y `projectIndex`).
+Y las nueve de **Cursos y capacitaciones**, el LMS de Rotary en Acción (v4.1302):
+`LearningCollection` (la colección de cursos de un club, asociada a un
+proyecto), `LearningCourse` (cada curso: ficha, acceso, estado de revisión),
+`LearningModule`, `LearningLesson`, `LearningResource` (módulos → lecciones →
+recursos), `LearningFile` (cada objeto subido y el estado de su carga),
+`LearningEvent` (trazabilidad), `LearningNotification` (avisos sin duplicar) y
+`LearningConfig` (la configuración del Distrito).
 (Más las del registro de eventos que enumera su propia sección:
 `EventEdition`, `EventRegistrationCategory`, `EventRegistrationCompanion`,
 `EventRegistrationPayment`, `EventRegistrationHistory`,
@@ -260,6 +267,7 @@ es **rotar la credencial en Neon**, no sólo borrar el archivo.
 
 | Módulo | Archivo |
 |---|---|
+| **Cursos y capacitaciones** (LMS de Rotary en Acción, Fase 1: la categoría renombrada con dos modalidades, «Mis cursos y capacitaciones» con colecciones, cursos, módulos, lecciones, recursos, guardado automático y carga confirmada por bytes; «Gestión educativa» para el comité; biblioteca pública `/cursos` con acceso por modalidad; nueve tablas propias; Fases 2 y 3 diseñadas, no activadas) — v4.1302 | `docs/claude/cursos-y-capacitaciones.md` |
 | **Hasta dos proyectos por club: la INSCRIPCIÓN** (modalidad en el paso 1 del wizard, una ficha por proyecto, primer proyecto $250.000 y segundo con tarifa especial $100.000 en UN solo pago; con el primero ya pagado, cobro complementario; «Mis proyectos postulados» con un token por proyecto; agregar/quitar/restaurar el segundo; indicadores de clubes frente a proyectos y recaudo por posición; tarifas administrables; lo heredado migra a inscripciones de un proyecto) — v4.1299 | `docs/claude/dos-proyectos-por-club.md` |
 | **Videos de proyectos** (el video PROPIO del club, sin costo: dos tarjetas lado a lado en `/mi-proyecto`, subida privada validada por bytes con «recibido» sólo confirmado por el servidor, versiones, autorización con evidencia, revisión del comité con motivo, configuración por edición; módulo unificado «Videos de proyectos» que también monta el Video Pitch Profesional) — v4.1298 | `docs/claude/videos-de-proyectos.md` |
 | **Video Pitch Profesional de la Feria de Proyectos** (tarjeta en `/mi-proyecto`, formulario precargado con materiales al almacenamiento privado, bandeja «Video Pitch» en Postulación de Proyectos, guiones con IA sobre el expediente real, aprobación del club, producción y entrega auditadas) — v4.1293 (paso B = un campo: v4.1295; **capa comercial: planes administrables, órdenes con precio histórico, Stripe por el webhook único, pagar después, compuerta de producción y exoneración auditada: v4.1296**) | `docs/claude/video-pitch.md` |

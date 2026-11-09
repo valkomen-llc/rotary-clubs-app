@@ -236,6 +236,13 @@ const ProgramaLandingPage = lazyWithRetry(() => import('./pages/ProgramaLandingP
 const ProgramasAdmin = lazyWithRetry(() => import('./pages/admin/ProgramasAdmin'), 'ProgramasAdmin');
 const ProgramaAdminDetalle = lazyWithRetry(() => import('./pages/admin/ProgramaAdminDetalle'), 'ProgramaAdminDetalle');
 const CapacitacionDetalle = lazyWithRetry(() => import('./pages/CapacitacionDetalle'), 'CapacitacionDetalle');
+// Cursos y capacitaciones (LMS, v4.1302): biblioteca pública, ficha, aula, gestor del club y panel del comité.
+const CursosBiblioteca = lazyWithRetry(() => import('./pages/CursosBiblioteca'), 'CursosBiblioteca');
+const ColeccionPublica = lazyWithRetry(() => import('./pages/ColeccionPublica'), 'ColeccionPublica');
+const CursoPublico = lazyWithRetry(() => import('./pages/CursoPublico'), 'CursoPublico');
+const CursoAprender = lazyWithRetry(() => import('./pages/CursoAprender'), 'CursoAprender');
+const MisCursos = lazyWithRetry(() => import('./pages/MisCursos'), 'MisCursos');
+const GestionEducativaAdmin = lazyWithRetry(() => import('./pages/admin/GestionEducativaAdmin'), 'GestionEducativaAdmin');
 const MiCapacitacion = lazyWithRetry(() => import('./pages/MiCapacitacion'), 'MiCapacitacion');
 const SharedReport = lazyWithRetry(() => import('./pages/SharedReport'), 'SharedReport');
 const DistrictDirectoryPage = lazyWithRetry(() => import('./pages/DistrictDirectoryPage'), 'DistrictDirectoryPage');
@@ -707,6 +714,14 @@ function App() {
                     por sitio y una dirección estable por video. */}
                 <Route path="/capacitaciones" element={<Capacitaciones />} />
                 <Route path="/capacitaciones/:slug" element={<CapacitacionDetalle />} />
+                {/* Cursos y capacitaciones (v4.1302): biblioteca, colección, ficha y aula; el gestor del club exige sesión. */}
+                <Route path="/cursos" element={<CursosBiblioteca />} />
+                <Route path="/cursos/colecciones/:slug" element={<ColeccionPublica />} />
+                <Route path="/cursos/:slug/aprender" element={<CursoAprender />} />
+                <Route path="/cursos/:slug" element={<CursoPublico />} />
+                <Route path="/mis-cursos" element={<MisCursos view="overview" />} />
+                <Route path="/mis-cursos/colecciones/:id" element={<MisCursos view="collection" />} />
+                <Route path="/mis-cursos/cursos/:id" element={<MisCursos view="course" />} />
                 <Route path="/programas" element={<Programas />} />
                 <Route path="/programas/:slug" element={<ProgramaLandingPage />} />
                 <Route path="/programas/:slug/detalle" element={<ProgramaDetalle />} />
@@ -952,6 +967,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <DistrictClubsAdmin />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/gestion-educativa"
+                  element={
+                    <PrivateRoute>
+                      <GestionEducativaAdmin />
                     </PrivateRoute>
                   }
                 />
