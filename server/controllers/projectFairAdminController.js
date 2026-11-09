@@ -51,7 +51,14 @@ import {
     SQL_APPLIED, SQL_DRAFT, SQL_OWES, reminderVerdict,
 } from '../lib/projectFairLifecycle.js';
 import { resolveUserGrant } from '../lib/rbacStore.js';
+// v4.1299 — La INSCRIPCIÓN: uno o dos proyectos por club. Las reglas en SQL
+// se arman en el criterio puro, no a mano acá.
+import {
+    SQL_ACTIVE_PROJECT, SQL_FIRST_PROJECT, SQL_SECOND_PROJECT, SQL_REGISTRATION_KEY,
+    indexOf as projectIndexOf, projectIndexLabel, pricingRulesOf,
+} from '../lib/projectFairRegistration.js';
 
+console.log('[projectFairAdminController] v4.1299.0 cargado — Hasta dos proyectos por club: el panel distingue clubes inscritos de proyectos inscritos, cuenta segundos proyectos y separa el recaudo por primeras y segundas postulaciones; filtros por cantidad de proyectos del club y por posición.');
 console.log('[projectFairAdminController] v4.1220.0 cargado — Gestión de Postulaciones y Pagos (dashboard, trazabilidad Stripe, confirmación manual, etiquetas, alertas y reportes)');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
@@ -290,7 +297,20 @@ const mapRow = (row, access) => {
         archivedBy: row.archivedBy || null,
         archivedReason: row.archivedReason || null,
         chargeCurrency: row.chargeCurrency || null,
-        paymentConfirmationOrigin: row.paymentConfirmationOrigin || (row.status === 'paid' ? (row.stripeSessionId || row.stripePaymentIntentId ? 'stripe' : 'manual_admin') : null),
+        paymentConfirmationOrigin: row.paymentConfirmationOrigin || (row.status === 'paid' ? (row.stripeSessionId || row.stripePaymentIntentId || row.metadata?.payment?.coveredBy ? 'stripe' : 'manual_admin') : null),
+        // v4.1299 — La inscripción a la que pertenece y su posición en ella.
+        registrationId: row.registrationId || null,
+        projectIndex: projectIndexOf(row),
+        projectIndexLabel: projectIndexLabel(projectIndexOf(row)),
+        // Cuántos proyectos ACTIVOS tiene su inscripción (lo calcula el listado).
+        registrationProjects: row.registrationProjects == null ? null : Number(row.registrationProjects),
+        // Pagado dentro del cobro de otro proyecto de la misma inscripción.
+        coveredBy: row.metadata?.payment?.coveredBy ? { id: row.metadata.payment.coveredBy, publicRef: row.metadata.payment.coveredByRef || null } : null,
+        // El cobro de esta fila cubrió también a estos proyectos.
+        coveredProjects: Array.isArray(row.metadata?.payment?.coveredProjects) && row.metadata.payment.coveredProjects.length > 1
+            ? row.metadata.payment.coveredProjects.filter(p => p.id !== row.id).map(p => ({ id: p.id, publicRef: p.publicRef || null, projectName: p.projectName, projectIndex: p.projectIndex }))
+            : [],
+        withdrawnByClub: !!row.metadata?.withdrawnByClub,
         lastSyncAt: row.lastSyncAt || null,
         manualPaymentRef: row.manualPaymentRef || null,
         manualPaymentEvidence: row.manualPaymentEvidence || null,
@@ -380,6 +400,20 @@ const buildFilters = (query) => {
     // no filtra nada.
     const vista = VIEW_FILTERS[clean(query.vista, 40)];
     if (vista) where.push(vista);
+    // v4.1299 — Cantidad de proyectos ACTIVOS de la inscripción del club
+    // (`proyectos=1|2`) y posición de la fila en ella (`indice=1|2`).
+    const proyectos = clean(query.proyectos, 4);
+    if (proyectos === '1' || proyectos === '2') {
+        const cmp = proyectos === '2' ? '>= 2' : '= 1';
+        // La llave de la inscripción es `COALESCE("registrationId", id)`
+        // (`SQL_REGISTRATION_KEY`), calificada acá con la tabla externa.
+        where.push(`(SELECT COUNT(*) FROM "ProjectFairSubmission" h
+                     WHERE COALESCE(h."registrationId", h.id) = COALESCE("ProjectFairSubmission"."registrationId", "ProjectFairSubmission".id)
+                       AND h."archivedAt" IS NULL AND COALESCE(h."workflowStatus",'received') <> 'withdrawn') ${cmp}`);
+    }
+    const indice = clean(query.indice, 4);
+    if (indice === '1') where.push(SQL_FIRST_PROJECT);
+    else if (indice === '2') where.push(SQL_SECOND_PROJECT);
     if (query.district && query.district !== 'all') add('district = $?', clean(query.district, 160));
     if (query.focusArea && query.focusArea !== 'all') add('"focusArea" = $?', clean(query.focusArea, 80));
     if (query.priority && query.priority !== 'all') add('priority = $?', clean(query.priority, 20));
@@ -430,7 +464,7 @@ export const VIEW_OPTIONS = [
 ];
 
 const SORTABLE = {
-    createdAt: '"createdAt"', projectName: '"projectName"', clubName: '"clubName"',
+    createdAt: '"createdAt"', projectName: '"projectName"', clubName: '"clubName"', projectIndex: '"projectIndex"',
     district: 'district', budgetUsd: '"budgetUsd"', amountCop: '"amountCop"',
     paymentStatus: 'status', workflowStatus: '"workflowStatus"', priority: 'priority', paidAt: '"paidAt"',
 };
@@ -469,7 +503,7 @@ export const getIntelligence = withAccess(async (req, res, { cfg, access }) => {
 
     const [
         totals, byPayment, byWorkflow, byDistrict, byFocus, byClub,
-        byCountry, byDepartment, byCity, timeline, topBudget, activity,
+        byCountry, byDepartment, byCity, timeline, topBudget, activity, byRegistrationSize,
     ] = await Promise.all([
         db.query(`
             SELECT COUNT(*)::int AS total,
@@ -493,6 +527,19 @@ export const getIntelligence = withAccess(async (req, res, { cfg, access }) => {
                    COUNT(*) FILTER (WHERE "workflowStatus" = 'sent_to_grants')::int AS "sentToGrants",
                    COUNT(DISTINCT district) FILTER (WHERE district IS NOT NULL AND district <> '')::int AS districts,
                    COUNT(DISTINCT lower("clubName")) FILTER (WHERE "clubName" IS NOT NULL AND "clubName" <> '')::int AS clubs,
+                   -- v4.1299 — INSCRIPCIONES (clubes inscritos) vs PROYECTOS, y
+                   -- el segundo proyecto por separado. Un retirado no cuenta.
+                   COUNT(DISTINCT ${SQL_REGISTRATION_KEY}) FILTER (WHERE ${SQL_ACTIVE_PROJECT})::int AS registrations,
+                   COUNT(*) FILTER (WHERE ${SQL_ACTIVE_PROJECT})::int AS "activeProjects",
+                   COUNT(*) FILTER (WHERE ${SQL_ACTIVE_PROJECT} AND ${SQL_SECOND_PROJECT})::int AS "secondProjects",
+                   COUNT(*) FILTER (WHERE ${SQL_ACTIVE_PROJECT} AND ${SQL_SECOND_PROJECT} AND ${SQL_APPLIED})::int AS "secondProjectsApplied",
+                   COUNT(*) FILTER (WHERE ${SQL_ACTIVE_PROJECT} AND ${SQL_SECOND_PROJECT} AND status = 'paid')::int AS "secondProjectsPaid",
+                   COUNT(*) FILTER (WHERE ${SQL_ACTIVE_PROJECT} AND ${SQL_SECOND_PROJECT} AND ${SQL_OWES})::int AS "secondProjectsOwing",
+                   COALESCE(SUM(${AMT}) FILTER (WHERE status = 'paid' AND ${SQL_FIRST_PROJECT}), 0)::float AS "collectedFirst",
+                   COALESCE(SUM(${AMT}) FILTER (WHERE status = 'paid' AND ${SQL_SECOND_PROJECT}), 0)::float AS "collectedSecond",
+                   COALESCE(SUM(${AMT}) FILTER (WHERE ${SQL_OWES} AND ${SQL_FIRST_PROJECT}), 0)::float AS "pendingFirst",
+                   COALESCE(SUM(${AMT}) FILTER (WHERE ${SQL_OWES} AND ${SQL_SECOND_PROJECT}), 0)::float AS "pendingSecond",
+                   COALESCE(SUM("amountReceived") FILTER (WHERE status = 'paid'), 0)::float AS "receivedTotal",
                    COUNT(DISTINCT lower(country)) FILTER (WHERE country IS NOT NULL AND country <> '')::int AS countries,
                    COALESCE(SUM("amountCop") FILTER (WHERE status = 'paid'), 0)::float AS "totalCop",
                    COALESCE(SUM("amountUsd") FILTER (WHERE status = 'paid'), 0)::float AS "totalUsd",
@@ -537,6 +584,21 @@ export const getIntelligence = withAccess(async (req, res, { cfg, access }) => {
             JOIN ${T} ON ${T}.id = e."submissionId"
             ${clause}
             ORDER BY e."createdAt" DESC LIMIT 25`, params),
+        // v4.1299 — Cuántas inscripciones tienen UN proyecto y cuántas DOS, y
+        // cuántas de cada grupo están completamente pagadas.
+        db.query(`
+            SELECT n AS projects,
+                   COUNT(*)::int AS registrations,
+                   COUNT(*) FILTER (WHERE paid = n)::int AS "fullyPaid"
+            FROM (
+                SELECT ${SQL_REGISTRATION_KEY} AS reg,
+                       COUNT(*) FILTER (WHERE ${SQL_ACTIVE_PROJECT}) AS n,
+                       COUNT(*) FILTER (WHERE ${SQL_ACTIVE_PROJECT} AND status = 'paid') AS paid
+                FROM ${T} ${clause}
+                GROUP BY 1
+            ) g
+            WHERE n > 0
+            GROUP BY n ORDER BY n`, params),
     ]);
 
     const t = totals.rows[0] || {};
@@ -752,6 +814,21 @@ export const getIntelligence = withAccess(async (req, res, { cfg, access }) => {
         // no retiradas ni rechazadas, sin pagar): un borrador no es deuda.
         participation: {
             clubs: t.clubs || 0,
+            // v4.1299 — Inscripciones (clubes inscritos) frente a proyectos.
+            registrations: t.registrations || 0,
+            activeProjects: t.activeProjects || 0,
+            withOneProject: byRegistrationSize.rows.find(r => Number(r.projects) === 1)?.registrations || 0,
+            withTwoProjects: byRegistrationSize.rows.filter(r => Number(r.projects) >= 2).reduce((a, r) => a + (r.registrations || 0), 0),
+            withTwoProjectsPaid: byRegistrationSize.rows.filter(r => Number(r.projects) >= 2).reduce((a, r) => a + (r.fullyPaid || 0), 0),
+            secondProjects: t.secondProjects || 0,
+            secondProjectsApplied: t.secondProjectsApplied || 0,
+            secondProjectsPaid: t.secondProjectsPaid || 0,
+            secondProjectsOwing: t.secondProjectsOwing || 0,
+            collectedFirst: Math.round((t.collectedFirst || 0) * 100) / 100,
+            collectedSecond: Math.round((t.collectedSecond || 0) * 100) / 100,
+            pendingFirst: Math.round((t.pendingFirst || 0) * 100) / 100,
+            pendingSecond: Math.round((t.pendingSecond || 0) * 100) / 100,
+            receivedTotal: Math.round((t.receivedTotal || 0) * 100) / 100,
             registeredUsers: t.registeredUsers || 0,
             drafts: t.drafts || 0,
             applied: t.applied || 0,
@@ -780,6 +857,8 @@ export const getIntelligence = withAccess(async (req, res, { cfg, access }) => {
             priceMode,
             amountCop: cfg?.registration?.amountCop ?? null,
             amountUsd: cfg?.registration?.amountUsd ?? null,
+            // v4.1299 — Las reglas de la segunda postulación, resueltas.
+            rules: pricingRulesOf(cfg),
         },
         generatedAt: new Date().toISOString(),
         access,
@@ -1294,12 +1373,32 @@ export const listSubmissions = withAccess(async (req, res, { access }) => {
     );
 
     const tagsBySubmission = await loadTagsFor(rowsRes.rows.map(r => r.id));
+    const sizes = await registrationSizesFor(rowsRes.rows);
     res.json({
-        submissions: rowsRes.rows.map(r => mapRow({ ...r, tags: tagsBySubmission[r.id] || [] }, access)),
+        submissions: rowsRes.rows.map(r => mapRow({ ...r, tags: tagsBySubmission[r.id] || [], registrationProjects: sizes[r.registrationId] ?? 1 }, access)),
         pagination: { page, pageSize, total, pages: Math.ceil(total / pageSize) || 1 },
         access,
     });
 });
+
+/**
+ * v4.1299 — Cuántos proyectos ACTIVOS tiene la inscripción de cada fila de la
+ * página, en una sola consulta. Lo que el listado necesita para rotular
+ * «Proyecto 2 de 2». Nunca lanza: sin el dato la fila se pinta igual.
+ */
+const registrationSizesFor = async (rows) => {
+    const ids = [...new Set(rows.map(r => r.registrationId).filter(Boolean))];
+    if (!ids.length) return {};
+    try {
+        const { rows: counts } = await db.query(
+            `SELECT "registrationId", COUNT(*)::int AS n FROM "ProjectFairSubmission"
+             WHERE "registrationId" = ANY($1::text[]) AND ${SQL_ACTIVE_PROJECT}
+             GROUP BY 1`, [ids]);
+        return Object.fromEntries(counts.map(c => [c.registrationId, c.n]));
+    } catch {
+        return {};
+    }
+};
 
 // ── Ficha detallada ──────────────────────────────────────────────────
 // GET /admin/submissions/:id
@@ -1317,8 +1416,24 @@ export const getSubmission = withAccess(async (req, res, { access }) => {
             : Promise.resolve({ rows: [] }),
     ]);
 
+    // v4.1299 — Los demás proyectos de la misma inscripción, para la ficha.
+    let siblings = [];
+    if (row.registrationId) {
+        const sib = await db.query(
+            'SELECT id, "publicRef", "projectName", "projectIndex", status, "workflowStatus", "archivedAt", "amountCop", "amountUsd", metadata FROM "ProjectFairSubmission" WHERE "registrationId" = $1 AND id <> $2 ORDER BY "projectIndex" ASC',
+            [row.registrationId, row.id]).catch(() => ({ rows: [] }));
+        siblings = sib.rows.map(r => ({
+            id: r.id, publicRef: r.publicRef, projectName: r.projectName, projectIndex: projectIndexOf(r),
+            projectIndexLabel: projectIndexLabel(projectIndexOf(r)), paymentStatus: r.status,
+            workflowStatus: projectStateOf(r), projectStateLabel: projectStateMeta(projectStateOf(r)).label,
+            archived: !!r.archivedAt, withdrawnByClub: !!r.metadata?.withdrawnByClub,
+            amountCop: num(r.amountCop), amountUsd: num(r.amountUsd),
+        }));
+    }
+    const sizes = await registrationSizesFor([row]);
     res.json({
-        submission: mapRow({ ...row, tags: tags[row.id] || [] }, access),
+        submission: mapRow({ ...row, tags: tags[row.id] || [], registrationProjects: sizes[row.registrationId] ?? 1 }, access),
+        siblings,
         events: events.rows,
         files: files.rows,
         stripeEvents: stripeEvents.rows,
@@ -2012,8 +2127,9 @@ export const exportCsv = withAccess(async (req, res, { access }) => {
     const { rows } = await db.query(`SELECT * FROM "ProjectFairSubmission" ${clause} ORDER BY "createdAt" DESC`, params);
     const tagsBySubmission = await loadTagsFor(rows.map(r => r.id));
 
+    const sizes = await registrationSizesFor(rows);
     const headers = [
-        'Registro', 'Fecha de inscripción', 'Proyecto', 'Club Rotario', 'Distrito', 'Responsable',
+        'Registro', 'Fecha de inscripción', 'Proyecto', 'Posición en la inscripción', 'Proyectos del club', 'Inscripción', 'Club Rotario', 'Distrito', 'Responsable',
         'Correo', 'WhatsApp', 'Rol en el club', 'País', 'Departamento', 'Ciudad',
         'Tipo de documento', 'Número de documento',
         'Área de enfoque', 'Presupuesto USD', 'Comentarios del postulante', 'Estado de la postulación',
@@ -2026,7 +2142,9 @@ export const exportCsv = withAccess(async (req, res, { access }) => {
     const lines = [headers.join(';')];
     for (const r of rows) {
         const values = [
-            r.publicRef, r.createdAt ? new Date(r.createdAt).toISOString() : '', r.projectName, r.clubName, r.district,
+            r.publicRef, r.createdAt ? new Date(r.createdAt).toISOString() : '', r.projectName,
+            projectIndexLabel(projectIndexOf(r)), sizes[r.registrationId] ?? 1, r.registrationId || r.id,
+            r.clubName, r.district,
             `${r.firstName || ''} ${r.lastName || ''}`.trim(), r.email, r.phone,
             r.clubRoleOther || r.clubRoleLabel || r.clubRole,
             r.country, r.department, r.city, r.idTypeLabel || r.idType, r.idNumber,

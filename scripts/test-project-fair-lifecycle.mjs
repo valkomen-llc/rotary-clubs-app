@@ -127,11 +127,13 @@ ok('el pago es una acción opcional', /Realizar pago ahora/.test(wizard) && /Ir 
 ok('se puede guardar un borrador', /sendWizard\('draft'\)/.test(wizard) && /Guardar borrador/.test(wizard));
 
 const ctrl = leer('server/controllers/projectFairController.js');
-const crear = ctrl.slice(ctrl.indexOf('export const createSubmission'), ctrl.indexOf('export const applicationViewOf'));
+// v4.1299 — La creación se partió en `insertProjectRow` (una fila por proyecto) y
+// `createSubmission` (la inscripción): el tramo que se lee abarca las dos.
+const crear = ctrl.slice(ctrl.indexOf('export const PROJECT_FIELDS'), ctrl.indexOf('export const applicationViewOf'));
 ok('crear la postulación NO abre ninguna sesión de pago', !/beginCheckout|checkout\.sessions/.test(crear));
 ok('la postulación nace «Postulado» y el borrador «Borrador»', /draft \? 'draft' : 'received'/.test(crear));
 ok('y se sella la fecha de postulación', /"appliedAt"/.test(crear));
-ok('y se manda la confirmación', /notifyApplication\(created, cfg\)/.test(crear));
+ok('y se manda la confirmación', /notifyApplication\(primary, cfg/.test(crear));
 
 section('10. Los webhooks ya no escriben en el estado del proyecto');
 for (const valor of ['payment_confirmed', 'payment_failed']) {

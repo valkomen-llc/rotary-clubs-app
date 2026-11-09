@@ -34,13 +34,31 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1298.0 | 2026-11-08 (Videos de proyectos: el video propio del club, sin costo, junto al Video Pitch)
-// Cache bust: 2026-11-08
+// UI V4.1299.0 | 2026-11-09 (Feria de Proyectos: hasta dos proyectos por club en una sola inscripción, con tarifa especial para el segundo)
+// Cache bust: 2026-11-09
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1299.0',
+        title: 'Feria de Proyectos: hasta dos proyectos por club, en una sola inscripción y un solo pago 🧩',
+        description: 'Para la XII Feria de Proyectos Rotary Colombia – Valledupar 2027 cada club puede postular uno o dos proyectos. El primero mantiene su valor de inscripción ($250.000 COP) y el segundo tiene una tarifa especial ($100.000 COP adicionales): dos proyectos por $350.000 COP en total, en un solo pago. Un club que ya pagó su primer proyecto puede agregar el segundo con un cobro complementario, sin tocar su transacción anterior.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'postulación de proyectos', 'inscripción', 'pagos', 'mi proyecto', 'panel administrativo'],
+        type: 'feature',
+        impact: 'Alta: más proyectos por club con un proceso único, sin cobrar dos veces ni perder ninguna inscripción ya registrada; el comité mide cuántos segundos proyectos trae la tarifa especial.',
+        changes: [
+            { type: 'added', text: 'Formulario público: en el paso 1, después de identificar el club, «Modalidad de postulación del club» (un proyecto · dos proyectos) con el total actualizado al elegir; en el paso 2, una pestaña por proyecto con su avance individual (Proyecto 1 — Inscripción principal, Proyecto 2 — Inscripción adicional); en el paso 3, la revisión de cada ficha y el «Resumen de inscripción» (club, distrito, cantidad, valor de cada proyecto y total). De dos a uno se pide confirmación y la segunda ficha se conserva; el borrador local guarda la modalidad y las dos fichas y migra el anterior.' },
+            { type: 'added', text: 'Modelo de datos: la INSCRIPCIÓN del club (tabla ProjectFairRegistration) agrupa sus proyectos; cada proyecto (fila de ProjectFairSubmission) conoce su inscripción y su posición (projectIndex) y guarda SU línea de precio. Índice único (inscripción, posición) y CHECK a 2 en la base; las inscripciones existentes se migran a «un proyecto» sin tocar pagos ni comprobantes.' },
+            { type: 'added', text: 'Pago único calculado y validado en el servidor: la orden cubre todos los proyectos que el club debe en ese momento (dos postulados = $350.000; el primero ya pagado + segundo nuevo = $100.000 complementario). Stripe muestra una partida por proyecto más las comisiones; la confirmación del proveedor marca pagados sólo los proyectos que la metadata del cobro declara; reembolso total alcanza a los cubiertos. El comprobante y los correos nombran los dos proyectos.' },
+            { type: 'added', text: '«Mi proyecto»: «Mis proyectos postulados» con una pestaña por proyecto (cada uno con sus formularios, FDD, documentos, plantilla, video propio, Video Pitch, estados e historial, sin mezclarse); tarjeta de inscripción con el desglose por proyecto, el total y los «Pagos realizados» indicando qué proyectos cubrió cada transacción; «Agregar segundo proyecto» (también con el primero ya pagado), «Quitar el segundo proyecto» antes de pagar (su información se conserva) y «Restaurar».' },
+            { type: 'added', text: 'Panel «Postulaciones y Pagos»: indicadores de clubes inscritos frente a proyectos inscritos, clubes con uno y con dos proyectos, segundos proyectos inscritos/pagados/pendientes y recaudo por primeras y por segundas postulaciones; filtros «Proyectos del club» y «Posición en la inscripción»; marca «Proyecto 2 de 2 · tarifa especial» en el listado y en la ficha, con los demás proyectos de la misma inscripción y la nota de qué cobro cubrió a cuál; CSV con posición, cantidad e inscripción.' },
+            { type: 'added', text: 'Convocatoria: «Segundo proyecto por club (tarifa especial)»: habilitar/deshabilitar, máximo de proyectos por club (2), valor del segundo proyecto (COP o USD) y fecha límite propia para agregarlo. Cambiar tarifas no altera órdenes ya pagadas; las pendientes se cobran al valor vigente al pagar. Texto público actualizado («hasta dos proyectos…») con la referencia «¡Postula dos proyectos de tu club por $350.000 COP!».' },
+            { type: 'added', text: 'Pruebas: test:fair:registration (criterio puro e invariantes leídas de los archivos); las de pago, ciclo de vida y acciones en bloque siguen en verde.' },
+        ],
+    },
     {
         version: '4.1298.0',
         title: 'Feria de Proyectos: Videos de proyectos — subir el video propio del club, sin costo 📹',

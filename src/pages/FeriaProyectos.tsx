@@ -41,7 +41,11 @@ import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
-const DRAFT_KEY = 'feria_proyectos_draft_v1';
+// v4.1299 — El borrador local guarda la modalidad y una ficha por proyecto.
+// El de la versión anterior (`_v1`) se migra al leerlo: su proyecto pasa a
+// ser el primero.
+const DRAFT_KEY = 'feria_proyectos_draft_v2';
+const LEGACY_DRAFT_KEY = 'feria_proyectos_draft_v1';
 
 const BLUE = '#17458F';
 const GOLD = '#F7A81B';
@@ -71,7 +75,11 @@ interface FairConfig {
     edition: { number: number; ordinal: string; name: string; city: string; country: string; year: number; dates?: string; key: string };
     deadline: string | null;
     presentation: { minMinutes?: number; maxMinutes: number };
-    registration: { priceMode?: 'COP' | 'USD'; amountCop: number; amountUsd?: number; currency: string; concept: string; maxProjectsPerClub: number; paymentDeadline?: string | null };
+    registration: {
+        priceMode?: 'COP' | 'USD'; amountCop: number; amountUsd?: number; currency: string; concept: string; maxProjectsPerClub: number; paymentDeadline?: string | null;
+        /** v4.1299 — La tarifa especial del segundo proyecto, resuelta por el servidor. Ausente: un proyecto por club. */
+        secondProject?: { enabled: boolean; amountCop: number; amountUsd: number; deadline: string | null } | null;
+    };
     /** Las TASAS del recargo que se suma al valor al pagar (v4.980). Aditivo:
      *  ausente, el paso de pago se ve como antes. */
     surcharge?: { enabled: boolean; currency: string; lines: { key: string; label: string; percent: number; fixed: number }[] } | null;
@@ -85,8 +93,23 @@ interface FairConfig {
         requirements: string[]; note: string; priorityNote: string;
         scheduleTitle?: string;
         schedule?: { date: string; label: string; prefix?: string }[];
+        /** v4.1299 — Referencia visible a la tarifa especial. Vacía: se arma con los valores. */
+        secondProjectNote?: string;
     };
     portal?: { path?: string; redirectAfterPayment?: boolean };
+}
+
+/** v4.1299 — La inscripción (uno o dos proyectos) tal como la resuelve el servidor. */
+interface RegistrationView {
+    id: string | null;
+    modality: 'single' | 'double';
+    count: number;
+    currency: 'COP' | 'USD';
+    lines: { submissionId: string; projectIndex: number; projectName: string; label: string; amount: number; paid: boolean; owes: boolean }[];
+    total: number;
+    paidTotal?: number;
+    pendingTotal?: number;
+    projects?: ({ id: string; publicRef: string; projectName: string; projectIndex: number } & Partial<ApplicationView>)[];
 }
 
 /** El estado de la postulación como lo resuelve el servidor (v4.1253). */
@@ -116,7 +139,15 @@ interface Submission {
     trmRate: number | null; trmDate: string | null; trmSource: string | null; trmFetchedAt: string | null;
     paidAt: string | null;
     createdAt?: string | null;
+    registrationId?: string | null;
+    projectIndex?: number;
 }
+
+/** La ficha de UN proyecto (v4.1299): hay una por proyecto postulado. */
+type ProjectFields = { projectName: string; projectDescription: string; focusArea: string; budgetUsd: string };
+const PROJECT_KEYS: (keyof ProjectFields)[] = ['projectName', 'projectDescription', 'focusArea', 'budgetUsd'];
+const EMPTY_PROJECT: ProjectFields = { projectName: '', projectDescription: '', focusArea: '', budgetUsd: '' };
+type Modality = 1 | 2;
 
 type FormState = {
     firstName: string; lastName: string; email: string; phone: string;
@@ -131,7 +162,6 @@ type FormState = {
     // Rol dentro del club. `clubRoleOther` sólo se usa —y sólo se exige—
     // cuando el rol elegido es "Otro".
     clubRole: string; clubRoleOther: string;
-    projectName: string; projectDescription: string; focusArea: string; budgetUsd: string;
     // v4.608 — La cuenta del club se crea con la postulación: la contraseña se
     // pide aquí, mientras el club escribe su correo, y no después del pago.
     password: string; passwordConfirm: string;
@@ -156,7 +186,6 @@ const EMPTY_FORM: FormState = {
     clubName: '', district: '', clubNotListed: false,
     country: '', department: '', city: '', idType: '', idNumber: '',
     clubRole: '', clubRoleOther: '',
-    projectName: '', projectDescription: '', focusArea: '', budgetUsd: '',
     password: '', passwordConfirm: '',
 };
 
@@ -169,7 +198,9 @@ const STEP_FIELDS: Record<number, (keyof FormState)[]> = {
         // ofrecen, y preguntar por el club primero obligaría a volver atrás.
         'district', 'clubName', 'clubRole', 'clubRoleOther',
         'password', 'passwordConfirm'],
-    2: ['projectName', 'projectDescription', 'focusArea', 'budgetUsd'],
+    // v4.1299 — El paso 2 son las fichas de los proyectos (una o dos), con su
+    // propia validación por ficha (`projectErrorsOf`).
+    2: [],
     3: [],
 };
 
@@ -202,7 +233,7 @@ const presentationText = (p: FairConfig['presentation'] | undefined) => {
 };
 
 // Validación en tiempo real (espejo de la del servidor).
-const validateField = (name: keyof FormState, value: string, config: FairConfig | null): string | null => {
+const validateField = (name: keyof FormState | keyof ProjectFields, value: string, config: FairConfig | null): string | null => {
     const v = String(value || '').trim();
     switch (name) {
         case 'firstName': return v ? null : 'Ingresa tu nombre.';
@@ -246,6 +277,16 @@ const validateField = (name: keyof FormState, value: string, config: FairConfig 
     }
 };
 
+/** Los errores de UNA ficha de proyecto (v4.1299). */
+const projectErrorsOf = (p: ProjectFields, config: FairConfig | null): Partial<Record<keyof ProjectFields, string | null>> =>
+    Object.fromEntries(PROJECT_KEYS.map(k => [k, validateField(k, p[k], config)]));
+/** Avance de una ficha: campos obligatorios sin error sobre el total. */
+const projectProgress = (p: ProjectFields, config: FairConfig | null) => {
+    const errs = projectErrorsOf(p, config);
+    const ok = PROJECT_KEYS.filter(k => !errs[k]).length;
+    return Math.round((ok / PROJECT_KEYS.length) * 100);
+};
+
 // ── Página ───────────────────────────────────────────────────────────
 const FeriaProyectos = () => {
     // Suscripción al idioma: los formateadores de arriba leen el locale
@@ -262,6 +303,15 @@ const FeriaProyectos = () => {
     const [step, setStep] = useState(1);
     const [form, setForm] = useState<FormState>(EMPTY_FORM);
     const [touched, setTouched] = useState<Record<string, boolean>>({});
+    // v4.1299 — MODALIDAD y FICHAS. `projects` siempre tiene dos fichas: la
+    // segunda se conserva aunque la modalidad vuelva a «un proyecto»
+    // (quitarla por accidente no borra lo escrito); al enviar sólo viajan las
+    // de la modalidad elegida.
+    const [modality, setModality] = useState<Modality>(1);
+    const [projects, setProjects] = useState<ProjectFields[]>([{ ...EMPTY_PROJECT }, { ...EMPTY_PROJECT }]);
+    const [activeProject, setActiveProject] = useState(0);
+    const [projectTouched, setProjectTouched] = useState<Record<number, Record<string, boolean>>>({});
+    const [registration, setRegistration] = useState<RegistrationView | null>(null);
     const [submitting, setSubmitting] = useState(false);
     const [payLoading, setPayLoading] = useState(false);
     const [globalError, setGlobalError] = useState<string | null>(null);
@@ -299,9 +349,16 @@ const FeriaProyectos = () => {
         return out;
     }, [form, config]);
 
+    const secondEnabled = !!config?.registration?.secondProject?.enabled;
+    const visibleProjects = useMemo(() => projects.slice(0, secondEnabled ? modality : 1), [projects, modality, secondEnabled]);
+    const projectErrors = useMemo(() => visibleProjects.map(p => projectErrorsOf(p, config)), [visibleProjects, config]);
+    const projectValid = useCallback((i: number) => PROJECT_KEYS.every(k => !projectErrors[i]?.[k]), [projectErrors]);
+
     const stepValid = useCallback(
-        (n: number) => STEP_FIELDS[n].every(f => !errors[f]),
-        [errors]
+        (n: number) => (n === 2
+            ? visibleProjects.every((_, i) => projectValid(i))
+            : STEP_FIELDS[n].every(f => !errors[f])),
+        [errors, visibleProjects, projectValid]
     );
 
     // ── Carga de configuración ───────────────────────────────────────
@@ -337,7 +394,24 @@ const FeriaProyectos = () => {
                 if (raw) {
                     const draft = JSON.parse(raw);
                     if (draft?.form) setForm({ ...EMPTY_FORM, ...draft.form });
+                    if (Array.isArray(draft?.projects)) {
+                        setProjects([{ ...EMPTY_PROJECT, ...(draft.projects[0] || {}) }, { ...EMPTY_PROJECT, ...(draft.projects[1] || {}) }]);
+                    }
+                    if (draft?.modality === 2) setModality(2);
                     if (draft?.step && draft.step >= 1 && draft.step <= 3) setStep(draft.step);
+                } else {
+                    // El borrador de la versión anterior: su proyecto pasa a
+                    // ser el primero. Nada escrito se pierde al desplegar.
+                    const legacy = localStorage.getItem(LEGACY_DRAFT_KEY);
+                    if (legacy) {
+                        const draft = JSON.parse(legacy);
+                        const f = draft?.form || {};
+                        const { projectName, projectDescription, focusArea, budgetUsd, ...identity } = f;
+                        setForm({ ...EMPTY_FORM, ...identity });
+                        setProjects([{ ...EMPTY_PROJECT, projectName: projectName || '', projectDescription: projectDescription || '', focusArea: focusArea || '', budgetUsd: budgetUsd || '' }, { ...EMPTY_PROJECT }]);
+                        if (draft?.step && draft.step >= 1 && draft.step <= 3) setStep(draft.step);
+                        localStorage.removeItem(LEGACY_DRAFT_KEY);
+                    }
                 }
             } catch { /* borrador ilegible: se ignora */ }
             return;
@@ -349,6 +423,7 @@ const FeriaProyectos = () => {
             .then(data => {
                 const s: Submission = data.submission;
                 setSubmission(s);
+                if (data.registration) setRegistration(data.registration);
                 if (s.status === 'paid') {
                     setStage('confirmed');
                     localStorage.removeItem(DRAFT_KEY);
@@ -365,9 +440,9 @@ const FeriaProyectos = () => {
         try {
             // Nunca se guarda la contraseña en el navegador.
             const { password, passwordConfirm, ...safe } = form;
-            localStorage.setItem(DRAFT_KEY, JSON.stringify({ form: safe, step, savedAt: Date.now() }));
+            localStorage.setItem(DRAFT_KEY, JSON.stringify({ form: safe, projects, modality, step, savedAt: Date.now() }));
         } catch { /* cuota llena */ }
-    }, [form, step, stage]);
+    }, [form, projects, modality, step, stage]);
 
     // Reintento de confirmación: si Stripe ya cobró pero el webhook aún no
     // llega, reconsultamos hasta que el estado quede en "paid".
@@ -381,6 +456,7 @@ const FeriaProyectos = () => {
                 .then(data => {
                     if (data?.submission?.status === 'paid') {
                         setSubmission(data.submission);
+                        if (data.registration) setRegistration(data.registration);
                         setStage('confirmed');
                         localStorage.removeItem(DRAFT_KEY);
                     }
@@ -454,10 +530,40 @@ const FeriaProyectos = () => {
     const clubAsList = clubOptions.length > 0 && !form.clubNotListed;
     const handleBlur = (e: React.FocusEvent<any>) => setTouched(prev => ({ ...prev, [e.target.name]: true }));
 
+    // v4.1299 — La ficha activa del paso 2.
+    const handleProjectChange = (i: number) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+        const { name, value } = e.target;
+        setProjects(prev => prev.map((p, idx) => (idx === i ? { ...p, [name]: value } : p)));
+    };
+    const handleProjectBlur = (i: number) => (e: React.FocusEvent<any>) =>
+        setProjectTouched(prev => ({ ...prev, [i]: { ...(prev[i] || {}), [e.target.name]: true } }));
+    const touchProject = (i: number) => setProjectTouched(prev => ({ ...prev, [i]: Object.fromEntries(PROJECT_KEYS.map(k => [k, true])) }));
+
+    /**
+     * Cambiar de modalidad. De dos a uno se CONFIRMA si la segunda ficha tiene
+     * algo escrito, y lo escrito se conserva: volver a «dos proyectos» lo
+     * recupera. El total se actualiza en el acto.
+     */
+    const chooseModality = (m: Modality) => {
+        if (m === modality) return;
+        if (m === 1 && PROJECT_KEYS.some(k => String(projects[1]?.[k] || '').trim())) {
+            const ok = window.confirm('Vas a postular un solo proyecto. La información del Proyecto 2 se conserva por si vuelves a elegir dos proyectos antes de enviar. ¿Continuar?');
+            if (!ok) return;
+        }
+        setModality(m);
+        setActiveProject(0);
+    };
+
     const goNext = () => {
         const fields = STEP_FIELDS[step];
         if (!stepValid(step)) {
             setTouched(prev => ({ ...prev, ...Object.fromEntries(fields.map(f => [f, true])) }));
+            if (step === 2) {
+                // Se marca cada ficha y se salta a la primera incompleta.
+                visibleProjects.forEach((_, i) => touchProject(i));
+                const faltante = visibleProjects.findIndex((_, i) => !projectValid(i));
+                if (faltante >= 0) setActiveProject(faltante);
+            }
             return;
         }
         setStep(s => Math.min(3, s + 1));
@@ -476,12 +582,18 @@ const FeriaProyectos = () => {
         if (mode === 'apply' && (!stepValid(1) || !stepValid(2))) {
             setStep(!stepValid(1) ? 1 : 2);
             setTouched(Object.fromEntries(Object.keys(form).map(k => [k, true])));
+            visibleProjects.forEach((_, i) => touchProject(i));
+            const faltante = visibleProjects.findIndex((_, i) => !projectValid(i));
+            if (stepValid(1) && faltante >= 0) setActiveProject(faltante);
             return;
         }
-        if (mode === 'draft' && (!stepValid(1) || !form.projectName.trim())) {
-            setTouched(prev => ({ ...prev, ...Object.fromEntries(STEP_FIELDS[1].map(f => [f, true])), projectName: true }));
+        if (mode === 'draft' && (!stepValid(1) || visibleProjects.some(p => !p.projectName.trim()))) {
+            setTouched(prev => ({ ...prev, ...Object.fromEntries(STEP_FIELDS[1].map(f => [f, true])) }));
+            visibleProjects.forEach((_, i) => setProjectTouched(prev => ({ ...prev, [i]: { ...(prev[i] || {}), projectName: true } })));
             if (!stepValid(1)) setStep(1);
-            setGlobalError('Para guardar un borrador completa tus datos (paso 1) y escribe al menos el nombre del proyecto.');
+            setGlobalError(visibleProjects.length > 1
+                ? 'Para guardar un borrador completa tus datos (paso 1) y escribe al menos el nombre de cada proyecto.'
+                : 'Para guardar un borrador completa tus datos (paso 1) y escribe al menos el nombre del proyecto.');
             scrollToCard();
             return;
         }
@@ -495,15 +607,24 @@ const FeriaProyectos = () => {
                 // nombre del club, no cuál es. Lo que se guarda es el nombre.
                 body: JSON.stringify({
                     ...form, clubNotListed: undefined,
-                    budgetUsd: form.budgetUsd.replace(/[^\d.]/g, ''),
+                    // v4.1299 — La identidad una vez y una ficha por proyecto.
+                    modality: visibleProjects.length,
+                    projects: visibleProjects.map(p => ({ ...p, budgetUsd: p.budgetUsd.replace(/[^\d.]/g, '') })),
                     mode,
                 }),
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) {
-                if (data?.fields) {
+                const identityErrors = data?.fields && Object.keys(data.fields).filter(f => f !== 'modality').length > 0;
+                const projectErrs: Record<string, string>[] = Array.isArray(data?.projects) ? data.projects : [];
+                const firstBad = projectErrs.findIndex(e => e && Object.keys(e).length);
+                if (identityErrors) {
                     setTouched(Object.fromEntries(Object.keys(form).map(k => [k, true])));
-                    setStep(Object.keys(data.fields).some(f => STEP_FIELDS[1].includes(f as keyof FormState)) ? 1 : 2);
+                    setStep(1);
+                } else if (firstBad >= 0) {
+                    visibleProjects.forEach((_, i) => touchProject(i));
+                    setActiveProject(firstBad);
+                    setStep(2);
                 }
                 // Correo ya registrado: se ofrece entrar al panel en vez de
                 // dejar al club atascado en el formulario.
@@ -512,6 +633,7 @@ const FeriaProyectos = () => {
             }
             setSubmission(data.submission);
             setApplication(data.application || null);
+            setRegistration(data.registration || null);
             setPortalPath(null);
             if (data.trm) setTrm(data.trm);
             if (data.portalToken) {
@@ -556,30 +678,40 @@ const FeriaProyectos = () => {
     // la TRM ya no decide el importe ni puede impedir el pago.
     const priceMode = config?.registration?.priceMode === 'USD' ? 'USD' : 'COP';
     const amountCop = priceMode === 'COP' ? (config?.registration?.amountCop ?? 0) : null;
-    const amountUsd = priceMode === 'USD'
-        ? (config?.registration?.amountUsd ?? 0)
-        : (trm?.rate ? Math.round(((amountCop || 0) / trm.rate) * 100) / 100 : null);
 
-    // El recargo se calcula sobre el precio PUBLICADO, en su moneda, igual que
-    // en el servidor: al revés —recargar el valor ya convertido— el desglose en
-    // pesos no cuadraría con lo que se cobra, porque el redondeo del peso y el
-    // del dólar no caen en el mismo sitio.
-    const recargo = computeSurcharge(
-        priceMode === 'COP' ? (amountCop ?? 0) : (config?.registration?.amountUsd ?? 0),
-        config?.surcharge,
-        priceMode,
-        'project_fair',
-    );
+    // v4.1299 — EL DESGLOSE DE LA INSCRIPCIÓN: una línea por proyecto. Antes
+    // de enviar sale de la configuración (para pintarlo mientras se arma); con
+    // la inscripción ya creada, de lo que resolvió el servidor. El importe que
+    // se cobra lo calcula SIEMPRE el servidor al abrir el pago.
+    const secondAmount = priceMode === 'COP'
+        ? (config?.registration?.secondProject?.amountCop ?? 0)
+        : (config?.registration?.secondProject?.amountUsd ?? 0);
+    const firstAmount = priceMode === 'COP' ? (amountCop ?? 0) : (config?.registration?.amountUsd ?? 0);
+    const fmtPrice = (n: number | null | undefined) => (priceMode === 'COP' ? `${fmtCop(n)} COP` : `${fmtUsd(n)} USD`);
+    const plannedLines = visibleProjects.map((p, i) => ({
+        projectIndex: i + 1,
+        label: i === 0 ? 'Primer proyecto' : 'Segundo proyecto',
+        projectName: p.projectName,
+        amount: i === 0 ? firstAmount : secondAmount,
+    }));
+    const orderLines = registration?.lines?.length
+        ? registration.lines.filter(l => !l.paid || registration.lines.every(x => x.paid)).map(l => ({ projectIndex: l.projectIndex, label: l.label, projectName: l.projectName, amount: l.amount }))
+        : plannedLines;
+    const orderTotal = Math.round(orderLines.reduce((a, l) => a + (Number(l.amount) || 0), 0) * 100) / 100;
+    const recargoOrden = computeSurcharge(orderTotal, config?.surcharge, priceMode, 'project_fair');
+    const bundleTotal = Math.round((firstAmount + secondAmount) * 100) / 100;
+    const secondNote = config?.content?.secondProjectNote?.trim()
+        || `¡Postula dos proyectos de tu club por ${fmtPrice(bundleTotal)}!`;
     // Lo que se le cobra: el TOTAL, en la moneda del precio.
     const chargeLabel = priceMode === 'COP'
-        ? `${fmtCop(recargo.total)} COP`
-        : `${fmtUsd(recargo.total)} USD`;
+        ? `${fmtCop(recargoOrden.total)} COP`
+        : `${fmtUsd(recargoOrden.total)} USD`;
     // Equivalente informativo del total, sólo para quien quiera ver a cuánto
     // sale hoy en dólares. No es el importe del cobro.
     const chargeUsdRef = priceMode === 'COP' && trm?.rate
-        ? Math.round((recargo.total / trm.rate) * 100) / 100
+        ? Math.round((recargoOrden.total / trm.rate) * 100) / 100
         : null;
-    const focusLabel = config?.focusAreas.find(a => a.key === form.focusArea)?.label || '';
+    const focusLabelOf = (key: string) => config?.focusAreas.find(a => a.key === key)?.label || '';
     const idTypeLabel = config?.idTypes?.find(t => t.key === form.idType)?.label || '';
     // Con "Otro" se muestra el cargo que escribió, no la palabra "Otro".
     const clubRoleLabel = form.clubRole === 'otro'
@@ -663,6 +795,8 @@ const FeriaProyectos = () => {
                     <AppliedScreen
                         submission={submission}
                         application={application}
+                        registration={registration}
+                        fmtPrice={fmtPrice}
                         editionName={config?.edition?.name || ''}
                         portalHref={config?.portal?.path || '/mi-proyecto'}
                         paymentDeadline={config?.registration?.paymentDeadline || null}
@@ -696,8 +830,16 @@ const FeriaProyectos = () => {
                             <SummaryRow label="Estado" value={<span className="text-emerald-600">Pago confirmado</span>} />
                             <SummaryRow label="Distrito Rotario" value={submission.district} />
                             <SummaryRow label="Club Rotario" value={submission.clubName} />
-                            <SummaryRow label="Área de enfoque" value={submission.focusAreaLabel || submission.focusArea} />
-                            {submission.amountCop ? (
+                            {registration && registration.count > 1 ? (
+                                registration.lines.map(l => (
+                                    <SummaryRow key={l.submissionId} label={l.label} value={`${l.projectName} · ${fmtPrice(l.amount)}`} />
+                                ))
+                            ) : (
+                                <SummaryRow label="Área de enfoque" value={submission.focusAreaLabel || submission.focusArea} />
+                            )}
+                            {registration && registration.count > 1 ? (
+                                <SummaryRow label="Valor de la inscripción" value={fmtPrice(registration.total)} />
+                            ) : submission.amountCop ? (
                                 <SummaryRow label="Valor de la inscripción" value={`${fmtCop(submission.amountCop)} COP`} />
                             ) : null}
                             {/* ⚠️ EL «VALOR PAGADO» SALE DE LO QUE SE COBRÓ, no del
@@ -756,7 +898,9 @@ const FeriaProyectos = () => {
                             <div>
                                 <h2 className="text-xl font-bold text-slate-900">Pago de la inscripción</h2>
                                 <p className="text-sm text-slate-500">
-                                    Inscripción <strong>{submission.publicRef}</strong> · {submission.projectName}
+                                    {orderLines.length > 1
+                                        ? <>Inscripción de <strong>{orderLines.length} proyectos</strong> · {submission.clubName}</>
+                                        : <>Inscripción <strong>{submission.publicRef}</strong> · {submission.projectName}</>}
                                 </p>
                             </div>
                         </div>
@@ -768,18 +912,34 @@ const FeriaProyectos = () => {
                                 </span>
                                 <span className="text-4xl font-extrabold" style={{ color: BLUE }}>
                                     {priceMode === 'COP'
-                                        ? <>{fmtCop(amountCop)} <span className="text-lg font-bold">COP</span></>
-                                        : <>{fmtUsd(amountUsd)} <span className="text-lg font-bold">USD</span></>}
+                                        ? <>{fmtCop(orderTotal)} <span className="text-lg font-bold">COP</span></>
+                                        : <>{fmtUsd(orderTotal)} <span className="text-lg font-bold">USD</span></>}
                                 </span>
                             </div>
+
+                            {/* v4.1299 — Una línea por proyecto: se paga UNA sola vez por
+                                los dos, y se ve por qué suma lo que suma. */}
+                            {orderLines.length > 1 && (
+                                <div className="mt-5 space-y-2 border-b border-slate-100 pb-5 text-[15px]">
+                                    {orderLines.map(l => (
+                                        <div key={l.projectIndex} className="flex items-start justify-between gap-4">
+                                            <span className="text-slate-600">
+                                                <span className="font-semibold text-slate-800">{l.label}</span>
+                                                {l.projectName ? <span className="block text-[13px] text-slate-500">{l.projectName}</span> : null}
+                                            </span>
+                                            <span className="whitespace-nowrap font-semibold text-slate-900">{fmtPrice(l.amount)}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
 
                             {/* ⚠️ EL RECARGO SE MUESTRA ANTES DE ABRIR LA PASARELA, línea
                                 por línea y con su porcentaje. El valor oficial de arriba
                                 no cambia —es lo que se anuncia—; lo que se cobra es el
                                 total de acá, y lo calcula el servidor. */}
-                            {recargo.lines.length > 0 && (
+                            {recargoOrden.lines.length > 0 && (
                                 <div className="mt-5 space-y-2 border-b border-slate-100 pb-5 text-[15px]">
-                                    {recargo.lines.map(l => (
+                                    {recargoOrden.lines.map(l => (
                                         <div key={l.key} className="flex items-center justify-between gap-4">
                                             <span className="text-slate-600">
                                                 {l.label} <span className="text-slate-400">({percentLabel(l.percent)})</span>
@@ -792,7 +952,7 @@ const FeriaProyectos = () => {
                                     <div className="flex items-center justify-between gap-4 border-t border-slate-100 pt-2">
                                         <span className="font-bold text-slate-700">Total a pagar</span>
                                         <span className="text-lg font-extrabold" style={{ color: BLUE }}>
-                                            {priceMode === 'COP' ? `${fmtCop(recargo.total)} COP` : `${fmtUsd(recargo.total)} USD`}
+                                            {priceMode === 'COP' ? `${fmtCop(recargoOrden.total)} COP` : `${fmtUsd(recargoOrden.total)} USD`}
                                         </span>
                                     </div>
                                 </div>
@@ -852,7 +1012,7 @@ const FeriaProyectos = () => {
                             registrada; el club puede irse y pagar después desde
                             su perfil sin perder nada. */}
                         <div className="mt-6 rounded-xl bg-slate-50 px-4 py-4 text-center text-[14px] text-slate-600">
-                            Tu proyecto <strong>ya está postulado</strong>. Si prefieres, puedes pagar la inscripción más
+                            {orderLines.length > 1 ? <>Tus proyectos <strong>ya están postulados</strong>.</> : <>Tu proyecto <strong>ya está postulado</strong>.</>} Si prefieres, puedes pagar la inscripción más
                             tarde desde tu perfil: tu postulación permanece registrada.
                             <div className="mt-3">
                                 <a href={config?.portal?.path || '/mi-proyecto'}
@@ -869,6 +1029,18 @@ const FeriaProyectos = () => {
                             {/* El nombre de la edición ya aparece en la cabecera: aquí
                                 se muestra sólo el contenido, sin repetirlo. */}
                             <p className="text-[15px] leading-relaxed text-slate-600">{config?.content?.intro}</p>
+
+                            {/* v4.1299 — La tarifa especial del segundo proyecto, con los
+                                valores configurados. Sobrio: es una condición de la
+                                convocatoria, no una promoción. */}
+                            {secondEnabled && (
+                                <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border px-4 py-3" style={{ borderColor: `${BLUE}33`, background: `${BLUE}08` }}>
+                                    <p className="text-[15px] font-bold" style={{ color: BLUE }}>{secondNote}</p>
+                                    <p className="text-[13px] text-slate-600">
+                                        Primer proyecto {fmtPrice(firstAmount)} · segundo proyecto {fmtPrice(secondAmount)} adicionales.
+                                    </p>
+                                </div>
+                            )}
 
                             <p className="mt-4 text-[15px] leading-relaxed text-slate-600">{config?.content?.note}</p>
 
@@ -929,7 +1101,7 @@ const FeriaProyectos = () => {
                             <div className="mb-7">
                                 <div className="mb-2 flex items-center justify-between text-sm">
                                     <span className="font-semibold text-slate-700">
-                                        Paso {step} de 3 — {step === 1 ? 'Datos del representante del club que postula el proyecto' : step === 2 ? 'Datos del proyecto' : 'Revisión y confirmación'}
+                                        Paso {step} de 3 — {step === 1 ? 'Datos del representante del club y modalidad de postulación' : step === 2 ? (visibleProjects.length > 1 ? 'Datos de los proyectos' : 'Datos del proyecto') : 'Revisión y confirmación'}
                                     </span>
                                     <span className="font-bold" style={{ color: BLUE }}>{progress}%</span>
                                 </div>
@@ -1080,6 +1252,55 @@ const FeriaProyectos = () => {
                                         )}
                                     </div>
 
+                                    {/* ── v4.1299 — MODALIDAD DE POSTULACIÓN DEL CLUB ──────
+                                        Después de identificar el club y antes de las fichas: es
+                                        lo que decide cuántas fichas vienen en el paso 2 y cuánto
+                                        vale la inscripción. El total se actualiza al elegir. */}
+                                    {secondEnabled && (
+                                        <>
+                                            <GroupTitle>Modalidad de postulación del club</GroupTitle>
+                                            <div>
+                                                <p className="mb-3 text-[14px] leading-relaxed text-slate-600">
+                                                    Para la {config?.edition?.name || 'Feria de Proyectos'}, cada club rotario podrá postular hasta dos
+                                                    proyectos. El primer proyecto tiene un valor de <strong>{fmtPrice(firstAmount)}</strong> y el segundo
+                                                    proyecto cuenta con una tarifa especial de <strong>{fmtPrice(secondAmount)}</strong> adicionales.
+                                                </p>
+                                                <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Modalidad de postulación">
+                                                    {([
+                                                        { m: 1 as Modality, title: 'Postular un proyecto', detail: 'Inscripción estándar · una ficha de proyecto', total: firstAmount, lines: [`Primer proyecto ${fmtPrice(firstAmount)}`] },
+                                                        { m: 2 as Modality, title: 'Postular dos proyectos', detail: 'Segundo proyecto con tarifa especial · dos fichas independientes', total: bundleTotal, lines: [`Primer proyecto ${fmtPrice(firstAmount)}`, `Segundo proyecto ${fmtPrice(secondAmount)}`] },
+                                                    ]).map(opt => {
+                                                        const active = modality === opt.m;
+                                                        return (
+                                                            <button
+                                                                key={opt.m} type="button" role="radio" aria-checked={active}
+                                                                onClick={() => chooseModality(opt.m)}
+                                                                className={`rounded-xl border-2 p-4 text-left transition ${active ? 'bg-blue-50/60' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                                                                style={active ? { borderColor: BLUE } : undefined}
+                                                            >
+                                                                <span className="flex items-center gap-2 text-[15px] font-bold text-slate-900">
+                                                                    <span className="flex h-4 w-4 items-center justify-center rounded-full border-2" style={{ borderColor: active ? BLUE : '#cbd5e1' }}>
+                                                                        {active && <span className="h-2 w-2 rounded-full" style={{ background: BLUE }} />}
+                                                                    </span>
+                                                                    {opt.title}
+                                                                </span>
+                                                                <span className="mt-1 block text-[13px] text-slate-500">{opt.detail}</span>
+                                                                <span className="mt-3 block border-t border-slate-100 pt-2 text-[13px] text-slate-600">
+                                                                    {opt.lines.map(l => <span key={l} className="block">{l}</span>)}
+                                                                </span>
+                                                                <span className="mt-1 block text-lg font-extrabold" style={{ color: BLUE }}>Total {fmtPrice(opt.total)}</span>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                                <div className="mt-3 flex items-center justify-between rounded-lg px-4 py-2.5 text-[14px]" style={{ background: `${BLUE}0f` }}>
+                                                    <span className="text-slate-600">Total de inscripción ({modality === 2 ? 'dos proyectos' : 'un proyecto'})</span>
+                                                    <span className="text-lg font-extrabold" style={{ color: BLUE }}>{fmtPrice(modality === 2 ? bundleTotal : firstAmount)}</span>
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
+
                                     <div>
                                         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                                             <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
@@ -1101,29 +1322,85 @@ const FeriaProyectos = () => {
 
                             {step === 2 && (
                                 <div className="grid gap-5">
-                                    <Field label="Nombre del proyecto" name="projectName" icon={ClipboardList} value={form.projectName} onChange={handleChange} onBlur={handleBlur} error={errors.projectName} touched={touched.projectName} placeholder="Escribe el nombre del proyecto que vas a inscribir" />
-                                    <Field
-                                        as="textarea" label="Descripción del proyecto" name="projectDescription" icon={FileText}
-                                        value={form.projectDescription} onChange={handleChange} onBlur={handleBlur}
-                                        error={errors.projectDescription} touched={touched.projectDescription} maxLength={8000}
-                                        placeholder="Describe el problema que atiende, la comunidad beneficiada, las actividades principales, los resultados esperados y cómo se medirá el impacto."
-                                        hint={`Estructura la propuesta de forma clara, medible y orientada al impacto comunitario. ${form.projectDescription.length}/8000 caracteres.`}
-                                    />
-                                    <div className="grid gap-5 sm:grid-cols-2">
-                                        <Field
-                                            as="select" label="Área de interés en Rotary" name="focusArea" icon={Target}
-                                            value={form.focusArea} onChange={handleChange} onBlur={handleBlur}
-                                            error={errors.focusArea} touched={touched.focusArea}
-                                            options={(config?.focusAreas || []).map(a => ({ value: a.key, label: a.label }))}
-                                            hint="Las siete Áreas de Enfoque de Rotary International."
-                                        />
-                                        <Field
-                                            label="Presupuesto total (USD)" name="budgetUsd" icon={Wallet}
-                                            value={form.budgetUsd} onChange={handleChange} onBlur={handleBlur}
-                                            error={errors.budgetUsd} touched={touched.budgetUsd}
-                                            placeholder="Ej: 25000" hint="Escribe en dólares estadounidenses el total del presupuesto."
-                                        />
-                                    </div>
+                                    {/* v4.1299 — Con dos proyectos, una pestaña por ficha con su
+                                        avance: se navega entre las dos sin perder nada y se ve qué
+                                        falta en cada una. Con uno, la ficha de siempre. */}
+                                    {visibleProjects.length > 1 && (
+                                        <div className="grid gap-2 sm:grid-cols-2" role="tablist" aria-label="Proyectos">
+                                            {visibleProjects.map((p, i) => {
+                                                const pct = projectProgress(p, config);
+                                                const active = activeProject === i;
+                                                const incompleto = !projectValid(i) && projectTouched[i] && Object.keys(projectTouched[i]).length > 0;
+                                                return (
+                                                    <button
+                                                        key={i} type="button" role="tab" aria-selected={active}
+                                                        onClick={() => { setActiveProject(i); scrollToCard(); }}
+                                                        className={`rounded-xl border-2 p-3 text-left transition ${active ? 'bg-blue-50/60' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                                                        style={active ? { borderColor: BLUE } : undefined}
+                                                    >
+                                                        <span className="flex items-center justify-between gap-2">
+                                                            <span className="text-[14px] font-bold text-slate-900">
+                                                                Proyecto {i + 1} <span className="font-semibold text-slate-500">— {i === 0 ? 'Inscripción principal' : 'Inscripción adicional'}</span>
+                                                            </span>
+                                                            <span className={`text-[12px] font-bold ${pct === 100 ? 'text-emerald-600' : incompleto ? 'text-red-600' : 'text-slate-500'}`}>{pct}% completado</span>
+                                                        </span>
+                                                        <span className="mt-1 block truncate text-[13px] text-slate-500">{p.projectName || 'Sin nombre todavía'}</span>
+                                                        <span className="mt-2 block h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+                                                            <span className="block h-full rounded-full transition-all" style={{ width: `${pct}%`, background: pct === 100 ? '#10B981' : BLUE }} />
+                                                        </span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                    {visibleProjects.map((p, i) => (i !== activeProject ? null : (
+                                        <div key={i} className="grid gap-5" role="tabpanel">
+                                            {visibleProjects.length > 1 && (
+                                                <p className="text-[13px] font-semibold uppercase tracking-wide text-slate-500">
+                                                    Proyecto {i + 1} de {visibleProjects.length} — {i === 0 ? 'Inscripción principal' : 'Inscripción adicional'} · {fmtPrice(i === 0 ? firstAmount : secondAmount)}
+                                                </p>
+                                            )}
+                                            <Field label="Nombre del proyecto" name="projectName" icon={ClipboardList} value={p.projectName} onChange={handleProjectChange(i)} onBlur={handleProjectBlur(i)} error={projectErrors[i]?.projectName} touched={projectTouched[i]?.projectName} placeholder="Escribe el nombre del proyecto que vas a inscribir" />
+                                            <Field
+                                                as="textarea" label="Descripción del proyecto" name="projectDescription" icon={FileText}
+                                                value={p.projectDescription} onChange={handleProjectChange(i)} onBlur={handleProjectBlur(i)}
+                                                error={projectErrors[i]?.projectDescription} touched={projectTouched[i]?.projectDescription} maxLength={8000}
+                                                placeholder="Describe el problema que atiende, la comunidad beneficiada, las actividades principales, los resultados esperados y cómo se medirá el impacto."
+                                                hint={`Estructura la propuesta de forma clara, medible y orientada al impacto comunitario. ${p.projectDescription.length}/8000 caracteres.`}
+                                            />
+                                            <div className="grid gap-5 sm:grid-cols-2">
+                                                <Field
+                                                    as="select" label="Área de interés en Rotary" name="focusArea" icon={Target}
+                                                    value={p.focusArea} onChange={handleProjectChange(i)} onBlur={handleProjectBlur(i)}
+                                                    error={projectErrors[i]?.focusArea} touched={projectTouched[i]?.focusArea}
+                                                    options={(config?.focusAreas || []).map(a => ({ value: a.key, label: a.label }))}
+                                                    hint="Las siete Áreas de Enfoque de Rotary International."
+                                                />
+                                                <Field
+                                                    label="Presupuesto total (USD)" name="budgetUsd" icon={Wallet}
+                                                    value={p.budgetUsd} onChange={handleProjectChange(i)} onBlur={handleProjectBlur(i)}
+                                                    error={projectErrors[i]?.budgetUsd} touched={projectTouched[i]?.budgetUsd}
+                                                    placeholder="Ej: 25000" hint="Escribe en dólares estadounidenses el total del presupuesto."
+                                                />
+                                            </div>
+                                            {visibleProjects.length > 1 && (
+                                                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3 text-[13px]">
+                                                    <span className="text-slate-500">
+                                                        {projectValid(i) ? <span className="font-semibold text-emerald-600">Esta ficha está completa.</span> : 'Completa los campos de esta ficha antes de continuar.'}
+                                                    </span>
+                                                    {i < visibleProjects.length - 1 ? (
+                                                        <button type="button" onClick={() => { setActiveProject(i + 1); scrollToCard(); }} className="inline-flex items-center gap-1 font-bold" style={{ color: BLUE }}>
+                                                            Ir al Proyecto {i + 2} <ArrowRight size={14} />
+                                                        </button>
+                                                    ) : (
+                                                        <button type="button" onClick={() => { setActiveProject(0); scrollToCard(); }} className="inline-flex items-center gap-1 font-bold" style={{ color: BLUE }}>
+                                                            <ArrowLeft size={14} /> Volver al Proyecto 1
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )))}
                                 </div>
                             )}
 
@@ -1151,44 +1428,59 @@ const FeriaProyectos = () => {
                                         <SummaryRow label="Documento" value={`${idTypeLabel}${idTypeLabel ? ' ' : ''}${form.idNumber}`.trim()} />
                                     </div>
 
-                                    <div className="mt-4 rounded-xl border border-slate-200 p-5">
-                                        <div className="mb-1 flex items-center justify-between">
-                                            <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide" style={{ color: BLUE }}>
-                                                <ClipboardList size={15} /> Proyecto
-                                            </h3>
-                                            <button type="button" onClick={() => setStep(2)} className="text-[13px] font-semibold text-slate-500 hover:text-slate-800">Editar</button>
+                                    {visibleProjects.map((p, i) => (
+                                        <div key={i} className="mt-4 rounded-xl border border-slate-200 p-5">
+                                            <div className="mb-1 flex items-center justify-between">
+                                                <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide" style={{ color: BLUE }}>
+                                                    <ClipboardList size={15} /> {visibleProjects.length > 1 ? `Proyecto ${i + 1} — ${i === 0 ? 'Inscripción principal' : 'Inscripción adicional'}` : 'Proyecto'}
+                                                </h3>
+                                                <button type="button" onClick={() => { setActiveProject(i); setStep(2); }} className="text-[13px] font-semibold text-slate-500 hover:text-slate-800">Editar</button>
+                                            </div>
+                                            <SummaryRow label="Nombre del proyecto" value={p.projectName} />
+                                            <SummaryRow label="Área de interés" value={focusLabelOf(p.focusArea)} />
+                                            <SummaryRow label="Presupuesto" value={`${fmtUsd(Number(p.budgetUsd.replace(/[^\d.]/g, '')) || 0)} USD`} />
+                                            <div className="py-3">
+                                                <p className="mb-1.5 text-[13px] font-medium uppercase tracking-wide text-slate-500">Descripción</p>
+                                                <p className="whitespace-pre-line text-[15px] leading-relaxed text-slate-800">{p.projectDescription}</p>
+                                            </div>
                                         </div>
-                                        <SummaryRow label="Nombre del proyecto" value={form.projectName} />
-                                        <SummaryRow label="Área de interés" value={focusLabel} />
-                                        <SummaryRow label="Presupuesto" value={`${fmtUsd(Number(form.budgetUsd.replace(/[^\d.]/g, '')) || 0)} USD`} />
-                                        <div className="py-3">
-                                            <p className="mb-1.5 text-[13px] font-medium uppercase tracking-wide text-slate-500">Descripción</p>
-                                            <p className="whitespace-pre-line text-[15px] leading-relaxed text-slate-800">{form.projectDescription}</p>
-                                        </div>
-                                    </div>
+                                    ))}
 
-                                    <div className="mt-4 flex items-center justify-between gap-4 rounded-xl px-5 py-4" style={{ background: `${BLUE}0f` }}>
-                                        <div>
-                                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Valor de la inscripción</p>
-                                            <p className="text-xl font-extrabold" style={{ color: BLUE }}>
-                                                {priceMode === 'COP' ? `${fmtCop(amountCop)} COP` : `${fmtUsd(amountUsd)} USD`}
-                                            </p>
+                                    {/* v4.1299 — RESUMEN DE INSCRIPCIÓN: club, distrito, cuántos
+                                        proyectos, el valor de cada uno y el total. Lo que se va a
+                                        pagar, una sola vez, por todos. */}
+                                    <div className="mt-4 rounded-xl px-5 py-4" style={{ background: `${BLUE}0f` }}>
+                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Resumen de inscripción</p>
+                                        <div className="mt-2 grid gap-x-6 gap-y-1 text-[14px] sm:grid-cols-2">
+                                            <p className="text-slate-600">Club Rotario · <span className="font-semibold text-slate-800">{form.clubName}</span></p>
+                                            <p className="text-slate-600">Distrito · <span className="font-semibold text-slate-800">{form.district}</span></p>
+                                            <p className="text-slate-600">Cantidad de proyectos · <span className="font-semibold text-slate-800">{visibleProjects.length}</span></p>
+                                        </div>
+                                        <div className="mt-3 space-y-1.5 border-t border-slate-200/70 pt-3 text-[14px]">
+                                            {plannedLines.map(l => (
+                                                <div key={l.projectIndex} className="flex items-start justify-between gap-4">
+                                                    <span className="text-slate-600">
+                                                        <span className="font-semibold text-slate-800">{l.label}</span>
+                                                        {visibleProjects.length > 1 && l.projectName ? <span className="block text-[13px] text-slate-500">{l.projectName}</span> : null}
+                                                    </span>
+                                                    <span className="whitespace-nowrap font-semibold text-slate-800">{fmtPrice(l.amount)}</span>
+                                                </div>
+                                            ))}
+                                            <div className="flex items-center justify-between gap-4 border-t border-slate-200/70 pt-2">
+                                                <span className="font-bold text-slate-700">Total a pagar</span>
+                                                <span className="text-xl font-extrabold" style={{ color: BLUE }}>{fmtPrice(orderTotal)}</span>
+                                            </div>
                                             {/* El recargo se anuncia ya en el resumen, antes de
                                                 enviar: enterarse del total recién en la pasarela
                                                 es enterarse tarde. */}
-                                            {recargo.surcharge > 0 && (
-                                                <p className="mt-0.5 text-[13px] text-slate-500">
-                                                    + {priceMode === 'COP' ? `${fmtCop(recargo.surcharge)} COP` : `${fmtUsd(recargo.surcharge)} USD`} de comisiones ·
-                                                    {' '}total {priceMode === 'COP' ? `${fmtCop(recargo.total)} COP` : `${fmtUsd(recargo.total)} USD`}
+                                            {recargoOrden.surcharge > 0 && (
+                                                <p className="text-[13px] text-slate-500">
+                                                    + {fmtPrice(recargoOrden.surcharge)} de comisiones al pagar · total {fmtPrice(recargoOrden.total)}
+                                                    {priceMode === 'COP' ? ' · se cobra en pesos' : ''}
+                                                    {chargeUsdRef ? <span className="text-slate-400"> · ≈ {fmtUsd(chargeUsdRef)} USD</span> : null}
                                                 </p>
                                             )}
                                         </div>
-                                        {priceMode === 'COP' ? (
-                                            <p className="text-right text-[13px] text-slate-500">
-                                                Se cobra en pesos
-                                                {chargeUsdRef ? <><br /><span className="text-slate-400">≈ {fmtUsd(chargeUsdRef)} USD</span></> : null}
-                                            </p>
-                                        ) : null}
                                     </div>
                                 </div>
                             )}
@@ -1229,7 +1521,7 @@ const FeriaProyectos = () => {
                                             className="inline-flex items-center gap-2 rounded-xl px-7 py-3 text-[15px] font-bold text-white shadow-sm transition hover:opacity-90 disabled:opacity-60"
                                             style={{ background: BLUE }}
                                         >
-                                            {submitting ? <><Loader2 size={17} className="animate-spin" /> Postulando…</> : <>Confirmar y postular proyecto <ArrowRight size={16} /></>}
+                                            {submitting ? <><Loader2 size={17} className="animate-spin" /> Postulando…</> : <>{visibleProjects.length > 1 ? 'Confirmar y postular los proyectos' : 'Confirmar y postular proyecto'} <ArrowRight size={16} /></>}
                                         </button>
                                     )}
                                 </div>
@@ -1258,8 +1550,9 @@ const FeriaProyectos = () => {
  * separado —el del proyecto y el de la inscripción— y ofrece pagar como una
  * acción opcional. Cerrar la página aquí no pierde nada.
  */
-const AppliedScreen = ({ submission, application, editionName, portalHref, paymentDeadline, onPayNow, cardRef }: {
-    submission: Submission; application: ApplicationView | null; editionName: string; portalHref: string;
+const AppliedScreen = ({ submission, application, registration, fmtPrice, editionName, portalHref, paymentDeadline, onPayNow, cardRef }: {
+    submission: Submission; application: ApplicationView | null; registration: RegistrationView | null; fmtPrice: (n: number | null | undefined) => string;
+    editionName: string; portalHref: string;
     paymentDeadline: string | null; onPayNow: () => void; cardRef: React.RefObject<HTMLElement | null>;
 }) => (
     <section ref={cardRef} className="scroll-mt-32 rounded-2xl bg-white p-6 shadow-sm sm:p-10">
@@ -1267,19 +1560,36 @@ const AppliedScreen = ({ submission, application, editionName, portalHref, payme
             <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50">
                 <CheckCircle2 size={38} className="text-emerald-600" />
             </div>
-            <h2 className="text-2xl font-bold text-slate-900 sm:text-3xl">¡Tu proyecto ha sido postulado exitosamente!</h2>
+            <h2 className="text-2xl font-bold text-slate-900 sm:text-3xl">
+                {registration && registration.count > 1 ? '¡Tus proyectos han sido postulados exitosamente!' : '¡Tu proyecto ha sido postulado exitosamente!'}
+            </h2>
             <p className="mx-auto mt-3 max-w-xl text-[15px] leading-relaxed text-slate-600">
-                Hemos recibido la postulación de tu proyecto para la <strong>{editionName || 'Feria de Proyectos'}</strong>.
-                Tu proyecto ha quedado registrado en nuestra plataforma y podrás consultar su estado desde tu perfil.
+                Hemos recibido la postulación de {registration && registration.count > 1 ? 'tus proyectos' : 'tu proyecto'} para la <strong>{editionName || 'Feria de Proyectos'}</strong>.
+                {registration && registration.count > 1 ? ' Quedaron registrados en nuestra plataforma, cada uno con su propio código, y podrás gestionarlos por separado desde tu perfil.' : ' Tu proyecto ha quedado registrado en nuestra plataforma y podrás consultar su estado desde tu perfil.'}
             </p>
-            <div className="mx-auto mt-6 max-w-sm rounded-xl px-6 py-4" style={{ background: `${GOLD}1f` }}>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Código de postulación</p>
-                <p className="mt-1 text-3xl font-extrabold tracking-wider" style={{ color: BLUE }}>{submission.publicRef}</p>
-            </div>
+            {registration && registration.count > 1 ? (
+                <div className="mx-auto mt-6 grid max-w-xl gap-3 sm:grid-cols-2">
+                    {(registration.projects || []).map(p => (
+                        <div key={p.id} className="rounded-xl px-5 py-4 text-left" style={{ background: `${GOLD}1f` }}>
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Proyecto {p.projectIndex} · código</p>
+                            <p className="mt-1 text-2xl font-extrabold tracking-wider" style={{ color: BLUE }}>{p.publicRef}</p>
+                            <p className="mt-1 text-[13px] font-semibold text-slate-700">{p.projectName}</p>
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <div className="mx-auto mt-6 max-w-sm rounded-xl px-6 py-4" style={{ background: `${GOLD}1f` }}>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Código de postulación</p>
+                    <p className="mt-1 text-3xl font-extrabold tracking-wider" style={{ color: BLUE }}>{submission.publicRef}</p>
+                </div>
+            )}
         </div>
 
         <div className="mt-8 rounded-xl border border-slate-200 p-5">
-            <SummaryRow label="Nombre del proyecto" value={submission.projectName} />
+            {registration && registration.count > 1
+                ? registration.lines.map(l => <SummaryRow key={l.submissionId} label={l.label} value={`${l.projectName} · ${fmtPrice(l.amount)}`} />)
+                : <SummaryRow label="Nombre del proyecto" value={submission.projectName} />}
+            {registration && registration.count > 1 ? <SummaryRow label="Total de inscripción" value={<span style={{ color: BLUE }}>{fmtPrice(registration.total)}</span>} /> : null}
             <SummaryRow label="Club Rotario" value={submission.clubName} />
             <SummaryRow label="Responsable" value={`${submission.firstName} ${submission.lastName}`} />
             <SummaryRow label="Fecha de postulación" value={fmtDateTime(application?.appliedAt || submission.createdAt || null)} />
@@ -1303,7 +1613,7 @@ const AppliedScreen = ({ submission, application, editionName, portalHref, payme
             <a href={portalHref}
                 className="inline-flex items-center justify-center gap-2 rounded-xl border-2 px-5 py-3 text-[15px] font-bold transition hover:bg-slate-50"
                 style={{ borderColor: BLUE, color: BLUE }}>
-                <FileText size={17} /> Ver mi proyecto
+                <FileText size={17} /> {registration && registration.count > 1 ? 'Ver mis proyectos' : 'Ver mi proyecto'}
             </a>
             <button type="button" onClick={onPayNow}
                 className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-5 py-3 text-[15px] font-semibold text-slate-700 transition hover:bg-slate-50">

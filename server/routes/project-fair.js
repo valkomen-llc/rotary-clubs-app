@@ -56,6 +56,12 @@ router.post('/portal/checkout', portal.portalAuth, express.json(), portal.startC
 router.put('/portal/application', portal.portalAuth, express.json({ limit: '256kb' }), portal.saveApplication);
 router.post('/portal/application/submit', portal.portalAuth, express.json({ limit: '256kb' }), portal.submitApplication);
 router.get('/portal/receipt', portal.portalAuth, portal.getReceipt);
+// v4.1299 — La INSCRIPCIÓN del club: agregar un segundo proyecto (antes o
+// después de pagar el primero), quitarlo antes de pagar y restaurarlo. La
+// inscripción sale del token, nunca del cuerpo. Literales antes de `/:id`.
+router.post('/portal/projects', portal.portalAuth, express.json({ limit: '256kb' }), portal.addProject);
+router.post('/portal/projects/:id/withdraw', portal.portalAuth, express.json(), portal.withdrawProject);
+router.post('/portal/projects/:id/restore', portal.portalAuth, express.json(), portal.restoreProject);
 // Rutas heredadas: son el formulario 'master' de las genéricas de abajo.
 router.put('/portal/form', portal.portalAuth, express.json({ limit: '2mb' }), portal.saveForm);
 router.post('/portal/form/submit', portal.portalAuth, express.json({ limit: '2mb' }), portal.submitForm);

@@ -19,5 +19,5 @@
  * mismo. Al bumpear la versión hay que tocar los tres — que es lo que ya
  * manda CLAUDE.md— y la prueba lo hace cumplir.
  */
-export const APP_VERSION = '4.1298.0';
+export const APP_VERSION = '4.1299.0';
 

@@ -1,4 +1,5 @@
 <!-- Extraído de CLAUDE.md. Las reglas siguen vigentes: léelo ANTES de tocar este módulo. -->
+<!-- v4.1299: «un (1) proyecto por club» quedó SUPERSEDIDO. La inscripción admite uno o dos proyectos: ver dos-proyectos-por-club.md. -->
 
 ## Postulación de Proyectos — ediciones (v4.683)
 

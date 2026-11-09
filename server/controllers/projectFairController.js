@@ -53,7 +53,14 @@ import {
     isApplied, projectStateOf, projectStateMeta, owesRegistration, LEGACY_PAYMENT_WORKFLOW,
     paymentStatusOf, paymentStatusLabel, paymentDeadlineOf, formsRequirePayment,
 } from '../lib/projectFairLifecycle.js';
+// v4.1299 — La INSCRIPCIÓN del club: uno o dos proyectos, un solo pago.
+import {
+    pricingRulesOf, lineAmountFor, orderFor, registrationBreakdown, modalityOf,
+    coveredIdsFromMetadata, coveredIdsToMetadata, projectIndexLabel, indexOf as projectIndexOf,
+    secondProjectVerdict, activeProjects,
+} from '../lib/projectFairRegistration.js';
 
+console.log('[projectFairController] v4.1299.0 cargado — Hasta DOS proyectos por club en UNA inscripción (ProjectFairRegistration): primer proyecto a la tarifa de inscripción, segundo con tarifa especial, un solo pago que cubre lo que el club debe; con el primero ya pagado, el segundo se agrega con un cobro complementario. Lo heredado se migra a inscripciones de un proyecto.');
 console.log('[projectFairController] v4.1256.0 cargado — FDD, paso «Solicitud del FDD»: sin «Justificación de la solicitud».');
 console.log('[projectFairController] v4.1255.0 cargado — FDD, paso «Aportes esperados»: sin «distritos del exterior», aportes del club y del exterior opcionales, y el FAP con contacto por WhatsApp a la presidenta del evento.');
 console.log('[projectFairController] v4.1254.0 cargado — El siguiente paso del proceso internacional es Rotary Grants 31A (grants31a.org); la copia guardada del destino 25A se actualiza sola.');
@@ -115,7 +122,17 @@ export const DEFAULT_CONFIG = {
         amountUsd: 0,
         currency: 'COP',
         concept: 'Inscripción de proyecto',
-        maxProjectsPerClub: 1,
+        // v4.1299 — HASTA DOS PROYECTOS POR CLUB. El primero vale
+        // `amountCop`; el segundo tiene tarifa especial (`secondProjectAmount*`)
+        // y se puede apagar o acotar con fecha propia. El criterio vive en
+        // `server/lib/projectFairRegistration.js` (`pricingRulesOf`).
+        maxProjectsPerClub: 2,
+        secondProjectEnabled: true,
+        secondProjectAmountCop: 100000,
+        secondProjectAmountUsd: 0,
+        // Fecha límite para AGREGAR un segundo proyecto (AAAA-MM-DD). Vacía:
+        // rige la fecha límite general de postulación.
+        secondProjectDeadline: '',
         // v4.1253 — ¿Exigir el pago para diligenciar los formularios del
         // proyecto? APAGADO: la postulación y la formulación no esperan al
         // pago. Encenderlo es una decisión expresa de la Convocatoria.
@@ -196,7 +213,14 @@ export const DEFAULT_CONFIG = {
     content: {
         title: 'Postulación de Proyectos',
         subtitle: 'XII Feria de Proyectos Rotary Colombia — Valledupar',
-        intro: 'Los clubes rotarios podrán postular un (1) proyecto para presentarlo durante la XII Feria de Proyectos Rotary Colombia, que se realizará en la ciudad de Valledupar. La feria conecta proyectos de alto impacto con potenciales aliados nacionales e internacionales, patrocinadores, financiadores, fundaciones y colaboradores estratégicos.',
+        // v4.1299 — Hasta dos proyectos por club. El texto anterior («un (1)
+        // proyecto») se reemplaza también en la fila guardada si sigue siendo
+        // exactamente ése (`normalizeSavedConfig`).
+        intro: 'Los clubes rotarios podrán postular hasta dos proyectos para participar en la XII Feria de Proyectos Rotary Colombia – Valledupar 2027, que conecta proyectos de alto impacto con potenciales aliados nacionales e internacionales, patrocinadores, financiadores, fundaciones y colaboradores estratégicos. La inscripción del primer proyecto tiene un valor de $250.000 COP y el segundo proyecto podrá postularse por un valor adicional de $100.000 COP.',
+        // Referencia visible a la tarifa especial. Vacía, la página la arma
+        // con los valores configurados («¡Postula dos proyectos de tu club
+        // por $350.000 COP!»); escrita, manda tal cual.
+        secondProjectNote: '',
         requirements: [
             'Proyectos en ejecución o listos para implementar',
             'Iniciativas que requieran acompañamiento técnico o cofinanciación',
@@ -539,6 +563,41 @@ const ensureTables = async () => {
     // El listado excluye lo archivado por defecto, así que el índice es
     // parcial: sólo indexa lo poco que hay archivado, no la tabla entera.
     await db.query(`CREATE INDEX IF NOT EXISTS "ProjectFairSubmission_archived_idx" ON "ProjectFairSubmission" ("archivedAt") WHERE "archivedAt" IS NOT NULL;`).catch(() => {});
+
+    // ── v4.1299 — La INSCRIPCIÓN del club: uno o dos proyectos, un pago ──
+    // La fila de `ProjectFairSubmission` sigue siendo EL PROYECTO; esta tabla
+    // agrupa los proyectos de un club (`registrationId`) y numera cada uno
+    // (`projectIndex`). Es un PADRE, no cuelga de `submissionId`: por eso no
+    // va en `SUBMISSION_CHILDREN`. Criterio: `server/lib/projectFairRegistration.js`.
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "ProjectFairRegistration" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "eventId" TEXT,
+            "clubName" VARCHAR(200),
+            district VARCHAR(160),
+            email VARCHAR(200),
+            "accountId" TEXT,
+            modality VARCHAR(20) NOT NULL DEFAULT 'single',
+            metadata JSONB NOT NULL DEFAULT '{}',
+            "createdAt" TIMESTAMPTZ DEFAULT NOW(),
+            "updatedAt" TIMESTAMPTZ DEFAULT NOW()
+        );
+    `);
+    await Promise.all([
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "registrationId" TEXT`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "projectIndex" INTEGER NOT NULL DEFAULT 1`),
+    ]);
+    // ⚠️ EL TOPE DE PROYECTOS ES DE LA BASE, no sólo del servidor: una sola
+    // fila por posición dentro de una inscripción (dos pestañas pulsando
+    // «Agregar segundo proyecto» a la vez no crean dos), y la posición se
+    // acota a las reglas administrativas aprobadas. Parcial, así que un
+    // `ON CONFLICT` contra él tiene que repetir el predicado.
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "ProjectFairSubmission_registration_index_uidx" ON "ProjectFairSubmission" ("registrationId", "projectIndex") WHERE "registrationId" IS NOT NULL;`).catch(() => {});
+    await db.query(`CREATE INDEX IF NOT EXISTS "ProjectFairSubmission_registration_idx" ON "ProjectFairSubmission" ("registrationId");`).catch(() => {});
+    await db.query(`CREATE INDEX IF NOT EXISTS "ProjectFairRegistration_event_idx" ON "ProjectFairRegistration" ("eventId", lower(email));`).catch(() => {});
+    await db.query(`ALTER TABLE "ProjectFairSubmission" DROP CONSTRAINT IF EXISTS "ProjectFairSubmission_projectIndex_check"`).catch(() => {});
+    await db.query(`ALTER TABLE "ProjectFairSubmission" ADD CONSTRAINT "ProjectFairSubmission_projectIndex_check" CHECK ("projectIndex" >= 1 AND "projectIndex" <= 2)`).catch(() => {});
+    // (La columna de la cuenta y la migración van tras crear `ProjectFairAccount`, más abajo.)
     // Postulaciones anteriores al módulo: quedan como Postuladas (sólo donde
     // aún está vacío). v4.1253 — ya no se deduce del pago: son dos estados.
     await db.query(`
@@ -628,6 +687,12 @@ const ensureTables = async () => {
     await db.query(`ALTER TABLE "ProjectFairAccount" ADD COLUMN IF NOT EXISTS "roleRevokedAt" TIMESTAMPTZ`).catch(() => {});
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "ProjectFairAccount_email_key" ON "ProjectFairAccount" (lower(email));`).catch(() => {});
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "ProjectFairAccount_submission_key" ON "ProjectFairAccount" ("submissionId");`).catch(() => {});
+    // v4.1299 — La cuenta conoce su INSCRIPCIÓN (uno o dos proyectos); su
+    // `submissionId` sigue siendo el proyecto principal, para el token y las
+    // rutas que ya existían.
+    await db.query(`ALTER TABLE "ProjectFairAccount" ADD COLUMN IF NOT EXISTS "registrationId" TEXT`).catch(() => {});
+    await db.query(`CREATE INDEX IF NOT EXISTS "ProjectFairAccount_registration_idx" ON "ProjectFairAccount" ("registrationId");`).catch(() => {});
+    await migrateRegistrations();
 
     // Respuestas del formulario maestro. `answers` es un JSONB con la forma
     // { seccion: { campo: valor } }, guiado por la plantilla de la config.
@@ -759,6 +824,60 @@ const ensureTables = async () => {
  * casa ninguna fila) y deja una entrada en el historial de cada postulación
  * que movió, para que «¿por qué cambió este estado?» tenga respuesta.
  */
+/**
+ * v4.1299 — Cada proyecto SIN inscripción recibe la suya.
+ *
+ * ⚠️ COMPATIBILIDAD CON LO QUE YA EXISTE, y es obligatoria: ningún club que
+ * haya registrado o pagado un proyecto pierde nada. Cada fila heredada se
+ * convierte en una inscripción de UN proyecto (posición 1, modalidad
+ * `single`), apuntando a su cuenta si la tiene. No se agrupan filas por
+ * correo ni por club —dos filas del mismo correo pueden ser dos ediciones o
+ * un duplicado histórico, y atarlas sería adivinar (regla de
+ * `bindLegacyEdition`)—. Desde su perfil, un club con un proyecto ya pagado
+ * puede agregar el segundo por el valor complementario; no se le inventa
+ * ningún segundo proyecto vacío.
+ *
+ * Idempotente: sólo toca filas con `registrationId` NULL, en cada arranque.
+ */
+export const migrateRegistrations = async () => {
+    try {
+        const { rows } = await db.query(`
+            SELECT s.id, s."eventId", s."clubName", s.district, s.email, s."createdAt", a.id AS "accountId"
+            FROM "ProjectFairSubmission" s
+            LEFT JOIN "ProjectFairAccount" a ON a."submissionId" = s.id
+            WHERE s."registrationId" IS NULL
+            ORDER BY s."createdAt" ASC
+            LIMIT 2000
+        `);
+        for (const r of rows) {
+            const reg = await db.query(`
+                INSERT INTO "ProjectFairRegistration" ("eventId", "clubName", district, email, "accountId", modality, metadata, "createdAt")
+                VALUES ($1, $2, $3, $4, $5, 'single', $6::jsonb, COALESCE($7, NOW()))
+                RETURNING id
+            `, [r.eventId || null, r.clubName || null, r.district || null, String(r.email || '').toLowerCase() || null,
+                r.accountId || null, JSON.stringify({ migratedFrom: r.id, migratedAt: new Date().toISOString() }), r.createdAt || null]);
+            const regId = reg.rows[0]?.id;
+            if (!regId) continue;
+            // Condicional: si otra instancia ya la migró entre la lectura y
+            // la escritura, la inscripción recién creada queda huérfana (sin
+            // proyectos) y se limpia.
+            const upd = await db.query(
+                `UPDATE "ProjectFairSubmission" SET "registrationId" = $1, "projectIndex" = 1 WHERE id = $2 AND "registrationId" IS NULL`,
+                [regId, r.id]);
+            if (!upd.rowCount) {
+                await db.query('DELETE FROM "ProjectFairRegistration" WHERE id = $1', [regId]).catch(() => {});
+                continue;
+            }
+            if (r.accountId) {
+                await db.query('UPDATE "ProjectFairAccount" SET "registrationId" = $1 WHERE id = $2 AND "registrationId" IS NULL', [regId, r.accountId]).catch(() => {});
+            }
+        }
+        if (rows.length) console.log(`[project-fair] 🧭 Inscripciones creadas para ${rows.length} proyecto(s) heredado(s).`);
+    } catch (err) {
+        console.warn('[project-fair] No pude migrar las inscripciones:', err?.message);
+    }
+};
+
 export const migrateDecoupledStates = async () => {
     try {
         const legacy = LEGACY_PAYMENT_WORKFLOW.map(k => `'${k}'`).join(',');
@@ -940,8 +1059,8 @@ export const grantProjectManagerRole = async (submission, { reason = null } = {}
         const { rowCount } = await db.query(`
             UPDATE "ProjectFairAccount"
                SET role = $1, "roleGrantedAt" = NOW(), "roleRevokedAt" = NULL, "updatedAt" = NOW()
-             WHERE "submissionId" = $2 AND COALESCE(role, '') <> $1
-        `, [APPLICANT_ROLES.MANAGER, submission.id]);
+             WHERE ("submissionId" = $2 OR ($3::text IS NOT NULL AND "registrationId" = $3)) AND COALESCE(role, '') <> $1
+        `, [APPLICANT_ROLES.MANAGER, submission.id, submission.registrationId || null]);
         if (!rowCount) return false;   // ya lo tenía, o no hay cuenta
 
         await logEvent(submission.id, {
@@ -964,8 +1083,8 @@ export const suspendProjectManagerRole = async (submission, { reason = null } = 
         const { rowCount } = await db.query(`
             UPDATE "ProjectFairAccount"
                SET role = $1, "roleRevokedAt" = NOW(), "updatedAt" = NOW()
-             WHERE "submissionId" = $2 AND role = $3
-        `, [APPLICANT_ROLES.SUSPENDED, submission.id, APPLICANT_ROLES.MANAGER]);
+             WHERE ("submissionId" = $2 OR ($4::text IS NOT NULL AND "registrationId" = $4)) AND role = $3
+        `, [APPLICANT_ROLES.SUSPENDED, submission.id, APPLICANT_ROLES.MANAGER, submission.registrationId || null]);
         if (!rowCount) return false;
 
         await logEvent(submission.id, {
@@ -995,6 +1114,12 @@ export const suspendProjectManagerRole = async (submission, { reason = null } = 
 // tiene exactamente ese texto equivocado, se corrige al leerla. Sólo se toca
 // esa cadena literal: cualquier redacción propia del admin queda intacta.
 const LEGACY_CADRE_LABEL = 'Comunicación de los clubes con los padres';
+// v4.1299 — El texto introductorio anterior («un (1) proyecto»), tal como se
+// guardó en las filas que pasaron por el panel. Si la fila lo trae EXACTO se
+// reemplaza por el vigente; una redacción propia del comité se respeta.
+const LEGACY_INTROS = [
+    'Los clubes rotarios podrán postular un (1) proyecto para presentarlo durante la XII Feria de Proyectos Rotary Colombia, que se realizará en la ciudad de Valledupar. La feria conecta proyectos de alto impacto con potenciales aliados nacionales e internacionales, patrocinadores, financiadores, fundaciones y colaboradores estratégicos.',
+];
 const CADRE_LABEL = 'Comunicación de los clubes con los CADRES';
 
 export const normalizeSavedConfig = (saved) => {
@@ -1022,6 +1147,23 @@ export const normalizeSavedConfig = (saved) => {
                 schedule: out.content.schedule.map(i => (i?.label === LEGACY_CADRE_LABEL ? { ...i, label: CADRE_LABEL } : i)),
             },
         };
+    }
+
+    // ⚠️ v4.1299 — HASTA DOS PROYECTOS POR CLUB. La fila guardada lleva una
+    // copia de `registration.maxProjectsPerClub: 1` (el valor por defecto de
+    // siempre, que nadie eligió: no había editor) y del texto introductorio
+    // de «un (1) proyecto». Igual que el destino de Rotary Grants (v4.1254):
+    // se reemplaza SÓLO lo que sigue siendo exactamente el valor viejo. Una
+    // convocatoria que YA pasó por el editor nuevo trae
+    // `secondProjectAmountCop` y se respeta tal cual, incluido su tope.
+    if (isPlainObject(out?.registration) && out.registration.secondProjectAmountCop === undefined
+        && out.registration.secondProjectAmountUsd === undefined) {
+        const { maxProjectsPerClub, ...restReg } = out.registration;
+        out = { ...out, registration: restReg };
+    }
+    if (isPlainObject(out?.content) && typeof out.content.intro === 'string'
+        && LEGACY_INTROS.includes(out.content.intro.trim())) {
+        out = { ...out, content: { ...out.content, intro: DEFAULT_CONFIG.content.intro } };
     }
 
     // ⚠️ v4.1254 — ROTARY GRANTS 25A → 31A. El panel guarda la convocatoria
@@ -1318,7 +1460,21 @@ const toPublicConfig = (cfg, surcharge = null) => ({
         amountUsd: Number(cfg.registration?.amountUsd) || 0,
         currency: cfg.registration?.currency || 'COP',
         concept: cfg.registration?.concept || 'Inscripción de proyecto',
-        maxProjectsPerClub: cfg.registration?.maxProjectsPerClub ?? 1,
+        // v4.1299 — Las tarifas, resueltas por el criterio: tope, segundo
+        // proyecto y su fecha límite. Lo que ve el wizard para PINTAR; el
+        // importe lo calcula el servidor al cobrar.
+        ...(() => {
+            const rules = pricingRulesOf(cfg);
+            return {
+                maxProjectsPerClub: rules.maxProjects,
+                secondProject: {
+                    enabled: rules.secondEnabled,
+                    amountCop: rules.mode === 'COP' ? rules.second : 0,
+                    amountUsd: rules.mode === 'USD' ? rules.second : 0,
+                    deadline: rules.secondDeadline,
+                },
+            };
+        })(),
         // v4.1253 — Sólo si la Convocatoria la definió; vacía no se publica.
         paymentDeadline: paymentDeadlineOf(cfg),
     },
@@ -1834,6 +1990,11 @@ const mapSubmission = (row, { includeInternal = false } = {}) => {
         trmFetchedAt: row.trmFetchedAt,
         paidAt: row.paidAt,
         createdAt: row.createdAt,
+        // v4.1299 — A qué inscripción pertenece y qué posición ocupa en ella.
+        registrationId: row.registrationId || null,
+        projectIndex: projectIndexOf(row),
+        workflowStatus: row.workflowStatus || null,
+        coveredBy: row.metadata?.payment?.coveredBy || null,
     };
     if (includeInternal) {
         base.stripeSessionId = row.stripeSessionId;
@@ -1993,8 +2154,121 @@ export const validateSubmission = (body, cfg, { draft = false, skipPassword = fa
 //     volver a su perfil, terminarlo y enviarlo desde ahí. Un borrador no es
 //     deuda ni se cobra.
 //
+// ⚠️ v4.1299 — UNO O DOS PROYECTOS EN UNA SOLA INSCRIPCIÓN. El cuerpo trae
+// la identidad del club UNA vez y `projects: [...]` con una ficha por
+// proyecto (sin `projects`, el cuerpo entero es un proyecto: los clientes
+// anteriores siguen funcionando). Se crea UNA inscripción
+// (`ProjectFairRegistration`), una fila por proyecto numerada por posición, y
+// UNA cuenta. El tope lo decide la convocatoria (`pricingRulesOf`), nunca el
+// navegador.
+//
 // En los dos casos se devuelve un token del perfil: quien acaba de crear su
 // cuenta con su contraseña entra a su perfil sin escribirla otra vez.
+
+/** Los campos que son DEL PROYECTO; todo lo demás del cuerpo es del club. */
+export const PROJECT_FIELDS = ['projectName', 'projectDescription', 'focusArea', 'budgetUsd'];
+
+const projectFieldsOf = (src = {}) => Object.fromEntries(PROJECT_FIELDS.map(k => [k, src?.[k]]));
+
+/**
+ * Valida el wizard entero: la identidad del club una vez y cada proyecto por
+ * separado. Devuelve los errores de la identidad en `errors` (con las claves
+ * de siempre) y los de cada proyecto en `projectErrors[i]`, para que la
+ * pantalla sepa a qué pestaña mandar a la persona.
+ */
+export const validateWizard = (body, cfg, { draft = false, skipPassword = false } = {}) => {
+    const rules = pricingRulesOf(cfg);
+    const raw = Array.isArray(body?.projects) && body.projects.length
+        ? body.projects
+        : [projectFieldsOf(body)];
+    const errors = {};
+    if (raw.length > rules.maxProjects) {
+        errors.modality = rules.maxProjects >= 2
+            ? `Esta convocatoria admite hasta ${rules.maxProjects} proyectos por club.`
+            : 'Esta convocatoria admite un proyecto por club.';
+    }
+    const identityBody = { ...body };
+    delete identityBody.projects;
+    let data = null;
+    let password = '';
+    const projects = [];
+    const projectErrors = [];
+    raw.slice(0, Math.max(1, rules.maxProjects)).forEach((p, i) => {
+        const r = validateSubmission({ ...identityBody, ...projectFieldsOf(p) }, cfg, { draft, skipPassword: skipPassword || i > 0 });
+        const own = {};
+        for (const [k, v] of Object.entries(r.errors)) {
+            if (PROJECT_FIELDS.includes(k)) own[k] = v;
+            else if (i === 0) errors[k] = v;
+        }
+        projectErrors.push(own);
+        projects.push(projectFieldsOf(r.data));
+        if (i === 0) { data = r.data; password = r.password; }
+    });
+    const hasProjectErrors = projectErrors.some(e => Object.keys(e).length);
+    return { errors, projectErrors, hasProjectErrors, data, password, projects, rules };
+};
+
+/**
+ * El precio de la LÍNEA de un proyecto según su posición (1 → valor de
+ * inscripción, 2 → tarifa del segundo), con la misma forma que
+ * `computePricing`: así cada fila guarda su propia línea y el recaudo por
+ * primeras y por segundas postulaciones se suma fila por fila.
+ */
+export const linePricing = (cfg, trm, projectIndex = 1) => {
+    const rules = pricingRulesOf(cfg);
+    const amount = lineAmountFor(rules, projectIndex);
+    const rate = Number(trm?.rate) || 0;
+    if (rules.mode === 'USD') return { mode: 'USD', amountCop: null, amountUsd: amount };
+    return { mode: 'COP', amountCop: amount, amountUsd: rate > 0 ? round2(amount / rate) : null };
+};
+
+/** Inserta UNA fila de proyecto dentro de una inscripción. */
+export const insertProjectRow = async ({ cfg, eventId, data, project, registrationId, projectIndex, draft, trm, req }) => {
+    const pricing = linePricing(cfg, trm, projectIndex);
+    const { rows } = await db.query(`
+        INSERT INTO "ProjectFairSubmission"
+            ("publicRef", "editionKey", "firstName", "lastName", email, phone, "clubName", district,
+             "eventId",
+             country, department, city, "idType", "idTypeLabel", "idNumber", notes,
+             "clubRole", "clubRoleLabel", "clubRoleOther",
+             "projectName", "projectDescription", "focusArea", "focusAreaLabel", "budgetUsd",
+             status, "amountCop", "amountUsd", "trmRate", "trmDate", "trmSource", "trmFetchedAt", "clubId",
+             "priceMode", metadata, "workflowStatus", "appliedAt", "registrationId", "projectIndex")
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34::jsonb,$35,
+                ${draft ? 'NULL' : 'NOW()'}, $36, $37)
+        RETURNING *
+    `, [
+        buildPublicRef(),
+        cfg.edition?.key || null,
+        data.firstName, data.lastName, data.email, data.phone, data.clubName, data.district,
+        eventId,
+        data.country, data.department, data.city, data.idType, data.idTypeLabel, data.idNumber, data.notes || null,
+        data.clubRole, data.clubRoleLabel, data.clubRoleOther,
+        project.projectName, project.projectDescription || null, project.focusArea, project.focusAreaLabel, project.budgetUsd,
+        // El PAGO nace pendiente en los dos modos; lo que distingue a un
+        // borrador es el estado del PROYECTO, no el del cobro.
+        'pending_payment', pricing.amountCop, pricing.amountUsd,
+        trm?.rate ?? null, trm?.date ?? null, trm?.source ?? null, trm?.fetchedAt ?? null,
+        cfg.clubId || null,
+        pricing.mode,
+        JSON.stringify({
+            edition: cfg.edition,
+            submittedAt: draft ? null : new Date().toISOString(),
+            // Marca de nacimiento: la migración de v4.1253 usa esto para no
+            // confundir un borrador real con un «Borrador» puesto a mano.
+            createdAs: draft ? 'draft' : 'application',
+            // El sitio desde el que postuló: los correos (confirmación,
+            // recordatorios) enlazan a SU perfil en ese dominio, también
+            // cuando los manda el comité desde el panel de la plataforma.
+            origin: resolveOrigin(req, null),
+            userAgent: clean(req?.headers?.['user-agent'], 300),
+        }),
+        draft ? 'draft' : 'received',
+        registrationId, projectIndex,
+    ]);
+    return rows[0];
+};
+
 export const createSubmission = async (req, res) => {
     try {
         const { eventId, cfg } = await readOpenEdition();
@@ -2003,23 +2277,26 @@ export const createSubmission = async (req, res) => {
         }
 
         const draft = String(req.body?.mode || '').toLowerCase() === 'draft';
-        const { errors, data, password } = validateSubmission(req.body || {}, cfg, { draft });
+        const { errors, projectErrors, hasProjectErrors, data, password, projects, rules } = validateWizard(req.body || {}, cfg, { draft });
         // Un borrador sin contraseña no se podría retomar: sin cuenta no hay
         // perfil al que volver.
         if (draft && !password && !errors.password) errors.password = 'Crea una contraseña para poder volver a tu borrador.';
-        if (Object.keys(errors).length) {
-            return res.status(400).json({ error: 'Revisa los campos marcados.', fields: errors });
+        if (Object.keys(errors).length || hasProjectErrors) {
+            return res.status(400).json({ error: 'Revisa los campos marcados.', fields: errors, projects: projectErrors });
         }
 
         await ensureTables();
 
-        // Un correo, una postulación: si ya tiene cuenta, se le invita a entrar
-        // a su panel en vez de duplicar el registro y el cobro.
+        // Un correo, una inscripción: si ya tiene cuenta, se le invita a entrar
+        // a su panel en vez de duplicar el registro y el cobro. Desde su perfil
+        // puede agregar un segundo proyecto, si la convocatoria lo permite.
         const existing = await db.query('SELECT id FROM "ProjectFairAccount" WHERE lower(email) = $1 LIMIT 1', [data.email]);
         if (existing.rows.length) {
             return res.status(409).json({
-                error: 'Este correo ya tiene una postulación registrada. Ingresa a tu panel para continuar con tu proyecto.',
-                fields: { email: 'Ya existe una postulación con este correo.' },
+                error: rules.secondEnabled
+                    ? 'Este correo ya tiene una inscripción registrada. Ingresa a tu panel para continuar con tu proyecto o para agregar un segundo proyecto.'
+                    : 'Este correo ya tiene una postulación registrada. Ingresa a tu panel para continuar con tu proyecto.',
+                fields: { email: 'Ya existe una inscripción con este correo.' },
                 portalPath: cfg.portal?.path || '/mi-proyecto',
             });
         }
@@ -2029,73 +2306,76 @@ export const createSubmission = async (req, res) => {
         if (resolvePriceMode(cfg) === 'COP') {
             try { trm = await resolveTrm(cfg); } catch { /* la pantalla de pago reintenta */ }
         }
-        const pricing = computePricing(cfg, trm);
 
-        const { rows } = await db.query(`
-            INSERT INTO "ProjectFairSubmission"
-                ("publicRef", "editionKey", "firstName", "lastName", email, phone, "clubName", district,
-                 "eventId",
-                 country, department, city, "idType", "idTypeLabel", "idNumber", notes,
-                 "clubRole", "clubRoleLabel", "clubRoleOther",
-                 "projectName", "projectDescription", "focusArea", "focusAreaLabel", "budgetUsd",
-                 status, "amountCop", "amountUsd", "trmRate", "trmDate", "trmSource", "trmFetchedAt", "clubId",
-                 "priceMode", metadata, "workflowStatus", "appliedAt")
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34::jsonb,$35,
-                    ${draft ? 'NULL' : 'NOW()'})
+        // La INSCRIPCIÓN (v4.1299), antes que sus proyectos.
+        const reg = await db.query(`
+            INSERT INTO "ProjectFairRegistration" ("eventId", "clubName", district, email, modality, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
             RETURNING *
-        `, [
-            buildPublicRef(),
-            cfg.edition?.key || null,
-            data.firstName, data.lastName, data.email, data.phone, data.clubName, data.district,
-            eventId,
-            data.country, data.department, data.city, data.idType, data.idTypeLabel, data.idNumber, data.notes || null,
-            data.clubRole, data.clubRoleLabel, data.clubRoleOther,
-            data.projectName, data.projectDescription || null, data.focusArea, data.focusAreaLabel, data.budgetUsd,
-            // El PAGO nace pendiente en los dos modos; lo que distingue a un
-            // borrador es el estado del PROYECTO, no el del cobro.
-            'pending_payment', pricing.amountCop, pricing.amountUsd,
-            trm?.rate ?? null, trm?.date ?? null, trm?.source ?? null, trm?.fetchedAt ?? null,
-            cfg.clubId || null,
-            pricing.mode,
-            JSON.stringify({
-                edition: cfg.edition,
-                submittedAt: draft ? null : new Date().toISOString(),
-                // Marca de nacimiento: la migración de v4.1253 usa esto para no
-                // confundir un borrador real con un «Borrador» puesto a mano.
-                createdAs: draft ? 'draft' : 'application',
-                // El sitio desde el que postuló: los correos (confirmación,
-                // recordatorios) enlazan a SU perfil en ese dominio, también
-                // cuando los manda el comité desde el panel de la plataforma.
-                origin: resolveOrigin(req, null),
-                userAgent: clean(req.headers['user-agent'], 300),
-            }),
-            draft ? 'draft' : 'received',
-        ]);
-        const created = rows[0];
+        `, [eventId, data.clubName, data.district, data.email, modalityOf(projects.length),
+            JSON.stringify({ createdAs: draft ? 'draft' : 'application', origin: resolveOrigin(req, null) })]);
+        const registration = reg.rows[0];
+
+        const created = [];
+        try {
+            for (let i = 0; i < projects.length; i++) {
+                created.push(await insertProjectRow({
+                    cfg, eventId, data, project: projects[i], registrationId: registration?.id || null,
+                    projectIndex: i + 1, draft, trm, req,
+                }));
+            }
+        } catch (err) {
+            // Sin transacción (el módulo nunca la usó): si la segunda ficha no
+            // pudo escribirse, no se deja media inscripción. Se deshace lo que
+            // alcanzó a crearse y se responde el error.
+            for (const row of created) await db.query('DELETE FROM "ProjectFairSubmission" WHERE id = $1', [row.id]).catch(() => {});
+            if (registration?.id) await db.query('DELETE FROM "ProjectFairRegistration" WHERE id = $1', [registration.id]).catch(() => {});
+            throw err;
+        }
+        const primary = created[0];
 
         // Cuenta del club (identidad propia del módulo, no de la plataforma).
+        // Su `submissionId` es el proyecto principal; conoce la inscripción.
         const { createAccountFor, issuePortalToken } = await import('./projectFairPortalController.js');
         let account = null;
-        if (password) account = await createAccountFor(created, password);
+        if (password) account = await createAccountFor(primary, password, { registrationId: registration?.id || null });
+        if (account && registration?.id) {
+            await db.query('UPDATE "ProjectFairRegistration" SET "accountId" = $1, "updatedAt" = NOW() WHERE id = $2', [account.id, registration.id]).catch(() => {});
+        }
 
-        await logEvent(created.id, draft ? {
-            type: 'draft_saved',
-            title: 'Borrador guardado',
-            detail: `${data.projectName} — ${data.clubName} (${data.district})`,
-            metadata: { publicRef: created.publicRef },
-        } : {
-            type: 'form_submitted',
-            title: 'Proyecto postulado',
-            detail: `${data.projectName} — ${data.clubName} (${data.district}). Pago de inscripción pendiente.`,
-            metadata: { focusArea: data.focusArea, budgetUsd: data.budgetUsd, publicRef: created.publicRef },
-        });
+        for (const row of created) {
+            const pos = created.length > 1 ? ` (${projectIndexLabel(row.projectIndex).toLowerCase()} de la inscripción)` : '';
+            await logEvent(row.id, draft ? {
+                type: 'draft_saved',
+                title: 'Borrador guardado',
+                detail: `${row.projectName} — ${data.clubName} (${data.district})${pos}`,
+                metadata: { publicRef: row.publicRef, registrationId: registration?.id || null, projectIndex: row.projectIndex },
+            } : {
+                type: 'form_submitted',
+                title: 'Proyecto postulado',
+                detail: `${row.projectName} — ${data.clubName} (${data.district})${pos}. Pago de inscripción pendiente.`,
+                metadata: { focusArea: row.focusArea, budgetUsd: row.budgetUsd, publicRef: row.publicRef, registrationId: registration?.id || null, projectIndex: row.projectIndex },
+            });
+        }
 
-        if (!draft) await notifyApplication(created, cfg);
+        if (!draft) await notifyApplication(primary, cfg, { projects: created });
 
+        const breakdown = registrationBreakdown(created, rules);
+        const firstPricing = linePricing(cfg, trm, 1);
         res.status(201).json({
-            submission: mapSubmission(created),
-            application: applicationViewOf(created),
-            trm: trm ? { ...trm, priceMode: pricing.mode, amountCop: pricing.amountCop, amountUsd: pricing.amountUsd } : null,
+            submission: mapSubmission(primary),
+            submissions: created.map(r => mapSubmission(r)),
+            application: applicationViewOf(primary),
+            registration: {
+                id: registration?.id || null,
+                modality: breakdown.modality,
+                count: breakdown.count,
+                currency: breakdown.currency,
+                lines: breakdown.lines,
+                total: breakdown.total,
+                projects: created.map(r => ({ id: r.id, publicRef: r.publicRef, projectName: r.projectName, projectIndex: r.projectIndex, ...applicationViewOf(r) })),
+            },
+            trm: trm ? { ...trm, priceMode: firstPricing.mode, amountCop: firstPricing.amountCop, amountUsd: firstPricing.amountUsd } : null,
             portalToken: account ? issuePortalToken(account) : null,
             portalPath: cfg.portal?.path || '/mi-proyecto',
         });
@@ -2129,13 +2409,18 @@ export const applicationViewOf = (row, { openAttempt = false } = {}) => {
  * lanza: la postulación ya quedó guardada y un correo caído no puede
  * deshacerla.
  */
-export const notifyApplication = async (submission, cfg) => {
+export const notifyApplication = async (submission, cfg, { projects = null } = {}) => {
     try {
+        // v4.1299 — Con dos proyectos en la inscripción el correo los nombra a
+        // los dos; `projects` llega del wizard, y desde el perfil es uno solo.
+        const lista = Array.isArray(projects) && projects.length > 1 ? projects : null;
         if (cfg.notifications?.sendApplicationConfirmation !== false && isEmail(submission.email)) {
             const r = await sendFairEmail({
                 to: submission.email,
-                subject: `Tu proyecto ha sido postulado ${submission.publicRef} — ${cfg.edition?.name || 'Feria de Proyectos Rotary Colombia'}`,
-                html: buildApplicationHtml(submission, cfg),
+                subject: lista
+                    ? `Tus ${lista.length} proyectos han sido postulados — ${cfg.edition?.name || 'Feria de Proyectos Rotary Colombia'}`
+                    : `Tu proyecto ha sido postulado ${submission.publicRef} — ${cfg.edition?.name || 'Feria de Proyectos Rotary Colombia'}`,
+                html: buildApplicationHtml(submission, cfg, { projects: lista }),
                 cfg,
             });
             if (r?.success) console.log(`[project-fair] ✉️ Confirmación de postulación enviada a ${submission.email}`);
@@ -2238,13 +2523,84 @@ const expireSessionQuietly = async (sessionId) => {
  * club en su perfil—, así que el total del perfil y el de la pasarela no se
  * pueden separar. El recargo se resuelve acá y nunca viene del navegador.
  */
+/**
+ * Los proyectos de la INSCRIPCIÓN a la que pertenece una fila (v4.1299),
+ * ordenados por posición. Una fila heredada sin inscripción —o una base de
+ * prueba que no conoce la columna— devuelve la fila sola: la orden cubre
+ * entonces únicamente ese proyecto, que es el comportamiento de siempre.
+ */
+export const registrationRows = async (submission) => {
+    if (!submission?.registrationId) return [submission];
+    try {
+        const { rows } = await db.query(
+            'SELECT * FROM "ProjectFairSubmission" WHERE "registrationId" = $1 ORDER BY "projectIndex" ASC, "createdAt" ASC',
+            [submission.registrationId]);
+        return rows.some(r => r.id === submission.id) ? rows : [submission];
+    } catch {
+        return [submission];
+    }
+};
+
+/**
+ * El precio de una ORDEN —la suma de sus líneas— con la misma forma que
+ * `computePricing`, para que `quoteCheckout` y el resto del cobro no cambien.
+ */
+export const computeOrderPricing = (order, trm) => {
+    const mode = order?.currency === 'USD' ? 'USD' : 'COP';
+    const total = round2(Number(order?.total) || 0);
+    if (mode === 'USD') {
+        return {
+            mode, amountCop: null, amountUsd: total, needsTrm: false, trm: null,
+            ready: total > 0, error: total > 0 ? null : 'El valor de inscripción en dólares no está configurado.',
+        };
+    }
+    const rate = Number(trm?.rate) || 0;
+    const amountCop = Math.round(total);
+    if (amountCop <= 0) {
+        return { mode, amountCop, amountUsd: null, needsTrm: true, trm: null, ready: false, error: 'El valor de inscripción no está configurado.' };
+    }
+    return {
+        mode, amountCop,
+        amountUsd: rate > 0 ? round2(amountCop / rate) : null,
+        needsTrm: true, trm: rate > 0 ? trm : null,
+        ready: true, error: null,
+    };
+};
+
+/**
+ * ⚠️ v4.1299 — LO QUE SE COBRA ES LA ORDEN DE LA INSCRIPCIÓN: todo proyecto
+ * del club que debe la inscripción en este momento, cada uno al precio de su
+ * posición (primero / segundo) con las tarifas VIGENTES de su edición. Con dos
+ * proyectos sin pagar es UN cobro de 350.000; con el primero ya pagado y el
+ * segundo recién agregado, un cobro complementario de 100.000. La fila que
+ * llega es el ANCLA de la orden; si por lo que sea no quedara cubierta
+ * (una fila heredada que el comité decidió cobrar igual), la orden es ella
+ * sola, como siempre fue.
+ */
 export const priceSubmission = async (submission) => {
     const cfg = await readConfigForSubmission(submission?.eventId || null);
     let trm = null;
     if (resolvePriceMode(cfg) === 'COP') {
         try { trm = await resolveTrm(cfg); } catch { /* pricing.ready quedará en false */ }
     }
-    const pricing = computePricing(cfg, trm);
+    const rules = pricingRulesOf(cfg);
+    const siblings = await registrationRows(submission);
+    let order = orderFor(siblings, rules);
+    if (!order.coveredIds.includes(submission.id)) {
+        const amount = lineAmountFor(rules, projectIndexOf(submission));
+        order = {
+            currency: rules.mode, count: 1, anchorId: submission.id, coveredIds: [submission.id], total: amount,
+            lines: [{
+                submissionId: submission.id, projectIndex: projectIndexOf(submission), projectName: submission.projectName || '',
+                publicRef: submission.publicRef || null, label: `${projectIndexLabel(projectIndexOf(submission))} — ${submission.projectName || ''}`.trim(), amount,
+            }],
+        };
+    } else {
+        // El ancla es la fila que pidió el cobro: el intento se reclama sobre
+        // ella y es la que guarda la sesión.
+        order = { ...order, anchorId: submission.id };
+    }
+    const pricing = computeOrderPricing(order, trm);
     if (!pricing.ready) {
         return {
             blocked: 'pricing',
@@ -2255,7 +2611,7 @@ export const priceSubmission = async (submission) => {
     }
     const surchargeConfig = await getSurchargeConfig();
     const quote = quoteCheckout(pricing, surchargeConfig, trm);
-    return { cfg, trm, pricing, quote };
+    return { cfg, trm, pricing, quote, order, rules, siblings };
 };
 
 export const beginCheckout = async (submissionId, { req = null, returnUrl = null, sessionId = null, actor = null, returnPath = null } = {}) => {
@@ -2328,7 +2684,7 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
     //    cobra acá, sin una segunda aritmética que se pueda separar.
     const priced = await priceSubmission(submission);
     if (priced.blocked) return priced;
-    const { cfg, trm, pricing, quote } = priced;
+    const { cfg, trm, pricing, quote, order } = priced;
     const { amountCop, amountUsd } = pricing;
     // ⚠️ v4.982 — LO QUE SE COBRA VA CON SU MONEDA. `chargeUsd` se conserva
     // como equivalente informativo para la metadata y la traza; el cobro sale
@@ -2414,8 +2770,15 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
     const cargos = buildChargeLines(surcharge, {
         chargedAmount: chargeAmount, currency: chargeCurrency, baseLabel: concepto,
     });
+    // v4.1299 — Con dos proyectos, la partida de la inscripción se parte en
+    // una por proyecto (su posición, su nombre y su precio): Stripe pinta el
+    // desglose «Primer proyecto 250.000 · Segundo proyecto 100.000 · …» y la
+    // persona ve exactamente por qué paga lo que paga.
+    const variosProyectos = order.lines.length > 1;
     const detalleBase = [
-        `Proyecto: ${String(submission.projectName).slice(0, 150)} · ${submission.clubName}`,
+        variosProyectos
+            ? `${order.lines.length} proyectos · ${submission.clubName}`
+            : `Proyecto: ${String(submission.projectName).slice(0, 150)} · ${submission.clubName}`,
         // Sin desglose en Stripe, el recargo se sigue NOMBRANDO: un total mayor
         // que el precio anunciado sin explicación se lee como un error.
         !cargos && surcharge?.surcharge > 0 ? `Incluye ${describeSurcharge(surcharge)}` : null,
@@ -2430,13 +2793,24 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
             currency: chargeCurrency.toLowerCase(),
             product_data: l.key === 'base'
                 ? { name: l.label.slice(0, 250), description: detalleBase }
-                : { name: l.label.slice(0, 250) },
+                : l.key === 'project'
+                    ? { name: l.label.slice(0, 250), description: String(l.description || '').slice(0, 250) || undefined }
+                    : { name: l.label.slice(0, 250) },
             unit_amount: toStripeAmount(l.amount, chargeCurrency),
         },
         quantity: 1,
     });
     const unaSola = [partidaDe({ key: 'base', label: concepto, amount: chargeAmount })];
-    const repartido = (cargos || []).map(partidaDe);
+    const partidasProyecto = order.lines.map(l => ({
+        key: 'project',
+        label: `${projectIndexLabel(l.projectIndex)} — ${concepto}`,
+        description: `${String(l.projectName || '').slice(0, 150)} · ${submission.clubName}`,
+        amount: l.amount,
+    }));
+    // Con varios proyectos, la partida base de `buildChargeLines` se
+    // sustituye por una por proyecto; las comisiones quedan como están. Si la
+    // suma no cuadrara en la unidad mínima, cae a la partida única de abajo.
+    const repartido = (cargos || []).flatMap(l => (l.key === 'base' && variosProyectos ? partidasProyecto : [l])).map(partidaDe);
     // ⚠️ Y SE COMPRUEBA EN LA UNIDAD MÍNIMA, no sólo en decimales: lo que
     // Stripe suma son enteros. Si el reparto no diera el mismo cobro se cobra
     // en una sola partida — un cambio de presentación no puede mover ni un
@@ -2458,6 +2832,8 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
                 type: 'project_fair_registration',
                 submissionId: submission.id,
                 publicRef: submission.publicRef || '',
+                registrationId: submission.registrationId || '',
+                coveredSubmissionIds: coveredIdsToMetadata(order.coveredIds),
             },
         },
         metadata: {
@@ -2485,6 +2861,12 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
             chargeUsd: chargeUsd ? String(chargeUsd) : '',
             chargeCop: chargeCop ? String(chargeCop) : '',
             clubId: cfg.clubId || '',
+            // v4.1299 — QUÉ PROYECTOS CUBRE ESTE COBRO. Se lee de acá al
+            // confirmar, y SÓLO de acá: deducirlo de «lo que debe hoy»
+            // marcaría pagado un proyecto agregado después de abrir el cobro.
+            registrationId: submission.registrationId || '',
+            coveredSubmissionIds: coveredIdsToMetadata(order.coveredIds),
+            projectCount: String(order.lines.length),
         },
     });
 
@@ -2495,7 +2877,7 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
     //    segundo cobro, porque a la sesión huérfana no llega nadie.
     const claimed = await claimAttempt(submission.id, {
         sessionId: session.id, amountCop: chargeCop ?? amountCop, amountUsd: chargeUsd, currency: chargeCurrency,
-        metadata: { priceMode: pricing.mode, trmRate: trm?.rate ?? null, surcharge: surcharge?.surcharge || 0 },
+        metadata: { priceMode: pricing.mode, trmRate: trm?.rate ?? null, surcharge: surcharge?.surcharge || 0, coveredSubmissionIds: order.coveredIds },
     });
     if (!claimed) {
         await expireSessionQuietly(session.id);
@@ -2511,6 +2893,13 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
         return { blocked: 'busy', status: 409, error: 'Ya hay un pago en curso para esta inscripción. Actualiza la página e inténtalo de nuevo.' };
     }
 
+    // v4.1299 — Cada proyecto cubierto guarda SU LÍNEA (no el total): el
+    // ancla además la sesión. Así el recaudo por primeras y por segundas
+    // postulaciones se suma fila por fila, sin repartir nada después.
+    const lineaDe = (id) => order.lines.find(l => l.submissionId === id);
+    const lineaAncla = lineaDe(submission.id) || { amount: pricing.mode === 'USD' ? amountUsd : amountCop };
+    const anclaCop = pricing.mode === 'USD' ? null : lineaAncla.amount;
+    const anclaUsd = pricing.mode === 'USD' ? lineaAncla.amount : (trm?.rate ? round2(lineaAncla.amount / Number(trm.rate)) : null);
     await db.query(`
         UPDATE "ProjectFairSubmission"
         SET "stripeSessionId" = $1, "amountCop" = $2, "amountUsd" = COALESCE($3, "amountUsd"),
@@ -2519,12 +2908,28 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
             "priceMode" = $8, "chargeCurrency" = $9,
             "updatedAt" = NOW()
         WHERE id = $10
-    `, [session.id, amountCop, amountUsd, trm?.rate ?? null, trm?.date ?? null, trm?.source ?? null, trm?.fetchedAt ?? null, pricing.mode, chargeCurrency, submission.id]);
+    `, [session.id, anclaCop, anclaUsd, trm?.rate ?? null, trm?.date ?? null, trm?.source ?? null, trm?.fetchedAt ?? null, pricing.mode, chargeCurrency, submission.id]);
+    for (const l of order.lines) {
+        if (l.submissionId === submission.id) continue;
+        await db.query(`
+            UPDATE "ProjectFairSubmission"
+            SET "amountCop" = $1, "amountUsd" = COALESCE($2, "amountUsd"), "priceMode" = $3, "chargeCurrency" = $4,
+                metadata = COALESCE(metadata, '{}'::jsonb) || $5::jsonb, "updatedAt" = NOW()
+            WHERE id = $6
+        `, [
+            pricing.mode === 'USD' ? null : l.amount,
+            pricing.mode === 'USD' ? l.amount : (trm?.rate ? round2(l.amount / Number(trm.rate)) : null),
+            pricing.mode, chargeCurrency,
+            JSON.stringify({ pendingOrder: { anchorId: submission.id, sessionId: session.id, at: new Date().toISOString() } }),
+            l.submissionId,
+        ]).catch(() => {});
+    }
 
     await logEvent(submission.id, {
         type: 'checkout_created',
         title: 'Sesión de pago creada',
         detail: [
+            variosProyectos ? `${order.lines.length} proyectos: ${order.lines.map(l => `${projectIndexLabel(l.projectIndex).toLowerCase()} ${pricing.mode === 'COP' ? fmtCop(l.amount) : fmtUsd(l.amount)}`).join(' + ')} =` : null,
             pricing.mode === 'COP' ? fmtCop(amountCop) : fmtUsd(amountUsd),
             surcharge?.surcharge > 0
                 ? `+ ${describeSurcharge(surcharge)} = ${pricing.mode === 'COP' ? fmtCop(chargeCop) : fmtUsd(chargeUsd)}`
@@ -2533,6 +2938,7 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
         ].filter(Boolean).join(' · '),
         metadata: {
             sessionId: session.id, priceMode: pricing.mode, amountCop, amountUsd,
+            coveredSubmissionIds: order.coveredIds, projectCount: order.lines.length,
             trmRate: trm?.rate ?? null, attemptId: claimed.id, chargeCurrency, chargeAmount,
             surcharge: surcharge?.enabled ? {
                 currency: surcharge.currency, amount: surcharge.surcharge,
@@ -2543,7 +2949,71 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
         actor,
     });
 
-    return { url: session.url, sessionId: session.id, reused: false, attemptId: claimed.id, pricing, quote };
+    return { url: session.url, sessionId: session.id, reused: false, attemptId: claimed.id, pricing, quote, order };
+};
+
+/**
+ * v4.1299 — EL PAGO DEL ANCLA CUBRE A LOS DEMÁS PROYECTOS DE SU ORDEN. Los
+ * identificadores salen de la metadata del cobro (nunca de «lo que debe
+ * hoy»); cada proyecto cubierto queda pagado con la marca de quién lo cubrió
+ * (`metadata.payment.coveredBy`) y SIN `amountReceived`: lo que la pasarela
+ * cobró vive una sola vez, en el ancla, y así el recaudo real no se duplica.
+ * Idempotente: sólo toca filas que no estaban pagadas.
+ */
+const markCoveredPaid = async (anchor, coveredIds, { sessionId = null, paymentIntentId = null, currency = null } = {}) => {
+    const ids = (coveredIds || []).filter(id => id && id !== anchor.id);
+    if (!ids.length) return [];
+    try {
+        const { rows } = await db.query(`
+            UPDATE "ProjectFairSubmission"
+            SET status = 'paid',
+                "workflowStatus" = CASE WHEN "workflowStatus" IN ('pending_payment','payment_confirmed','payment_failed','refunded') OR "workflowStatus" IS NULL
+                                        THEN 'received' ELSE "workflowStatus" END,
+                "paidAt" = NOW(),
+                "chargeCurrency" = COALESCE($2, "chargeCurrency"),
+                "paymentConfirmationOrigin" = COALESCE("paymentConfirmationOrigin", 'stripe'),
+                "lastSyncAt" = NOW(),
+                "lastPaymentError" = NULL,
+                metadata = (COALESCE(metadata, '{}'::jsonb) - 'pendingOrder') || $3::jsonb,
+                "updatedAt" = NOW()
+            WHERE id = ANY($1::text[]) AND status <> 'paid'
+            RETURNING id, "publicRef", "projectName", "projectIndex"
+        `, [ids, currency, JSON.stringify({
+            payment: { coveredBy: anchor.id, coveredByRef: anchor.publicRef || null, sessionId, paymentIntentId, confirmedAt: new Date().toISOString() },
+        })]);
+        for (const r of rows) {
+            await logEvent(r.id, {
+                type: 'payment_succeeded',
+                title: 'Pago aprobado (inscripción conjunta)',
+                detail: `Cubierto por el pago de la inscripción ${anchor.publicRef || anchor.id} (${projectIndexLabel(anchor.projectIndex).toLowerCase()}).`,
+                metadata: { coveredBy: anchor.id, sessionId, paymentIntentId },
+            });
+        }
+        return rows;
+    } catch (err) {
+        console.error('[project-fair] No pude marcar los proyectos cubiertos por el cobro:', err?.message);
+        return [];
+    }
+};
+
+/** Los proyectos cubiertos, con nombre y línea, para el comprobante. */
+const coveredProjectsFor = async (anchor, coveredIds) => {
+    const ids = [...new Set([anchor.id, ...(coveredIds || [])].filter(Boolean))];
+    try {
+        const { rows } = await db.query(
+            'SELECT id, "publicRef", "projectName", "projectIndex", "amountCop", "amountUsd" FROM "ProjectFairSubmission" WHERE id = ANY($1::text[]) ORDER BY "projectIndex" ASC',
+            [ids]);
+        if (rows.length) {
+            return rows.map(r => ({
+                id: r.id, publicRef: r.publicRef, projectName: r.projectName, projectIndex: projectIndexOf(r),
+                amountCop: r.amountCop == null ? null : Number(r.amountCop), amountUsd: r.amountUsd == null ? null : Number(r.amountUsd),
+            }));
+        }
+    } catch { /* se responde con el ancla sola */ }
+    return [{
+        id: anchor.id, publicRef: anchor.publicRef, projectName: anchor.projectName, projectIndex: projectIndexOf(anchor),
+        amountCop: anchor.amountCop == null ? null : Number(anchor.amountCop), amountUsd: anchor.amountUsd == null ? null : Number(anchor.amountUsd),
+    }];
 };
 
 /**
@@ -2555,14 +3025,33 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
  * allá se separaría de ésta en silencio, y lo que se separaría es si a alguien
  * se le ofrece pagar dos veces.
  */
-export const paymentStateFor = async (submission) => {
-    const attempts = await listAttempts(submission.id);
+export const paymentStateFor = async (submission, { siblings: given = null } = {}) => {
+    // v4.1299 — EL PAGO SE EXPLICA POR LA ORDEN QUE LO CONTIENE. Un proyecto
+    // cubierto por el cobro de otro (inscripción conjunta) se lee con los datos
+    // de su ANCLA: transacción, comprobante y desglose son los del cobro real.
+    const siblings = given || await registrationRows(submission);
+    const coveredBy = submission.metadata?.payment?.coveredBy || null;
+    let anchor = submission;
+    if (coveredBy && String(submission.status) === 'paid') {
+        anchor = siblings.find(r => r.id === coveredBy) || null;
+        if (!anchor) {
+            try {
+                const { rows } = await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = $1 LIMIT 1', [coveredBy]);
+                anchor = rows[0] || submission;
+            } catch { anchor = submission; }
+        }
+    }
+    const attempts = await listAttempts(anchor.id);
     const applied = isApplied(submission);
     const view = paymentViewOf(submission, { lastFailure: lastFailureOf(attempts), applied });
 
-    const priceMode = String(submission.priceMode || 'COP').toUpperCase() === 'USD' ? 'USD' : 'COP';
+    const priceMode = String(anchor.priceMode || submission.priceMode || 'COP').toUpperCase() === 'USD' ? 'USD' : 'COP';
     const openAttempt = attempts.some(a => a?.status === 'open');
     const payKey = paymentStatusOf(submission, { openAttempt });
+
+    let cfg = null;
+    try { cfg = await readConfigForSubmission(submission.eventId || null); } catch { cfg = null; }
+    const rules = pricingRulesOf(cfg || {});
 
     // ⚠️ v4.1253 — EL DESGLOSE VUELVE AL PERFIL, Y SALE DEL MISMO CÁLCULO DEL
     // COBRO. v4.981 lo había quitado del panel («lo pinta la pasarela»); el
@@ -2572,29 +3061,43 @@ export const paymentStateFor = async (submission) => {
     // función con la que `beginCheckout` arma la sesión.
     //   - Pagada → lo que de verdad se cobró, con su moneda y el recargo que
     //     quedó guardado con el cobro. No se recalcula con tarifas de hoy.
-    //   - Sin pagar → lo que se cobraría AHORA.
+    //   - Sin pagar → lo que se cobraría AHORA, por TODOS los proyectos que
+    //     debe la inscripción (v4.1299).
     let charge = null;
+    let order = null;
     try {
         if (hasConfirmedPayment(submission) || submission.status === 'refunded') {
             // El recargo guardado con el cobro es { clave: importe }; el
             // rótulo se toma del catálogo vigente sólo para NOMBRAR la línea
             // (el importe es el que se cobró, no se recalcula).
-            const sc = submission.metadata?.payment?.surcharge || null;
-            const currency = String(submission.chargeCurrency || priceMode).toUpperCase();
+            const pay = anchor.metadata?.payment || {};
+            const sc = pay.surcharge || null;
+            const currency = String(anchor.chargeCurrency || priceMode).toUpperCase();
             let nombres = {};
             try {
                 nombres = Object.fromEntries(resolveSurchargeRates(await getSurchargeConfig(), { currency })
                     .map(r => [r.key, { label: r.label, percent: r.percent }]));
             } catch { /* sin rótulos: se muestra la clave */ }
+            const anchorBase = priceMode === 'USD' ? Number(anchor.amountUsd ?? 0) : Number(anchor.amountCop ?? 0);
+            const projects = Array.isArray(pay.coveredProjects) && pay.coveredProjects.length
+                ? pay.coveredProjects.map(p => ({
+                    submissionId: p.id, projectIndex: p.projectIndex, projectName: p.projectName, publicRef: p.publicRef || null,
+                    label: projectIndexLabel(p.projectIndex),
+                    amount: Number((priceMode === 'USD' ? p.amountUsd : p.amountCop) ?? 0),
+                }))
+                : [{ submissionId: anchor.id, projectIndex: projectIndexOf(anchor), projectName: anchor.projectName, publicRef: anchor.publicRef, label: projectIndexLabel(projectIndexOf(anchor)), amount: anchorBase }];
             charge = {
                 currency,
-                base: priceMode === 'USD' ? Number(submission.amountUsd ?? 0) : Number(submission.amountCop ?? 0),
+                base: projects.length > 1 ? round2(projects.reduce((a, p) => a + p.amount, 0)) : anchorBase,
+                projects,
                 lines: sc?.lines && typeof sc.lines === 'object'
                     ? Object.entries(sc.lines).filter(([, a]) => Number(a) > 0)
                         .map(([key, amount]) => ({ key, label: nombres[key]?.label || key, percent: nombres[key]?.percent ?? null, amount: Number(amount) }))
                     : [],
-                total: submission.amountReceived != null ? Number(submission.amountReceived) : null,
+                total: anchor.amountReceived != null ? Number(anchor.amountReceived) : null,
                 final: true,
+                anchorId: anchor.id,
+                anchorRef: anchor.publicRef || null,
             };
         } else if (applied) {
             const priced = await priceSubmission(submission);
@@ -2603,20 +3106,25 @@ export const paymentStateFor = async (submission) => {
                 charge = {
                     currency: q.chargeCurrency,
                     base: q.surcharge?.base ?? (q.chargeCurrency === 'USD' ? q.amountUsd : q.amountCop),
+                    projects: priced.order.lines.map(l => ({
+                        submissionId: l.submissionId, projectIndex: l.projectIndex, projectName: l.projectName, publicRef: l.publicRef || null,
+                        label: projectIndexLabel(l.projectIndex), amount: l.amount,
+                    })),
                     lines: (q.surcharge?.lines || []).filter(l => l.amount > 0)
                         .map(l => ({ key: l.key, label: l.label, percent: l.percent, amount: l.amount })),
                     total: q.chargeAmount,
                     approxUsd: q.chargeCurrency === 'COP' ? q.chargeUsd : null,
                     final: false,
+                    anchorId: priced.order.anchorId,
                 };
+                order = { anchorId: priced.order.anchorId, coveredIds: priced.order.coveredIds, count: priced.order.count, total: priced.order.total, currency: priced.order.currency };
             }
         }
     } catch (err) {
         console.warn('[project-fair] No pude calcular el desglose del cobro para el perfil:', err?.message);
     }
 
-    let deadline = null;
-    try { deadline = paymentDeadlineOf(await readConfigForSubmission(submission.eventId || null)); } catch { /* sin fecha */ }
+    const deadline = cfg ? paymentDeadlineOf(cfg) : null;
 
     return {
         ...view,
@@ -2627,19 +3135,25 @@ export const paymentStateFor = async (submission) => {
         amountCop: submission.amountCop === null || submission.amountCop === undefined ? null : Number(submission.amountCop),
         amountUsd: submission.amountUsd === null || submission.amountUsd === undefined ? null : Number(submission.amountUsd),
         charge,
+        order,
+        // v4.1299 — La inscripción entera: cada proyecto con su línea, qué está
+        // pagado y qué se debe. Lo que el club ve como «Primer proyecto ·
+        // Segundo proyecto · Total».
+        registration: registrationBreakdown(siblings, rules),
+        coveredBy: coveredBy && anchor.id !== submission.id ? { id: anchor.id, publicRef: anchor.publicRef || null, projectName: anchor.projectName || null } : null,
         deadline,
         paidAt: submission.paidAt || null,
-        receiptUrl: submission.receiptUrl || null,
+        receiptUrl: anchor.receiptUrl || null,
         // La transacción, para «consultar la transacción»: la referencia
         // corta (los últimos caracteres, como en el comprobante), el medio y
         // lo cobrado. Los identificadores completos de Stripe se quedan en el
         // panel administrativo.
         transaction: hasConfirmedPayment(submission) ? {
-            reference: String(submission.stripePaymentIntentId || submission.manualPaymentRef || submission.stripeSessionId || '').slice(-18) || null,
-            method: submission.paymentMethod || (submission.paymentConfirmationOrigin === 'manual_admin' ? 'Confirmación administrativa' : null),
-            amount: submission.amountReceived != null ? Number(submission.amountReceived) : null,
-            currency: submission.chargeCurrency || priceMode,
-            refundedAmount: submission.refundedAmount != null ? Number(submission.refundedAmount) : null,
+            reference: String(anchor.stripePaymentIntentId || anchor.manualPaymentRef || anchor.stripeSessionId || '').slice(-18) || null,
+            method: anchor.paymentMethod || (anchor.paymentConfirmationOrigin === 'manual_admin' ? 'Confirmación administrativa' : null),
+            amount: anchor.amountReceived != null ? Number(anchor.amountReceived) : null,
+            currency: anchor.chargeCurrency || priceMode,
+            refundedAmount: anchor.refundedAmount != null ? Number(anchor.refundedAmount) : null,
         } : null,
         attempts: attemptHistoryOf(attempts),
     };
@@ -2712,6 +3226,9 @@ export const confirmPaidSession = async (session) => {
     // de darlo el día que se cobre en una moneda sin decimales, con la avería
     // multiplicada por cien y en silencio. Es la lección de `fromStripeAmount`.
     const amountReceived = fromStripeAmount(session.amount_total ?? charge?.amount ?? 0, session.currency);
+    // v4.1299 — Qué proyectos cubre este cobro, leído de la metadata.
+    const coveredIds = coveredIdsFromMetadata(session.metadata, submissionId);
+    const coveredProjects = await coveredProjectsFor(submission, coveredIds);
     const { rows: updated } = await db.query(`
         UPDATE "ProjectFairSubmission"
         SET status = 'paid',
@@ -2753,6 +3270,8 @@ export const confirmPaidSession = async (session) => {
                 currency: (session.currency || '').toUpperCase(),
                 confirmedAt: new Date().toISOString(),
                 surcharge: surchargeFromMetadata(session.metadata),
+                coveredSubmissionIds: coveredIds,
+                coveredProjects,
             },
         }),
         submissionId,
@@ -2761,6 +3280,7 @@ export const confirmPaidSession = async (session) => {
 
     const paid = updated[0];
     await resolveAttemptFor(submissionId, 'succeeded', { sessionId: session.id, paymentIntentId });
+    await markCoveredPaid(paid, coveredIds, { sessionId: session.id, paymentIntentId, currency: (session.currency || '').toUpperCase() || null });
     console.log(`[project-fair] ✅ Pago confirmado — inscripción ${paid.publicRef} (${paid.clubName}) ref ${paymentIntentId || session.id}`);
 
     // El pago confirmado es lo que convierte al club en Gestor de Proyectos.
@@ -2954,6 +3474,16 @@ export const handlePaymentIntentSucceeded = async (paymentIntent, event = null) 
 
     const paid = updated[0];
     await resolveAttemptFor(submission.id, 'succeeded', { paymentIntentId: paymentIntent.id });
+    // v4.1299 — El pago cubre a los demás proyectos de su orden (metadata del PaymentIntent).
+    {
+        const coveredIds = coveredIdsFromMetadata(paymentIntent?.metadata, submission.id);
+        await markCoveredPaid(paid, coveredIds, { paymentIntentId: paymentIntent.id, currency: (paymentIntent.currency || '').toUpperCase() || null });
+        if (coveredIds.length > 1) {
+            const coveredProjects = await coveredProjectsFor(paid, coveredIds);
+            await db.query(`UPDATE "ProjectFairSubmission" SET metadata = COALESCE(metadata, '{}'::jsonb) || $1::jsonb WHERE id = $2`,
+                [JSON.stringify({ payment: { ...(paid.metadata?.payment || {}), paymentIntentId: paymentIntent.id, coveredSubmissionIds: coveredIds, coveredProjects } }), paid.id]).catch(() => {});
+        }
+    }
     console.log(`[project-fair] ✅ Pago confirmado (PaymentIntent) — inscripción ${paid.publicRef} (${paid.clubName}) ref ${paymentIntent.id}`);
 
     await grantProjectManagerRole(paid, { reason: paymentIntent.id });
@@ -3089,6 +3619,26 @@ export const handleRefund = async (charge) => {
         detail: `${fmtAmount(refunded, charge?.currency)} de ${fmtAmount(total, charge?.currency)}`,
         metadata: { chargeId: charge?.id || null, refunded, total, isFull },
     });
+    // v4.1299 — Un reembolso TOTAL alcanza a los proyectos que ese cobro
+    // cubría: se devolvió la inscripción conjunta, no la de uno solo.
+    if (isFull) {
+        const covered = (submission.metadata?.payment?.coveredSubmissionIds || []).filter(id => id && id !== submission.id);
+        if (covered.length) {
+            const { rows: others } = await db.query(`
+                UPDATE "ProjectFairSubmission"
+                SET status = 'refunded', "refundedAt" = NOW(), "updatedAt" = NOW()
+                WHERE id = ANY($1::text[]) AND status = 'paid' AND metadata->'payment'->>'coveredBy' = $2
+                RETURNING id
+            `, [covered, submission.id]).catch(() => ({ rows: [] }));
+            for (const o of others) {
+                await logEvent(o.id, {
+                    type: 'refund', title: 'Reembolso total (inscripción conjunta)',
+                    detail: `Se reembolsó el cobro de la inscripción ${submission.publicRef || submission.id} que cubría este proyecto.`,
+                    metadata: { chargeId: charge?.id || null, coveredBy: submission.id },
+                });
+            }
+        }
+    }
     // Un reembolso total deja el proyecto en consulta: se suspende el rol.
     if (isFull) await suspendProjectManagerRole(submission, { reason: charge?.id || 'refund' });
     console.log(`[project-fair] ↩️ Reembolso ${isFull ? 'total' : 'parcial'} — inscripción ${submission.publicRef}: ${refunded}`);
@@ -3121,8 +3671,14 @@ export const getSubmissionStatus = async (req, res) => {
         }
 
         const cfg = await readConfig();
+        // v4.1299 — La inscripción completa: los proyectos que la componen y
+        // su desglose, para la pantalla de confirmación del wizard.
+        const siblings = await registrationRows(submission);
+        const breakdown = registrationBreakdown(siblings, pricingRulesOf(await readConfigForSubmission(submission.eventId || null)));
         res.json({
             submission: mapSubmission(submission),
+            submissions: siblings.map(r => mapSubmission(r)),
+            registration: { id: submission.registrationId || null, ...breakdown },
             redirect: cfg.redirect,
             edition: cfg.edition,
         });
@@ -3169,6 +3725,12 @@ const footerBrandingHtml = (cfg) => {
 export const buildReceiptHtml = (s, cfg) => {
     const primary = '#17458F';
     const accent = '#F7A81B';
+    // v4.1299 — Los proyectos que cubrió este cobro (inscripción conjunta).
+    const cubiertos = Array.isArray(s?.metadata?.payment?.coveredProjects) && s.metadata.payment.coveredProjects.length
+        ? s.metadata.payment.coveredProjects
+        : [];
+    const totalCop = cubiertos.reduce((a, p) => a + (Number(p.amountCop) || 0), 0);
+    const totalUsd = cubiertos.reduce((a, p) => a + (Number(p.amountUsd) || 0), 0);
     const edition = cfg.edition?.name || 'Feria de Proyectos Rotary Colombia';
     const city = cfg.edition?.city || '';
     const paidAt = s.paidAt ? new Date(s.paidAt).toLocaleString('es-CO', { dateStyle: 'long', timeStyle: 'short', timeZone: 'America/Bogota' }) : '';
@@ -3185,8 +3747,9 @@ export const buildReceiptHtml = (s, cfg) => {
     </div>
     <div style="padding:32px">
       <p style="font-size:16px;line-height:1.6;margin:0 0 22px">
-        ¡Hola ${esc(s.firstName)}! Confirmamos que la inscripción del proyecto
-        <strong>"${esc(s.projectName)}"</strong> del <strong>${esc(s.clubName)}</strong> fue registrada y su pago está confirmado.
+        ¡Hola ${esc(s.firstName)}! Confirmamos que la inscripción ${cubiertos.length > 1
+        ? `de los proyectos ${cubiertos.map(p => `<strong>"${esc(p.projectName)}"</strong>`).join(' y ')}`
+        : `del proyecto <strong>"${esc(s.projectName)}"</strong>`} del <strong>${esc(s.clubName)}</strong> fue registrada y su pago está confirmado.
       </p>
 
       <div style="background:linear-gradient(135deg,${accent}14,${accent}26);border-radius:12px;padding:20px;margin-bottom:24px;text-align:center">
@@ -3197,9 +3760,13 @@ export const buildReceiptHtml = (s, cfg) => {
       <table style="width:100%;border-collapse:collapse;margin-bottom:24px">
         ${row('Club Rotario', esc(s.clubName))}
         ${row('Distrito', esc(s.district))}
-        ${row('Área de enfoque', esc(s.focusAreaLabel || s.focusArea))}
-        ${row('Presupuesto del proyecto', fmtUsd(s.budgetUsd))}
-        ${s.amountCop ? row('Valor de inscripción', fmtCop(s.amountCop)) : ''}
+        ${cubiertos.length > 1
+        ? cubiertos.map(p => row(`${esc(projectIndexLabel(p.projectIndex))} · ${esc(p.publicRef || '')}`,
+            `${esc(p.projectName)}${p.amountCop ? `<br><span style="font-weight:400;color:#6b7280">${fmtCop(p.amountCop)}</span>` : p.amountUsd ? `<br><span style="font-weight:400;color:#6b7280">${fmtUsd(p.amountUsd)}</span>` : ''}`)).join('')
+        : `${row('Área de enfoque', esc(s.focusAreaLabel || s.focusArea))}${row('Presupuesto del proyecto', fmtUsd(s.budgetUsd))}`}
+        ${cubiertos.length > 1
+        ? (totalCop > 0 ? row('Valor de inscripción (total)', fmtCop(totalCop)) : totalUsd > 0 ? row('Valor de inscripción (total)', fmtUsd(totalUsd)) : '')
+        : (s.amountCop ? row('Valor de inscripción', fmtCop(s.amountCop)) : '')}
         ${s.trmRate ? row('TRM aplicada', `${Number(s.trmRate).toLocaleString('es-CO', { maximumFractionDigits: 2 })} COP/USD${s.trmDate ? ` · ${esc(s.trmDate)}` : ''}`) : ''}
         ${s.amountUsd ? row(s.amountCop ? 'Valor cobrado' : 'Valor de inscripción', fmtUsd(s.amountUsd)) : ''}
         ${paidAt ? row('Fecha del pago', esc(paidAt)) : ''}
@@ -3240,7 +3807,7 @@ const fmtDateLong = (d) => (d
  * alarma: su proyecto quedó postulado, el pago está pendiente y se hace
  * después desde su perfil. No es un comprobante de pago y no lo parece.
  */
-export const buildApplicationHtml = (s, cfg) => {
+export const buildApplicationHtml = (s, cfg, { projects = null } = {}) => {
     const primary = '#17458F';
     const accent = '#F7A81B';
     const edition = cfg.edition?.name || 'Feria de Proyectos Rotary Colombia';
@@ -3265,7 +3832,9 @@ export const buildApplicationHtml = (s, cfg) => {
         <div style="font-size:28px;font-weight:800;color:${primary};letter-spacing:.06em">${esc(s.publicRef)}</div>
       </div>
       <table style="width:100%;border-collapse:collapse;margin-bottom:22px">
-        ${row('Proyecto', esc(s.projectName))}
+        ${Array.isArray(projects) && projects.length > 1
+        ? projects.map(p => row(`${esc(projectIndexLabel(p.projectIndex))} · ${esc(p.publicRef || '')}`, esc(p.projectName))).join('')
+        : row('Proyecto', esc(s.projectName))}
         ${row('Club Rotario', esc(s.clubName))}
         ${row('Responsable', `${esc(s.firstName)} ${esc(s.lastName)}`)}
         ${row('Fecha de postulación', esc(fmtDateLong(s.appliedAt || s.createdAt)))}

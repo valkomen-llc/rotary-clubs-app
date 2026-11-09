@@ -295,8 +295,10 @@ section('15. El cobro no se pide desde el cuerpo de la petición');
 const portal = (await import('fs')).readFileSync(new URL('../server/controllers/projectFairPortalController.js', import.meta.url), 'utf8');
 // ⚠️ La inscripción sale del TOKEN. Si viniera del cuerpo, cualquiera con este
 // endpoint abriría un cobro contra la inscripción de otro club.
+// v4.1299 — El ancla del cobro se deriva de la inscripción del TOKEN (el
+// primer proyecto que debe); sigue sin venir del cuerpo.
 ok('startCheckout usa la inscripción del token',
-    /beginCheckout\(req\.portal\.submissionId/.test(portal));
+    /let anchorId = req\.portal\.submissionId[\s\S]*?beginCheckout\(anchorId/.test(portal));
 ok('y no la toma del body', !/beginCheckout\(req\.body/.test(portal));
 
 // ⚠️ Y EL PANEL SINCRONIZA ANTES DE PINTAR. Sin esta llamada, un pago
@@ -304,7 +306,7 @@ ok('y no la toma del body', !/beginCheckout\(req\.body/.test(portal));
 // y con el botón de pagar encima — el caso 6 del pedido.
 ok('/portal/me pregunta al proveedor antes de responder',
     /submission = \(await syncPaymentState\(submission\)\)\.submission;/.test(portal));
-ok('y devuelve el veredicto ya resuelto', /payment: await paymentStateFor\(submission\)/.test(portal));
+ok('y devuelve el veredicto ya resuelto', /const payment = await paymentStateFor\(/.test(portal) && /\n\s+payment,\n/.test(portal));
 
 const rutas = (await import('fs')).readFileSync(new URL('../server/routes/project-fair.js', import.meta.url), 'utf8');
 ok('la ruta del panel exige sesión', /portal\/checkout', portal\.portalAuth/.test(rutas));
