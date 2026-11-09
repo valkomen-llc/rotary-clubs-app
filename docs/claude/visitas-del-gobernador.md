@@ -163,6 +163,17 @@ Obras · `permanentPrograms` Programas permanentes · `projects` Proyectos ·
   iniciativas») fue una decisión: el pedido la dejaba opcional y la
   estructura estricta son seis.
 
+## Fotos HEIC/HEIF (v4.1305)
+
+La galería mostraba recuadros rotos con el nombre del archivo en las fotos
+HEIC (iPhone, Samsung): el panel servía el original y sólo Safari lo dibuja.
+Ahora cada foto HEIC tiene una vista previa JPEG y una miniatura generadas en
+el servidor, al lado del original intacto; `mediaWithUrls` devuelve `url`,
+`thumbUrl`, `originalUrl` (descarga) y `preview.status`. La ficha genera las
+que falten al abrirse, el aviso «Fotos HEIC» repara por lotes lo ya enviado y
+publicar lleva el JPEG a la Biblioteca. Todo en
+`docs/claude/vistas-previas-heic-de-los-aportes.md`.
+
 ## Estadísticas (`GET …/admin/stats`)
 
 Desde el inicio del año rotario (1 de julio) o `?from=`: visitas por mes, por

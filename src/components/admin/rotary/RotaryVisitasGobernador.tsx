@@ -17,6 +17,12 @@
 // alianzas, obras, programas permanentes, proyectos, subvenciones). Las seis
 // anteriores se muestran y se editan sólo en las visitas que las tienen, en
 // un bloque aparte «formato anterior»: nada se traslada de una a otra.
+//
+// v4.1305.0 — Fotos HEIC/HEIF: la galería dibuja la miniatura y la vista
+// previa JPEG que genera el servidor (el original se descarga aparte). Al
+// abrir la ficha se generan las que falten; las fallidas dicen por qué y se
+// reintentan. «Fotos HEIC» repara por lotes las ya enviadas de todas las
+// visitas y solicitudes. Ver `docs/claude/vistas-previas-heic-de-los-aportes.md`.
 // ════════════════════════════════════════════════════════════════════════════
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -28,6 +34,7 @@ import {
 import { toast } from 'sonner';
 import { useAuth } from '../../../hooks/useAuth';
 import { leerJson } from '../../../lib/leerJson';
+import ReviewGallery, { type GalleryItem } from '../../media/ReviewGallery';
 import { stateLabel } from '../../../lib/contentSubmissionSpec';
 import {
   VISIT_REASON_REQUIRED, VISIT_CAPTION_MAX, VISIT_DESCRIPTION_MAX, VISIT_MEMORY_FIELDS, VISIT_MEMORY_LEGACY, visitDateLabel, visitDescriptionError, visitStateChip, visitStateLabel,
@@ -90,6 +97,97 @@ const Dato: React.FC<{ k: string; v?: React.ReactNode }> = ({ k, v }) => (
   <div className="text-sm"><dt className="text-[10px] font-black uppercase tracking-wider text-gray-400">{k}</dt><dd className="text-gray-800 font-medium break-words">{v || '—'}</dd></div>
 );
 
+/** La galería de la visita en el formato de `ReviewGallery`. */
+const itemsDeGaleria = (media: any[]): GalleryItem[] => (media || []).map((m: any) => ({
+  id: m.key, kind: m.kind, filename: m.filename, caption: m.caption, url: m.url, thumbUrl: m.thumbUrl || m.url,
+  originalUrl: m.originalUrl || null, preview: m.preview || null,
+  note: m.inLibrary ? <span className="block text-[10px] text-emerald-600 font-bold">En la Biblioteca</span> : null,
+}));
+const faltaVista = (media: any[]) => (media || []).some((m: any) => m.preview?.status === 'pending' || m.preview?.status === 'processing');
+
+interface ResumenHeic { counts: { total: number; ready: number; pending: number; processing?: number; error: number }; errors: { source: string; ownerRef: string; ownerLabel?: string; filename?: string; errorCode?: string; error?: string }[] }
+
+/**
+ * v4.1305 — La recuperación de las fotos HEIC YA ENVIADAS (visitas y
+ * solicitudes de Rotary en Acción). Se muestra sólo si hay algo que reparar o
+ * algo que falló; procesa por lotes hasta terminar y se puede retomar.
+ */
+const RecuperacionHeic: React.FC<{ headers: Record<string, string>; canEdit: boolean }> = ({ headers, canEdit }) => {
+  const [res, setRes] = useState<ResumenHeic | null>(null);
+  const [corriendo, setCorriendo] = useState(false);
+  const [verErrores, setVerErrores] = useState(false);
+  const cancelado = React.useRef(false);
+
+  const leer = useCallback(async () => {
+    try {
+      const r = await fetch(`${BASE}/admin/previews/summary`, { headers });
+      const { data } = await leerJson<ResumenHeic>(r);
+      if (r.ok && data?.counts) setRes(data);
+    } catch { /* el resto del panel funciona igual */ }
+  }, [headers]);
+  useEffect(() => { leer(); return () => { cancelado.current = true; }; }, [leer]);
+
+  const reparar = async (retryErrors = false) => {
+    setCorriendo(true); cancelado.current = false;
+    try {
+      for (let vuelta = 0; vuelta < 200 && !cancelado.current; vuelta++) {
+        const r = await fetch(`${BASE}/admin/previews/batch`, { method: 'POST', headers, body: JSON.stringify({ limit: 4, retryErrors: retryErrors && vuelta === 0 }) });
+        const { data } = await leerJson<any>(r);
+        if (!r.ok) throw new Error(data?.error || `Error ${r.status}`);
+        setRes({ counts: data.counts, errors: data.errors });
+        if (!data.remaining || !(data.processed || []).length) break;
+      }
+      toast.success('Recuperación de fotos HEIC terminada.');
+    } catch (e: any) { toast.error(`Se detuvo: ${e.message}. Puedes retomarla: no se repite lo ya convertido.`); }
+    finally { setCorriendo(false); }
+  };
+
+  if (!res || !res.counts.total) return null;
+  const faltan = (res.counts.pending || 0) + (res.counts.processing || 0);
+  if (!faltan && !res.counts.error) return null;
+  return (
+    <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 space-y-2">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <ImageIcon className="w-5 h-5 text-amber-600 shrink-0" />
+        <div className="flex-1 min-w-0 text-sm text-amber-900">
+          <p className="font-bold">Fotos HEIC: {res.counts.ready} de {res.counts.total} con versión compatible.</p>
+          <p className="text-xs">
+            {faltan ? `${faltan} todavía sin vista previa (no se ven en Chrome, Edge ni Firefox). ` : ''}
+            {res.counts.error ? `${res.counts.error} no se pudieron convertir. ` : ''}
+            El original nunca se modifica.
+          </p>
+        </div>
+        {canEdit && (
+          <div className="flex flex-wrap gap-2 shrink-0">
+            {faltan > 0 && (
+              <button onClick={() => reparar(false)} disabled={corriendo} className="px-3.5 py-2 rounded-xl bg-amber-600 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
+                {corriendo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} {corriendo ? 'Convirtiendo…' : `Generar ${faltan} vista(s) previa(s)`}
+              </button>
+            )}
+            {res.counts.error > 0 && !corriendo && (
+              <button onClick={() => reparar(true)} className="px-3.5 py-2 rounded-xl border border-amber-300 bg-white text-amber-800 text-xs font-bold">Reintentar las fallidas</button>
+            )}
+          </div>
+        )}
+      </div>
+      {res.counts.error > 0 && (
+        <div>
+          <button onClick={() => setVerErrores(!verErrores)} className="text-[11px] font-bold text-amber-800 underline">{verErrores ? 'Ocultar' : 'Ver'} cuáles fallaron ({res.counts.error})</button>
+          {verErrores && (
+            <ul className="mt-2 space-y-1">
+              {res.errors.map((e, i) => (
+                <li key={i} className="text-[11px] text-amber-900 bg-white/70 rounded-lg px-2.5 py-1.5 break-words">
+                  <span className="font-mono font-bold">{e.source === 'governor_visit' ? e.ownerRef : `Solicitud ${String(e.ownerRef).slice(0, 8)}`}</span> · <span className="font-bold">{e.filename}</span> — {e.error}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 interface PanelProps { id: string; canEdit: boolean; canManage: boolean; canPublish: boolean; onClose: () => void; onChanged: () => void }
 
 const DetalleVisita: React.FC<PanelProps> = ({ id, canEdit, canManage, canPublish, onClose, onChanged }) => {
@@ -105,6 +203,9 @@ const DetalleVisita: React.FC<PanelProps> = ({ id, canEdit, canManage, canPublis
   const [editando, setEditando] = useState(false);
   const [form, setForm] = useState<any>(null);
 
+  const [reintentando, setReintentando] = useState<string | null>(null);
+  const [generando, setGenerando] = useState(false);
+
   const cargar = useCallback(async () => {
     setCargando(true); setError('');
     try {
@@ -115,6 +216,42 @@ const DetalleVisita: React.FC<PanelProps> = ({ id, canEdit, canManage, canPublis
     } catch (e: any) { setError(e.message); } finally { setCargando(false); }
   }, [id, headers]);
   useEffect(() => { cargar(); }, [cargar]);
+
+  // v4.1305 — Si alguna foto HEIC todavía no tiene vista previa, se genera
+  // ahora, por tandas, y la galería se va completando sola.
+  const pendientesVista = faltaVista(data?.visit?.media);
+  useEffect(() => {
+    if (!pendientesVista) return undefined;
+    let vivo = true;
+    (async () => {
+      setGenerando(true);
+      try {
+        for (let vuelta = 0; vuelta < 40 && vivo; vuelta++) {
+          const r = await fetch(`${BASE}/admin/${encodeURIComponent(id)}/previews`, { method: 'POST', headers, body: '{}' });
+          const { data: d } = await leerJson<any>(r);
+          if (!r.ok || !vivo) break;
+          setData((prev: any) => (prev?.visit ? { ...prev, visit: { ...prev.visit, media: d.media } } : prev));
+          if (!d.remaining) break;
+          // Otra pestaña la está convirtiendo (candado): se espera y se mira.
+          if (!d.processed) await new Promise((ok) => setTimeout(ok, 4000));
+        }
+      } catch { /* la galería muestra el estado de cada foto */ } finally { setGenerando(false); }
+    })();
+    return () => { vivo = false; };
+  }, [pendientesVista, id, headers]);
+
+  const reintentarVista = async (key: string) => {
+    setReintentando(key);
+    try {
+      const r = await fetch(`${BASE}/admin/${encodeURIComponent(id)}/previews`, { method: 'POST', headers, body: JSON.stringify({ key, force: true }) });
+      const { data: d } = await leerJson<any>(r);
+      if (!r.ok) throw new Error(d?.error || `Error ${r.status}`);
+      setData((prev: any) => (prev?.visit ? { ...prev, visit: { ...prev.visit, media: d.media } } : prev));
+      const foto = (d.media || []).find((m: any) => m.key === key);
+      if (foto?.preview?.status === 'error') toast.error(foto.preview.error || 'No se pudo convertir la fotografía.');
+      else toast.success('Vista previa generada.');
+    } catch (e: any) { toast.error(e.message); } finally { setReintentando(null); }
+  };
 
   const v = data?.visit;
 
@@ -386,19 +523,11 @@ const DetalleVisita: React.FC<PanelProps> = ({ id, canEdit, canManage, canPublis
                     )}
                   </Seccion>
                   <Seccion titulo={`Galería (${(v.media || []).length} archivo(s) · ${(v.links || []).length} enlace(s))`}>
+                    {generando && (
+                      <p className="text-[11px] text-rotary-blue font-bold flex items-center gap-1.5" role="status"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Generando las vistas previas de las fotos HEIC…</p>
+                    )}
                     {(v.media || []).length > 0 && (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                        {v.media.map((m: any) => (
-                          <figure key={m.key} className="rounded-xl overflow-hidden border border-gray-100 bg-gray-50">
-                            {m.url ? (
-                              m.kind === 'video'
-                                ? <video src={m.url} controls preload="metadata" className="w-full aspect-video bg-black" />
-                                : <a href={m.url} target="_blank" rel="noopener noreferrer"><img src={m.url} alt={m.caption || m.filename} className="w-full aspect-square object-cover" loading="lazy" /></a>
-                            ) : <div className="aspect-square flex items-center justify-center text-gray-300"><ImageIcon className="w-8 h-8" /></div>}
-                            <figcaption className="p-2 text-[11px] text-gray-600">{m.caption || <span className="text-gray-300">{m.filename}</span>}{m.inLibrary && <span className="block text-[10px] text-emerald-600 font-bold">En la Biblioteca</span>}</figcaption>
-                          </figure>
-                        ))}
-                      </div>
+                      <ReviewGallery items={itemsDeGaleria(v.media)} onRetry={reintentarVista} retryingId={reintentando} />
                     )}
                     {(v.links || []).length > 0 && (
                       <ul className="space-y-1">
@@ -491,6 +620,7 @@ const Cobertura: React.FC<{ stats: any }> = ({ stats }) => {
 
 const RotaryVisitasGobernador: React.FC<{ canEdit: boolean; canManage: boolean; canPublish: boolean }> = ({ canEdit, canManage, canPublish }) => {
   const { token } = useAuth();
+  const headersLista = useMemo(() => ({ Authorization: `Bearer ${token || getToken()}`, 'Content-Type': 'application/json' }), [token]);
   const [f, setF] = useState<Filtros>(FILTROS0);
   const [busqueda, setBusqueda] = useState('');
   const [data, setData] = useState<{ visits: Fila[]; total: number; perPage: number; kpis: Kpis; facets: { clubs: { id: string; name: string }[]; governors: string[] } } | null>(null);
@@ -558,6 +688,8 @@ const RotaryVisitasGobernador: React.FC<{ canEdit: boolean; canManage: boolean; 
       </div>
 
       <Cobertura stats={stats} />
+
+      <RecuperacionHeic headers={headersLista} canEdit={canEdit} />
 
       <div className="bg-white border border-gray-100 shadow-sm rounded-3xl p-4 sm:p-5 space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">

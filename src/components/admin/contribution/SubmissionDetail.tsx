@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
     Loader2, ExternalLink, Check, UserCog,
-    Image as ImageIcon, Film, Library, Megaphone, X, Share2,
+    Library, Megaphone, X, Share2,
     Users, Phone, Mail, MapPin, Zap,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -9,6 +9,8 @@ import { stateLabel, stateChip, USAGE_CHANNELS, usageIsMeasured, activityDateLab
 import { findCountry } from '../../../lib/countryPhones';
 import SubmissionArticlePanel from './SubmissionArticlePanel';
 import SubmissionReelPanel from './SubmissionReelPanel';
+import ReviewGallery, { type GalleryItem, type PreviewInfo } from '../../media/ReviewGallery';
+import { leerJson } from '../../../lib/leerJson';
 
 // ════════════════════════════════════════════════════════════════════════════
 // La FICHA de una solicitud de contenido — v4.999
@@ -35,8 +37,10 @@ export interface ClubParticipante { id?: string; clubName: string; districtId?: 
 export interface Publicacion { id?: string; platform: string; platformOther?: string; platformLabel?: string; url: string; host?: string }
 export interface Archivo {
     id: string; kind: 'image' | 'video'; filename: string; bytes: number;
-    url: string; inLibrary: boolean; mediaId?: string | null;
+    url: string | null; inLibrary: boolean; mediaId?: string | null;
     promotedAt?: string | null; promoteError?: string | null;
+    // v4.1305 — Foto HEIC: miniatura y vista previa JPEG, original aparte.
+    thumbUrl?: string | null; originalUrl?: string | null; preview?: PreviewInfo | null;
 }
 export interface Evento {
     id: string; type: string; fromState?: string | null; toState?: string | null;
@@ -104,6 +108,43 @@ const SubmissionDetail: React.FC<Props> = ({ campaignId, submissionId, onClose, 
     }, [campaignId, submissionId, onClose]);
 
     useEffect(() => { setFicha(null); abrir(); }, [abrir]);
+
+    // v4.1305 — Las fotos HEIC sin vista previa se convierten ahora, por
+    // tandas, y la galería se completa sola. «Reintentar» va de a una.
+    const [reintentando, setReintentando] = useState<string | null>(null);
+    const faltanVistas = (ficha?.files || []).some(f => f.preview?.status === 'pending' || f.preview?.status === 'processing');
+    const pedirVistas = useCallback(async (body: Record<string, unknown>) => {
+        const r = await fetch(`${API}/contribution-campaigns/${campaignId}/submissions/${submissionId}/previews`, {
+            method: 'POST', headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        });
+        const { data } = await leerJson<any>(r);
+        if (!r.ok || !data?.files) throw new Error(data?.error || `Error ${r.status}`);
+        setFicha(prev => (prev ? { ...prev, files: data.files } : prev));
+        return data;
+    }, [campaignId, submissionId]);
+    useEffect(() => {
+        if (!faltanVistas) return undefined;
+        let vivo = true;
+        (async () => {
+            try {
+                for (let vuelta = 0; vuelta < 40 && vivo; vuelta++) {
+                    const d = await pedirVistas({});
+                    if (!d.remaining || !vivo) break;
+                    if (!d.processed) await new Promise(ok => setTimeout(ok, 4000));
+                }
+            } catch { /* cada foto muestra su estado */ }
+        })();
+        return () => { vivo = false; };
+    }, [faltanVistas, pedirVistas]);
+    const reintentarVista = async (fileId: string) => {
+        setReintentando(fileId);
+        try {
+            const d = await pedirVistas({ fileId, force: true });
+            const f = (d.files || []).find((x: any) => x.id === fileId);
+            if (f?.preview?.status === 'error') toast.error(f.preview.error || 'No se pudo convertir la fotografía.');
+            else toast.success('Vista previa generada.');
+        } catch (e: any) { toast.error(e.message); } finally { setReintentando(null); }
+    };
 
     /** Escape cierra. Un panel que sólo se cierra con su propia cruz atrapa a
      *  quien lo abrió sin querer. */
@@ -300,26 +341,25 @@ const SubmissionDetail: React.FC<Props> = ({ campaignId, submissionId, onClose, 
                                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.15em] mb-3">
                                         Material ({ficha.files.length})
                                     </p>
-                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                                        {ficha.files.map(f => (
-                                            <div key={f.id} className="relative rounded-2xl overflow-hidden border border-gray-100 bg-gray-50 aspect-square">
-                                                {f.kind === 'image'
-                                                    ? (f.url ? <img src={f.url} alt={f.filename || ''} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-gray-300"><ImageIcon className="w-8 h-8" /></div>)
-                                                    : (f.url ? <video src={f.url} controls playsInline className="w-full h-full object-cover bg-black" /> : <div className="w-full h-full flex items-center justify-center text-gray-300"><Film className="w-8 h-8" /></div>)}
-                                                <span className="absolute bottom-1.5 left-1.5 text-[9px] font-black px-1.5 py-0.5 rounded bg-black/60 text-white">
-                                                    {fmtPeso(f.bytes)}
-                                                </span>
-                                                {f.inLibrary && (
-                                                    <span className="absolute top-1.5 right-1.5 text-[9px] font-black px-1.5 py-0.5 rounded bg-emerald-500 text-white flex items-center gap-1">
-                                                        <Check className="w-2.5 h-2.5" /> BIBLIOTECA
-                                                    </span>
-                                                )}
-                                                {f.promoteError && (
-                                                    <span className="absolute inset-x-0 bottom-0 text-[9px] font-bold p-1.5 bg-red-600/85 text-white leading-tight">{f.promoteError}</span>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
+                                    {/* v4.1305 — La misma galería de revisión que
+                                        Visitas del Gobernador: una foto HEIC se ve
+                                        por su versión JPEG, con visor y descarga
+                                        del original. */}
+                                    <ReviewGallery items={ficha.files.map((f): GalleryItem => ({
+                                        id: f.id, kind: f.kind, filename: f.filename, url: f.url,
+                                        thumbUrl: f.thumbUrl || f.url, originalUrl: f.originalUrl || null, preview: f.preview || null,
+                                        badge: f.inLibrary ? (
+                                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-emerald-500 text-white flex items-center gap-1">
+                                                <Check className="w-2.5 h-2.5" /> BIBLIOTECA
+                                            </span>
+                                        ) : null,
+                                        note: (
+                                            <>
+                                                <span className="block text-[10px] text-gray-400">{fmtPeso(f.bytes)}</span>
+                                                {f.promoteError && <span className="block text-[10px] font-bold text-red-600 leading-tight">{f.promoteError}</span>}
+                                            </>
+                                        ),
+                                    }))} onRetry={reintentarVista} retryingId={reintentando} />
                                 </div>
 
                                 {/* Lo que contó quien lo envió: es lo que después

@@ -32,6 +32,7 @@ import ensureContentSubmissionSchema from './ensureContentSubmissionSchema.js';
 import { filesOf, clubsOf, postsOf, logEvent, transitionSubmission, promoteToLibrary, ensureLibraryFiling, markUsage, getSubmission } from './contentSubmissionStore.js';
 import { submissionFolderView } from './submissionFolders.js';
 import { signedSubmissionUrl, readStagingObject, putStagingObject, deleteStagingObject } from './submissionFiles.js';
+import { needsPreview, ensurePreview } from './submissionImagePreviews.js';
 import { normalizeSubmissionsConfig, stateLabel as submissionStateLabel } from './contentSubmissionSpec.js';
 import { generateArticleFromContext } from './articleGenerate.js';
 import { routeToModel, getDefaultModel } from './ai-router.js';
@@ -484,6 +485,15 @@ const bytesOf = async (f) => {
             const r = await fetch(f.mediaUrl, { signal: AbortSignal.timeout(60000) });
             if (r.ok) return Buffer.from(await r.arrayBuffer());
         } catch (e) { console.warn('[articles] no pude leer de la Biblioteca:', e.message); }
+    }
+    // v4.1305 — Una foto HEIC en staging se mide por su vista previa JPEG:
+    // sharp no decodifica HEVC y la foto quedaba «ilegible» para la portada.
+    if (needsPreview({ filename: f.filename || f.s3Key, contentType: f.contentType, kind: f.kind })) {
+        const row = await ensurePreview({ key: f.s3Key, filename: f.filename, contentType: f.contentType, kind: f.kind }).catch(() => null);
+        if (row?.status === 'ready' && row.previewKey) {
+            const vista = await readStagingObject(row.previewKey);
+            if (vista) return vista;
+        }
     }
     return readStagingObject(f.s3Key);
 };

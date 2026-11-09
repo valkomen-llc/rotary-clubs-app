@@ -11,6 +11,7 @@
 // ruta sin sesión: acepta un cuerpo acotado y sólo mide artículos publicados y
 // visibles para ese sitio.
 // ════════════════════════════════════════════════════════════════════════════
+import { bestStagingUrl } from '../lib/submissionImagePreviews.js';
 import db from '../lib/db.js';
 import {
     articleOf, mediaOf, postOf, versionsOf, pendingDrafts, enqueueArticle, advanceArticle,
@@ -72,7 +73,7 @@ async function articleView(campaignId, submissionId) {
             // (requisito de errores: un archivo caído no bloquea a los demás).
             libraryError: m.promoteError || null,
             // El archivo se MIRA sin URL compartible mientras no esté aprobado.
-            url: m.mediaUrl || await signedSubmissionUrl(m.s3Key),
+            url: m.mediaUrl || await bestStagingUrl(m),
         });
     }
     let site = null;

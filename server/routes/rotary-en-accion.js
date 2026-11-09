@@ -35,6 +35,8 @@ router.post('/activacion/submit', lightPublicLimit, actCtrl.submitActivationInte
 // La corrección entra con el enlace que genera «Solicitar correcciones».
 router.get('/visitas-gobernador/config', lightPublicLimit, visitCtrl.getVisitConfig);
 router.post('/visitas-gobernador/presign', lightPublicLimit, visitCtrl.presignVisitUpload);
+// v4.1305 — Vista previa JPEG de una foto HEIC recién subida (sólo objetos sin reclamar).
+router.post('/visitas-gobernador/preview', lightPublicLimit, visitCtrl.previewVisitUpload);
 router.post('/visitas-gobernador/submit', lightPublicLimit, visitCtrl.submitVisit);
 router.get('/visitas-gobernador/correccion/:token', lightPublicLimit, visitCtrl.getVisitForCorrection);
 router.post('/visitas-gobernador/correccion/:token', lightPublicLimit, visitCtrl.submitVisitCorrection);
@@ -57,10 +59,14 @@ router.get('/fair/stats', requireSubmissionInboxAccess, requireRoleOrPermission(
 // Literales antes que paramétricas (check:routes).
 router.get('/visitas-gobernador/admin/list', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.view'), visitCtrl.adminListVisits);
 router.get('/visitas-gobernador/admin/stats', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.view'), visitCtrl.adminVisitStats);
+// v4.1305 — Recuperación de las fotos HEIC ya enviadas (literales, ANTES de `admin/:id`).
+router.get('/visitas-gobernador/admin/previews/summary', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.view'), visitCtrl.adminPreviewSummary);
+router.post('/visitas-gobernador/admin/previews/batch', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.edit'), visitCtrl.adminPreviewBatch);
 router.get('/visitas-gobernador/admin/by-club/:profileId', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.view'), visitCtrl.adminVisitsByClub);
 router.get('/visitas-gobernador/admin/:id', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.view'), visitCtrl.adminGetVisit);
 router.put('/visitas-gobernador/admin/:id', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.edit'), visitCtrl.adminUpdateVisit);
 router.post('/visitas-gobernador/admin/:id/status', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.manage'), visitCtrl.adminTransitionVisit);
+router.post('/visitas-gobernador/admin/:id/previews', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.view'), visitCtrl.adminVisitPreviews);
 router.post('/visitas-gobernador/admin/:id/publish', requireSubmissionInboxAccess, requireRoleOrPermission(SITE_ADMIN_ROLES, 'rotary_en_accion.publish'), visitCtrl.adminPublishVisit);
 
 // ── Admin: Activación de Clubes (CRM & KPIs) ─────────────────────────

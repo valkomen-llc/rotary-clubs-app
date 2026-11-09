@@ -16,6 +16,8 @@ import {
     isUsageChannel, buildSubmissionContext, submissionCaption,
 } from './contentSubmissionSpec.js';
 import { copyToLibrary, deleteStagingObject } from './submissionFiles.js';
+import { needsPreview, ensurePreview, deletePreviewObjects, jpegNameFor } from './submissionImagePreviews.js';
+import { ensureMediaFolderSchema } from './ensureMediaFolderSchema.js';
 import { ensureSubmissionFolder, fileFolderBackfill } from './submissionFolders.js';
 // «Sin revisar» se importa, no se reescribe: es el mismo criterio con el que
 // la bandeja titula «12 sin revisar» (v4.999).
@@ -338,6 +340,42 @@ export async function transitionSubmission({ campaignId, id, to, reason = '', ac
 }
 
 /**
+ * v4.1305 — Promueve una foto HEIC/HEIF por su vista previa JPEG.
+ *
+ * Copia a la Biblioteca (de objeto a objeto, sin pasar bytes por la función)
+ * la vista previa, la miniatura y el ORIGINAL, crea la fila de `Media` con el
+ * JPEG como `url` y el original en `originalS3Key`, y recién entonces borra lo
+ * de staging. Si la vista previa no existe todavía se genera acá. Devuelve
+ * `{ ok, mediaId, url }` o `{ ok: false, error }` sin haber creado nada.
+ */
+async function promoteHeicToLibrary({ f, clubId, folderId }) {
+    const row = await ensurePreview({ key: f.s3Key, filename: f.filename, contentType: f.contentType, kind: f.kind });
+    if (row?.status !== 'ready' || !row.previewKey) return { ok: false, error: row?.error || 'La vista previa no está lista.' };
+    const nombre = jpegNameFor(f.filename);
+    const vista = await copyToLibrary({ key: row.previewKey, clubId, filename: nombre, contentType: 'image/jpeg' });
+    if (!vista.ok) return { ok: false, error: vista.error };
+    const mini = row.thumbKey ? await copyToLibrary({ key: row.thumbKey, clubId, filename: nombre, contentType: 'image/jpeg' }) : { ok: false };
+    const original = await copyToLibrary({ key: f.s3Key, clubId, filename: f.filename, contentType: f.contentType || 'image/heic' });
+    await ensureMediaFolderSchema().catch(() => {});
+    const { rows } = await db.query(
+        `INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key", "folderId", "thumbUrl", "originalS3Key", "createdAt")
+         VALUES (gen_random_uuid(), $1, $2, 'image', $3, $4, $5, $6, $7, $8, $9, $10, NOW()) RETURNING id, url`,
+        [nombre, vista.url, Number(row.previewBytes) || 0, vista.bucket, process.env.AWS_REGION || 'us-east-1', clubId, vista.key, folderId,
+            mini.ok ? mini.url : null, original.ok ? original.key : null]
+    );
+    await db.query(
+        `UPDATE "ContributionSubmissionFile"
+            SET "mediaId" = $2, "mediaUrl" = $3, "promotedAt" = NOW(), "promoteError" = $4
+          WHERE id = $1`,
+        [f.id, rows[0].id, rows[0].url, original.ok ? null : str(`Se publicó la versión JPEG; el original HEIC no se pudo copiar: ${original.error || ''}`, 400)]
+    );
+    // Lo de staging, DESPUÉS de la fila. El original sólo si quedó copiado.
+    if (original.ok) await deleteStagingObject(f.s3Key);
+    await deletePreviewObjects(f.s3Key);
+    return { ok: true, mediaId: rows[0].id, url: rows[0].url };
+}
+
+/**
  * Aprueba y lleva los archivos a la Biblioteca Multimedia.
  *
  * ⚠️ ES IDEMPOTENTE POR ARCHIVO. Una fila que ya tiene `mediaId` se saltea, así
@@ -372,6 +410,21 @@ export async function promoteToLibrary({ campaignId, submission, clubId = null, 
 
     for (const f of archivos) {
         if (f.mediaId) { resultados.push({ id: f.id, estado: 'ya_estaba', mediaId: f.mediaId }); continue; }
+
+        // v4.1305 — UNA FOTO HEIC/HEIF SE PUBLICA POR SU VERSIÓN JPEG. Hasta
+        // acá se copiaba el `.heic` tal cual a la Biblioteca, y desde ahí al
+        // sitio público, al artículo y a las redes: roto en todo navegador
+        // menos Safari. Ahora la fila de `Media` apunta al JPEG (y su
+        // miniatura) y el original viaja a la Biblioteca como
+        // `originalS3Key`, la misma convención que la conversión de la
+        // Librería (v4.741): se conserva y se borra junto con la fila.
+        // Si la vista previa no se pudo generar, se promueve el original como
+        // antes —perder el archivo sería peor— y se avisa.
+        if (needsPreview({ filename: f.filename, contentType: f.contentType, kind: f.kind })) {
+            const hecho = await promoteHeicToLibrary({ f, clubId, folderId }).catch((e) => ({ ok: false, error: e.message }));
+            if (hecho.ok) { resultados.push({ id: f.id, estado: 'promovido', mediaId: hecho.mediaId, url: hecho.url, convertido: true }); continue; }
+            console.warn(`[submissions] HEIC sin versión JPEG (${f.filename}): se promueve el original. ${hecho.error || ''}`);
+        }
 
         const copia = await copyToLibrary({ key: f.s3Key, clubId, filename: f.filename, contentType: f.contentType });
         if (!copia.ok) {
