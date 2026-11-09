@@ -156,7 +156,10 @@ export const paymentViewOf = (submission, { lastFailure = null, applied = true }
     return {
         state: 'pending', paid: false, canPay: true,
         label: 'Pendiente de pago',
-        detail: 'Tu proyecto ya está postulado. El pago de inscripción se encuentra pendiente y puedes realizarlo posteriormente desde esta sección. Tu postulación permanece registrada aunque todavía no hayas realizado el pago.',
+        // v4.1300 — Sin presión: la información está guardada, se puede seguir
+        // trabajando y el pago confirma la inscripción cuando el club esté
+        // listo. Sigue diciendo que la postulación permanece registrada.
+        detail: 'Tu información está guardada y tu proyecto ya está postulado. Puedes seguir trabajando en tus proyectos y, cuando estés listo, completar el pago para confirmar tu inscripción a la feria. Tu postulación permanece registrada aunque todavía no hayas realizado el pago.',
         actionLabel: 'Pagar inscripción',
     };
 };

@@ -147,3 +147,27 @@ los dos; no hay pruebas contra Postgres real de esta versión (las barreras son
 el criterio puro, las invariantes y el camino con la base sustituida); y
 `confirmManualPayment` (admin) confirma UNA fila con su línea: para una
 inscripción de dos proyectos pagada por fuera, se confirma cada uno.
+
+### Las tarjetas sin precio: postular sin pensar en el pago (v4.1300)
+
+Pedido del comité con la captura delante: las tarjetas de modalidad mostraban
+«Primer proyecto $250.000 · Total $350.000» y debajo una franja con el total,
+y el precio se volvía el elemento dominante del formulario. Ahora las tarjetas
+dicen CUÁNTOS proyectos («Registra y presenta una iniciativa…» / «Registra dos
+iniciativas independientes… en una misma inscripción»), la franja del total
+desapareció y debajo va «Puedes comenzar ahora y pagar después…» (sin precios).
+
+- **Las tarifas se CONOCEN arriba y se CONFIRMAN al pagar.** El texto
+  informativo con los valores se conserva encima de las tarjetas; el desglose
+  completo vive en la pantalla de pago del wizard y en «Mi proyecto». En el
+  paso 3 el valor es UNA línea de referencia que aclara que postular no
+  requiere pagar ahora.
+- **Nada cambió en el cálculo ni en el cobro**: `pricingRulesOf`, la orden,
+  Stripe, comprobantes e indicadores siguen igual. Es presentación.
+- **Postular ya no exigía pagar desde v4.1253**; esta versión lo hace visible
+  en el momento de elegir, que es donde aparece la barrera «necesito el dinero
+  antes de empezar».
+- El mensaje de pago pendiente del perfil (`paymentViewOf`) dice «Tu
+  información está guardada… cuando estés listo, completar el pago para
+  confirmar tu inscripción». Sigue diciendo que la postulación permanece
+  registrada (lo fija `test:fair:payment`).

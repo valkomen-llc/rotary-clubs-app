@@ -960,8 +960,8 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                     <Kpi label="Usuarios registrados" value={fmtNum(overview.participation.registeredUsers)} icon={Users} tone="indigo" />
                                     <Kpi label="Proyectos en borrador" value={fmtNum(overview.participation.drafts)} icon={FileText} tone="slate" />
                                     <Kpi label="Proyectos postulados" value={fmtNum(overview.participation.applied)} sub={`${fmtNum(overview.participation.approved)} aprobados`} icon={ClipboardList} tone="blue" />
-                                    <Kpi label="Inscripciones pagadas" value={fmtNum(overview.participation.paid)} icon={CheckCircle2} tone="emerald" />
-                                    <Kpi label="Pendientes de pago" value={fmtNum(overview.participation.owing)} sub="Postuladas sin pagar" icon={Clock} tone="amber" />
+                                    <Kpi label="Inscripciones confirmadas" value={fmtNum(overview.participation.paid)} sub="Proyectos con el pago validado" icon={CheckCircle2} tone="emerald" />
+                                    <Kpi label="Pendientes de pago" value={fmtNum(overview.participation.owing)} sub="Información completa, sin pago confirmado" icon={Clock} tone="amber" />
                                     <Kpi label="Valor recaudado" value={overview.participation.priceMode === 'USD' ? fmtUsd(overview.participation.collectedAmount) : fmtCop(overview.participation.collectedAmount)} sub="Valor de inscripción, sin cargos" icon={Wallet} tone="emerald" />
                                     <Kpi label="Valor pendiente de recaudo" value={overview.participation.priceMode === 'USD' ? fmtUsd(overview.participation.pendingAmount) : fmtCop(overview.participation.pendingAmount)} sub="Sólo obligaciones válidas" icon={AlertTriangle} tone="orange" />
                                 </div>
