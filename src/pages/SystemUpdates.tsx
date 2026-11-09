@@ -34,13 +34,29 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1299.0 | 2026-11-09 (Feria de Proyectos: hasta dos proyectos por club en una sola inscripción, con tarifa especial para el segundo)
+// UI V4.1300.0 | 2026-11-09 (Feria de Proyectos: postular sin pensar en el pago — las tarjetas de modalidad sin precios)
 // Cache bust: 2026-11-09
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1300.0',
+        title: 'Feria de Proyectos: elegir la modalidad sin que el precio sea lo primero 🌱',
+        description: 'Pedido del comité: que las tarjetas «Postular un proyecto» y «Postular dos proyectos» comuniquen la cantidad de proyectos, no los importes, y que quede claro que se puede comenzar ahora y pagar después. Las tarifas se conocen en el texto informativo de arriba y se confirman en la etapa de pago; nada cambia en cómo se calculan ni en cómo se cobran.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'postulación de proyectos', 'experiencia de usuario', 'pagos'],
+        type: 'improvement',
+        impact: 'Media: menos barrera de entrada para clubes que todavía no tienen el presupuesto; el registro y la formulación avanzan y el pago confirma la inscripción después.',
+        changes: [
+            { type: 'changed', text: 'Tarjetas de modalidad sin precios: «Postular un proyecto — Registra y presenta una iniciativa de impacto de tu club rotario» y «Postular dos proyectos — Registra dos iniciativas independientes de tu club rotario en una misma inscripción». Se elimina la franja «Total de inscripción». El texto informativo con las tarifas se conserva encima.' },
+            { type: 'added', text: 'Debajo de las tarjetas: «Puedes comenzar ahora y pagar después. Tu información se guardará automáticamente para que completes tu inscripción cuando estés listo».' },
+            { type: 'changed', text: 'Paso 3: el resumen de inscripción mantiene club, distrito, cantidad y nombres de los proyectos; el valor pasa a una sola línea de referencia que aclara que postular no requiere pagar ahora. El desglose completo (valor por proyecto, comisiones, total) sigue en la etapa de pago y en «Mi proyecto».' },
+            { type: 'changed', text: '«Mi proyecto», inscripción pendiente: mensaje discreto «Tu información está guardada… Puedes seguir trabajando en tus proyectos y, cuando estés listo, completar el pago para confirmar tu inscripción a la feria». El botón de pago sigue disponible y no bloquea el contenido registrado.' },
+            { type: 'changed', text: 'Panel: «Inscripciones confirmadas (proyectos con el pago validado)» y «Pendientes de pago (información completa, sin pago confirmado)», además de los borradores: registros iniciados e inscripciones confirmadas no se confunden.' },
+        ],
+    },
     {
         version: '4.1299.0',
         title: 'Feria de Proyectos: hasta dos proyectos por club, en una sola inscripción y un solo pago 🧩',

@@ -1265,10 +1265,16 @@ const FeriaProyectos = () => {
                                                     proyectos. El primer proyecto tiene un valor de <strong>{fmtPrice(firstAmount)}</strong> y el segundo
                                                     proyecto cuenta con una tarifa especial de <strong>{fmtPrice(secondAmount)}</strong> adicionales.
                                                 </p>
+                                                {/* v4.1300 — LAS TARJETAS DICEN CUÁNTOS PROYECTOS, NO CUÁNTO
+                                                    CUESTAN. Las tarifas quedan en el texto de arriba (se
+                                                    conocen) y vuelven a aparecer en la etapa de pago (se
+                                                    confirman). Pedido del comité: que el precio no sea el
+                                                    elemento dominante y que postular no se lea como una
+                                                    obligación de pagar hoy. */}
                                                 <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Modalidad de postulación">
                                                     {([
-                                                        { m: 1 as Modality, title: 'Postular un proyecto', detail: 'Inscripción estándar · una ficha de proyecto', total: firstAmount, lines: [`Primer proyecto ${fmtPrice(firstAmount)}`] },
-                                                        { m: 2 as Modality, title: 'Postular dos proyectos', detail: 'Segundo proyecto con tarifa especial · dos fichas independientes', total: bundleTotal, lines: [`Primer proyecto ${fmtPrice(firstAmount)}`, `Segundo proyecto ${fmtPrice(secondAmount)}`] },
+                                                        { m: 1 as Modality, title: 'Postular un proyecto', detail: 'Registra y presenta una iniciativa de impacto de tu club rotario.' },
+                                                        { m: 2 as Modality, title: 'Postular dos proyectos', detail: 'Registra dos iniciativas independientes de tu club rotario en una misma inscripción.' },
                                                     ]).map(opt => {
                                                         const active = modality === opt.m;
                                                         return (
@@ -1284,19 +1290,18 @@ const FeriaProyectos = () => {
                                                                     </span>
                                                                     {opt.title}
                                                                 </span>
-                                                                <span className="mt-1 block text-[13px] text-slate-500">{opt.detail}</span>
-                                                                <span className="mt-3 block border-t border-slate-100 pt-2 text-[13px] text-slate-600">
-                                                                    {opt.lines.map(l => <span key={l} className="block">{l}</span>)}
-                                                                </span>
-                                                                <span className="mt-1 block text-lg font-extrabold" style={{ color: BLUE }}>Total {fmtPrice(opt.total)}</span>
+                                                                <span className="mt-1.5 block text-[14px] leading-relaxed text-slate-600">{opt.detail}</span>
                                                             </button>
                                                         );
                                                     })}
                                                 </div>
-                                                <div className="mt-3 flex items-center justify-between rounded-lg px-4 py-2.5 text-[14px]" style={{ background: `${BLUE}0f` }}>
-                                                    <span className="text-slate-600">Total de inscripción ({modality === 2 ? 'dos proyectos' : 'un proyecto'})</span>
-                                                    <span className="text-lg font-extrabold" style={{ color: BLUE }}>{fmtPrice(modality === 2 ? bundleTotal : firstAmount)}</span>
-                                                </div>
+                                                {/* Postular no exige pagar (v4.1253): se dice acá, donde se
+                                                    elige, para quitar la barrera de «necesito el dinero
+                                                    antes de empezar». Sin precios. */}
+                                                <p className="mt-3 flex items-start gap-2 text-[14px] leading-relaxed text-slate-600">
+                                                    <CheckCircle2 size={17} className="mt-0.5 shrink-0 text-emerald-600" />
+                                                    <span><strong className="text-slate-800">Puedes comenzar ahora y pagar después.</strong> Tu información se guardará automáticamente para que completes tu inscripción cuando estés listo.</span>
+                                                </p>
                                             </div>
                                         </>
                                     )}
@@ -1447,8 +1452,9 @@ const FeriaProyectos = () => {
                                     ))}
 
                                     {/* v4.1299 — RESUMEN DE INSCRIPCIÓN: club, distrito, cuántos
-                                        proyectos, el valor de cada uno y el total. Lo que se va a
-                                        pagar, una sola vez, por todos. */}
+                                        proyectos y cuáles. v4.1300 — El valor va como una sola línea
+                                        de referencia, discreta: postular no exige pagar, y el
+                                        desglose completo se muestra en la etapa de pago. */}
                                     <div className="mt-4 rounded-xl px-5 py-4" style={{ background: `${BLUE}0f` }}>
                                         <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Resumen de inscripción</p>
                                         <div className="mt-2 grid gap-x-6 gap-y-1 text-[14px] sm:grid-cols-2">
@@ -1456,31 +1462,18 @@ const FeriaProyectos = () => {
                                             <p className="text-slate-600">Distrito · <span className="font-semibold text-slate-800">{form.district}</span></p>
                                             <p className="text-slate-600">Cantidad de proyectos · <span className="font-semibold text-slate-800">{visibleProjects.length}</span></p>
                                         </div>
-                                        <div className="mt-3 space-y-1.5 border-t border-slate-200/70 pt-3 text-[14px]">
-                                            {plannedLines.map(l => (
-                                                <div key={l.projectIndex} className="flex items-start justify-between gap-4">
-                                                    <span className="text-slate-600">
-                                                        <span className="font-semibold text-slate-800">{l.label}</span>
-                                                        {visibleProjects.length > 1 && l.projectName ? <span className="block text-[13px] text-slate-500">{l.projectName}</span> : null}
-                                                    </span>
-                                                    <span className="whitespace-nowrap font-semibold text-slate-800">{fmtPrice(l.amount)}</span>
-                                                </div>
-                                            ))}
-                                            <div className="flex items-center justify-between gap-4 border-t border-slate-200/70 pt-2">
-                                                <span className="font-bold text-slate-700">Total a pagar</span>
-                                                <span className="text-xl font-extrabold" style={{ color: BLUE }}>{fmtPrice(orderTotal)}</span>
+                                        {visibleProjects.length > 1 && (
+                                            <div className="mt-2 space-y-0.5 text-[14px] text-slate-600">
+                                                {plannedLines.map(l => (
+                                                    <p key={l.projectIndex}>{l.label} · <span className="font-semibold text-slate-800">{l.projectName}</span></p>
+                                                ))}
                                             </div>
-                                            {/* El recargo se anuncia ya en el resumen, antes de
-                                                enviar: enterarse del total recién en la pasarela
-                                                es enterarse tarde. */}
-                                            {recargoOrden.surcharge > 0 && (
-                                                <p className="text-[13px] text-slate-500">
-                                                    + {fmtPrice(recargoOrden.surcharge)} de comisiones al pagar · total {fmtPrice(recargoOrden.total)}
-                                                    {priceMode === 'COP' ? ' · se cobra en pesos' : ''}
-                                                    {chargeUsdRef ? <span className="text-slate-400"> · ≈ {fmtUsd(chargeUsdRef)} USD</span> : null}
-                                                </p>
-                                            )}
-                                        </div>
+                                        )}
+                                        <p className="mt-3 border-t border-slate-200/70 pt-3 text-[13px] leading-relaxed text-slate-500">
+                                            Valor de inscripción de referencia: <span className="font-semibold text-slate-700">{fmtPrice(orderTotal)}</span>
+                                            {visibleProjects.length > 1 ? ` (${plannedLines.map(l => `${l.label.toLowerCase()} ${fmtPrice(l.amount)}`).join(' + ')})` : ''}.
+                                            {' '}Postular no requiere pagar ahora: el pago se realiza después, desde tu perfil, y ahí verás el desglose completo.
+                                        </p>
                                     </div>
                                 </div>
                             )}
