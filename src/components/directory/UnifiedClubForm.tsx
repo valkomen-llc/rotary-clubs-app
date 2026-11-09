@@ -1,13 +1,18 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import {
-  Upload, Image as ImageIcon,
   CheckCircle2, ArrowLeft, ArrowRight, Save, Plus, Trash2,
-  Camera, Heart, Check, Loader2, Info, Building2
+  Heart, Check, Loader2, Info, Building2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PublicStepNav, PublicFormCard } from '../common/PublicInstitutionalComponents';
 import { flagEmoji } from '../../lib/countryPhones';
+// v4.1306 — Un solo componente de carga (logo, portada, galería) con
+// confirmación del servidor, progreso, reintento y persistencia en el borrador.
+import { ClubMediaUploader, ClubGalleryUploader } from './ClubMediaUploader';
+import type { ClubMediaAuth } from '../../lib/clubMediaUpload';
+import { stripSecrets } from '../../lib/clubMediaSpec';
+import { leerJson } from '../../lib/leerJson';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -179,9 +184,17 @@ export const UnifiedClubForm: React.FC = () => {
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitResult, setSubmitResult] = useState<{ trackingNumber: string; submissionId: string; hasPortalAccess?: boolean } | null>(null);
-  const [uploadingLogo, setUploadingLogo] = useState(false);
-  const [uploadingCover, setUploadingCover] = useState(false);
-  const [uploadingGallery, setUploadingGallery] = useState(false);
+  // v4.1306 — Borrador en el servidor: la llave de los archivos subidos.
+  // `draftTokenRef` es la verdad inmediata (el estado llega un render tarde);
+  // `draftPromiseRef` evita crear dos borradores si dos archivos arrancan a la
+  // vez.
+  const draftTokenRef = useRef<string | undefined>(undefined);
+  const draftPromiseRef = useRef<Promise<string> | null>(null);
+  const formRef = useRef<ClubFormData>(INITIAL_FORM);
+  formRef.current = formData;
+  const stepRef = useRef(0);
+  stepRef.current = currentStep;
+  const [autosave, setAutosave] = useState<{ state: 'idle' | 'saving' | 'saved' | 'error'; at?: Date }>({ state: 'idle' });
 
   // Cargar configuración de distrito y catálogo inicial
   useEffect(() => {
@@ -257,12 +270,16 @@ export const UnifiedClubForm: React.FC = () => {
 
     const draftToken = params.get('draft') || localStorage.getItem('district_club_form_draft_token');
     if (draftToken) {
-      fetch(`${API}/district-clubs/draft/${draftToken}`)
-        .then(r => r.json())
-        .then(data => {
-          if (data.ok && data.payload) {
-            setFormData(prev => ({ ...prev, ...data.payload, draftToken }));
-            toast.info('Borrador previo recuperado automáticamente.');
+      fetch(`${API}/district-clubs/draft/${encodeURIComponent(draftToken)}`)
+        .then(async r => ({ ok: r.ok, status: r.status, data: (await leerJson<any>(r)).data }))
+        .then(({ ok, status, data }) => {
+          if (ok && data?.ok && data.payload && (!data.status || data.status === 'borrador')) {
+            draftTokenRef.current = draftToken;
+            setFormData(prev => ({ ...prev, ...stripSecrets(data.payload), password: '', confirmPassword: '', draftToken }));
+            toast.info('Borrador previo recuperado automáticamente, con sus archivos.');
+          } else if (status === 404 || (data?.status && data.status !== 'borrador')) {
+            // Borrador inexistente o ya enviado: no se sigue escribiendo en él.
+            localStorage.removeItem('district_club_form_draft_token');
           }
         })
         .catch(() => {});
@@ -438,87 +455,80 @@ export const UnifiedClubForm: React.FC = () => {
     });
   };
 
-  // Guardar borrador manual con trazabilidad de Rotary en Acción
+  // Guardar el borrador en el servidor (manual o automático). El token lo
+  // genera el SERVIDOR (v4.1306): es la llave del borrador y de sus archivos.
+  // La contraseña del portal nunca viaja en un borrador.
+  const persistDraft = useCallback(async (): Promise<string> => {
+    const current = formRef.current;
+    const res = await fetch(`${API}/district-clubs/draft`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        draftToken: draftTokenRef.current || undefined,
+        payload: stripSecrets({ ...current, draftToken: draftTokenRef.current }),
+        stepReached: stepRef.current + 1,
+        utmSource: current.utmSource || params.get('utm_source'),
+        utmMedium: current.utmMedium || params.get('utm_medium'),
+        utmCampaign: current.utmCampaign || params.get('utm_campaign'),
+        utmContent: current.utmContent || params.get('utm_content')
+      })
+    });
+    const { data } = await leerJson<any>(res);
+    if (!res.ok || !data?.ok || !data.draftToken) throw new Error(data?.error || 'No se pudo guardar el borrador.');
+    draftTokenRef.current = data.draftToken;
+    localStorage.setItem('district_club_form_draft_token', data.draftToken);
+    setFormData(prev => (prev.draftToken === data.draftToken ? prev : { ...prev, draftToken: data.draftToken }));
+    setAutosave({ state: 'saved', at: new Date() });
+    return data.draftToken as string;
+  }, [params]);
+
+  /** El token del borrador; lo crea si todavía no existe (una sola vez). */
+  const ensureDraft = useCallback(async (): Promise<string> => {
+    if (draftTokenRef.current) return draftTokenRef.current;
+    if (!draftPromiseRef.current) {
+      draftPromiseRef.current = persistDraft().finally(() => { draftPromiseRef.current = null; });
+    }
+    return draftPromiseRef.current;
+  }, [persistDraft]);
+
+  const mediaAuth = useMemo<ClubMediaAuth>(() => ({ context: 'borrador', ensureDraft }), [ensureDraft]);
+
   const handleSaveDraft = async () => {
     try {
-      const token = formData.draftToken || `draft_${Date.now()}`;
-      const res = await fetch(`${API}/district-clubs/draft`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          draftToken: token,
-          payload: formData,
-          stepReached: currentStep + 1,
-          utmSource: formData.utmSource || params.get('utm_source'),
-          utmMedium: formData.utmMedium || params.get('utm_medium'),
-          utmCampaign: formData.utmCampaign || params.get('utm_campaign'),
-          utmContent: formData.utmContent || params.get('utm_content')
-        })
-      });
-      const data = await res.json();
-      if (data.ok) {
-        setFormData(prev => ({ ...prev, draftToken: data.draftToken }));
-        localStorage.setItem('district_club_form_draft_token', data.draftToken);
-        toast.success('Borrador guardado correctamente. Puedes reanudar en cualquier momento.');
-      }
+      setAutosave({ state: 'saving' });
+      await persistDraft();
+      toast.success('Borrador guardado correctamente. Puedes reanudar en cualquier momento.');
     } catch {
+      setAutosave({ state: 'error' });
       toast.error('No se pudo guardar el borrador.');
     }
   };
 
-  // Subir imagen a través del servicio de presign S3
-  const handleFileUpload = async (file: File, target: 'logo' | 'cover' | 'gallery') => {
-    try {
-      if (target === 'logo') setUploadingLogo(true);
-      if (target === 'cover') setUploadingCover(true);
-      if (target === 'gallery') setUploadingGallery(true);
-
-      const presignRes = await fetch(`${API}/rotary-en-accion/presign`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          filename: file.name,
-          contentType: file.type,
-          prefix: 'directorio-clubes'
-        })
+  // Guardado AUTOMÁTICO (v4.1306) una vez que el borrador existe: casi
+  // inmediato cuando cambia un archivo (para que quede asociado aunque se
+  // cierre el navegador), y con pausa para el texto.
+  const draftSignature = useMemo(() => JSON.stringify(stripSecrets(formData)), [formData]);
+  const mediaSignature = useMemo(
+    () => JSON.stringify([formData.logoUrl, formData.coverImageUrl, formData.gallery]),
+    [formData.logoUrl, formData.coverImageUrl, formData.gallery]
+  );
+  const lastMediaSignatureRef = useRef(mediaSignature);
+  const lastSavedSignatureRef = useRef('');
+  useEffect(() => {
+    if (!draftTokenRef.current || submitResult || isSubmitting) return;
+    if (draftSignature === lastSavedSignatureRef.current) return;
+    const mediaChanged = mediaSignature !== lastMediaSignatureRef.current;
+    const timer = setTimeout(() => {
+      lastMediaSignatureRef.current = mediaSignature;
+      lastSavedSignatureRef.current = draftSignature;
+      setAutosave({ state: 'saving' });
+      persistDraft().catch(() => {
+        lastSavedSignatureRef.current = '';
+        setAutosave({ state: 'error' });
       });
-
-      if (!presignRes.ok) throw new Error('Error al preparar subida');
-      const presignData = await presignRes.json();
-
-      let finalUrl = presignData.publicUrl || presignData.url;
-
-      if (presignData.uploadUrl) {
-        const uploadRes = await fetch(presignData.uploadUrl, {
-          method: 'PUT',
-          headers: { 'Content-Type': file.type },
-          body: file
-        });
-        if (!uploadRes.ok) throw new Error('Fallo al subir a almacenamiento seguro');
-      }
-
-      if (target === 'logo') {
-        setFormData(prev => ({ ...prev, logoUrl: finalUrl }));
-        toast.success('Logotipo cargado exitosamente');
-      } else if (target === 'cover') {
-        setFormData(prev => ({ ...prev, coverImageUrl: finalUrl }));
-        toast.success('Imagen de portada cargada exitosamente');
-      } else if (target === 'gallery') {
-        setFormData(prev => ({
-          ...prev,
-          gallery: [...prev.gallery, { url: finalUrl, isMain: prev.gallery.length === 0 }]
-        }));
-        toast.success('Fotografía agregada a la galería');
-      }
-    } catch (err: any) {
-      console.error(err);
-      toast.error('No se pudo cargar la imagen. Intenta con un archivo JPG o PNG de menor tamaño.');
-    } finally {
-      setUploadingLogo(false);
-      setUploadingCover(false);
-      setUploadingGallery(false);
-    }
-  };
+    }, mediaChanged ? 400 : 3000);
+    return () => clearTimeout(timer);
+  }, [draftSignature, mediaSignature, persistDraft, submitResult, isSubmitting]);
 
   // Validaciones antes de avanzar paso
   const validateStep = (step: number): boolean => {
@@ -597,6 +607,9 @@ export const UnifiedClubForm: React.FC = () => {
 
   const handleNext = () => {
     if (validateStep(currentStep)) {
+      // Desde el primer paso completo, el formulario tiene borrador en el
+      // servidor: se puede cerrar y retomar otro día (con sus archivos).
+      ensureDraft().catch(() => setAutosave({ state: 'error' }));
       setCurrentStep(prev => Math.min(PASOS.length - 1, prev + 1));
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -617,7 +630,9 @@ export const UnifiedClubForm: React.FC = () => {
       const res = await fetch(`${API}/district-clubs/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        // El token del borrador viaja para que el servidor vincule a la
+        // solicitud los archivos subidos en ESTE borrador (y sólo esos).
+        body: JSON.stringify({ ...formData, draftToken: draftTokenRef.current || formData.draftToken })
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
@@ -634,6 +649,7 @@ export const UnifiedClubForm: React.FC = () => {
         hasPortalAccess: !!data.portalToken
       });
       localStorage.removeItem('district_club_form_draft_token');
+      draftTokenRef.current = undefined;
       toast.success('¡Solicitud enviada exitosamente!');
     } catch (err: any) {
       toast.error(err.message || 'Error al procesar la solicitud.');
@@ -1176,79 +1192,22 @@ export const UnifiedClubForm: React.FC = () => {
                 </div>
               </div>
 
-              {/* Carga de Logotipo y Portada */}
+              {/* Carga de Logotipo y Portada (v4.1306: Club Media Uploader) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-2">
-                {/* Logo */}
-                <div>
-                  <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
-                    Logotipo Oficial del Club
-                  </label>
-                  <div className="border-2 border-dashed border-gray-200 rounded-2xl p-4 text-center hover:border-rotary-blue transition-colors">
-                    {formData.logoUrl ? (
-                      <div className="relative inline-block">
-                        <img src={formData.logoUrl} alt="Logo preview" className="h-20 w-auto max-w-full object-contain mx-auto" />
-                        <button
-                          type="button"
-                          onClick={() => setFormData({ ...formData, logoUrl: '' })}
-                          className="absolute -top-2 -right-2 p-1 bg-red-600 text-white rounded-full text-xs shadow-md"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ) : (
-                      <div>
-                        <ImageIcon className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                        <p className="text-xs text-gray-500 mb-2">PNG transparente recomendado</p>
-                        <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-lg text-xs cursor-pointer">
-                          {uploadingLogo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                          <span>{uploadingLogo ? 'Subiendo...' : 'Subir Logotipo'}</span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0], 'logo')}
-                          />
-                        </label>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Portada */}
-                <div>
-                  <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
-                    Imagen de Portada (Hero)
-                  </label>
-                  <div className="border-2 border-dashed border-gray-200 rounded-2xl p-4 text-center hover:border-rotary-blue transition-colors">
-                    {formData.coverImageUrl ? (
-                      <div className="relative inline-block w-full">
-                        <img src={formData.coverImageUrl} alt="Portada preview" className="h-20 w-full object-cover rounded-lg mx-auto" />
-                        <button
-                          type="button"
-                          onClick={() => setFormData({ ...formData, coverImageUrl: '' })}
-                          className="absolute -top-2 -right-2 p-1 bg-red-600 text-white rounded-full text-xs shadow-md"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ) : (
-                      <div>
-                        <Camera className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                        <p className="text-xs text-gray-500 mb-2">Fotografía panorámica del club (1600x600 px)</p>
-                        <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-lg text-xs cursor-pointer">
-                          {uploadingCover ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                          <span>{uploadingCover ? 'Subiendo...' : 'Subir Portada'}</span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0], 'cover')}
-                          />
-                        </label>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <ClubMediaUploader
+                  role="logo"
+                  value={formData.logoUrl}
+                  onChange={(url) => setFormData(prev => ({ ...prev, logoUrl: url }))}
+                  auth={mediaAuth}
+                  label="Logotipo Oficial del Club"
+                />
+                <ClubMediaUploader
+                  role="cover"
+                  value={formData.coverImageUrl}
+                  onChange={(url) => setFormData(prev => ({ ...prev, coverImageUrl: url }))}
+                  auth={mediaAuth}
+                  label="Imagen de Portada (Hero)"
+                />
               </div>
             </div>
           )}
@@ -1522,50 +1481,13 @@ export const UnifiedClubForm: React.FC = () => {
                 <p className="text-sm text-gray-500">Fotografías institucionales de actividades y enlaces de video.</p>
               </div>
 
-              {/* Carga múltiple de fotos */}
-              <div>
-                <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
-                  Fotografías Institucionales
-                </label>
-                <div className="border-2 border-dashed border-gray-200 rounded-2xl p-6 text-center hover:border-rotary-blue transition-colors mb-4">
-                  <Camera className="w-10 h-10 text-gray-400 mx-auto mb-2" />
-                  <p className="text-xs text-gray-600 font-bold mb-1">Carga fotografías de servicio y compañerismo</p>
-                  <p className="text-[11px] text-gray-400 mb-4">Formatos admitidos: JPG, PNG, WEBP (Hasta 10 MB cada una)</p>
-                  <label className="inline-flex items-center gap-2 px-4 py-2 bg-rotary-blue hover:bg-blue-900 text-white font-bold rounded-xl text-xs cursor-pointer shadow-sm">
-                    {uploadingGallery ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                    <span>{uploadingGallery ? 'Cargando imagen...' : 'Seleccionar Fotografía'}</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0], 'gallery')}
-                    />
-                  </label>
-                </div>
-
-                {/* Grid de miniaturas cargadas */}
-                {formData.gallery.length > 0 && (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {formData.gallery.map((item, idx) => (
-                      <div key={idx} className="relative group rounded-xl overflow-hidden border border-gray-200 aspect-video bg-black">
-                        <img src={item.url} alt={`Foto ${idx + 1}`} className="w-full h-full object-cover" />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setFormData({
-                              ...formData,
-                              gallery: formData.gallery.filter((_, i) => i !== idx)
-                            });
-                          }}
-                          className="absolute top-1.5 right-1.5 p-1 bg-red-600/90 text-white rounded-full opacity-80 group-hover:opacity-100 transition-opacity"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+              {/* Carga múltiple de fotos (v4.1306: Club Media Uploader) */}
+              <ClubGalleryUploader
+                value={formData.gallery}
+                onChange={(updater) => setFormData(prev => ({ ...prev, gallery: updater(prev.gallery) }))}
+                auth={mediaAuth}
+                label="Fotografías Institucionales"
+              />
 
               {/* Enlaces de video (YouTube / Vimeo) */}
               <div>
@@ -1833,6 +1755,18 @@ export const UnifiedClubForm: React.FC = () => {
               )}
             </div>
           </div>
+          {/* Estado del guardado automático del borrador (v4.1306) */}
+          {autosave.state !== 'idle' && (
+            <p className="mt-3 text-[11px] text-right" aria-live="polite">
+              {autosave.state === 'saving' && <span className="text-gray-400">Guardando borrador…</span>}
+              {autosave.state === 'saved' && (
+                <span className="text-emerald-700 font-bold">
+                  Borrador guardado automáticamente{autosave.at ? ` · ${autosave.at.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}` : ''} — puedes cerrar y continuar otro día.
+                </span>
+              )}
+              {autosave.state === 'error' && <span className="text-red-600 font-bold">No se pudo guardar el borrador automáticamente. Revisa tu conexión; tus datos siguen en esta página.</span>}
+            </p>
+          )}
 
         </PublicFormCard>
       </form>

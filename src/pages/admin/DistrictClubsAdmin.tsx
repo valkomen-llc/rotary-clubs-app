@@ -26,6 +26,7 @@ import { RotaryMarketingInteligente } from '../../components/admin/rotary/Rotary
 import ClubInstitutionalPanel from '../../components/admin/rotary/ClubInstitutionalPanel';
 import ClubGovernorVisitsPanel from '../../components/admin/rotary/ClubGovernorVisitsPanel';
 import ClubCatalogMaster from '../../components/admin/clubs/ClubCatalogMaster';
+import ClubSubmissionMedia from '../../components/directory/ClubSubmissionMedia';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const getAuthToken = () => localStorage.getItem('rotary_token') || localStorage.getItem('token') || '';
@@ -2121,6 +2122,9 @@ export const DistrictClubsAdmin: React.FC = () => {
                     </strong>
                   </div>
                 )}
+
+                {/* v4.1306 — Los archivos de la solicitud, con su estado */}
+                <ClubSubmissionMedia submissionId={selectedSubmission.id} legacyPayload={selectedSubmission.payload} />
 
                 <div>
                   <span className="text-gray-400 uppercase font-black text-[10px] block mb-2">Datos Enviados en la Solicitud</span>

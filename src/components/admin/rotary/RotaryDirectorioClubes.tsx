@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../../hooks/useAuth';
+import ClubSubmissionMedia from '../../directory/ClubSubmissionMedia';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const getAuthToken = () => localStorage.getItem('rotary_token') || localStorage.getItem('token') || '';
@@ -851,6 +852,9 @@ export const RotaryDirectorioClubes: React.FC = () => {
                   <p className="text-gray-500">{selectedSubmission.applicantPhone || 'Sin teléfono'}</p>
                 </div>
               </div>
+
+              {/* v4.1306 — Los archivos de la solicitud, con su estado */}
+              <ClubSubmissionMedia submissionId={selectedSubmission.id} legacyPayload={selectedSubmission.payload} />
 
               <div>
                 <span className="text-gray-400 uppercase font-black text-[10px] block mb-2">Datos Enviados en la Solicitud</span>

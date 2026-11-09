@@ -240,6 +240,9 @@ recursos), `LearningFile` (cada objeto subido y el estado de su carga),
 Y el registro de las vistas previas JPEG de las fotos HEIC/HEIF de los aportes
 (v4.1305): `SubmissionImagePreview` (una fila por original: estado, claves
 derivadas, intentos y motivo del fallo).
+Y la de los archivos del Directorio Distrital de Clubes (v4.1306):
+`DistrictClubMedia` (logotipo, portada y galería de cada borrador o perfil: su
+dueño, estado, original, versión limpia, publicación e historial).
 (Más las del registro de eventos que enumera su propia sección:
 `EventEdition`, `EventRegistrationCategory`, `EventRegistrationCompanion`,
 `EventRegistrationPayment`, `EventRegistrationHistory`,
@@ -270,6 +273,7 @@ es **rotar la credencial en Neon**, no sólo borrar el archivo.
 
 | Módulo | Archivo |
 |---|---|
+| **Archivos del Directorio Distrital de Clubes** (el logotipo no subía: presign ajeno sin `size` → 400 siempre y sin URL; ahora «Club Media Uploader» con confirmación del servidor, progreso, reintento, reemplazo y eliminación; borrador con token del servidor y guardado automático; validación por bytes, HEIC → JPG, sin EXIF/GPS; privado hasta aprobar; panel «Archivos del registro»; portal del club con el mismo componente) — v4.1306 | `docs/claude/archivos-del-directorio-de-clubes.md` |
 | **Vistas previas HEIC/HEIF de los aportes** (fotos de iPhone/Samsung en Visitas del Gobernador y Solicitudes de Rotary en Acción: vista previa JPEG + miniatura al lado del original intacto, registro idempotente con candado y reintentos, galería de revisión con visor, recuperación por lotes de lo ya enviado, publicación a la Biblioteca por el JPEG) — v4.1305 | `docs/claude/vistas-previas-heic-de-los-aportes.md` |
 | **Cursos y capacitaciones** (LMS de Rotary en Acción, Fase 1: la categoría renombrada con dos modalidades, «Mis cursos y capacitaciones» con colecciones, cursos, módulos, lecciones, recursos, guardado automático y carga confirmada por bytes; «Gestión educativa» para el comité; biblioteca pública `/cursos` con acceso por modalidad; nueve tablas propias; Fases 2 y 3 diseñadas, no activadas) — v4.1302 | `docs/claude/cursos-y-capacitaciones.md` |
 | **Hasta dos proyectos por club: la INSCRIPCIÓN** (modalidad en el paso 1 del wizard, una ficha por proyecto, primer proyecto $250.000 y segundo con tarifa especial $100.000 en UN solo pago; con el primero ya pagado, cobro complementario; «Mis proyectos postulados» con un token por proyecto; agregar/quitar/restaurar el segundo; indicadores de clubes frente a proyectos y recaudo por posición; tarifas administrables; lo heredado migra a inscripciones de un proyecto) — v4.1299 | `docs/claude/dos-proyectos-por-club.md` |

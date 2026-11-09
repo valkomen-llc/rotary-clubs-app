@@ -34,13 +34,33 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1305.0 | 2026-11-09 (Fotos HEIC/HEIF visibles en Visitas del Gobernador y Rotary en Acción)
+// UI V4.1306.0 | 2026-11-09 (Carga confiable de logotipo, portada y galería en el Directorio Distrital de Clubes)
 // Cache bust: 2026-11-09
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1306.0',
+        title: 'El logotipo del club ya se sube en el Directorio Distrital 🖼️',
+        description: 'En el formulario de registro y actualización del Directorio Distrital de Clubes (/clubes/registro) el botón «Subir Logotipo» no guardaba nada: el formulario pedía la subida sin decir el tamaño del archivo y el servidor la rechazaba siempre como «archivo vacío»; y aunque hubiera pasado, aquel servicio no devolvía la dirección de la imagen. Lo mismo ocurría con la portada, la galería y el portal del club. Ahora los tres campos usan un mismo componente de carga que sólo dice «Guardado» cuando el servidor confirmó el archivo, lo deja asociado al borrador y lo muestra al volver otro día.',
+        date: new Date().toISOString(),
+        tags: ['directorio de clubes', 'formulario', 'logotipo', 'portada', 'galería', 'archivos', 'borradores', 'portal del club', 'heic'],
+        type: 'fix',
+        impact: 'Alta: los clubes Rotary, Rotaract e Interact del Distrito 4281 pueden completar su ficha con logotipo, portada y fotografías desde el computador o el celular.',
+        changes: [
+            { type: 'fixed', text: 'Logotipo, portada y galería del formulario de seis pasos suben de verdad: el archivo viaja directo al almacenamiento, el servidor revisa su contenido real (no sólo la extensión) y responde «Logotipo guardado correctamente» con la miniatura, el nombre, el peso y las medidas. Antes de esa confirmación no se anuncia ningún éxito.' },
+            { type: 'added', text: 'Un componente de carga único para el directorio: botón, arrastrar y soltar en el escritorio, cámara o fototeca en el celular, barra de progreso real, estados «Subiendo → Procesando → Guardado», «Reintentar» si se corta la conexión (sin perder el resto del formulario), «Reemplazar archivo» y «Eliminar» con confirmación. Se puede volver a elegir el mismo archivo después de un error.' },
+            { type: 'added', text: 'Guardado automático del borrador: desde el primer paso, y casi al instante después de cada archivo. El borrador conserva sus archivos al pasar de paso, recargar, cerrar el navegador o seguir otro día; al volver, cada archivo se verifica con el servidor antes de mostrarse como guardado.' },
+            { type: 'added', text: 'Fotos de iPhone y Android: se aceptan PNG, JPG, WEBP y HEIC/HEIF (también cuando el teléfono no declara el tipo). El HEIC se convierte a JPG, cada foto se endereza según la cámara y se le quitan los metadatos (ubicación GPS incluida). El logotipo con fondo transparente se conserva transparente. SVG no se admite.' },
+            { type: 'added', text: 'Límites por campo configurables desde el servidor (logotipo 15 MB, portada y fotos 30 MB, galería de hasta 30 fotos por defecto); si un archivo los supera se dice el límite exacto y cómo reducirlo. Subir dos veces la misma foto no la duplica.' },
+            { type: 'added', text: 'Seguridad: los archivos quedan privados mientras la solicitud está en revisión y se publican al aprobarla. Cada archivo pertenece a un borrador (con una llave secreta que ahora genera el servidor) o al perfil del club en su portal: un club no puede ver, usar ni borrar archivos de otro, y lo ajeno se quita de un envío. La contraseña del portal ya no queda guardada en los borradores.' },
+            { type: 'added', text: 'Panel administrativo: la ficha de cada solicitud muestra «Archivos del registro» con miniaturas, estado, peso, «Abrir» y «Descargar», y aparte los archivos que fallaron o se reemplazaron durante el borrador. Al aprobar, logotipo, portada y galería pasan al perfil público del club.' },
+            { type: 'fixed', text: 'Portal del club: «Cambiar Logo» y «Cambiar Portada» tenían el mismo defecto; ahora usan el mismo componente, y el portal suma la galería de fotografías.' },
+            { type: 'added', text: 'Pruebas: test:club-media (32 comprobaciones sin red, con imágenes reales) y test:club-media:e2e (28 comprobaciones con Postgres y almacenamiento simulado) recorren las diez pruebas del pedido: PNG, JPG, móvil, persistencia, reemplazo, galería, conexión interrumpida, archivo inválido, permisos y panel.' },
+        ],
+    },
     {
         version: '4.1305.0',
         title: 'Fotos de iPhone y Samsung (HEIC) visibles en Visitas del Gobernador 📷',

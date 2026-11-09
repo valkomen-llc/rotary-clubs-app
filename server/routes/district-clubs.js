@@ -8,6 +8,8 @@ import { authMiddleware, SITE_ADMIN_ROLES } from '../middleware/auth.js';
 import { requireRoleOrPermission } from '../middleware/institutionalGuard.js';
 import { lightPublicLimit } from '../middleware/rotaryPublicLimit.js';
 import * as ctrl from '../controllers/districtClubsController.js';
+// v4.1306 — archivos del formulario y del portal (logo, portada, galería).
+import * as mediaCtrl from '../controllers/clubMediaController.js';
 // v4.1269 — los clubes salen del Catálogo Maestro (vivo), no de la lista estática.
 import { clubCatalogFresh } from '../lib/clubCatalog.js';
 
@@ -19,6 +21,12 @@ router.get('/config', lightPublicLimit, ctrl.getDirectoryConfig);
 router.get('/public', lightPublicLimit, ctrl.getPublicDirectory);
 router.post('/submit', lightPublicLimit, ctrl.submitClubDirectoryRequest);
 router.post('/draft', lightPublicLimit, ctrl.saveFormDraft);
+
+// ── Archivos (v4.1306): literales antes que la paramétrica /media/:id ───────
+router.get('/media/limits', mediaCtrl.mediaLimit, mediaCtrl.clubMediaLimits);
+router.post('/media/presign', mediaCtrl.mediaLimit, mediaCtrl.presignClubMedia);
+router.post('/media/confirm', mediaCtrl.mediaLimit, mediaCtrl.confirmClubMedia);
+router.post('/media/status', mediaCtrl.mediaLimit, mediaCtrl.statusClubMedia);
 
 // ── Rutas del Portal de Autogestión del Club ────────────────────────────────
 router.post('/portal/register', lightPublicLimit, ctrl.portalRegister);
@@ -33,6 +41,7 @@ router.post('/portal/reset-password', lightPublicLimit, ctrl.portalResetPassword
 // Orden estricto: literales antes que paramétricas para pasar check-routes
 router.get('/admin/list', authMiddleware, requireRoleOrPermission(SITE_ADMIN_ROLES, 'clubs.view'), ctrl.getAdminClubList);
 router.get('/admin/submissions', authMiddleware, requireRoleOrPermission(SITE_ADMIN_ROLES, 'clubs.view'), ctrl.getAdminSubmissions);
+router.get('/admin/submissions/:id/media', authMiddleware, requireRoleOrPermission(SITE_ADMIN_ROLES, 'clubs.view'), mediaCtrl.adminSubmissionMedia);
 router.get('/admin/club/:id', authMiddleware, requireRoleOrPermission(SITE_ADMIN_ROLES, 'clubs.view'), ctrl.getAdminClubDetail);
 router.post('/admin/submissions/:id/review', authMiddleware, requireRoleOrPermission(SITE_ADMIN_ROLES, 'clubs.manage'), ctrl.reviewSubmission);
 router.post('/admin/profile/:id/toggle-status', authMiddleware, requireRoleOrPermission(SITE_ADMIN_ROLES, 'clubs.manage'), ctrl.toggleProfileStatus);
@@ -42,6 +51,8 @@ router.put('/admin/profile/:id', authMiddleware, requireRoleOrPermission(SITE_AD
 
 // ── Rutas Públicas Paramétricas Finales ──────────────────────────────────────
 router.get('/draft/:token', lightPublicLimit, ctrl.getFormDraft);
+router.get('/media/:id', mediaCtrl.viewClubMedia);
+router.delete('/media/:id', mediaCtrl.mediaLimit, mediaCtrl.deleteClubMedia);
 router.get('/profile/:type/:slug', lightPublicLimit, ctrl.getPublicClubProfile);
 
 export default router;

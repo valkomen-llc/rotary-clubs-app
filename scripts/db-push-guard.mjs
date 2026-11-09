@@ -126,6 +126,10 @@
 //
 // Para sincronizar de todos modos, a sabiendas:  npm run db:push:force
 // ════════════════════════════════════════════════════════════════════
+// Y la de los archivos del Directorio Distrital de Clubes (v4.1306):
+// DistrictClubMedia — qué logotipo, portada y fotos subió cada club, de qué
+// borrador o perfil son y si ya se publicaron: sin ella, los formularios en
+// curso pierden la asociación con sus archivos.
 // Y la de las vistas previas HEIC/HEIF de los aportes (v4.1305):
 // SubmissionImagePreview — qué foto ya tiene su versión JPEG y por qué falló
 // la que no (se puede regenerar, pero se perdería el diagnóstico).
