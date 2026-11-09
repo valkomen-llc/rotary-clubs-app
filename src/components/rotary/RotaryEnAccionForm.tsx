@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import {
   Upload, X, Image as ImageIcon, Film, Loader2, CheckCircle2,
   AlertTriangle, MapPin, Users, Plus, ArrowLeft, ArrowRight, Sparkles, Save, Link2, Pencil, ChevronDown,
@@ -361,6 +361,10 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
 
   // Paso 1
   const [tipo, setTipo] = useState('');
+  // v4.1302 — «Cursos y capacitaciones» tiene DOS modalidades dentro de la
+  // misma categoría: publicar una actividad educativa (este formulario) o
+  // crear cursos digitales (la herramienta «Mis cursos y capacitaciones»).
+  const [modalidadCap, setModalidadCap] = useState<'' | 'actividad' | 'cursos'>('');
   // Paso 2
   const [area, setArea] = useState('');
   const [programa, setPrograma] = useState('');
@@ -1003,6 +1007,10 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
         if (!projectGoalType) return 'Selecciona qué deseas compartir sobre tu proyecto.';
       } else if (!tipo) {
         return 'Elegí qué quieres compartir para continuar.';
+      } else if (tipo === 'capacitacion' && modalidadCap !== 'actividad') {
+        return modalidadCap === 'cursos'
+          ? 'Los cursos digitales se crean en «Mis cursos y capacitaciones»: usá el botón de arriba. Para seguir con este formulario, elegí «Publicar una capacitación o actividad educativa».'
+          : 'Elegí la modalidad: publicar una capacitación o crear cursos digitales.';
       }
     }
     if (s === 1 && isFeriaMode) {
@@ -1385,6 +1393,48 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                     </button>
                   ))}
                 </div>
+                {tipo === 'capacitacion' && (
+                  <div className="mt-6 rounded-2xl border border-teal-200 bg-teal-50/60 p-4 sm:p-5" data-testid="modalidad-capacitacion">
+                    <h3 className="text-sm font-black text-gray-800">{isEn ? 'What kind of training do you want to share?' : '¿Qué tipo de formación quieres compartir?'}</h3>
+                    <p className="text-xs text-gray-500 mt-1">{isEn ? 'Choose one. Workshops and in-person sessions continue here; digital courses open the course manager.' : 'Elegí una. Talleres y jornadas siguen en este formulario; los cursos digitales abren el gestor de cursos.'}</p>
+                    <div className="grid sm:grid-cols-2 gap-3 mt-4" role="radiogroup" aria-label={isEn ? 'Training modality' : 'Modalidad de la formación'}>
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={modalidadCap === 'actividad'}
+                        onClick={() => setModalidadCap('actividad')}
+                        className={`rounded-2xl border-2 p-4 text-left transition-all ${modalidadCap === 'actividad' ? 'border-rotary-blue bg-white shadow-sm' : 'border-white bg-white/70 hover:border-blue-200'}`}
+                      >
+                        <div className="text-2xl" aria-hidden>🗓️</div>
+                        <div className="text-sm font-bold text-gray-800 mt-2">{isEn ? 'Publish a training or educational activity' : 'Publicar una capacitación o actividad educativa'}</div>
+                        <div className="text-xs text-gray-500 mt-1">{isEn ? 'Workshops, talks, training days or events with a date and place. Continues in this form.' : 'Talleres, charlas, jornadas formativas o eventos con fecha y lugar. Continúa en este formulario.'}</div>
+                      </button>
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={modalidadCap === 'cursos'}
+                        onClick={() => setModalidadCap('cursos')}
+                        className={`rounded-2xl border-2 p-4 text-left transition-all ${modalidadCap === 'cursos' ? 'border-rotary-blue bg-white shadow-sm' : 'border-white bg-white/70 hover:border-blue-200'}`}
+                      >
+                        <div className="text-2xl" aria-hidden>🎓</div>
+                        <div className="text-sm font-bold text-gray-800 mt-2">{isEn ? 'Create digital courses' : 'Crear cursos digitales'}</div>
+                        <div className="text-xs text-gray-500 mt-1">{isEn ? 'Courses organized in modules, lessons, videos and resources, available on the web. Opens the course manager.' : 'Cursos organizados en módulos, lecciones, videos y recursos, disponibles en la web. Abre el gestor de cursos.'}</div>
+                      </button>
+                    </div>
+                    {modalidadCap === 'cursos' && (
+                      <div className="mt-4 rounded-xl bg-white border border-gray-100 p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+                        <p className="text-xs text-gray-600 flex-1">
+                          {isEn
+                            ? 'Course collections are created and managed in “My courses and trainings”, with autosave, modules, lessons, videos and administrative review before publishing.'
+                            : 'Las colecciones de cursos se crean y gestionan en «Mis cursos y capacitaciones», con guardado automático, módulos, lecciones, videos y revisión administrativa antes de publicarse.'}
+                        </p>
+                        <Link to="/mis-cursos" className="inline-flex items-center justify-center px-4 py-2.5 rounded-xl bg-rotary-blue text-white text-sm font-bold whitespace-nowrap">
+                          {isEn ? 'Open My courses' : 'Ir a Mis cursos y capacitaciones'}
+                        </Link>
+                      </div>
+                    )}
+                  </div>
+                )}
               </>
             )}
           </div>

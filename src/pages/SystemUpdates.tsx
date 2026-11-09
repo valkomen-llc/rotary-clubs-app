@@ -34,13 +34,33 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1301.0 | 2026-11-09 (Feria de Proyectos: «+ Postular segundo proyecto» desde «Mi proyecto», con pago complementario y origen visible para el comité)
+// UI V4.1302.0 | 2026-11-09 (Cursos y capacitaciones: LMS integrado en Rotary en Acción — colecciones, cursos, módulos, lecciones, guardado automático, revisión y biblioteca pública)
 // Cache bust: 2026-11-09
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1302.0',
+        title: 'Rotary en Acción: «Cursos y capacitaciones», la infraestructura educativa del Distrito (LMS, Fase 1) 🎓',
+        description: 'La categoría «Capacitación» pasa a llamarse «Cursos y capacitaciones» y admite dos modalidades: publicar una capacitación o actividad educativa (el formulario de siempre) o crear cursos digitales. Para lo segundo nace «Mis cursos y capacitaciones» (/mis-cursos): un club crea colecciones de cursos asociadas a un proyecto (p. ej. el programa de seguridad alimentaria GG2349313), registra cada curso con su ficha, portada, módulos, lecciones, videos, documentos y recursos, con guardado automático, y lo envía a revisión cuando está listo. El comité lo revisa en «Gestión educativa», pide correcciones, aprueba y publica. Lo publicado aparece en la biblioteca pública /cursos y cada curso tiene su página y su aula, con acceso público, para registrados, para rotarios o por invitación.',
+        date: new Date().toISOString(),
+        tags: ['rotary en acción', 'cursos y capacitaciones', 'lms', 'gestión educativa', 'biblioteca educativa', 'seguridad alimentaria'],
+        type: 'feature',
+        impact: 'Alta: los clubes publican bibliotecas de cursos vinculadas a sus proyectos sin perder material entre sesiones; el Distrito decide qué se publica y con qué acceso; la arquitectura queda lista para progreso, evaluaciones y certificados (fases 2 y 3).',
+        changes: [
+            { type: 'changed', text: 'Rotary en Acción: la tarjeta «Capacitación» se llama «Cursos y capacitaciones» (taxonomía en el servidor y en el navegador). Al elegirla aparecen dos modalidades: «Publicar una capacitación o actividad educativa» (continúa en el formulario) y «Crear cursos digitales» (abre «Mis cursos y capacitaciones»). Las demás categorías no cambian.' },
+            { type: 'added', text: '«Mis cursos y capacitaciones» (/mis-cursos, con la cuenta del panel del club o distrito): colecciones con nombre, descripción, club responsable, distrito, proyecto relacionado, público objetivo, portada y modalidad de acceso; cursos individuales; continuar borradores; reordenar, duplicar estructura, archivar y restaurar; enlace de invitación para lo privado. Sin tope fijo de cursos por colección (configurable por el Distrito).' },
+            { type: 'added', text: 'Editor de curso con pestañas Información · Portada · Contenido · Recursos · Acceso y publicación · Vista previa: título, subtítulo, descripciones, objetivo, público, nivel, idioma, duración (automática por lecciones o manual), instructor, organización, proyecto, etiquetas; portada, miniatura, imagen del instructor y video introductorio; módulos → lecciones (video, texto, audio, duración, orden) → recursos; recursos complementarios (archivos y enlaces); modalidad de acceso; funciones del LMS deseadas (progreso, evaluación, certificado) registradas como preferencia sin prometer lo que no existe; declaración de derechos y autorizaciones.' },
+            { type: 'added', text: 'Guardado automático: cada cambio se agrupa y se guarda solo («Guardando cambios…», «Todos los cambios guardados», «Sin conexión: se guardará al reconectar»); lo pendiente se reintenta y se avisa antes de cerrar la pestaña. Los archivos suben directo al almacenamiento (hasta 64 MB en un envío; más grandes, por partes reanudables) y sólo se dan por «Recibidos» cuando el servidor inspecciona el objeto real (peso y tipo por bytes). Nada se pierde al salir y volver.' },
+            { type: 'added', text: 'Estados por curso: Borrador, Incompleto, Listo para enviar (derivados de lo que realmente tiene), En revisión, Requiere correcciones, Aprobado, Publicado, Archivado. Lo que falta para enviar se dice con nombre (título, descripción breve, una lección con contenido, acceso, derechos), sin porcentajes inventados. Cada curso se envía y se revisa por separado: uno con correcciones no bloquea a su colección.' },
+            { type: 'added', text: 'Panel «Gestión educativa» (/admin/gestion-educativa, también enlazado desde Rotary en Acción): resumen, cursos pendientes, todos los cursos, colecciones, publicados y configuración. El comité revisa materiales con enlaces firmados, pide correcciones (con motivo obligatorio), aprueba, publica, despublica, archiva y deja observaciones; todo queda en el historial del curso y el club recibe correo. Aprobar NO publica, salvo que la configuración lo pida. Un comité sólo ve los cursos de su distrito; un club, los suyos.' },
+            { type: 'added', text: 'Biblioteca pública «Cursos y capacitaciones» (/cursos): sólo cursos publicados; búsqueda y filtros por área de interés, club, proyecto, modalidad de acceso y etiquetas; página propia por colección (/cursos/colecciones/:slug); ficha de cada curso con portada, descripción, club, proyecto, instructor, duración, temario y recursos; aula con reproductor, módulos y lecciones, materiales descargables y navegación anterior/siguiente; lecciones vistas recordadas en el navegador. Acceso público sin cuenta; «registrados» y «rotarios» con sesión; «privado» sólo con el enlace de invitación (no se lista).' },
+            { type: 'added', text: 'Modelo de datos: nueve tablas propias (LearningCollection, LearningCourse, LearningModule, LearningLesson, LearningResource, LearningFile, LearningEvent, LearningNotification, LearningConfig) creadas en tiempo de ejecución, protegidas por el guardián de db:push. Fase 2 (inscripción y progreso por estudiante) y Fase 3 (evaluaciones y certificados) quedan diseñadas, no activadas.' },
+            { type: 'added', text: 'Pruebas: test:learning (criterio e invariantes, en prebuild) y test:learning:e2e (Postgres real + almacenamiento simulado + router real): el caso obligatorio de una colección GG2349313 con doce cursos, salida y regreso sin pérdidas, envío individual, decisiones del comité, biblioteca y modalidades de acceso, aislamiento entre clubes y distritos.' },
+        ],
+    },
     {
         version: '4.1301.0',
         title: 'Feria de Proyectos: los clubes que ya tienen un proyecto agregan el segundo desde «Mi proyecto» ➕',

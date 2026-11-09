@@ -23,7 +23,7 @@ import {
   Search, RefreshCw, ArrowLeft, AlertTriangle, Filter, X, ExternalLink,
   Image as ImageIcon, Film, Library, Users, Globe, ChevronLeft, ChevronRight,
   Copy, Check, CheckCircle2, Tag, Layers, Send, Eye, ShieldCheck, Sparkles,
-  Maximize2, Minimize2, Building2, Award, CalendarCheck
+  Maximize2, Minimize2, Building2, Award, CalendarCheck, GraduationCap
 } from 'lucide-react';
 import { toast } from 'sonner';
 import SubmissionDetail from '../../components/admin/contribution/SubmissionDetail';
@@ -602,6 +602,16 @@ const RotaryEnAccionAdmin: React.FC<RotaryEnAccionAdminProps> = ({
           <CalendarCheck className="w-4 h-4 text-indigo-600" />
           <span>Visitas del Gobernador</span>
         </button>
+
+        {/* v4.1302 — Cursos y capacitaciones: la revisión vive en Gestión educativa (módulo propio). */}
+        <Link
+          to="/admin/gestion-educativa"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all whitespace-nowrap text-gray-600 hover:text-gray-900 hover:bg-white/50"
+          title="Cursos y capacitaciones de los clubes: revisión y publicación"
+        >
+          <GraduationCap className="w-4 h-4 text-teal-600" />
+          <span>Cursos y capacitaciones</span>
+        </Link>
 
         <button
           onClick={() => cambiarTab('feria')}

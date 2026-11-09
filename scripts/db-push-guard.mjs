@@ -146,6 +146,12 @@
 // Y las dos del formulario institucional de programas (v4.1286): ProgramIntake
 // (cada envío, una PROPUESTA con borrador y revisión por ítem) y
 // ProgramIntakeFile (sus archivos, privados hasta aplicarse).
+// Y las nueve de Cursos y capacitaciones, el LMS de Rotary en Acción (v4.1302):
+// LearningCollection, LearningCourse, LearningModule, LearningLesson,
+// LearningResource, LearningFile, LearningEvent, LearningNotification y
+// LearningConfig — las colecciones y cursos que cada club construyó durante
+// semanas, sus videos y documentos, quién aprobó y publicó qué: no se
+// reconstruye de ninguna parte.
 // Y la traza de cada mensaje entrante de WhatsApp (v4.1285):
 // WhatsAppInboundTrace — el recorrido de cada «Hola» de punta a punta y la
 // única evidencia de qué conversaciones quedaron sin respuesta.

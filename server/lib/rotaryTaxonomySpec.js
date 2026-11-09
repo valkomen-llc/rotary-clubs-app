@@ -16,7 +16,7 @@ export const DEFAULT_TIPOS = [
   T('tipo', 'reconocimiento', 'Reconocimiento o logro', { icon: '🏆', color: '#ca8a04', order: 7 }),
   T('tipo', 'alianza', 'Alianza', { icon: '🤜🤛', color: '#4d7c0f', order: 8 }),
   T('tipo', 'juventud', 'Actividad juvenil', { icon: '🌱', color: '#16a34a', order: 9 }),
-  T('tipo', 'capacitacion', 'Capacitación', { icon: '🎓', color: '#0d9488', order: 10 }),
+  T('tipo', 'capacitacion', 'Cursos y capacitaciones', { icon: '🎓', color: '#0d9488', order: 10 }),
   T('tipo', 'recaudacion', 'Recaudación de fondos', { icon: '💰', color: '#b45309', order: 11 }),
   T('tipo', 'testimonio', 'Historia personal o testimonio', { icon: '💬', color: '#9333ea', order: 12 }),
   T('tipo', 'convocatoria', 'Convocatoria', { icon: '📢', color: '#0891b2', order: 13 }),
