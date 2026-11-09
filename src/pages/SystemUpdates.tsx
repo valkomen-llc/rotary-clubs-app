@@ -34,13 +34,31 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1303.0 | 2026-11-09 (Secretaría Digital: acceso al módulo Rotary en Acción)
+// UI V4.1304.0 | 2026-11-09 (Proyectos postulados: columnas FDD y FAP)
 // Cache bust: 2026-11-09
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1304.0',
+        title: 'Proyectos postulados: columnas FDD y FAP 💵',
+        description: 'Pedido del comité de la XII Feria (Valledupar 2027): ver lo que cada club pide al Distrito sin abrir proyecto por proyecto. El listado de Proyectos postulados (Centro de Gestión del Evento y Postulación de Proyectos) suma dos columnas entre Presupuesto y Estado: FDD (cantidad solicitada al Distrito del Fondo Distrital Designado 2026-2027) y FAP (meta de aportes al Fondo Anual de Programas 2026-2027). Los valores salen de lo que el club ya escribió en su Solicitud de Aportes del FDD, paso «Solicitud del FDD», sin campos nuevos ni nada que volver a diligenciar.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'fdd', 'fap', 'centro de gestión', 'postulación de proyectos', 'exportaciones'],
+        type: 'improvement',
+        impact: 'Media: el comité revisa las solicitudes de financiación de todos los proyectos en una sola tabla, las ordena y las exporta.',
+        changes: [
+            { type: 'added', text: 'Columnas FDD y FAP, con títulos cortos y una ayuda que explica cada abreviatura al pasar el cursor o al llegar con el teclado. Importes en USD alineados a la derecha («USD 5.000»); «—» cuando el club todavía no escribió el valor y «USD 0» cuando escribió un cero. Cada fila muestra sólo los valores de SU proyecto, también cuando un club tiene dos.' },
+            { type: 'added', text: 'Orden numérico ascendente y descendente en FDD y FAP (los vacíos al final), y filtros por rango «FDD mín./máx.» y «Meta FAP mín./máx.» en Filtros. La búsqueda, la paginación y los filtros de estado no cambian.' },
+            { type: 'added', text: 'Exportaciones: el CSV y el Excel llevan «FDD (USD)» y «FAP (USD)» después del presupuesto, como números que sirven para sumar (el Excel suma una hoja «Columnas» con su definición); el PDF agrega las dos columnas con su leyenda.' },
+            { type: 'changed', text: 'La columna Presupuesto del listado usa el mismo formato que FDD y FAP («USD 30.066»).' },
+            { type: 'fixed', text: 'Ordenar por cualquier columna pedía al servidor el orden del clic ANTERIOR (el primer clic no ordenaba); «Limpiar» filtros, el selector de archivadas y el tamaño de página tenían el mismo retraso. Ahora cada clic recarga con lo que se acaba de elegir.' },
+            { type: 'added', text: 'Un valor escrito en otro formato («5.000», «US$ 2,500.75») se muestra interpretado y marcado, con lo que escribió el club; uno que no es un importe se muestra tal cual, marcado, sin inventar un número. Lo guardado por el club no se modifica.' },
+            { type: 'added', text: 'La prueba test:fair:fdd-columns fija de dónde salen los valores, el orden de columnas y las exportaciones, y comprueba contra Postgres real los doce escenarios del pedido; test:fair:fdd-columns:ui lo comprueba en el navegador (escritorio y móvil).' },
+        ],
+    },
     {
         version: '4.1303.0',
         title: 'Secretaría Digital: acceso a Rotary en Acción 🤝',
