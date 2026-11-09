@@ -1,7 +1,7 @@
 // HEIC en el navegador — espejo mínimo del criterio de `server/lib/heicImages.js`.
 //
 // Acá sólo hace falta RECONOCER un HEIC, no convertirlo: la conversión ocurre
-// en el servidor con FFmpeg, porque ningún navegador salvo Safari sabe
+// en el servidor con libheif (v4.741; ffmpeg se descartó), porque ningún navegador salvo Safari sabe
 // decodificar este formato —que es justamente el problema que se está
 // resolviendo—. Traer un decodificador WASM al bundle para adivinar lo que el
 // servidor ya sabe sería pagar megabytes por duplicar una respuesta.

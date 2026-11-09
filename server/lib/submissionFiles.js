@@ -31,6 +31,7 @@
 // ════════════════════════════════════════════════════════════════════
 import { randomUUID } from 'node:crypto';
 import { checkFileMeta, extensionFor, kindOf, IMAGE_MAX_BYTES, VIDEO_MAX_BYTES, overweightMessage } from './contentSubmissionSpec.js';
+import { sniffImageBytes } from './heicImages.js';
 
 export const STAGING_PREFIX = 'private/campaign-submissions';
 
@@ -71,7 +72,12 @@ export const stagingKeyBelongs = (key, campaignId) => {
     const value = String(key || '');
     return Boolean(campaignId)
         && value.startsWith(`${STAGING_PREFIX}/${campaignId}/`)
-        && !value.includes('..');
+        && !value.includes('..')
+        // v4.1305 — Las versiones DERIVADAS (vista previa y miniatura de un
+        // HEIC) y los objetos de trabajo viven en el mismo prefijo, pero no
+        // son material de nadie: ningún envío puede reclamarlos como propios.
+        && !value.includes('/_preview/')
+        && !value.includes('/_analysis/');
 };
 
 /** URL prefirmada de subida (10 minutos — un video de 300 MB desde un móvil
@@ -108,7 +114,7 @@ export const presignSubmissionUpload = async ({ campaignId, contentType, filenam
  *  completada (v4.943). */
 export const headSubmissionFile = async (key, { filename, contentType } = {}) => {
     try {
-        const { client, HeadObjectCommand } = await getS3();
+        const { client, HeadObjectCommand, GetObjectCommand } = await getS3();
         const head = await client.send(new HeadObjectCommand({ Bucket: bucketName(), Key: key }));
         const bytes = Number(head.ContentLength) || 0;
         const mime = head.ContentType || contentType || null;
@@ -117,6 +123,22 @@ export const headSubmissionFile = async (key, { filename, contentType } = {}) =>
         if (!kind) return { ok: false, error: 'Ese tipo de archivo no se admite.' };
         const max = kind === 'video' ? VIDEO_MAX_BYTES : IMAGE_MAX_BYTES;
         if (bytes > max) return { ok: false, error: overweightMessage({ filename: filename || key.split('/').pop(), size: bytes, kind }) };
+        // v4.1305 — Una FOTO se juzga por su contenido, no por su extensión:
+        // se leen los primeros bytes. Un archivo que no es imagen se rechaza
+        // aquí, con su nombre; uno que ES HEIF aunque se llame `.jpg` (hay
+        // apps que lo hacen) queda marcado `image/heic`, para que reciba su
+        // vista previa JPEG en vez de llegar roto al panel.
+        if (kind === 'image') {
+            const head64 = await client.send(new GetObjectCommand({ Bucket: bucketName(), Key: key, Range: 'bytes=0-255' }))
+                .then(r => r.Body.transformToByteArray()).then(b => Buffer.from(b)).catch(() => null);
+            if (head64) {
+                const real = sniffImageBytes(head64);
+                const nombre = filename || key.split('/').pop();
+                if (!real) return { ok: false, error: `«${nombre}» no es una fotografía válida: su contenido no corresponde a JPG, PNG, WEBP ni HEIC (puede estar dañada o incompleta).` };
+                if (real === 'heif' && !/hei[cf]/i.test(String(mime))) return { ok: true, bytes, mime: 'image/heic', kind, sniffed: real };
+                return { ok: true, bytes, mime, kind, sniffed: real };
+            }
+        }
         return { ok: true, bytes, mime, kind };
     } catch {
         return { ok: false, error: 'No encontramos el archivo subido. Volvé a adjuntarlo.' };
@@ -125,11 +147,20 @@ export const headSubmissionFile = async (key, { filename, contentType } = {}) =>
 
 /** Enlace de LECTURA firmado y con caducidad, para que el panel vea la foto o
  *  el video sin descargarlo y sin que exista una URL compartible. */
-export const signedSubmissionUrl = async (key, { seconds = 900 } = {}) => {
+//
+// v4.1305 — `download`: el nombre con el que se DESCARGA (el original de una
+// foto HEIC, por ejemplo). Va firmado como `response-content-disposition`, así
+// que el navegador lo guarda con su nombre en vez de intentar dibujarlo.
+export const signedSubmissionUrl = async (key, { seconds = 900, download = null } = {}) => {
     try {
         if (!key) return null;
         const { client, GetObjectCommand, getSignedUrl } = await getS3();
-        return await getSignedUrl(client, new GetObjectCommand({ Bucket: bucketName(), Key: key }), { expiresIn: seconds });
+        const params = { Bucket: bucketName(), Key: key };
+        if (download) {
+            const name = String(download).replace(/["\\\r\n]/g, '').slice(0, 180) || 'archivo';
+            params.ResponseContentDisposition = `attachment; filename="${name.replace(/[^\x20-\x7e]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(name)}`;
+        }
+        return await getSignedUrl(client, new GetObjectCommand(params), { expiresIn: seconds });
     } catch (e) {
         console.warn('[submissions] no pude firmar la lectura:', e?.message);
         return null;
@@ -157,6 +188,47 @@ export const readStagingObject = async (key, { maxBytes = IMAGE_MAX_BYTES + 1024
         console.warn('[submissions] no pude leer el objeto de staging:', e?.message);
         return null;
     }
+};
+
+/**
+ * v4.1305 — Lee un objeto del prefijo propio diciendo POR QUÉ no se pudo
+ * (`missing`, `too_large`, `storage`): la recuperación de las fotos HEIC tiene
+ * que poder distinguir «no existe» de «pesa demasiado» de «S3 no respondió»,
+ * porque cada uno se resuelve distinto. `readStagingObject` devuelve `null`
+ * para los tres y se queda así: tiene otros llamadores.
+ */
+export const readStagingObjectDetailed = async (key, { maxBytes = IMAGE_MAX_BYTES + 1024 * 1024 } = {}) => {
+    const value = String(key || '');
+    if (!value.startsWith(`${STAGING_PREFIX}/`) || value.includes('..')) return { ok: false, reason: 'outside', error: 'La clave no pertenece al almacenamiento de aportes.' };
+    try {
+        const { client, GetObjectCommand } = await getS3();
+        const r = await client.send(new GetObjectCommand({ Bucket: bucketName(), Key: value }));
+        const length = Number(r.ContentLength) || 0;
+        if (length > maxBytes) {
+            try { r.Body?.destroy?.(); } catch { /* noop */ }
+            return { ok: false, reason: 'too_large', bytes: length, error: `El archivo pesa ${(length / 1048576).toFixed(1)} MB y el tope para procesarlo es ${(maxBytes / 1048576).toFixed(0)} MB.` };
+        }
+        const bytes = Buffer.from(await r.Body.transformToByteArray());
+        return { ok: true, buffer: bytes, bytes: bytes.length, contentType: r.ContentType || null };
+    } catch (e) {
+        const missing = e?.name === 'NoSuchKey' || e?.$metadata?.httpStatusCode === 404;
+        return { ok: false, reason: missing ? 'missing' : 'storage', error: missing ? 'El archivo original ya no está en el almacenamiento.' : `El almacenamiento no respondió: ${String(e?.message || e).slice(0, 160)}` };
+    }
+};
+
+/**
+ * v4.1305 — Guarda una versión DERIVADA (vista previa o miniatura) de un
+ * archivo de staging. Sólo dentro de `…/_preview/`: esta función no puede
+ * escribir sobre un original aunque se le pase su clave.
+ */
+export const putStagingDerivative = async ({ key, body, contentType = 'image/jpeg' }) => {
+    const value = String(key || '');
+    if (!value.startsWith(`${STAGING_PREFIX}/`) || value.includes('..') || !value.includes('/_preview/')) {
+        throw new Error('Una versión derivada sólo se guarda en la carpeta _preview del almacenamiento de aportes.');
+    }
+    const { client, PutObjectCommand } = await getS3();
+    await client.send(new PutObjectCommand({ Bucket: bucketName(), Key: value, Body: body, ContentType: contentType, CacheControl: 'private, max-age=86400' }));
+    return value;
 };
 
 /**
@@ -241,4 +313,5 @@ export const copyToLibrary = async ({ key, clubId, filename, contentType }) => {
 export default {
     STAGING_PREFIX, stagingKeyBelongs, presignSubmissionUpload, headSubmissionFile,
     signedSubmissionUrl, deleteStagingObject, copyToLibrary, readStagingObject, putStagingObject,
+    readStagingObjectDetailed, putStagingDerivative,
 };

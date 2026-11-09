@@ -409,6 +409,12 @@ resto de los formularios públicos del sitio.
 
 ### Fotos de iPhone: HEIC → JPEG (v4.739)
 
+> v4.1305: el material de los aportes (Visitas del Gobernador, Solicitudes de
+> Rotary en Acción) no pasa por esta Librería hasta publicarse; su conversión
+> vive en `docs/claude/vistas-previas-heic-de-los-aportes.md`. Desde esa
+> versión `convertHeicToJpeg` también pasa Display P3 a sRGB y asienta la
+> transparencia sobre blanco.
+
 Una foto subida en `.heic` aparecía como un recuadro roto. No era un fallo de la
 Librería: **ningún navegador salvo Safari dibuja HEIC**, así que tampoco se
 habría visto en el sitio publicado ni en un post.

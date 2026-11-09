@@ -7,6 +7,7 @@
 //   - Aprobación humana con matriz de destinos
 //   - Publicación y distribución multi-tenant
 // ════════════════════════════════════════════════════════════════════════════
+import { bestStagingUrl } from '../lib/submissionImagePreviews.js';
 import db from '../lib/db.js';
 import { campaignIdsInScope } from './contributionCampaignController.js';
 import {
@@ -1124,7 +1125,7 @@ export const getTaskDetails = async (req, res) => {
             let viewUrl = f.mediaUrl;
             if (!viewUrl && f.s3Key) {
                 try {
-                    viewUrl = await signedSubmissionUrl(f.s3Key);
+                    viewUrl = await bestStagingUrl(f);
                 } catch {
                     viewUrl = null;
                 }

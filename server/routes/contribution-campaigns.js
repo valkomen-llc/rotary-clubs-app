@@ -20,7 +20,7 @@ import {
 } from '../controllers/contributionCampaignController.js';
 import {
     getSubmissionForm, presignSubmissionFile, submitContent,
-    listCampaignSubmissions, getSubmissionCounts, getCampaignSubmission,
+    listCampaignSubmissions, getSubmissionCounts, getCampaignSubmission, processSubmissionPreviews,
     changeSubmissionStatus, approveSubmission, markSubmissionUsage,
     deleteSubmissionFile, getSubmissionShare,
     requireCampaignAccess, listSubmissionsInbox, getInboxCounts, listPendingSubmissions, assignSubmissionOwner,
@@ -171,6 +171,8 @@ router.get('/:id/submissions', authMiddleware, siteRead, requireCampaignAccess, 
 router.get('/:id/submissions/counts', authMiddleware, siteRead, requireCampaignAccess, getSubmissionCounts);
 router.get('/:id/submissions/share', authMiddleware, siteRead, requireCampaignAccess, getSubmissionShare);
 router.get('/:id/submissions/:submissionId', authMiddleware, siteRead, requireCampaignAccess, getCampaignSubmission);
+// v4.1305 — Vistas previas JPEG de las fotos HEIC de la solicitud (lectura: sólo genera derivados).
+router.post('/:id/submissions/:submissionId/previews', authMiddleware, siteRead, requireCampaignAccess, processSubmissionPreviews);
 router.post('/:id/submissions/:submissionId/status', authMiddleware, siteWrite, requireCampaignAccess, changeSubmissionStatus);
 router.post('/:id/submissions/:submissionId/approve', authMiddleware, siteWrite, requireCampaignAccess, approveSubmission);
 router.post('/:id/submissions/:submissionId/usage', authMiddleware, siteWrite, requireCampaignAccess, markSubmissionUsage);

@@ -28,6 +28,7 @@ import {
   AlertTriangle, ArrowLeft, ArrowRight, Building2, CalendarDays, CheckCircle2, FileText,
   Film, Image as ImageIcon, Link2, Loader2, MapPin, RotateCcw, ShieldCheck, Trash2, Upload, UserCheck,
 } from 'lucide-react';
+import { isHeicFile } from '../../lib/heicImages';
 import { toast } from 'sonner';
 import { BarraDePasos, BTN_ANTERIOR, BTN_ENVIAR, BTN_SIGUIENTE, CAMPO, Campo, campoCon, CONTENEDOR, Marco, Resumen, ROTULO, TARJETA, TituloPaso } from '../common/InstitutionalFormKit';
 import { PublicPageHeader } from '../common/PublicInstitutionalComponents';
@@ -59,6 +60,9 @@ type Estado = 'pending' | 'uploading' | 'uploaded' | 'error';
 interface Archivo {
   id: string; file?: File; name: string; type: string; size: number; kind: 'image' | 'video';
   estado: Estado; progreso: number; key?: string; preview?: string; error?: string; caption: string; dupKey?: string; hash?: string;
+  // v4.1305 — Foto HEIC/HEIF: el navegador (salvo Safari) no la dibuja; el
+  // servidor genera la miniatura JPEG después de subirla.
+  heic?: boolean; vista?: 'procesando' | 'lista' | 'error'; vistaError?: string;
 }
 
 const nuevoId = () => Math.random().toString(36).slice(2, 10);
@@ -118,6 +122,8 @@ const MiniaturaArchivo: React.FC<{
     <div className="w-20 h-20 rounded-xl bg-gray-100 overflow-hidden shrink-0 flex items-center justify-center">
       {a.preview && a.kind === 'image' ? (
         <img src={a.preview} alt={a.name} className="w-full h-full object-cover" />
+      ) : a.vista === 'procesando' ? (
+        <Loader2 className="w-6 h-6 text-rotary-blue animate-spin" aria-label="Preparando vista previa" />
       ) : a.preview && a.kind === 'video' ? (
         <video src={a.preview} className="w-full h-full object-cover" muted playsInline preload="metadata" />
       ) : a.kind === 'video' ? <Film className="w-7 h-7 text-gray-400" /> : <ImageIcon className="w-7 h-7 text-gray-400" />}
@@ -143,7 +149,11 @@ const MiniaturaArchivo: React.FC<{
           )}
         </div>
       ) : (
-        <p className="text-[11px] text-emerald-600 font-bold flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Cargado</p>
+        <>
+          <p className="text-[11px] text-emerald-600 font-bold flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Cargado</p>
+          {a.vista === 'procesando' && <p className="text-[10px] text-gray-500" role="status">Foto HEIC: preparando la vista previa…</p>}
+          {a.vista === 'error' && <p className="text-[10px] text-amber-700">La vista previa no está disponible ({a.vistaError || 'no se pudo convertir'}). La foto original se envía igual y el equipo distrital la revisará.</p>}
+        </>
       )}
       <input
         value={a.caption}
@@ -211,7 +221,7 @@ export default function GovernorVisitForm() {
         setArchivos((x.media || []).map((m: any) => ({
           id: nuevoId(), name: m.filename || 'archivo', type: m.contentType || '', size: Number(m.bytes) || 0,
           kind: m.kind === 'video' ? 'video' : 'image', estado: 'uploaded' as Estado, progreso: 100,
-          key: m.key, preview: m.url || undefined, caption: m.caption || '',
+          key: m.key, preview: m.thumbUrl || m.url || undefined, caption: m.caption || '',
         })));
       } else {
         try {
@@ -287,6 +297,25 @@ export default function GovernorVisitForm() {
     setArchivos((prev) => prev.map((a) => (a.id === id ? { ...a, ...patch } : a)));
   }, []);
 
+  // v4.1305 — Tras subir una foto HEIC, el servidor genera su vista previa
+  // JPEG y devuelve la miniatura: así se ve en Chrome y en Android también.
+  // Si falla no bloquea nada: la foto ya está subida y se envía igual.
+  const generarVista = useCallback(async (id: string, key: string, name: string, type: string) => {
+    parchar(id, { vista: 'procesando', vistaError: undefined });
+    try {
+      const r = await fetch(`${BASE}/preview`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key, filename: name, contentType: type }),
+      });
+      const { data } = await leerJson<any>(r);
+      if (r.ok && data?.status === 'ready' && data.thumbUrl) parchar(id, { vista: 'lista', preview: data.thumbUrl });
+      else if (r.ok && (data?.status === 'pending' || data?.status === 'processing')) parchar(id, { vista: undefined });
+      else parchar(id, { vista: 'error', vistaError: data?.error || `error ${r.status}` });
+    } catch {
+      parchar(id, { vista: 'error', vistaError: 'sin conexión con el servidor' });
+    }
+  }, [parchar]);
+
   // ── Subida: prefirmar → PUT directo a S3 ────────────────────────────────
   const subir = useCallback(async (a: Archivo) => {
     if (!a.file) return;
@@ -311,13 +340,16 @@ export default function GovernorVisitForm() {
     xhr.upload.onprogress = (ev) => { if (ev.lengthComputable) parchar(a.id, { progreso: Math.min(99, Math.round((ev.loaded / ev.total) * 100)) }); };
     xhr.onload = () => {
       xhrs.current.delete(a.id);
-      if (xhr.status >= 200 && xhr.status < 300) parchar(a.id, { estado: 'uploaded', progreso: 100, key: pre.key });
+      if (xhr.status >= 200 && xhr.status < 300) {
+        parchar(a.id, { estado: 'uploaded', progreso: 100, key: pre.key });
+        if (a.heic && a.kind === 'image') generarVista(a.id, pre.key, a.name, pre.contentType || a.type);
+      }
       else parchar(a.id, { estado: 'error', error: `La transferencia falló (${xhr.status}). Reintenta.` });
     };
     xhr.onerror = () => { xhrs.current.delete(a.id); parchar(a.id, { estado: 'error', error: 'Se cortó la conexión. Reintenta.' }); };
     xhr.ontimeout = () => { xhrs.current.delete(a.id); parchar(a.id, { estado: 'error', error: 'La carga tardó demasiado. Reintenta.' }); };
     xhr.send(a.file);
-  }, [parchar]);
+  }, [parchar, generarVista]);
 
   // Dos capas contra el duplicado, como en Rotary en Acción: la identidad
   // del archivo (nombre, tamaño, tipo, fecha) y la huella de sus primeros
@@ -343,11 +375,11 @@ export default function GovernorVisitForm() {
       if (kind === 'image') fotos++; else videos++;
       vistos.add(dk);
       if (hash) vistos.add(hash);
-      const heic = /hei[cf]$/i.test(file.type) || /\.hei[cf]$/i.test(file.name);
+      const heic = isHeicFile({ filename: file.name, mimetype: file.type });
       nuevos.push({
         id: nuevoId(), file, name: file.name, type: file.type || '', size: file.size, kind,
         estado: 'pending', progreso: 0, caption: '', dupKey: dk, hash: hash || undefined,
-        preview: heic ? undefined : URL.createObjectURL(file),
+        preview: heic ? undefined : URL.createObjectURL(file), heic,
       });
     });
     if (!nuevos.length) return;

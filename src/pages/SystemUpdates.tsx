@@ -34,13 +34,32 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1304.0 | 2026-11-09 (Proyectos postulados: columnas FDD y FAP)
+// UI V4.1305.0 | 2026-11-09 (Fotos HEIC/HEIF visibles en Visitas del Gobernador y Rotary en Acción)
 // Cache bust: 2026-11-09
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1305.0',
+        title: 'Fotos de iPhone y Samsung (HEIC) visibles en Visitas del Gobernador 📷',
+        description: 'Las fotografías HEIC/HEIF que adjuntan los clubes (la visita del Gobernador al Club Rotario Manizales, por ejemplo) aparecían como recuadros vacíos con el nombre del archivo: el panel mostraba el archivo original, y sólo Safari sabe dibujar ese formato. Ahora el servidor genera de cada foto HEIC una versión JPEG y una miniatura, sin tocar el original, y la galería, la publicación y la Biblioteca usan esa versión compatible en Chrome, Edge, Firefox, Safari y el móvil.',
+        date: new Date().toISOString(),
+        tags: ['rotary en acción', 'visitas del gobernador', 'heic', 'fotografías', 'galería', 'solicitudes', 'biblioteca'],
+        type: 'fix',
+        impact: 'Alta: el equipo distrital puede revisar todas las fotos de una visita antes de aprobarla y publicarla, sin pedirle al club que convierta nada.',
+        changes: [
+            { type: 'fixed', text: 'Visitas del Gobernador: cada foto HEIC/HEIF se ve por su versión JPEG (lado mayor de hasta 2560 px, orientada según la cámara, en colores sRGB y sin datos de ubicación) y por una miniatura liviana en la rejilla. El archivo original se conserva intacto en el almacenamiento privado y se puede descargar con su nombre.' },
+            { type: 'fixed', text: 'Las fotos ya enviadas se recuperan sin volver a subirlas: al abrir la ficha de una visita se generan solas las vistas previas que falten, y el aviso «Fotos HEIC» de Visitas del Gobernador las repara por lotes en todas las visitas y solicitudes. El proceso no repite lo ya convertido, se puede retomar si se corta y nunca modifica un original.' },
+            { type: 'added', text: 'Galería de revisión nueva: miniaturas reales con carga progresiva, visor ampliado al hacer clic con flechas, teclado y contador, botón «Descargar original», «Generando vista previa…» mientras se procesa y, si una foto no se puede convertir, el motivo exacto con «Reintentar». Una foto dañada no descuadra a las demás. También en Solicitudes de Rotary en Acción.' },
+            { type: 'fixed', text: 'Publicar: una foto HEIC llega a la Biblioteca, al sitio público, al artículo y a las redes como JPEG con su miniatura; el HEIC original viaja a la Biblioteca como respaldo de la misma fila. Si alguna foto no se pudo convertir, la publicación lo avisa con el nombre del archivo.' },
+            { type: 'added', text: 'Formulario de la visita: al subir una foto HEIC desde Chrome o Android, el club ve su miniatura en cuanto el servidor la procesa. Si la conversión falla, la foto se envía igual y se avisa.' },
+            { type: 'added', text: 'Las fotografías se validan por su contenido real y no sólo por la extensión: un archivo que no es una imagen se rechaza con su nombre, y una foto HEIC guardada con extensión .jpg recibe igualmente su versión compatible.' },
+            { type: 'added', text: 'Topes configurables (peso, megapíxeles y tiempo por foto), una conversión a la vez por archivo, hasta tres reintentos automáticos y cada fallo registrado con su causa: archivo dañado, demasiado grande, archivo perdido o tiempo agotado.' },
+            { type: 'added', text: 'La prueba test:heic-previews (63 comprobaciones con fotos HEIC reales, Postgres y almacenamiento simulado) recorre la visita de Manizales de punta a punta; npm run heic:recover hace la recuperación desde una terminal.' },
+        ],
+    },
     {
         version: '4.1304.0',
         title: 'Proyectos postulados: columnas FDD y FAP 💵',

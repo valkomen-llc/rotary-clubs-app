@@ -10,6 +10,7 @@
 // `contentSubmissionStore.js` / `submissionFiles.js`. Acá no hay criterio.
 // ════════════════════════════════════════════════════════════════════
 
+import { needsPreview, previewRowsFor, stagingViewUrls, ensurePreview } from '../lib/submissionImagePreviews.js';
 import db from '../lib/db.js';
 import prisma from '../lib/prisma.js';
 import ensureContributionSchema from '../lib/ensureContributionSchema.js';
@@ -480,6 +481,64 @@ export const getSubmissionCounts = async (req, res) => {
     catch (e) { fail(res, e); }
 };
 
+/**
+ * v4.1305 — Los archivos de una solicitud, con lo necesario para MIRARLOS.
+ * Una foto HEIC/HEIF en staging se mira por su vista previa JPEG
+ * (`url`/`thumbUrl`) y el original se ofrece para descargar. Sin vista previa
+ * lista, `url` es null y `preview` dice por qué: dibujar el `.heic` sería el
+ * recuadro roto de siempre en Chrome, Edge y Firefox.
+ */
+async function filesForView(archivos) {
+    const filasVista = await previewRowsFor(archivos.filter(f => !f.mediaUrl && needsPreview(f)).map(f => f.s3Key)).catch(() => new Map());
+    const out = [];
+    for (const f of archivos) {
+        const base = {
+            id: f.id, kind: f.kind, filename: f.filename, bytes: Number(f.bytes) || 0,
+            mediaId: f.mediaId, promotedAt: f.promotedAt, promoteError: f.promoteError,
+            inLibrary: !!f.mediaId,
+        };
+        if (f.mediaUrl) { out.push({ ...base, url: f.mediaUrl, thumbUrl: f.mediaUrl, originalUrl: f.mediaUrl, preview: { status: 'not_needed' } }); continue; }
+        const urls = await stagingViewUrls({ key: f.s3Key, filename: f.filename, contentType: f.contentType, kind: f.kind }, filasVista.get(f.s3Key));
+        out.push({ ...base, ...urls });
+    }
+    return out;
+}
+
+/**
+ * POST /:id/submissions/:submissionId/previews — v4.1305
+ * Genera las vistas previas HEIC que le falten a la solicitud (por tandas,
+ * dentro de ~50 s; la pantalla repite mientras `remaining > 0`). Con
+ * `{ fileId, force: true }` reintenta una que falló.
+ */
+export const processSubmissionPreviews = async (req, res) => {
+    try {
+        const { id, submissionId } = req.params;
+        const submission = await getSubmission(id, submissionId);
+        if (!submission) return res.status(404).json({ error: 'No encontramos esa solicitud.' });
+        const archivos = await filesOf(submissionId);
+        const fileId = req.body?.fileId ? String(req.body.fileId) : null;
+        const force = req.body?.force === true;
+        const heic = archivos.filter(f => !f.mediaUrl && needsPreview(f) && (!fileId || f.id === fileId));
+        if (fileId && !heic.length) return res.status(404).json({ error: 'Ese archivo no es una foto HEIC pendiente de esta solicitud.' });
+        const filas = await previewRowsFor(heic.map(f => f.s3Key));
+        const inicio = Date.now();
+        let hechas = 0;
+        for (const f of heic) {
+            const fila = filas.get(f.s3Key);
+            const pendiente = !fila || fila.status === 'pending' || (fila.status === 'processing' && fila.lockedUntil && new Date(fila.lockedUntil) < new Date());
+            if (!pendiente && !(force && fila?.status === 'error')) continue;
+            if (hechas && Date.now() - inicio > 50000) break;
+            await ensurePreview({ key: f.s3Key, filename: f.filename, contentType: f.contentType, kind: f.kind, force });
+            hechas++;
+        }
+        const files = await filesForView(archivos);
+        res.json({
+            files, processed: hechas,
+            remaining: files.filter(f => f.preview?.status === 'pending' || f.preview?.status === 'processing').length,
+        });
+    } catch (e) { fail(res, e); }
+};
+
 export const getCampaignSubmission = async (req, res) => {
     try {
         const { id, submissionId } = req.params;
@@ -492,15 +551,10 @@ export const getCampaignSubmission = async (req, res) => {
         // El archivo se MIRA sin descargarlo: si ya está en la Biblioteca se
         // sirve su URL pública; si sigue en staging, un enlace firmado que
         // caduca — no hay dirección compartible de un material sin aprobar.
-        const conUrl = [];
-        for (const f of archivos) {
-            conUrl.push({
-                id: f.id, kind: f.kind, filename: f.filename, bytes: Number(f.bytes) || 0,
-                mediaId: f.mediaId, promotedAt: f.promotedAt, promoteError: f.promoteError,
-                url: f.mediaUrl || await signedSubmissionUrl(f.s3Key),
-                inLibrary: !!f.mediaId,
-            });
-        }
+        //
+        // v4.1305 — Las fotos HEIC se miran por su vista previa JPEG (ver
+        // `filesForView`).
+        const conUrl = await filesForView(archivos);
         const uso = await usageOf([submissionId]);
         res.json({
             submission,

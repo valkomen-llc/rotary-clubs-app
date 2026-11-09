@@ -13,6 +13,7 @@
 // —`FLOW` no tiene ningún camino a `publicado` que saltee `aprobado`— y lo
 // comprueba una prueba que lo recorre entero.
 // ════════════════════════════════════════════════════════════════════════════
+import { bestStagingUrl } from '../lib/submissionImagePreviews.js';
 import db from '../lib/db.js';
 import {
     reelOf, reelById, reelVersionsOf, enqueueReel, newReelVersion, advanceReel, adoptReelSite,
@@ -155,7 +156,7 @@ async function reelView(campaignId, submissionId, { sessionClubId = null } = {})
         material.push({
             fileId: f.id, kind: f.kind, filename: f.filename,
             inLibrary: Boolean(f.mediaId && f.mediaUrl),
-            url: f.mediaUrl || await signedSubmissionUrl(f.s3Key),
+            url: f.mediaUrl || await bestStagingUrl(f),
             sortOrder: f.sortOrder ?? 0,
         });
     }

@@ -186,12 +186,15 @@ ok(read('CLAUDE.md').includes('GovernorVisit'), 'la tabla está en la lista de C
 console.log('── Rutas');
 const routes = read('server/routes/rotary-en-accion.js');
 const authAt = routes.indexOf('router.use(authMiddleware)');
-for (const p of ["'/visitas-gobernador/config'", "'/visitas-gobernador/presign'", "'/visitas-gobernador/submit'", "'/visitas-gobernador/correccion/:token'"]) {
+for (const p of ["'/visitas-gobernador/config'", "'/visitas-gobernador/presign'", "'/visitas-gobernador/preview'", "'/visitas-gobernador/submit'", "'/visitas-gobernador/correccion/:token'"]) {
     const i = routes.indexOf(p);
     ok(i > 0 && i < authAt, `${p} es pública (antes del authMiddleware)`);
 }
 const admin = routes.split('\n').filter(l => l.includes('/visitas-gobernador/admin'));
-ok(admin.length === 7 && admin.every(l => routes.indexOf(l) > authAt && l.includes('requireSubmissionInboxAccess') && l.includes("'rotary_en_accion.")), 'las siete rutas de administración llevan sesión, puerta del módulo y permiso');
+// v4.1305 — +3: vistas previas HEIC de una visita, resumen y lote de la recuperación.
+ok(admin.length === 10 && admin.every(l => routes.indexOf(l) > authAt && l.includes('requireSubmissionInboxAccess') && l.includes("'rotary_en_accion.")), 'las diez rutas de administración llevan sesión, puerta del módulo y permiso');
+ok(routes.indexOf("'/visitas-gobernador/admin/previews/summary'") < routes.indexOf("'/visitas-gobernador/admin/:id'"), 'las rutas literales de la recuperación HEIC van antes de admin/:id');
+ok(admin.find(l => l.includes('/previews/batch')).includes('rotary_en_accion.edit'), 'la recuperación por lotes pide permiso de edición');
 ok(admin.find(l => l.includes('/publish')).includes('rotary_en_accion.publish') && admin.find(l => l.includes('/status')).includes('rotary_en_accion.manage') && admin.find(l => l.includes('router.put')).includes('rotary_en_accion.edit'), 'publicar, cambiar estado y editar piden su permiso propio');
 ok(read('src/App.tsx').includes('path="/visitas-del-gobernador" element={<VisitasGobernador />}'), 'la ruta canónica es dominio.org/visitas-del-gobernador');
 ok(read('src/App.tsx').includes('path="/rotary-en-accion/visitas-del-gobernador" element={<VisitasGobernadorRedirect />}'), 'la dirección anterior redirige');

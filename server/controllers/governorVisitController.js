@@ -16,7 +16,7 @@ import db from '../lib/db.js';
 import ensureGovernorVisitSchema from '../lib/ensureGovernorVisitSchema.js';
 import { ensureClubCatalogSchema, catalogForForms } from '../lib/clubCatalog.js';
 import { universalCampaignId } from '../lib/rotaryEngine.js';
-import { presignSubmissionUpload, headSubmissionFile, stagingKeyBelongs, signedSubmissionUrl } from '../lib/submissionFiles.js';
+import { presignSubmissionUpload, headSubmissionFile, stagingKeyBelongs } from '../lib/submissionFiles.js';
 import { createSubmission, transitionSubmission } from '../lib/contentSubmissionStore.js';
 import { IMAGE_MAX_BYTES, VIDEO_MAX_BYTES } from '../lib/contentSubmissionSpec.js';
 import {
@@ -28,9 +28,13 @@ import {
     VISIT_DESCRIPTION_MIN, VISIT_DESCRIPTION_MAX, visitTitleFor,
 } from '../lib/governorVisitSpec.js';
 import { currentDistrictGovernor } from '../lib/districtGovernor.js';
+import {
+    needsPreview, previewRowsFor, stagingViewUrls, ensurePreview, previewState, heicInventory, summarizeInventory,
+    processPreviewBatch,
+} from '../lib/submissionImagePreviews.js';
 import { resolveOrigin } from './rotaryEnAccionController.js';
 
-console.log('[governor-visits] v4.1284.0 cargado — Visitas del Gobernador (Rotary en Acción) en dominio.org/visitas-del-gobernador: Memoria institucional por categorías (actividades destacadas, alianzas, obras, programas permanentes, proyectos, subvenciones); las seis anteriores se conservan en lo histórico');
+console.log('[governor-visits] v4.1305.0 cargado — fotos HEIC/HEIF con vista previa JPEG y miniatura (original conservado), recuperación por lotes de las ya enviadas. Antes: v4.1284.0 — Visitas del Gobernador (Rotary en Acción) en dominio.org/visitas-del-gobernador: Memoria institucional por categorías (actividades destacadas, alianzas, obras, programas permanentes, proyectos, subvenciones); las seis anteriores se conservan en lo histórico');
 
 const fail = (res, e, code = 500) => {
     if (code >= 500) console.error('[governor-visits]', e?.message || e);
@@ -113,20 +117,39 @@ async function verifyMedia(media, { campaignId, known = new Map(), visitId = nul
 }
 
 /** URL de la galería: la de la Biblioteca si el archivo ya se promovió (el
- *  objeto de staging se borra al promover), si no un enlace firmado. */
+ *  objeto de staging se borra al promover), si no un enlace firmado.
+ *
+ *  v4.1305 — Una foto HEIC/HEIF se MIRA por su vista previa JPEG (y la rejilla
+ *  por su miniatura), nunca por el original: sólo Safari dibuja HEIC y en el
+ *  resto quedaba el recuadro roto con el nombre del archivo. El original se
+ *  ofrece para DESCARGAR (`originalUrl`). Mientras la vista previa no está,
+ *  `url` es null y `preview.status` dice por qué. */
 async function mediaWithUrls(visit) {
     const promovidos = new Map();
     if (visit.contributionSubmissionId) {
         const { rows } = await db.query(
+            `SELECT f."s3Key", f."mediaId", f."mediaUrl", m."thumbUrl", m."originalS3Key", m.bucket
+               FROM "ContributionSubmissionFile" f LEFT JOIN "Media" m ON m.id = f."mediaId"
+              WHERE f."submissionId" = $1`,
+            [visit.contributionSubmissionId]
+        ).catch(() => db.query(
             `SELECT "s3Key", "mediaId", "mediaUrl" FROM "ContributionSubmissionFile" WHERE "submissionId" = $1`,
             [visit.contributionSubmissionId]
-        ).catch(() => ({ rows: [] }));
+        )).catch(() => ({ rows: [] }));
         for (const r of rows) if (r.mediaUrl) promovidos.set(r.s3Key, r);
     }
     const media = Array.isArray(visit.media) ? visit.media : [];
+    const filas = await previewRowsFor(media.filter(m => !promovidos.has(m.key) && needsPreview(m)).map(m => m.key)).catch(() => new Map());
     return Promise.all(media.map(async (m) => {
         const p = promovidos.get(m.key);
-        return { ...m, url: p?.mediaUrl || await signedSubmissionUrl(m.key, { seconds: 900 }), mediaId: p?.mediaId || null, inLibrary: !!p };
+        if (p) {
+            return {
+                ...m, url: p.mediaUrl, thumbUrl: p.thumbUrl || p.mediaUrl, originalUrl: p.mediaUrl,
+                preview: { status: 'not_needed' }, mediaId: p.mediaId || null, inLibrary: true,
+            };
+        }
+        const urls = await stagingViewUrls(m, filas.get(m.key));
+        return { ...m, ...urls, mediaId: null, inLibrary: false };
     }));
 }
 
@@ -173,6 +196,33 @@ export const getVisitConfig = async (req, res) => {
             consentText: GOVERNOR_VISIT_CONSENT_TEXT,
             today: new Date().toISOString().slice(0, 10),
         });
+    } catch (e) { return fail(res, e); }
+};
+
+// POST /visitas-gobernador/preview — v4.1305
+//
+// El formulario lo llama en cuanto termina de subir una foto HEIC/HEIF: el
+// servidor genera la vista previa y la miniatura y devuelve la miniatura
+// firmada, así el club ve su foto (en Chrome o en un Android, que no dibujan
+// HEIC) y el panel la encuentra lista. Sólo para un objeto RECIÉN subido del
+// prefijo del formulario y que ningún reporte haya reclamado todavía: no es
+// una puerta para mirar material ya enviado.
+export const previewVisitUpload = async (req, res) => {
+    try {
+        const key = String(req.body?.key || '');
+        const filename = String(req.body?.filename || '').slice(0, 300) || null;
+        const contentType = String(req.body?.contentType || '').slice(0, 100) || null;
+        const cid = await universalCampaignId();
+        if (!stagingKeyBelongs(key, cid)) return res.status(400).json({ error: 'Ese archivo no corresponde a este formulario.' });
+        if (!needsPreview({ filename: filename || key, contentType, kind: 'image' })) return res.json({ status: 'not_needed' });
+        await ensureGovernorVisitSchema();
+        const { rows } = await db.query(`SELECT 1 FROM "GovernorVisit" WHERE media @> $1::jsonb LIMIT 1`, [JSON.stringify([{ key }])]);
+        const enSolicitud = await db.query(`SELECT 1 FROM "ContributionSubmissionFile" WHERE "s3Key" = $1 LIMIT 1`, [key])
+            .then(r => r.rows.length > 0).catch(() => false);
+        if (rows.length || enSolicitud) return res.status(409).json({ error: 'Ese archivo ya pertenece a un reporte enviado.' });
+        const row = await ensurePreview({ key, filename, contentType, kind: 'image' });
+        const urls = await stagingViewUrls({ key, filename, contentType, kind: 'image' }, row, { seconds: 3600 });
+        res.json({ status: urls.preview.status, error: urls.preview.error || null, thumbUrl: urls.thumbUrl, url: urls.url });
     } catch (e) { return fail(res, e); }
 };
 
@@ -613,6 +663,23 @@ export const adminPublishVisit = async (req, res) => {
         const { rows: camps } = await db.query(`SELECT * FROM "ContributionCampaign" WHERE id = $1`, [cid]);
         const camp = camps[0] || { id: cid, slug: 'rotary-en-accion' };
         const files = visitFilesForSubmission(visit).filter(f => stagingKeyBelongs(f.key, cid));
+        // v4.1305 — Las fotos HEIC se publican por su versión JPEG: se generan
+        // aquí las que falten (suele no faltar ninguna: la ficha las genera al
+        // abrirse) y se avisa de las que no se pudieron convertir.
+        const avisosHeic = [];
+        const heicFiles = files.filter(f => needsPreview(f));
+        if (heicFiles.length) {
+            const inicio = Date.now();
+            for (const f of heicFiles) {
+                if (Date.now() - inicio > 40000) break;
+                await ensurePreview({ key: f.key, filename: f.filename, contentType: f.contentType, kind: f.kind });
+            }
+            const filas = await previewRowsFor(heicFiles.map(f => f.key));
+            const sinVista = heicFiles.filter(f => filas.get(f.key)?.status !== 'ready');
+            if (sinVista.length) {
+                avisosHeic.push(`${sinVista.length} fotografía(s) HEIC sin versión compatible (${sinVista.slice(0, 3).map(f => f.filename).join(', ')}${sinVista.length > 3 ? '…' : ''}): se conserva el original, pero no se verá en Chrome, Edge ni Firefox hasta repararla desde la galería de la visita o desde Solicitudes.`);
+            }
+        }
         const data = visitToSubmissionData(visit);
         const origin = await resolveOrigin({ host: hostOf(req), club: visit.clubName, district: data.district, camp });
 
@@ -633,7 +700,7 @@ export const adminPublishVisit = async (req, res) => {
         // La visita ya la aprobó la administración: el contenido entra
         // aprobado y sigue el flujo editorial de siempre (Biblioteca,
         // artículo, difusión).
-        const avisos = [];
+        const avisos = [...avisosHeic];
         const tr = await transitionSubmission({
             campaignId: cid, id: submission.id, to: 'aprobado',
             reason: `Visita del Gobernador ${visit.publicRef} aprobada en el panel.`, actor, actorName,
@@ -649,6 +716,86 @@ export const adminPublishVisit = async (req, res) => {
         if (lockId) await db.query(`UPDATE "GovernorVisit" SET "publishLock" = NULL WHERE id = $1`, [lockId]).catch(() => {});
         return fail(res, e);
     }
+};
+
+// ════════════════════════════════════════════════════════════════════
+// VISTAS PREVIAS HEIC/HEIF (v4.1305) — ver
+// `docs/claude/vistas-previas-heic-de-los-aportes.md`
+// ════════════════════════════════════════════════════════════════════
+
+/** Tiempo de trabajo por petición: la función tiene 120 s y una foto de 12 MP
+ *  tarda 2-4 s. Quien llama repite mientras `remaining > 0`. */
+const PREVIEW_BUDGET_MS = 50000;
+
+// POST /visitas-gobernador/admin/:id/previews
+// Genera las vistas previas que le falten a ESTA visita. El panel lo llama
+// solo al abrir la ficha (y con `force` + `key` desde «Reintentar»).
+export const adminVisitPreviews = async (req, res) => {
+    try {
+        await ensureGovernorVisitSchema();
+        const visit = await loadVisit(req.params.id);
+        if (!visit) return res.status(404).json({ error: 'Visita no encontrada.' });
+        const key = req.body?.key ? String(req.body.key) : null;
+        const force = req.body?.force === true;
+        const started = Date.now();
+        const promovidas = new Set();
+        if (visit.contributionSubmissionId) {
+            const { rows } = await db.query(
+                `SELECT "s3Key" FROM "ContributionSubmissionFile" WHERE "submissionId" = $1 AND "mediaId" IS NOT NULL`,
+                [visit.contributionSubmissionId]
+            ).catch(() => ({ rows: [] }));
+            rows.forEach(r => promovidas.add(r.s3Key));
+        }
+        const heic = (Array.isArray(visit.media) ? visit.media : [])
+            .filter(m => needsPreview(m) && !promovidas.has(m.key) && (!key || m.key === key));
+        if (key && !heic.length) return res.status(404).json({ error: 'Esa fotografía no es HEIC de esta visita, o ya está en la Biblioteca.' });
+        const filas = await previewRowsFor(heic.map(m => m.key));
+        const cola = heic.filter((m) => {
+            const st = previewState(m, filas.get(m.key));
+            return st.status === 'pending' || (force && st.status === 'error');
+        });
+        let hechas = 0;
+        for (const m of cola) {
+            if (hechas && Date.now() - started > PREVIEW_BUDGET_MS) break;
+            await ensurePreview({ key: m.key, filename: m.filename, contentType: m.contentType, kind: m.kind, force });
+            hechas++;
+        }
+        const media = await mediaWithUrls(visit);
+        const remaining = media.filter(m => m.preview?.status === 'pending' || m.preview?.status === 'processing').length;
+        res.json({ media, processed: hechas, remaining, errors: media.filter(m => m.preview?.status === 'error').length });
+    } catch (e) { return fail(res, e); }
+};
+
+// GET /visitas-gobernador/admin/previews/summary
+// Cuántas fotos HEIC del almacenamiento de aportes (visitas y solicitudes de
+// Rotary en Acción) tienen vista previa, faltan o fallaron, y cuáles fallaron.
+export const adminPreviewSummary = async (req, res) => {
+    try {
+        await ensureGovernorVisitSchema();
+        const items = await heicInventory({ visitRef: req.query.visit ? String(req.query.visit) : null });
+        res.json(summarizeInventory(items));
+    } catch (e) { return fail(res, e); }
+};
+
+// POST /visitas-gobernador/admin/previews/batch
+// Un lote de la recuperación de lo ya enviado. Idempotente y reanudable: el
+// panel lo repite hasta `remaining = 0`. `retryErrors` vuelve a intentar las
+// que fallaron (sin las de archivo perdido, que no tienen arreglo acá).
+export const adminPreviewBatch = async (req, res) => {
+    try {
+        await ensureGovernorVisitSchema();
+        const out = await processPreviewBatch({
+            visitRef: req.body?.visit ? String(req.body.visit) : null,
+            limit: Math.min(8, Math.max(1, Number(req.body?.limit) || 4)),
+            budgetMs: PREVIEW_BUDGET_MS,
+            retryErrors: req.body?.retryErrors === true,
+        });
+        const resumen = summarizeInventory(await heicInventory({ visitRef: req.body?.visit ? String(req.body.visit) : null }));
+        res.json({
+            processed: out.processed.map(p => ({ source: p.source, ownerRef: p.ownerRef, filename: p.filename, status: p.preview.status, error: p.preview.error || null })),
+            remaining: out.remaining, elapsedMs: out.elapsedMs, ...resumen,
+        });
+    } catch (e) { return fail(res, e); }
 };
 
 // Lo usan las pruebas (`scripts/test-governor-visits.mjs`).

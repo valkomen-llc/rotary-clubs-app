@@ -114,6 +114,97 @@ export function orientationOps(orientation) {
     }
 }
 
+// ─── Qué son los bytes (v4.1305) ───────────────────────────────────────────
+
+/**
+ * Qué son REALMENTE los bytes, sin fiarse de la extensión. Devuelve
+ * `heif` (contenedor HEIF con HEVC: lo que hay que convertir), `avif`,
+ * `jpeg`, `png`, `webp` o `null`.
+ *
+ * No es un detalle: hay teléfonos y apps que guardan un JPEG con extensión
+ * `.heic`, y un archivo dañado puede no tener contenedor alguno.
+ */
+export const HEIF_BRANDS = ['heic', 'heix', 'hevc', 'hevx', 'heim', 'heis', 'hevm', 'hevs', 'mif1', 'msf1', 'mif2', 'miaf'];
+export function sniffImageBytes(buf) {
+    if (!buf || buf.length < 12) return null;
+    if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'jpeg';
+    if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'png';
+    if (buf.toString('latin1', 0, 4) === 'RIFF' && buf.toString('latin1', 8, 12) === 'WEBP') return 'webp';
+    if (buf.toString('latin1', 4, 8) === 'ftyp') {
+        const size = Math.min(buf.readUInt32BE(0) || 0, buf.length, 256);
+        const brands = [buf.toString('latin1', 8, 12)];
+        for (let i = 16; i + 4 <= size; i += 4) brands.push(buf.toString('latin1', i, i + 4));
+        if (brands.some(b => b === 'avif' || b === 'avis')) return 'avif';
+        if (brands.some(b => HEIF_BRANDS.includes(b))) return 'heif';
+    }
+    return null;
+}
+
+// ─── Color (v4.1305) ─────────────────────────────────────────────────────────
+//
+// libheif entrega los píxeles en los primarios DE LA FOTO, sin aplicar su
+// perfil. Un iPhone (y muchos Samsung recientes) guardan en **Display P3**, un
+// gamut más ancho que sRGB: escribir esos mismos números en un JPEG sin perfil
+// —que todo navegador lee como sRGB— deja la foto apagada, con rojos y verdes
+// lavados. Se convierte a sRGB, que es lo que el pedido pide y lo que cualquier
+// navegador, canvas o red social interpreta igual.
+//
+// La matriz es la estándar P3-D65 → sRGB (mismo blanco, misma curva de
+// transferencia que sRGB): linealizar, multiplicar, recortar al gamut y volver
+// a la curva. Se hace en el buffer RGBA, sin dependencias.
+
+/** ¿El perfil ICC embebido es Display P3? Mira el nombre en ASCII y en UTF-16. */
+export function isDisplayP3Icc(icc) {
+    if (!icc || !icc.length) return false;
+    const buf = Buffer.isBuffer(icc) ? icc : Buffer.from(icc);
+    if (buf.includes(Buffer.from('Display P3', 'latin1'))) return true;
+    const utf16 = Buffer.from('Display P3', 'utf16le').swap16();
+    return buf.includes(utf16);
+}
+
+const P3_TO_SRGB = [
+    [1.2249401, -0.2249404, 0.0],
+    [-0.0420569, 1.0420571, 0.0],
+    [-0.0196376, -0.0786361, 1.0982735],
+];
+let _toLinear = null;
+let _toSrgb = null;
+const SRGB_STEPS = 4096;
+const tables = () => {
+    if (!_toLinear) {
+        _toLinear = new Float32Array(256);
+        for (let i = 0; i < 256; i++) {
+            const c = i / 255;
+            _toLinear[i] = c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+        }
+        _toSrgb = new Uint8Array(SRGB_STEPS + 1);
+        for (let i = 0; i <= SRGB_STEPS; i++) {
+            const l = i / SRGB_STEPS;
+            const c = l <= 0.0031308 ? l * 12.92 : 1.055 * Math.pow(l, 1 / 2.4) - 0.055;
+            _toSrgb[i] = Math.max(0, Math.min(255, Math.round(c * 255)));
+        }
+    }
+    return { toLinear: _toLinear, toSrgb: _toSrgb };
+};
+
+/**
+ * Convierte EN SITIO un buffer RGBA (o RGB con `channels = 3`) de Display P3 a
+ * sRGB. PURA salvo por mutar lo que recibe. Un gris queda gris; lo que cae
+ * fuera del gamut sRGB se recorta al borde.
+ */
+export function p3ToSrgbInPlace(data, channels = 4) {
+    const { toLinear, toSrgb } = tables();
+    const [m0, m1, m2] = P3_TO_SRGB;
+    const clampIdx = (v) => (v <= 0 ? 0 : v >= 1 ? SRGB_STEPS : Math.round(v * SRGB_STEPS));
+    for (let i = 0; i + 2 < data.length; i += channels) {
+        const r = toLinear[data[i]], g = toLinear[data[i + 1]], b = toLinear[data[i + 2]];
+        data[i] = toSrgb[clampIdx(m0[0] * r + m0[1] * g + m0[2] * b)];
+        data[i + 1] = toSrgb[clampIdx(m1[0] * r + m1[1] * g + m1[2] * b)];
+        data[i + 2] = toSrgb[clampIdx(m2[0] * r + m2[1] * g + m2[2] * b)];
+    }
+    return data;
+}
+
 // ─── Conversión ──────────────────────────────────────────────────────────────
 
 /** Calidad del JPEG resultante. Alta: esto sustituye al original en la ficha. */
@@ -213,10 +304,10 @@ export async function convertHeicToJpeg(input, { maxDimension = 4096 } = {}) {
     // El contenedor se lee con sharp: sabe hacerlo aunque no sepa decodificar
     // los píxeles. De acá salen la orientación y el tamaño con el que después
     // se contrasta lo decodificado.
-    let container = { width: 0, height: 0, orientation: 1 };
+    let container = { width: 0, height: 0, orientation: 1, icc: null };
     try {
         const meta = await sharp(input).metadata();
-        container = { width: meta.width || 0, height: meta.height || 0, orientation: meta.orientation || 1 };
+        container = { width: meta.width || 0, height: meta.height || 0, orientation: meta.orientation || 1, icc: meta.icc || null };
     } catch {
         // Sin contenedor legible se sigue: la comprobación de tamaño se salta
         // sola y la orientación se asume derecha. Rotar a ciegas sería peor.
@@ -245,9 +336,19 @@ export async function convertHeicToJpeg(input, { maxDimension = 4096 } = {}) {
     const verdict = checkDecodedSize(container, decoded);
     if (!verdict.ok) throw new Error(verdict.error);
 
-    let pipeline = sharp(Buffer.from(decoded.data), {
+    // v4.1305 — Display P3 → sRGB (ver arriba). Sin perfil, o con uno que no
+    // es P3, los valores se toman como sRGB: es lo que ya eran.
+    const pixels = Buffer.from(decoded.data.buffer ? decoded.data.buffer : decoded.data, decoded.data.byteOffset || 0, decoded.data.byteLength || decoded.data.length);
+    const colorProfile = isDisplayP3Icc(container.icc) ? 'display-p3' : 'srgb';
+    if (colorProfile === 'display-p3') p3ToSrgbInPlace(pixels, 4);
+
+    let pipeline = sharp(pixels, {
         raw: { width: decoded.width, height: decoded.height, channels: 4 },
-    });
+    })
+        // JPEG no tiene transparencia: un HEIF con canal alfa se asienta sobre
+        // blanco, explícitamente, en vez de quedar sobre lo que hubiera debajo
+        // de los píxeles transparentes (normalmente negro).
+        .flatten({ background: '#ffffff' });
 
     // La orientación se aplica sólo si el decodificador NO la aplicó ya. Que
     // las dimensiones vengan intercambiadas respecto del contenedor significa
@@ -265,7 +366,7 @@ export async function convertHeicToJpeg(input, { maxDimension = 4096 } = {}) {
 
     const buffer = await pipeline.jpeg({ quality: JPEG_QUALITY, mozjpeg: true }).toBuffer();
     const final = await sharp(buffer).metadata();
-    return { buffer, width: final.width, height: final.height, orientation: container.orientation };
+    return { buffer, width: final.width, height: final.height, orientation: container.orientation, colorProfile };
 }
 
-export default { isHeicFile, jpegNameFor, jpegKeyFor, orientationOps, checkDecodedSize, convertHeicToJpeg };
+export default { isHeicFile, jpegNameFor, jpegKeyFor, orientationOps, checkDecodedSize, convertHeicToJpeg, isDisplayP3Icc, p3ToSrgbInPlace, sniffImageBytes };

@@ -126,6 +126,9 @@
 //
 // Para sincronizar de todos modos, a sabiendas:  npm run db:push:force
 // ════════════════════════════════════════════════════════════════════
+// Y la de las vistas previas HEIC/HEIF de los aportes (v4.1305):
+// SubmissionImagePreview — qué foto ya tiene su versión JPEG y por qué falló
+// la que no (se puede regenerar, pero se perdería el diagnóstico).
 // Y las quince de Programas (v4.1280; la página pública por contenedores,
 // v4.1281): Program, ProgramDistrictLink, ProgramClubActivation, ProgramMember,
 // ProgramContent, ProgramContentVersion, ProgramChangeRequest, ProgramRequest,
