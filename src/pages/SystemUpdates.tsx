@@ -34,13 +34,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1302.0 | 2026-11-09 (Cursos y capacitaciones: LMS integrado en Rotary en Acción — colecciones, cursos, módulos, lecciones, guardado automático, revisión y biblioteca pública)
+// UI V4.1303.0 | 2026-11-09 (Secretaría Digital: acceso al módulo Rotary en Acción)
 // Cache bust: 2026-11-09
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1303.0',
+        title: 'Secretaría Digital: acceso a Rotary en Acción 🤝',
+        description: 'Pedido del Distrito 4281: la cuenta de la Secretaría Digital (secretaria@rotary4281.org) suma el módulo Rotary en Acción a su menú —Resumen, Solicitudes, Centro de Control, Marketing Inteligente, Activación de Clubes, Directorio de Clubes y Visitas del Gobernador—, junto a la Bóveda, Eventos, Analíticas, el Estudio de Contenido y el Directorio de Clubes.',
+        date: new Date().toISOString(),
+        tags: ['permisos', 'secretaría digital', 'rotary en acción', 'distrito 4281'],
+        type: 'improvement',
+        impact: 'Media: la Secretaría Digital gestiona las solicitudes, las visitas del Gobernador y la configuración de Rotary en Acción sin necesitar una cuenta de administrador.',
+        changes: [
+            { type: 'added', text: 'El rol «Secretaría Digital — Control de Aportes» suma todas las acciones de Rotary en Acción: ver, crear, editar, publicar, exportar y gestionar (taxonomías, configuración del formulario y estado de las visitas del Gobernador). La entrada «Rotary en Acción» aparece en la barra lateral.' },
+            { type: 'added', text: 'Para que la pestaña «Solicitudes» cargue y se pueda trabajar, el rol suma ver y editar la bandeja de las Campañas de Contribución, sin administrar su contenido central.' },
+            { type: 'changed', text: 'La Bóveda sigue en sólo lectura y descarga: el rol sigue sin poder mover dinero.' },
+            { type: 'added', text: 'La prueba test:digital-secretary fija los permisos y que la barra lateral muestre Rotary en Acción.' },
+        ],
+    },
     {
         version: '4.1302.0',
         title: 'Rotary en Acción: «Cursos y capacitaciones», la infraestructura educativa del Distrito (LMS, Fase 1) 🎓',

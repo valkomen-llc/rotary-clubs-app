@@ -165,6 +165,19 @@ miran el RBAC: las acota `requireStudioTool` según las herramientas activas del
 SITIO, así que el permiso abre la entrada del menú y la ruta del panel, y lo que
 ve adentro lo decide la configuración del sitio.
 
+**v4.1303 — Rotary en Acción, por pedido.** Como el Estudio, no es una
+restitución: lo pidió el Distrito. El preset suma TODAS las acciones del módulo
+`rotary_en_accion` (view, create, edit, publish, export y `manage`: taxonomías,
+configuración del formulario y el estado de una visita del Gobernador; también
+la revisión de cursos de «Gestión educativa», que cuelga del mismo permiso).
+La pestaña «Solicitudes» lee `/contribution-campaigns/submissions/inbox`, que
+pide `contribution_campaigns.view` (y `.edit` para asignar, aprobar o cambiar
+el estado de un aporte de contenido): el preset los suma **sin
+`contribution_campaigns.manage`**. Que el módulo exista en el sitio lo sigue
+decidiendo `requireSubmissionInboxAccess` (D4281 entra por su club). Como
+efecto, la entrada «Campañas de Contribución» también aparece en su menú.
+Sigue SIN `finance.manage`.
+
 **Pendientes conocidos:** el listado de `/financial/donations` trae hasta 200
 aportes por consulta (suficiente hoy; paginar si un sitio lo supera); el club y
 el distrito del aportante no existen como dato en `Donation` (se ven cuando el

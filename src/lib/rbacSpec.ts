@@ -1351,7 +1351,7 @@ export const ROLE_PRESETS: RolePreset[] = [
         // decide el servidor (regla de v4.1093).
         "key": "digital_secretary",
         "label": "Secretaría Digital — Control de Aportes",
-        "description": "Supervisión documental y financiera de los aportes: consulta la Bóveda de Fondos, identifica a los aportantes, verifica estados de Stripe y traslados, descarga comprobantes y exporta informes. Administra además el Directorio de Clubes y su Catálogo Maestro, los Eventos, las Analíticas y el Estudio de Contenido del sitio. No solicita retiros, no registra desembolsos ni modifica estados financieros.",
+        "description": "Supervisión documental y financiera de los aportes: consulta la Bóveda de Fondos, identifica a los aportantes, verifica estados de Stripe y traslados, descarga comprobantes y exporta informes. Administra además el Directorio de Clubes y su Catálogo Maestro, los Eventos, las Analíticas, el Estudio de Contenido y Rotary en Acción del sitio. No solicita retiros, no registra desembolsos ni modifica estados financieros.",
         "scope": "site",
         "protected": true,
         "permissions": [
@@ -1371,7 +1371,16 @@ export const ROLE_PRESETS: RolePreset[] = [
             "content_studio.view",
             "content_studio.create",
             "content_studio.edit",
-            "content_studio.publish"
+            "content_studio.publish",
+            // v4.1303 — Rotary en Acción completo + la bandeja de solicitudes (ver el servidor).
+            "rotary_en_accion.view",
+            "rotary_en_accion.create",
+            "rotary_en_accion.edit",
+            "rotary_en_accion.publish",
+            "rotary_en_accion.export",
+            "rotary_en_accion.manage",
+            "contribution_campaigns.view",
+            "contribution_campaigns.edit"
         ]
     },
     {
