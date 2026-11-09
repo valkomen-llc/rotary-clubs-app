@@ -16,8 +16,12 @@ import {
 import { CLUBS_4281, CLUBS_BY_DISTRICT_NUMBER, districtNumberOf } from '../lib/rotaryClubs.js';
 import { norm, clubDisplayName } from '../lib/publicClubs.js';
 import { catalogForForms, ensureClubCatalogSchema } from '../lib/clubCatalog.js';
+// v4.1306 — los archivos del formulario (logo, portada, galería) tienen dueño,
+// se vinculan al enviar y se publican al aprobar. Ver clubMediaStore.js.
+import { bindToSubmission, publishMediaInPayload } from '../lib/clubMediaStore.js';
+import { stripSecrets } from '../lib/clubMediaSpec.js';
 
-console.log('[districtClubsController] v4.1233.0 cargado — Optimización formulario 6 pasos, patrocinio dinámico Rotaract/Interact');
+console.log('[districtClubsController] v4.1306.0 cargado — archivos del formulario con dueño, vinculados al enviar y publicados al aprobar; sin contraseñas en los borradores');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'rotary_secret_key_2026';
 const PORTAL_AUDIENCE = 'rotary-club-portal';
@@ -306,6 +310,25 @@ export const submitClubDirectoryRequest = async (req, res) => {
     const trackingNumber = generateTrackingNumber(distNum, clubName);
     const submissionId = randomUUID();
 
+    // v4.1306 — Los archivos que nombra el formulario tienen que ser de ESTE
+    // borrador (o del perfil que se actualiza) y estar guardados; lo demás se
+    // quita. La contraseña del portal NUNCA se copia al payload guardado.
+    let storedPayload = stripSecrets(data);
+    try {
+      const bound = await bindToSubmission({
+        payload: storedPayload,
+        draftToken: data.draftToken || null,
+        profileId: data.profileId || null,
+        submissionId
+      });
+      storedPayload = bound.payload;
+      if (bound.removed.length) {
+        console.warn('[districtClubsController] archivos quitados del envío', submissionId, bound.removed);
+      }
+    } catch (mediaErr) {
+      console.warn('[districtClubsController] no pude vincular los archivos del envío:', mediaErr.message);
+    }
+
     // Si es una solicitud de actualización, buscar profileId correspondiente
     let targetProfileId = data.profileId || null;
     if (!targetProfileId) {
@@ -402,7 +425,7 @@ export const submitClubDirectoryRequest = async (req, res) => {
         applicantPhone,
         applicantRole,
         data.dataConsent !== false,
-        JSON.stringify(data),
+        JSON.stringify(storedPayload),
         'recibida',
         JSON.stringify(initialHistory),
         data.draftToken || null,
@@ -432,8 +455,21 @@ export const submitClubDirectoryRequest = async (req, res) => {
 export const saveFormDraft = async (req, res) => {
   try {
     await ensureDistrictClubDirectorySchema();
-    const { draftToken, payload, stepReached, utmSource, utmMedium, utmCampaign, utmContent } = req.body || {};
-    const token = draftToken || `draft_${randomUUID()}`;
+    const { draftToken, stepReached, utmSource, utmMedium, utmCampaign, utmContent } = req.body || {};
+    // v4.1306 — La contraseña del portal no se guarda en un borrador.
+    const payload = stripSecrets(req.body?.payload || {});
+    // v4.1306 — El token de un borrador NUEVO lo genera el servidor: es la
+    // llave del borrador y de sus archivos, no puede ser adivinable (antes el
+    // navegador mandaba `draft_<fecha>`). Un token que ya existe se respeta.
+    let token = null;
+    if (draftToken && typeof draftToken === 'string' && draftToken.length <= 120) {
+      const { rows: known } = await db.query(
+        `SELECT 1 FROM "DistrictClubSubmission" WHERE "draftToken" = $1 LIMIT 1`,
+        [draftToken]
+      );
+      if (known.length) token = draftToken;
+    }
+    if (!token) token = `draft_${randomUUID()}`;
 
     const applicantName = payload?.applicantName || null;
     const applicantEmail = payload?.applicantEmail || null;
@@ -443,7 +479,7 @@ export const saveFormDraft = async (req, res) => {
 
     // Upsert borrador en submission con status 'borrador'
     const { rows: existing } = await db.query(
-      `SELECT id FROM "DistrictClubSubmission" WHERE "draftToken" = $1 LIMIT 1`,
+      `SELECT id FROM "DistrictClubSubmission" WHERE "draftToken" = $1 AND status = 'borrador' LIMIT 1`,
       [token]
     );
 
@@ -460,7 +496,7 @@ export const saveFormDraft = async (req, res) => {
           "utmCampaign" = COALESCE($8, "utmCampaign"),
           "lastActiveAt" = NOW(),
           "updatedAt" = NOW()
-         WHERE "draftToken" = $9`,
+         WHERE "draftToken" = $9 AND status = 'borrador'`,
         [
           JSON.stringify(payload),
           clubName,
@@ -514,11 +550,13 @@ export const getFormDraft = async (req, res) => {
     await ensureDistrictClubDirectorySchema();
     const { token } = req.params;
     const { rows } = await db.query(
-      `SELECT payload, status, "updatedAt" FROM "DistrictClubSubmission" WHERE "draftToken" = $1 LIMIT 1`,
+      `SELECT payload, status, "updatedAt" FROM "DistrictClubSubmission" WHERE "draftToken" = $1
+       ORDER BY (status = 'borrador') DESC, "updatedAt" DESC LIMIT 1`,
       [token]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Borrador no encontrado' });
-    res.json({ ok: true, payload: rows[0].payload, updatedAt: rows[0].updatedAt });
+    const draftPayload = typeof rows[0].payload === 'string' ? JSON.parse(rows[0].payload || '{}') : rows[0].payload;
+    res.json({ ok: true, payload: stripSecrets(draftPayload), status: rows[0].status, updatedAt: rows[0].updatedAt });
   } catch (e) {
     fail(res, e);
   }
@@ -788,8 +826,11 @@ export const reviewSubmission = async (req, res) => {
     }
 
     const sub = subRows[0];
-    const payload = typeof sub.payload === 'string' ? JSON.parse(sub.payload) : sub.payload;
+    let payload = typeof sub.payload === 'string' ? JSON.parse(sub.payload) : sub.payload;
     const currentHistory = Array.isArray(sub.history) ? sub.history : [];
+    // El id del perfil que se va a crear, ANTES de publicar los archivos: la
+    // carpeta pública de cada archivo es la de su perfil.
+    const pendingNewProfileId = randomUUID();
 
     let newStatus = sub.status;
     let historyNote = '';
@@ -797,6 +838,19 @@ export const reviewSubmission = async (req, res) => {
     if (action === 'approve') {
       newStatus = 'aprobada';
       historyNote = 'Solicitud aprobada y publicada automáticamente en el directorio distrital';
+
+      // v4.1306 — Publicar los archivos del formulario: pasan del prefijo
+      // privado al público y su URL pública reemplaza a la estable. Si alguno
+      // falla queda la estable (que sigue mostrándose) y se anota.
+      try {
+        const pub = await publishMediaInPayload({ payload, profileId: sub.profileId || pendingNewProfileId, by: reviewerName });
+        payload = pub.payload;
+        if (pub.published) historyNote += ` · ${pub.published} archivo(s) publicados`;
+        if (pub.failed.length) historyNote += ` · ${pub.failed.length} archivo(s) no se pudieron publicar (siguen visibles por su dirección estable)`;
+        await db.query(`UPDATE "DistrictClubSubmission" SET payload = $1 WHERE id = $2`, [JSON.stringify(payload), id]);
+      } catch (mediaErr) {
+        console.warn('[districtClubsController] no pude publicar los archivos de la solicitud', id, mediaErr.message);
+      }
 
       // Actualizar o crear DistrictClubProfile con los datos del payload
       const completion = calculateProfileCompletion(payload);
@@ -885,7 +939,7 @@ export const reviewSubmission = async (req, res) => {
         );
       } else {
         // Creación de nuevo perfil
-        const newProfileId = randomUUID();
+        const newProfileId = pendingNewProfileId;
         await db.query(
           `INSERT INTO "DistrictClubProfile" (
             id, "districtNumber", "organizationType", "officialName", "shortName",
@@ -988,8 +1042,16 @@ export const updateClubProfileDirect = async (req, res) => {
   try {
     await ensureDistrictClubDirectorySchema();
     const { id } = req.params;
-    const body = req.body || {};
+    let body = req.body || {};
     const reviewerName = req.user?.name || req.user?.email || 'Administrador Distrital';
+
+    // v4.1306 — Un archivo del formulario que el panel guarda en el perfil se
+    // publica (pasa al prefijo público).
+    try {
+      body = (await publishMediaInPayload({ payload: body, profileId: id, by: reviewerName })).payload;
+    } catch (mediaErr) {
+      console.warn('[districtClubsController] no pude publicar archivos del perfil', id, mediaErr.message);
+    }
 
     const completion = calculateProfileCompletion(body);
     const rotaryPeriod = body.rotaryPeriod || '2026–2027';
@@ -1370,7 +1432,15 @@ export const updatePortalProfile = async (req, res) => {
     if (currentRows.length === 0) return res.status(404).json({ error: 'Club no encontrado' });
     const current = currentRows[0];
 
-    const body = req.body || {};
+    let body = req.body || {};
+    // v4.1306 — Sólo archivos de ESTE club (subidos desde su portal o ya
+    // publicados); los ajenos se quitan. Lo propio se publica al guardar.
+    try {
+      const bound = await bindToSubmission({ payload: body, draftToken: null, profileId, submissionId: null });
+      body = (await publishMediaInPayload({ payload: bound.payload, profileId, by: portalUser.email })).payload;
+    } catch (mediaErr) {
+      console.warn('[districtClubsController] no pude publicar archivos del portal', profileId, mediaErr.message);
+    }
     const auditLog = Array.isArray(current.auditLog) ? current.auditLog : [];
 
     // Validar si intentó cambiar campos institucionales protegidos

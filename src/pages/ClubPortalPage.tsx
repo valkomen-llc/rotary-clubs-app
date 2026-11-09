@@ -8,12 +8,14 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Building2, Sparkles, CheckCircle2, AlertTriangle, ShieldCheck,
-  Save, Eye, LogOut, ArrowRight, Upload, Plus, Trash2, Globe,
+  Save, Eye, LogOut, ArrowRight, Plus, Trash2, Globe,
   Mail, Phone, MapPin, Calendar, Users, Award, Camera, Info,
   Lock, RefreshCw, Check, ArrowLeft
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../hooks/useAuth';
+import { ClubMediaUploader, ClubGalleryUploader } from '../components/directory/ClubMediaUploader';
+import type { ClubMediaAuth } from '../lib/clubMediaUpload';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -53,6 +55,9 @@ export const ClubPortalPage: React.FC = () => {
   const [portalToken, setPortalToken] = useState<string | null>(
     localStorage.getItem('rotary_club_portal_token')
   );
+  // v4.1306 — Las subidas del portal van con la sesión del portal: el
+  // servidor las asocia a ESTE club y a ningún otro.
+  const portalMediaAuth = useMemo<ClubMediaAuth>(() => ({ context: 'portal', token: portalToken || '' }), [portalToken]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [account, setAccount] = useState<any>(null);
@@ -73,8 +78,6 @@ export const ClubPortalPage: React.FC = () => {
 
   // Formulario local editable
   const [formData, setFormData] = useState<any>({});
-  const [uploadingLogo, setUploadingLogo] = useState(false);
-  const [uploadingCover, setUploadingCover] = useState(false);
 
   // 1. Cargar catálogo distrital para el registro
   useEffect(() => {
@@ -257,47 +260,6 @@ export const ClubPortalPage: React.FC = () => {
     setAccount(null);
     setProfile(null);
     toast.info('Sesión cerrada correctamente');
-  };
-
-  // Subir imagen con servicio de presign
-  const handleUploadImage = async (file: File, target: 'logo' | 'cover') => {
-    try {
-      if (target === 'logo') setUploadingLogo(true);
-      if (target === 'cover') setUploadingCover(true);
-
-      const presignRes = await fetch(`${API}/rotary-en-accion/presign`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          filename: file.name,
-          contentType: file.type,
-          prefix: 'directorio-clubes'
-        })
-      });
-      const presignData = await presignRes.json();
-      const finalUrl = presignData.publicUrl || presignData.url;
-
-      if (presignData.uploadUrl) {
-        await fetch(presignData.uploadUrl, {
-          method: 'PUT',
-          headers: { 'Content-Type': file.type },
-          body: file
-        });
-      }
-
-      if (target === 'logo') {
-        setFormData((prev: any) => ({ ...prev, logoUrl: finalUrl }));
-        toast.success('Logotipo cargado exitosamente.');
-      } else {
-        setFormData((prev: any) => ({ ...prev, coverImageUrl: finalUrl }));
-        toast.success('Imagen de portada cargada exitosamente.');
-      }
-    } catch {
-      toast.error('No se pudo subir la imagen.');
-    } finally {
-      setUploadingLogo(false);
-      setUploadingCover(false);
-    }
   };
 
   // Guardar y Publicar Actualizaciones
@@ -997,63 +959,34 @@ export const ClubPortalPage: React.FC = () => {
                 <p className="text-xs text-gray-500">Logotipos y fotografías de impacto del club.</p>
               </div>
 
+              {/* v4.1306 — El mismo Club Media Uploader del formulario: lo que
+                  se sube queda guardado y publicado en el almacenamiento; el
+                  perfil lo muestra al pulsar «Guardar y publicar». */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                {/* Logotipo */}
-                <div className="p-5 rounded-2xl border border-gray-200 bg-gray-50 space-y-3 text-center">
-                  <h4 className="text-xs font-black text-gray-700 uppercase">Logotipo Oficial</h4>
-                  {formData.logoUrl ? (
-                    <div className="w-28 h-28 mx-auto bg-white rounded-2xl p-2 border border-gray-200 flex items-center justify-center overflow-hidden">
-                      <img src={formData.logoUrl} alt="Logo" className="max-h-full max-w-full object-contain" />
-                    </div>
-                  ) : (
-                    <div className="w-28 h-28 mx-auto bg-white rounded-2xl border border-dashed border-gray-300 flex items-center justify-center text-gray-400">
-                      <Camera className="w-6 h-6" />
-                    </div>
-                  )}
-
-                  <label className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white border border-gray-200 text-xs font-bold text-gray-700 hover:bg-gray-100 cursor-pointer shadow-xs">
-                    <Upload className="w-3.5 h-3.5" />
-                    {uploadingLogo ? 'Cargando...' : 'Cambiar Logo'}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) handleUploadImage(file, 'logo');
-                      }}
-                    />
-                  </label>
-                </div>
-
-                {/* Portada */}
-                <div className="p-5 rounded-2xl border border-gray-200 bg-gray-50 space-y-3 text-center">
-                  <h4 className="text-xs font-black text-gray-700 uppercase">Imagen de Portada</h4>
-                  {formData.coverImageUrl ? (
-                    <div className="w-full h-28 bg-white rounded-2xl border border-gray-200 overflow-hidden">
-                      <img src={formData.coverImageUrl} alt="Portada" className="w-full h-full object-cover" />
-                    </div>
-                  ) : (
-                    <div className="w-full h-28 bg-white rounded-2xl border border-dashed border-gray-300 flex items-center justify-center text-gray-400">
-                      <Camera className="w-6 h-6" />
-                    </div>
-                  )}
-
-                  <label className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white border border-gray-200 text-xs font-bold text-gray-700 hover:bg-gray-100 cursor-pointer shadow-xs">
-                    <Upload className="w-3.5 h-3.5" />
-                    {uploadingCover ? 'Cargando...' : 'Cambiar Portada'}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) handleUploadImage(file, 'cover');
-                      }}
-                    />
-                  </label>
-                </div>
+                <ClubMediaUploader
+                  role="logo"
+                  value={formData.logoUrl || ''}
+                  onChange={(url) => setFormData((prev: any) => ({ ...prev, logoUrl: url }))}
+                  auth={portalMediaAuth}
+                  label="Logotipo Oficial"
+                  savedNote="Pulsa «Guardar y publicar» para actualizarlo en el directorio."
+                />
+                <ClubMediaUploader
+                  role="cover"
+                  value={formData.coverImageUrl || ''}
+                  onChange={(url) => setFormData((prev: any) => ({ ...prev, coverImageUrl: url }))}
+                  auth={portalMediaAuth}
+                  label="Imagen de Portada"
+                  savedNote="Pulsa «Guardar y publicar» para actualizarla en el directorio."
+                />
               </div>
+
+              <ClubGalleryUploader
+                value={Array.isArray(formData.gallery) ? formData.gallery : []}
+                onChange={(updater) => setFormData((prev: any) => ({ ...prev, gallery: updater(Array.isArray(prev.gallery) ? prev.gallery : []) }))}
+                auth={portalMediaAuth}
+                label="Galería de Fotografías"
+              />
             </div>
           )}
 

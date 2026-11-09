@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1305.0",
-  "cache_bust": "4.1305.0",
+  "version": "4.1306.0",
+  "cache_bust": "4.1306.0",
   "type": "module",
   "//": "UI V4.1302.0 | 2026-11-09 (Cursos y capacitaciones: LMS integrado en Rotary en Acción)",
   "scripts": {
@@ -110,6 +110,8 @@
     "test:mp4-trim": "node scripts/test-mp4-trim.mjs",
     "test:heic": "node scripts/test-heic.mjs",
     "test:heic-previews": "node scripts/test-heic-previews.mjs",
+    "test:club-media": "node scripts/test-club-media.mjs",
+    "test:club-media:e2e": "node scripts/test-club-media-e2e.mjs",
     "heic:recover": "node scripts/heic-previews-recover.mjs",
     "test:projects-page": "node scripts/test-projects-page.mjs",
     "test:site-name": "node scripts/test-site-name.mjs",
