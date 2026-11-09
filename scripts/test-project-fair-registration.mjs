@@ -226,6 +226,26 @@ ok('cuenta inscripciones (clubes) aparte de proyectos', /COUNT\(DISTINCT \$\{SQL
 ok('separa el recaudo por primeras y por segundas postulaciones', /AS "collectedFirst"/.test(admin) && /AS "collectedSecond"/.test(admin));
 ok('filtra por cantidad de proyectos del club y por posición', /clean\(query\.proyectos, 4\)/.test(admin) && /clean\(query\.indice, 4\)/.test(admin));
 
+section('11. v4.1301 — La ampliación desde «Mi proyecto»');
+ok('el segundo proyecto creado desde el perfil queda marcado como ampliación', /addedVia: 'portal_extension'/.test(portal));
+ok('y el del registro inicial, como wizard (valor por defecto)', /addedVia = 'wizard'/.test(ctrl) && /addedVia,/.test(ctrl));
+ok('el cobro de sólo el segundo proyecto se nombra «Inscripción adicional»', /Inscripción adicional — Segundo proyecto — \$\{edition\}/.test(ctrl));
+ok('…también en el comprobante', /Comprobante de inscripción adicional · segundo proyecto/.test(ctrl));
+ok('la acción del botón la resuelve el servidor (postular / continuar / completar / dos ya registrados)',
+    /key: 'add', label: 'Postular segundo proyecto'/.test(portal) && /key: 'continue', label: 'Continuar segundo proyecto'/.test(portal)
+    && /key: 'pay', label: 'Completar inscripción del segundo proyecto'/.test(portal) && /key: 'complete', label: 'Tu club ya tiene dos proyectos registrados'/.test(portal));
+ok('el saldo del perfil es lo pendiente de TODA la inscripción', /balance: breakdown\.pendingTotal/.test(portal));
+ok('la carrera por el segundo proyecto se responde como 409 (índice único)', /String\(err\?\.code\) === '23505'/.test(portal));
+ok('el panel distingue ampliaciones de inscripciones iniciales', /metadata->>'addedVia' = 'portal_extension'/.test(admin) && /originLabel: segundo \? \(segundo\.metadata\?\.addedVia === 'portal_extension'/.test(admin));
+ok('y separa pago original de pago complementario en la ficha', /kind: projectIndexOf\(r\) >= 2/.test(admin));
+ok('Mi proyecto abre el asistente desde el encabezado y no manda a Stripe al comenzar',
+    /SecondProjectHeaderAction/.test(miProyecto) && /Comenzar segundo proyecto/.test(miProyecto) && /Tu segundo proyecto está listo para continuar/.test(miProyecto));
+ok('con el primero pagado el asistente dice «pago complementario»; sin pagar, el saldo total', /registration\.firstPaid\s*\?/.test(miProyecto) && /saldoTrasAgregar/.test(miProyecto));
+// El saldo según los pagos confirmados: 350.000 menos lo pagado.
+eq('primero pagado → saldo 100.000', registrationBreakdown(primeroPagado, rules).pendingTotal, 100000);
+eq('ninguno pagado → saldo 350.000', registrationBreakdown(dos, rules).pendingTotal, 350000);
+eq('los dos pagados → saldo 0', registrationBreakdown([row({ id: 'p1', status: 'paid', amountCop: 250000 }), row({ id: 'p2', projectIndex: 2, status: 'paid', amountCop: 100000 })], rules).pendingTotal, 0);
+
 // ════════════════════════════════════════════════════════════════════
 console.log(`\n${fail ? '❌' : '✅'} test:fair:registration — ${pass} pasaron, ${fail} fallaron.\n`);
 process.exit(fail ? 1 : 0);

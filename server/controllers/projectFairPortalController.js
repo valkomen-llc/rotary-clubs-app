@@ -42,6 +42,7 @@ import {
     saveForm as saveProjectForm, submitForm as submitProjectForm,
 } from './projectFormsController.js';
 
+console.log('[projectFairPortalController] v4.1301.0 cargado — «+ Postular segundo proyecto» desde el encabezado del perfil con su acción resuelta (postular, continuar, completar inscripción, dos proyectos ya registrados); el segundo proyecto creado desde acá queda marcado como ampliación posterior.');
 console.log('[projectFairPortalController] v4.1299.0 cargado — El perfil muestra la INSCRIPCIÓN del club: sus proyectos (uno o dos), un token por proyecto para gestionarlos por separado, el desglose y el pago único; agregar un segundo proyecto (también con el primero ya pagado: cobro complementario), quitarlo antes de pagar y restaurarlo.');
 console.log('[projectFairPortalController] v4.1253.0 cargado — El perfil del club muestra la postulación y el pago POR SEPARADO: un borrador se termina y se envía desde acá, y la inscripción se paga cuando el club quiera, sin que eso condicione su postulación.');
 console.log('[projectFairPortalController] v4.978.0 cargado — Panel del club: varios formularios por proyecto; el puente con la plataforma sólo retira la sesión del panel si es del mismo correo; el pago pendiente se completa o se reintenta desde acá');
@@ -846,11 +847,43 @@ const registrationViewOf = (submission, siblings, cfg, account, req) => {
                 projects: cubiertos.map(p => ({ id: p.id, publicRef: p.publicRef || null, projectName: p.projectName, projectIndex: p.projectIndex, indexLabel: projectIndexLabel(p.projectIndex) })),
             };
         });
+    // v4.1301 — LA ACCIÓN DEL BOTÓN «+ Postular segundo proyecto», resuelta
+    // acá para que la pantalla no vuelva a decidir: según exista o no un
+    // segundo proyecto y en qué esté (borrador → continuar; postulado sin
+    // pagar → completar la inscripción; pagado o tope → nada que crear).
+    const primero = activeProjects(siblings)[0] || null;
+    const adicional = activeProjects(siblings).find(r => projectIndexOf(r) >= 2) || null;
+    let action;
+    if (adicional) {
+        if (!isApplied(adicional)) action = { key: 'continue', label: 'Continuar segundo proyecto', projectId: adicional.id };
+        else if (owesRegistration(adicional)) action = { key: 'pay', label: 'Completar inscripción del segundo proyecto', projectId: adicional.id };
+        else action = { key: 'complete', label: 'Tu club ya tiene dos proyectos registrados', projectId: adicional.id };
+    } else if (verdict.ok && verdict.code === 'restorable') {
+        action = { key: 'restore', label: 'Restaurar el segundo proyecto', projectId: verdict.restoreId };
+    } else if (verdict.ok) {
+        action = { key: 'add', label: 'Postular segundo proyecto', projectId: null };
+    } else {
+        action = { key: 'none', label: null, projectId: null, reason: verdict.reason, code: verdict.code };
+    }
+    const firstPaid = !!primero && String(primero.status) === 'paid';
     return {
         id: submission.registrationId || null,
         modality: breakdown.modality,
         count: breakdown.count,
         maxProjects: rules.maxProjects,
+        // Los datos del club que se reutilizan en el segundo proyecto.
+        club: {
+            clubName: primero?.clubName || submission.clubName,
+            district: primero?.district || submission.district,
+            responsible: [primero?.firstName || submission.firstName, primero?.lastName || submission.lastName].filter(Boolean).join(' '),
+            email: primero?.email || submission.email,
+        },
+        primary: primero ? { id: primero.id, publicRef: primero.publicRef, projectName: primero.projectName, ...applicationViewOf(primero), paid: firstPaid } : null,
+        action,
+        // El SALDO: lo que falta pagar de toda la inscripción (350.000 menos
+        // lo ya confirmado). Con el primero pagado y el segundo nuevo: 100.000.
+        balance: breakdown.pendingTotal,
+        firstPaid,
         currency: breakdown.currency,
         lines: breakdown.lines,
         total: breakdown.total,
@@ -917,6 +950,8 @@ export const addProject = async (req, res) => {
                 cfg, eventId: own.eventId || null, data: primary,
                 project: Object.fromEntries([...PROJECT_FIELDS, 'focusAreaLabel'].map(k => [k, data[k]])),
                 registrationId: own.registrationId || null, projectIndex: verdict.nextIndex || 2, draft, trm, req,
+                // v4.1301 — Es una AMPLIACIÓN posterior, no el registro inicial.
+                addedVia: 'portal_extension',
             });
         } catch (err) {
             // El índice único (inscripción, posición) ganó la carrera por él.
@@ -924,7 +959,9 @@ export const addProject = async (req, res) => {
             throw err;
         }
         if (own.registrationId) {
-            await db.query(`UPDATE "ProjectFairRegistration" SET modality = $2, "updatedAt" = NOW() WHERE id = $1`, [own.registrationId, modalityOf(activeProjects([...siblings, created]).length)]).catch(() => {});
+            await db.query(`UPDATE "ProjectFairRegistration" SET modality = $2, metadata = COALESCE(metadata, '{}'::jsonb) || $3::jsonb, "updatedAt" = NOW() WHERE id = $1`,
+                [own.registrationId, modalityOf(activeProjects([...siblings, created]).length),
+                    JSON.stringify({ extendedAt: new Date().toISOString(), extendedWith: created.id })]).catch(() => {});
         }
         await logEvent(created.id, draft ? {
             type: 'draft_saved', title: 'Borrador guardado',

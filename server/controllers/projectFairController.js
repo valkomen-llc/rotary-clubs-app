@@ -60,6 +60,7 @@ import {
     secondProjectVerdict, activeProjects,
 } from '../lib/projectFairRegistration.js';
 
+console.log('[projectFairController] v4.1301.0 cargado — Ampliación desde «Mi proyecto»: cada proyecto guarda por dónde entró (registro inicial o ampliación posterior), el cobro de sólo el segundo proyecto se nombra «Inscripción adicional» en Stripe y en el comprobante.');
 console.log('[projectFairController] v4.1299.0 cargado — Hasta DOS proyectos por club en UNA inscripción (ProjectFairRegistration): primer proyecto a la tarifa de inscripción, segundo con tarifa especial, un solo pago que cubre lo que el club debe; con el primero ya pagado, el segundo se agrega con un cobro complementario. Lo heredado se migra a inscripciones de un proyecto.');
 console.log('[projectFairController] v4.1256.0 cargado — FDD, paso «Solicitud del FDD»: sin «Justificación de la solicitud».');
 console.log('[projectFairController] v4.1255.0 cargado — FDD, paso «Aportes esperados»: sin «distritos del exterior», aportes del club y del exterior opcionales, y el FAP con contacto por WhatsApp a la presidenta del evento.');
@@ -2223,7 +2224,7 @@ export const linePricing = (cfg, trm, projectIndex = 1) => {
 };
 
 /** Inserta UNA fila de proyecto dentro de una inscripción. */
-export const insertProjectRow = async ({ cfg, eventId, data, project, registrationId, projectIndex, draft, trm, req }) => {
+export const insertProjectRow = async ({ cfg, eventId, data, project, registrationId, projectIndex, draft, trm, req, addedVia = 'wizard' }) => {
     const pricing = linePricing(cfg, trm, projectIndex);
     const { rows } = await db.query(`
         INSERT INTO "ProjectFairSubmission"
@@ -2257,6 +2258,10 @@ export const insertProjectRow = async ({ cfg, eventId, data, project, registrati
             // Marca de nacimiento: la migración de v4.1253 usa esto para no
             // confundir un borrador real con un «Borrador» puesto a mano.
             createdAs: draft ? 'draft' : 'application',
+            // v4.1301 — Por dónde entró este proyecto a la inscripción:
+            // 'wizard' (registro inicial) o 'portal_extension' (AMPLIACIÓN
+            // posterior desde «Mi proyecto»). El panel distingue las dos.
+            addedVia,
             // El sitio desde el que postuló: los correos (confirmación,
             // recordatorios) enlazan a SU perfil en ese dominio, también
             // cuando los manda el comité desde el panel de la plataforma.
@@ -2766,7 +2771,12 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
     // `chargeUsd`; si no pudiera repartirlo devuelve `null` y se cobra en una
     // sola línea nombrando el recargo en la descripción — antes que enseñar un
     // desglose que no cuadra con lo que se cobra.
-    const concepto = `${cfg.registration?.concept || 'Inscripción de proyecto'} — ${edition}`;
+    // v4.1301 — Un cobro que cubre SÓLO un segundo proyecto es la AMPLIACIÓN
+    // de la inscripción, y Stripe y el comprobante lo nombran así.
+    const soloAmpliacion = order.lines.length === 1 && Number(order.lines[0].projectIndex) >= 2;
+    const concepto = soloAmpliacion
+        ? `Inscripción adicional — Segundo proyecto — ${edition}`
+        : `${cfg.registration?.concept || 'Inscripción de proyecto'} — ${edition}`;
     const cargos = buildChargeLines(surcharge, {
         chargedAmount: chargeAmount, currency: chargeCurrency, baseLabel: concepto,
     });
@@ -3731,6 +3741,8 @@ export const buildReceiptHtml = (s, cfg) => {
         : [];
     const totalCop = cubiertos.reduce((a, p) => a + (Number(p.amountCop) || 0), 0);
     const totalUsd = cubiertos.reduce((a, p) => a + (Number(p.amountUsd) || 0), 0);
+    // v4.1301 — El comprobante del cobro COMPLEMENTARIO (sólo el segundo proyecto).
+    const esAmpliacion = cubiertos.length <= 1 && projectIndexOf(s) >= 2;
     const edition = cfg.edition?.name || 'Feria de Proyectos Rotary Colombia';
     const city = cfg.edition?.city || '';
     const paidAt = s.paidAt ? new Date(s.paidAt).toLocaleString('es-CO', { dateStyle: 'long', timeStyle: 'short', timeZone: 'America/Bogota' }) : '';
@@ -3741,7 +3753,7 @@ export const buildReceiptHtml = (s, cfg) => {
   <div style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.06)">
     <div style="background:${primary};color:#fff;padding:34px 32px;text-align:center">
       ${headerLogoHtml(cfg)}
-      <div style="font-size:12px;letter-spacing:.18em;text-transform:uppercase;opacity:.8;margin-bottom:8px">Comprobante de inscripción</div>
+      <div style="font-size:12px;letter-spacing:.18em;text-transform:uppercase;opacity:.8;margin-bottom:8px">${esAmpliacion ? 'Comprobante de inscripción adicional · segundo proyecto' : 'Comprobante de inscripción'}</div>
       <h1 style="margin:0;font-size:24px;font-weight:700;color:#fff">${esc(edition)}</h1>
       ${city ? `<div style="margin-top:6px;font-size:14px;opacity:.85">${esc(city)}, ${esc(cfg.edition?.country || 'Colombia')}</div>` : ''}
     </div>
@@ -3766,7 +3778,7 @@ export const buildReceiptHtml = (s, cfg) => {
         : `${row('Área de enfoque', esc(s.focusAreaLabel || s.focusArea))}${row('Presupuesto del proyecto', fmtUsd(s.budgetUsd))}`}
         ${cubiertos.length > 1
         ? (totalCop > 0 ? row('Valor de inscripción (total)', fmtCop(totalCop)) : totalUsd > 0 ? row('Valor de inscripción (total)', fmtUsd(totalUsd)) : '')
-        : (s.amountCop ? row('Valor de inscripción', fmtCop(s.amountCop)) : '')}
+        : (s.amountCop ? row(esAmpliacion ? 'Inscripción adicional — Segundo proyecto' : 'Valor de inscripción', fmtCop(s.amountCop)) : '')}
         ${s.trmRate ? row('TRM aplicada', `${Number(s.trmRate).toLocaleString('es-CO', { maximumFractionDigits: 2 })} COP/USD${s.trmDate ? ` · ${esc(s.trmDate)}` : ''}`) : ''}
         ${s.amountUsd ? row(s.amountCop ? 'Valor cobrado' : 'Valor de inscripción', fmtUsd(s.amountUsd)) : ''}
         ${paidAt ? row('Fecha del pago', esc(paidAt)) : ''}

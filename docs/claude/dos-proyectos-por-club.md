@@ -171,3 +171,41 @@ desapareció y debajo va «Puedes comenzar ahora y pagar después…» (sin prec
   información está guardada… cuando estés listo, completar el pago para
   confirmar tu inscripción». Sigue diciendo que la postulación permanece
   registrada (lo fija `test:fair:payment`).
+
+### La ampliación desde «Mi proyecto» (v4.1301)
+
+Pedido del comité: que un club que ya postuló un proyecto agregue el segundo
+desde su perfil, sin registrarse de nuevo ni volver a pagar el primero, con un
+pago complementario de $100.000 y comprobante propio, y que el panel distinga
+esa AMPLIACIÓN de la inscripción inicial de dos proyectos.
+
+- **El botón vive en el encabezado** (`SecondProjectHeaderAction`) y su estado
+  lo resuelve el servidor (`registration.action`): `add` → abre el asistente;
+  `continue` → cambia al token del borrador (lo termina el `DraftEditor` de
+  siempre); `pay` → `handlePay` (la orden ya cubre el segundo); `restore`;
+  `complete` → «Tu club ya tiene dos proyectos registrados», sin botón. La
+  pantalla no decide.
+- **El asistente (`SecondProjectView`) tiene tres momentos**: presentación con
+  club, distrito, responsable y correo precargados (`registration.club`), el
+  Proyecto 1 con su estado (`registration.primary`), la tarifa y el saldo real
+  (`registration.balance` + tarifa: primero pagado → 100.000; sin pagar →
+  350.000); la ficha (los MISMOS cuatro campos de la postulación, por
+  `POST /portal/projects`); y «listo para continuar» con guardar y salir,
+  revisar (cambia al token del nuevo proyecto) y completar pago. **No manda a
+  Stripe al comenzar.**
+- **`metadata.addedVia`** en la fila del proyecto: `'wizard'` (registro
+  inicial) o `'portal_extension'` (ampliación). La inscripción guarda
+  `extendedAt`. Es lo que el panel usa para «Inscripción inicial de dos
+  proyectos» vs «Ampliación posterior», el filtro `?origen=`, los indicadores
+  `extensions*` / `collectedExtensions` y la columna «Origen» del CSV.
+- **El cobro de SÓLO el segundo proyecto se nombra «Inscripción adicional —
+  Segundo proyecto — <edición>»** en Stripe (`soloAmpliacion` en
+  `beginCheckout`) y en el comprobante. Sigue siendo la misma orden del
+  criterio: no hay un camino de cobro aparte.
+- **La ficha administrativa resume la inscripción** (`registrationSummary` en
+  `getSubmission`): modalidad, origen, fecha del segundo, líneas, total pagado,
+  saldo, y la lista de pagos con `kind: 'original' | 'complementary'` y qué
+  proyectos cubrió cada uno.
+- Los duplicados los impide lo de siempre: índice único `(registrationId,
+  projectIndex)` (el 23505 responde 409) y `secondProjectVerdict` en cada
+  petición; un tercer proyecto no entra ni por la API.

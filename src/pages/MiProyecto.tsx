@@ -115,6 +115,12 @@ interface RegistrationState {
     total: number; paidTotal: number; pendingTotal: number;
     projects: RegistrationProject[];
     paidOrders: PaidOrder[];
+    /** v4.1301 — Lo que se reutiliza en el segundo proyecto y la acción del botón del encabezado, resuelta por el servidor. */
+    club?: { clubName: string; district: string; responsible: string; email: string };
+    primary?: ({ id: string; publicRef: string; projectName: string; paid: boolean } & Partial<RegistrationProject>) | null;
+    action?: { key: 'add' | 'continue' | 'pay' | 'complete' | 'restore' | 'none'; label: string | null; projectId: string | null; reason?: string | null; code?: string | null };
+    balance?: number;
+    firstPaid?: boolean;
     secondProject: {
         enabled: boolean; amount: number; firstAmount: number; bundleTotal: number; deadline: string | null;
         canAdd: boolean; canRestore: boolean; restoreId: string | null; code: string | null; reason: string | null;
@@ -239,6 +245,16 @@ const MiProyecto = () => {
         return a === 'edit' || a === 'replace' ? a : null;
     });
     const [pvRefresh, setPvRefresh] = useState(0);
+    // v4.1301 — El asistente «Postula un segundo proyecto de tu club», a
+    // pantalla completa y en la URL (?segundoProyecto=1), como los demás.
+    const [openSecondProject, setOpenSecondProject] = useState<boolean>(() => new URLSearchParams(window.location.search).get('segundoProyecto') === '1');
+    const openSecondProjectView = (open: boolean) => {
+        setOpenSecondProject(open);
+        const url = new URL(window.location.href);
+        if (open) url.searchParams.set('segundoProyecto', '1'); else url.searchParams.delete('segundoProyecto');
+        window.history.pushState(null, '', url.toString());
+        if (open) window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
     const openProjectVideoView = (open: boolean, action: 'edit' | 'replace' | null = null) => {
         setOpenProjectVideo(open);
         setPvAction(open ? action : null);
@@ -390,9 +406,9 @@ const MiProyecto = () => {
     // token de ese proyecto.
     const switchProject = useCallback((p: RegistrationProject) => {
         if (!p.token || p.current) return;
-        setOpenForm(null); setOpenVideoPitch(false); setOpenProjectVideo(false);
+        setOpenForm(null); setOpenVideoPitch(false); setOpenProjectVideo(false); setOpenSecondProject(false);
         const url = new URL(window.location.href);
-        ['form', 'videoPitch', 'vp_action', 'projectVideo', 'pv_action'].forEach(k => url.searchParams.delete(k));
+        ['form', 'videoPitch', 'vp_action', 'projectVideo', 'pv_action', 'segundoProyecto'].forEach(k => url.searchParams.delete(k));
         window.history.replaceState(null, '', url.toString());
         setProjectToken(p.token);
     }, []);
@@ -447,6 +463,7 @@ const MiProyecto = () => {
             setOpenForm(params.get('form'));
             setOpenVideoPitch(params.get('videoPitch') === '1');
             setOpenProjectVideo(params.get('projectVideo') === '1');
+            setOpenSecondProject(params.get('segundoProyecto') === '1');
         };
         window.addEventListener('popstate', onPop);
         return () => window.removeEventListener('popstate', onPop);
@@ -566,10 +583,42 @@ const MiProyecto = () => {
                 {regProjects.length > 1 && (
                     <ProjectSwitcher projects={regProjects} onSwitch={switchProject} />
                 )}
+
+                {/* ── v4.1301 — «+ POSTULAR SEGUNDO PROYECTO» ───────────────
+                    La acción destacada del encabezado, con su estado resuelto
+                    por el servidor: postular, continuar el borrador, completar
+                    la inscripción o «ya tiene dos». Sin precio acá: la tarifa
+                    se explica al abrir el asistente. */}
+                {reg?.action && reg.action.key !== 'none' && !openSecondProject && (
+                    <SecondProjectHeaderAction
+                        action={reg.action}
+                        editionName={data.event?.title || data.edition?.name || 'XII Feria de Proyectos Rotary Colombia – Valledupar 2027'}
+                        onAct={() => {
+                            const a = reg.action!;
+                            if (a.key === 'add') { openSecondProjectView(true); return; }
+                            if (a.key === 'restore' && a.projectId) { registrationAction(`/${a.projectId}/restore`, {}, 'Restauramos tu segundo proyecto: vuelve a hacer parte de tu inscripción.').catch(() => {}); return; }
+                            const target = reg.projects.find(p => p.id === a.projectId);
+                            if (a.key === 'continue' && target) { if (!target.current) switchProject(target); else window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+                            if (a.key === 'pay') { handlePay(); return; }
+                            if (a.key === 'complete' && target && !target.current) switchProject(target);
+                        }}
+                    />
+                )}
             </header>
 
             <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-                {openProjectVideo ? (
+                {openSecondProject && reg ? (
+                    <SecondProjectView
+                        registration={reg}
+                        focusAreas={data.focusAreas || []}
+                        onBack={() => openSecondProjectView(false)}
+                        onAdd={(body) => registrationAction('', body, body.mode === 'draft'
+                            ? 'Guardamos el borrador de tu segundo proyecto.'
+                            : 'Tu segundo proyecto quedó postulado.')}
+                        onReview={(id) => { openSecondProjectView(false); const t = reg.projects.find(p => p.id === id); if (t && !t.current) switchProject(t); }}
+                        onPay={() => { openSecondProjectView(false); handlePay(); }}
+                    />
+                ) : openProjectVideo ? (
                     <ProjectVideoView
                         key={`${data.submission.id}-${pvAction || 'open'}`}
                         token={tokenActivo}
@@ -690,12 +739,8 @@ const MiProyecto = () => {
                             quitarlo antes de pagar o restaurarlo. El veredicto
                             llega resuelto del servidor. */}
                         {reg ? (
-                            <SecondProjectCard
+                            <SecondProjectStatusBar
                                 registration={reg}
-                                focusAreas={data.focusAreas || []}
-                                onAdd={(body) => registrationAction('', body, body.mode === 'draft'
-                                    ? 'Guardamos el borrador de tu segundo proyecto. Puedes terminarlo y enviarlo desde su pestaña.'
-                                    : '¡Tu segundo proyecto quedó postulado! Su inscripción se suma a tu pago pendiente con la tarifa especial.')}
                                 onWithdraw={(id) => registrationAction(`/${id}/withdraw`, {}, 'Quitamos el segundo proyecto de tu inscripción. Su información se conserva por si decides restaurarlo.')}
                                 onRestore={(id) => registrationAction(`/${id}/restore`, {}, 'Restauramos tu segundo proyecto: vuelve a hacer parte de tu inscripción.')}
                                 onSwitch={switchProject}
@@ -999,37 +1044,237 @@ const ProjectSwitcher = ({ projects, onSwitch }: { projects: RegistrationProject
 );
 
 /**
- * El segundo proyecto de la inscripción (v4.1299): agregarlo, quitarlo antes
- * de pagar o restaurarlo. Con uno solo y la convocatoria abierta, ofrece
- * agregarlo con la tarifa especial y el total resultante; con dos, permite
- * quitar el adicional mientras no esté pagado.
+ * «+ Postular segundo proyecto» (v4.1301): la acción destacada del encabezado
+ * de «Mi proyecto». El estado lo resuelve el servidor (`registration.action`):
+ * postular, continuar el borrador, completar la inscripción, restaurar, o
+ * «ya tiene dos». Sin precio acá: la tarifa se explica en el asistente.
  */
-const SecondProjectCard = ({ registration, focusAreas, onAdd, onWithdraw, onRestore, onSwitch }: {
-    registration: RegistrationState; focusAreas: { key: string; label: string }[];
-    onAdd: (body: any) => Promise<any>; onWithdraw: (id: string) => Promise<any>; onRestore: (id: string) => Promise<any>;
-    onSwitch: (p: RegistrationProject) => void;
+const SecondProjectHeaderAction = ({ action, editionName, onAct }: {
+    action: NonNullable<RegistrationState['action']>; editionName: string; onAct: () => void;
 }) => {
-    const [open, setOpen] = useState(false);
+    const texto: Record<string, string> = {
+        add: `Tu club puede presentar una segunda iniciativa en la ${editionName}.`,
+        restore: 'Quitaste tu segundo proyecto; su información sigue guardada y puedes restaurarlo.',
+        continue: 'Tu segundo proyecto está en borrador: puedes terminarlo cuando quieras.',
+        pay: 'Tu segundo proyecto está postulado. Completa el pago para confirmar su inscripción.',
+        complete: 'Tu club ya tiene dos proyectos registrados en esta convocatoria.',
+    };
+    const esFinal = action.key === 'complete';
+    return (
+        <div className="mx-auto mt-5 flex max-w-5xl flex-wrap items-center justify-between gap-3 rounded-xl border border-white/25 bg-white/10 px-4 py-3">
+            <p className="flex items-center gap-2 text-sm text-white/90">
+                {esFinal ? <CheckCircle2 size={16} className="shrink-0 text-emerald-300" /> : <PlusCircle size={16} className="shrink-0 text-white/80" />}
+                {texto[action.key] || ''}
+            </p>
+            {!esFinal && action.label && (
+                <button type="button" onClick={onAct}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-white px-4 py-2 text-sm font-bold shadow-sm hover:bg-slate-50" style={{ color: BLUE }}>
+                    {action.key === 'add' ? <PlusCircle size={15} /> : action.key === 'restore' ? <RotateCcw size={15} /> : <ArrowRight size={15} />} {action.label}
+                </button>
+            )}
+        </div>
+    );
+};
+
+/**
+ * El asistente «Postula un segundo proyecto de tu club» (v4.1301). Tres
+ * momentos: la presentación con los datos del club precargados y la tarifa;
+ * la ficha del segundo proyecto (los MISMOS campos de la postulación: la
+ * identidad no se vuelve a pedir); y «listo para continuar» con guardar y
+ * salir, revisar o completar el pago. No manda a Stripe al comenzar.
+ */
+const SecondProjectView = ({ registration, focusAreas, onBack, onAdd, onReview, onPay }: {
+    registration: RegistrationState; focusAreas: { key: string; label: string }[];
+    onBack: () => void; onAdd: (body: any) => Promise<any>; onReview: (projectId: string) => void; onPay: () => void;
+}) => {
+    const [stage, setStage] = useState<'intro' | 'form' | 'done'>('intro');
     const [fields, setFields] = useState({ projectName: '', projectDescription: '', focusArea: '', budgetUsd: '' });
     const [errors, setErrors] = useState<Record<string, string>>({});
-    const [busy, setBusy] = useState<'apply' | 'draft' | 'withdraw' | 'restore' | null>(null);
+    const [busy, setBusy] = useState<'apply' | 'draft' | null>(null);
+    const [created, setCreated] = useState<{ id: string; publicRef: string; projectName: string; applied: boolean } | null>(null);
     const sp = registration.secondProject;
-    const activos = registration.projects.filter(p => p.active);
-    const adicional = activos.find(p => p.projectIndex >= 2) || null;
+    const club = registration.club;
+    const primero = registration.primary;
+    const moneda = registration.currency;
     const set = (k: keyof typeof fields) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
         setFields(prev => ({ ...prev, [k]: e.target.value }));
     const err = (k: string) => errors[k] ? <p className="mt-1 text-xs font-semibold text-red-600">{errors[k]}</p> : null;
+    const llenos = ['projectName', 'projectDescription', 'focusArea', 'budgetUsd'].filter(k => String((fields as any)[k] || '').trim()).length;
 
-    const add = async (mode: 'apply' | 'draft') => {
+    const enviar = async (mode: 'apply' | 'draft') => {
         if (busy) return;
         setBusy(mode); setErrors({});
         try {
             const resp = await onAdd({ ...fields, budgetUsd: fields.budgetUsd.replace(/[^\d.]/g, ''), mode });
-            if (resp) { setOpen(false); setFields({ projectName: '', projectDescription: '', focusArea: '', budgetUsd: '' }); }
+            if (resp?.project) {
+                setCreated({ id: resp.project.id, publicRef: resp.project.publicRef, projectName: resp.project.projectName, applied: !!resp.project.applied });
+                setStage('done');
+            }
         } catch (e: any) {
             if (e?.fields) setErrors(e.fields);
         } finally { setBusy(null); }
     };
+
+    // Lo que faltará pagar: con el primero pagado, sólo la tarifa adicional;
+    // sin pagar, el total de los dos. Lo calcula el servidor (`balance`).
+    const saldoTrasAgregar = (registration.balance || 0) + sp.amount;
+
+    return (
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 sm:p-8">
+            <button type="button" onClick={onBack} className="mb-4 inline-flex items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-slate-800">
+                <ArrowRight size={14} className="rotate-180" /> Volver a mi perfil
+            </button>
+
+            {stage === 'intro' && (
+                <>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Ampliación de la inscripción</p>
+                    <h2 className="mt-1 text-2xl font-bold text-slate-900">Postula un segundo proyecto de tu club</h2>
+                    <p className="mt-2 max-w-2xl text-[15px] leading-relaxed text-slate-600">
+                        Tu club ya cuenta con un proyecto registrado. Ahora puedes presentar una segunda iniciativa para ampliar su participación en la feria.
+                    </p>
+                    <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                        <div className="rounded-xl border border-slate-200 p-4">
+                            <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-400">Datos de tu inscripción (se reutilizan)</p>
+                            <dl className="space-y-1.5 text-sm">
+                                <div className="flex justify-between gap-3"><dt className="text-slate-500">Club rotario</dt><dd className="text-right font-semibold text-slate-800">{club?.clubName}</dd></div>
+                                <div className="flex justify-between gap-3"><dt className="text-slate-500">Distrito</dt><dd className="text-right font-semibold text-slate-800">{club?.district}</dd></div>
+                                <div className="flex justify-between gap-3"><dt className="text-slate-500">Responsable</dt><dd className="text-right font-semibold text-slate-800">{club?.responsible}</dd></div>
+                                <div className="flex justify-between gap-3"><dt className="text-slate-500">Correo</dt><dd className="text-right font-semibold text-slate-800">{club?.email}</dd></div>
+                            </dl>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 p-4">
+                            <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-400">Tus proyectos</p>
+                            <div className="space-y-2 text-sm">
+                                <div className="rounded-lg bg-slate-50 px-3 py-2">
+                                    <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Proyecto 1 · {primero?.publicRef}</p>
+                                    <p className="font-semibold text-slate-800">{primero?.projectName}</p>
+                                    <p className="text-xs text-slate-500">{primero?.projectStateLabel} · Pago {primero?.paid ? 'confirmado' : 'pendiente'}</p>
+                                </div>
+                                <div className="rounded-lg border border-dashed px-3 py-2" style={{ borderColor: `${BLUE}55` }}>
+                                    <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: BLUE }}>Proyecto 2 · nuevo</p>
+                                    <p className="font-semibold text-slate-800">Ficha independiente: nombre, descripción, área, presupuesto, formularios y documentos propios.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="mt-4 rounded-xl px-4 py-3 text-sm" style={{ background: `${BLUE}0f` }}>
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Inscripción adicional</p>
+                        <p className="text-xl font-extrabold" style={{ color: BLUE }}>{fmtMoney(sp.amount, moneda)}</p>
+                        <p className="mt-1 text-slate-600">
+                            {registration.firstPaid
+                                ? 'Como la inscripción de tu primer proyecto ya está pagada, el segundo se confirma con un pago complementario por este valor. Tu transacción anterior no se modifica.'
+                                : <>La inscripción de tu primer proyecto todavía está pendiente: el saldo de la inscripción con los dos proyectos será de <strong>{fmtMoney(saldoTrasAgregar, moneda)}</strong> en un solo pago.</>}
+                            {' '}El pago se realiza al final, cuando tu segundo proyecto esté listo.
+                        </p>
+                    </div>
+                    <div className="mt-6 flex flex-wrap justify-end gap-3">
+                        <button type="button" onClick={onBack} className="rounded-xl px-4 py-3 text-[15px] font-semibold text-slate-500 hover:text-slate-800">Ahora no</button>
+                        <button type="button" onClick={() => setStage('form')} className="inline-flex items-center gap-2 rounded-xl px-6 py-3 text-[15px] font-bold text-white" style={{ backgroundColor: BLUE }}>
+                            Comenzar segundo proyecto <ArrowRight size={16} />
+                        </button>
+                    </div>
+                </>
+            )}
+
+            {stage === 'form' && (
+                <>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h2 className="text-xl font-bold text-slate-900">Proyecto 2 — Inscripción adicional</h2>
+                        <span className="text-xs font-bold text-slate-500">{Math.round((llenos / 4) * 100)}% de la ficha</span>
+                    </div>
+                    <p className="mt-1 text-sm text-slate-500">{club?.clubName} · {club?.district} · Responsable: {club?.responsible}</p>
+                    <div className="mt-4 grid gap-4">
+                        <label className="block text-sm font-semibold text-slate-700">Nombre del proyecto
+                            <input className={`${inputCls(false, !!errors.projectName)} mt-1 w-full`} value={fields.projectName} onChange={set('projectName')} maxLength={250} />
+                            {err('projectName')}
+                        </label>
+                        <label className="block text-sm font-semibold text-slate-700">Descripción del proyecto
+                            <textarea className={`${inputCls(false, !!errors.projectDescription)} mt-1 min-h-[140px] w-full`} value={fields.projectDescription} onChange={set('projectDescription')} maxLength={8000}
+                                placeholder="Describe el problema que atiende, la comunidad beneficiada, los objetivos, las actividades principales y el impacto esperado." />
+                            <span className="mt-1 block text-xs font-normal text-slate-400">Mínimo 40 caracteres para postularlo ({fields.projectDescription.trim().length}).</span>
+                            {err('projectDescription')}
+                        </label>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <label className="block text-sm font-semibold text-slate-700">Área de enfoque
+                                <select className={`${inputCls(false, !!errors.focusArea)} mt-1 w-full`} value={fields.focusArea} onChange={set('focusArea')}>
+                                    <option value="">Selecciona…</option>
+                                    {focusAreas.map(a => <option key={a.key} value={a.key}>{a.label}</option>)}
+                                </select>
+                                {err('focusArea')}
+                            </label>
+                            <label className="block text-sm font-semibold text-slate-700">Presupuesto total (USD)
+                                <input className={`${inputCls(false, !!errors.budgetUsd)} mt-1 w-full`} inputMode="decimal" value={fields.budgetUsd} onChange={set('budgetUsd')} />
+                                {err('budgetUsd')}
+                            </label>
+                        </div>
+                        <p className="text-xs text-slate-500">
+                            Los formularios (Formulación, FDD), los documentos, la plantilla y los videos de este proyecto se gestionan después desde su propia pestaña, separados del primero. Puedes guardar como borrador y volver cuando quieras.
+                        </p>
+                    </div>
+                    <div className="mt-6 flex flex-wrap justify-end gap-3">
+                        <button type="button" onClick={() => setStage('intro')} disabled={!!busy} className="rounded-xl px-4 py-3 text-[15px] font-semibold text-slate-500 hover:text-slate-800">Atrás</button>
+                        <button type="button" onClick={() => enviar('draft')} disabled={!!busy} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 px-5 py-3 text-[15px] font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">
+                            {busy === 'draft' ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Guardar como borrador
+                        </button>
+                        <button type="button" onClick={() => enviar('apply')} disabled={!!busy} className="inline-flex items-center gap-1.5 rounded-xl px-6 py-3 text-[15px] font-bold text-white disabled:opacity-60" style={{ backgroundColor: BLUE }}>
+                            {busy === 'apply' ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} Postular segundo proyecto
+                        </button>
+                    </div>
+                </>
+            )}
+
+            {stage === 'done' && created && (
+                <div className="text-center">
+                    <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50">
+                        <CheckCircle2 size={32} className="text-emerald-600" />
+                    </div>
+                    <h2 className="text-2xl font-bold text-slate-900">Tu segundo proyecto está listo para continuar</h2>
+                    <p className="mx-auto mt-2 max-w-xl text-[15px] leading-relaxed text-slate-600">
+                        Tu información ha quedado guardada{created.applied ? ' y el proyecto está postulado' : ' como borrador'}. Puedes completar el pago adicional para confirmar su inscripción, o hacerlo más adelante: nada se pierde.
+                    </p>
+                    <div className="mx-auto mt-5 max-w-sm rounded-xl px-5 py-3" style={{ background: `${BLUE}0f` }}>
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Proyecto 2 · código</p>
+                        <p className="text-2xl font-extrabold tracking-wider" style={{ color: BLUE }}>{created.publicRef}</p>
+                        <p className="text-sm font-semibold text-slate-700">{created.projectName}</p>
+                    </div>
+                    <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                        <button type="button" onClick={onBack} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 text-[15px] font-semibold text-slate-700 hover:bg-slate-50">
+                            <Save size={16} /> Guardar y salir
+                        </button>
+                        <button type="button" onClick={() => onReview(created.id)} className="inline-flex items-center justify-center gap-2 rounded-xl border-2 px-4 py-3 text-[15px] font-bold hover:bg-slate-50" style={{ borderColor: BLUE, color: BLUE }}>
+                            <FileText size={16} /> Revisar proyecto
+                        </button>
+                        {created.applied ? (
+                            <button type="button" onClick={onPay} className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-[15px] font-bold text-white" style={{ backgroundColor: BLUE }}>
+                                <Wallet size={16} /> Completar pago
+                            </button>
+                        ) : (
+                            <button type="button" onClick={() => onReview(created.id)} className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-[15px] font-bold text-white" style={{ backgroundColor: BLUE }}>
+                                <Send size={16} /> Terminar y postular
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
+        </section>
+    );
+};
+
+/**
+ * Quitar o restaurar el segundo proyecto (v4.1299): quitarlo sólo antes de
+ * pagarlo (su información se conserva) y restaurarlo mientras la convocatoria
+ * lo permita. Agregarlo vive ahora en el asistente del encabezado (v4.1301).
+ */
+const SecondProjectStatusBar = ({ registration, onWithdraw, onRestore, onSwitch }: {
+    registration: RegistrationState;
+    onWithdraw: (id: string) => Promise<any>; onRestore: (id: string) => Promise<any>;
+    onSwitch: (p: RegistrationProject) => void;
+}) => {
+    const [busy, setBusy] = useState<'withdraw' | 'restore' | null>(null);
+    const sp = registration.secondProject;
+    const activos = registration.projects.filter(p => p.active);
+    const adicional = activos.find(p => p.projectIndex >= 2) || null;
+
     const quitar = async () => {
         if (!adicional || busy) return;
         const ok = window.confirm(`Vas a quitar «${adicional.projectName}» de tu inscripción. Su información se conserva y podrás restaurarlo mientras la convocatoria lo permita. El total de tu inscripción vuelve a ${fmtMoney(sp.firstAmount, registration.currency)}. ¿Continuar?`);
@@ -1043,7 +1288,6 @@ const SecondProjectCard = ({ registration, focusAreas, onAdd, onWithdraw, onRest
         try { await onRestore(sp.restoreId); } catch { /* el aviso ya se mostró */ } finally { setBusy(null); }
     };
 
-    // Con dos proyectos activos: la opción de quitar el adicional, si procede.
     if (adicional) {
         if (!adicional.removable) return null;
         return (
@@ -1064,7 +1308,6 @@ const SecondProjectCard = ({ registration, focusAreas, onAdd, onWithdraw, onRest
             </section>
         );
     }
-
     if (sp.canRestore && sp.restoreId) {
         return (
             <section className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50/60 px-5 py-4">
@@ -1077,77 +1320,10 @@ const SecondProjectCard = ({ registration, focusAreas, onAdd, onWithdraw, onRest
             </section>
         );
     }
-
-    if (!sp.enabled) return null;
-    if (!sp.canAdd) {
-        return sp.reason && sp.code !== 'max_reached' ? (
-            <p className="mb-6 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-500">{sp.reason}</p>
-        ) : null;
+    if (sp.enabled && !sp.canAdd && sp.reason && sp.code !== 'max_reached') {
+        return <p className="mb-6 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-500">{sp.reason}</p>;
     }
-
-    const primerPagado = activos.some(p => p.projectIndex === 1 && p.paymentStatus === 'paid');
-    return (
-        <section className="mb-6 rounded-2xl border-2 bg-white p-5 sm:p-6" style={{ borderColor: `${BLUE}33` }}>
-            <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                    <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900">
-                        <PlusCircle size={18} style={{ color: BLUE }} /> Postula un segundo proyecto con tarifa especial
-                    </h2>
-                    <p className="mt-1 text-[15px] text-slate-600">
-                        Tu club puede inscribir un segundo proyecto por <strong>{fmtMoney(sp.amount, registration.currency)}</strong> adicionales
-                        {primerPagado
-                            ? '. Como la inscripción del primero ya está pagada, se abre un pago complementario sólo por ese valor; tu transacción anterior no se modifica.'
-                            : <> (total de la inscripción: <strong>{fmtMoney(sp.bundleTotal, registration.currency)}</strong>, en un solo pago).</>}
-                        {sp.deadline ? <> Plazo para agregarlo: {fmtDate(sp.deadline)}.</> : null}
-                    </p>
-                </div>
-                {!open && (
-                    <button type="button" onClick={() => setOpen(true)} className="inline-flex items-center gap-1.5 rounded-xl px-5 py-2.5 text-sm font-bold text-white" style={{ background: BLUE }}>
-                        Agregar segundo proyecto <ArrowRight size={14} />
-                    </button>
-                )}
-            </div>
-            {open && (
-                <div className="mt-4 grid gap-4 border-t border-slate-100 pt-4">
-                    <p className="text-[13px] font-semibold uppercase tracking-wide text-slate-500">Proyecto 2 — Inscripción adicional · {fmtMoney(sp.amount, registration.currency)}</p>
-                    <label className="block text-sm font-semibold text-slate-700">Nombre del proyecto
-                        <input className={`${inputCls(false, !!errors.projectName)} mt-1 w-full`} value={fields.projectName} onChange={set('projectName')} maxLength={250} />
-                        {err('projectName')}
-                    </label>
-                    <label className="block text-sm font-semibold text-slate-700">Descripción del proyecto
-                        <textarea className={`${inputCls(false, !!errors.projectDescription)} mt-1 min-h-[120px] w-full`} value={fields.projectDescription} onChange={set('projectDescription')} maxLength={8000} />
-                        <span className="mt-1 block text-xs font-normal text-slate-400">Mínimo 40 caracteres para postularlo ({fields.projectDescription.trim().length}).</span>
-                        {err('projectDescription')}
-                    </label>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                        <label className="block text-sm font-semibold text-slate-700">Área de enfoque
-                            <select className={`${inputCls(false, !!errors.focusArea)} mt-1 w-full`} value={fields.focusArea} onChange={set('focusArea')}>
-                                <option value="">Selecciona…</option>
-                                {focusAreas.map(a => <option key={a.key} value={a.key}>{a.label}</option>)}
-                            </select>
-                            {err('focusArea')}
-                        </label>
-                        <label className="block text-sm font-semibold text-slate-700">Presupuesto total (USD)
-                            <input className={`${inputCls(false, !!errors.budgetUsd)} mt-1 w-full`} inputMode="decimal" value={fields.budgetUsd} onChange={set('budgetUsd')} />
-                            {err('budgetUsd')}
-                        </label>
-                    </div>
-                    <p className="text-xs text-slate-500">
-                        El club, el distrito y el responsable son los de tu inscripción; la información técnica y los documentos de este proyecto serán independientes del primero.
-                    </p>
-                    <div className="flex flex-wrap justify-end gap-3">
-                        <button type="button" onClick={() => setOpen(false)} disabled={!!busy} className="rounded-xl px-4 py-3 text-[15px] font-semibold text-slate-500 hover:text-slate-800">Cancelar</button>
-                        <button type="button" onClick={() => add('draft')} disabled={!!busy} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 px-5 py-3 text-[15px] font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">
-                            {busy === 'draft' ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Guardar como borrador
-                        </button>
-                        <button type="button" onClick={() => add('apply')} disabled={!!busy} className="inline-flex items-center gap-1.5 rounded-xl px-6 py-3 text-[15px] font-bold text-white disabled:opacity-60" style={{ backgroundColor: BLUE }}>
-                            {busy === 'apply' ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} Postular segundo proyecto
-                        </button>
-                    </div>
-                </div>
-            )}
-        </section>
-    );
+    return null;
 };
 
 /**

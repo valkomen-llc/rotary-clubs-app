@@ -34,13 +34,30 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1300.0 | 2026-11-09 (Feria de Proyectos: postular sin pensar en el pago — las tarjetas de modalidad sin precios)
+// UI V4.1301.0 | 2026-11-09 (Feria de Proyectos: «+ Postular segundo proyecto» desde «Mi proyecto», con pago complementario y origen visible para el comité)
 // Cache bust: 2026-11-09
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1301.0',
+        title: 'Feria de Proyectos: los clubes que ya tienen un proyecto agregan el segundo desde «Mi proyecto» ➕',
+        description: 'Completa la modalidad de dos proyectos para los clubes que ya postularon uno: un botón destacado en el encabezado de «Mi proyecto» abre un asistente con los datos del club precargados, una ficha independiente para el segundo proyecto, guardado como borrador y pago complementario de $100.000 COP al final (sin volver a registrarse ni a pagar el primero). El comité distingue las ampliaciones posteriores de las inscripciones iniciales de dos proyectos.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'mi proyecto', 'segundo proyecto', 'pagos', 'panel administrativo'],
+        type: 'feature',
+        impact: 'Alta: activa a los clubes que ya conocen el proceso; cada operación queda ligada a la misma inscripción con pago, comprobante y estados propios.',
+        changes: [
+            { type: 'added', text: '«Mi proyecto»: acción destacada en el encabezado con su estado resuelto por el servidor: «Postular segundo proyecto», «Continuar segundo proyecto» (borrador), «Completar inscripción del segundo proyecto» (postulado sin pagar), «Restaurar el segundo proyecto» o «Tu club ya tiene dos proyectos registrados». Texto: «Tu club puede presentar una segunda iniciativa en la XII Feria…». Sin precio en el botón.' },
+            { type: 'added', text: 'Asistente «Postula un segundo proyecto de tu club»: club, distrito, responsable y correo precargados (no se vuelven a pedir), Proyecto 1 con su estado, Proyecto 2 como ficha nueva, la inscripción adicional ($100.000 COP) y el saldo real según los pagos confirmados (primero pagado → sólo $100.000; primero sin pagar → saldo de $350.000). «Comenzar segundo proyecto» abre la ficha; no se envía a Stripe al comenzar.' },
+            { type: 'added', text: 'Al terminar: «Tu segundo proyecto está listo para continuar» con «Guardar y salir», «Revisar proyecto» y «Completar pago». El segundo proyecto conserva formularios, documentos, plantilla, videos, estados e historial propios, en su pestaña; nada se mezcla con el primero.' },
+            { type: 'changed', text: 'Cobro complementario nombrado en Stripe y en el comprobante como «Inscripción adicional — Segundo proyecto — XII Feria de Proyectos Rotary Colombia…»; registro de pago independiente, vinculado a la misma inscripción; la transacción del primer proyecto no se modifica.' },
+            { type: 'added', text: 'Panel: la ficha resume la inscripción (modalidad, origen «Inscripción inicial de dos proyectos» o «Ampliación posterior desde Mi proyecto», fecha de creación del segundo, pago original y complementario, total pagado y saldo pendiente); indicadores de ampliaciones (iniciadas, pendientes de pago, confirmadas, recaudo); filtro «Origen del segundo proyecto»; columna «Origen» en el CSV. Los borradores no cuentan como inscripciones confirmadas.' },
+            { type: 'added', text: 'Cada proyecto guarda por dónde entró a la inscripción (registro inicial o ampliación posterior). Duplicados impedidos por el índice único de la base y el veredicto del servidor; terceros proyectos bloqueados también por API.' },
+        ],
+    },
     {
         version: '4.1300.0',
         title: 'Feria de Proyectos: elegir la modalidad sin que el precio sea lo primero 🌱',

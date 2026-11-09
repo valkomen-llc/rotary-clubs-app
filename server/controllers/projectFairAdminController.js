@@ -55,9 +55,10 @@ import { resolveUserGrant } from '../lib/rbacStore.js';
 // se arman en el criterio puro, no a mano acá.
 import {
     SQL_ACTIVE_PROJECT, SQL_FIRST_PROJECT, SQL_SECOND_PROJECT, SQL_REGISTRATION_KEY,
-    indexOf as projectIndexOf, projectIndexLabel, pricingRulesOf,
+    indexOf as projectIndexOf, projectIndexLabel, pricingRulesOf, registrationBreakdown,
 } from '../lib/projectFairRegistration.js';
 
+console.log('[projectFairAdminController] v4.1301.0 cargado — La ficha resume la inscripción (modalidad, origen del segundo proyecto, pago original y complementario, total y saldo); indicadores y filtro de ampliaciones posteriores.');
 console.log('[projectFairAdminController] v4.1299.0 cargado — Hasta dos proyectos por club: el panel distingue clubes inscritos de proyectos inscritos, cuenta segundos proyectos y separa el recaudo por primeras y segundas postulaciones; filtros por cantidad de proyectos del club y por posición.');
 console.log('[projectFairAdminController] v4.1220.0 cargado — Gestión de Postulaciones y Pagos (dashboard, trazabilidad Stripe, confirmación manual, etiquetas, alertas y reportes)');
 
@@ -311,6 +312,10 @@ const mapRow = (row, access) => {
             ? row.metadata.payment.coveredProjects.filter(p => p.id !== row.id).map(p => ({ id: p.id, publicRef: p.publicRef || null, projectName: p.projectName, projectIndex: p.projectIndex }))
             : [],
         withdrawnByClub: !!row.metadata?.withdrawnByClub,
+        // v4.1301 — Por dónde entró a la inscripción: registro inicial o
+        // ampliación posterior desde «Mi proyecto».
+        addedVia: row.metadata?.addedVia || (projectIndexOf(row) >= 2 ? 'wizard' : null),
+        isExtension: row.metadata?.addedVia === 'portal_extension',
         lastSyncAt: row.lastSyncAt || null,
         manualPaymentRef: row.manualPaymentRef || null,
         manualPaymentEvidence: row.manualPaymentEvidence || null,
@@ -414,6 +419,11 @@ const buildFilters = (query) => {
     const indice = clean(query.indice, 4);
     if (indice === '1') where.push(SQL_FIRST_PROJECT);
     else if (indice === '2') where.push(SQL_SECOND_PROJECT);
+    // v4.1301 — Origen del segundo proyecto: `ampliacion` (desde «Mi
+    // proyecto») o `inicial` (elegido en el registro).
+    const origen = clean(query.origen, 12);
+    if (origen === 'ampliacion') where.push(`${SQL_SECOND_PROJECT} AND metadata->>'addedVia' = 'portal_extension'`);
+    else if (origen === 'inicial') where.push(`${SQL_SECOND_PROJECT} AND COALESCE(metadata->>'addedVia','wizard') <> 'portal_extension'`);
     if (query.district && query.district !== 'all') add('district = $?', clean(query.district, 160));
     if (query.focusArea && query.focusArea !== 'all') add('"focusArea" = $?', clean(query.focusArea, 80));
     if (query.priority && query.priority !== 'all') add('priority = $?', clean(query.priority, 20));
@@ -540,6 +550,13 @@ export const getIntelligence = withAccess(async (req, res, { cfg, access }) => {
                    COALESCE(SUM(${AMT}) FILTER (WHERE ${SQL_OWES} AND ${SQL_FIRST_PROJECT}), 0)::float AS "pendingFirst",
                    COALESCE(SUM(${AMT}) FILTER (WHERE ${SQL_OWES} AND ${SQL_SECOND_PROJECT}), 0)::float AS "pendingSecond",
                    COALESCE(SUM("amountReceived") FILTER (WHERE status = 'paid'), 0)::float AS "receivedTotal",
+                   -- v4.1301 — AMPLIACIONES: segundos proyectos agregados desde «Mi proyecto».
+                   COUNT(*) FILTER (WHERE ${SQL_ACTIVE_PROJECT} AND ${SQL_SECOND_PROJECT} AND metadata->>'addedVia' = 'portal_extension')::int AS extensions,
+                   COUNT(*) FILTER (WHERE ${SQL_ACTIVE_PROJECT} AND ${SQL_SECOND_PROJECT} AND metadata->>'addedVia' = 'portal_extension' AND ${SQL_DRAFT})::int AS "extensionsDraft",
+                   COUNT(*) FILTER (WHERE ${SQL_ACTIVE_PROJECT} AND ${SQL_SECOND_PROJECT} AND metadata->>'addedVia' = 'portal_extension' AND ${SQL_OWES})::int AS "extensionsOwing",
+                   COUNT(*) FILTER (WHERE ${SQL_ACTIVE_PROJECT} AND ${SQL_SECOND_PROJECT} AND metadata->>'addedVia' = 'portal_extension' AND status = 'paid')::int AS "extensionsPaid",
+                   COALESCE(SUM(${AMT}) FILTER (WHERE status = 'paid' AND ${SQL_SECOND_PROJECT} AND metadata->>'addedVia' = 'portal_extension'), 0)::float AS "collectedExtensions",
+                   COUNT(*) FILTER (WHERE ${SQL_ACTIVE_PROJECT} AND ${SQL_SECOND_PROJECT} AND ${SQL_DRAFT})::int AS "secondProjectsDraft",
                    COUNT(DISTINCT lower(country)) FILTER (WHERE country IS NOT NULL AND country <> '')::int AS countries,
                    COALESCE(SUM("amountCop") FILTER (WHERE status = 'paid'), 0)::float AS "totalCop",
                    COALESCE(SUM("amountUsd") FILTER (WHERE status = 'paid'), 0)::float AS "totalUsd",
@@ -824,6 +841,12 @@ export const getIntelligence = withAccess(async (req, res, { cfg, access }) => {
             secondProjectsApplied: t.secondProjectsApplied || 0,
             secondProjectsPaid: t.secondProjectsPaid || 0,
             secondProjectsOwing: t.secondProjectsOwing || 0,
+            secondProjectsDraft: t.secondProjectsDraft || 0,
+            extensions: t.extensions || 0,
+            extensionsDraft: t.extensionsDraft || 0,
+            extensionsOwing: t.extensionsOwing || 0,
+            extensionsPaid: t.extensionsPaid || 0,
+            collectedExtensions: Math.round((t.collectedExtensions || 0) * 100) / 100,
             collectedFirst: Math.round((t.collectedFirst || 0) * 100) / 100,
             collectedSecond: Math.round((t.collectedSecond || 0) * 100) / 100,
             pendingFirst: Math.round((t.pendingFirst || 0) * 100) / 100,
@@ -1431,9 +1454,48 @@ export const getSubmission = withAccess(async (req, res, { access }) => {
         }));
     }
     const sizes = await registrationSizesFor([row]);
+    // v4.1301 — La INSCRIPCIÓN resumida para la ficha: modalidad, origen del
+    // segundo proyecto, pagos (original y complementario), total y saldo.
+    let registrationSummary = null;
+    try {
+        const todas = row.registrationId
+            ? (await db.query('SELECT * FROM "ProjectFairSubmission" WHERE "registrationId" = $1 ORDER BY "projectIndex" ASC', [row.registrationId])).rows
+            : [row];
+        const cfg = await readConfigForAdmin(clean(req.query?.evento, 60) || null);
+        const breakdown = registrationBreakdown(todas, pricingRulesOf(cfg));
+        const segundo = todas.find(r => projectIndexOf(r) >= 2 && !r.archivedAt && projectStateOf(r) !== 'withdrawn') || null;
+        const payments = todas
+            .filter(r => String(r.status) === 'paid' && !r.metadata?.payment?.coveredBy)
+            .map(r => ({
+                anchorId: r.id, publicRef: r.publicRef, projectIndex: projectIndexOf(r), paidAt: r.paidAt || null,
+                amountReceived: num(r.amountReceived), currency: r.chargeCurrency || null,
+                origin: r.paymentConfirmationOrigin || 'stripe',
+                kind: projectIndexOf(r) >= 2 && !(Array.isArray(r.metadata?.payment?.coveredProjects) && r.metadata.payment.coveredProjects.length > 1) ? 'complementary' : 'original',
+                covers: Array.isArray(r.metadata?.payment?.coveredProjects) && r.metadata.payment.coveredProjects.length
+                    ? r.metadata.payment.coveredProjects.map(p => p.publicRef || p.id) : [r.publicRef],
+                ...(access.viewPayments ? { paymentIntentId: r.stripePaymentIntentId || null, receiptUrl: r.receiptUrl || null } : {}),
+            }));
+        registrationSummary = {
+            id: row.registrationId || null,
+            modality: breakdown.modality,
+            count: breakdown.count,
+            origin: segundo ? (segundo.metadata?.addedVia === 'portal_extension' ? 'extension' : 'initial_double') : 'single',
+            originLabel: segundo ? (segundo.metadata?.addedVia === 'portal_extension' ? 'Ampliación posterior desde «Mi proyecto»' : 'Inscripción inicial de dos proyectos') : 'Un proyecto',
+            secondProjectCreatedAt: segundo?.createdAt || null,
+            currency: breakdown.currency,
+            lines: breakdown.lines,
+            total: breakdown.total,
+            paidTotal: breakdown.paidTotal,
+            pendingTotal: breakdown.pendingTotal,
+            payments,
+        };
+    } catch (err) {
+        console.warn('[project-fair-admin] No pude resumir la inscripción:', err?.message);
+    }
     res.json({
         submission: mapRow({ ...row, tags: tags[row.id] || [], registrationProjects: sizes[row.registrationId] ?? 1 }, access),
         siblings,
+        registrationSummary,
         events: events.rows,
         files: files.rows,
         stripeEvents: stripeEvents.rows,
@@ -2129,7 +2191,7 @@ export const exportCsv = withAccess(async (req, res, { access }) => {
 
     const sizes = await registrationSizesFor(rows);
     const headers = [
-        'Registro', 'Fecha de inscripción', 'Proyecto', 'Posición en la inscripción', 'Proyectos del club', 'Inscripción', 'Club Rotario', 'Distrito', 'Responsable',
+        'Registro', 'Fecha de inscripción', 'Proyecto', 'Posición en la inscripción', 'Origen', 'Proyectos del club', 'Inscripción', 'Club Rotario', 'Distrito', 'Responsable',
         'Correo', 'WhatsApp', 'Rol en el club', 'País', 'Departamento', 'Ciudad',
         'Tipo de documento', 'Número de documento',
         'Área de enfoque', 'Presupuesto USD', 'Comentarios del postulante', 'Estado de la postulación',
@@ -2143,7 +2205,9 @@ export const exportCsv = withAccess(async (req, res, { access }) => {
     for (const r of rows) {
         const values = [
             r.publicRef, r.createdAt ? new Date(r.createdAt).toISOString() : '', r.projectName,
-            projectIndexLabel(projectIndexOf(r)), sizes[r.registrationId] ?? 1, r.registrationId || r.id,
+            projectIndexLabel(projectIndexOf(r)),
+            projectIndexOf(r) >= 2 ? (r.metadata?.addedVia === 'portal_extension' ? 'Ampliación posterior' : 'Registro inicial') : 'Registro inicial',
+            sizes[r.registrationId] ?? 1, r.registrationId || r.id,
             r.clubName, r.district,
             `${r.firstName || ''} ${r.lastName || ''}`.trim(), r.email, r.phone,
             r.clubRoleOther || r.clubRoleLabel || r.clubRole,
