@@ -17,6 +17,7 @@ import {
     Loader2, Mail, MessageSquarePlus, RefreshCw, Search,
     TrendingUp, Wallet, X, ShieldCheck, Paperclip, Settings, FileSignature, Lock, Unlock, FileDown,
     Archive, ArchiveRestore, CheckSquare, Square, Trash2, TagIcon, Banknote, ArrowRight, History, Users, Clapperboard,
+    Layers, PlusCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -131,6 +132,11 @@ interface Submission {
     stripeSessionId?: string; stripePaymentIntentId?: string; stripeChargeId?: string;
     stripeCustomerId?: string; paymentMethod?: string; receiptUrl?: string; lastPaymentError?: string;
     paymentConfirmationOrigin?: 'stripe' | 'manual_admin' | 'direct_transfer' | string | null;
+    // v4.1299 — La inscripción a la que pertenece y su posición en ella.
+    registrationId?: string | null; projectIndex?: number; projectIndexLabel?: string; registrationProjects?: number | null;
+    coveredBy?: { id: string; publicRef: string | null } | null;
+    coveredProjects?: { id: string; publicRef: string | null; projectName: string; projectIndex: number }[];
+    withdrawnByClub?: boolean;
     lastSyncAt?: string | null;
     manualPaymentRef?: string | null;
     manualPaymentEvidence?: string | null;
@@ -317,6 +323,8 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
         focusArea: 'all', priority: 'all', tagId: '', from: '', to: '', budgetMin: '', budgetMax: '',
         // v4.1253 — Vista de participación / recaudo (catálogo del servidor).
         vista: 'all',
+        // v4.1299 — Cantidad de proyectos del club (1 | 2) y posición (1 | 2).
+        proyectos: 'all', indice: 'all',
         // v4.1024 — Lo archivado no se ve por defecto: es lo que significa
         // archivar. El valor viaja al servidor, que es quien filtra.
         archivadas: 'activas',
@@ -947,7 +955,8 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                 <BlockTitle icon={Users}>Participación y recaudo</BlockTitle>
                                 <p className="-mt-1 mb-3 text-xs text-slate-500">La participación no depende del pago: un club puede postular hoy y pagar después.</p>
                                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                                    <Kpi label="Clubes registrados" value={fmtNum(overview.participation.clubs)} icon={Building2} tone="blue" />
+                                    <Kpi label="Clubes inscritos" value={fmtNum(overview.participation.registrations ?? overview.participation.clubs)} sub={`${fmtNum(overview.participation.clubs)} clubes distintos`} icon={Building2} tone="blue" />
+                                    <Kpi label="Proyectos inscritos" value={fmtNum(overview.participation.activeProjects ?? overview.participation.applied)} sub="Un club puede aportar dos" icon={Layers} tone="indigo" />
                                     <Kpi label="Usuarios registrados" value={fmtNum(overview.participation.registeredUsers)} icon={Users} tone="indigo" />
                                     <Kpi label="Proyectos en borrador" value={fmtNum(overview.participation.drafts)} icon={FileText} tone="slate" />
                                     <Kpi label="Proyectos postulados" value={fmtNum(overview.participation.applied)} sub={`${fmtNum(overview.participation.approved)} aprobados`} icon={ClipboardList} tone="blue" />
@@ -956,6 +965,21 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                     <Kpi label="Valor recaudado" value={overview.participation.priceMode === 'USD' ? fmtUsd(overview.participation.collectedAmount) : fmtCop(overview.participation.collectedAmount)} sub="Valor de inscripción, sin cargos" icon={Wallet} tone="emerald" />
                                     <Kpi label="Valor pendiente de recaudo" value={overview.participation.priceMode === 'USD' ? fmtUsd(overview.participation.pendingAmount) : fmtCop(overview.participation.pendingAmount)} sub="Sólo obligaciones válidas" icon={AlertTriangle} tone="orange" />
                                 </div>
+                                {/* v4.1299 — SEGUNDOS PROYECTOS. Mide si la tarifa especial
+                                    está trayendo proyectos adicionales: cuántos clubes
+                                    inscribieron dos, cuántos segundos proyectos hay y
+                                    cuánto recaudo viene de cada posición. */}
+                                {overview.participation.registrations != null && (
+                                    <>
+                                        <p className="mb-2 mt-5 text-xs font-bold uppercase tracking-wide text-slate-500">Modalidad de dos proyectos</p>
+                                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                                            <Kpi label="Clubes con un proyecto" value={fmtNum(overview.participation.withOneProject)} icon={Building2} tone="slate" />
+                                            <Kpi label="Clubes con dos proyectos" value={fmtNum(overview.participation.withTwoProjects)} sub={`${fmtNum(overview.participation.withTwoProjectsPaid)} con los dos pagados`} icon={Layers} tone="blue" />
+                                            <Kpi label="Segundos proyectos inscritos" value={fmtNum(overview.participation.secondProjects)} sub={`${fmtNum(overview.participation.secondProjectsPaid)} pagados · ${fmtNum(overview.participation.secondProjectsOwing)} pendientes`} icon={PlusCircle} tone="emerald" />
+                                            <Kpi label="Recaudo por segundos proyectos" value={overview.participation.priceMode === 'USD' ? fmtUsd(overview.participation.collectedSecond) : fmtCop(overview.participation.collectedSecond)} sub={`Primeras postulaciones: ${overview.participation.priceMode === 'USD' ? fmtUsd(overview.participation.collectedFirst) : fmtCop(overview.participation.collectedFirst)}`} icon={Wallet} tone="emerald" />
+                                        </div>
+                                    </>
+                                )}
                             </section>
                         )}
 
@@ -1256,6 +1280,9 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                     ['district', 'Distrito', (catalog?.districts || []).map((d: string) => ({ value: d, label: d }))],
                                     ['focusArea', 'Área de enfoque', (catalog?.focusAreas || []).map((a: any) => ({ value: a.key, label: a.label }))],
                                     ['priority', 'Prioridad', catalog?.priorities?.map((p: StateDef) => ({ value: p.key, label: p.label }))],
+                                    // v4.1299 — Un club puede aportar dos proyectos.
+                                    ['proyectos', 'Proyectos del club', [{ value: '1', label: 'Clubes con un proyecto' }, { value: '2', label: 'Clubes con dos proyectos' }]],
+                                    ['indice', 'Posición en la inscripción', [{ value: '1', label: 'Primer proyecto' }, { value: '2', label: 'Segundo proyecto (tarifa especial)' }]],
                                 ].map(([key, label, options]: any) => (
                                     <label key={key} className="block">
                                         <span className="mb-1 block text-xs font-semibold text-slate-600">{label}</span>
@@ -1284,7 +1311,7 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                     <input type="number" value={filters.budgetMax} onChange={e => setFilters(f => ({ ...f, budgetMax: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
                                 <div className="flex items-end gap-2">
                                     <button onClick={() => loadRows(1)} className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: BLUE }}>Aplicar</button>
-                                    <button onClick={() => { setFilters({ search: '', paymentStatus: 'all', workflowStatus: 'all', district: 'all', focusArea: 'all', priority: 'all', tagId: '', from: '', to: '', budgetMin: '', budgetMax: '', vista: 'all', archivadas: 'activas' }); setTimeout(() => loadRows(1), 0); }}
+                                    <button onClick={() => { setFilters({ search: '', paymentStatus: 'all', workflowStatus: 'all', district: 'all', focusArea: 'all', priority: 'all', tagId: '', from: '', to: '', budgetMin: '', budgetMax: '', vista: 'all', proyectos: 'all', indice: 'all', archivadas: 'activas' }); setTimeout(() => loadRows(1), 0); }}
                                         className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600">Limpiar</button>
                                 </div>
                             </div>
@@ -1598,6 +1625,12 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                                 <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-500">{fmtDate(s.createdAt)}</td>
                                                 <td className="px-3 py-3">
                                                     <p className="font-semibold text-slate-900">{s.projectName}</p>
+                                                    {/* v4.1299 — Posición dentro de la inscripción del club. */}
+                                                    {(s.registrationProjects || 1) > 1 || (s.projectIndex || 1) > 1 ? (
+                                                        <span className={`mt-0.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${(s.projectIndex || 1) > 1 ? 'bg-emerald-50 text-emerald-700' : 'bg-sky-50 text-sky-700'}`}>
+                                                            <Layers size={10} /> Proyecto {s.projectIndex || 1} de {Math.max(s.registrationProjects || 1, s.projectIndex || 1)}{(s.projectIndex || 1) > 1 ? ' · tarifa especial' : ''}
+                                                        </span>
+                                                    ) : null}
                                                     {s.tags.length > 0 && (
                                                         <div className="mt-1 flex flex-wrap gap-1">
                                                             {s.tags.map(t => <Badge key={t.id} color={t.color}>{t.label}</Badge>)}
@@ -1869,7 +1902,7 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
 // Ficha detallada
 // ════════════════════════════════════════════════════════════════════
 const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any) => {
-    const [data, setData] = useState<{ submission: Submission; events: TimelineEvent[]; files: FairFile[]; stripeEvents: any[] } | null>(null);
+    const [data, setData] = useState<{ submission: Submission; events: TimelineEvent[]; files: FairFile[]; stripeEvents: any[]; siblings?: { id: string; publicRef: string; projectName: string; projectIndex: number; projectIndexLabel: string; paymentStatus: string; projectStateLabel: string; archived: boolean; withdrawnByClub: boolean; amountCop: number | null; amountUsd: number | null }[] } | null>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [comment, setComment] = useState('');
@@ -2102,6 +2135,23 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                                     <Section title="Club y proyecto">
                                         <Row label="Club Rotario" value={s.clubName} />
                                         <Row label="Distrito" value={s.district} />
+                                        {/* v4.1299 — La inscripción: posición y los demás proyectos del club. */}
+                                        <Row label="Posición en la inscripción" value={`${s.projectIndexLabel || 'Primer proyecto'} · ${Math.max(s.registrationProjects || 1, s.projectIndex || 1)} proyecto(s) en la inscripción`} />
+                                        {(data?.siblings || []).length > 0 && (
+                                            <div className="pt-3">
+                                                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Otros proyectos de la misma inscripción</p>
+                                                <ul className="space-y-1 text-sm">
+                                                    {(data?.siblings || []).map(sib => (
+                                                        <li key={sib.id} className="flex flex-wrap items-center gap-2">
+                                                            <span className="font-mono text-xs font-bold text-slate-500">{sib.publicRef}</span>
+                                                            <span className="font-semibold text-slate-800">{sib.projectName}</span>
+                                                            <span className="text-xs text-slate-500">· {sib.projectIndexLabel} · {sib.projectStateLabel}{sib.withdrawnByClub ? ' (retirado por el club)' : ''}{sib.archived ? ' (archivada)' : ''}</span>
+                                                            <Badge color={sib.paymentStatus === 'paid' ? 'emerald' : 'amber'}>{sib.paymentStatus === 'paid' ? 'Pagado' : 'Pago pendiente'}</Badge>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
                                         <Row label="Área de enfoque" value={s.focusAreaLabel || s.focusArea} />
                                         <Row label="Presupuesto" value={`${fmtUsd(s.budgetUsd)} USD`} />
                                         <Row label="Fecha de inscripción" value={fmtDateTime(s.createdAt)} />
@@ -2233,6 +2283,17 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                                                     </div>
                                                 </div>
 
+                                                {/* v4.1299 — Un proyecto cubierto por el cobro de otro, o un cobro que cubrió a otros. */}
+                                                {s.coveredBy && (
+                                                    <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                                                        Pagado dentro de la inscripción conjunta <strong>{s.coveredBy.publicRef || s.coveredBy.id}</strong>: la transacción, el monto recibido y el comprobante están en esa ficha.
+                                                    </p>
+                                                )}
+                                                {(s.coveredProjects || []).length > 0 && (
+                                                    <p className="mt-3 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800">
+                                                        Este cobro cubrió también: {(s.coveredProjects || []).map(p => `${p.publicRef || ''} ${p.projectName}`.trim()).join(' · ')}.
+                                                    </p>
+                                                )}
                                                 {/* Grid de Métricas Financieras */}
                                                 <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
                                                     <div className="rounded-lg bg-slate-50 p-3">

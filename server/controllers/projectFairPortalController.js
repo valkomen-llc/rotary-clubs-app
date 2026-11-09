@@ -22,10 +22,18 @@ import {
     ensureTables, logEvent, readConfigForAdmin, readConfigForSubmission, readEditionEvent, sendFairEmail, APPLICANT_ROLES,
     grantProjectManagerRole, beginCheckout, syncPaymentState, paymentStateFor,
     validateSubmission, applicationViewOf, notifyApplication, buildReceiptHtml,
+    registrationRows, insertProjectRow, resolveTrm, resolvePriceMode, PROJECT_FIELDS,
 } from './projectFairController.js';
+// v4.1299 — La INSCRIPCIÓN: uno o dos proyectos, un pago, y qué puede hacer
+// el club con el segundo (agregarlo, quitarlo antes de pagar, restaurarlo).
+import {
+    pricingRulesOf, registrationBreakdown, secondProjectVerdict, removeProjectVerdict,
+    activeProjects, isActiveProject, indexOf as projectIndexOf, modalityOf, modalityTotal, projectIndexLabel,
+    coveredByCheckout,
+} from '../lib/projectFairRegistration.js';
 // v4.1253 — Lo de arriba desde `validateSubmission`: postular desde el perfil
 // un borrador, y el comprobante del pago.
-import { isApplied } from '../lib/projectFairLifecycle.js';
+import { isApplied, projectStateOf, owesRegistration } from '../lib/projectFairLifecycle.js';
 import { completionOf } from '../lib/projectFairMasterForm.js';
 import { SHORT_SESSION_TTL } from '../middleware/auth.js';
 import { resolveForm } from '../lib/projectFormsRegistry.js';
@@ -34,6 +42,7 @@ import {
     saveForm as saveProjectForm, submitForm as submitProjectForm,
 } from './projectFormsController.js';
 
+console.log('[projectFairPortalController] v4.1299.0 cargado — El perfil muestra la INSCRIPCIÓN del club: sus proyectos (uno o dos), un token por proyecto para gestionarlos por separado, el desglose y el pago único; agregar un segundo proyecto (también con el primero ya pagado: cobro complementario), quitarlo antes de pagar y restaurarlo.');
 console.log('[projectFairPortalController] v4.1253.0 cargado — El perfil del club muestra la postulación y el pago POR SEPARADO: un borrador se termina y se envía desde acá, y la inscripción se paga cuando el club quiera, sin que eso condicione su postulación.');
 console.log('[projectFairPortalController] v4.978.0 cargado — Panel del club: varios formularios por proyecto; el puente con la plataforma sólo retira la sesión del panel si es del mismo correo; el pago pendiente se completa o se reintenta desde acá');
 
@@ -49,11 +58,44 @@ const TOKEN_TTL = '30d';
 const clean = (v, max = 250) => String(v ?? '').trim().slice(0, max);
 const isEmail = (v) => /^\S+@\S+\.\S+$/.test(String(v || ''));
 
-const signToken = (account, { remember = true } = {}) => jwt.sign(
-    { sub: account.id, submissionId: account.submissionId, email: account.email, aud: PORTAL_AUDIENCE },
+const signToken = (account, { remember = true, submissionId = null } = {}) => jwt.sign(
+    { sub: account.id, submissionId: submissionId || account.submissionId, email: account.email, aud: PORTAL_AUDIENCE },
     JWT_SECRET,
     { expiresIn: remember ? TOKEN_TTL : SHORT_SESSION_TTL }
 );
+
+/**
+ * v4.1299 — EL TOKEN ES EL SELECTOR DE PROYECTO. Todas las rutas del perfil
+ * (formularios, videos, recursos, borrador) leen `req.portal.submissionId`:
+ * en vez de enseñarles a todas un parámetro nuevo, la misma cuenta recibe un
+ * token por cada proyecto de su inscripción, firmado por el servidor y con el
+ * MISMO vencimiento que la sesión que lo pidió. El navegador elige con cuál
+ * habla; el servidor sólo emite tokens de proyectos de esa inscripción.
+ */
+const issueProjectToken = (account, submissionId, { exp = null } = {}) => {
+    const payload = { sub: account.id, submissionId, email: account.email, aud: PORTAL_AUDIENCE };
+    if (exp) return jwt.sign({ ...payload, exp }, JWT_SECRET);
+    return jwt.sign(payload, JWT_SECRET, { expiresIn: TOKEN_TTL });
+};
+
+/**
+ * La cuenta que administra una postulación: por su proyecto principal, por
+ * su inscripción (un segundo proyecto no es el `submissionId` de la cuenta) o,
+ * de último, por el correo. Devuelve `null` si no hay ninguna.
+ */
+const accountForSubmission = async (submission) => {
+    if (!submission) return null;
+    const porProyecto = await db.query('SELECT * FROM "ProjectFairAccount" WHERE "submissionId" = $1 LIMIT 1', [submission.id]);
+    if (porProyecto.rows[0]) return porProyecto.rows[0];
+    if (submission.registrationId) {
+        const porInscripcion = await db.query('SELECT * FROM "ProjectFairAccount" WHERE "registrationId" = $1 LIMIT 1', [submission.registrationId]).catch(() => ({ rows: [] }));
+        if (porInscripcion.rows[0]) return porInscripcion.rows[0];
+    }
+    const email = String(submission.email || '').toLowerCase();
+    if (!email) return null;
+    const porCorreo = await db.query('SELECT * FROM "ProjectFairAccount" WHERE lower(email) = $1 LIMIT 1', [email]).catch(() => ({ rows: [] }));
+    return porCorreo.rows[0] || null;
+};
 
 /** Middleware del panel: exige un token emitido para esta audiencia. */
 export const portalAuth = async (req, res, next) => {
@@ -83,16 +125,16 @@ export const PASSWORD_MIN = 8;
  * `createSubmission`: la cuenta existe desde que envía el formulario, aunque
  * el pago aún no se haya confirmado, para que pueda volver y reintentar.
  */
-export const createAccountFor = async (submission, password) => {
+export const createAccountFor = async (submission, password, { registrationId = null } = {}) => {
     if (!password || String(password).length < PASSWORD_MIN) return null;
     const passwordHash = await bcrypt.hash(String(password), 10);
     try {
         const { rows } = await db.query(`
-            INSERT INTO "ProjectFairAccount" ("submissionId", email, "passwordHash", "clubName")
-            VALUES ($1,$2,$3,$4)
-            ON CONFLICT ("submissionId") DO UPDATE SET "passwordHash" = EXCLUDED."passwordHash", "updatedAt" = NOW()
+            INSERT INTO "ProjectFairAccount" ("submissionId", email, "passwordHash", "clubName", "registrationId")
+            VALUES ($1,$2,$3,$4,$5)
+            ON CONFLICT ("submissionId") DO UPDATE SET "passwordHash" = EXCLUDED."passwordHash", "registrationId" = COALESCE(EXCLUDED."registrationId", "ProjectFairAccount"."registrationId"), "updatedAt" = NOW()
             RETURNING *
-        `, [submission.id, String(submission.email).toLowerCase(), passwordHash, submission.clubName]);
+        `, [submission.id, String(submission.email).toLowerCase(), passwordHash, submission.clubName, registrationId || submission.registrationId || null]);
         return rows[0];
     } catch (err) {
         // Correo ya usado por otra postulación: no es un error fatal del
@@ -117,14 +159,15 @@ const UNUSABLE_HASH = '!';
  * Devuelve null si ese correo ya pertenece a otra postulación.
  */
 const ensureAccountFor = async (submission) => {
-    const existing = await db.query('SELECT * FROM "ProjectFairAccount" WHERE "submissionId" = $1 LIMIT 1', [submission.id]);
-    if (existing.rows[0]) return existing.rows[0];
+    // v4.1299 — Un segundo proyecto comparte la cuenta de su inscripción.
+    const existing = await accountForSubmission(submission);
+    if (existing) return existing;
     try {
         const { rows } = await db.query(`
-            INSERT INTO "ProjectFairAccount" ("submissionId", email, "passwordHash", "clubName")
-            VALUES ($1,$2,$3,$4)
+            INSERT INTO "ProjectFairAccount" ("submissionId", email, "passwordHash", "clubName", "registrationId")
+            VALUES ($1,$2,$3,$4,$5)
             RETURNING *
-        `, [submission.id, String(submission.email).toLowerCase(), UNUSABLE_HASH, submission.clubName]);
+        `, [submission.id, String(submission.email).toLowerCase(), UNUSABLE_HASH, submission.clubName, submission.registrationId || null]);
         return rows[0];
     } catch (err) {
         console.warn('[project-fair-portal] No pude crear la cuenta pendiente:', err?.message);
@@ -206,14 +249,20 @@ export const ROLE_LABELS = {
  */
 export const projectsForAccount = async (account) => {
     if (!account?.submissionId) return [];
-    const { rows } = await db.query(
-        'SELECT id, "publicRef", "projectName", "clubName", district, status, "workflowStatus" FROM "ProjectFairSubmission" WHERE id = $1',
-        [account.submissionId]
-    );
-    return rows.map(r => ({
+    // v4.1299 — Todos los proyectos de la INSCRIPCIÓN (uno o dos), con el
+    // principal primero. Sin inscripción (fila heredada), el de siempre.
+    const { rows } = account.registrationId
+        ? await db.query(
+            'SELECT id, "publicRef", "projectName", "clubName", district, status, "workflowStatus", "projectIndex", "archivedAt" FROM "ProjectFairSubmission" WHERE "registrationId" = $1 OR id = $2 ORDER BY "projectIndex" ASC, "createdAt" ASC',
+            [account.registrationId, account.submissionId])
+        : await db.query(
+            'SELECT id, "publicRef", "projectName", "clubName", district, status, "workflowStatus", "projectIndex", "archivedAt" FROM "ProjectFairSubmission" WHERE id = $1',
+            [account.submissionId]);
+    return rows.filter(isActiveProject).map(r => ({
         id: r.id, publicRef: r.publicRef, projectName: r.projectName,
         clubName: r.clubName, district: r.district,
         paymentStatus: r.status, workflowStatus: r.workflowStatus,
+        projectIndex: projectIndexOf(r),
     }));
 };
 
@@ -318,8 +367,9 @@ export const claim = async (req, res) => {
             }
         }
 
-        const accountRes = await db.query('SELECT * FROM "ProjectFairAccount" WHERE "submissionId" = $1 LIMIT 1', [submissionId]);
-        let account = accountRes.rows[0];
+        // v4.1299 — El ancla del cobro puede ser el SEGUNDO proyecto (pago
+        // complementario): la cuenta es la de su inscripción.
+        let account = await accountForSubmission(submission);
 
         // Si la inscripción quedó sin cuenta (postulaciones anteriores al panel,
         // o un choque de correo al crearla), se crea ahora: la sesión de pago ya
@@ -472,14 +522,24 @@ export const getPortalData = async (req, res) => {
         // El rol vive en la cuenta, no en la inscripción: es lo que el webhook
         // de Stripe mantiene. Si una inscripción quedó pagada antes de que
         // existiera el rol (o el webhook falló en otorgarlo), se repara aquí.
-        const accountRes = await db.query('SELECT * FROM "ProjectFairAccount" WHERE "submissionId" = $1 LIMIT 1', [submission.id]);
-        let account = accountRes.rows[0];
+        // v4.1299 — La cuenta es la de la INSCRIPCIÓN: un segundo proyecto no
+        // es el `submissionId` de la cuenta.
+        let account = await accountForSubmission(submission);
         if (submission.status === 'paid' && account?.role !== APPLICANT_ROLES.MANAGER && account?.role !== APPLICANT_ROLES.SUSPENDED) {
             if (await grantProjectManagerRole(submission, { reason: 'reparación al abrir el panel' })) {
-                const refreshed = await db.query('SELECT * FROM "ProjectFairAccount" WHERE "submissionId" = $1 LIMIT 1', [submission.id]);
-                account = refreshed.rows[0] || account;
+                account = (await accountForSubmission(submission)) || account;
             }
         }
+
+        // v4.1299 — LA INSCRIPCIÓN ENTERA: sus proyectos (con un token para
+        // gestionar cada uno), su desglose, qué cubre el pago que se abriría
+        // ahora y qué puede hacer el club con el segundo proyecto. El pago que
+        // se muestra es el de la ORDEN pendiente de la inscripción —anclada en
+        // el primer proyecto que debe—, no el del proyecto que se está mirando.
+        const siblings = await registrationRows(submission);
+        const registration = registrationViewOf(submission, siblings, cfg, account, req);
+        const pendingAnchor = coveredByCheckout(siblings)[0] || null;
+        const payment = await paymentStateFor(pendingAnchor && !hasOpenPaymentFor(submission, siblings) ? pendingAnchor : submission, { siblings });
 
         const edit = editability(submission, form, cfg, account);
         res.json({
@@ -494,7 +554,11 @@ export const getPortalData = async (req, res) => {
                 amountUsd: submission.amountUsd === null ? null : Number(submission.amountUsd),
                 receiptUrl: submission.receiptUrl,
                 workflowStatus: submission.workflowStatus,
+                projectIndex: projectIndexOf(submission),
+                registrationId: submission.registrationId || null,
             },
+            registration,
+            activeProjectId: submission.id,
             // v4.1253 — La POSTULACIÓN, con su estado propio y separado del
             // pago, y lo que el perfil necesita para mostrarla (o para
             // terminarla, si todavía es un borrador).
@@ -516,7 +580,7 @@ export const getPortalData = async (req, res) => {
             // pagar, con qué rótulo y el historial de intentos. La pantalla lo
             // pinta y no vuelve a decidir nada — el navegador no es la fuente
             // de verdad del estado de un cobro.
-            payment: await paymentStateFor(submission),
+            payment,
             form: form ? {
                 status: form.status, answers: form.answers || {},
                 completionPct: form.completionPct, submittedAt: form.submittedAt,
@@ -563,7 +627,19 @@ export const getPortalData = async (req, res) => {
 export const startCheckout = async (req, res) => {
     try {
         const cfg = await readConfigForAdmin().catch(() => null);
-        const result = await beginCheckout(req.portal.submissionId, {
+        // v4.1299 — El pago es de la INSCRIPCIÓN: se ancla en el primer
+        // proyecto que debe (sea cual sea el que se está mirando), y cubre a
+        // todos los que deben. Si ninguno debe, se deja que `beginCheckout`
+        // responda sobre el actual (ya pagado, reembolsado o borrador).
+        let anchorId = req.portal.submissionId;
+        try {
+            const own = await loadOwnSubmission(req);
+            if (own) {
+                const siblings = await registrationRows(own);
+                anchorId = coveredByCheckout(siblings)[0]?.id || own.id;
+            }
+        } catch { /* se cobra sobre el actual */ }
+        const result = await beginCheckout(anchorId, {
             req,
             returnUrl: req.body?.returnUrl,
             // v4.1253 — El pago iniciado desde el perfil vuelve al perfil.
@@ -704,10 +780,269 @@ export const getReceipt = async (req, res) => {
         if (!submission) return res.status(404).json({ error: 'No encontramos tu inscripción.' });
         if (submission.status !== 'paid') return res.status(409).json({ error: 'El comprobante está disponible cuando el pago queda confirmado.' });
         const cfg = await readConfigForSubmission(submission.eventId || null);
-        res.json({ html: buildReceiptHtml(submission, cfg), publicRef: submission.publicRef, stripeReceiptUrl: submission.receiptUrl || null });
+        // v4.1299 — Un proyecto cubierto por el cobro de otro muestra el
+        // comprobante de ESE cobro (la inscripción conjunta).
+        let anchor = submission;
+        const coveredBy = submission.metadata?.payment?.coveredBy;
+        if (coveredBy) {
+            const { rows } = await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = $1 LIMIT 1', [coveredBy]);
+            if (rows[0]) anchor = rows[0];
+        }
+        res.json({ html: buildReceiptHtml(anchor, cfg), publicRef: anchor.publicRef, stripeReceiptUrl: anchor.receiptUrl || null });
     } catch (error) {
         console.error('[project-fair-portal] getReceipt:', error);
         res.status(500).json({ error: 'No pudimos generar tu comprobante.' });
+    }
+};
+
+// ── La INSCRIPCIÓN del club (v4.1299) ────────────────────────────────
+
+/** ¿Este proyecto es el ancla de un cobro todavía abierto (sesión viva)? */
+const hasOpenPaymentFor = (submission, siblings) =>
+    owesRegistration(submission) && coveredByCheckout(siblings)[0]?.id === submission.id;
+
+/**
+ * La vista de la inscripción para el perfil. El veredicto sobre el segundo
+ * proyecto —se puede agregar, se restaura, por qué no— lo arma el criterio
+ * puro; la pantalla lo pinta y no vuelve a decidir.
+ */
+const registrationViewOf = (submission, siblings, cfg, account, req) => {
+    const rules = pricingRulesOf(cfg);
+    const verdict = secondProjectVerdict(siblings, cfg);
+    const breakdown = registrationBreakdown(siblings, rules);
+    const exp = req?.portal?.exp || null;
+    const visibles = siblings.filter(r => !r.archivedAt).sort((a, b) => projectIndexOf(a) - projectIndexOf(b));
+    const projects = visibles.map(r => ({
+        id: r.id,
+        projectIndex: projectIndexOf(r),
+        indexLabel: projectIndexLabel(projectIndexOf(r)),
+        publicRef: r.publicRef,
+        projectName: r.projectName,
+        focusAreaLabel: r.focusAreaLabel || null,
+        ...applicationViewOf(r),
+        withdrawnByClub: !!r.metadata?.withdrawnByClub,
+        active: isActiveProject(r),
+        removable: removeProjectVerdict(r).ok,
+        current: r.id === submission.id,
+        // El token con el que se gestiona ESTE proyecto (formularios, videos,
+        // recursos). Misma cuenta, mismo vencimiento.
+        token: account ? issueProjectToken(account, r.id, { exp }) : null,
+    }));
+    const paidOrders = visibles
+        .filter(r => String(r.status) === 'paid' && !r.metadata?.payment?.coveredBy)
+        .map(r => {
+            const pay = r.metadata?.payment || {};
+            const cubiertos = Array.isArray(pay.coveredProjects) && pay.coveredProjects.length
+                ? pay.coveredProjects
+                : [{ id: r.id, publicRef: r.publicRef, projectName: r.projectName, projectIndex: projectIndexOf(r) }];
+            return {
+                anchorId: r.id,
+                publicRef: r.publicRef,
+                paidAt: r.paidAt || null,
+                amount: r.amountReceived != null ? Number(r.amountReceived) : null,
+                currency: r.chargeCurrency || rules.mode,
+                origin: r.paymentConfirmationOrigin || 'stripe',
+                receiptUrl: r.receiptUrl || null,
+                projects: cubiertos.map(p => ({ id: p.id, publicRef: p.publicRef || null, projectName: p.projectName, projectIndex: p.projectIndex, indexLabel: projectIndexLabel(p.projectIndex) })),
+            };
+        });
+    return {
+        id: submission.registrationId || null,
+        modality: breakdown.modality,
+        count: breakdown.count,
+        maxProjects: rules.maxProjects,
+        currency: breakdown.currency,
+        lines: breakdown.lines,
+        total: breakdown.total,
+        paidTotal: breakdown.paidTotal,
+        pendingTotal: breakdown.pendingTotal,
+        projects,
+        paidOrders,
+        secondProject: {
+            enabled: rules.secondEnabled,
+            amount: rules.second,
+            firstAmount: rules.first,
+            bundleTotal: modalityTotal(rules, 2),
+            deadline: rules.secondDeadline,
+            canAdd: verdict.ok && verdict.code !== 'restorable',
+            canRestore: verdict.ok && verdict.code === 'restorable',
+            restoreId: verdict.restoreId || null,
+            code: verdict.code,
+            reason: verdict.ok ? null : verdict.reason,
+        },
+    };
+};
+
+/** Los proyectos de la inscripción del club que está en sesión (la fila actual incluida). */
+const ownRegistration = async (req) => {
+    const own = await loadOwnSubmission(req);
+    if (!own) return { own: null, siblings: [] };
+    const siblings = await registrationRows(own);
+    return { own, siblings };
+};
+
+/**
+ * POST /portal/projects — AGREGAR UN SEGUNDO PROYECTO a la inscripción, con
+ * la sesión del club. Vale tanto antes de pagar (la orden pasa a cubrir los
+ * dos: 350.000) como con el primero ya pagado (se abre después un cobro
+ * COMPLEMENTARIO de 100.000, independiente del original). El tope, la tarifa
+ * y la fecha límite los decide la convocatoria de SU edición; el índice único
+ * de la base impide que dos pestañas creen dos «segundos proyectos».
+ */
+export const addProject = async (req, res) => {
+    try {
+        const { own, siblings } = await ownRegistration(req);
+        if (!own) return res.status(404).json({ error: 'No encontramos tu inscripción.' });
+        const cfg = await readConfigForSubmission(own.eventId || null);
+        const verdict = secondProjectVerdict(siblings, cfg);
+        if (!verdict.ok) return res.status(409).json({ error: verdict.reason, code: verdict.code });
+        if (verdict.code === 'restorable') {
+            return res.status(409).json({
+                error: 'Tu inscripción ya tiene un segundo proyecto retirado. Puedes restaurarlo en vez de crear otro.',
+                code: 'restorable', restoreId: verdict.restoreId,
+            });
+        }
+        const primary = activeProjects(siblings)[0] || own;
+        const draft = String(req.body?.mode || '').toLowerCase() === 'draft';
+        const fields = Object.fromEntries(PROJECT_FIELDS.map(k => [k, req.body?.[k]]));
+        const { errors, data } = validateSubmission({ ...primary, clubRole: primary.clubRole, idType: primary.idType, ...fields }, cfg, { draft, skipPassword: true });
+        const projectErrors = Object.fromEntries(Object.entries(errors).filter(([k]) => PROJECT_FIELDS.includes(k)));
+        if (Object.keys(projectErrors).length) return res.status(400).json({ error: 'Revisa los campos marcados.', fields: projectErrors });
+
+        let trm = null;
+        if (resolvePriceMode(cfg) === 'COP') { try { trm = await resolveTrm(cfg); } catch { /* sin equivalente */ } }
+        let created;
+        try {
+            created = await insertProjectRow({
+                cfg, eventId: own.eventId || null, data: primary,
+                project: Object.fromEntries([...PROJECT_FIELDS, 'focusAreaLabel'].map(k => [k, data[k]])),
+                registrationId: own.registrationId || null, projectIndex: verdict.nextIndex || 2, draft, trm, req,
+            });
+        } catch (err) {
+            // El índice único (inscripción, posición) ganó la carrera por él.
+            if (String(err?.code) === '23505') return res.status(409).json({ error: 'Tu inscripción ya tiene un segundo proyecto. Actualiza la página.' });
+            throw err;
+        }
+        if (own.registrationId) {
+            await db.query(`UPDATE "ProjectFairRegistration" SET modality = $2, "updatedAt" = NOW() WHERE id = $1`, [own.registrationId, modalityOf(activeProjects([...siblings, created]).length)]).catch(() => {});
+        }
+        await logEvent(created.id, draft ? {
+            type: 'draft_saved', title: 'Borrador guardado',
+            detail: `${created.projectName} — segundo proyecto de la inscripción ${primary.publicRef}.`,
+            actor: { name: req.portal.email, role: 'club' },
+            metadata: { publicRef: created.publicRef, registrationId: own.registrationId || null, projectIndex: created.projectIndex, addedFrom: 'portal' },
+        } : {
+            type: 'form_submitted', title: 'Proyecto postulado',
+            detail: `${created.projectName} — segundo proyecto de la inscripción ${primary.publicRef}. Pago de inscripción pendiente (tarifa del segundo proyecto).`,
+            actor: { name: req.portal.email, role: 'club' },
+            metadata: { publicRef: created.publicRef, registrationId: own.registrationId || null, projectIndex: created.projectIndex, addedFrom: 'portal' },
+        });
+        await logEvent(primary.id, {
+            type: 'project_added', title: 'Segundo proyecto agregado a la inscripción',
+            detail: `${created.projectName} (${created.publicRef})${draft ? ', como borrador' : ''}.`,
+            actor: { name: req.portal.email, role: 'club' },
+            metadata: { projectId: created.id, projectIndex: created.projectIndex },
+        });
+        if (!draft) await notifyApplication(created, cfg);
+
+        const account = await accountForSubmission(own);
+        res.status(201).json({
+            success: true,
+            project: {
+                id: created.id, projectIndex: projectIndexOf(created), publicRef: created.publicRef, projectName: created.projectName,
+                ...applicationViewOf(created),
+                token: account ? issueProjectToken(account, created.id, { exp: req.portal?.exp || null }) : null,
+            },
+        });
+    } catch (error) {
+        console.error('[project-fair-portal] addProject:', error);
+        res.status(500).json({ error: 'No pudimos agregar el segundo proyecto.' });
+    }
+};
+
+/**
+ * POST /portal/projects/:id/withdraw — QUITAR el segundo proyecto antes de
+ * pagar (volver de dos a uno). No se borra nada: queda «Retirado» con su
+ * información intacta y la marca de que lo retiró el club, para poder
+ * restaurarlo. Un proyecto ya pagado no se quita por acá.
+ */
+export const withdrawProject = async (req, res) => {
+    try {
+        const { own, siblings } = await ownRegistration(req);
+        if (!own) return res.status(404).json({ error: 'No encontramos tu inscripción.' });
+        const target = siblings.find(r => r.id === clean(req.params.id, 80));
+        if (!target) return res.status(404).json({ error: 'Ese proyecto no pertenece a tu inscripción.' });
+        const verdict = removeProjectVerdict(target);
+        if (!verdict.ok) return res.status(409).json({ error: verdict.reason, code: verdict.code });
+
+        const { rows } = await db.query(`
+            UPDATE "ProjectFairSubmission"
+            SET "workflowStatus" = 'withdrawn',
+                metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb,
+                "updatedAt" = NOW()
+            WHERE id = $1 AND status NOT IN ('paid','refunded') AND COALESCE("workflowStatus",'received') <> 'withdrawn'
+            RETURNING *
+        `, [target.id, JSON.stringify({ withdrawnByClub: { at: new Date().toISOString(), previousState: projectStateOf(target), by: req.portal.email } })]);
+        if (!rows[0]) return res.status(409).json({ error: 'Ese proyecto ya no se puede quitar.' });
+        if (own.registrationId) {
+            await db.query(`UPDATE "ProjectFairRegistration" SET modality = $2, "updatedAt" = NOW() WHERE id = $1`,
+                [own.registrationId, modalityOf(activeProjects(siblings.map(r => (r.id === target.id ? rows[0] : r))).length)]).catch(() => {});
+        }
+        await logEvent(target.id, {
+            type: 'status_change', title: 'Proyecto retirado por el club',
+            detail: 'El club quitó este segundo proyecto de su inscripción antes de pagar. Su información se conserva y puede restaurarse.',
+            actor: { name: req.portal.email, role: 'club' },
+            metadata: { from: projectStateOf(target), to: 'withdrawn', byClub: true },
+        });
+        res.json({ success: true, project: { id: rows[0].id, ...applicationViewOf(rows[0]) } });
+    } catch (error) {
+        console.error('[project-fair-portal] withdrawProject:', error);
+        res.status(500).json({ error: 'No pudimos quitar el proyecto.' });
+    }
+};
+
+/**
+ * POST /portal/projects/:id/restore — RESTAURAR un segundo proyecto que el
+ * club había quitado. Vuelve a su estado anterior (borrador o postulado) y
+ * la orden pendiente vuelve a cubrirlo. Sólo si la convocatoria sigue
+ * admitiendo el segundo proyecto.
+ */
+export const restoreProject = async (req, res) => {
+    try {
+        const { own, siblings } = await ownRegistration(req);
+        if (!own) return res.status(404).json({ error: 'No encontramos tu inscripción.' });
+        const target = siblings.find(r => r.id === clean(req.params.id, 80));
+        if (!target) return res.status(404).json({ error: 'Ese proyecto no pertenece a tu inscripción.' });
+        if (projectStateOf(target) !== 'withdrawn' || !target.metadata?.withdrawnByClub) {
+            return res.status(409).json({ error: 'Ese proyecto no fue retirado por el club.' });
+        }
+        const cfg = await readConfigForSubmission(own.eventId || null);
+        const verdict = secondProjectVerdict(siblings, cfg);
+        if (!verdict.ok) return res.status(409).json({ error: verdict.reason, code: verdict.code });
+
+        const previous = String(target.metadata.withdrawnByClub.previousState || 'received');
+        const { rows } = await db.query(`
+            UPDATE "ProjectFairSubmission"
+            SET "workflowStatus" = $2,
+                metadata = (COALESCE(metadata, '{}'::jsonb) - 'withdrawnByClub') || $3::jsonb,
+                "updatedAt" = NOW()
+            WHERE id = $1 AND COALESCE("workflowStatus",'received') = 'withdrawn'
+            RETURNING *
+        `, [target.id, previous, JSON.stringify({ restoredByClubAt: new Date().toISOString() })]);
+        if (!rows[0]) return res.status(409).json({ error: 'Ese proyecto ya no está retirado.' });
+        if (own.registrationId) {
+            await db.query(`UPDATE "ProjectFairRegistration" SET modality = 'double', "updatedAt" = NOW() WHERE id = $1`, [own.registrationId]).catch(() => {});
+        }
+        await logEvent(target.id, {
+            type: 'status_change', title: 'Proyecto restaurado por el club',
+            detail: 'El club volvió a incluir este segundo proyecto en su inscripción.',
+            actor: { name: req.portal.email, role: 'club' },
+            metadata: { from: 'withdrawn', to: previous, byClub: true },
+        });
+        res.json({ success: true, project: { id: rows[0].id, ...applicationViewOf(rows[0]) } });
+    } catch (error) {
+        console.error('[project-fair-portal] restoreProject:', error);
+        res.status(500).json({ error: 'No pudimos restaurar el proyecto.' });
     }
 };
 

@@ -69,6 +69,11 @@ export interface FairConfig {
         requirePaymentForForms?: boolean;
         /** v4.1253 — Fecha límite de pago (AAAA-MM-DD). Vacía = no hay. */
         paymentDeadline?: string;
+        /** v4.1299 — Hasta dos proyectos por club: tarifa especial del segundo. */
+        secondProjectEnabled?: boolean;
+        secondProjectAmountCop?: number;
+        secondProjectAmountUsd?: number;
+        secondProjectDeadline?: string;
     };
     districts: DistrictOption[];
     idTypes: FocusArea[];
@@ -398,6 +403,57 @@ const ConvocatoriaConfig: React.FC<{ canEdit?: boolean; onSaved?: () => void }> 
                         hint="Vacía = sin fecha límite. Si la defines, se muestra en el perfil del club y en los recordatorios. No impide postular."
                     />
                 </div>
+                {/* ── v4.1299 — HASTA DOS PROYECTOS POR CLUB ──────────────
+                    El primer proyecto vale el «Valor de inscripción» de arriba;
+                    el segundo tiene su propia tarifa. Cambiar estos valores NO
+                    toca ninguna inscripción ya pagada: las órdenes pendientes se
+                    cobran al precio vigente en el momento del pago. */}
+                <div className="mt-4 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+                    <p className="font-semibold text-slate-800">Segundo proyecto por club (tarifa especial)</p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                        Cada club puede postular hasta dos proyectos en una sola inscripción. El primero se cobra al valor de inscripción;
+                        el segundo, al valor de abajo. Un club con el primero ya pagado agrega el segundo con un pago complementario.
+                    </p>
+                    <label className="mt-3 flex items-start gap-2">
+                        <input type="checkbox" className="mt-0.5 h-4 w-4"
+                            checked={config.registration.secondProjectEnabled !== false}
+                            onChange={e => patch('registration.secondProjectEnabled', e.target.checked)} />
+                        <span>Habilitar la inscripción de un segundo proyecto<span className="block text-xs text-slate-500">Apagado, la convocatoria vuelve a un proyecto por club.</span></span>
+                    </label>
+                    <div className="mt-3 grid gap-4 sm:grid-cols-3">
+                        <Input
+                            label="Máximo de proyectos por club" type="number" min={1} max={2}
+                            value={config.registration.maxProjectsPerClub ?? 2}
+                            onChange={(e: ChangeEvent) => patch('registration.maxProjectsPerClub', Math.max(1, Math.min(2, Number(e.target.value) || 1)))}
+                            hint="Regla administrativa aprobada: 2 para esta convocatoria."
+                        />
+                        {priceMode === 'COP' ? (
+                            <Input
+                                label="Valor del segundo proyecto (COP)" type="number"
+                                value={config.registration.secondProjectAmountCop ?? 0}
+                                onChange={(e: ChangeEvent) => patch('registration.secondProjectAmountCop', Number(e.target.value))}
+                                hint={`Dos proyectos: ${(Number(config.registration.amountCop) || 0).toLocaleString('es-CO')} + ${(Number(config.registration.secondProjectAmountCop) || 0).toLocaleString('es-CO')} = ${((Number(config.registration.amountCop) || 0) + (Number(config.registration.secondProjectAmountCop) || 0)).toLocaleString('es-CO')} COP.`}
+                            />
+                        ) : (
+                            <Input
+                                label="Valor del segundo proyecto (USD)" type="number" step="0.01"
+                                value={config.registration.secondProjectAmountUsd ?? 0}
+                                onChange={(e: ChangeEvent) => patch('registration.secondProjectAmountUsd', Number(e.target.value))}
+                                hint={`Dos proyectos: ${((Number(config.registration.amountUsd) || 0) + (Number(config.registration.secondProjectAmountUsd) || 0)).toFixed(2)} USD.`}
+                            />
+                        )}
+                        <Input
+                            label="Fecha límite para agregar el segundo (opcional)" type="date"
+                            value={config.registration.secondProjectDeadline || ''}
+                            onChange={(e: ChangeEvent) => patch('registration.secondProjectDeadline', e.target.value)}
+                            hint="Vacía: rige la fecha límite general de postulación."
+                        />
+                    </div>
+                    <p className="mt-3 text-xs text-slate-500">
+                        Cambiar las tarifas no altera ninguna orden ya pagada. Las inscripciones pendientes se cobran al valor vigente cuando el club paga.
+                    </p>
+                </div>
+
                 <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
                     <p className="font-semibold text-slate-800">La postulación no requiere pago</p>
                     <p className="mt-0.5 text-xs text-slate-500">

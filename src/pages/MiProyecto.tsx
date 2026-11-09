@@ -35,7 +35,7 @@ import { activeLocale } from '../lib/locale';
 import {
     AlertCircle, ArrowRight, CalendarDays, CheckCircle2, ChevronRight, Clock, ExternalLink,
     FileText, KeyRound, LayoutDashboard, Loader2, LogOut, Lock, MapPin, PenLine,
-    ShieldCheck, Trophy, Wallet, Download, Receipt, Send, Save,
+    ShieldCheck, Trophy, Wallet, Download, Receipt, Send, Save, PlusCircle, Layers, RotateCcw, Trash2,
 } from 'lucide-react';
 import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
 import { PROJECT_FAIR_PORTAL_PATH, PROJECT_FAIR_PORTAL_TOKEN_KEY } from '../lib/ctaLinks';
@@ -64,7 +64,13 @@ interface PortalData {
         id: string; publicRef: string; projectName: string; clubName: string;
         district: string; email: string; paymentStatus: string; paidAt: string | null;
         amountCop: number | null; amountUsd: number | null; receiptUrl?: string;
+        projectIndex?: number; registrationId?: string | null;
     };
+    // v4.1299 — La INSCRIPCIÓN del club: sus proyectos (uno o dos), con un
+    // token para gestionar cada uno, el desglose, los pagos realizados y qué
+    // puede hacer con el segundo proyecto. Resuelto por el servidor.
+    registration?: RegistrationState | null;
+    activeProjectId?: string;
     // El veredicto del pago llega RESUELTO del servidor: qué estado tiene, qué
     // frase se muestra, si se puede pagar y con qué rótulo. Esta pantalla lo
     // PINTA y no vuelve a decidir nada — el navegador no es la fuente de
@@ -93,8 +99,31 @@ interface ApplicationState {
     acceptingApplications: boolean;
 }
 
+interface RegistrationProject {
+    id: string; projectIndex: number; indexLabel: string; publicRef: string; projectName: string; focusAreaLabel?: string | null;
+    projectState: string; projectStateLabel: string; applied: boolean; appliedAt: string | null;
+    paymentStatus: string; paymentStatusLabel: string; owes: boolean;
+    withdrawnByClub: boolean; active: boolean; removable: boolean; current: boolean; token: string | null;
+}
+interface PaidOrder {
+    anchorId: string; publicRef: string; paidAt: string | null; amount: number | null; currency: string; origin: string; receiptUrl: string | null;
+    projects: { id: string; publicRef: string | null; projectName: string; projectIndex: number; indexLabel: string }[];
+}
+interface RegistrationState {
+    id: string | null; modality: 'single' | 'double'; count: number; maxProjects: number; currency: 'COP' | 'USD';
+    lines: { submissionId: string; projectIndex: number; projectName: string; label: string; amount: number; paid: boolean; owes: boolean; applied: boolean }[];
+    total: number; paidTotal: number; pendingTotal: number;
+    projects: RegistrationProject[];
+    paidOrders: PaidOrder[];
+    secondProject: {
+        enabled: boolean; amount: number; firstAmount: number; bundleTotal: number; deadline: string | null;
+        canAdd: boolean; canRestore: boolean; restoreId: string | null; code: string | null; reason: string | null;
+    };
+}
+
 interface PaymentAttempt { n: number; status: string; label: string; reason: string | null; at: string | null }
 interface ChargeLine { key: string; label: string; percent: number | null; amount: number }
+interface ChargeProject { submissionId: string; projectIndex: number; projectName: string; publicRef: string | null; label: string; amount: number }
 interface PaymentState {
     state: 'paid' | 'failed' | 'pending' | 'refunded' | 'draft';
     /** v4.1253 — Estado del pago para leer: pending, processing, confirmed, failed, refunded, partially_refunded. */
@@ -102,7 +131,9 @@ interface PaymentState {
     statusLabel?: string;
     applied?: boolean;
     /** El desglose del cobro, calculado por el servidor con la MISMA función que arma la sesión de Stripe. */
-    charge?: { currency: string; base: number; lines: ChargeLine[]; total: number | null; approxUsd?: number | null; final: boolean } | null;
+    charge?: { currency: string; base: number; lines: ChargeLine[]; projects?: ChargeProject[]; total: number | null; approxUsd?: number | null; final: boolean; anchorRef?: string | null } | null;
+    /** v4.1299 — Pagado dentro del cobro de otro proyecto de la inscripción. */
+    coveredBy?: { id: string; publicRef: string | null; projectName: string | null } | null;
     deadline?: string | null;
     transaction?: { reference: string | null; method: string | null; amount: number | null; currency: string; refundedAmount: number | null } | null;
     paid: boolean;
@@ -177,6 +208,13 @@ const MiProyecto = () => {
     // activo, y sin esto la página no se repintaría al cambiarlo.
     useLang();
     const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
+    // v4.1299 — EL TOKEN ES EL SELECTOR DE PROYECTO. La sesión guardada abre el
+    // proyecto principal; al elegir otro proyecto de la inscripción se usa el
+    // token que el servidor emitió para ÉL (misma cuenta, mismo vencimiento) y
+    // todas las tarjetas —formularios, videos, recursos— hablan de ese
+    // proyecto sin saber que hay otro.
+    const [projectToken, setProjectToken] = useState<string | null>(null);
+    const activeToken = projectToken || token;
     const [data, setData] = useState<PortalData | null>(null);
     const [loading, setLoading] = useState(true);
     const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
@@ -227,7 +265,7 @@ const MiProyecto = () => {
     // el encabezado escucha ese aviso y baja el avatar en el acto (v4.693).
     const logout = useCallback(() => {
         forgetSession('portal');
-        setToken(null); setData(null); setOpenForm(null);
+        setToken(null); setProjectToken(null); setData(null); setOpenForm(null);
     }, []);
 
     const loadPortal = useCallback((t: string, silent = false) => {
@@ -266,20 +304,20 @@ const MiProyecto = () => {
      * formularios se desbloquean solos.
      */
     const handlePay = useCallback(async () => {
-        if (!token || paying) return;
+        if (!activeToken || paying) return;
         setPaying(true);
         setNotice(null);
         try {
             const res = await fetch(`${API}/project-fair/portal/checkout`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${activeToken}` },
                 body: JSON.stringify({ returnUrl: window.location.origin }),
             });
             const body = await res.json().catch(() => ({}));
             if (res.status === 401) { logout(); return; }
             if (body?.alreadyPaid) {
                 setNotice({ kind: 'ok', text: 'Tu pago ya estaba confirmado.' });
-                loadPortal(token, true);
+                loadPortal(activeToken, true);
                 setPaying(false);
                 return;
             }
@@ -289,7 +327,7 @@ const MiProyecto = () => {
             setNotice({ kind: 'error', text: e?.message || 'No pudimos iniciar el pago. Inténtalo de nuevo en un momento.' });
             setPaying(false);
         }
-    }, [token, paying, logout, loadPortal]);
+    }, [activeToken, paying, logout, loadPortal]);
 
     /**
      * El comprobante del pago: la MISMA plantilla del correo, abierta en una
@@ -297,13 +335,13 @@ const MiProyecto = () => {
      * club; nadie más puede leer el comprobante de otro.
      */
     const openReceipt = useCallback(async () => {
-        if (!token) return;
+        if (!activeToken) return;
         // La ventana se abre ANTES del viaje de red: abrirla después del
         // `await` la convierte en una ventana emergente que el navegador
         // bloquea.
         const win = window.open('', '_blank');
         try {
-            const res = await fetch(`${API}/project-fair/portal/receipt`, { headers: { Authorization: `Bearer ${token}` } });
+            const res = await fetch(`${API}/project-fair/portal/receipt`, { headers: { Authorization: `Bearer ${activeToken}` } });
             const body = await res.json().catch(() => ({}));
             if (!res.ok || !body?.html) throw new Error(body?.error || 'No pudimos generar tu comprobante.');
             if (!win) throw new Error('Tu navegador bloqueó la ventana del comprobante. Permite las ventanas emergentes e inténtalo de nuevo.');
@@ -314,7 +352,7 @@ const MiProyecto = () => {
             win?.close();
             setNotice({ kind: 'error', text: e?.message || 'No pudimos generar tu comprobante.' });
         }
-    }, [token]);
+    }, [activeToken]);
 
     // Entrada automática al volver de Stripe: se canjea la sesión de pago por
     // una sesión del panel, sin pedir la contraseña otra vez.
@@ -345,7 +383,41 @@ const MiProyecto = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    useEffect(() => { if (token) loadPortal(token); }, [token, loadPortal]);
+    useEffect(() => { if (activeToken) loadPortal(activeToken); }, [activeToken, loadPortal]);
+
+    // v4.1299 — Cambiar de proyecto dentro de la inscripción: se cierra lo que
+    // estuviera abierto (un formulario es DE un proyecto) y se recarga con el
+    // token de ese proyecto.
+    const switchProject = useCallback((p: RegistrationProject) => {
+        if (!p.token || p.current) return;
+        setOpenForm(null); setOpenVideoPitch(false); setOpenProjectVideo(false);
+        const url = new URL(window.location.href);
+        ['form', 'videoPitch', 'vp_action', 'projectVideo', 'pv_action'].forEach(k => url.searchParams.delete(k));
+        window.history.replaceState(null, '', url.toString());
+        setProjectToken(p.token);
+    }, []);
+
+    /** Acciones sobre la inscripción (agregar, quitar, restaurar el segundo proyecto). */
+    const registrationAction = useCallback(async (path: string, body: any, okText: string) => {
+        if (!activeToken) return false;
+        setNotice(null);
+        try {
+            const res = await fetch(`${API}/project-fair/portal/projects${path}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${activeToken}` },
+                body: JSON.stringify(body || {}),
+            });
+            const resp = await res.json().catch(() => ({}));
+            if (res.status === 401) { logout(); return false; }
+            if (!res.ok) throw Object.assign(new Error(resp?.error || 'No pudimos completar la acción.'), { fields: resp?.fields, code: resp?.code });
+            setNotice({ kind: 'ok', text: okText });
+            loadPortal(activeToken, true);
+            return resp;
+        } catch (e: any) {
+            setNotice({ kind: 'error', text: e?.message || 'No pudimos completar la acción.' });
+            throw e;
+        }
+    }, [activeToken, logout, loadPortal]);
 
     // El formulario abierto vive en la URL: entrar y salir de uno es navegar.
     const openFormView = (key: string | null) => {
@@ -400,15 +472,15 @@ const MiProyecto = () => {
         () => Boolean(new URLSearchParams(window.location.search).get('session_id'))
     );
     useEffect(() => {
-        if (!aguardandoPago || !token) return;
+        if (!aguardandoPago || !activeToken) return;
         if (data?.payment && !data.payment.canPay) { setAguardandoPago(false); return; }
         let vueltas = 0;
         const timer = setInterval(() => {
             if (++vueltas > 10) { setAguardandoPago(false); clearInterval(timer); return; }
-            loadPortal(token, true);
+            loadPortal(activeToken, true);
         }, 4000);
         return () => clearInterval(timer);
-    }, [aguardandoPago, token, data?.payment, loadPortal]);
+    }, [aguardandoPago, activeToken, data?.payment, loadPortal]);
 
     if (loading) {
         return (
@@ -435,6 +507,10 @@ const MiProyecto = () => {
     const forms = data.forms || [];
     const current = forms.find(f => f.key === openForm) || null;
     const pago = data.payment || null;
+    const reg = data.registration || null;
+    const regProjects = (reg?.projects || []).filter(p => p.active);
+    const currentProject = reg?.projects.find(p => p.current) || null;
+    const tokenActivo = activeToken as string;
 
     return (
         <div className="min-h-screen bg-rotary-concrete">
@@ -443,7 +519,9 @@ const MiProyecto = () => {
             <header style={PAGE_HEADER_BACKGROUND} className="px-4 py-7 text-white sm:px-6">
                 <div className="mx-auto flex max-w-5xl flex-wrap items-start justify-between gap-4">
                     <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/70">Gestión de proyectos</p>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/70">
+                            {regProjects.length > 1 ? `Gestión de proyectos · Proyecto ${currentProject?.projectIndex || data.submission.projectIndex || 1} de ${regProjects.length}` : 'Gestión de proyectos'}
+                        </p>
                         <h1 className="mt-1 text-2xl font-bold leading-tight">{data.submission.projectName}</h1>
                         <p className="mt-1 text-sm text-white/85">
                             {data.submission.clubName} · {data.submission.district} · Ref. {data.submission.publicRef}
@@ -480,13 +558,21 @@ const MiProyecto = () => {
                     plataforma; `edition` es el respaldo para una edición que
                     todavía no se ha vinculado a su evento. */}
                 <EventStrip event={data.event} edition={data.edition} />
+
+                {/* ── v4.1299 — MIS PROYECTOS POSTULADOS ──────────────────
+                    Con dos proyectos en la inscripción, se elige cuál se está
+                    gestionando. Cada uno conserva sus propios formularios,
+                    documentos, videos y estados: nada se mezcla. */}
+                {regProjects.length > 1 && (
+                    <ProjectSwitcher projects={regProjects} onSwitch={switchProject} />
+                )}
             </header>
 
             <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
                 {openProjectVideo ? (
                     <ProjectVideoView
-                        key={pvAction || 'open'}
-                        token={token}
+                        key={`${data.submission.id}-${pvAction || 'open'}`}
+                        token={tokenActivo}
                         initialAction={pvAction}
                         onBack={() => openProjectVideoView(false)}
                         onChanged={() => setPvRefresh(n => n + 1)}
@@ -494,8 +580,8 @@ const MiProyecto = () => {
                     />
                 ) : openVideoPitch ? (
                     <VideoPitchRequestView
-                        key={vpAction || 'open'}
-                        token={token}
+                        key={`${data.submission.id}-${vpAction || 'open'}`}
+                        token={tokenActivo}
                         initialAction={vpAction}
                         onBack={() => openVideoPitchView(false)}
                         onChanged={() => setVpRefresh(n => n + 1)}
@@ -503,10 +589,11 @@ const MiProyecto = () => {
                     />
                 ) : current ? (
                     <ProjectFormView
-                        token={token}
+                        key={`${data.submission.id}-${current.key}`}
+                        token={tokenActivo}
                         formKey={current.key}
                         onBack={() => openFormView(null)}
-                        onProgress={() => loadPortal(token, true)}
+                        onProgress={() => loadPortal(tokenActivo, true)}
                     />
                 ) : (
                     <>
@@ -523,10 +610,11 @@ const MiProyecto = () => {
                             primero que el club ve es cómo terminarlo y enviarlo. */}
                         {data.application && !data.application.applied && (
                             <DraftEditor
-                                token={token}
+                                key={data.submission.id}
+                                token={tokenActivo}
                                 application={data.application}
                                 focusAreas={data.focusAreas || []}
-                                onChange={() => loadPortal(token, true)}
+                                onChange={() => loadPortal(tokenActivo, true)}
                                 onNotice={setNotice}
                             />
                         )}
@@ -587,12 +675,30 @@ const MiProyecto = () => {
                                 pago={pago}
                                 application={data.application || null}
                                 submission={data.submission}
+                                registration={reg}
                                 eventName={data.event?.title || data.edition?.name || ''}
                                 bloqueo={pago.canPay && !data.canEdit ? data.reason : null}
                                 onPay={handlePay}
                                 onReceipt={openReceipt}
                                 paying={paying}
                                 esperando={aguardandoPago && !!pago?.canPay}
+                            />
+                        ) : null}
+
+                        {/* ── v4.1299 — EL SEGUNDO PROYECTO ──────────────────
+                            Agregarlo (antes o después de pagar el primero),
+                            quitarlo antes de pagar o restaurarlo. El veredicto
+                            llega resuelto del servidor. */}
+                        {reg ? (
+                            <SecondProjectCard
+                                registration={reg}
+                                focusAreas={data.focusAreas || []}
+                                onAdd={(body) => registrationAction('', body, body.mode === 'draft'
+                                    ? 'Guardamos el borrador de tu segundo proyecto. Puedes terminarlo y enviarlo desde su pestaña.'
+                                    : '¡Tu segundo proyecto quedó postulado! Su inscripción se suma a tu pago pendiente con la tarifa especial.')}
+                                onWithdraw={(id) => registrationAction(`/${id}/withdraw`, {}, 'Quitamos el segundo proyecto de tu inscripción. Su información se conserva por si decides restaurarlo.')}
+                                onRestore={(id) => registrationAction(`/${id}/restore`, {}, 'Restauramos tu segundo proyecto: vuelve a hacer parte de tu inscripción.')}
+                                onSwitch={switchProject}
                             />
                         ) : null}
                         {/* Un formulario cerrado por otro motivo (plazo, comité,
@@ -626,15 +732,15 @@ const MiProyecto = () => {
                                 {forms.map(form => <FormCardTile key={form.key} form={form} onOpen={() => openFormView(form.key)} />)}
                                 {/* La descarga no depende del pago ni de los
                                     formularios: es un recurso de apoyo. */}
-                                <PresentationTemplateCard token={token} onSessionExpired={logout} />
+                                <PresentationTemplateCard key={`tpl-${data.submission.id}`} token={tokenActivo} onSessionExpired={logout} />
                                 {data.nextStep?.url && <NextStepCard nextStep={data.nextStep} />}
                                 {/* v4.1298 — El video de presentación del proyecto, DOS caminos
                                     lado a lado: subir el video propio (sin costo) o solicitar el
                                     Video Pitch Profesional (servicio de pago). Cada tarjeta trae
                                     su estado resuelto del servidor y sus procesos son
                                     independientes: ninguna acción borra información de la otra. */}
-                                <ProjectVideoCard token={token} onSessionExpired={logout} onOpen={action => openProjectVideoView(true, action === 'edit' ? 'edit' : action === 'replace' ? 'replace' : null)} refreshKey={pvRefresh} />
-                                <VideoPitchCard token={token} onSessionExpired={logout} onOpen={action => openVideoPitchView(true, action === 'pay' ? 'pay' : action === 'plan' ? 'plan' : null)} refreshKey={vpRefresh} />
+                                <ProjectVideoCard key={`pv-${data.submission.id}`} token={tokenActivo} onSessionExpired={logout} onOpen={action => openProjectVideoView(true, action === 'edit' ? 'edit' : action === 'replace' ? 'replace' : null)} refreshKey={pvRefresh} />
+                                <VideoPitchCard key={`vp-${data.submission.id}`} token={tokenActivo} onSessionExpired={logout} onOpen={action => openVideoPitchView(true, action === 'pay' ? 'pay' : action === 'plan' ? 'plan' : null)} refreshKey={vpRefresh} />
                             </div>
                         </section>
                     </>
@@ -665,14 +771,19 @@ const MiProyecto = () => {
  * Va en el ámbito del MÓDULO, como todo componente de este archivo: declarada
  * dentro de la página sería un tipo nuevo en cada render (v4.971).
  */
-const PaymentCallout = ({ pago, application, submission, eventName, bloqueo, onPay, onReceipt, paying, esperando }: {
-    pago: PaymentState; application: ApplicationState | null; submission: PortalData['submission']; eventName: string;
+const PaymentCallout = ({ pago, application, submission, registration, eventName, bloqueo, onPay, onReceipt, paying, esperando }: {
+    pago: PaymentState; application: ApplicationState | null; submission: PortalData['submission']; registration: RegistrationState | null; eventName: string;
     bloqueo: string | null; onPay: () => void; onReceipt: () => void; paying: boolean; esperando: boolean;
 }) => {
     // Sólo los intentos ya resueltos: uno «en curso» no es historia todavía.
     const intentos = (pago.attempts || []).filter(a => a.status !== 'open');
     const charge = pago.charge || null;
     const moneda = charge?.currency || pago.priceMode || 'COP';
+    // v4.1299 — Una línea por proyecto cubierto por este cobro; con uno solo,
+    // la fila de siempre («Valor de inscripción»).
+    const proyectos = charge?.projects && charge.projects.length > 1 ? charge.projects : null;
+    const pagosHechos = registration?.paidOrders || [];
+    const variosProyectos = (registration?.count || 1) > 1;
     const confirmado = pago.paid;
     const tono = confirmado ? 'emerald' : pago.state === 'failed' ? 'red' : pago.state === 'refunded' ? 'slate' : 'amber';
     const tonoCls: Record<string, string> = {
@@ -715,21 +826,43 @@ const PaymentCallout = ({ pago, application, submission, eventName, bloqueo, onP
             <div className="mt-4 grid gap-6 lg:grid-cols-2">
                 {/* La postulación */}
                 <div>
-                    <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">Postulación</p>
-                    {fila('Proyecto asociado', submission.projectName)}
-                    {fila('Código de postulación', application?.publicRef || submission.publicRef)}
-                    {fila('Club Rotario', submission.clubName)}
-                    {application?.responsible ? fila('Responsable', application.responsible) : null}
-                    {fila('Estado de postulación', application?.projectStateLabel || 'Postulado')}
-                    {application?.appliedAt ? fila('Fecha de postulación', fmtDateTime(application.appliedAt)) : null}
+                    <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">{variosProyectos ? 'Inscripción del club' : 'Postulación'}</p>
+                    {variosProyectos && registration ? (
+                        <>
+                            {fila('Club Rotario', submission.clubName)}
+                            {fila('Cantidad de proyectos', `${registration.count} proyectos`)}
+                            {registration.lines.map(l => fila(
+                                <>{l.label}<span className="block text-xs font-normal text-slate-400">{l.projectName}</span></>,
+                                <>{fmtMoney(l.amount, registration.currency)}<span className={`block text-xs ${l.paid ? 'text-emerald-600' : l.owes ? 'text-amber-700' : 'text-slate-400'}`}>{l.paid ? 'Pagado' : l.owes ? 'Pendiente de pago' : l.applied ? 'Sin cobro' : 'Borrador'}</span></>,
+                            ))}
+                            {fila('Total de inscripción', <span style={{ color: BLUE }}>{fmtMoney(registration.total, registration.currency)}</span>)}
+                        </>
+                    ) : (
+                        <>
+                            {fila('Proyecto asociado', submission.projectName)}
+                            {fila('Código de postulación', application?.publicRef || submission.publicRef)}
+                            {fila('Club Rotario', submission.clubName)}
+                            {application?.responsible ? fila('Responsable', application.responsible) : null}
+                            {fila('Estado de postulación', application?.projectStateLabel || 'Postulado')}
+                            {application?.appliedAt ? fila('Fecha de postulación', fmtDateTime(application.appliedAt)) : null}
+                        </>
+                    )}
                 </div>
 
                 {/* El pago */}
                 <div>
                     <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">Pago</p>
+                    {pago.coveredBy && confirmado ? (
+                        <p className="mb-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                            Este proyecto quedó pagado con la inscripción conjunta <strong>{pago.coveredBy.publicRef || ''}</strong>.
+                        </p>
+                    ) : null}
                     {charge ? (
                         <>
-                            {fila('Valor de inscripción', fmtMoney(charge.base, moneda))}
+                            {proyectos
+                                ? proyectos.map(p => fila(<>{p.label}<span className="block text-xs font-normal text-slate-400">{p.projectName}</span></>, fmtMoney(p.amount, moneda)))
+                                : fila(confirmado ? 'Valor de inscripción' : (variosProyectos ? `Valor de inscripción · ${charge.projects?.[0]?.label || 'proyecto'}` : 'Valor de inscripción'), fmtMoney(charge.base, moneda))}
+                            {proyectos ? fila('Subtotal de inscripción', fmtMoney(charge.base, moneda)) : null}
                             {charge.lines.map(l => (
                                 <div key={l.key}>
                                     {fila(<>{l.label}{l.percent !== null ? <span className="font-normal text-slate-400"> ({fmtPercent(l.percent)})</span> : null}</>, fmtMoney(l.amount, moneda))}
@@ -755,6 +888,28 @@ const PaymentCallout = ({ pago, application, submission, eventName, bloqueo, onP
                     )}
                 </div>
             </div>
+
+            {/* v4.1299 — PAGOS REALIZADOS: qué transacción cubrió qué proyectos.
+                Aparece cuando la inscripción tiene más de un proyecto o más de
+                un cobro (p. ej. el primero pagado y el segundo complementario). */}
+            {pagosHechos.length > 0 && (variosProyectos || pagosHechos.length > 1) && (
+                <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                    <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-400">Pagos realizados</p>
+                    <ul className="space-y-2 text-sm">
+                        {pagosHechos.map(o => (
+                            <li key={o.anchorId} className="flex flex-wrap items-start justify-between gap-2">
+                                <span className="text-slate-700">
+                                    <span className="font-semibold">{o.projects.map(p => `${p.indexLabel}: ${p.projectName}`).join(' · ')}</span>
+                                    <span className="block text-xs text-slate-500">
+                                        {o.paidAt ? fmtDateTime(o.paidAt) : ''}{o.origin === 'manual_admin' ? ' · confirmado por el comité' : ''}
+                                    </span>
+                                </span>
+                                <span className="font-semibold text-emerald-700">{o.amount != null ? fmtMoney(o.amount, o.currency) : 'Pagado'}</span>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
 
             {/* El historial de intentos, sin el mensaje del proveedor. */}
             {intentos.length > 0 && (
@@ -811,6 +966,185 @@ const PaymentCallout = ({ pago, application, submission, eventName, bloqueo, onP
                 <p className="mt-3 flex items-center gap-2 text-xs font-semibold text-amber-800">
                     <Loader2 size={13} className="animate-spin" /> Comprobando con la pasarela si tu pago ya se confirmó…
                 </p>
+            )}
+        </section>
+    );
+};
+
+/**
+ * «Mis proyectos postulados» (v4.1299): el selector de proyecto dentro del
+ * encabezado. Cada pestaña dice su posición, su nombre y sus dos estados.
+ */
+const ProjectSwitcher = ({ projects, onSwitch }: { projects: RegistrationProject[]; onSwitch: (p: RegistrationProject) => void }) => (
+    <div className="mx-auto mt-5 max-w-5xl">
+        <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/70"><Layers size={12} /> Mis proyectos postulados</p>
+        <div className="grid gap-2 sm:grid-cols-2" role="tablist" aria-label="Proyectos de la inscripción">
+            {projects.map(p => (
+                <button
+                    key={p.id} type="button" role="tab" aria-selected={p.current}
+                    onClick={() => onSwitch(p)}
+                    className={`rounded-xl border p-3 text-left transition ${p.current ? 'border-white bg-white text-slate-900 shadow-sm' : 'border-white/30 bg-white/10 text-white hover:bg-white/20'}`}
+                >
+                    <span className={`block text-[11px] font-bold uppercase tracking-wide ${p.current ? 'text-slate-500' : 'text-white/70'}`}>
+                        Proyecto {p.projectIndex} — {p.projectIndex === 1 ? 'Inscripción principal' : 'Inscripción adicional'} · {p.publicRef}
+                    </span>
+                    <span className="mt-0.5 block truncate text-[15px] font-bold">{p.projectName || 'Sin nombre'}</span>
+                    <span className={`mt-1 block text-xs ${p.current ? 'text-slate-500' : 'text-white/80'}`}>
+                        {p.projectStateLabel} · Pago {String(p.paymentStatusLabel || '').toLowerCase()}
+                    </span>
+                </button>
+            ))}
+        </div>
+    </div>
+);
+
+/**
+ * El segundo proyecto de la inscripción (v4.1299): agregarlo, quitarlo antes
+ * de pagar o restaurarlo. Con uno solo y la convocatoria abierta, ofrece
+ * agregarlo con la tarifa especial y el total resultante; con dos, permite
+ * quitar el adicional mientras no esté pagado.
+ */
+const SecondProjectCard = ({ registration, focusAreas, onAdd, onWithdraw, onRestore, onSwitch }: {
+    registration: RegistrationState; focusAreas: { key: string; label: string }[];
+    onAdd: (body: any) => Promise<any>; onWithdraw: (id: string) => Promise<any>; onRestore: (id: string) => Promise<any>;
+    onSwitch: (p: RegistrationProject) => void;
+}) => {
+    const [open, setOpen] = useState(false);
+    const [fields, setFields] = useState({ projectName: '', projectDescription: '', focusArea: '', budgetUsd: '' });
+    const [errors, setErrors] = useState<Record<string, string>>({});
+    const [busy, setBusy] = useState<'apply' | 'draft' | 'withdraw' | 'restore' | null>(null);
+    const sp = registration.secondProject;
+    const activos = registration.projects.filter(p => p.active);
+    const adicional = activos.find(p => p.projectIndex >= 2) || null;
+    const set = (k: keyof typeof fields) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+        setFields(prev => ({ ...prev, [k]: e.target.value }));
+    const err = (k: string) => errors[k] ? <p className="mt-1 text-xs font-semibold text-red-600">{errors[k]}</p> : null;
+
+    const add = async (mode: 'apply' | 'draft') => {
+        if (busy) return;
+        setBusy(mode); setErrors({});
+        try {
+            const resp = await onAdd({ ...fields, budgetUsd: fields.budgetUsd.replace(/[^\d.]/g, ''), mode });
+            if (resp) { setOpen(false); setFields({ projectName: '', projectDescription: '', focusArea: '', budgetUsd: '' }); }
+        } catch (e: any) {
+            if (e?.fields) setErrors(e.fields);
+        } finally { setBusy(null); }
+    };
+    const quitar = async () => {
+        if (!adicional || busy) return;
+        const ok = window.confirm(`Vas a quitar «${adicional.projectName}» de tu inscripción. Su información se conserva y podrás restaurarlo mientras la convocatoria lo permita. El total de tu inscripción vuelve a ${fmtMoney(sp.firstAmount, registration.currency)}. ¿Continuar?`);
+        if (!ok) return;
+        setBusy('withdraw');
+        try { await onWithdraw(adicional.id); } catch { /* el aviso ya se mostró */ } finally { setBusy(null); }
+    };
+    const restaurar = async () => {
+        if (!sp.restoreId || busy) return;
+        setBusy('restore');
+        try { await onRestore(sp.restoreId); } catch { /* el aviso ya se mostró */ } finally { setBusy(null); }
+    };
+
+    // Con dos proyectos activos: la opción de quitar el adicional, si procede.
+    if (adicional) {
+        if (!adicional.removable) return null;
+        return (
+            <section className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4">
+                <p className="text-sm text-slate-600">
+                    Tu inscripción incluye <strong>dos proyectos</strong>. Mientras el segundo no esté pagado puedes quitarlo: su información se conserva.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                    {!adicional.current && (
+                        <button type="button" onClick={() => onSwitch(adicional)} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                            Ir al Proyecto {adicional.projectIndex} <ArrowRight size={14} />
+                        </button>
+                    )}
+                    <button type="button" onClick={quitar} disabled={!!busy} className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60">
+                        {busy === 'withdraw' ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />} Quitar el segundo proyecto
+                    </button>
+                </div>
+            </section>
+        );
+    }
+
+    if (sp.canRestore && sp.restoreId) {
+        return (
+            <section className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50/60 px-5 py-4">
+                <p className="text-sm text-amber-900">
+                    Quitaste tu segundo proyecto de la inscripción. Su información sigue guardada: puedes restaurarlo por <strong>{fmtMoney(sp.amount, registration.currency)}</strong> adicionales.
+                </p>
+                <button type="button" onClick={restaurar} disabled={!!busy} className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-bold text-white disabled:opacity-60" style={{ background: BLUE }}>
+                    {busy === 'restore' ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />} Restaurar el segundo proyecto
+                </button>
+            </section>
+        );
+    }
+
+    if (!sp.enabled) return null;
+    if (!sp.canAdd) {
+        return sp.reason && sp.code !== 'max_reached' ? (
+            <p className="mb-6 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-500">{sp.reason}</p>
+        ) : null;
+    }
+
+    const primerPagado = activos.some(p => p.projectIndex === 1 && p.paymentStatus === 'paid');
+    return (
+        <section className="mb-6 rounded-2xl border-2 bg-white p-5 sm:p-6" style={{ borderColor: `${BLUE}33` }}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900">
+                        <PlusCircle size={18} style={{ color: BLUE }} /> Postula un segundo proyecto con tarifa especial
+                    </h2>
+                    <p className="mt-1 text-[15px] text-slate-600">
+                        Tu club puede inscribir un segundo proyecto por <strong>{fmtMoney(sp.amount, registration.currency)}</strong> adicionales
+                        {primerPagado
+                            ? '. Como la inscripción del primero ya está pagada, se abre un pago complementario sólo por ese valor; tu transacción anterior no se modifica.'
+                            : <> (total de la inscripción: <strong>{fmtMoney(sp.bundleTotal, registration.currency)}</strong>, en un solo pago).</>}
+                        {sp.deadline ? <> Plazo para agregarlo: {fmtDate(sp.deadline)}.</> : null}
+                    </p>
+                </div>
+                {!open && (
+                    <button type="button" onClick={() => setOpen(true)} className="inline-flex items-center gap-1.5 rounded-xl px-5 py-2.5 text-sm font-bold text-white" style={{ background: BLUE }}>
+                        Agregar segundo proyecto <ArrowRight size={14} />
+                    </button>
+                )}
+            </div>
+            {open && (
+                <div className="mt-4 grid gap-4 border-t border-slate-100 pt-4">
+                    <p className="text-[13px] font-semibold uppercase tracking-wide text-slate-500">Proyecto 2 — Inscripción adicional · {fmtMoney(sp.amount, registration.currency)}</p>
+                    <label className="block text-sm font-semibold text-slate-700">Nombre del proyecto
+                        <input className={`${inputCls(false, !!errors.projectName)} mt-1 w-full`} value={fields.projectName} onChange={set('projectName')} maxLength={250} />
+                        {err('projectName')}
+                    </label>
+                    <label className="block text-sm font-semibold text-slate-700">Descripción del proyecto
+                        <textarea className={`${inputCls(false, !!errors.projectDescription)} mt-1 min-h-[120px] w-full`} value={fields.projectDescription} onChange={set('projectDescription')} maxLength={8000} />
+                        <span className="mt-1 block text-xs font-normal text-slate-400">Mínimo 40 caracteres para postularlo ({fields.projectDescription.trim().length}).</span>
+                        {err('projectDescription')}
+                    </label>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <label className="block text-sm font-semibold text-slate-700">Área de enfoque
+                            <select className={`${inputCls(false, !!errors.focusArea)} mt-1 w-full`} value={fields.focusArea} onChange={set('focusArea')}>
+                                <option value="">Selecciona…</option>
+                                {focusAreas.map(a => <option key={a.key} value={a.key}>{a.label}</option>)}
+                            </select>
+                            {err('focusArea')}
+                        </label>
+                        <label className="block text-sm font-semibold text-slate-700">Presupuesto total (USD)
+                            <input className={`${inputCls(false, !!errors.budgetUsd)} mt-1 w-full`} inputMode="decimal" value={fields.budgetUsd} onChange={set('budgetUsd')} />
+                            {err('budgetUsd')}
+                        </label>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                        El club, el distrito y el responsable son los de tu inscripción; la información técnica y los documentos de este proyecto serán independientes del primero.
+                    </p>
+                    <div className="flex flex-wrap justify-end gap-3">
+                        <button type="button" onClick={() => setOpen(false)} disabled={!!busy} className="rounded-xl px-4 py-3 text-[15px] font-semibold text-slate-500 hover:text-slate-800">Cancelar</button>
+                        <button type="button" onClick={() => add('draft')} disabled={!!busy} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 px-5 py-3 text-[15px] font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">
+                            {busy === 'draft' ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Guardar como borrador
+                        </button>
+                        <button type="button" onClick={() => add('apply')} disabled={!!busy} className="inline-flex items-center gap-1.5 rounded-xl px-6 py-3 text-[15px] font-bold text-white disabled:opacity-60" style={{ backgroundColor: BLUE }}>
+                            {busy === 'apply' ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} Postular segundo proyecto
+                        </button>
+                    </div>
+                </div>
             )}
         </section>
     );

@@ -1,6 +1,6 @@
 # Rotary Clubs App — guía para Claude
 
-## Cómo está organizada esta guía (v4.1282)
+## Cómo está organizada esta guía (v4.1299)
 
 Este archivo se carga ENTERO en cada conversación. Llegó a pesar 1,48 MB
 (~21.000 líneas) y llenaba la ventana de contexto antes de empezar a trabajar.
@@ -227,6 +227,9 @@ Y las cinco de los Videos de proyectos, el video PROPIO del club (v4.1298):
 `ProjectVideoVersion` (cada archivo, inmutable), `ProjectVideoEvent` (historial
 y bitácora de la configuración), `ProjectVideoNotification` (avisos sin
 duplicar) y `ProjectVideoConfig` (la configuración por edición).
+Y la de la INSCRIPCIÓN de un club a la Feria (v4.1299): `ProjectFairRegistration`
+(uno o dos proyectos por club, un solo pago; es PADRE de `ProjectFairSubmission`,
+que suma `registrationId` y `projectIndex`).
 (Más las del registro de eventos que enumera su propia sección:
 `EventEdition`, `EventRegistrationCategory`, `EventRegistrationCompanion`,
 `EventRegistrationPayment`, `EventRegistrationHistory`,
@@ -257,6 +260,7 @@ es **rotar la credencial en Neon**, no sólo borrar el archivo.
 
 | Módulo | Archivo |
 |---|---|
+| **Hasta dos proyectos por club: la INSCRIPCIÓN** (modalidad en el paso 1 del wizard, una ficha por proyecto, primer proyecto $250.000 y segundo con tarifa especial $100.000 en UN solo pago; con el primero ya pagado, cobro complementario; «Mis proyectos postulados» con un token por proyecto; agregar/quitar/restaurar el segundo; indicadores de clubes frente a proyectos y recaudo por posición; tarifas administrables; lo heredado migra a inscripciones de un proyecto) — v4.1299 | `docs/claude/dos-proyectos-por-club.md` |
 | **Videos de proyectos** (el video PROPIO del club, sin costo: dos tarjetas lado a lado en `/mi-proyecto`, subida privada validada por bytes con «recibido» sólo confirmado por el servidor, versiones, autorización con evidencia, revisión del comité con motivo, configuración por edición; módulo unificado «Videos de proyectos» que también monta el Video Pitch Profesional) — v4.1298 | `docs/claude/videos-de-proyectos.md` |
 | **Video Pitch Profesional de la Feria de Proyectos** (tarjeta en `/mi-proyecto`, formulario precargado con materiales al almacenamiento privado, bandeja «Video Pitch» en Postulación de Proyectos, guiones con IA sobre el expediente real, aprobación del club, producción y entrega auditadas) — v4.1293 (paso B = un campo: v4.1295; **capa comercial: planes administrables, órdenes con precio histórico, Stripe por el webhook único, pagar después, compuerta de producción y exoneración auditada: v4.1296**) | `docs/claude/video-pitch.md` |
 | **Formulario institucional de programas** (`/formulario-programas`: un solo formulario guiado por esquema y configurable por programa, carga inicial / actualización / aporte, borrador en servidor con enlace secreto y recuperación por correo, archivos privados con carga directa o multiparte reanudable, revisión por ítem en la pestaña «Formulario institucional» que convierte lo aprobado en solicitudes del flujo editorial; nada se publica ni se sobrescribe solo) — v4.1286 (**diez pasos con bloques desplegables, resumen con edición y borradores anteriores migrados: v4.1287**) | `docs/claude/formulario-institucional-de-programas.md` |
