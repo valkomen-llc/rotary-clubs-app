@@ -57,7 +57,13 @@ import {
     SQL_ACTIVE_PROJECT, SQL_FIRST_PROJECT, SQL_SECOND_PROJECT, SQL_REGISTRATION_KEY,
     indexOf as projectIndexOf, projectIndexLabel, pricingRulesOf, registrationBreakdown,
 } from '../lib/projectFairRegistration.js';
+// v4.1304 — FDD y FAP del proyecto en el listado: una sola lectura en SQL de
+// lo que el club ya escribió en su Solicitud de Aportes del FDD.
+import {
+    SQL_FDD_COLUMNS, FDD_SORTABLE, FDD_RANGE_FILTERS, sqlAmount, rangeBound, fddAmountsOf,
+} from '../lib/projectFairFddAmounts.js';
 
+console.log('[projectFairAdminController] v4.1304.0 cargado — Proyectos postulados: columnas FDD y FAP leídas de la Solicitud de Aportes del FDD de cada proyecto, con orden numérico, filtros por rango y exportación.');
 console.log('[projectFairAdminController] v4.1301.0 cargado — La ficha resume la inscripción (modalidad, origen del segundo proyecto, pago original y complementario, total y saldo); indicadores y filtro de ampliaciones posteriores.');
 console.log('[projectFairAdminController] v4.1299.0 cargado — Hasta dos proyectos por club: el panel distingue clubes inscritos de proyectos inscritos, cuenta segundos proyectos y separa el recaudo por primeras y segundas postulaciones; filtros por cantidad de proyectos del club y por posición.');
 console.log('[projectFairAdminController] v4.1220.0 cargado — Gestión de Postulaciones y Pagos (dashboard, trazabilidad Stripe, confirmación manual, etiquetas, alertas y reportes)');
@@ -323,6 +329,9 @@ const mapRow = (row, access) => {
         manualPaymentBy: row.manualPaymentBy || null,
         manualPaymentAt: row.manualPaymentAt || null,
         tags: row.tags || [],
+        // v4.1304 — FDD solicitado y meta FAP del proyecto (sólo cuando la
+        // consulta los trajo: listado y exportación).
+        ...fddAmountsOf(row),
     };
     // Los identificadores de Stripe y el comprobante son datos financieros:
     // sólo los ve quien tiene ese permiso.
@@ -434,6 +443,12 @@ const buildFilters = (query) => {
     if (query.to) add('"createdAt" <= $?', new Date(`${clean(query.to, 30)}T23:59:59`));
     if (query.budgetMin) add('"budgetUsd" >= $?', Number(query.budgetMin));
     if (query.budgetMax) add('"budgetUsd" <= $?', Number(query.budgetMax));
+    // v4.1304 — Rangos de FDD solicitado y meta FAP, con la MISMA lectura que
+    // la columna. Un proyecto sin el valor no entra en un rango.
+    for (const r of FDD_RANGE_FILTERS) {
+        const bound = rangeBound(query[r.param]);
+        if (bound !== null) add(`${sqlAmount(r.key)} ${r.op} $?::numeric`, bound);
+    }
     if (query.tagId) {
         params.push(clean(query.tagId, 60));
         where.push(`EXISTS (SELECT 1 FROM "ProjectFairSubmissionTag" st WHERE st."submissionId" = "ProjectFairSubmission".id AND st."tagId" = $${params.length})`);
@@ -477,6 +492,8 @@ const SORTABLE = {
     createdAt: '"createdAt"', projectName: '"projectName"', clubName: '"clubName"', projectIndex: '"projectIndex"',
     district: 'district', budgetUsd: '"budgetUsd"', amountCop: '"amountCop"',
     paymentStatus: 'status', workflowStatus: '"workflowStatus"', priority: 'priority', paidAt: '"paidAt"',
+    // v4.1304 — Numérico: el alias de la columna calculada del listado.
+    ...FDD_SORTABLE,
 };
 
 // ── Dashboard ────────────────────────────────────────────────────────
@@ -1388,9 +1405,12 @@ export const listSubmissions = withAccess(async (req, res, { access }) => {
     const countRes = await db.query(`SELECT COUNT(*)::int AS total FROM "ProjectFairSubmission" ${clause}`, params);
     const total = countRes.rows[0]?.total || 0;
 
+    // v4.1304 — `SQL_FDD_COLUMNS` agrega el FDD y el FAP de CADA proyecto.
+    // El desempate por `id` deja estable la paginación cuando muchos valores
+    // coinciden (o faltan).
     const rowsRes = await db.query(
-        `SELECT * FROM "ProjectFairSubmission" ${clause}
-         ORDER BY ${sortBy} ${sortDir} NULLS LAST
+        `SELECT *, ${SQL_FDD_COLUMNS} FROM "ProjectFairSubmission" ${clause}
+         ORDER BY ${sortBy} ${sortDir} NULLS LAST, id ASC
          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
         [...params, pageSize, (page - 1) * pageSize]
     );
@@ -2182,11 +2202,14 @@ export const getAlerts = withAccess(async (req, res, { cfg }) => {
 export const getReports = getIntelligence;
 
 // ── Exportación ──────────────────────────────────────────────────────
+// v4.1304 — Un importe para la hoja de cálculo: número sin separadores de
+// miles; vacío si no hay valor (no un 0 inventado).
+const csvAmount = (v) => (v === null || v === undefined ? '' : String(Number(v)));
 // GET /admin/export.csv — respeta los mismos filtros del listado. El detalle
 // financiero sólo sale si el perfil puede verlo.
 export const exportCsv = withAccess(async (req, res, { access }) => {
     const { clause, params } = buildFilters(req.query);
-    const { rows } = await db.query(`SELECT * FROM "ProjectFairSubmission" ${clause} ORDER BY "createdAt" DESC`, params);
+    const { rows } = await db.query(`SELECT *, ${SQL_FDD_COLUMNS} FROM "ProjectFairSubmission" ${clause} ORDER BY "createdAt" DESC`, params);
     const tagsBySubmission = await loadTagsFor(rows.map(r => r.id));
 
     const sizes = await registrationSizesFor(rows);
@@ -2194,7 +2217,7 @@ export const exportCsv = withAccess(async (req, res, { access }) => {
         'Registro', 'Fecha de inscripción', 'Proyecto', 'Posición en la inscripción', 'Origen', 'Proyectos del club', 'Inscripción', 'Club Rotario', 'Distrito', 'Responsable',
         'Correo', 'WhatsApp', 'Rol en el club', 'País', 'Departamento', 'Ciudad',
         'Tipo de documento', 'Número de documento',
-        'Área de enfoque', 'Presupuesto USD', 'Comentarios del postulante', 'Estado de la postulación',
+        'Área de enfoque', 'Presupuesto USD', 'FDD (USD)', 'FAP (USD)', 'Comentarios del postulante', 'Estado de la postulación',
         'Estado del pago', 'Valor pagado COP', 'Equivalente USD', 'TRM aplicada', 'Prioridad',
         'Responsable asignado', 'Categoría interna', 'Etiquetas', 'Fecha de confirmación',
     ];
@@ -2212,7 +2235,9 @@ export const exportCsv = withAccess(async (req, res, { access }) => {
             `${r.firstName || ''} ${r.lastName || ''}`.trim(), r.email, r.phone,
             r.clubRoleOther || r.clubRoleLabel || r.clubRole,
             r.country, r.department, r.city, r.idTypeLabel || r.idType, r.idNumber,
-            r.focusAreaLabel || r.focusArea, r.budgetUsd, r.notes,
+            r.focusAreaLabel || r.focusArea, r.budgetUsd,
+            // v4.1304 — Número sin formato (vacío si el club no lo escribió).
+            csvAmount(r.fddRequestedUsd), csvAmount(r.fapGoalUsd), r.notes,
             WORKFLOW_STATES.find(s => s.key === (r.workflowStatus || 'received'))?.label || r.workflowStatus,
             PAYMENT_STATES.find(s => s.key === r.status)?.label || r.status,
             r.amountCop, r.amountUsd, r.trmRate, r.priority, r.assigneeName, r.internalCategory,

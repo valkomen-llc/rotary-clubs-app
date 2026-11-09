@@ -10,14 +10,14 @@
 // Los permisos llegan del backend en `access` y la interfaz se adapta: quien
 // no puede ver pagos no recibe ni siquiera las referencias de Stripe.
 // ════════════════════════════════════════════════════════════════════
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     AlertTriangle, ArrowLeft, ArrowUpDown, BarChart3, Building2, Globe, MapPin, CheckCircle2, ClipboardList, Clock,
     CreditCard, Download, ExternalLink, Eye, FileSpreadsheet, FileText, Filter,
     Loader2, Mail, MessageSquarePlus, RefreshCw, Search,
     TrendingUp, Wallet, X, ShieldCheck, Paperclip, Settings, FileSignature, Lock, Unlock, FileDown,
     Archive, ArchiveRestore, CheckSquare, Square, Trash2, TagIcon, Banknote, ArrowRight, History, Users, Clapperboard,
-    Layers, PlusCircle,
+    Layers, PlusCircle, Info,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -138,6 +138,13 @@ interface Submission {
     addedVia?: string | null; isExtension?: boolean;
     coveredProjects?: { id: string; publicRef: string | null; projectName: string; projectIndex: number }[];
     withdrawnByClub?: boolean;
+    // v4.1304 — Lo que el club escribió en su Solicitud de Aportes del FDD
+    // (answers.fdd.requestedUsd / answers.fdd.fapGoalUsd), leído por el
+    // servidor. null = no lo escribió. El texto original viaja sólo cuando no
+    // es el canónico (miles con punto, «US$»…) o no es un importe.
+    fddRequestedUsd?: number | null; fapGoalUsd?: number | null;
+    fddRequestedReading?: AmountReading; fapGoalReading?: AmountReading;
+    fddRequestedRaw?: string; fapGoalRaw?: string;
     lastSyncAt?: string | null;
     manualPaymentRef?: string | null;
     manualPaymentEvidence?: string | null;
@@ -155,6 +162,87 @@ interface FairFile { id: string; fileName: string; fileUrl: string; createdAt: s
 const fmtCop = (n?: number | null) => `$${Number(n || 0).toLocaleString('es-CO', { maximumFractionDigits: 0 })}`;
 const fmtUsd = (n?: number | null) => (n === null || n === undefined ? '—' : `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
 const fmtNum = (n?: number | null) => Number(n || 0).toLocaleString('es-CO');
+
+// ── Importes del listado: Presupuesto, FDD y FAP (v4.1304) ──────────
+// «USD 30.066», «USD 1.234,50», «USD 0»; «—» cuando no hay valor. Los miles se
+// separan a mano: `toLocaleString('es-CO')` no agrupa los de cuatro cifras en
+// todos los navegadores («USD 5000» al lado de «USD 30.066»).
+const fmtUsdAmount = (n?: number | null) => {
+    if (n === null || n === undefined || !Number.isFinite(Number(n))) return '—';
+    const v = Number(n);
+    const [ent, dec] = Math.abs(v).toFixed(2).split('.');
+    const miles = ent.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return `USD ${v < 0 ? '-' : ''}${miles}${dec === '00' ? '' : `,${dec}`}`;
+};
+type AmountReading = 'empty' | 'ok' | 'normalized' | 'unreadable';
+const FDD_HELP = {
+    fddRequestedUsd: 'Cantidad solicitada al Distrito del Fondo Distrital Designado para el periodo 2026-2027.',
+    fapGoalUsd: 'Meta de aportes al Fondo Anual de Programas para el periodo 2026-2027.',
+} as const;
+
+/**
+ * Celda de un importe que escribió el club. Si lo escribió en otro formato
+ * (miles con punto, «US$ 5,000»…) se muestra cómo se interpretó y, al
+ * pasar el cursor o enfocar, lo que escribió. Si no es un importe, no se
+ * inventa: se muestra su texto, marcado. Vive en el ámbito del módulo (regla
+ * del proyecto: un componente nunca se declara dentro de otro).
+ */
+const AmountCell = ({ value, reading, raw, label }: { value?: number | null; reading?: AmountReading; raw?: string; label: string }) => {
+    if (reading === 'unreadable') {
+        return (
+            <td className="whitespace-nowrap px-3 py-3 text-right">
+                <span tabIndex={0} title={`El club escribió «${raw}» en ${label}: no es un importe en USD.`}
+                    className="inline-flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 text-xs font-semibold text-amber-800">
+                    <AlertTriangle size={11} aria-hidden="true" /> {raw}
+                    <span className="sr-only"> (no es un importe en USD)</span>
+                </span>
+            </td>
+        );
+    }
+    return (
+        <td className="whitespace-nowrap px-3 py-3 text-right font-semibold tabular-nums text-slate-800">
+            {fmtUsdAmount(value)}
+            {reading === 'normalized' && (
+                <span tabIndex={0} title={`El club escribió «${raw}»; se lee como ${fmtUsdAmount(value)}.`}
+                    className="ml-1 inline-flex align-middle text-amber-600">
+                    <Info size={11} aria-hidden="true" />
+                    <span className="sr-only">El club escribió «{raw}»; se lee como {fmtUsdAmount(value)}.</span>
+                </span>
+            )}
+        </td>
+    );
+};
+
+/**
+ * Encabezado ordenable. Con `help`, la abreviatura lleva su significado en
+ * una ayuda que aparece al pasar el cursor o al enfocar con el teclado
+ * (`aria-describedby`, la leen los lectores de pantalla).
+ */
+const SortHeader = ({ sortKey, label, help, active, dir, align = 'left', onSort }: {
+    sortKey: string; label: string; help?: string; active: boolean; dir: string;
+    align?: 'left' | 'right'; onSort: (key: string) => void;
+}) => {
+    const helpId = `pp-col-help-${sortKey || label}`;
+    return (
+        <th className={`group relative whitespace-nowrap px-3 py-3 ${align === 'right' ? 'text-right' : ''}`}
+            aria-sort={active ? (dir === 'asc' ? 'ascending' : 'descending') : undefined}>
+            {sortKey ? (
+                <button onClick={() => onSort(sortKey)} aria-describedby={help ? helpId : undefined}
+                    className="inline-flex items-center gap-1 rounded hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400">
+                    {label}
+                    {help && <Info size={11} aria-hidden="true" className="text-slate-400" />}
+                    <ArrowUpDown size={11} aria-hidden="true" className={active ? 'text-slate-800' : ''} />
+                </button>
+            ) : label}
+            {help && (
+                <span id={helpId} role="tooltip"
+                    className="pointer-events-none invisible absolute right-0 top-full z-20 mt-1 w-64 whitespace-normal rounded-lg bg-slate-900 px-3 py-2 text-left text-xs font-normal normal-case leading-snug tracking-normal text-white opacity-0 shadow-lg transition-opacity group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
+                    <strong className="font-semibold">{label}:</strong> {help}
+                </span>
+            )}
+        </th>
+    );
+};
 // Valor de una inscripción en la moneda en la que se anunció su precio: pesos
 // si se fijó en pesos (con el cobro en dólares al lado), dólares si no.
 const amountLabel = (s: { amountCop?: number | null; amountUsd?: number | null }) =>
@@ -322,6 +410,9 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
     const [filters, setFilters] = useState({
         search: '', paymentStatus: 'all', workflowStatus: 'all', district: 'all',
         focusArea: 'all', priority: 'all', tagId: '', from: '', to: '', budgetMin: '', budgetMax: '',
+        // v4.1304 — Rangos de FDD solicitado y meta FAP (USD). Los filtra el
+        // servidor con la misma lectura de la columna.
+        fddMin: '', fddMax: '', fapMin: '', fapMax: '',
         // v4.1253 — Vista de participación / recaudo (catálogo del servidor).
         vista: 'all',
         // v4.1299 — Cantidad de proyectos del club (1 | 2) y posición (1 | 2).
@@ -437,6 +528,15 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
             .catch(e => { setRows([]); setLoadError(e?.message || 'No se pudieron cargar las postulaciones'); })
             .finally(() => setTableLoading(false));
     }, [queryString, pagination.pageSize]);
+    // v4.1304 — ⚠️ Lo que cambia un filtro, el orden o el tamaño de página y
+    // recarga en el MISMO clic tiene que llamar al `loadRows` del render
+    // SIGUIENTE. Programar `loadRows` con setTimeout cerraba sobre el del
+    // render anterior y pedía con el estado viejo: ordenar por una columna
+    // pedía el orden del clic anterior, y «Limpiar» volvía a pedir con los
+    // filtros puestos.
+    const loadRowsRef = useRef(loadRows);
+    loadRowsRef.current = loadRows;
+    const reloadNext = () => setTimeout(() => loadRowsRef.current(1), 0);
 
     /**
      * Recordatorios de pago (v4.1253). Primero se pide el PLAN —a quién le
@@ -639,6 +739,8 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                 'Número de documento': s.idNumber,
                 'Área de enfoque': s.focusAreaLabel || s.focusArea,
                 'Presupuesto USD': s.budgetUsd,
+                'FDD (USD)': s.fddRequestedUsd ?? null,
+                'FAP (USD)': s.fapGoalUsd ?? null,
                 'Comentarios del postulante': s.notes,
                 'Estado de la postulación': stateLabel(s.workflowStatus, catalog?.workflowStates).label,
                 'Estado del pago': stateLabel(s.paymentStatus, catalog?.paymentStates).label,
@@ -651,7 +753,25 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                 ...(access?.viewPayments ? { 'Referencia Stripe': s.stripePaymentIntentId, 'Checkout Session': s.stripeSessionId } : {}),
             }));
             const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheet), 'Postulaciones');
+            const ws = XLSX.utils.json_to_sheet(sheet);
+            // v4.1304 — FDD y FAP son números (sirven para sumar y filtrar),
+            // con formato de miles; una celda vacía es que el club no lo escribió.
+            const cols = Object.keys(sheet[0] || {});
+            const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+            for (const name of ['Presupuesto USD', 'FDD (USD)', 'FAP (USD)']) {
+                const c = cols.indexOf(name);
+                if (c < 0) continue;
+                for (let r = 1; r <= range.e.r; r++) {
+                    const cell = ws[XLSX.utils.encode_cell({ r, c })];
+                    if (cell && cell.t === 'n') cell.z = '#,##0.##';
+                }
+            }
+            XLSX.utils.book_append_sheet(wb, ws, 'Postulaciones');
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
+                { Columna: 'FDD (USD)', 'Descripción': 'Cantidad solicitada al Distrito del Fondo Distrital Designado para el periodo 2026-2027 (USD).', Fuente: 'Solicitud de Aportes del FDD 2026-2027 → Solicitud del FDD → «Cantidad solicitada al Distrito del FDD 2026-2027 (US$)».' },
+                { Columna: 'FAP (USD)', 'Descripción': 'Meta de aportes al Fondo Anual de Programas para el periodo 2026-2027 (USD).', Fuente: 'Solicitud de Aportes del FDD 2026-2027 → Solicitud del FDD → «Meta de aportes al FAP 2026-2027 (US$)».' },
+                { Columna: 'Celda vacía', 'Descripción': 'El club todavía no escribió ese valor en su formulario. Un 0 es un cero que el club escribió.', Fuente: '' },
+            ]), 'Columnas');
             if (overview?.kpis) {
                 const resumen = Object.entries(overview.kpis).map(([k, v]) => ({ Indicador: k, Valor: v as any }));
                 XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumen), 'Resumen');
@@ -1239,7 +1359,7 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                 sería un borrado con otro nombre. */}
                             <select
                                 value={filters.archivadas}
-                                onChange={e => { setFilters(f => ({ ...f, archivadas: e.target.value })); setSelected([]); setTransferPlan(null); setTimeout(() => loadRows(1), 0); }}
+                                onChange={e => { setFilters(f => ({ ...f, archivadas: e.target.value })); setSelected([]); setTransferPlan(null); reloadNext(); }}
                                 aria-label="Ver postulaciones archivadas"
                                 className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700">
                                 {ARCHIVE_VIEWS.map(v => <option key={v} value={v}>{ARCHIVE_VIEW_LABELS[v]}</option>)}
@@ -1325,9 +1445,13 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                     <input type="number" value={filters.budgetMin} onChange={e => setFilters(f => ({ ...f, budgetMin: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
                                 <label className="block"><span className="mb-1 block text-xs font-semibold text-slate-600">Presupuesto máx. (USD)</span>
                                     <input type="number" value={filters.budgetMax} onChange={e => setFilters(f => ({ ...f, budgetMax: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
+                                {([['fddMin', 'FDD mín. (USD)'], ['fddMax', 'FDD máx. (USD)'], ['fapMin', 'Meta FAP mín. (USD)'], ['fapMax', 'Meta FAP máx. (USD)']] as const).map(([key, label]) => (
+                                    <label key={key} className="block"><span className="mb-1 block text-xs font-semibold text-slate-600">{label}</span>
+                                        <input type="number" min="0" value={filters[key]} onChange={e => setFilters(f => ({ ...f, [key]: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
+                                ))}
                                 <div className="flex items-end gap-2">
                                     <button onClick={() => loadRows(1)} className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: BLUE }}>Aplicar</button>
-                                    <button onClick={() => { setFilters({ search: '', paymentStatus: 'all', workflowStatus: 'all', district: 'all', focusArea: 'all', priority: 'all', tagId: '', from: '', to: '', budgetMin: '', budgetMax: '', vista: 'all', proyectos: 'all', indice: 'all', origen: 'all', archivadas: 'activas' }); setTimeout(() => loadRows(1), 0); }}
+                                    <button onClick={() => { setFilters({ search: '', paymentStatus: 'all', workflowStatus: 'all', district: 'all', focusArea: 'all', priority: 'all', tagId: '', from: '', to: '', budgetMin: '', budgetMax: '', fddMin: '', fddMax: '', fapMin: '', fapMax: '', vista: 'all', proyectos: 'all', indice: 'all', origen: 'all', archivadas: 'activas' }); reloadNext(); }}
                                         className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600">Limpiar</button>
                                 </div>
                             </div>
@@ -1583,7 +1707,7 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                         )}
 
                         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-                            <table className="w-full min-w-[1200px] text-sm">
+                            <table className="w-full min-w-[1380px] text-sm">
                                 <thead className="bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-500">
                                     <tr>
                                         {selectMode && (
@@ -1596,18 +1720,18 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                                     className="h-4 w-4 cursor-pointer rounded border-slate-300" />
                                             </th>
                                         )}
+                                        {/* v4.1304 — FDD y FAP entre Presupuesto y Estado, con su
+                                            significado en una ayuda accesible (los títulos quedan cortos). */}
                                         {([['publicRef', 'Registro'], ['createdAt', 'Inscripción'], ['projectName', 'Proyecto'],
                                            ['clubName', 'Club / Distrito'], ['', 'Responsable'], ['', 'Área de enfoque'],
-                                           ['budgetUsd', 'Presupuesto'], ['workflowStatus', 'Estado'], ['paymentStatus', 'Pago'],
+                                           ['budgetUsd', 'Presupuesto'], ['fddRequestedUsd', 'FDD'], ['fapGoalUsd', 'FAP'],
+                                           ['workflowStatus', 'Estado'], ['paymentStatus', 'Pago'],
                                            ['amountCop', 'Valor'], ['', '']] as const).map(([sortKey, label], i) => (
-                                            <th key={i} className="whitespace-nowrap px-3 py-3">
-                                                {sortKey ? (
-                                                    <button onClick={() => { setSort(s => ({ sortBy: sortKey, sortDir: s.sortBy === sortKey && s.sortDir === 'desc' ? 'asc' : 'desc' })); setTimeout(() => loadRows(1), 0); }}
-                                                        className="inline-flex items-center gap-1 hover:text-slate-800">
-                                                        {label} <ArrowUpDown size={11} />
-                                                    </button>
-                                                ) : label}
-                                            </th>
+                                            <SortHeader key={i} sortKey={sortKey} label={label}
+                                                help={sortKey === 'fddRequestedUsd' || sortKey === 'fapGoalUsd' ? FDD_HELP[sortKey] : undefined}
+                                                align={sortKey === 'budgetUsd' || sortKey === 'fddRequestedUsd' || sortKey === 'fapGoalUsd' ? 'right' : 'left'}
+                                                active={!!sortKey && sort.sortBy === sortKey} dir={sort.sortDir}
+                                                onSort={(key) => { setSort(s => ({ sortBy: key, sortDir: s.sortBy === key && s.sortDir === 'desc' ? 'asc' : 'desc' })); reloadNext(); }} />
                                         ))}
                                     </tr>
                                 </thead>
@@ -1656,7 +1780,9 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                                 <td className="px-3 py-3"><p className="text-slate-800">{s.clubName}</p><p className="text-xs text-slate-500">{s.district}</p></td>
                                                 <td className="px-3 py-3"><p className="text-slate-800">{s.responsable}</p><p className="text-xs text-slate-500">{s.email}</p><p className="text-xs text-slate-500">{s.phone}</p></td>
                                                 <td className="px-3 py-3 text-xs text-slate-600">{s.focusAreaLabel || s.focusArea}</td>
-                                                <td className="whitespace-nowrap px-3 py-3 text-right font-semibold text-slate-800">{fmtUsd(s.budgetUsd)}</td>
+                                                <AmountCell value={s.budgetUsd} label="Presupuesto" />
+                                                <AmountCell value={s.fddRequestedUsd} reading={s.fddRequestedReading} raw={s.fddRequestedRaw} label="FDD" />
+                                                <AmountCell value={s.fapGoalUsd} reading={s.fapGoalReading} raw={s.fapGoalRaw} label="FAP" />
                                                 <td className="px-3 py-3"><Badge color={wf.color}>{wf.label}</Badge></td>
                                                 <td className="px-3 py-3"><Badge color={pay.color}>{pay.label}</Badge></td>
                                                 <td className="whitespace-nowrap px-3 py-3 text-right">
@@ -1672,7 +1798,7 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                         );
                                     })}
                                     {!rows.length && !tableLoading && (
-                                        <tr><td colSpan={selectMode ? 12 : 11} className="px-4 py-12 text-center text-slate-400">No hay postulaciones que coincidan con los filtros.</td></tr>
+                                        <tr><td colSpan={selectMode ? 14 : 13} className="px-4 py-12 text-center text-slate-400">No hay postulaciones que coincidan con los filtros.</td></tr>
                                     )}
                                 </tbody>
                             </table>
@@ -1682,7 +1808,7 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                             <span>{fmtNum(pagination.total)} postulaciones · página {pagination.page} de {pagination.pages}</span>
                             <div className="flex items-center gap-2">
                                 <select value={pagination.pageSize}
-                                    onChange={e => { const size = Number(e.target.value); setPagination(p => ({ ...p, pageSize: size })); setTimeout(() => loadRows(1), 0); }}
+                                    onChange={e => { const size = Number(e.target.value); setPagination(p => ({ ...p, pageSize: size })); reloadNext(); }}
                                     className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm">
                                     {[25, 50, 100, 200].map(n => <option key={n} value={n}>{n} por página</option>)}
                                 </select>
