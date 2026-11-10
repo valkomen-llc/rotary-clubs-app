@@ -34,13 +34,34 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1312.0 | 2026-11-10 (Eventos: importar el comprobante de una inscripción desde una URL externa)
+// UI V4.1313.0 | 2026-11-10 (Feria de Proyectos: editar el valor de la inscripción de un proyecto)
 // Cache bust: 2026-11-10
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1313.0',
+        title: 'Feria de Proyectos: editar el valor de la inscripción de un proyecto ✏️',
+        description: 'Desde la ficha de cualquier proyecto postulado («Ver»), el comité puede ahora cambiar el valor de su inscripción: de $250.000 a $100.000 o a cualquier otro valor, con un motivo. El nuevo valor se ve en la columna «Valor», es el que el club paga desde «Mi proyecto», el que se propone al confirmar el pago a mano y el que suman los indicadores de recaudo y de saldo.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'postulaciones', 'pagos', 'valor de inscripción', 'tarifa especial', 'auditoría'],
+        type: 'feature',
+        impact: 'Alta: el comité ajusta tarifas especiales y correcciones de valor proyecto por proyecto, sin scripts ni cambios en la base.',
+        changes: [
+            { type: 'added', text: 'Botón «Editar valor» en la cabecera de la ficha del proyecto, y «Editar» junto al nuevo renglón «Valor de la inscripción» de la pestaña Datos y en la tarjeta «Valor Inscripción» de la pestaña Pago (administradores y finanzas).' },
+            { type: 'added', text: 'La ventana muestra el valor actual y la tarifa de la posición del proyecto, ofrece las tarifas del primer y segundo proyecto con un clic, acepta cualquier otro valor («100000» o «100.000») y exige el motivo. Un proyecto con valor ajustado tiene «Volver a la tarifa».' },
+            { type: 'added', text: 'El listado marca «Valor ajustado» debajo del valor, la ficha muestra la insignia «Ajustado» y el Excel suma la columna «Valor ajustado por el comité» con su motivo.' },
+            { type: 'added', text: 'Historial: cada cambio queda en la ficha con el valor anterior y el nuevo, quién lo hizo, cuándo y por qué.' },
+            { type: 'improved', text: 'Si el club tenía un pago abierto en Stripe con el valor anterior, se cierra: el siguiente intento cobra el valor nuevo.' },
+            { type: 'added', text: 'Pruebas: test:fair:amount-override (49, sin base).' },
+        ],
+        details: [
+            'En un proyecto YA PAGADO se cambia el valor de su inscripción (lo que suma al recaudo y al saldo); no cambia lo que recibió la pasarela, ni cobra ni reembolsa nada.',
+            'Un proyecto reembolsado no se puede ajustar. El valor no puede ser cero ni superar $50.000.000 COP (o US$20.000), para que un cero de más no llegue al cobro.',
+        ],
+    },
     {
         version: '4.1312.0',
         title: 'Eventos: importar el comprobante de pago desde una URL 🔗',

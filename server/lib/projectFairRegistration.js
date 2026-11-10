@@ -84,6 +84,115 @@ export const pricingRulesOf = (cfg = {}) => {
 /** El valor de la línea de UN proyecto según su posición en la inscripción. */
 export const lineAmountFor = (rules, projectIndex) => (Number(projectIndex) >= 2 ? rules.second : rules.first);
 
+/**
+ * v4.1313 — EL VALOR AJUSTADO POR EL COMITÉ.
+ *
+ * El comité puede fijar a mano el valor de la inscripción de UN proyecto
+ * (250.000 → 100.000, o cualquier otro): un club con tarifa especial, una
+ * segunda postulación que entró como primera, un acuerdo puntual. Vive en
+ * `metadata.amountOverride` de la fila —sin columna nueva— y sólo vale en la
+ * moneda de la convocatoria: si la convocatoria cambiara de moneda, el ajuste
+ * deja de aplicar en vez de cobrar pesos como dólares.
+ */
+export const amountOverrideOf = (row) => {
+    const o = row?.metadata?.amountOverride;
+    if (!o || typeof o !== 'object') return null;
+    const amount = Number(o.amount);
+    if (!Number.isFinite(amount) || amount <= 0) return null;
+    const currency = String(o.currency || '').toUpperCase() === 'USD' ? 'USD' : 'COP';
+    return { ...o, amount, currency };
+};
+
+/**
+ * ⚠️ LA LÍNEA DE UN PROYECTO: su valor ajustado si lo tiene, si no la tarifa
+ * de su posición. Es la ÚNICA puerta por la que la orden (`orderFor`), el
+ * desglose (`registrationBreakdown`) y la confirmación manual
+ * (`manualCoverageFor`) leen cuánto vale un proyecto: así lo que el panel
+ * muestra, lo que el perfil anuncia y lo que Stripe cobra no se separan.
+ */
+export const lineAmountOfRow = (rules, row) => {
+    const o = amountOverrideOf(row);
+    if (o && o.currency === rules.mode) return o.amount;
+    return lineAmountFor(rules, indexOf(row));
+};
+
+/** Topes de cordura del valor ajustado: un error de tipeo no llega a Stripe. */
+export const AMOUNT_OVERRIDE_MAX = { COP: 50000000, USD: 20000 };
+
+/**
+ * Lee un valor escrito por una persona: número, «100000», «100.000»,
+ * «$ 100.000», «100000,50». El punto seguido de tres dígitos es de miles
+ * (así se escribe en Colombia); la coma, decimal.
+ */
+export const parseAmountInput = (v) => {
+    if (typeof v === 'number') return Number.isFinite(v) ? v : NaN;
+    const t = String(v ?? '').replace(/[\s$]/g, '').replace(/(COP|USD)$/i, '');
+    if (!t) return NaN;
+    if (!/^\d{1,3}(\.\d{3})*(,\d{1,2})?$|^\d+([.,]\d{1,2})?$/.test(t)) return NaN;
+    const sinMiles = /^\d{1,3}(\.\d{3})+(,\d{1,2})?$/.test(t) ? t.replace(/\./g, '') : t;
+    return Number(sinMiles.replace(',', '.'));
+};
+
+/**
+ * v4.1313 — ¿Se puede cambiar el valor de este proyecto, y a cuánto queda?
+ * PURO: recibe la fila, lo pedido y las tarifas; devuelve el veredicto con su
+ * motivo, o lo que hay que escribir.
+ *
+ *   input.amount   el valor nuevo (en la moneda de la convocatoria)
+ *   input.clear    true = volver a la tarifa de su posición (quita el ajuste)
+ *   input.reason   motivo obligatorio (≥ 5 caracteres): queda en el historial
+ *
+ * Un proyecto PAGADO se puede ajustar: cambia su LÍNEA (lo que suma al
+ * recaudo), no lo que recibió la pasarela (`amountReceived`), y no genera
+ * cobros ni reembolsos. Uno REEMBOLSADO no: ese dinero ya se devolvió.
+ */
+export const amountOverridePlan = (row, input = {}, rules = { mode: 'COP', first: 0, second: 0 }) => {
+    const fail = (status, error) => ({ ok: false, status, error });
+    if (!row) return fail(404, 'Postulación no encontrada.');
+    if (String(row.status) === 'refunded') {
+        return fail(409, 'Esta inscripción fue reembolsada: su valor ya no se puede cambiar.');
+    }
+    const reason = String(input.reason ?? '').trim();
+    if (reason.length < 5) return fail(400, 'Escribe el motivo del cambio de valor (mínimo 5 caracteres).');
+
+    const currency = rules.mode === 'USD' ? 'USD' : 'COP';
+    const tariff = lineAmountFor(rules, indexOf(row));
+    const stored = money(currency === 'USD' ? row.amountUsd : row.amountCop);
+    const previous = stored || lineAmountOfRow(rules, row);
+    const clear = input.clear === true;
+    const hadOverride = !!amountOverrideOf(row);
+
+    let amount;
+    if (clear) {
+        if (!(tariff > 0)) return fail(409, 'La convocatoria no tiene una tarifa configurada para esta posición; escribe el valor.');
+        if (!hadOverride && previous === tariff) return fail(409, 'El proyecto ya está con la tarifa de su posición.');
+        amount = tariff;
+    } else {
+        const n = parseAmountInput(input.amount);
+        if (!Number.isFinite(n)) return fail(400, 'Escribe un valor numérico, por ejemplo 100000.');
+        if (n <= 0) return fail(400, 'El valor debe ser mayor que cero.');
+        if (n > AMOUNT_OVERRIDE_MAX[currency]) {
+            return fail(400, `El valor supera el máximo permitido (${AMOUNT_OVERRIDE_MAX[currency].toLocaleString('es-CO')} ${currency}). Revisa que no sobren ceros.`);
+        }
+        amount = currency === 'USD' ? Math.round(n * 100) / 100 : Math.round(n);
+        if (amount === previous) return fail(409, 'El proyecto ya tiene ese valor.');
+    }
+
+    // Un valor igual a la tarifa no es un ajuste: se guarda sin la marca, para
+    // que un cambio de tarifas en Convocatoria vuelva a aplicarle.
+    const keepsOverride = !clear && amount !== tariff;
+    return {
+        ok: true,
+        currency,
+        amount,
+        previous,
+        tariff,
+        paid: String(row.status) === 'paid',
+        keepsOverride,
+        reason,
+    };
+};
+
 /** Rótulo corto de la posición: «Primer proyecto», «Segundo proyecto». */
 export const projectIndexLabel = (projectIndex) => (Number(projectIndex) >= 2 ? 'Segundo proyecto' : 'Primer proyecto');
 
@@ -135,7 +244,8 @@ export const orderFor = (rows = [], rules) => {
         projectName: row.projectName || '',
         publicRef: row.publicRef || null,
         label: `${projectIndexLabel(indexOf(row))} — ${row.projectName || ''}`.trim(),
-        amount: lineAmountFor(rules, indexOf(row)),
+        // v4.1313 — El valor ajustado por el comité manda sobre la tarifa.
+        amount: lineAmountOfRow(rules, row),
     }));
     const total = Math.round(lines.reduce((a, l) => a + l.amount, 0) * 100) / 100;
     return {
@@ -161,9 +271,10 @@ export const registrationBreakdown = (rows = [], rules) => {
         label: projectIndexLabel(indexOf(row)),
         // Pagado: lo que quedó en la fila (su línea congelada). Pendiente: la
         // tarifa vigente para su posición.
+        // v4.1313 — Pendiente con valor ajustado por el comité: ese valor.
         amount: String(row.status) === 'paid'
-            ? money(rules.mode === 'USD' ? row.amountUsd : row.amountCop) || lineAmountFor(rules, indexOf(row))
-            : lineAmountFor(rules, indexOf(row)),
+            ? money(rules.mode === 'USD' ? row.amountUsd : row.amountCop) || lineAmountOfRow(rules, row)
+            : lineAmountOfRow(rules, row),
         paid: String(row.status) === 'paid',
         owes: owesRegistration(row),
         applied: isApplied(row),
@@ -288,7 +399,7 @@ export const manualCoverageFor = (rows = [], anchorId, requestedIds = [], rules 
     }
     const lines = [anchor, ...coveredIds.map(id => byId.get(id))]
         .filter(Boolean)
-        .map(row => ({ submissionId: row.id, projectIndex: indexOf(row), amount: lineAmountFor(rules, indexOf(row)) }));
+        .map(row => ({ submissionId: row.id, projectIndex: indexOf(row), amount: lineAmountOfRow(rules, row) }));
     const total = Math.round(lines.reduce((a, l) => a + (Number(l.amount) || 0), 0) * 100) / 100;
     return { coveredIds, rejected, lines, total };
 };
