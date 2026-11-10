@@ -191,6 +191,8 @@ router.delete('/admin/postulaciones/:id/tags/:tagId', authMiddleware, fairEdit, 
 router.post('/admin/postulaciones/:id/files', authMiddleware, fairEdit, express.json(), fair.addFile);
 router.delete('/admin/postulaciones/:id/files/:fileId', authMiddleware, fairEdit, fair.deleteFile);
 router.post('/admin/postulaciones/:id/sync-stripe', authMiddleware, fairEdit, express.json(), fair.syncStripe);
+// v4.1313 — Editar el valor de la inscripción de un proyecto (motivo obligatorio).
+router.post('/admin/postulaciones/:id/amount', authMiddleware, fairEdit, express.json(), fair.updateProjectAmount);
 router.post('/admin/postulaciones/:id/confirm-manual-payment', authMiddleware, fairEdit, express.json(), fair.confirmManualPayment);
 // v4.1308 — El comprobante adjunto de la confirmación manual (S3 privado).
 router.post('/admin/postulaciones/:id/manual-payment/receipt-url', authMiddleware, fairEdit, express.json(), fair.manualReceiptUploadUrl);

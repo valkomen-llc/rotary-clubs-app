@@ -56,7 +56,7 @@ import { resolveUserGrant } from '../lib/rbacStore.js';
 import {
     SQL_ACTIVE_PROJECT, SQL_FIRST_PROJECT, SQL_SECOND_PROJECT, SQL_REGISTRATION_KEY,
     indexOf as projectIndexOf, projectIndexLabel, pricingRulesOf, registrationBreakdown,
-    manualCoverageFor,
+    manualCoverageFor, amountOverrideOf, amountOverridePlan, lineAmountFor,
 } from '../lib/projectFairRegistration.js';
 // v4.1308 — El comprobante adjunto de la confirmación manual (S3 privado).
 import {
@@ -72,6 +72,7 @@ import {
     SQL_FDD_COLUMNS, FDD_SORTABLE, FDD_RANGE_FILTERS, sqlAmount, rangeBound, fddAmountsOf,
 } from '../lib/projectFairFddAmounts.js';
 
+console.log('[projectFairAdminController] v4.1313.0 cargado — Editar el valor de la inscripción de un proyecto desde su ficha (250.000 → 100.000 u otro): línea + metadata.amountOverride que respetan el cobro, el desglose y la confirmación manual; motivo obligatorio, historial antes/después, cobro abierto expirado; no toca lo recibido ni Stripe.');
 console.log('[projectFairAdminController] v4.1311.0 cargado — Sustituir una postulación por otra del mismo club con su pago: verificación contra la base, Stripe y la Bóveda; aplicación en una transacción con huella, auditoría antes/después e idempotencia; el pago queda en su ancla (coveredBy).');
 console.log('[projectFairAdminController] v4.1308.0 cargado — Confirmación manual de pagos: comprobante adjunto (S3 privado, validado por sus bytes), el mismo pago puede cubrir la inscripción completa de dos proyectos, y cada fila confirmada deja su línea escrita para sumar al recaudo.');
 console.log('[projectFairAdminController] v4.1301.0 cargado — La ficha resume la inscripción (modalidad, origen del segundo proyecto, pago original y complementario, total y saldo); indicadores y filtro de ampliaciones posteriores.');
@@ -338,6 +339,11 @@ const mapRow = (row, access) => {
         addedVia: row.metadata?.addedVia || (projectIndexOf(row) >= 2 ? 'wizard' : null),
         isExtension: row.metadata?.addedVia === 'portal_extension',
         lastSyncAt: row.lastSyncAt || null,
+        // v4.1313 — El valor ajustado a mano por el comité (si lo tiene).
+        amountOverride: (() => {
+            const o = amountOverrideOf(row);
+            return o ? { amount: o.amount, currency: o.currency, tariff: o.tariff ?? null, previous: o.previous ?? null, reason: o.reason || null, by: o.by || null, at: o.at || null } : null;
+        })(),
         manualPaymentRef: row.manualPaymentRef || null,
         manualPaymentEvidence: row.manualPaymentEvidence || null,
         manualPaymentReason: row.manualPaymentReason || null,
@@ -1536,6 +1542,13 @@ export const getSubmission = withAccess(async (req, res, { access }) => {
         submission: mapRow({ ...row, tags: tags[row.id] || [], registrationProjects: sizes[row.registrationId] ?? 1 }, access),
         siblings,
         registrationSummary,
+        // v4.1313 — Las tarifas de la convocatoria, para «Editar valor».
+        pricing: await (async () => {
+            try {
+                const rules = pricingRulesOf(await readConfigForAdmin(clean(req.query?.evento, 60) || null));
+                return { currency: rules.mode, first: rules.first, second: rules.second, tariff: lineAmountFor(rules, projectIndexOf(row)) };
+            } catch { return null; }
+        })(),
         events: events.rows,
         files: files.rows,
         stripeEvents: stripeEvents.rows,
@@ -1637,6 +1650,105 @@ export const updateSubmission = withAccess(async (req, res, { access }) => {
     const tags = await loadTagsFor([req.params.id]);
     res.json({ submission: mapRow({ ...updated[0], tags: tags[req.params.id] || [] }, access) });
 }, 'view');
+
+// ── v4.1313 — Editar el valor de la inscripción de UN proyecto ─────────
+// POST /admin/postulaciones/:id/amount  { amount | clear: true, reason }
+//
+// El comité cambia el valor de la línea de un proyecto (250.000 → 100.000, o
+// cualquier otro). El criterio es PURO (`amountOverridePlan`); acá sólo se
+// escribe. Lo que cambia:
+//   · La LÍNEA de la fila (`amountCop`/`amountUsd`): lo que muestra la columna
+//     «Valor» y lo que suman los indicadores de recaudo y de saldo.
+//   · `metadata.amountOverride`: la marca que `lineAmountOfRow` lee para que
+//     el cobro al club, el desglose del perfil y la confirmación manual usen
+//     ese valor y no la tarifa de su posición.
+// Lo que NO cambia: lo recibido por la pasarela (`amountReceived`), el estado
+// del pago, Stripe ni la Bóveda. Ajustar un proyecto pagado no cobra ni
+// reembolsa nada; queda en el historial con el motivo.
+export const updateProjectAmount = withAccess(async (req, res, { cfg, access }) => {
+    const { rows } = await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = $1 LIMIT 1', [req.params.id]);
+    const current = rows[0];
+    if (!current) return res.status(404).json({ error: 'Postulación no encontrada' });
+
+    const body = req.body || {};
+    const rules = pricingRulesOf(cfg);
+    const plan = amountOverridePlan(current, {
+        amount: body.amount,
+        clear: body.clear === true,
+        reason: clean(body.reason, 1000),
+    }, rules);
+    if (!plan.ok) return res.status(plan.status).json({ error: plan.error });
+
+    const actor = actorFrom(req, access);
+    const rate = Number(current.trmRate) || 0;
+    const lineCop = plan.currency === 'USD' ? null : plan.amount;
+    const lineUsd = plan.currency === 'USD'
+        ? plan.amount
+        : (rate > 0 ? Math.round((plan.amount / rate) * 100) / 100 : null);
+    const override = plan.keepsOverride
+        ? {
+            amountOverride: {
+                amount: plan.amount, currency: plan.currency, tariff: plan.tariff, previous: plan.previous,
+                reason: plan.reason, by: actor.name, byId: actor.id, at: new Date().toISOString(),
+            },
+        }
+        : {};
+
+    // ⚠️ UPDATE CONDICIONAL sobre el estado del pago que se leyó: si entre la
+    // lectura y la escritura el pago se confirmó o se reembolsó, no se pisa.
+    const { rows: updated } = await db.query(`
+        UPDATE "ProjectFairSubmission"
+        SET "amountCop" = $1,
+            "amountUsd" = $2,
+            metadata = (COALESCE(metadata, '{}'::jsonb) - 'amountOverride') || $3::jsonb,
+            "updatedAt" = NOW()
+        WHERE id = $4 AND status IS NOT DISTINCT FROM $5
+        RETURNING *
+    `, [lineCop, lineUsd, JSON.stringify(override), current.id, current.status]);
+    if (!updated.length) {
+        return res.status(409).json({ error: 'El pago de este proyecto cambió mientras editabas. Recarga la ficha e inténtalo de nuevo.' });
+    }
+
+    // Un cobro abierto se calculó con el valor anterior: se expira para que el
+    // club no pague lo que ya no vale. El próximo intento abre otro con el
+    // valor nuevo (`reusableCheckout` compara el importe). Es limpieza: si
+    // Stripe no responde, el intento siguiente igual lo detecta y lo reemplaza.
+    let closedCheckout = false;
+    if (!plan.paid) {
+        const sessions = [...new Set([current.stripeSessionId, current.metadata?.pendingOrder?.sessionId].filter(Boolean))];
+        for (const sid of sessions) {
+            try {
+                const st = getStripe();
+                const sess = await st.checkout.sessions.retrieve(sid);
+                if (sess?.status === 'open') { await st.checkout.sessions.expire(sid); closedCheckout = true; }
+            } catch { /* ya vencida, cobrada o Stripe sin configurar */ }
+        }
+    }
+
+    const fmt = (n) => (plan.currency === 'USD'
+        ? `US$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        : `$${Number(n).toLocaleString('es-CO', { maximumFractionDigits: 0 })} COP`);
+    await logEvent(current.id, {
+        type: 'amount_changed',
+        title: plan.keepsOverride
+            ? `Valor de la inscripción: ${fmt(plan.previous)} → ${fmt(plan.amount)}`
+            : `Valor de la inscripción restablecido a la tarifa: ${fmt(plan.amount)}`,
+        detail: plan.reason,
+        actor,
+        metadata: {
+            before: { amountCop: num(current.amountCop), amountUsd: num(current.amountUsd), override: current.metadata?.amountOverride || null },
+            after: { amountCop: lineCop, amountUsd: lineUsd, override: override.amountOverride || null },
+            tariff: plan.tariff, currency: plan.currency, paymentStatus: current.status, closedCheckout,
+        },
+    });
+
+    const tags = await loadTagsFor([current.id]);
+    res.json({
+        submission: mapRow({ ...updated[0], tags: tags[current.id] || [] }, access),
+        plan: { amount: plan.amount, previous: plan.previous, tariff: plan.tariff, currency: plan.currency, paid: plan.paid, override: plan.keepsOverride },
+        closedCheckout,
+    });
+}, 'managePayments');
 
 // ── Comentarios internos ─────────────────────────────────────────────
 // POST /admin/submissions/:id/comments
@@ -3326,7 +3438,7 @@ export const applySubstitution = withAccess(async (req, res, { access }) => {
 export default {
     getOverview, listSubmissions, getSubmission, updateSubmission, addComment,
     listTags, createTag, deleteTag, attachTag, detachTag,
-    addFile, deleteFile, syncStripe, resendReceipt, confirmManualPayment, manualReceiptUploadUrl, manualReceiptUrl, getPaymentHistory,
+    addFile, deleteFile, syncStripe, resendReceipt, confirmManualPayment, updateProjectAmount, manualReceiptUploadUrl, manualReceiptUrl, getPaymentHistory,
     getAlerts, getReports, getIntelligence, getDashboardIntelligence, exportCsv, getCatalog, getSubmissionSnapshot,
     readConvocatoriaConfig, writeConvocatoriaConfig,
     listMasterForms, getMasterForm, downloadMasterFormDocx, reopenMasterForm, lockMasterForm,

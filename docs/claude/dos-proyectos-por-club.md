@@ -210,3 +210,8 @@ esa AMPLIACIÓN de la inscripción inicial de dos proyectos.
 - Los duplicados los impide lo de siempre: índice único `(registrationId,
   projectIndex)` (el 23505 responde 409) y `secondProjectVerdict` en cada
   petición; un tercer proyecto no entra ni por la API.
+
+**v4.1313 — el valor de un proyecto puede ajustarlo el comité.** La línea de
+cada proyecto ya no sale sólo de `lineAmountFor`: `orderFor`,
+`registrationBreakdown` y `manualCoverageFor` pasan por `lineAmountOfRow`, que
+respeta `metadata.amountOverride`. Ver `editar-el-valor-de-un-proyecto.md`.

@@ -17,7 +17,7 @@ import {
     Loader2, Mail, MessageSquarePlus, RefreshCw, Search,
     TrendingUp, Wallet, X, ShieldCheck, Paperclip, Settings, FileSignature, Lock, Unlock, FileDown,
     Archive, ArchiveRestore, CheckSquare, Square, Trash2, TagIcon, Banknote, ArrowRight, History, Users, Clapperboard,
-    Layers, PlusCircle, Info, ArrowRightLeft,
+    Layers, PlusCircle, Info, ArrowRightLeft, Pencil,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -46,6 +46,8 @@ import EdicionesList from '../../components/admin/feria/EdicionesList';
 import ProjectFormApproval from '../../components/admin/feria/ProjectFormApproval';
 // v4.1311 — Sustituir una postulación por otra del mismo club, con su pago.
 import SustituirPostulacion from '../../components/admin/feria/SustituirPostulacion';
+// v4.1313 — Editar el valor de la inscripción de un proyecto (250.000 → 100.000 u otro).
+import EditarValorProyecto, { type AmountOverride, type FairPricing } from '../../components/admin/feria/EditarValorProyecto';
 // ⚠️ v4.1026 — LA MISMA BARRA DE LA BÓVEDA, no una copia. Registrar un traslado
 // desde acá va contra el MISMO endpoint (`/financial/wallet/disbursements/bulk`)
 // con su lote, su comprobante compartido y su notificación consolidada. Con un
@@ -155,6 +157,8 @@ interface Submission {
         previousPayment?: { status: string | null; amountReceived: number | null; currency: string | null; paidAt: string | null; origin: string | null; classification: { kind: string; label: string; realMoney: boolean | null } | null; stripePaymentIntentId?: string | null; stripeSessionId?: string | null; livemode?: boolean | null };
     } | null;
     paidByName?: string | null;
+    // v4.1313 — El valor de la inscripción ajustado a mano por el comité.
+    amountOverride?: AmountOverride | null;
     // v4.1304 — Lo que el club escribió en su Solicitud de Aportes del FDD
     // (answers.fdd.requestedUsd / answers.fdd.fapGoalUsd), leído por el
     // servidor. null = no lo escribió. El texto original viaja sólo cuando no
@@ -768,6 +772,8 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                 'Estado del pago': stateLabel(s.paymentStatus, catalog?.paymentStates).label,
                 'Valor anunciado COP': s.amountCop,
                 'Valor cobrado USD': s.amountUsd,
+                // v4.1313 — El valor ajustado a mano por el comité, y por qué.
+                'Valor ajustado por el comité': s.amountOverride ? `Sí — ${s.amountOverride.reason || ''}`.trim() : '',
                 'TRM aplicada': s.trmRate,
                 Prioridad: s.priority,
                 Etiquetas: s.tags.map(t => t.label).join(' | '),
@@ -1816,6 +1822,7 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                                 </td>
                                                 <td className="whitespace-nowrap px-3 py-3 text-right">
                                                     <p className="font-semibold text-slate-800">{amountLabel(s)}</p>
+                                                    {s.amountOverride && <p className="text-[11px] font-semibold text-violet-700" title={s.amountOverride.reason || undefined}>Valor ajustado</p>}
                                                     {s.paidAt && <p className="text-[11px] text-slate-400">{fmtDate(s.paidAt)}</p>}
                                                 </td>
                                                 <td className="px-3 py-3">
@@ -2084,7 +2091,7 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
         lines: { submissionId: string; projectIndex: number; projectName: string; label: string; amount: number; paid: boolean; owes: boolean }[];
         total: number; paidTotal: number; pendingTotal: number;
         payments: { anchorId: string; publicRef: string; projectIndex: number; paidAt: string | null; amountReceived: number | null; currency: string | null; origin: string; kind: 'original' | 'complementary'; covers: string[]; paymentIntentId?: string | null; receiptUrl?: string | null }[];
-    } | null; siblings?: { id: string; publicRef: string; projectName: string; projectIndex: number; projectIndexLabel: string; paymentStatus: string; projectStateLabel: string; archived: boolean; withdrawnByClub: boolean; amountCop: number | null; amountUsd: number | null }[] } | null>(null);
+    } | null; siblings?: { id: string; publicRef: string; projectName: string; projectIndex: number; projectIndexLabel: string; paymentStatus: string; projectStateLabel: string; archived: boolean; withdrawnByClub: boolean; amountCop: number | null; amountUsd: number | null }[]; pricing?: FairPricing } | null>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [comment, setComment] = useState('');
@@ -2093,6 +2100,8 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
     const [showManualModal, setShowManualModal] = useState(false);
     // v4.1311 — La sustitución por otro proyecto del club.
     const [showSustituir, setShowSustituir] = useState(false);
+    // v4.1313 — «Editar valor» de la inscripción de este proyecto.
+    const [showEditarValor, setShowEditarValor] = useState(false);
     const [manualStep, setManualStep] = useState<'edit' | 'confirm'>('edit');
     const [manualForm, setManualForm] = useState<{
         reference: string; paidAt: string; amount: string; currency: string; paymentMethod: string;
@@ -2363,6 +2372,11 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                                             <button onClick={() => setShowSustituir(true)} disabled={saving}
                                                 className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"><ArrowRightLeft size={13} /> Sustituir por otro proyecto</button>
                                         )}
+                                        {/* v4.1313 — Cambiar el valor de la inscripción de este proyecto. */}
+                                        {s.paymentStatus !== 'refunded' && (
+                                            <button onClick={() => setShowEditarValor(true)} disabled={saving}
+                                                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"><Pencil size={13} /> Editar valor</button>
+                                        )}
                                     </>
                                 )}
                                 {access.changeStatus && !s.reviewedAt && (
@@ -2415,6 +2429,17 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                                         )}
                                         <Row label="Área de enfoque" value={s.focusAreaLabel || s.focusArea} />
                                         <Row label="Presupuesto" value={`${fmtUsd(s.budgetUsd)} USD`} />
+                                        {/* v4.1313 — El valor de la inscripción del proyecto, editable desde aquí. */}
+                                        <Row label="Valor de la inscripción" value={
+                                            <span className="inline-flex flex-wrap items-center justify-end gap-2">
+                                                <span>{amountLabel(s)}</span>
+                                                {s.amountOverride && <Badge color="violet">Ajustado</Badge>}
+                                                {access.managePayments && s.paymentStatus !== 'refunded' && (
+                                                    <button onClick={() => setShowEditarValor(true)}
+                                                        className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-0.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"><Pencil size={11} /> Editar</button>
+                                                )}
+                                            </span>
+                                        } />
                                         <Row label="Fecha de inscripción" value={fmtDateTime(s.createdAt)} />
                                         {/* v4.1253 — Cuándo se ENVIÓ: un borrador no la tiene. */}
                                         <Row label="Fecha de postulación" value={s.appliedAt ? fmtDateTime(s.appliedAt) : 'Todavía en borrador'} />
@@ -2612,7 +2637,10 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                                                     <div className="rounded-lg bg-slate-50 p-3">
                                                         <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Valor Inscripción</span>
                                                         <p className="mt-1 text-base font-bold text-slate-900">{amountLabel(s)}</p>
-                                                        <span className="text-[11px] text-slate-400">Tarifa de postulación</span>
+                                                        <span className="text-[11px] text-slate-400">{s.amountOverride ? 'Valor ajustado por el comité' : 'Tarifa de postulación'}</span>
+                                                        {access.managePayments && s.paymentStatus !== 'refunded' && (
+                                                            <button onClick={() => setShowEditarValor(true)} className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-blue-700 hover:underline"><Pencil size={10} /> Editar valor</button>
+                                                        )}
                                                     </div>
                                                     <div className="rounded-lg bg-slate-50 p-3">
                                                         <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Valor Pagado</span>
@@ -2886,6 +2914,18 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                     headers={jsonHeaders}
                     onClose={() => setShowSustituir(false)}
                     onApplied={() => { load(); onChanged(); }}
+                />
+            )}
+
+            {/* v4.1313 — Editar el valor de la inscripción de este proyecto. */}
+            {showEditarValor && s && (
+                <EditarValorProyecto
+                    submission={s}
+                    pricing={data?.pricing ?? null}
+                    endpoint={withEvento(`${API}/project-fair/admin/postulaciones/${id}/amount`)}
+                    headers={jsonHeaders as () => Record<string, string>}
+                    onClose={() => setShowEditarValor(false)}
+                    onSaved={() => { setShowEditarValor(false); toast.success('Valor de la inscripción actualizado'); load(); onChanged(); }}
                 />
             )}
 
