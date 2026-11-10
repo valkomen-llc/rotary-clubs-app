@@ -59,6 +59,8 @@ import {
     coveredIdsFromMetadata, coveredIdsToMetadata, projectIndexLabel, indexOf as projectIndexOf,
     secondProjectVerdict, activeProjects,
 } from '../lib/projectFairRegistration.js';
+// v4.1311 — La sustitución vista desde la ficha (la exportación en PDF la pinta).
+import { substitutionViewOf } from '../lib/projectFairSubstitution.js';
 
 console.log('[projectFairController] v4.1301.0 cargado — Ampliación desde «Mi proyecto»: cada proyecto guarda por dónde entró (registro inicial o ampliación posterior), el cobro de sólo el segundo proyecto se nombra «Inscripción adicional» en Stripe y en el comprobante.');
 console.log('[projectFairController] v4.1299.0 cargado — Hasta DOS proyectos por club en UNA inscripción (ProjectFairRegistration): primer proyecto a la tarifa de inscripción, segundo con tarifa especial, un solo pago que cubre lo que el club debe; con el primero ya pagado, el segundo se agrega con un cobro complementario. Lo heredado se migra a inscripciones de un proyecto.');
@@ -3611,6 +3613,21 @@ export const handleRefund = async (charge) => {
     if (!submission) return null;
 
     const refunded = (charge?.amount_refunded || 0) / 100;
+    // v4.1311 — Un proyecto RESPALDADO por el pago de otra fila (`coveredBy`)
+    // no tiene cobro propio: su pago vive en el ancla, y el reembolso de ESE
+    // pago le llega por la propagación de abajo. Si un reembolso lo encuentra
+    // por la metadata del cobro es un pago ANTERIOR que ya no lo respalda (el
+    // de prueba que dejó a un lado una sustitución): se anota y no se toca su
+    // estado, o un reembolso de USD 1 tumbaría una inscripción pagada.
+    if (submission.metadata?.payment?.coveredBy) {
+        await logEvent(submission.id, {
+            type: 'refund',
+            title: 'Reembolso de un pago anterior (no cambia la inscripción)',
+            detail: `${fmtAmount(refunded, charge?.currency)} sobre el cargo ${charge?.id || '—'}. La inscripción sigue respaldada por el pago de ${submission.metadata.payment.coveredByRef || submission.metadata.payment.coveredBy}.`,
+            metadata: { chargeId: charge?.id || null, refunded, coveredBy: submission.metadata.payment.coveredBy, ignoredForStatus: true },
+        });
+        return submission.id;
+    }
     const total = (charge?.amount || 0) / 100;
     const isFull = refunded >= total && total > 0;
 
@@ -4017,6 +4034,7 @@ export const buildSubmissionSnapshot = async (id, { includePayments = false } = 
     submission.assigneeName = s.assigneeName;
     submission.reviewedAt = s.reviewedAt;
     submission.reviewedBy = s.reviewedBy;
+    submission.substitution = substitutionViewOf(s, { viewPayments: includePayments });
     if (includePayments) {
         submission.stripeSessionId = s.stripeSessionId;
         submission.stripePaymentIntentId = s.stripePaymentIntentId;

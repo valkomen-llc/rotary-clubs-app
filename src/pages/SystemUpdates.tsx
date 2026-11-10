@@ -34,13 +34,33 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1310.0 | 2026-11-10 (Inscripciones a eventos: confirmar a mano el pago con el comprobante adjunto)
+// UI V4.1311.0 | 2026-11-10 (Feria: sustituir una postulación por otra del mismo club, con su pago)
 // Cache bust: 2026-11-10
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1311.0',
+        title: 'Feria de Proyectos: sustituir una postulación por otra del mismo club, con su pago 🔁',
+        description: 'Cuando un club tiene dos proyectos y sólo uno va a la feria, pero el pago real quedó en el que se retira (a veces hecho por otra persona del club), el comité puede ahora retirar ese proyecto y dejar el que participa respaldado por ese pago, sin crear un cobro nuevo ni mover el dinero. Hasta ahora esto exigía un script hecho a mano que copiaba los datos de Stripe de una fila a otra.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'postulaciones', 'pagos', 'sustitución', 'consolidación', 'auditoría', 'stripe', 'bóveda'],
+        type: 'feature',
+        impact: 'Alta: corrige consolidaciones como la del club Cúcuta Ciudad de los Árboles sin perder la trazabilidad del pago ni duplicar el recaudo.',
+        changes: [
+            { type: 'added', text: 'Botón «Sustituir por otro proyecto» en la ficha de un proyecto con pago propio (sólo administradores con permiso sobre pagos). Se indica la referencia del proyecto que se conserva y el importe del pago oficial que informa el comité.' },
+            { type: 'added', text: 'Verificación antes de tocar nada: los dos proyectos existen y son del mismo club, distrito y edición; el pago oficial está confirmado, sin reembolsos, no cubre a otro proyecto y su importe coincide con lo informado; Stripe confirma que es real, capturado y sin disputa; el pago anterior del proyecto conservado queda identificado (prueba sin dinero, cobro real o confirmación manual). Cualquier diferencia se muestra y bloquea.' },
+            { type: 'added', text: 'La aplicación es una sola transacción: el proyecto retirado queda archivado y «Retirado», conservando su pago intacto (transacción, referencia, fecha, importe, comprobante y pagador); el conservado queda pagado y respaldado por ese pago, con su responsable, estado de evaluación, contenido y formularios sin cambios. Si algo falla, no queda ningún cambio parcial.' },
+            { type: 'added', text: 'El pago anterior del proyecto conservado (por ejemplo, uno de prueba de USD 1) se guarda entero y se etiqueta: deja de contar para la inscripción, pero no se elimina ni se reembolsa.' },
+            { type: 'added', text: 'Auditoría en las dos fichas con el antes y el después, el administrador que autorizó, el motivo y la huella de lo verificado. Aplicarla dos veces no duplica nada.' },
+            { type: 'improved', text: 'El listado muestra «Respaldado por FP-…» y «Pagó: …» cuando el pago no es del responsable; la ficha, el PDF, el CSV y el Excel distinguen al responsable del proyecto de la persona que pagó.' },
+            { type: 'fixed', text: 'Un proyecto archivado ya no aparece en la revisión de formularios ni de la Formulación.' },
+            { type: 'fixed', text: 'Un reembolso de un pago que ya no respalda la inscripción no la deja «Reembolsada», y «Sincronizar con Stripe» no vuelve a pegarle a un proyecto respaldado un pago que no es el suyo.' },
+            { type: 'added', text: 'Pruebas: test:fair:substitution (38, sin base), test:fair:substitution:e2e (55, contra Postgres real, con ROLLBACK forzado a mitad de la transacción) y test:fair:substitution:ui (17, en el navegador, también a 390 px).' },
+        ],
+    },
     {
         version: '4.1310.0',
         title: 'Inscripciones al evento: confirmar a mano el pago, con el comprobante adjunto 🧾',

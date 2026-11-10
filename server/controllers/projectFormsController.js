@@ -573,7 +573,9 @@ export const adminListForms = withAccess(async (req, res, { cfg, access }) => {
         join += ` AND f."formKey" = $1`;
     }
 
-    const where = [];
+    // v4.1311 — Un proyecto ARCHIVADO no se evalúa: sale de la revisión de
+    // formularios igual que del listado de postulaciones.
+    const where = ['s."archivedAt" IS NULL'];
     const formStatus = clean(req.query.formStatus, 30);
     if (formStatus === 'not_started') where.push('f.id IS NULL');
     else if (formStatus === 'draft') where.push(`f.status = 'draft'`);
