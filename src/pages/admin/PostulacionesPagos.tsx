@@ -17,7 +17,7 @@ import {
     Loader2, Mail, MessageSquarePlus, RefreshCw, Search,
     TrendingUp, Wallet, X, ShieldCheck, Paperclip, Settings, FileSignature, Lock, Unlock, FileDown,
     Archive, ArchiveRestore, CheckSquare, Square, Trash2, TagIcon, Banknote, ArrowRight, History, Users, Clapperboard,
-    Layers, PlusCircle, Info,
+    Layers, PlusCircle, Info, ArrowRightLeft,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -44,6 +44,8 @@ import RecursosPlantillas from '../../components/admin/feria/RecursosPlantillas'
 import ProjectVideosHub from '../../components/admin/feria/ProjectVideosAdmin';
 import EdicionesList from '../../components/admin/feria/EdicionesList';
 import ProjectFormApproval from '../../components/admin/feria/ProjectFormApproval';
+// v4.1311 — Sustituir una postulación por otra del mismo club, con su pago.
+import SustituirPostulacion from '../../components/admin/feria/SustituirPostulacion';
 // ⚠️ v4.1026 — LA MISMA BARRA DE LA BÓVEDA, no una copia. Registrar un traslado
 // desde acá va contra el MISMO endpoint (`/financial/wallet/disbursements/bulk`)
 // con su lote, su comprobante compartido y su notificación consolidada. Con un
@@ -143,6 +145,16 @@ interface Submission {
     addedVia?: string | null; isExtension?: boolean;
     coveredProjects?: { id: string; publicRef: string | null; projectName: string; projectIndex: number }[];
     withdrawnByClub?: boolean;
+    // v4.1311 — Sustitución: el retirado sabe por cuál se cambió; el
+    // conservado, qué pago lo respalda, quién lo hizo y qué pasó con el suyo.
+    substitution?: {
+        role: 'retired' | 'kept'; at: string | null; by: string | null; reason: string | null;
+        fromId: string | null; fromRef: string | null; toId: string | null; toRef: string | null;
+        payer?: { name: string | null; email: string | null; gatewayName: string | null } | null;
+        official?: { amountReceived: number | null; currency: string | null; amountCop: number | null; amountUsd: number | null; paidAt: string | null; origin: string | null; paymentMethod: string | null; stripePaymentIntentId?: string | null; stripeSessionId?: string | null; receiptUrl?: string | null; manualPaymentRef?: string | null };
+        previousPayment?: { status: string | null; amountReceived: number | null; currency: string | null; paidAt: string | null; origin: string | null; classification: { kind: string; label: string; realMoney: boolean | null } | null; stripePaymentIntentId?: string | null; stripeSessionId?: string | null; livemode?: boolean | null };
+    } | null;
+    paidByName?: string | null;
     // v4.1304 — Lo que el club escribió en su Solicitud de Aportes del FDD
     // (answers.fdd.requestedUsd / answers.fdd.fapGoalUsd), leído por el
     // servidor. null = no lo escribió. El texto original viaja sólo cuando no
@@ -301,6 +313,10 @@ const EVENT_META: Record<string, { label: string; color: string }> = {
     redirect: { label: 'Redirección a Grants', color: 'violet' },
     // v4.1264 — Entrega de la plantilla oficial de presentación al club.
     template_downloaded: { label: 'Plantilla descargada', color: 'sky' },
+    // v4.1311 — Sustitución de una postulación y su pago.
+    substitution: { label: 'Sustitución de proyecto', color: 'indigo' },
+    payment_reclassified: { label: 'Pago anterior identificado', color: 'amber' },
+    archived: { label: 'Archivada', color: 'slate' },
 };
 
 /** Encabezado de un bloque temático del Centro de Inteligencia. */
@@ -756,6 +772,8 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                 Prioridad: s.priority,
                 Etiquetas: s.tags.map(t => t.label).join(' | '),
                 'Fecha de confirmación': fmtDateTime(s.paidAt),
+                'Pago respaldado por': s.coveredBy?.publicRef || '',
+                'Pagado por': s.paidByName || '',
                 ...(access?.viewPayments ? { 'Referencia Stripe': s.stripePaymentIntentId, 'Checkout Session': s.stripeSessionId } : {}),
             }));
             const wb = XLSX.utils.book_new();
@@ -1790,7 +1808,12 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                                 <AmountCell value={s.fddRequestedUsd} reading={s.fddRequestedReading} raw={s.fddRequestedRaw} label="FDD" />
                                                 <AmountCell value={s.fapGoalUsd} reading={s.fapGoalReading} raw={s.fapGoalRaw} label="FAP" />
                                                 <td className="px-3 py-3"><Badge color={wf.color}>{wf.label}</Badge></td>
-                                                <td className="px-3 py-3"><Badge color={pay.color}>{pay.label}</Badge></td>
+                                                <td className="px-3 py-3">
+                                                    <Badge color={pay.color}>{pay.label}</Badge>
+                                                    {/* v4.1311 — El pago vive en otra ficha (sustitución o inscripción conjunta) y quién lo hizo. */}
+                                                    {s.coveredBy && <p className="mt-1 text-[11px] text-slate-500">Respaldado por {s.coveredBy.publicRef || 'otro proyecto'}</p>}
+                                                    {s.paidByName && <p className="text-[11px] text-slate-500">Pagó: {s.paidByName}</p>}
+                                                </td>
                                                 <td className="whitespace-nowrap px-3 py-3 text-right">
                                                     <p className="font-semibold text-slate-800">{amountLabel(s)}</p>
                                                     {s.paidAt && <p className="text-[11px] text-slate-400">{fmtDate(s.paidAt)}</p>}
@@ -2068,6 +2091,8 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
     const [reason, setReason] = useState('');
     const [pane, setPane] = useState<'datos' | 'pago' | 'historial'>('datos');
     const [showManualModal, setShowManualModal] = useState(false);
+    // v4.1311 — La sustitución por otro proyecto del club.
+    const [showSustituir, setShowSustituir] = useState(false);
     const [manualStep, setManualStep] = useState<'edit' | 'confirm'>('edit');
     const [manualForm, setManualForm] = useState<{
         reference: string; paidAt: string; amount: string; currency: string; paymentMethod: string;
@@ -2253,6 +2278,14 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
             line('TRM aplicada', s.trmRate ? `${fmtNum(s.trmRate)} (${s.trmDate || ''})` : '—');
             line('Confirmado el', fmtDateTime(s.paidAt));
             if (s.stripePaymentIntentId) line('Referencia Stripe', s.stripePaymentIntentId);
+            // v4.1311 — Pago respaldado por otra ficha tras una sustitución.
+            if (s.substitution?.role === 'kept') {
+                line('Pago oficial en', s.substitution.fromRef);
+                line('Pagado por', s.substitution.payer?.name || s.substitution.payer?.email);
+                if (s.substitution.official?.amountReceived != null) line('Recibido', `${s.substitution.official.amountReceived} ${s.substitution.official.currency || ''}`);
+                if (s.substitution.previousPayment?.classification) line('Pago anterior', s.substitution.previousPayment.classification.label);
+            }
+            if (s.substitution?.role === 'retired') line('Sustituido por', s.substitution.toRef);
 
             y += 10; doc.setFontSize(12).text('Historial', 40, y); y += 18;
             doc.setFontSize(8.5);
@@ -2295,6 +2328,11 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                                     </div>
                                     <h2 className="mt-1 text-xl font-bold text-slate-900">{s.projectName}</h2>
                                     <p className="text-sm text-slate-500">{s.clubName} · {s.district}</p>
+                                    {s.substitution?.role === 'retired' && (
+                                        <p className="mt-2 rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-700">
+                                            <strong>Archivada — sustituida por {s.substitution.toRef}</strong> el {fmtDateTime(s.substitution.at)} por {s.substitution.by || 'un administrador'}. Su pago se conserva en esta ficha y respalda la inscripción de {s.substitution.toRef}.
+                                        </p>
+                                    )}
                                 </div>
                                 <button onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><X size={18} /></button>
                             </div>
@@ -2319,6 +2357,11 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                                         {s.paymentStatus === 'paid' && (
                                             <button onClick={() => action('resend-receipt', {}, 'Comprobante reenviado')} disabled={saving}
                                                 className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"><Mail size={13} /> Reenviar comprobante</button>
+                                        )}
+                                        {/* v4.1311 — Sólo un pago PROPIO, de un proyecto activo, se puede trasladar a otro del club. */}
+                                        {access.remove && s.paymentStatus === 'paid' && !s.archivedAt && !s.coveredBy && !(s.coveredProjects || []).length && (
+                                            <button onClick={() => setShowSustituir(true)} disabled={saving}
+                                                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"><ArrowRightLeft size={13} /> Sustituir por otro proyecto</button>
                                         )}
                                     </>
                                 )}
@@ -2531,10 +2574,33 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                                                 </div>
 
                                                 {/* v4.1299 — Un proyecto cubierto por el cobro de otro, o un cobro que cubrió a otros. */}
-                                                {s.coveredBy && (
+                                                {s.coveredBy && s.substitution?.role !== 'kept' && (
                                                     <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
                                                         Pagado dentro de la inscripción conjunta <strong>{s.coveredBy.publicRef || s.coveredBy.id}</strong>: la transacción, el monto recibido y el comprobante están en esa ficha.
                                                     </p>
+                                                )}
+                                                {/* v4.1311 — El pago oficial reasignado: de dónde viene, quién pagó y qué pasó con el pago anterior. */}
+                                                {s.substitution?.role === 'kept' && (
+                                                    <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2.5 text-xs text-emerald-950">
+                                                        <p className="font-bold text-emerald-900">Pago oficial reasignado desde {s.substitution.fromRef}</p>
+                                                        <div className="mt-1.5 space-y-1">
+                                                            <div className="flex justify-between gap-3"><span className="font-semibold">Pagado por</span><span className="text-right">{s.substitution.payer?.name || '—'}{s.substitution.payer?.email ? ` · ${s.substitution.payer.email}` : ''}</span></div>
+                                                            <div className="flex justify-between gap-3"><span className="font-semibold">Responsable del proyecto</span><span className="text-right">{s.responsable}</span></div>
+                                                            <div className="flex justify-between gap-3"><span className="font-semibold">Valor de la inscripción</span><span>{amountLabel(s)}</span></div>
+                                                            <div className="flex justify-between gap-3"><span className="font-semibold">Recibido por la pasarela</span><span>{s.substitution.official?.amountReceived != null ? `${s.substitution.official.currency === 'USD' ? fmtUsd(s.substitution.official.amountReceived) : fmtCop(s.substitution.official.amountReceived)} ${s.substitution.official.currency || ''}` : '—'}</span></div>
+                                                            <div className="flex justify-between gap-3"><span className="font-semibold">Fecha del pago</span><span>{fmtDateTime(s.substitution.official?.paidAt)}</span></div>
+                                                            {s.substitution.official?.stripePaymentIntentId && <div className="flex justify-between gap-3"><span className="font-semibold">Referencia</span><span className="break-all font-mono">{s.substitution.official.stripePaymentIntentId}</span></div>}
+                                                            <div className="flex justify-between gap-3"><span className="font-semibold">Reasignado</span><span className="text-right">{fmtDateTime(s.substitution.at)} · {s.substitution.by || 'Administrador'}</span></div>
+                                                            {s.substitution.reason && <p className="pt-1 text-emerald-900/80">Motivo: {s.substitution.reason}</p>}
+                                                        </div>
+                                                        {s.substitution.previousPayment?.classification && s.substitution.previousPayment.classification.kind !== 'none' && (
+                                                            <p className="mt-2 rounded-md bg-amber-50 px-2 py-1.5 text-amber-900">
+                                                                <strong>Pago anterior, no cuenta para la inscripción:</strong> {s.substitution.previousPayment.classification.label}
+                                                                {s.substitution.previousPayment.amountReceived != null ? ` · ${s.substitution.previousPayment.amountReceived} ${s.substitution.previousPayment.currency || ''}` : ''}
+                                                                {s.substitution.previousPayment.stripePaymentIntentId ? ` · ${s.substitution.previousPayment.stripePaymentIntentId}` : ''}
+                                                            </p>
+                                                        )}
+                                                    </div>
                                                 )}
                                                 {(s.coveredProjects || []).length > 0 && (
                                                     <p className="mt-3 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800">
@@ -2811,6 +2877,17 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                     </>
                 )}
             </div>
+
+            {/* v4.1311 — Sustituir por otro proyecto del club, con su pago. */}
+            {showSustituir && s && (
+                <SustituirPostulacion
+                    submission={s}
+                    endpoint={(path: string) => withEvento(`${API}/project-fair/admin/postulaciones/${path}`)}
+                    headers={jsonHeaders}
+                    onClose={() => setShowSustituir(false)}
+                    onApplied={() => { load(); onChanged(); }}
+                />
+            )}
 
             {/* Modal de Confirmación Manual de Pago */}
             {showManualModal && s && (

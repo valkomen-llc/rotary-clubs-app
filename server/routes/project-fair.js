@@ -176,6 +176,11 @@ router.post('/admin/postulaciones/payment-reminders', authMiddleware, fairEdit, 
 // que mueve este dinero. Literal ANTES de las paramétricas (`check:routes`).
 router.post('/admin/postulaciones/transfers/resolve', authMiddleware, requireSiteAdmin, json, fair.resolveTransfers);
 
+// v4.1311 — Sustituir una postulación por otra del mismo club con su pago:
+// verificar (solo lectura) y aplicar (transacción). Literales ANTES de las
+// paramétricas.
+router.post('/admin/postulaciones/sustitucion/verificar', authMiddleware, fairEdit, express.json(), fair.verifySubstitution);
+router.post('/admin/postulaciones/sustitucion/aplicar', authMiddleware, fairEdit, express.json(), fair.applySubstitution);
 router.get('/admin/postulaciones', authMiddleware, fairRead, fair.listSubmissions);
 router.get('/admin/postulaciones/:id', authMiddleware, fairRead, fair.getSubmission);
 router.get('/admin/postulaciones/:id/snapshot', authMiddleware, fairRead, fair.getSubmissionSnapshot);

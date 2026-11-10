@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1310.0",
-  "cache_bust": "4.1310.0",
+  "version": "4.1311.0",
+  "cache_bust": "4.1311.0",
   "type": "module",
   "//": "UI V4.1302.0 | 2026-11-09 (Cursos y capacitaciones: LMS integrado en Rotary en Acción)",
   "scripts": {
@@ -81,6 +81,9 @@
     "test:fair:manual-payment": "node scripts/test-fair-manual-payment.mjs",
     "test:fair:manual-payment:e2e": "node scripts/test-fair-manual-payment-e2e.mjs",
     "test:fair:manual-payment:ui": "node scripts/test-fair-manual-payment-ui.mjs",
+    "test:fair:substitution": "node scripts/test-fair-substitution.mjs",
+    "test:fair:substitution:e2e": "node scripts/test-fair-substitution-e2e.mjs",
+    "test:fair:substitution:ui": "node scripts/test-fair-substitution-ui.mjs",
     "test:event:manual-payment": "node scripts/test-event-manual-payment.mjs",
     "test:event:manual-payment:ui": "node scripts/test-event-manual-payment-ui.mjs",
     "test:management-center": "node scripts/test-event-management-center.mjs",

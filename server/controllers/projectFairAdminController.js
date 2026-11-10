@@ -64,10 +64,15 @@ import {
 } from '../lib/projectFairManualReceipts.js';
 // v4.1304 — FDD y FAP del proyecto en el listado: una sola lectura en SQL de
 // lo que el club ya escribió en su Solicitud de Aportes del FDD.
+// v4.1311 — Sustituir una postulación por otra del mismo club, con su pago.
+import {
+    substitutionPlan, substitutionWrites, substitutionViewOf, paymentFactsOf, stripeFactsOf,
+} from '../lib/projectFairSubstitution.js';
 import {
     SQL_FDD_COLUMNS, FDD_SORTABLE, FDD_RANGE_FILTERS, sqlAmount, rangeBound, fddAmountsOf,
 } from '../lib/projectFairFddAmounts.js';
 
+console.log('[projectFairAdminController] v4.1311.0 cargado — Sustituir una postulación por otra del mismo club con su pago: verificación contra la base, Stripe y la Bóveda; aplicación en una transacción con huella, auditoría antes/después e idempotencia; el pago queda en su ancla (coveredBy).');
 console.log('[projectFairAdminController] v4.1308.0 cargado — Confirmación manual de pagos: comprobante adjunto (S3 privado, validado por sus bytes), el mismo pago puede cubrir la inscripción completa de dos proyectos, y cada fila confirmada deja su línea escrita para sumar al recaudo.');
 console.log('[projectFairAdminController] v4.1301.0 cargado — La ficha resume la inscripción (modalidad, origen del segundo proyecto, pago original y complementario, total y saldo); indicadores y filtro de ampliaciones posteriores.');
 console.log('[projectFairAdminController] v4.1299.0 cargado — Hasta dos proyectos por club: el panel distingue clubes inscritos de proyectos inscritos, cuenta segundos proyectos y separa el recaudo por primeras y segundas postulaciones; filtros por cantidad de proyectos del club y por posición.');
@@ -323,6 +328,11 @@ const mapRow = (row, access) => {
             ? row.metadata.payment.coveredProjects.filter(p => p.id !== row.id).map(p => ({ id: p.id, publicRef: p.publicRef || null, projectName: p.projectName, projectIndex: p.projectIndex }))
             : [],
         withdrawnByClub: !!row.metadata?.withdrawnByClub,
+        // v4.1311 — Sustitución: el proyecto retirado sabe por cuál se cambió, y
+        // el conservado, de quién es el pago que lo respalda (que puede no ser
+        // su responsable).
+        substitution: substitutionViewOf(row, { viewPayments: !!access?.viewPayments }),
+        paidByName: row.metadata?.substitution?.role === 'kept' ? (row.metadata.substitution.payer?.name || null) : null,
         // v4.1301 — Por dónde entró a la inscripción: registro inicial o
         // ampliación posterior desde «Mi proyecto».
         addedVia: row.metadata?.addedVia || (projectIndexOf(row) >= 2 ? 'wizard' : null),
@@ -1744,6 +1754,14 @@ export const syncStripe = withAccess(async (req, res, { access }) => {
     const { rows } = await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = $1 LIMIT 1', [req.params.id]);
     const submission = rows[0];
     if (!submission) return res.status(404).json({ error: 'Postulación no encontrada' });
+    // v4.1311 — Un proyecto respaldado por el pago de OTRA fila no tiene cobro
+    // propio que sincronizar. Sin esto, la búsqueda por correo volvería a
+    // pegarle la referencia de un pago anterior (p. ej. el de prueba que una
+    // sustitución dejó a un lado) y la Bóveda vería dos filas con un cobro.
+    if (submission.metadata?.payment?.coveredBy) {
+        const ref = submission.metadata.payment.coveredByRef || submission.metadata.payment.coveredBy;
+        return res.status(409).json({ error: `Este proyecto está respaldado por el pago registrado en ${ref}. Sincroniza esa ficha.` });
+    }
 
     let rawRef = clean(req.body?.reference || req.body?.sessionId || req.body?.paymentIntentId, 200);
     let sessionId = submission.stripeSessionId;
@@ -2183,7 +2201,7 @@ export const getPaymentHistory = withAccess(async (req, res, { access }) => {
         db.query(`
             SELECT * FROM "ProjectFairEvent"
             WHERE "submissionId" = $1
-              AND type IN ('payment_succeeded', 'payment_failed', 'payment_confirmed_manually', 'stripe_sync', 'refund', 'checkout_created', 'checkout_expired', 'status_change')
+              AND type IN ('payment_succeeded', 'payment_failed', 'payment_confirmed_manually', 'stripe_sync', 'refund', 'checkout_created', 'checkout_expired', 'status_change', 'substitution', 'payment_reclassified')
             ORDER BY "createdAt" DESC
         `, [submission.id]),
     ]);
@@ -2397,6 +2415,9 @@ export const exportCsv = withAccess(async (req, res, { access }) => {
         'Área de enfoque', 'Presupuesto USD', 'FDD (USD)', 'FAP (USD)', 'Comentarios del postulante', 'Estado de la postulación',
         'Estado del pago', 'Valor pagado COP', 'Equivalente USD', 'TRM aplicada', 'Prioridad',
         'Responsable asignado', 'Categoría interna', 'Etiquetas', 'Fecha de confirmación',
+        // v4.1311 — De dónde sale el pago cuando no es de esta fila, y quién
+        // lo hizo cuando no fue el responsable.
+        'Pago respaldado por', 'Pagado por',
     ];
     if (access.viewPayments) headers.push('Referencia Stripe (PaymentIntent)', 'Checkout Session', 'Charge', 'Método de pago', 'Comprobante');
 
@@ -2420,6 +2441,8 @@ export const exportCsv = withAccess(async (req, res, { access }) => {
             r.amountCop, r.amountUsd, r.trmRate, r.priority, r.assigneeName, r.internalCategory,
             (tagsBySubmission[r.id] || []).map(t => t.label).join(' | '),
             r.paidAt ? new Date(r.paidAt).toISOString() : '',
+            r.metadata?.payment?.coveredBy ? (r.metadata.payment.coveredByRef || r.metadata.payment.coveredBy) : '',
+            r.metadata?.substitution?.role === 'kept' ? (r.metadata.substitution.payer?.name || '') : '',
         ];
         if (access.viewPayments) {
             values.push(r.stripePaymentIntentId, r.stripeSessionId, r.stripeChargeId, r.paymentMethod, r.receiptUrl);
@@ -2480,7 +2503,8 @@ export const getSubmissionSnapshot = withAccess(async (req, res, { cfg, access }
 // Filtros propios (estado del formulario y búsqueda): los del listado de
 // postulaciones no aplican aquí porque esta consulta une tres tablas.
 export const listMasterForms = withAccess(async (req, res, { access }) => {
-    const where = [];
+    // v4.1311 — Un proyecto archivado no entra en la revisión de la Formulación.
+    const where = ['s."archivedAt" IS NULL'];
     const params = [];
     const formStatus = clean(req.query.formStatus, 30);
     if (formStatus === 'not_started') where.push('f.id IS NULL');
@@ -3038,6 +3062,258 @@ export const resolveTransfers = withAccess(async (req, res, { access }) => {
     });
 }, 'managePayments');
 
+// ════════════════════════════════════════════════════════════════════
+// v4.1311 — SUSTITUIR UNA POSTULACIÓN POR OTRA DEL MISMO CLUB, CON SU PAGO.
+//
+// Dos pasos, los dos del lado del servidor:
+//   1. VERIFICAR (solo lectura): lee las dos filas, consulta a Stripe cada
+//      pago y la Bóveda, y devuelve las comprobaciones con su motivo y una
+//      HUELLA de lo verificado. Si algo no coincide con lo que el comité
+//      informó, lo dice y no deja seguir.
+//   2. APLICAR: vuelve a verificar, exige la misma huella, y en UNA
+//      transacción archiva el proyecto retirado (el pago real queda en él,
+//      como ancla), deja el conservado respaldado por ese pago
+//      (`coveredBy`), guarda entero el pago anterior del conservado y
+//      escribe la auditoría antes/después. Cualquier fallo → ROLLBACK.
+// El criterio vive en `server/lib/projectFairSubstitution.js`.
+// ════════════════════════════════════════════════════════════════════
+
+// Stripe con tope de tiempo: una verificación no puede quedarse colgada.
+// `STRIPE_API_BASE` es la misma salida para pruebas que usa el Video Pitch
+// (`videoPitchCommerceController.getStripe`); en producción no existe.
+const stripeForSubstitution = () => {
+    const key = process.env.STRIPE_SECRET_KEY;
+    if (!key) return null;
+    const base = process.env.STRIPE_API_BASE;
+    if (base) {
+        const u = new URL(base);
+        return new Stripe(key, { host: u.hostname, port: Number(u.port) || (u.protocol === 'https:' ? 443 : 80), protocol: u.protocol.replace(':', ''), maxNetworkRetries: 0, timeout: 15000 });
+    }
+    return new Stripe(key, { timeout: 15000, maxNetworkRetries: 1 });
+};
+
+/** Lo que Stripe dice del pago de una fila (o null si la fila no tiene pago en Stripe). */
+const stripeFactsForRow = async (row) => {
+    const facts = paymentFactsOf(row);
+    if (!facts || (!facts.stripePaymentIntentId && !facts.stripeSessionId)) return null;
+    const stripe = stripeForSubstitution();
+    if (!stripe) return stripeFactsOf(null, new Error('El servidor no tiene la clave de Stripe configurada.'));
+    try {
+        let piId = facts.stripePaymentIntentId;
+        if (!piId && facts.stripeSessionId) {
+            const session = await stripe.checkout.sessions.retrieve(facts.stripeSessionId);
+            piId = typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id || null;
+            if (!piId) return stripeFactsOf(null, new Error(`La sesión ${facts.stripeSessionId} no tiene PaymentIntent (estado: ${session.payment_status}).`));
+        }
+        const pi = await stripe.paymentIntents.retrieve(piId, { expand: ['latest_charge'] });
+        return stripeFactsOf(pi);
+    } catch (err) {
+        return stripeFactsOf(null, err);
+    }
+};
+
+/** El movimiento de la Bóveda de un cobro (por su referencia), si existe. */
+const ledgerMovementFor = async (row) => {
+    const ref = String(row?.stripePaymentIntentId || row?.stripeSessionId || '').trim();
+    if (!ref) return null;
+    try {
+        const { rows } = await db.query(
+            `SELECT id, status, amount, currency, "rawPayload"->>'submissionId' AS "submissionId", "createdAt"
+               FROM "Payment" WHERE provider = 'stripe' AND "providerRef" = $1 LIMIT 1`, [ref]);
+        return rows[0]
+            ? { found: true, id: rows[0].id, status: rows[0].status, amount: num(rows[0].amount), currency: rows[0].currency, submissionId: rows[0].submissionId || null }
+            : { found: false };
+    } catch {
+        return { found: false, error: 'No se pudo consultar la Bóveda' };
+    }
+};
+
+const hasOpenAttempt = async (id) => {
+    try {
+        const { rows } = await db.query(`SELECT 1 FROM "ProjectFairPaymentAttempt" WHERE "submissionId" = $1 AND status = 'open' LIMIT 1`, [id]);
+        return rows.length > 0;
+    } catch { return false; }
+};
+
+const substitutionInput = (body = {}) => ({
+    retiredRef: clean(body.retiredRef, 40).toUpperCase(),
+    keptRef: clean(body.keptRef, 40).toUpperCase(),
+    amount: body.amount === undefined || body.amount === null || body.amount === '' ? null : Number(body.amount),
+    currency: clean(body.currency, 5).toUpperCase() === 'USD' ? 'USD' : 'COP',
+});
+
+const rowByRef = async (q, ref, { lock = false } = {}) => {
+    if (!ref) return null;
+    const { rows } = await q.query(
+        `SELECT * FROM "ProjectFairSubmission" WHERE upper("publicRef") = $1 LIMIT 1${lock ? ' FOR UPDATE' : ''}`, [ref]);
+    return rows[0] || null;
+};
+
+/** Verifica con las filas que se le den; consulta Stripe y la Bóveda. */
+const planSubstitution = async (input, { retired, kept, stripe = null } = {}) => {
+    const retiredStripe = stripe ? stripe.retired : await stripeFactsForRow(retired);
+    const keptStripe = stripe ? stripe.kept : await stripeFactsForRow(kept);
+    const [retiredMovement, keptMovement, keptOpenAttempt] = await Promise.all([
+        ledgerMovementFor(retired), ledgerMovementFor(kept), kept ? hasOpenAttempt(kept.id) : false,
+    ]);
+    const plan = substitutionPlan({
+        retired, kept, retiredStripe, keptStripe,
+        expected: input,
+        ledger: { retiredMovement, keptMovement, keptOpenAttempt },
+    });
+    return { plan, stripe: { retired: retiredStripe, kept: keptStripe } };
+};
+
+// POST /admin/postulaciones/sustitucion/verificar  — solo lectura.
+export const verifySubstitution = withAccess(async (req, res, { access }) => {
+    if (!access.managePayments) return res.status(403).json({ error: 'Tu perfil no puede mover pagos.' });
+    const input = substitutionInput(req.body);
+    if (!input.retiredRef || !input.keptRef) {
+        return res.status(400).json({ error: 'Indica la referencia del proyecto que se retira y la del que se conserva.' });
+    }
+    const [retired, kept] = await Promise.all([rowByRef(db, input.retiredRef), rowByRef(db, input.keptRef)]);
+    const { plan } = await planSubstitution(input, { retired, kept });
+    res.json({ plan });
+}, 'remove');
+
+// POST /admin/postulaciones/sustitucion/aplicar
+export const applySubstitution = withAccess(async (req, res, { access }) => {
+    if (!access.managePayments) return res.status(403).json({ error: 'Tu perfil no puede mover pagos.' });
+    const input = substitutionInput(req.body);
+    const reason = clean(req.body?.reason, 1000);
+    const fingerprint = clean(req.body?.fingerprint, 80);
+    if (req.body?.confirm !== true) return res.status(428).json({ error: 'La sustitución exige confirmación explícita.' });
+    if (!input.retiredRef || !input.keptRef) return res.status(400).json({ error: 'Faltan las referencias de los dos proyectos.' });
+    if (reason.length < 10) return res.status(400).json({ error: 'Escribe el motivo de la sustitución (mínimo 10 caracteres).' });
+    if (!fingerprint) return res.status(400).json({ error: 'Verifica antes de aplicar.' });
+
+    // Stripe se consulta FUERA de la transacción: no se tienen filas
+    // bloqueadas mientras se espera a un tercero.
+    const [retired0, kept0] = await Promise.all([rowByRef(db, input.retiredRef), rowByRef(db, input.keptRef)]);
+    const first = await planSubstitution(input, { retired: retired0, kept: kept0 });
+    if (first.plan.alreadyApplied) {
+        // IDEMPOTENTE: ya estaba aplicada; no se escribe nada.
+        return res.json({ applied: false, alreadyApplied: true, plan: first.plan });
+    }
+    if (!first.plan.ok) {
+        return res.status(409).json({ error: 'Las comprobaciones no pasan: no se aplicó nada.', plan: first.plan });
+    }
+    if (first.plan.fingerprint !== fingerprint) {
+        return res.status(409).json({ error: 'Los datos cambiaron desde la verificación. Vuelve a verificar antes de aplicar.', plan: first.plan });
+    }
+
+    const actor = actorFrom(req, access);
+    const at = new Date().toISOString();
+    const client = await db.pool.connect();
+    try {
+        await client.query('BEGIN');
+        const retired = await rowByRef(client, input.retiredRef, { lock: true });
+        const kept = await rowByRef(client, input.keptRef, { lock: true });
+        // Con las filas BLOQUEADAS se vuelve a decidir con lo mismo que Stripe
+        // dijo: si algo cambió entre la lectura y el bloqueo, la huella no
+        // coincide y no se toca nada.
+        const { plan } = await planSubstitution(input, { retired, kept, stripe: first.stripe });
+        if (!plan.ok || plan.fingerprint !== fingerprint) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ error: 'Los datos cambiaron mientras se aplicaba. No se modificó nada; vuelve a verificar.', plan });
+        }
+        const w = substitutionWrites(plan, { actor, reason, at });
+        const before = { retired, kept };
+
+        // 1) El proyecto retirado: archivado, retirado y, en su pago (que NO
+        //    pierde ni un dato), la marca de a quién respalda ahora.
+        const { rows: r1 } = await client.query(`
+            UPDATE "ProjectFairSubmission"
+            SET "archivedAt" = NOW(), "archivedBy" = $2, "archivedReason" = $3,
+                "workflowStatus" = $4,
+                metadata = (COALESCE(metadata, '{}'::jsonb) - 'substitution')
+                    || jsonb_build_object(
+                        'payment', COALESCE(metadata->'payment', '{}'::jsonb) || $5::jsonb,
+                        'substitution', $6::jsonb),
+                "updatedAt" = NOW()
+            WHERE id = $1 AND "archivedAt" IS NULL AND status = 'paid'
+            RETURNING *
+        `, [retired.id, actor.name, w.retired.archivedReason, w.retired.workflowStatus,
+            JSON.stringify(w.retired.paymentMerge), JSON.stringify(w.retired.substitution)]);
+        if (!r1[0]) throw Object.assign(new Error('El proyecto retirado cambió de estado durante la operación.'), { status: 409 });
+
+        // 2) El proyecto conservado: respaldado por el pago oficial, sin dinero
+        //    propio (vive en el ancla) y con su pago anterior guardado entero.
+        const k = w.kept;
+        const m = k.manual || {};
+        const { rows: r2 } = await client.query(`
+            UPDATE "ProjectFairSubmission"
+            SET status = 'paid',
+                "paidAt" = COALESCE($2::timestamptz, "paidAt"),
+                "amountReceived" = NULL,
+                "chargeCurrency" = $3,
+                "paymentMethod" = $4,
+                "paymentConfirmationOrigin" = $5,
+                "amountCop" = $6,
+                "amountUsd" = $7,
+                "stripeSessionId" = NULL, "stripePaymentIntentId" = NULL, "stripeChargeId" = NULL, "stripeCustomerId" = NULL,
+                "receiptUrl" = NULL, "refundedAmount" = NULL, "refundedAt" = NULL, "lastPaymentError" = NULL,
+                "manualPaymentRef" = $8, "manualPaymentEvidence" = $9, "manualPaymentReason" = $10,
+                "manualPaymentBy" = $11, "manualPaymentAt" = $12::timestamptz,
+                "manualPaymentReceiptKey" = $13, "manualPaymentReceiptName" = $14,
+                "manualPaymentReceiptMime" = $15, "manualPaymentReceiptBytes" = $16,
+                "lastSyncAt" = NOW(),
+                metadata = (COALESCE(metadata, '{}'::jsonb) - 'payment' - 'pendingOrder' - 'substitution')
+                    || jsonb_build_object('payment', $17::jsonb, 'substitution', $18::jsonb),
+                "updatedAt" = NOW()
+            WHERE id = $1 AND "archivedAt" IS NULL AND COALESCE(metadata->'payment'->>'coveredBy', '') = ''
+            RETURNING *
+        `, [kept.id, k.paidAt, k.chargeCurrency, k.paymentMethod, k.paymentConfirmationOrigin,
+            k.amountCop, k.amountUsd,
+            m.ref || null, m.evidence || null, m.reason || null, m.by || null, m.at || null,
+            m.receiptKey || null, m.receiptName || null, m.receiptMime || null, m.receiptBytes ?? null,
+            JSON.stringify(k.payment), JSON.stringify(k.substitution)]);
+        if (!r2[0]) throw Object.assign(new Error('El proyecto conservado cambió de estado durante la operación.'), { status: 409 });
+
+        // 3) Auditoría inmutable, dentro de la MISMA transacción: antes y después.
+        const ev = (submissionId, type, title, detail, metadata) => client.query(`
+            INSERT INTO "ProjectFairEvent" ("submissionId", type, title, detail, "actorId", "actorName", "actorRole", metadata)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)`,
+        [submissionId, type, title, detail, actor.id, actor.name, actor.role, JSON.stringify(metadata)]);
+        const off = plan.retired.payment;
+        const valor = off.amountCop != null && plan.expected.currency === 'COP'
+            ? `$${Number(off.amountCop).toLocaleString('es-CO')} COP` : `US$${Number(off.amountUsd || 0).toLocaleString('en-US')} USD`;
+        const refPago = off.stripePaymentIntentId || off.stripeSessionId || off.manualPaymentRef || '—';
+        const pagador = plan.payer?.name || plan.payer?.email || 'sin nombre';
+        const audit = { fingerprint, checks: plan.checks, retiredStripe: plan.retiredStripe, keptStripe: plan.keptStripe, ledger: plan.ledger, at };
+        await ev(retired.id, 'substitution',
+            `Archivada — sustituida por ${kept.publicRef}; su pago respalda ahora ese proyecto`,
+            `El pago oficial (${valor}, ref. ${refPago}, pagado por ${pagador}) se conserva en esta ficha y respalda la inscripción de ${kept.publicRef} — ${kept.projectName}.\nMotivo: ${reason}`,
+            { ...audit, role: 'retired', before: before.retired, after: r1[0] });
+        await ev(kept.id, 'substitution',
+            `Pago oficial reasignado desde ${retired.publicRef}`,
+            `La inscripción queda respaldada por el pago de ${valor} (ref. ${refPago}) hecho por ${pagador} en ${retired.publicRef}, que se archiva. El responsable del proyecto no cambia.\nMotivo: ${reason}`,
+            { ...audit, role: 'kept', before: before.kept, after: r2[0] });
+        if (plan.replacedPayment.kind !== 'none') {
+            const prev = plan.kept.payment;
+            await ev(kept.id, 'payment_reclassified',
+                'Pago anterior identificado: no respalda la inscripción',
+                `${plan.replacedPayment.label}. ${prev.amountReceived != null ? `Importe: ${prev.amountReceived} ${prev.chargeCurrency || ''}. ` : ''}Ref.: ${prev.stripePaymentIntentId || prev.stripeSessionId || prev.manualPaymentRef || '—'}. No se eliminó ni se reembolsó: queda registrado en el historial de esta ficha${plan.replacedPayment.realMoney ? ' y en la Bóveda con su referencia' : ''}.`,
+                { classification: plan.replacedPayment, previousPayment: prev, stripe: plan.keptStripe, ledger: plan.ledger.keptMovement });
+        }
+        await client.query('COMMIT');
+
+        console.log(`[project-fair-admin] Sustitución aplicada: ${retired.publicRef} → ${kept.publicRef} por ${actor.name}`);
+        res.json({
+            applied: true,
+            plan,
+            retired: mapRow(r1[0], access),
+            kept: mapRow(r2[0], access),
+        });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        console.error('[project-fair-admin] Sustitución revertida:', err?.message);
+        res.status(err?.status || 500).json({ error: `No se aplicó la sustitución: ${err?.message || 'error interno'}. No quedó ningún cambio parcial.` });
+    } finally {
+        client.release();
+    }
+}, 'remove');
+
 // ⚠️ EL `export default` VA AL FINAL DEL ARCHIVO, DESPUÉS DE LA ÚLTIMA
 // DECLARACIÓN, Y NO A MITAD DE CAMINO. Las rutas lo consumen por defecto
 // (`import fair from '...'`), así que un manejador declarado DEBAJO de este
@@ -3056,4 +3332,5 @@ export default {
     listMasterForms, getMasterForm, downloadMasterFormDocx, reopenMasterForm, lockMasterForm,
     bulkArchive, bulkRestore, bulkDelete, bulkStatus, bulkTag,
     resolveTransfers, sendPaymentReminders,
+    verifySubstitution, applySubstitution,
 };
