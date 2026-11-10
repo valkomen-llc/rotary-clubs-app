@@ -125,6 +125,9 @@ panel, y el asistente lo hace desde «Mis eventos».
   comentario (lleva los nombres de los archivos) ni la clave. El panel ve quién
   y qué archivo por cuál.
 - **Una clave reclamada por otra inscripción no se comparte** (409).
+- **v4.1312 — Importar desde una URL externa** termina en el MISMO camino
+  (`via: 'url_import'`): ver `importar-comprobantes-desde-url.md`. La ficha del
+  panel vive desde entonces en `ComprobanteDeLaInscripcion.tsx`.
 
 ## Ajustes puntuales de texto — v4.1292
 

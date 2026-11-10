@@ -12,6 +12,11 @@
 // envío del formulario (`submitCompleted`): lo que el navegador declara no
 // obliga a nada.
 //
+// v4.1312 — La importación desde una URL externa (`completedReceiptImport.js`)
+// también termina ACÁ (`via: 'url_import'`): el servidor ya guardó la copia en
+// el mismo prefijo, y esta función la comprueba y la vincula igual que una
+// subida.
+//
 // Reemplazar NO borra el anterior (ver `completedRegistrationSpec.js`): el
 // historial guarda su clave para la auditoría del equipo; la vista del
 // participante no la ve nunca.
@@ -24,7 +29,7 @@ import { describeReceiptChange } from './completedRegistrationSpec.js';
 /**
  * @returns {{ ok: true, row } | { ok: false, status: number, error: string }}
  */
-export const replaceCompletedReceipt = async ({ row, eventId, receipt, actor = null, via = 'team' }) => {
+export const replaceCompletedReceipt = async ({ row, eventId, receipt, actor = null, via = 'team', importInfo = null }) => {
     const key = clean(receipt?.key, 400);
     const name = clean(receipt?.name, 200) || 'comprobante';
     if (!key) return { ok: false, status: 422, error: 'Falta el comprobante de pago.' };
@@ -57,14 +62,27 @@ export const replaceCompletedReceipt = async ({ row, eventId, receipt, actor = n
 
     await recordHistory({
         registrationId: row.id, eventId, type: 'receipt_replaced',
-        comment: describeReceiptChange({ previousName: row.receiptKey ? (row.receiptName || 'anterior') : null, nextName: name, via }),
+        comment: describeReceiptChange({
+            previousName: row.receiptKey ? (row.receiptName || 'anterior') : null, nextName: name, via,
+            sourceHost: importInfo?.sourceHost || null,
+        }),
         actor,
         payload: {
             via,
             previous: row.receiptKey
                 ? { key: row.receiptKey, name: row.receiptName || null, mime: row.receiptMime || null, bytes: row.receiptBytes == null ? null : Number(row.receiptBytes) }
                 : null,
-            next: { key, name, mime: head.mime || null, bytes: head.bytes },
+            next: {
+                key, name, mime: head.mime || null, bytes: head.bytes,
+                // v4.1312 — la huella del contenido, cuando se conoce (la
+                // importación desde URL la calcula): detecta duplicados.
+                ...(importInfo?.sha256 ? { sha256: importInfo.sha256 } : {}),
+            },
+            // v4.1312 — de dónde vino el archivo importado desde una URL
+            // externa: el enlace REDACTADO (sin los valores de la consulta,
+            // que en una URL firmada son la llave), el host, el nombre
+            // original y la huella. La URL completa no se guarda.
+            ...(importInfo ? { import: importInfo } : {}),
         },
     });
 

@@ -118,9 +118,72 @@ export const headReceipt = async (key) => {
         if (bytes > RECEIPT_MAX_BYTES) {
             return { ok: false, error: `El comprobante pesa ${(bytes / 1024 / 1024).toFixed(1)} MB y el máximo es ${RECEIPT_MAX_BYTES / 1024 / 1024} MB.` };
         }
-        return { ok: true, bytes, mime: head.ContentType || null };
+        // v4.1312 — los metadatos del objeto (la huella y el registro de una
+        // importación desde URL). S3 los devuelve con las claves en minúscula.
+        return { ok: true, bytes, mime: head.ContentType || null, metadata: head.Metadata || {} };
     } catch (e) {
         return { ok: false, error: 'No encontramos el comprobante subido. Vuelve a adjuntarlo.' };
+    }
+};
+
+/**
+ * v4.1312 — Guardar un comprobante que trajo el SERVIDOR (importado desde una
+ * URL externa): la clave nueva vive en el prefijo privado de ESTE evento, el
+ * tipo es el que se leyó de los bytes y los metadatos llevan la huella y el
+ * registro al que se destinó. Nunca lanza.
+ *
+ * @returns {Promise<{ ok: true, key } | { ok: false, error }>}
+ */
+export const putReceiptObject = async ({ eventId, body, mime, ext, metadata = {} }) => {
+    try {
+        if (!eventId || String(eventId).includes('/') || String(eventId).includes('..')) {
+            return { ok: false, error: 'Evento no válido para guardar el comprobante.' };
+        }
+        const { client, PutObjectCommand } = await getS3();
+        const key = `${RECEIPT_PREFIX}/${eventId}/${randomUUID()}.${ext}`;
+        const meta = {};
+        for (const [k, v] of Object.entries(metadata || {})) {
+            // Los metadatos de S3 viajan como cabeceras: sólo ASCII imprimible.
+            if (v != null) meta[k] = String(v).replace(/[^\x20-\x7e]/g, '?').slice(0, 600);
+        }
+        await client.send(new PutObjectCommand({
+            Bucket: bucketName(),
+            Key: key,
+            Body: body,
+            ContentType: mime,
+            ContentLength: body.length,
+            CacheControl: 'no-store',
+            Metadata: meta,
+        }));
+        return { ok: true, key };
+    } catch (e) {
+        console.error('[completed-registrations] no pude guardar el comprobante importado:', e?.message);
+        return { ok: false, error: 'No fue posible guardar el archivo en Club Platform.' };
+    }
+};
+
+/**
+ * v4.1312 — El contenido COMPLETO de un comprobante del prefijo, para
+ * calcular su huella (¿el archivo que se quiere importar ya es el vigente?).
+ * `null` si no se puede leer o pasa del máximo. Nunca lanza.
+ */
+export const readReceiptObject = async (key) => {
+    try {
+        const value = String(key || '');
+        if (!value.startsWith(`${RECEIPT_PREFIX}/`) || value.includes('..')) return null;
+        const { client, GetObjectCommand } = await getS3();
+        const out = await client.send(new GetObjectCommand({ Bucket: bucketName(), Key: value }));
+        const chunks = [];
+        let total = 0;
+        for await (const c of out.Body) {
+            total += c.length;
+            if (total > RECEIPT_MAX_BYTES) return null;
+            chunks.push(Buffer.from(c));
+        }
+        return Buffer.concat(chunks);
+    } catch (e) {
+        console.warn('[completed-registrations] no pude leer el comprobante:', e?.message);
+        return null;
     }
 };
 
@@ -196,14 +259,28 @@ export const deleteReceiptObject = async (key) => {
     }
 };
 
-/** Enlace de LECTURA firmado y con caducidad, para el panel. */
-export const signedReceiptUrl = async (key, { seconds = 300 } = {}) => {
+/**
+ * Enlace de LECTURA firmado y con caducidad, para el panel.
+ *
+ * v4.1312 — Con `download` el enlace DESCARGA el archivo con su nombre
+ * (`Content-Disposition: attachment`) en vez de abrirlo en el navegador.
+ */
+export const attachmentDisposition = (filename) => {
+    const name = String(filename || 'comprobante').replace(/[\r\n"\\]/g, ' ').trim().slice(0, 150) || 'comprobante';
+    const ascii = name.replace(/[^\x20-\x7e]/g, '_');
+    return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`;
+};
+export const signedReceiptUrl = async (key, { seconds = 300, download = false, filename = null } = {}) => {
     try {
         if (!key) return null;
         const { client, GetObjectCommand, getSignedUrl } = await getS3();
         return await getSignedUrl(
             client,
-            new GetObjectCommand({ Bucket: bucketName(), Key: key }),
+            new GetObjectCommand({
+                Bucket: bucketName(),
+                Key: key,
+                ...(download ? { ResponseContentDisposition: attachmentDisposition(filename) } : {}),
+            }),
             { expiresIn: seconds }
         );
     } catch (e) {
@@ -212,4 +289,7 @@ export const signedReceiptUrl = async (key, { seconds = 300 } = {}) => {
     }
 };
 
-export default { RECEIPT_PREFIX, receiptKeyBelongs, presignReceiptUpload, presignPrivateReceiptUpload, headReceipt, deleteReceiptObject, signedReceiptUrl };
+export default {
+    RECEIPT_PREFIX, receiptKeyBelongs, presignReceiptUpload, presignPrivateReceiptUpload, headReceipt, deleteReceiptObject,
+    signedReceiptUrl, attachmentDisposition, putReceiptObject, readReceiptObject, receiptKindOf, sniffReceipt, verifyPrivateReceipt,
+};
