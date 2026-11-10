@@ -145,8 +145,9 @@ ahora, así que en la práctica no se nota); el **tope de 2** está escrito en e
 criterio y en el CHECK: subirlo es una decisión administrativa que pide tocar
 los dos; no hay pruebas contra Postgres real de esta versión (las barreras son
 el criterio puro, las invariantes y el camino con la base sustituida); y
-`confirmManualPayment` (admin) confirma UNA fila con su línea: para una
-inscripción de dos proyectos pagada por fuera, se confirma cada uno.
+`confirmManualPayment` (admin) confirmaba UNA fila con su línea — **resuelto
+en v4.1308**: el mismo pago puede cubrir la inscripción completa
+(`coverProjectIds`, ver `confirmacion-manual-de-pagos-de-la-feria.md`).
 
 ### Las tarjetas sin precio: postular sin pensar en el pago (v4.1300)
 

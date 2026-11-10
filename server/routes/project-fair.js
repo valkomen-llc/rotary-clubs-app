@@ -187,6 +187,9 @@ router.post('/admin/postulaciones/:id/files', authMiddleware, fairEdit, express.
 router.delete('/admin/postulaciones/:id/files/:fileId', authMiddleware, fairEdit, fair.deleteFile);
 router.post('/admin/postulaciones/:id/sync-stripe', authMiddleware, fairEdit, express.json(), fair.syncStripe);
 router.post('/admin/postulaciones/:id/confirm-manual-payment', authMiddleware, fairEdit, express.json(), fair.confirmManualPayment);
+// v4.1308 — El comprobante adjunto de la confirmación manual (S3 privado).
+router.post('/admin/postulaciones/:id/manual-payment/receipt-url', authMiddleware, fairEdit, express.json(), fair.manualReceiptUploadUrl);
+router.get('/admin/postulaciones/:id/manual-payment/receipt', authMiddleware, fairRead, fair.manualReceiptUrl);
 router.get('/admin/postulaciones/:id/payment-history', authMiddleware, fairRead, fair.getPaymentHistory);
 router.post('/admin/postulaciones/:id/resend-receipt', authMiddleware, fairEdit, express.json(), fair.resendReceipt);
 

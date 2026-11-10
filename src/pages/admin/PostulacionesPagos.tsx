@@ -25,6 +25,11 @@ import {
     LineChart, Line, PieChart, Pie, Cell, Legend,
 } from 'recharts';
 import { matrixRowsToShow } from '../../lib/projectForms';
+// v4.1308 — Confirmación manual: comprobante adjunto e inscripción completa.
+import {
+    subirComprobanteManual, propuestaConfirmacion, montoEsperado, fechaLocalParaInput, fechaInputAIso,
+    type ComprobanteSubido,
+} from '../../lib/comprobantePagoManual';
 import {
     BULK_MAX, OUTCOME_LABELS, REASON_LABELS, ARCHIVE_VIEWS, ARCHIVE_VIEW_LABELS,
     planBulk, describeBulkPlan, bulkWarnings, isArchived,
@@ -151,6 +156,7 @@ interface Submission {
     manualPaymentReason?: string | null;
     manualPaymentBy?: string | null;
     manualPaymentAt?: string | null;
+    manualPaymentReceipt?: { name: string; mime: string | null; bytes: number | null } | null;
 }
 interface TimelineEvent {
     id: string; type: string; title: string; detail: string | null;
@@ -2033,7 +2039,13 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                     catalog={catalog}
                     tags={tags}
                     onClose={() => setDetailId(null)}
-                    onChanged={() => { loadRows(pagination.page); loadOverview(); }}
+                    onChanged={() => {
+                        loadRows(pagination.page); loadOverview();
+                        // v4.1308 — «N en el sistema · M pagadas» también: una
+                        // confirmación de pago tiene que verse en el conteo sin recargar.
+                        fetch(withEvento(`${API}/project-fair/admin/catalog`), { headers: authHeaders() })
+                            .then(r => r.json()).then(cat => { if (cat && !cat.error) setCatalog(cat); }).catch(() => {});
+                    }}
                 />
             )}
         </Frame>
@@ -2057,15 +2069,24 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
     const [pane, setPane] = useState<'datos' | 'pago' | 'historial'>('datos');
     const [showManualModal, setShowManualModal] = useState(false);
     const [manualStep, setManualStep] = useState<'edit' | 'confirm'>('edit');
-    const [manualForm, setManualForm] = useState({
+    const [manualForm, setManualForm] = useState<{
+        reference: string; paidAt: string; amount: string; currency: string; paymentMethod: string;
+        evidence: string; reason: string; receipt: ComprobanteSubido | null; coverProjectIds: string[];
+    }>({
         reference: '',
-        paidAt: new Date().toISOString().slice(0, 16),
+        paidAt: fechaLocalParaInput(),
         amount: '',
         currency: 'COP',
         paymentMethod: 'Transferencia bancaria',
         evidence: '',
         reason: '',
+        receipt: null,
+        coverProjectIds: [],
     });
+    // v4.1308 — La subida del comprobante adjunto.
+    const [subiendoComprobante, setSubiendoComprobante] = useState(false);
+    const [errorComprobante, setErrorComprobante] = useState<string | null>(null);
+    const inputComprobanteRef = useRef<HTMLInputElement | null>(null);
     const [paymentHistory, setPaymentHistory] = useState<any | null>(null);
     const [loadingHistory, setLoadingHistory] = useState(false);
     const [showHistorySection, setShowHistorySection] = useState(false);
@@ -2121,7 +2142,68 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
             if (!res.ok) throw new Error(d?.error || 'No se pudo completar la acción');
             toast.success(successMsg);
             load(); onChanged();
-        } catch (e: any) { toast.error(e?.message); } finally { setSaving(false); }
+            return true;
+        } catch (e: any) { toast.error(e?.message); return false; } finally { setSaving(false); }
+    };
+
+    // v4.1308 — Abrir «Confirmar pago manualmente» con la inscripción a la
+    // vista: los demás proyectos que deben quedan propuestos y el valor es la
+    // suma de sus líneas. Antes el valor se prellenaba con 250.000 fijos y la
+    // fecha en hora UTC.
+    const abrirConfirmacionManual = () => {
+        if (!data?.submission) return;
+        const sub = data.submission;
+        const summary = data.registrationSummary;
+        const lineaPropia = summary?.currency === 'USD' ? sub.amountUsd : sub.amountCop;
+        const prop = propuestaConfirmacion(sub.id, summary?.lines, lineaPropia);
+        setManualForm({
+            reference: '',
+            paidAt: fechaLocalParaInput(),
+            amount: prop.monto ? String(prop.monto) : '',
+            currency: summary?.currency || sub.chargeCurrency || (sub.amountCop ? 'COP' : 'USD'),
+            paymentMethod: 'Transferencia bancaria',
+            evidence: '',
+            reason: '',
+            receipt: null,
+            coverProjectIds: prop.coverProjectIds,
+        });
+        setErrorComprobante(null);
+        setManualStep('edit');
+        setShowManualModal(true);
+    };
+
+    const adjuntarComprobante = async (file: File | null | undefined) => {
+        if (!file) return;
+        setErrorComprobante(null);
+        setSubiendoComprobante(true);
+        try {
+            const subido = await subirComprobanteManual({
+                file,
+                prepararUrl: withEvento(`${API}/project-fair/admin/postulaciones/${id}/manual-payment/receipt-url`),
+                headers: authHeaders() as Record<string, string>,
+            });
+            setManualForm(f => ({ ...f, receipt: subido }));
+        } catch (e: any) {
+            setErrorComprobante(e?.message || 'No se pudo subir el comprobante.');
+        } finally {
+            setSubiendoComprobante(false);
+            if (inputComprobanteRef.current) inputComprobanteRef.current.value = '';
+        }
+    };
+
+    const verComprobanteManual = async () => {
+        // La ventana se abre ANTES de esperar la respuesta: un navegador
+        // bloquea la que se abre después de un `await`.
+        const ventana = window.open('', '_blank');
+        try {
+            const res = await fetch(withEvento(`${API}/project-fair/admin/postulaciones/${id}/manual-payment/receipt`), { headers: authHeaders() });
+            const d = await res.json().catch(() => null);
+            if (!res.ok || !d?.url) throw new Error(d?.error || 'No se pudo abrir el comprobante.');
+            if (ventana) ventana.location.href = d.url; else window.location.href = d.url;
+        } catch (e: any) {
+            ventana?.close();
+            toast.error(e?.message || 'No se pudo abrir el comprobante.');
+        }
     };
 
     const exportFicha = async () => {
@@ -2227,19 +2309,7 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                                             className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"><RefreshCw size={13} className={saving ? 'animate-spin' : ''} /> Sincronizar con Stripe</button>
                                         {s.paymentStatus !== 'paid' && (
                                             <button
-                                                onClick={() => {
-                                                    setManualForm({
-                                                        reference: '',
-                                                        paidAt: new Date().toISOString().slice(0, 16),
-                                                        amount: s.amountCop ? String(s.amountCop) : '250000',
-                                                        currency: s.chargeCurrency || (s.amountCop ? 'COP' : 'USD'),
-                                                        paymentMethod: 'Transferencia bancaria',
-                                                        evidence: '',
-                                                        reason: '',
-                                                    });
-                                                    setManualStep('edit');
-                                                    setShowManualModal(true);
-                                                }}
+                                                onClick={abrirConfirmacionManual}
                                                 disabled={saving}
                                                 className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700"
                                             >
@@ -2522,19 +2592,7 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
 
                                                         {s.paymentStatus !== 'paid' && (
                                                             <button
-                                                                onClick={() => {
-                                                                    setManualForm({
-                                                                        reference: '',
-                                                                        paidAt: new Date().toISOString().slice(0, 16),
-                                                                        amount: s.amountCop ? String(s.amountCop) : '250000',
-                                                                        currency: s.chargeCurrency || (s.amountCop ? 'COP' : 'USD'),
-                                                                        paymentMethod: 'Transferencia bancaria',
-                                                                        evidence: '',
-                                                                        reason: '',
-                                                                    });
-                                                                    setManualStep('edit');
-                                                                    setShowManualModal(true);
-                                                                }}
+                                                                onClick={abrirConfirmacionManual}
                                                                 disabled={saving}
                                                                 className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
                                                             >
@@ -2594,10 +2652,31 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                                                             <span className="font-semibold">Referencia o soporte:</span>
                                                             <span className="font-mono font-bold">{s.manualPaymentRef || '—'}</span>
                                                         </div>
-                                                        <div className="flex justify-between border-b border-violet-100 py-1">
-                                                            <span className="font-semibold">Comprobante o evidencia:</span>
-                                                            <span className="break-all">{s.manualPaymentEvidence || '—'}</span>
+                                                        <div className="flex items-center justify-between gap-3 border-b border-violet-100 py-1">
+                                                            <span className="font-semibold">Comprobante adjunto:</span>
+                                                            {s.manualPaymentReceipt ? (
+                                                                <button type="button" onClick={verComprobanteManual}
+                                                                    className="inline-flex items-center gap-1.5 rounded-md border border-violet-300 bg-white px-2 py-1 font-semibold text-violet-800 hover:bg-violet-100">
+                                                                    <Paperclip size={12} /> {s.manualPaymentReceipt.name} <ExternalLink size={11} />
+                                                                </button>
+                                                            ) : <span>Sin archivo</span>}
                                                         </div>
+                                                        <div className="flex justify-between gap-3 border-b border-violet-100 py-1">
+                                                            <span className="font-semibold">Referencia del soporte:</span>
+                                                            <span className="break-all text-right">{s.manualPaymentEvidence || '—'}</span>
+                                                        </div>
+                                                        {s.coveredBy && (
+                                                            <div className="flex justify-between gap-3 border-b border-violet-100 py-1">
+                                                                <span className="font-semibold">Cubierto por el pago de:</span>
+                                                                <span className="font-mono">{s.coveredBy.publicRef || s.coveredBy.id}</span>
+                                                            </div>
+                                                        )}
+                                                        {s.coveredProjects && s.coveredProjects.length > 0 && (
+                                                            <div className="flex justify-between gap-3 border-b border-violet-100 py-1">
+                                                                <span className="font-semibold">Este pago cubre también:</span>
+                                                                <span className="text-right">{s.coveredProjects.map((p: any) => p.publicRef || p.projectName).join(', ')}</span>
+                                                            </div>
+                                                        )}
                                                         <div className="py-1">
                                                             <span className="font-semibold block mb-0.5">Motivo / Justificación:</span>
                                                             <p className="rounded bg-white/70 p-2 text-slate-700 border border-violet-100">{s.manualPaymentReason || '—'}</p>
@@ -2736,7 +2815,7 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
             {/* Modal de Confirmación Manual de Pago */}
             {showManualModal && s && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 p-4" onClick={e => e.stopPropagation()}>
-                    <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+                    <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
                         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                             <div className="flex items-center gap-2">
                                 <ShieldCheck size={20} className="text-emerald-600" />
@@ -2753,8 +2832,56 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                         {manualStep === 'edit' ? (
                             <div className="mt-4 space-y-3.5">
                                 <p className="text-xs text-slate-600 leading-relaxed">
-                                    Registra la confirmación manual de este pago cuando exista evidencia verificable. Esta acción habilitará de inmediato los formularios del proyecto.
+                                    Registra la confirmación manual de este pago cuando exista evidencia verificable. Esta acción habilitará de inmediato los formularios del proyecto y sumará la inscripción a los indicadores de pagos confirmados.
                                 </p>
+
+                                {/* v4.1308 — La inscripción completa: un pago por fuera suele cubrir los dos proyectos del club. */}
+                                {(() => {
+                                    const summary = data?.registrationSummary;
+                                    const lineaPropia = summary?.currency === 'USD' ? s.amountUsd : s.amountCop;
+                                    const { cubribles } = propuestaConfirmacion(s.id, summary?.lines, lineaPropia);
+                                    if (!cubribles.length) return null;
+                                    const propia = summary?.lines?.find(l => l.submissionId === s.id);
+                                    const esperado = montoEsperado(s.id, summary?.lines, lineaPropia, manualForm.coverProjectIds);
+                                    const fmt = (v: number) => summary?.currency === 'USD' ? fmtUsd(v) : fmtCop(v);
+                                    return (
+                                        <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-3.5 text-xs text-blue-950">
+                                            <p className="flex items-center gap-1.5 font-bold text-blue-900"><Layers size={14} /> Este club inscribió {summary?.count} proyectos</p>
+                                            <p className="mt-1 leading-relaxed text-blue-900/80">Marca los proyectos que cubre este mismo pago. Quedarán pagados con esta confirmación y la inscripción contará como pagada de manera completa.</p>
+                                            <div className="mt-2 space-y-1.5">
+                                                <div className="flex items-center justify-between gap-3 rounded-lg bg-white/80 px-3 py-2">
+                                                    <span className="flex items-center gap-2 font-semibold"><CheckSquare size={14} className="text-emerald-600" /> {propia?.label || s.projectIndexLabel} — {s.projectName} <span className="font-normal text-slate-500">(esta ficha)</span></span>
+                                                    <span className="font-mono">{fmt(Number(propia?.amount) || Number(lineaPropia) || 0)}</span>
+                                                </div>
+                                                {cubribles.map(l => {
+                                                    const marcado = manualForm.coverProjectIds.includes(l.submissionId);
+                                                    return (
+                                                        <label key={l.submissionId} className="flex cursor-pointer items-center justify-between gap-3 rounded-lg bg-white/80 px-3 py-2 hover:bg-white">
+                                                            <span className="flex items-center gap-2 font-semibold">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={marcado}
+                                                                    onChange={e => setManualForm(f => {
+                                                                        const ids = e.target.checked
+                                                                            ? [...f.coverProjectIds, l.submissionId]
+                                                                            : f.coverProjectIds.filter(x => x !== l.submissionId);
+                                                                        return { ...f, coverProjectIds: ids, amount: String(montoEsperado(s.id, summary?.lines, lineaPropia, ids) || f.amount) };
+                                                                    })}
+                                                                    className="h-3.5 w-3.5 accent-emerald-600"
+                                                                />
+                                                                {l.label} — {l.projectName}
+                                                            </span>
+                                                            <span className="font-mono">{fmt(Number(l.amount) || 0)}</span>
+                                                        </label>
+                                                    );
+                                                })}
+                                            </div>
+                                            <p className="mt-2 flex justify-between border-t border-blue-200 pt-2 font-bold">
+                                                <span>Valor esperado de la inscripción</span><span className="font-mono">{fmt(esperado)}</span>
+                                            </p>
+                                        </div>
+                                    );
+                                })()}
 
                                 <div>
                                     <label className="block text-xs font-semibold text-slate-700">Referencia o ID de transacción *</label>
@@ -2818,14 +2945,56 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                                 </div>
 
                                 <div>
-                                    <label className="block text-xs font-semibold text-slate-700">Comprobante o evidencia verificable *</label>
+                                    <label className="block text-xs font-semibold text-slate-700">Comprobante de pago *</label>
+                                    <p className="text-[11px] text-slate-500">PDF, JPG, PNG o WebP de hasta 10 MB. Se guarda en un almacenamiento privado.</p>
+                                    <input
+                                        ref={inputComprobanteRef}
+                                        type="file"
+                                        accept="application/pdf,image/jpeg,image/png,image/webp,.pdf,.jpg,.jpeg,.png,.webp"
+                                        className="hidden"
+                                        onChange={e => adjuntarComprobante(e.target.files?.[0])}
+                                    />
+                                    {manualForm.receipt ? (
+                                        <div className="mt-1.5 flex items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs">
+                                            <span className="flex min-w-0 items-center gap-2 text-emerald-900">
+                                                <CheckCircle2 size={15} className="flex-shrink-0 text-emerald-600" />
+                                                <span className="truncate font-semibold">{manualForm.receipt.name}</span>
+                                                <span className="flex-shrink-0 text-emerald-700">{(manualForm.receipt.size / 1024 / 1024).toFixed(2)} MB</span>
+                                            </span>
+                                            <span className="flex flex-shrink-0 gap-1.5">
+                                                <button type="button" onClick={() => inputComprobanteRef.current?.click()} disabled={subiendoComprobante}
+                                                    className="rounded-md border border-emerald-300 bg-white px-2 py-1 font-semibold text-emerald-800 hover:bg-emerald-100">Reemplazar</button>
+                                                <button type="button" onClick={() => setManualForm(f => ({ ...f, receipt: null }))} disabled={subiendoComprobante}
+                                                    className="rounded-md border border-slate-300 bg-white px-2 py-1 font-semibold text-slate-600 hover:bg-slate-100">Quitar</button>
+                                            </span>
+                                        </div>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            onClick={() => inputComprobanteRef.current?.click()}
+                                            onDragOver={e => e.preventDefault()}
+                                            onDrop={e => { e.preventDefault(); adjuntarComprobante(e.dataTransfer.files?.[0]); }}
+                                            disabled={subiendoComprobante}
+                                            className="mt-1.5 flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-300 px-3 py-4 text-xs font-semibold text-slate-600 hover:border-blue-400 hover:bg-blue-50/50 disabled:opacity-60"
+                                        >
+                                            {subiendoComprobante
+                                                ? <><Loader2 size={15} className="animate-spin" /> Subiendo comprobante…</>
+                                                : <><Paperclip size={15} /> Adjuntar comprobante (o arrástralo aquí)</>}
+                                        </button>
+                                    )}
+                                    {errorComprobante && <p className="mt-1 text-[11px] font-semibold text-red-600">{errorComprobante}</p>}
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-700">Referencia del soporte {manualForm.receipt ? '(opcional)' : '*'}</label>
                                     <input
                                         type="text"
                                         value={manualForm.evidence}
                                         onChange={e => setManualForm(f => ({ ...f, evidence: e.target.value }))}
-                                        placeholder="Ej. URL a comprobante en Bóveda, # extracto, o recibo físico"
+                                        placeholder="Ej. # extracto bancario, recibo físico o enlace al soporte"
                                         className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                                     />
+                                    {!manualForm.receipt && <p className="mt-0.5 text-[11px] text-slate-500">Si no tienes el archivo, describe aquí un soporte verificable.</p>}
                                 </div>
 
                                 <div>
@@ -2850,8 +3019,25 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                                     <button
                                         type="button"
                                         onClick={() => {
-                                            if (!manualForm.reference.trim() || !manualForm.paidAt || !manualForm.amount || !manualForm.evidence.trim() || !manualForm.reason.trim()) {
+                                            if (subiendoComprobante) {
+                                                toast.error('Espera a que termine de subir el comprobante.');
+                                                return;
+                                            }
+                                            if (!manualForm.reference.trim() || !manualForm.paidAt || !manualForm.amount || !manualForm.reason.trim()) {
                                                 toast.error('Por favor completa todos los campos requeridos.');
+                                                return;
+                                            }
+                                            if (!manualForm.receipt && !manualForm.evidence.trim()) {
+                                                toast.error('Adjunta el comprobante o escribe la referencia del soporte.');
+                                                return;
+                                            }
+                                            if (manualForm.reason.trim().length < 5) {
+                                                toast.error('El motivo debe tener al menos 5 caracteres.');
+                                                return;
+                                            }
+                                            const fecha = new Date(manualForm.paidAt);
+                                            if (Number.isNaN(fecha.getTime()) || fecha.getTime() > Date.now() + 10 * 60 * 1000) {
+                                                toast.error('La fecha del pago no es válida o está en el futuro.');
                                                 return;
                                             }
                                             setManualStep('confirm');
@@ -2869,9 +3055,22 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                                         <AlertTriangle size={15} /> Confirmación explícita requerida
                                     </div>
                                     <p className="mt-1 leading-relaxed">
-                                        Esta acción marcará la postulación como <strong>Pago completado</strong>, desbloqueará los formularios «Formulación del proyecto» y «Solicitud de Aportes del FDD 2026–2027», y quedará registrada inmutablemente en el registro de auditoría a tu nombre.
+                                        Esta acción marcará {manualForm.coverProjectIds.length ? <>los <strong>{manualForm.coverProjectIds.length + 1} proyectos</strong> de la inscripción</> : 'la postulación'} como <strong>Pago completado</strong>, desbloqueará los formularios «Formulación del proyecto» y «Solicitud de Aportes del FDD 2026–2027», sumará el pago a los indicadores de la Feria y quedará registrada inmutablemente en el registro de auditoría a tu nombre.
                                     </p>
                                 </div>
+
+                                {(() => {
+                                    const summary = data?.registrationSummary;
+                                    const lineaPropia = summary?.currency === 'USD' ? s.amountUsd : s.amountCop;
+                                    const esperado = montoEsperado(s.id, summary?.lines, lineaPropia, manualForm.coverProjectIds);
+                                    const declarado = Number(manualForm.amount) || 0;
+                                    if (!esperado || manualForm.currency !== (summary?.currency || manualForm.currency) || Math.abs(declarado - esperado) < 0.01) return null;
+                                    return (
+                                        <div className="rounded-xl border border-orange-200 bg-orange-50 p-3 text-xs text-orange-900">
+                                            El valor declarado ({manualForm.currency === 'USD' ? fmtUsd(declarado) : fmtCop(declarado)}) es distinto del valor esperado de {manualForm.coverProjectIds.length ? 'la inscripción' : 'este proyecto'} ({manualForm.currency === 'USD' ? fmtUsd(esperado) : fmtCop(esperado)}). Revisa el soporte antes de confirmar: los indicadores de recaudo suman la tarifa de cada proyecto, y lo recibido queda registrado tal como lo escribas.
+                                        </div>
+                                    );
+                                })()}
 
                                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-xs text-slate-800 space-y-1.5">
                                     <div className="flex justify-between py-1 border-b border-slate-200">
@@ -2894,10 +3093,22 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                                         <span className="font-semibold text-slate-500">Medio de pago:</span>
                                         <span>{manualForm.paymentMethod}</span>
                                     </div>
-                                    <div className="flex justify-between py-1 border-b border-slate-200">
-                                        <span className="font-semibold text-slate-500">Evidencia / Soporte:</span>
-                                        <span className="break-all">{manualForm.evidence}</span>
+                                    {manualForm.coverProjectIds.length > 0 && (
+                                        <div className="flex justify-between gap-3 py-1 border-b border-slate-200">
+                                            <span className="font-semibold text-slate-500">Cubre también:</span>
+                                            <span className="text-right">{(data?.registrationSummary?.lines || []).filter(l => manualForm.coverProjectIds.includes(l.submissionId)).map(l => `${l.label} — ${l.projectName}`).join(' · ')}</span>
+                                        </div>
+                                    )}
+                                    <div className="flex justify-between gap-3 py-1 border-b border-slate-200">
+                                        <span className="font-semibold text-slate-500">Comprobante adjunto:</span>
+                                        <span className="break-all text-right">{manualForm.receipt ? manualForm.receipt.name : 'Sin archivo'}</span>
                                     </div>
+                                    {manualForm.evidence.trim() && (
+                                        <div className="flex justify-between gap-3 py-1 border-b border-slate-200">
+                                            <span className="font-semibold text-slate-500">Referencia del soporte:</span>
+                                            <span className="break-all text-right">{manualForm.evidence}</span>
+                                        </div>
+                                    )}
                                     <div className="py-1">
                                         <span className="font-semibold text-slate-500 block mb-0.5">Motivo:</span>
                                         <span className="italic">{manualForm.reason}</span>
@@ -2916,8 +3127,21 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                                     <button
                                         type="button"
                                         onClick={async () => {
-                                            await action('confirm-manual-payment', manualForm, 'Pago confirmado y formularios habilitados exitosamente');
-                                            setShowManualModal(false);
+                                            const ok = await action('confirm-manual-payment', {
+                                                reference: manualForm.reference,
+                                                paidAt: fechaInputAIso(manualForm.paidAt),
+                                                amount: manualForm.amount,
+                                                currency: manualForm.currency,
+                                                paymentMethod: manualForm.paymentMethod,
+                                                evidence: manualForm.evidence,
+                                                reason: manualForm.reason,
+                                                receipt: manualForm.receipt ? { key: manualForm.receipt.key, name: manualForm.receipt.name, contentType: manualForm.receipt.contentType } : null,
+                                                coverProjectIds: manualForm.coverProjectIds,
+                                            }, manualForm.coverProjectIds.length
+                                                ? 'Pago confirmado: la inscripción completa quedó pagada y los formularios habilitados'
+                                                : 'Pago confirmado y formularios habilitados exitosamente');
+                                            // Sólo se cierra si se confirmó: con un error, lo escrito sigue ahí.
+                                            if (ok) setShowManualModal(false);
                                         }}
                                         disabled={saving}
                                         className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"

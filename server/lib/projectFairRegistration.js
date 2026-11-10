@@ -250,6 +250,49 @@ export const coveredIdsFromMetadata = (md = {}, anchorId = null) => {
 
 export const coveredIdsToMetadata = (ids = []) => ids.filter(Boolean).join(',').slice(0, 480);
 
+/**
+ * v4.1308 — QUÉ CUBRE UNA CONFIRMACIÓN MANUAL DE PAGO.
+ *
+ * Un club que pagó por fuera (transferencia, consignación) su inscripción de
+ * dos proyectos hizo UN pago. Hasta v4.1307 el panel confirmaba una sola fila
+ * y el otro proyecto seguía «debiendo»: la inscripción no quedaba pagada de
+ * manera completa ni en el listado ni en los indicadores.
+ *
+ * Es la MISMA regla del cobro en línea (`coveredByCheckout`), con una
+ * diferencia deliberada: acá no se deduce nada de «lo que debe hoy». Lo que
+ * cubre el pago lo DECLARA quien lo confirma (`requestedIds`), porque es quien
+ * tiene el soporte delante; el criterio sólo acepta lo que puede cubrirse:
+ * otro proyecto de la MISMA inscripción, activo, postulado y sin pagar. Lo
+ * demás se rechaza con su motivo, nunca se ignora en silencio.
+ *
+ * `lines` trae la línea de cada fila (la tarifa de su posición) para dejarla
+ * escrita si la fila no la tenía: es lo que suma al recaudo.
+ *
+ * @returns {{ coveredIds: string[], rejected: {id: string, reason: string}[],
+ *             lines: {submissionId: string, projectIndex: number, amount: number}[], total: number }}
+ */
+export const manualCoverageFor = (rows = [], anchorId, requestedIds = [], rules = { mode: 'COP', first: 0, second: 0 }) => {
+    const byId = new Map(rows.filter(Boolean).map(r => [r.id, r]));
+    const anchor = byId.get(anchorId) || null;
+    const pedidos = [...new Set((Array.isArray(requestedIds) ? requestedIds : [])
+        .map(v => String(v || '').trim()).filter(id => id && id !== anchorId))];
+    const coveredIds = [];
+    const rejected = [];
+    for (const id of pedidos) {
+        const row = byId.get(id);
+        if (!row) { rejected.push({ id, reason: 'No pertenece a la inscripción de este proyecto.' }); continue; }
+        if (!isActiveProject(row)) { rejected.push({ id, reason: 'El proyecto está retirado o archivado.' }); continue; }
+        if (String(row.status) === 'paid') { rejected.push({ id, reason: 'Ese proyecto ya tiene el pago confirmado.' }); continue; }
+        if (!owesRegistration(row)) { rejected.push({ id, reason: 'Ese proyecto no debe la inscripción (es un borrador o no tiene obligación de pago).' }); continue; }
+        coveredIds.push(id);
+    }
+    const lines = [anchor, ...coveredIds.map(id => byId.get(id))]
+        .filter(Boolean)
+        .map(row => ({ submissionId: row.id, projectIndex: indexOf(row), amount: lineAmountFor(rules, indexOf(row)) }));
+    const total = Math.round(lines.reduce((a, l) => a + (Number(l.amount) || 0), 0) * 100) / 100;
+    return { coveredIds, rejected, lines, total };
+};
+
 // ── Las mismas reglas, en SQL (literales controlados, sin datos de la petición) ──
 export const SQL_ACTIVE_PROJECT = `("archivedAt" IS NULL AND COALESCE("workflowStatus",'received') <> 'withdrawn')`;
 export const SQL_FIRST_PROJECT = `COALESCE("projectIndex",1) = 1`;
