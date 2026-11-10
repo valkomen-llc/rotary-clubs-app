@@ -34,13 +34,35 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1311.0 | 2026-11-10 (Feria: sustituir una postulación por otra del mismo club, con su pago)
+// UI V4.1312.0 | 2026-11-10 (Eventos: importar el comprobante de una inscripción desde una URL externa)
 // Cache bust: 2026-11-10
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1312.0',
+        title: 'Eventos: importar el comprobante de pago desde una URL 🔗',
+        description: 'Los registros migrados de otra plataforma («Importación histórica») dejaron sus comprobantes allá. Ahora, en la ficha de cualquier inscripción, el Equipo de Registro pega el enlace del comprobante y Club Platform descarga una copia propia, la valida y la deja asociada a ESA inscripción, sin descargarla al computador para volverla a subir. Funciona para cualquier evento y cualquier inscripción, histórica o actual.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'comprobantes', 'importación histórica', 'seguridad', 'conferencia distrital'],
+        type: 'feature',
+        impact: 'Alta: traslada a la plataforma los comprobantes de las inscripciones migradas de la Conferencia Distrital, con trazabilidad y sin depender de que el enlace original siga existiendo.',
+        changes: [
+            { type: 'added', text: 'Botón «Importar comprobante desde URL» justo debajo de «Subir comprobante», con una ventana para pegar el enlace y, si se quiere, un nombre. «Verificar enlace» descarga el archivo, dice qué es (PDF, JPG, PNG o WebP), cuánto pesa y de dónde viene, y muestra la vista previa; «Importar comprobante» lo asocia. Si la importación histórica registró un enlace de comprobante, la ventana lo ofrece.' },
+            { type: 'added', text: 'La tarjeta «Comprobante adjunto»: miniatura o ícono, nombre, tipo, tamaño, fecha y origen (formulario, Equipo de Registro, participante o URL externa), con «Ver comprobante» (visor de PDF o imagen ampliable), «Descargar» con su nombre y «Reemplazar comprobante».' },
+            { type: 'added', text: 'Seguridad de la descarga: sólo HTTPS y el puerto 443; ninguna dirección privada, interna, de loopback o de metadatos, comprobada después de resolver el nombre y en la misma conexión; cada redirección revisada; topes de tiempo y de 10 MB; sin enviar cookies ni credenciales; el tipo se lee de los bytes del archivo, no de su extensión.' },
+            { type: 'added', text: 'Mensajes claros para cada caso: enlace no válido, archivo no encontrado, acceso restringido (con la salida «Subir comprobante»), una página web en vez del archivo, formato no admitido, demasiado grande, duplicado y error de almacenamiento.' },
+            { type: 'added', text: 'Trazabilidad: el historial de la inscripción guarda quién importó, cuándo, el nombre original, el tipo, el tamaño, la huella del archivo y el enlace de origen SIN sus tokens. Los intentos fallidos también quedan escritos.' },
+            { type: 'improved', text: 'Duplicados: el mismo archivo no se vuelve a importar a la misma inscripción; si es el comprobante de otra inscripción del evento (un participante duplicado), se avisa y se asocia sólo a la que está abierta.' },
+            { type: 'fixed', text: 'Las pruebas de extremo a extremo de inscripciones completadas volvían a funcionar con el doble de almacenamiento al día.' },
+        ],
+        details: [
+            'Importar un comprobante NO valida la inscripción, no confirma el pago, no cambia el valor ni genera movimientos: sigue pasando por «Validar inscripción» y «Marcar pago confirmado».',
+            'Al reemplazar, el comprobante anterior no se borra: queda en el historial y se puede abrir.',
+        ],
+    },
     {
         version: '4.1311.0',
         title: 'Feria de Proyectos: sustituir una postulación por otra del mismo club, con su pago 🔁',

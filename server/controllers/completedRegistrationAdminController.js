@@ -41,6 +41,7 @@ import {
     eventBrandingFor,
 } from '../lib/completedRegistrationStore.js';
 import { signedReceiptUrl, deleteReceiptObject, presignReceiptUpload, receiptKeyBelongs } from '../lib/completedReceipts.js';
+import { verifyReceiptImport, commitReceiptImport } from '../lib/completedReceiptImport.js';
 import { replaceCompletedReceipt } from '../lib/completedReceiptChange.js';
 import { applyCompletedFormTextFixes } from '../lib/completedFormTextFixes.js';
 import { rotaryCatalogFor } from '../lib/eventRegistrationSpec.js';
@@ -61,7 +62,7 @@ import { sendCompletedConfirmation, PLATFORM_SENDER } from './completedRegistrat
 import { assertEventCapability, holdsCapability } from '../lib/eventAccess.js';
 import { attachGrant } from '../middleware/institutionalGuard.js';
 
-console.log('[completedRegistrationAdminController] v4.1291.0 cargado — tablero, fichas, validación, exportación, acciones en bloque, la notificación de confirmación, el motor de importación de inscripciones históricas y subir o reemplazar el comprobante desde la ficha (con el anterior conservado en el historial).');
+console.log('[completedRegistrationAdminController] v4.1312.0 cargado — tablero, fichas, validación, exportación, acciones en bloque, la notificación de confirmación, el motor de importación de inscripciones históricas, subir o reemplazar el comprobante desde la ficha (con el anterior conservado en el historial) e IMPORTARLO DESDE UNA URL EXTERNA (descarga en el servidor con guardas contra SSRF, validación por bytes, copia propia en S3, sin tocar el estado ni el pago).');
 
 // ── Acceso ───────────────────────────────────────────────────────────
 // El mismo criterio del panel de inscripciones: el evento tiene que pertenecer
@@ -645,6 +646,9 @@ export const receiptUrl = async (req, res) => {
         const found = await loadDetail(req, res);
         if (!found) return;
         const { row, event } = found;
+        // v4.1312 — `?download=1`: el enlace descarga el archivo con su nombre
+        // en vez de abrirlo en el visor.
+        const download = req.query.download === '1';
 
         const version = clean(req.query.version, 60);
         if (version) {
@@ -658,14 +662,14 @@ export const receiptUrl = async (req, res) => {
             if (!previous?.key || !receiptKeyBelongs(previous.key, event.id)) {
                 return res.status(404).json({ error: 'No encontramos ese comprobante anterior.' });
             }
-            const url = await signedReceiptUrl(previous.key);
+            const url = await signedReceiptUrl(previous.key, { download, filename: previous.name });
             if (!url) return res.status(502).json({ error: 'No se pudo firmar el enlace del comprobante' });
             return res.json({ url, name: previous.name || 'comprobante anterior', mime: previous.mime || null, expiresInSeconds: 300 });
         }
 
         if (!row.receiptKey) return res.status(404).json({ error: 'Este registro no tiene comprobante' });
 
-        const url = await signedReceiptUrl(row.receiptKey);
+        const url = await signedReceiptUrl(row.receiptKey, { download, filename: row.receiptName });
         if (!url) return res.status(502).json({ error: 'No se pudo firmar el enlace del comprobante' });
         res.json({ url, name: row.receiptName, mime: row.receiptMime, expiresInSeconds: 300 });
     } catch (error) {
@@ -714,6 +718,59 @@ export const replaceReceipt = async (req, res) => {
     } catch (error) {
         console.error('[completed-registrations][admin] replaceReceipt:', error);
         res.status(500).json({ error: 'No se pudo guardar el comprobante' });
+    }
+};
+
+// ── Importar el comprobante desde una URL externa (v4.1312) ───────────
+//
+// Para los registros migrados de otra plataforma, pero abierto a CUALQUIER
+// inscripción de cualquier evento: la misma capacidad que subirlo
+// (`completed`). La descarga la hace el servidor (`receiptUrlFetch.js`); la
+// vinculación, el camino único (`replaceCompletedReceipt`). Ninguna de las
+// dos toca el estado ni el pago.
+
+const importStatus = (code) => (
+    code === 'duplicate' ? 409
+        : code === 'storage' ? 502
+            : code === 'link' ? 409
+                : 422
+);
+
+// POST /admin/completed/:id/receipt-import/verify — { url, name }
+export const verifyReceiptImportUrl = async (req, res) => {
+    try {
+        const found = await loadDetail(req, res);
+        if (!found) return;
+        const out = await verifyReceiptImport({
+            row: found.row, event: found.event,
+            url: String(req.body?.url ?? '').trim().slice(0, 4000),
+            name: clean(req.body?.name, 150),
+        });
+        if (!out.ok) return res.status(importStatus(out.code)).json({ error: out.error, code: out.code });
+        res.json(out);
+    } catch (error) {
+        console.error('[completed-registrations][admin] verifyReceiptImportUrl:', error?.message);
+        res.status(500).json({ error: 'No se pudo verificar el enlace del comprobante.', code: 'unavailable' });
+    }
+};
+
+// POST /admin/completed/:id/receipt-import — { url, name, stagedKey? }
+export const importReceiptFromUrl = async (req, res) => {
+    try {
+        const found = await loadDetail(req, res);
+        if (!found) return;
+        const out = await commitReceiptImport({
+            row: found.row, event: found.event,
+            url: String(req.body?.url ?? '').trim().slice(0, 4000),
+            name: clean(req.body?.name, 150),
+            stagedKey: clean(req.body?.stagedKey, 400) || null,
+            actor: actorOf(req),
+        });
+        if (!out.ok) return res.status(importStatus(out.code)).json({ error: out.error, code: out.code, detail: out.detail || null });
+        res.json({ registration: mapCompleted(out.row), file: out.file });
+    } catch (error) {
+        console.error('[completed-registrations][admin] importReceiptFromUrl:', error?.message);
+        res.status(500).json({ error: 'No se pudo importar el comprobante.', code: 'unavailable' });
     }
 };
 
@@ -1563,7 +1620,7 @@ export const importRevert = async (req, res) => {
 export default {
     getConfig, saveConfig,
     list, getSummary, detail,
-    changeStatus, update, resend, receiptUrl, receiptUploadUrl, replaceReceipt, checkIn,
+    changeStatus, update, resend, receiptUrl, receiptUploadUrl, replaceReceipt, verifyReceiptImportUrl, importReceiptFromUrl, checkIn,
     selectAll,
     bulkStatus, bulkEdit, bulkDelete,
     notificationPreview, notificationTest,

@@ -89,6 +89,9 @@ router.get('/admin/completed/:id/receipt', authMiddleware, completedAdmin.receip
 // v4.1291 — subir o reemplazar el comprobante desde la ficha del panel.
 router.post('/admin/completed/:id/receipt-url', authMiddleware, json, completedAdmin.receiptUploadUrl);
 router.put('/admin/completed/:id/receipt', authMiddleware, json, completedAdmin.replaceReceipt);
+// v4.1312 — importar el comprobante desde una URL externa (verificar → importar).
+router.post('/admin/completed/:id/receipt-import/verify', authMiddleware, json, completedAdmin.verifyReceiptImportUrl);
+router.post('/admin/completed/:id/receipt-import', authMiddleware, json, completedAdmin.importReceiptFromUrl);
 router.post('/admin/completed/:id/checkin', authMiddleware, json, completedAdmin.checkIn);
 
 // v4.1263 — Selección y acciones en bloque del listado. Literales ANTES de

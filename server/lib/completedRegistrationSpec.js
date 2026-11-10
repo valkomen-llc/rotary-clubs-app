@@ -411,9 +411,16 @@ export const participantReceiptLock = (status) => {
  * El texto del historial. Sin claves de S3: el nombre del archivo es lo que la
  * persona reconoce. `via` = 'team' | 'participant'.
  */
-export const describeReceiptChange = ({ previousName = null, nextName = '', via = 'team' } = {}) => {
+export const describeReceiptChange = ({ previousName = null, nextName = '', via = 'team', sourceHost = null } = {}) => {
     const quien = via === 'participant' ? 'El participante' : 'El Equipo de Registro';
     const nuevo = String(nextName || '').trim() || 'comprobante';
+    // v4.1312 — Importado desde una URL externa: se nombra el HOST, nunca el
+    // enlace (puede llevar una firma o un token).
+    if (via === 'url_import') {
+        const desde = sourceHost ? ` desde un enlace externo (${String(sourceHost).slice(0, 120)})` : ' desde un enlace externo';
+        if (!previousName) return `${quien} importó el comprobante «${nuevo}»${desde}.`;
+        return `${quien} importó el comprobante «${nuevo}»${desde} y reemplazó «${String(previousName).trim() || 'anterior'}».`;
+    }
     if (!previousName) return `${quien} subió el comprobante «${nuevo}».`;
     return `${quien} reemplazó el comprobante «${String(previousName).trim() || 'anterior'}» por «${nuevo}».`;
 };

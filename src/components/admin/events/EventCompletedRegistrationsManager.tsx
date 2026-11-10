@@ -19,13 +19,12 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import {
     AlertCircle, AlertTriangle, BadgeCheck, CheckSquare, ChevronDown, ChevronUp, Copy, Download,
     ExternalLink, Eye, FileSpreadsheet, FileText, Filter, Link2, ListChecks, Loader2, Mail, Paperclip,
-    Pencil, RefreshCw, Save, Search, Send, Settings2, Trash2, Upload, Users, X, XCircle,
+    Pencil, RefreshCw, Save, Search, Send, Settings2, Trash2, Users, X, XCircle,
 } from 'lucide-react';
 import MediaPicker from '../content-studio/MediaPicker';
 import { uploadMediaFiles } from '../../../lib/mediaUpload';
 import { completedStatusMeta, SOURCE_LABELS, BULK_MAX, chunkIds } from '../../../lib/completedRegistrationSpec';
-import { RECEIPT_ACCEPT } from '../../../lib/completedRegistrationSpec';
-import { subirComprobante } from '../../../lib/subirComprobante';
+import ComprobanteDeLaInscripcion from './ComprobanteDeLaInscripcion';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
 const authHeaders = () => ({
@@ -122,7 +121,11 @@ interface CompletedRow {
     /** v4.1267 — El participante tiene acceso a «Mis eventos». Un servidor anterior no lo manda. */
     hasAccount?: boolean;
     receiptName: string | null;
+    /** v4.1312 — El tipo real del comprobante (miniatura y visor). */
+    receiptMime?: string | null;
     receiptBytes: number | null;
+    /** v4.950 — Trazabilidad de la importación histórica (la URL del comprobante del sistema anterior). */
+    importMeta?: { receiptUrl?: string | null } | null;
     comments: string | null;
     flags: { hasDuplicates?: boolean; duplicates?: DuplicateRef[] };
     linkedRegistrationId: string | null;
@@ -234,7 +237,6 @@ const DetailSheet = ({ id, catalog, onClose, onChanged }: {
     const [draft, setDraft] = useState<Record<string, string>>({});
     const [notes, setNotes] = useState('');
     const [notice, setNotice] = useState('');
-    const receiptInput = useRef<HTMLInputElement>(null);
 
     const load = useCallback(() => {
         setLoading(true);
@@ -305,31 +307,8 @@ const DetailSheet = ({ id, catalog, onClose, onChanged }: {
         }
     };
 
-    // v4.1291 — Subir o reemplazar el comprobante. El anterior NO se borra:
-    // queda en el historial y se puede abrir desde ahí.
-    const uploadReceipt = async (file: File | undefined) => {
-        if (receiptInput.current) receiptInput.current.value = '';
-        if (!file) return;
-        if (r?.hasReceipt && !window.confirm(
-            `¿Reemplazar «${r.receiptName || 'el comprobante actual'}» por «${file.name}»?\n\nEl anterior no se borra: queda en el historial de la inscripción.`)) return;
-        setBusy('upload');
-        setError('');
-        try {
-            const { Authorization } = authHeaders();
-            const base = `${API}/event-registrations/admin/completed/${id}`;
-            const d = await subirComprobante<any>({
-                file, prepararUrl: `${base}/receipt-url`, confirmarUrl: `${base}/receipt`, headers: { Authorization },
-            });
-            setNotice(d?.unchanged ? 'Ese archivo ya era el comprobante vigente.' : (r?.hasReceipt ? 'Comprobante reemplazado.' : 'Comprobante subido.'));
-            setTimeout(() => setNotice(''), 3000);
-            load();
-            onChanged();
-        } catch (err: any) {
-            setError(err?.message || 'No se pudo subir el comprobante.');
-        } finally {
-            setBusy('');
-        }
-    };
+    // v4.1291 — Subir o reemplazar el comprobante vive desde v4.1312 en
+    // `ComprobanteDeLaInscripcion`, junto a la importación desde URL.
 
     const startEdit = () => {
         if (!r) return;
@@ -536,40 +515,18 @@ const DetailSheet = ({ id, catalog, onClose, onChanged }: {
                             )}
                         </div>
 
-                        {/* ── Comprobante ──────────────────────────── */}
-                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3.5">
-                            <p className="flex min-w-0 items-center gap-2 text-sm text-gray-700">
-                                <Paperclip className="h-4 w-4 shrink-0 text-gray-400" />
-                                {r?.hasReceipt ? (
-                                    <>
-                                        <span className="truncate font-semibold" data-no-translate>{r.receiptName || 'Comprobante de pago'}</span>
-                                        {r.receiptBytes ? (
-                                            <span className="shrink-0 text-xs text-gray-400">{(r.receiptBytes / 1024 / 1024).toFixed(1)} MB</span>
-                                        ) : null}
-                                    </>
-                                ) : 'Este registro no tiene comprobante adjunto.'}
-                            </p>
-                            <div className="flex flex-wrap items-center gap-2">
-                                {r?.hasReceipt && (
-                                    <button type="button" onClick={() => openReceipt()} disabled={busy === 'receipt'}
-                                        className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2 text-xs font-bold text-white transition hover:bg-blue-700 disabled:opacity-50">
-                                        {busy === 'receipt' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-                                        Ver / descargar comprobante
-                                    </button>
-                                )}
-                                {/* v4.1291 — subir o reemplazar el comprobante del asistente. */}
-                                <input ref={receiptInput} type="file" accept={RECEIPT_ACCEPT} className="hidden"
-                                    onChange={e => uploadReceipt(e.target.files?.[0])} />
-                                <button type="button" onClick={() => receiptInput.current?.click()} disabled={busy === 'upload'}
-                                    className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-xs font-bold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50">
-                                    {busy === 'upload' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                                    {busy === 'upload' ? 'Subiendo…' : r?.hasReceipt ? 'Reemplazar comprobante' : 'Subir comprobante'}
-                                </button>
-                            </div>
-                            <p className="w-full text-[11px] text-gray-400">
-                                PDF, JPG, PNG o WebP · máximo 10 MB. Al reemplazarlo, el anterior queda en el historial.
-                            </p>
-                        </div>
+                        {/* ── Comprobante (v4.1312: tarjeta con visor, descarga e
+                            «Importar comprobante desde URL»; nada de esto
+                            cambia el estado ni el pago) ─────────────── */}
+                        {r && (
+                            <ComprobanteDeLaInscripcion
+                                registration={r}
+                                history={data?.history || []}
+                                onChanged={() => { load(); onChanged(); }}
+                                onNotice={(text) => { setError(''); setNotice(text); setTimeout(() => setNotice(''), 5000); }}
+                                onError={(text) => setError(text)}
+                            />
+                        )}
 
                         {/* ── Datos de los cuatro pasos ────────────── */}
                         {editing ? (
