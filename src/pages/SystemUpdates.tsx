@@ -34,13 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1308.0 | 2026-11-10 (Confirmación manual de pagos de la Feria: comprobante adjunto e inscripción completa)
+// UI V4.1309.0 | 2026-11-10 (Bóveda: la prueba de la casilla de los cobros sin aportante, al día con el acceso de sólo lectura)
 // Cache bust: 2026-11-10
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1309.0',
+        title: 'Bóveda: comprobado que un cobro sin aportante se sigue pudiendo trasladar ✅',
+        description: 'Una prueba automática de la Bóveda de Fondos marcaba un fallo: decía que los cobros sin aportante (una inscripción a la Feria, una compra de la tienda) habían perdido su casilla de selección y ya no se podían trasladar. Revisado: la casilla sigue ahí para quien administra la Bóveda. Desde la llegada del acceso de sólo lectura de la Secretaría Digital, esa casilla se muestra sólo a quien puede gestionar los traslados —igual que en las tarjetas de los aportes—, y la prueba no se había enterado. Ahora comprueba exactamente eso.',
+        date: new Date().toISOString(),
+        tags: ['bóveda de fondos', 'traslados', 'cobros sin aportante', 'feria de proyectos', 'pruebas', 'secretaría digital'],
+        type: 'fix',
+        impact: 'Baja: no cambia nada en pantalla; vuelve a vigilar que ese dinero no quede sin poder girarse.',
+        changes: [
+            { type: 'fixed', text: 'La prueba test:collections exige que la tarjeta de un cobro sin aportante reciba la casilla con la MISMA condición que la de un aporte, y que esa condición se abra para un administrador. Si un cambio futuro se la quita, o le pone una condición distinta, la prueba falla y dice cuál quedó.' },
+        ],
+    },
     {
         version: '4.1308.0',
         title: 'Confirmar un pago a mano: con el comprobante adjunto y la inscripción completa 🧾',

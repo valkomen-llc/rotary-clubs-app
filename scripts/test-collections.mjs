@@ -279,9 +279,26 @@ ok('⚠️ un cobro que declara su fuente queda FUERA de la heurística',
     'por parecido de importe y fecha, una inscripción se le atribuiría a un donante que no la hizo');
 
 const walletSrc = codigo('../src/pages/admin/WalletManagement.tsx');
+// v4.1265 (Secretaría Digital) le puso a la casilla la compuerta de quien
+// administra la Bóveda: `onElegir={puedeGestionar ? cambiarEleccion : undefined}`.
+// Es deliberado —un rol de sólo lectura no elige dinero para girar— y vale
+// IGUAL para las tarjetas de aportes. Lo que esta prueba guarda sigue siendo lo
+// de v4.1025: el cobro sin aportante no es de segunda. Así que exige que su
+// tarjeta reciba `cambiarEleccion` con EXACTAMENTE la misma compuerta que la de
+// un aporte, y que esa compuerta se abra para un administrador sin acotar.
+const onElegirDe = (ancla) => {
+    const m = walletSrc.match(new RegExp(`${ancla}(?:(?!<DonorCard)[\\s\\S]){0,1200}?onElegir=\\{([^}]*)\\}`));
+    return m ? m[1].trim() : null;
+};
+const elegirHuerfano = onElegirDe('movementOnly=\\{m\\}');
+const elegirAporte = onElegirDe('donation=\\{donation\\}');
 ok('⚠️ un cobro sin aportante RECIBE casilla de selección',
-    /movementOnly=\{m\}[\s\S]{0,400}onElegir=\{cambiarEleccion\}/.test(walletSrc),
-    'sin `onElegir` la tarjeta no pinta casilla y ese dinero no se puede trasladar');
+    !!elegirHuerfano && /\bcambiarEleccion\b/.test(elegirHuerfano) && elegirHuerfano === elegirAporte,
+    'sin `onElegir` la tarjeta no pinta casilla y ese dinero no se puede trasladar'
+    + ` (huérfano: ${elegirHuerfano ?? 'ausente'} · aporte: ${elegirAporte ?? 'ausente'})`);
+ok('y la compuerta de esa casilla se abre para quien administra la Bóveda',
+    /const puedeGestionar = !acceso\.restricted \|\|/.test(walletSrc),
+    'si `puedeGestionar` no es verdadero para un acceso sin acotar, nadie puede elegir ese dinero');
 ok('y sus desembolsos llegan a la pantalla',
     /desembolsos=\{desembolsos\[m\.id\]/.test(walletSrc),
     'sin ellos la tarjeta ofrecería girar otra vez algo ya girado');

@@ -105,6 +105,15 @@ credenciales ni red.** Verificadas a la inversa sobre los siete puntos.
   lo soportó —`registerDisbursement` acepta `donationId: null`—: lo que faltaba
   era la casilla. Un cobro sin aportante no es un cobro de segunda; es el mismo
   dinero con otra procedencia.
+  - **v4.1309 — la casilla tiene la compuerta de quien administra, y es
+    deliberado.** Desde v4.1265 (Secretaría Digital, rol de sólo lectura) la
+    tarjeta va con `onElegir={puedeGestionar ? cambiarEleccion : undefined}`,
+    IGUAL que la de un aporte. La prueba seguía buscando el `onElegir` sin
+    compuerta y quedó en rojo en `main` sin que hubiera defecto. Ahora exige
+    que el huérfano reciba `cambiarEleccion` con EXACTAMENTE la misma compuerta
+    que el aporte, y que `puedeGestionar` sea verdadero para un acceso sin
+    acotar. Una compuerta PROPIA del huérfano (o ninguna `onElegir`) la rompe:
+    es justo la forma de volver a dejarlo «de segunda».
 - **Y SUS DESEMBOLSOS TIENEN QUE LLEGAR A LA PANTALLA.** Sin ellos la tarjeta
   calcula que le falta girar todo y ofrece girar otra vez lo ya girado. El
   servidor lo rechazaría —`balanceFor` manda— pero la pantalla habría dicho una
