@@ -209,6 +209,7 @@ const AgentsManagement: React.FC = () => {
     } return (
         <>
         <MissionControlLayout>
+            {/* ancho-acotado-ok: esta pantalla vive en MissionControlLayout (consola VIP), no en el panel de AdminLayout. */}
             <div className="space-y-6 max-w-[1600px] mx-auto p-6 md:p-10 lg:p-12">
                 {/* Header */}
                 <div className="flex items-center justify-between">

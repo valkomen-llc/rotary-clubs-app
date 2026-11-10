@@ -227,7 +227,7 @@ const Translations: React.FC = () => {
 
     return (
         <AdminLayout>
-        <div className="p-6 max-w-[1400px] mx-auto space-y-6">
+        <div className="w-full space-y-6">
             {/* Cabecera */}
             <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div>

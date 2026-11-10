@@ -34,13 +34,27 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1306.0 | 2026-11-09 (Carga confiable de logotipo, portada y galería en el Directorio Distrital de Clubes)
-// Cache bust: 2026-11-09
+// UI V4.1307.0 | 2026-11-10 (Los módulos del panel de administración ocupan el ancho completo)
+// Cache bust: 2026-11-10
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1307.0',
+        title: 'Los módulos del panel ocupan todo el ancho de la pantalla ↔️',
+        description: 'En un monitor ancho, varios módulos del panel de administración —el Centro de Gestión del Evento de la Feria entre ellos— se quedaban en una columna centrada con dos franjas vacías a los lados, aunque el panel ya era de ancho completo: cada módulo se volvía a encerrar en su propio contenedor angosto. Ahora todos aprovechan el ancho disponible, y tablas como «Proyectos postulados» muestran más columnas sin desplazarse.',
+        date: new Date().toISOString(),
+        tags: ['panel de administración', 'diseño', 'ancho completo', 'feria de proyectos', 'tablas'],
+        type: 'improvement',
+        impact: 'Media: más espacio útil en las pantallas del panel, sobre todo en tablas y tableros con muchas columnas.',
+        changes: [
+            { type: 'improved', text: 'Ancho completo en el Panel de Gestión de la Feria de Proyectos (Resumen, Proyectos postulados, Inscripciones y asistentes), Socios, Redes Sociales, Aniversarios IA, Traducciones, Solicitudes técnicas, Mi perfil, Canal Maestro de Configuración, Bloques de pago, Tienda, Distribución de imágenes y los módulos de Descargas, Estados financieros, NGSE, Rotex, Clubes patrocinados e Intercambio de jóvenes.' },
+            { type: 'improved', text: 'Sin rellenos dobles: los módulos que sumaban su propio margen al del panel ahora usan sólo el relleno lateral común, igual en todas las secciones.' },
+            { type: 'added', text: 'Nueva barrera de despliegue (check:admin-width): si un módulo del panel vuelve a encerrarse en un contenedor angosto centrado, el despliegue se detiene y dice cuál. Los modales, las tarjetas y las columnas de lectura (como el chat) conservan su ancho.' },
+        ],
+    },
     {
         version: '4.1306.0',
         title: 'El logotipo del club ya se sube en el Directorio Distrital 🖼️',
