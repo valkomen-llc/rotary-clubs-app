@@ -23,7 +23,7 @@ const SocialHub: React.FC = () => {
 
     return (
         <AdminLayout>
-            <div className="max-w-6xl mx-auto space-y-8 pb-20">
+            <div className="w-full space-y-8 pb-20">
                 {/* Header */}
                 <div className="bg-gradient-to-br from-[#013388] via-indigo-700 to-pink-600 rounded-[2.5rem] p-10 text-white shadow-2xl relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-64 h-64 bg-yellow-400/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl" />

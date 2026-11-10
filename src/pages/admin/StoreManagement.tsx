@@ -1340,7 +1340,7 @@ export default function StoreManagement() {
 
                 {/* TAB 8: SETTINGS */}
                 {activeTab === 'settings' && (
-                    <div className="max-w-4xl space-y-8 animate-in fade-in duration-200">
+                    <div className="w-full space-y-8 animate-in fade-in duration-200">
                         {/* Section 1: Header & Visual Customization */}
                         <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm space-y-6">
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-100">

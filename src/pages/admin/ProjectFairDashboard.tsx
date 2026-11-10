@@ -301,7 +301,7 @@ export const ProjectFairDashboard: React.FC = () => {
     }, [data?.timeline, timelineMode]);
 
     return (
-        <div className="space-y-8 pb-16 max-w-7xl mx-auto">
+        <div className="w-full space-y-8 pb-16">
             {/* ============================================================ */}
             {/* ÁREA 1: ENCABEZADO EJECUTIVO (Navy Rotary High-Contrast)     */}
             {/* ============================================================ */}

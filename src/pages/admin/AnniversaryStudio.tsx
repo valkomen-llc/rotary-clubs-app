@@ -471,7 +471,7 @@ const AnniversaryStudio: React.FC = () => {
     const set = <K extends keyof Config>(k: K, v: Config[K]) => setConfig(c => (c ? { ...c, [k]: v } : c));
 
     return (
-        <div className="p-6 max-w-6xl mx-auto space-y-6">
+        <div className="w-full space-y-6">
             {/* Cabecera */}
             <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>

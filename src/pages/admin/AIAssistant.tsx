@@ -94,7 +94,7 @@ const AIAssistant: React.FC = () => {
 
     return (
         <AdminLayout>
-            <div className="max-w-4xl mx-auto">
+            <div className="w-full">
                 <div className="mb-8 text-center">
                     <div className="inline-flex p-3 bg-sky-50 text-rotary-blue rounded-2xl mb-4 border border-sky-100 shadow-sm animate-pulse">
                         <Sparkles className="w-8 h-8" />

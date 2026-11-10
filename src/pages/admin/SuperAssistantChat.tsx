@@ -164,6 +164,7 @@ const SuperAssistantChat: React.FC = () => {
                             </div>
                         </div>
                     ) : (
+                        /* ancho-acotado-ok: la columna de mensajes del chat se acota para que las líneas sigan siendo legibles; la tarjeta que la contiene ocupa el ancho completo. */
                         <div className="max-w-5xl mx-auto space-y-8">
                             {messages.map((m, i) => (
                                 <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2 duration-300`}>
