@@ -20,7 +20,7 @@
 // firma (`manualReceiptKeyBelongs`).
 // ════════════════════════════════════════════════════════════════════
 import {
-    presignPrivateReceiptUpload, headReceipt, sniffReceipt, signedReceiptUrl,
+    presignPrivateReceiptUpload, verifyPrivateReceipt, signedReceiptUrl,
 } from './completedReceipts.js';
 
 export const MANUAL_RECEIPT_PREFIX = 'private/project-fair-receipts';
@@ -50,18 +50,11 @@ export const presignManualReceipt = async ({ submissionId, contentType, filename
  */
 export const verifyManualReceipt = async (receipt, submissionId) => {
     if (!receipt || !receipt.key) return null;
-    const key = String(receipt.key).slice(0, 500);
-    if (!manualReceiptKeyBelongs(key, submissionId)) {
+    if (!manualReceiptKeyBelongs(receipt.key, submissionId)) {
         return { ok: false, error: 'El comprobante no corresponde a esta postulación. Vuelve a adjuntarlo.' };
     }
-    const head = await headReceipt(key);
-    if (!head.ok) return { ok: false, error: head.error };
-    const mime = await sniffReceipt(key);
-    if (!mime) {
-        return { ok: false, error: 'El archivo adjunto no es un PDF ni una imagen JPG, PNG o WebP válida.' };
-    }
-    const name = String(receipt.name || 'comprobante').replace(/[\r\n]/g, ' ').trim().slice(0, 300) || 'comprobante';
-    return { ok: true, key, name, mime, bytes: head.bytes };
+    // v4.1310 — El mismo verificador que los comprobantes manuales de eventos.
+    return verifyPrivateReceipt(receipt, `${MANUAL_RECEIPT_PREFIX}/${submissionId}`);
 };
 
 export { signedReceiptUrl };

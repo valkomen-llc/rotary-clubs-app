@@ -12,7 +12,7 @@ export interface StripeCheckInfo {
 export interface PaymentInfo {
     status: PaymentStatus; currency: string; charged: number; surcharge: number; eventAmount: number;
     refunded: number; paidAt: string | null; paymentIntentId: string | null; checkoutSessionId: string | null;
-    chargeId: string | null; receiptUrl: string | null; viaStripe: boolean; stripe: StripeCheckInfo | null;
+    chargeId: string | null; receiptUrl: string | null; viaStripe: boolean; manual?: boolean; stripe: StripeCheckInfo | null;
 }
 export interface AllocationLike { transferId?: string; transferStatus?: string; amount?: number | string }
 

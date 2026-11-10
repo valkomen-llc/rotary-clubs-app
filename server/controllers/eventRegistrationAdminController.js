@@ -41,7 +41,15 @@ import { assertEventCapability, holdsCapability } from '../lib/eventAccess.js';
 import { attachGrant } from '../middleware/institutionalGuard.js';
 // Logo institucional embebido (mismo criterio que Postulación de Proyectos).
 import { embedLogoDataUrl } from '../lib/logoEmbed.js';
+// v4.1310 — Confirmación MANUAL del pago con comprobante adjunto.
+import {
+    MANUAL_CONFIRMABLE_STATUSES, manualConfirmVerdict, validateManualPayment,
+    eventManualReceiptPrefix, eventManualReceiptBelongs,
+} from '../lib/eventManualPayment.js';
+import { presignPrivateReceiptUpload, verifyPrivateReceipt, signedReceiptUrl } from '../lib/completedReceipts.js';
+import { confirmManualRegistrationPayment } from './eventRegistrationController.js';
 
+console.log('[eventRegistrationAdminController] v4.1310.0 cargado — confirmar a mano el pago de una inscripción (nacional, internacional o CADRE) con el comprobante adjunto: S3 privado validado por sus bytes, fila de pago, historial y correo como Stripe/PayPal.');
 console.log('[eventRegistrationAdminController] v4.1266.0 cargado — tablero, categorías (con la visibilidad pública de su botón, independiente de la disponibilidad), fichas, edición, acciones en bloque, acreditación y exportación de inscripciones por evento.');
 
 // ── Acceso ───────────────────────────────────────────────────────────
@@ -677,6 +685,108 @@ export const changeStatus = async (req, res) => {
     } catch (error) {
         console.error('[event-registrations][admin] changeStatus:', error);
         res.status(500).json({ error: 'No se pudo cambiar el estado' });
+    }
+};
+
+// ── Confirmación MANUAL del pago, con comprobante (v4.1310) ───────────
+//
+// La misma capacidad que mover una inscripción a un estado liquidado
+// (`payments` sobre ESTE evento). El comprobante sube directo a S3 con una
+// URL prefirmada al prefijo privado de ESTA inscripción; la confirmación trae
+// la clave y el servidor comprueba el objeto real (`verifyPrivateReceipt`).
+
+/** ¿Puede gestionar pagos en este evento? Responde 403 si no. */
+const requirePaymentsCapability = async (req, res, event) => {
+    const grant = await attachGrant(req);
+    if (grant && grant.source !== 'none' && !holdsCapability(grant, event.id, 'payments')) {
+        res.status(403).json({ error: 'No tienes permiso para gestionar pagos en este evento.' });
+        return false;
+    }
+    return true;
+};
+
+// POST /admin/registrations/:id/manual-payment/receipt-url
+export const manualPaymentReceiptUrl = async (req, res) => {
+    try {
+        await ensureEventRegistrationSchema();
+        const found = await loadDetail(req, res);
+        if (!found) return;
+        const { registration, event } = found;
+        if (!(await requirePaymentsCapability(req, res, event))) return;
+        const verdict = manualConfirmVerdict(registration);
+        if (!verdict.ok) return res.status(409).json({ error: verdict.reason });
+        const prefix = eventManualReceiptPrefix(event.id, registration.id);
+        if (!prefix) return res.status(400).json({ error: 'Inscripción no válida.' });
+        const { filename, contentType, size } = req.body || {};
+        const result = await presignPrivateReceiptUpload({
+            prefix, contentType: clean(contentType, 100), filename: clean(filename, 200), size: Number(size),
+        });
+        if (!result.ok) return res.status(422).json({ error: result.errores[0], errores: result.errores });
+        res.json({ key: result.key, uploadUrl: result.uploadUrl, contentType: result.contentType });
+    } catch (error) {
+        console.error('[event-registrations][admin] manualPaymentReceiptUrl:', error);
+        res.status(500).json({ error: 'No se pudo preparar la subida del comprobante', detail: error?.message });
+    }
+};
+
+// POST /admin/registrations/:id/manual-payment
+export const confirmManualPayment = async (req, res) => {
+    try {
+        await ensureEventRegistrationSchema();
+        const found = await loadDetail(req, res);
+        if (!found) return;
+        const { registration, event } = found;
+        if (!(await requirePaymentsCapability(req, res, event))) return;
+
+        const verdict = manualConfirmVerdict(registration);
+        if (!verdict.ok) return res.status(409).json({ error: verdict.reason });
+
+        const receipt = await verifyPrivateReceipt(req.body?.receipt, eventManualReceiptPrefix(event.id, registration.id));
+        if (receipt && !receipt.ok) return res.status(422).json({ error: receipt.error });
+
+        const checked = validateManualPayment(req.body || {}, { receiptAttached: Boolean(receipt) });
+        if (!checked.ok) return res.status(400).json({ error: checked.error });
+
+        const result = await confirmManualRegistrationPayment({
+            registration, input: checked.value, receipt, actor: actorOf(req),
+            confirmableStatuses: MANUAL_CONFIRMABLE_STATUSES,
+        });
+        if (!result.ok) return res.status(result.status).json({ error: result.error });
+        res.json({ registration: mapRegistration(result.registration) });
+    } catch (error) {
+        console.error('[event-registrations][admin] confirmManualPayment:', error);
+        res.status(500).json({ error: 'No se pudo confirmar el pago' });
+    }
+};
+
+// GET /admin/registrations/:id/manual-payment/receipt?paymentId=
+// Enlace firmado (5 minutos) al comprobante de una confirmación manual de
+// ESTA inscripción. La clave sale de su fila de pago y tiene que ser del
+// prefijo de ESTA inscripción: un id de pago ajeno no firma nada.
+export const manualPaymentReceipt = async (req, res) => {
+    try {
+        await ensureEventRegistrationSchema();
+        const found = await loadDetail(req, res);
+        if (!found) return;
+        const { registration, event } = found;
+        if (!(await requirePaymentsCapability(req, res, event))) return;
+        const paymentId = clean(req.query.paymentId, 80);
+        const { rows } = await db.query(
+            `SELECT payload FROM "EventRegistrationPayment"
+              WHERE "registrationId" = $1 AND provider = 'manual' ${paymentId ? 'AND id = $2' : ''}
+              ORDER BY "createdAt" DESC LIMIT 1`,
+            paymentId ? [registration.id, paymentId] : [registration.id]);
+        const payload = parseJson(rows[0]?.payload, {});
+        const r = payload?.manual?.receipt;
+        if (!r?.key || !eventManualReceiptBelongs(r.key, event.id, registration.id)) {
+            return res.status(404).json({ error: 'Este pago no tiene un comprobante adjunto.' });
+        }
+        const url = await signedReceiptUrl(r.key);
+        if (!url) return res.status(502).json({ error: 'No se pudo firmar el enlace del comprobante.' });
+        res.json({ url, name: r.name || 'comprobante', mime: r.mime || null, expiresInSeconds: 300 });
+    } catch (error) {
+        console.error('[event-registrations][admin] manualPaymentReceipt:', error);
+        res.status(500).json({ error: 'No se pudo abrir el comprobante' });
     }
 };
 
@@ -1436,6 +1546,7 @@ export default {
     saveCategory, removeCategory, previewCategoryForm, previewCta,
     listRegistrations, getDashboard, getRegistrationDetail,
     changeStatus, updateTags, updateNotes, updateRegistration,
+    manualPaymentReceiptUrl, confirmManualPayment, manualPaymentReceipt,
     selectAllRegistrations, bulkStatus, bulkEdit, bulkDelete,
     lookupForCheckIn, checkIn, sendMessage,
     exportRegistrationsCsv, exportRegistrationsXlsx,

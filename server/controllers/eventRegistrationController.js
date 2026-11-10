@@ -78,6 +78,7 @@ import {
     identityFromRequest, prefillForIdentity, linkAttendeeAccountTo,
 } from './eventAttendeeController.js';
 
+console.log('[eventRegistrationController] v4.1310.0 cargado — confirmación MANUAL del pago de una inscripción (transferencia, consignación, COLROTARIOS…) con comprobante adjunto: deja su fila de pago y termina en el mismo final que Stripe y PayPal.');
 console.log('[eventRegistrationController] v4.1251.0 cargado — el pago de la inscripción va POR DEFECTO por el PayPal de la plataforma (COLROTARIOS) cuando está activado en Métodos de pago y puede cobrar la moneda —convertida a la vista con la tasa del día si hace falta—; la tarjeta (Stripe) queda como alternativa.');
 console.log('[eventRegistrationController] v4.709.0 cargado — inscripciones por categoría; el botón principal de la ficha lo decide el IDIOMA activo del sitio (es-CO → nacional, resto → internacional), CADRES siempre visible, formulario bloqueado por categoría, acompañantes, multimoneda y pago por Stripe. El formulario ya no pide el idioma y crea la cuenta de Asistente al Evento con la que se consulta la inscripción. El esquema se comprueba con 2 consultas en vez de ejecutar 62 sentencias en cada arranque en frío. Quien ya tiene cuenta (Gestor de Proyectos) se inscribe al Registro Nacional con esa misma sesión, sin crear otra contraseña; la audiencia de la categoría se deduce del botón que lleva a ella o de su clave cuando la categoría no la declara. El paso 1 pide ubicación y datos rotarios, con listas cuando el país declarado es Colombia y texto libre fuera; el rol EN LA FERIA reemplaza al cargo dentro de Rotary. Cada bloque del paso decide sus columnas: ubicación y club van a tres, como en Postular Proyecto.');
 
@@ -1521,7 +1522,7 @@ export const confirmPaidSession = async (session, stripeEvent = null) => {
  * historial y correo. Uno solo para Stripe y PayPal — con dos, una inscripción
  * pagada por PayPal podría quedarse sin código o sin comprobante.
  */
-const finalizePaidRegistration = async (paidRow, registration, { comment, payload }) => {
+const finalizePaidRegistration = async (paidRow, registration, { comment, payload, actor = null, notify = true, type = 'payment_confirmed' }) => {
     const rows = [paidRow];
 
     const event = await loadEvent(rows[0].eventId, rows[0].clubId);
@@ -1546,14 +1547,87 @@ const finalizePaidRegistration = async (paidRow, registration, { comment, payloa
     const updated = await findRegistration(rows[0].id);
 
     await recordHistory({
-        registrationId: updated.id, eventId: updated.eventId, type: 'payment_confirmed',
+        registrationId: updated.id, eventId: updated.eventId, type,
         fromStatus: registration.status, toStatus: STATUS.PAID,
         comment,
         payload,
+        actor,
     });
 
-    await notifyRegistration(updated, event, edition);
+    // v4.1310 — Una confirmación MANUAL puede no avisar (el equipo lo decide
+    // en la ventana); Stripe y PayPal avisan siempre, como hasta ahora.
+    if (notify) await notifyRegistration(updated, event, edition);
     return updated;
+};
+
+/**
+ * v4.1310 — CONFIRMACIÓN MANUAL de un pago hecho por fuera de la pasarela
+ * (transferencia, consignación, datáfono, COLROTARIOS…), con su soporte.
+ *
+ * Lo que la diferencia del antiguo «Cambiar a → Pago confirmado»:
+ *   · queda una fila en `EventRegistrationPayment` (`provider = 'manual'`,
+ *     `succeeded`) con el valor, la moneda, la fecha real del pago, la
+ *     referencia, el medio, el motivo, quién confirmó y el comprobante —la
+ *     clave del archivo queda en `payload.manual.receipt`, no sale a la
+ *     pantalla—. Es la misma traza que lee la conciliación del evento;
+ *   · termina en `finalizePaidRegistration`, el MISMO final que Stripe y
+ *     PayPal: código de inscripción, cuenta del participante, historial y
+ *     (si se pide) el correo de confirmación.
+ *
+ * ⚠️ El UPDATE es CONDICIONAL al estado (`status = ANY(confirmables)`) y va
+ * ANTES de registrar el pago: dos clics, o el webhook de Stripe llegando al
+ * mismo tiempo, no confirman dos veces ni dejan un pago huérfano.
+ *
+ * @returns {Promise<{ ok: true, registration } | { ok: false, status, error }>}
+ */
+export const confirmManualRegistrationPayment = async ({ registration, input, receipt = null, actor = null, confirmableStatuses }) => {
+    const pricing = store.parseJson(registration.pricing, {});
+    const { rows } = await db.query(
+        `UPDATE "EventRegistration"
+         SET status = $1, "paidAt" = $2, "paymentMethod" = $3,
+             "lastActivityAt" = NOW(), "updatedAt" = NOW()
+         WHERE id = $4 AND status = ANY($5) RETURNING *`,
+        [STATUS.PAID, input.paidAt, clean(`Manual · ${input.method}`, 60), registration.id, confirmableStatuses]);
+    if (!rows[0]) {
+        return { ok: false, status: 409, error: 'La inscripción cambió de estado mientras tanto (¿la confirmó otra persona o llegó el pago en línea?). Recarga la ficha.' };
+    }
+
+    const confirmedAt = new Date().toISOString();
+    await recordPayment({
+        registrationId: registration.id, eventId: registration.eventId,
+        provider: 'manual',
+        status: 'succeeded',
+        baseCurrency: pricing.baseCurrency || registration.baseCurrency || null,
+        baseAmount: pricing.baseAmount ?? registration.baseAmount ?? null,
+        currency: input.currency,
+        amount: input.amount,
+        paymentMethod: input.method,
+        occurredAt: input.paidAt,
+        payload: {
+            manual: {
+                reference: input.reference,
+                paidAt: input.paidAt.toISOString(),
+                method: input.method,
+                evidence: input.evidence,
+                reason: input.reason,
+                by: actor?.name || actor?.email || 'Equipo',
+                byId: actor?.id || null,
+                confirmedAt,
+                expected: { amount: Number(registration.chargeAmount ?? pricing.chargeAmount ?? 0) || null, currency: registration.chargeCurrency || pricing.chargeCurrency || null },
+                receipt: receipt ? { key: receipt.key, name: receipt.name, mime: receipt.mime, bytes: receipt.bytes } : null,
+            },
+        },
+    });
+
+    const soporte = receipt ? `comprobante adjunto «${receipt.name}»` : `soporte: ${input.evidence}`;
+    const updated = await finalizePaidRegistration(rows[0], registration, {
+        type: 'payment_confirmed_manually',
+        comment: `Pago confirmado manualmente — ${formatMoney(input.amount, input.currency)} · ${input.method} · Ref: ${input.reference} · ${soporte}. Motivo: ${input.reason}`,
+        payload: { manual: true, reference: input.reference, amount: input.amount, currency: input.currency, method: input.method, receipt: receipt ? receipt.name : null },
+        actor,
+        notify: input.notify,
+    });
+    return { ok: true, registration: updated };
 };
 
 /** Aplica a la inscripción el desenlace que informe Stripe. */
@@ -1629,6 +1703,7 @@ export default {
     createCheckout,
     getRegistration,
     confirmPaidSession,
+    confirmManualRegistrationPayment,
     applyStripeStatus,
     notifyRegistration,
     capturePaypalRegistration,

@@ -153,6 +153,31 @@ export const sniffReceipt = async (key) => {
 };
 
 /**
+ * v4.1310 — El comprobante de una CONFIRMACIÓN MANUAL de pago, sea de la
+ * Feria o de un evento: la clave tiene que vivir bajo el prefijo privado de
+ * ESE registro (`prefix`), el objeto tiene que existir con un peso válido y
+ * sus primeros bytes tienen que ser un PDF o una imagen. Un solo verificador
+ * para los dos módulos.
+ *
+ * @returns {Promise<null | { ok: true, key, name, mime, bytes } | { ok: false, error }>}
+ *          `null` cuando no viene ningún comprobante.
+ */
+export const verifyPrivateReceipt = async (receipt, prefix) => {
+    if (!receipt || !receipt.key) return null;
+    const key = String(receipt.key).slice(0, 500);
+    const base = String(prefix || '');
+    if (!base.startsWith('private/') || base.includes('..') || !key.startsWith(`${base}/`) || key.includes('..')) {
+        return { ok: false, error: 'El comprobante no corresponde a este registro. Vuelve a adjuntarlo.' };
+    }
+    const head = await headReceipt(key);
+    if (!head.ok) return { ok: false, error: head.error };
+    const mime = await sniffReceipt(key);
+    if (!mime) return { ok: false, error: 'El archivo adjunto no es un PDF ni una imagen JPG, PNG o WebP válida.' };
+    const name = String(receipt.name || 'comprobante').replace(/[\r\n]/g, ' ').trim().slice(0, 300) || 'comprobante';
+    return { ok: true, key, name, mime, bytes: head.bytes };
+};
+
+/**
  * Borra el objeto del comprobante (v4.952, al eliminar un registro). Es de
  * MEJOR ESFUERZO y nunca lanza: la regla de la Librería (v4.740) — que S3
  * falle no impide quitar la fila; el usuario pidió que desaparezca del panel.

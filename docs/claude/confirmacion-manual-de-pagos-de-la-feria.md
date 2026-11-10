@@ -75,6 +75,11 @@ sin escribir la línea del cubierto, falla «queda con la tarifa (100.000)».
 - La ventana sólo se cierra si `action` devolvió `true`; la fecha viaja con
   zona (`fechaInputAIso`) y una futura se rechaza (400).
 
+**Lo mismo para los inscritos al evento (v4.1310):** ver la sección «Confirmar
+a mano el pago, con el comprobante» de `inscripciones-a-eventos-feria-de-proyectos.md`.
+Los dos módulos comparten `verifyPrivateReceipt` (`completedReceipts.js`) y
+`src/lib/comprobantePagoManual.ts`.
+
 **Pendientes conocidos:** no hay forma de ANULAR una confirmación manual desde
 el panel (sigue como estaba); el comprobante subido y no confirmado queda
 huérfano en el prefijo (conviene una regla de ciclo de vida sobre
