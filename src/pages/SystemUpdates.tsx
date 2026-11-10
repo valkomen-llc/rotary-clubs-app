@@ -34,13 +34,31 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1307.0 | 2026-11-10 (Los módulos del panel de administración ocupan el ancho completo)
+// UI V4.1308.0 | 2026-11-10 (Confirmación manual de pagos de la Feria: comprobante adjunto e inscripción completa)
 // Cache bust: 2026-11-10
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1308.0',
+        title: 'Confirmar un pago a mano: con el comprobante adjunto y la inscripción completa 🧾',
+        description: 'En Postulación de Proyectos, la ventana «Confirmar pago manualmente» pedía el comprobante como un texto o un enlace, y en una inscripción de dos proyectos pagada con una sola transferencia confirmaba sólo uno: el otro seguía como pendiente y el club no aparecía pagado de manera completa. Ahora el comprobante se adjunta en la misma ventana, el pago puede cubrir los dos proyectos del club, y la confirmación se suma de inmediato a los indicadores de pagos confirmados y recaudo.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'pagos', 'confirmación manual', 'comprobante', 'inscripción', 'dos proyectos', 'recaudo'],
+        type: 'feature',
+        impact: 'Alta: el comité organizador concilia transferencias y consignaciones con su soporte, y el balance de proyectos pagados queda al día.',
+        changes: [
+            { type: 'added', text: 'Adjuntar el comprobante (PDF, JPG, PNG o WebP, hasta 10 MB) con botón o arrastrando el archivo. Sube directo a un almacenamiento privado; al confirmar, el servidor comprueba que exista, su peso y que sus primeros bytes sean de verdad un PDF o una imagen. Se puede reemplazar o quitar antes de confirmar. La referencia escrita del soporte sigue disponible y pasa a ser opcional cuando hay archivo.' },
+            { type: 'added', text: 'La ficha muestra «Comprobante adjunto» en la Confirmación Administrativa Manual y lo abre con un enlace firmado que caduca a los 5 minutos. La clave del archivo nunca llega al navegador.' },
+            { type: 'added', text: 'Inscripción de dos proyectos: la ventana muestra los proyectos del club con su tarifa (primero $250.000, segundo $100.000) y propone marcar el que también debe; el valor se prellena con el total esperado. Al confirmar, los dos quedan pagados con la misma trazabilidad, el saldo de la inscripción queda en $0 y lo recibido se registra una sola vez, en el proyecto donde se confirmó.' },
+            { type: 'fixed', text: 'Los indicadores suman la tarifa de cada proyecto pagado: si una fila no tenía su tarifa escrita, contaba como pagada pero no sumaba al recaudo. Ahora la confirmación la deja escrita (sin tocar una que ya existiera). El conteo «N en el sistema · M pagadas» se actualiza sin recargar.' },
+            { type: 'fixed', text: 'La fecha del pago se prellenaba en hora UTC (un pago de las 9:56 p. m. aparecía a las 2:56 a. m.) y el servidor la leía sin zona horaria. Ahora usa la hora local y viaja con su zona. Una fecha futura se rechaza.' },
+            { type: 'fixed', text: 'Si la confirmación fallaba, la ventana se cerraba igual y se perdía lo escrito; ahora sólo se cierra cuando el pago quedó confirmado. Confirmar dos veces (dos clics o dos pestañas) ya no pisa la primera confirmación.' },
+            { type: 'added', text: 'Pruebas: test:fair:manual-payment (57, sin base), test:fair:manual-payment:e2e (39, contra Postgres real y almacenamiento simulado) y test:fair:manual-payment:ui (23, en el navegador contra el servidor real, también a 390 px).' },
+        ],
+    },
     {
         version: '4.1307.0',
         title: 'Los módulos del panel ocupan todo el ancho de la pantalla ↔️',

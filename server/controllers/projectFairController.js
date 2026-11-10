@@ -554,6 +554,13 @@ const ensureTables = async () => {
         addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "manualPaymentReason" TEXT`),
         addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "manualPaymentBy" VARCHAR(160)`),
         addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "manualPaymentAt" TIMESTAMPTZ`),
+        // v4.1308 — El comprobante ADJUNTO de la confirmación manual (archivo
+        // privado en S3; la clave nunca viaja a la pantalla) y la moneda/valor
+        // que el comité declaró recibir.
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "manualPaymentReceiptKey" TEXT`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "manualPaymentReceiptName" VARCHAR(300)`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "manualPaymentReceiptMime" VARCHAR(120)`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "manualPaymentReceiptBytes" INTEGER`),
         addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "paymentFailureCode" VARCHAR(80)`),
         addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "paymentFailureMessage" TEXT`),
         // v4.1253 — Cuándo se ENVIÓ la postulación. Un borrador no la tiene;

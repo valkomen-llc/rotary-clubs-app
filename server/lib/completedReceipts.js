@@ -67,14 +67,26 @@ export const receiptKeyBelongs = (key, eventId) => {
  * URL prefirmada de subida (5 minutos). El tipo de contenido queda FIRMADO:
  * el PUT tiene que mandarlo igual o S3 lo rechaza.
  */
-export const presignReceiptUpload = async ({ eventId, contentType, filename, size }) => {
+export const presignReceiptUpload = async ({ eventId, contentType, filename, size }) =>
+    presignPrivateReceiptUpload({ prefix: `${RECEIPT_PREFIX}/${eventId}`, contentType, filename, size });
+
+/**
+ * v4.1308 — La misma subida prefirmada, bajo el prefijo PRIVADO que diga quien
+ * llama (el de la confirmación manual de pagos de la Feria vive aparte). Las
+ * reglas del archivo —PDF/JPG/PNG/WebP, 10 MB— son las mismas: un solo
+ * criterio de qué es un comprobante.
+ */
+export const presignPrivateReceiptUpload = async ({ prefix, contentType, filename, size }) => {
     const juicio = checkReceiptMeta({ contentType, filename, size });
     if (!juicio.ok) return { ok: false, errores: juicio.errores };
+    if (!String(prefix || '').startsWith('private/') || String(prefix).includes('..')) {
+        return { ok: false, errores: ['Prefijo de almacenamiento no permitido.'] };
+    }
 
     try {
         const { client, PutObjectCommand, getSignedUrl } = await getS3();
         const ext = receiptExtensionFor(contentType, filename);
-        const key = `${RECEIPT_PREFIX}/${eventId}/${randomUUID()}.${ext}`;
+        const key = `${prefix}/${randomUUID()}.${ext}`;
         const uploadUrl = await getSignedUrl(
             client,
             new PutObjectCommand({
@@ -113,6 +125,34 @@ export const headReceipt = async (key) => {
 };
 
 /**
+ * v4.1308 — QUÉ ES el archivo, leído de sus primeros bytes (no de la extensión
+ * ni del tipo que declaró el navegador): PDF, JPEG, PNG o WebP. Devuelve el
+ * tipo real o `null` si no es ninguno. Nunca lanza.
+ */
+export const RECEIPT_MAGIC = [
+    { mime: 'application/pdf', test: (b) => b.length >= 4 && b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46 },
+    { mime: 'image/jpeg', test: (b) => b.length >= 3 && b[0] === 0xFF && b[1] === 0xD8 && b[2] === 0xFF },
+    { mime: 'image/png', test: (b) => b.length >= 4 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47 },
+    { mime: 'image/webp', test: (b) => b.length >= 12 && b.toString('latin1', 0, 4) === 'RIFF' && b.toString('latin1', 8, 12) === 'WEBP' },
+];
+export const receiptKindOf = (buf) => {
+    const b = Buffer.isBuffer(buf) ? buf : Buffer.from(buf || []);
+    return RECEIPT_MAGIC.find(m => m.test(b))?.mime || null;
+};
+export const sniffReceipt = async (key) => {
+    try {
+        const { client, GetObjectCommand } = await getS3();
+        const out = await client.send(new GetObjectCommand({ Bucket: bucketName(), Key: key, Range: 'bytes=0-31' }));
+        const chunks = [];
+        for await (const c of out.Body) chunks.push(Buffer.from(c));
+        return receiptKindOf(Buffer.concat(chunks));
+    } catch (e) {
+        console.warn('[receipts] no pude leer los primeros bytes del comprobante:', e?.message);
+        return null;
+    }
+};
+
+/**
  * Borra el objeto del comprobante (v4.952, al eliminar un registro). Es de
  * MEJOR ESFUERZO y nunca lanza: la regla de la Librería (v4.740) — que S3
  * falle no impide quitar la fila; el usuario pidió que desaparezca del panel.
@@ -147,4 +187,4 @@ export const signedReceiptUrl = async (key, { seconds = 300 } = {}) => {
     }
 };
 
-export default { RECEIPT_PREFIX, receiptKeyBelongs, presignReceiptUpload, headReceipt, deleteReceiptObject, signedReceiptUrl };
+export default { RECEIPT_PREFIX, receiptKeyBelongs, presignReceiptUpload, presignPrivateReceiptUpload, headReceipt, deleteReceiptObject, signedReceiptUrl };

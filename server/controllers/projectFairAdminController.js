@@ -56,14 +56,19 @@ import { resolveUserGrant } from '../lib/rbacStore.js';
 import {
     SQL_ACTIVE_PROJECT, SQL_FIRST_PROJECT, SQL_SECOND_PROJECT, SQL_REGISTRATION_KEY,
     indexOf as projectIndexOf, projectIndexLabel, pricingRulesOf, registrationBreakdown,
+    manualCoverageFor,
 } from '../lib/projectFairRegistration.js';
+// v4.1308 — El comprobante adjunto de la confirmación manual (S3 privado).
+import {
+    presignManualReceipt, verifyManualReceipt, manualReceiptKeyBelongs, signedReceiptUrl,
+} from '../lib/projectFairManualReceipts.js';
 // v4.1304 — FDD y FAP del proyecto en el listado: una sola lectura en SQL de
 // lo que el club ya escribió en su Solicitud de Aportes del FDD.
 import {
     SQL_FDD_COLUMNS, FDD_SORTABLE, FDD_RANGE_FILTERS, sqlAmount, rangeBound, fddAmountsOf,
 } from '../lib/projectFairFddAmounts.js';
 
-console.log('[projectFairAdminController] v4.1304.0 cargado — Proyectos postulados: columnas FDD y FAP leídas de la Solicitud de Aportes del FDD de cada proyecto, con orden numérico, filtros por rango y exportación.');
+console.log('[projectFairAdminController] v4.1308.0 cargado — Confirmación manual de pagos: comprobante adjunto (S3 privado, validado por sus bytes), el mismo pago puede cubrir la inscripción completa de dos proyectos, y cada fila confirmada deja su línea escrita para sumar al recaudo.');
 console.log('[projectFairAdminController] v4.1301.0 cargado — La ficha resume la inscripción (modalidad, origen del segundo proyecto, pago original y complementario, total y saldo); indicadores y filtro de ampliaciones posteriores.');
 console.log('[projectFairAdminController] v4.1299.0 cargado — Hasta dos proyectos por club: el panel distingue clubes inscritos de proyectos inscritos, cuenta segundos proyectos y separa el recaudo por primeras y segundas postulaciones; filtros por cantidad de proyectos del club y por posición.');
 console.log('[projectFairAdminController] v4.1220.0 cargado — Gestión de Postulaciones y Pagos (dashboard, trazabilidad Stripe, confirmación manual, etiquetas, alertas y reportes)');
@@ -328,6 +333,11 @@ const mapRow = (row, access) => {
         manualPaymentReason: row.manualPaymentReason || null,
         manualPaymentBy: row.manualPaymentBy || null,
         manualPaymentAt: row.manualPaymentAt || null,
+        // v4.1308 — El comprobante adjunto: nombre, tipo y peso. La clave de
+        // S3 NO viaja; se abre con `manual-payment/receipt` (enlace firmado).
+        manualPaymentReceipt: row.manualPaymentReceiptKey
+            ? { name: row.manualPaymentReceiptName || 'comprobante', mime: row.manualPaymentReceiptMime || null, bytes: row.manualPaymentReceiptBytes == null ? null : Number(row.manualPaymentReceiptBytes) }
+            : null,
         tags: row.tags || [],
         // v4.1304 — FDD solicitado y meta FAP del proyecto (sólo cuando la
         // consulta los trajo: listado y exportación).
@@ -1855,12 +1865,29 @@ export const syncStripe = withAccess(async (req, res, { access }) => {
     }
 }, 'managePayments');
 
-// POST /admin/submissions/:id/confirm-manual-payment
+// POST /admin/postulaciones/:id/confirm-manual-payment
 // Confirmación manual y autorizada del pago con trazabilidad inmutable.
+//
+// v4.1308 — Tres cosas nuevas, pedidas con la ventana delante:
+//   1. COMPROBANTE ADJUNTO. `receipt: { key, name, contentType }` de un archivo
+//      ya subido a S3 con `manual-payment/receipt-url`. El servidor comprueba el
+//      objeto real (prefijo de ESTA postulación, peso, primeros bytes). El
+//      soporte es el archivo, una referencia escrita o ambos; no ninguno.
+//   2. LA INSCRIPCIÓN COMPLETA. `coverProjectIds`: los demás proyectos de la
+//      misma inscripción que ese pago cubre (`manualCoverageFor`). Quedan
+//      pagados con `coveredBy` = esta fila y SIN `amountReceived` — el dinero
+//      vive una sola vez, en el ancla, igual que en el cobro en línea (v4.1299).
+//   3. SUMA AL RECAUDO. Los indicadores suman la LÍNEA de cada fila pagada
+//      (`amountCop`/`amountUsd`). Si una fila no la tenía, contaba como pagada
+//      pero no sumaba: se deja escrita la tarifa de su posición (sin pisar una
+//      que ya estuviera).
 export const confirmManualPayment = withAccess(async (req, res, { cfg, access }) => {
     const { rows } = await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = $1 LIMIT 1', [req.params.id]);
     const submission = rows[0];
     if (!submission) return res.status(404).json({ error: 'Postulación no encontrada' });
+    if (String(submission.status) === 'paid') {
+        return res.status(409).json({ error: 'Esta postulación ya tiene el pago confirmado. Recarga la ficha para ver cómo se confirmó.' });
+    }
 
     const body = req.body || {};
     const reference = clean(body.reference, 200);
@@ -1873,6 +1900,9 @@ export const confirmManualPayment = withAccess(async (req, res, { cfg, access })
     if (isNaN(paidAt.getTime())) {
         return res.status(400).json({ error: 'La fecha de pago no es válida.' });
     }
+    if (paidAt.getTime() > Date.now() + 10 * 60 * 1000) {
+        return res.status(400).json({ error: 'La fecha del pago no puede estar en el futuro.' });
+    }
 
     const amount = Number(body.amount);
     if (!amount || isNaN(amount) || amount <= 0) {
@@ -1880,20 +1910,41 @@ export const confirmManualPayment = withAccess(async (req, res, { cfg, access })
     }
 
     const currency = (clean(body.currency, 10) || 'COP').toUpperCase();
+    if (!['COP', 'USD'].includes(currency)) {
+        return res.status(400).json({ error: 'La moneda debe ser COP o USD.' });
+    }
     const paymentMethod = clean(body.paymentMethod, 80);
     if (!paymentMethod) {
         return res.status(400).json({ error: 'El medio de pago es obligatorio.' });
     }
 
     const evidence = clean(body.evidence, 2000);
-    if (!evidence) {
-        return res.status(400).json({ error: 'El comprobante o evidencia verificable es obligatorio.' });
+    const receipt = await verifyManualReceipt(body.receipt, submission.id);
+    if (receipt && !receipt.ok) return res.status(422).json({ error: receipt.error });
+    if (!evidence && !receipt) {
+        return res.status(400).json({ error: 'Adjunta el comprobante o escribe una referencia verificable del soporte.' });
     }
 
     const reason = clean(body.reason, 1000);
     if (!reason || reason.length < 5) {
         return res.status(400).json({ error: 'Debes indicar el motivo de la confirmación manual (mínimo 5 caracteres).' });
     }
+
+    // Qué cubre el pago: esta fila y, si se declaró, los demás proyectos de la
+    // inscripción que deben. Lo que no puede cubrirse se rechaza con su motivo.
+    const rules = pricingRulesOf(cfg);
+    const inscripcion = submission.registrationId
+        ? (await db.query('SELECT * FROM "ProjectFairSubmission" WHERE "registrationId" = $1 ORDER BY "projectIndex" ASC', [submission.registrationId])).rows
+        : [submission];
+    const coverage = manualCoverageFor(inscripcion, submission.id, body.coverProjectIds, rules);
+    if (coverage.rejected.length) {
+        return res.status(409).json({
+            error: `No se puede confirmar: ${coverage.rejected.map(r => r.reason).join(' ')}`,
+            rejected: coverage.rejected,
+        });
+    }
+    const lineOf = (id) => coverage.lines.find(l => l.submissionId === id)?.amount || null;
+    const lineCol = rules.mode === 'USD' ? '"amountUsd"' : '"amountCop"';
 
     const actor = actorFrom(req, access);
     const previousStatus = submission.status;
@@ -1904,6 +1955,18 @@ export const confirmManualPayment = withAccess(async (req, res, { cfg, access })
     const csId = reference.startsWith('cs_') ? reference : null;
     const chId = reference.startsWith('ch_') ? reference : null;
 
+    const cubiertos = coverage.coveredIds.map(id => inscripcion.find(r => r.id === id)).filter(Boolean);
+    const coveredProjects = cubiertos.length
+        ? [submission, ...cubiertos].map(r => ({ id: r.id, publicRef: r.publicRef || null, projectName: r.projectName || '', projectIndex: projectIndexOf(r) }))
+        : null;
+    const paymentMeta = {
+        manual: true,
+        confirmedAt: new Date().toISOString(),
+        ...(coveredProjects ? { coveredProjects } : {}),
+    };
+
+    // ⚠️ UPDATE CONDICIONAL (`status <> 'paid'`): dos clics o dos pestañas no
+    // confirman dos veces ni pisan la primera confirmación.
     const { rows: updatedRows } = await db.query(`
         UPDATE "ProjectFairSubmission"
         SET status = 'paid',
@@ -1921,14 +1984,21 @@ export const confirmManualPayment = withAccess(async (req, res, { cfg, access })
             "manualPaymentReason" = $7,
             "manualPaymentBy" = $8,
             "manualPaymentAt" = NOW(),
+            "manualPaymentReceiptKey" = $14,
+            "manualPaymentReceiptName" = $15,
+            "manualPaymentReceiptMime" = $16,
+            "manualPaymentReceiptBytes" = $17,
+            ${lineCol} = COALESCE(NULLIF(${lineCol}, 0), $18),
             "receiptUrl" = CASE WHEN $9::text IS NOT NULL THEN $9::text ELSE "receiptUrl" END,
             "stripePaymentIntentId" = COALESCE($10, "stripePaymentIntentId"),
             "stripeSessionId" = COALESCE($11, "stripeSessionId"),
             "stripeChargeId" = COALESCE($12, "stripeChargeId"),
             "lastPaymentError" = NULL,
             "lastSyncAt" = NOW(),
+            metadata = (COALESCE(metadata, '{}'::jsonb) - 'pendingOrder')
+                || jsonb_build_object('payment', COALESCE(metadata->'payment', '{}'::jsonb) || $19::jsonb),
             "updatedAt" = NOW()
-        WHERE id = $13
+        WHERE id = $13 AND status <> 'paid'
         RETURNING *
     `, [
         paidAt,
@@ -1936,7 +2006,7 @@ export const confirmManualPayment = withAccess(async (req, res, { cfg, access })
         currency,
         paymentMethod,
         reference,
-        evidence,
+        evidence || null,
         reason,
         actor.name,
         isUrl ? evidence : null,
@@ -1944,37 +2014,93 @@ export const confirmManualPayment = withAccess(async (req, res, { cfg, access })
         csId,
         chId,
         submission.id,
+        receipt?.key || null,
+        receipt?.name || null,
+        receipt?.mime || null,
+        receipt?.bytes || null,
+        lineOf(submission.id),
+        JSON.stringify(paymentMeta),
     ]);
 
     const updated = updatedRows[0];
+    if (!updated) {
+        return res.status(409).json({ error: 'Otra persona confirmó este pago mientras tanto. Recarga la ficha.' });
+    }
 
-    // Otorga rol de Gestor de Proyectos al club
+    // Los demás proyectos de la inscripción cubiertos por ESTE pago: pagados,
+    // con su línea, con la misma trazabilidad y SIN `amountReceived`.
+    const coveredRows = [];
+    for (const row of cubiertos) {
+        const { rows: cov } = await db.query(`
+            UPDATE "ProjectFairSubmission"
+            SET status = 'paid',
+                "workflowStatus" = CASE
+                    WHEN "workflowStatus" IN ('pending_payment', 'payment_confirmed', 'payment_failed', 'refunded') OR "workflowStatus" IS NULL
+                    THEN 'received' ELSE "workflowStatus" END,
+                "paidAt" = $1,
+                "chargeCurrency" = $2,
+                "paymentMethod" = $3,
+                "paymentConfirmationOrigin" = 'manual_admin',
+                "manualPaymentRef" = $4,
+                "manualPaymentEvidence" = $5,
+                "manualPaymentReason" = $6,
+                "manualPaymentBy" = $7,
+                "manualPaymentAt" = NOW(),
+                "manualPaymentReceiptKey" = $8,
+                "manualPaymentReceiptName" = $9,
+                "manualPaymentReceiptMime" = $10,
+                "manualPaymentReceiptBytes" = $11,
+                ${lineCol} = COALESCE(NULLIF(${lineCol}, 0), $12),
+                "lastPaymentError" = NULL,
+                "lastSyncAt" = NOW(),
+                metadata = (COALESCE(metadata, '{}'::jsonb) - 'pendingOrder')
+                    || jsonb_build_object('payment', COALESCE(metadata->'payment', '{}'::jsonb) || $13::jsonb),
+                "updatedAt" = NOW()
+            WHERE id = $14 AND status <> 'paid'
+            RETURNING *
+        `, [
+            paidAt, currency, paymentMethod, reference, evidence || null, reason, actor.name,
+            receipt?.key || null, receipt?.name || null, receipt?.mime || null, receipt?.bytes || null,
+            lineOf(row.id),
+            JSON.stringify({ manual: true, coveredBy: updated.id, coveredByRef: updated.publicRef || null, confirmedAt: paymentMeta.confirmedAt }),
+            row.id,
+        ]);
+        if (cov[0]) coveredRows.push(cov[0]);
+    }
+
+    // Rol de Gestor de Proyectos para el club y formulario maestro de cada
+    // proyecto que quedó pagado (también los cubiertos: v4.1299 lo dejaba
+    // pendiente para el cobro conjunto).
     const { grantProjectManagerRole } = await import('./projectFairController.js');
-    await grantProjectManagerRole(updated, { reason: `manual_confirmation: ${reference} (${actor.name})` });
-
-    // Habilita e inicializa el formulario maestro si no existe
-    try {
-        const { rows: formRows } = await db.query('SELECT id FROM "ProjectFairMasterForm" WHERE "submissionId" = $1 LIMIT 1', [updated.id]);
-        if (!formRows[0]) {
-            const { seedAnswersFor } = await import('./projectFormsController.js');
-            const { resolveForm } = await import('../lib/projectFormsRegistry.js');
-            const { completionOf } = await import('../lib/projectFairMasterForm.js');
-            const answers = seedAnswersFor(resolveForm(cfg, 'master')?.template || cfg?.masterForm, updated, cfg);
-            await db.query(`
-                INSERT INTO "ProjectFairMasterForm" ("submissionId", answers, "completionPct", "lastEditedAt")
-                VALUES ($1, $2::jsonb, $3, NOW())
-                ON CONFLICT ("submissionId") DO NOTHING
-            `, [updated.id, JSON.stringify(answers), completionOf(cfg.masterForm, answers)]);
+    for (const paidRow of [updated, ...coveredRows]) {
+        await grantProjectManagerRole(paidRow, { reason: `manual_confirmation: ${reference} (${actor.name})` });
+        try {
+            const { rows: formRows } = await db.query('SELECT id FROM "ProjectFairMasterForm" WHERE "submissionId" = $1 LIMIT 1', [paidRow.id]);
+            if (!formRows[0]) {
+                const { seedAnswersFor } = await import('./projectFormsController.js');
+                const { resolveForm } = await import('../lib/projectFormsRegistry.js');
+                const { completionOf } = await import('../lib/projectFairMasterForm.js');
+                const answers = seedAnswersFor(resolveForm(cfg, 'master')?.template || cfg?.masterForm, paidRow, cfg);
+                await db.query(`
+                    INSERT INTO "ProjectFairMasterForm" ("submissionId", answers, "completionPct", "lastEditedAt")
+                    VALUES ($1, $2::jsonb, $3, NOW())
+                    ON CONFLICT ("submissionId") DO NOTHING
+                `, [paidRow.id, JSON.stringify(answers), completionOf(cfg.masterForm, answers)]);
+            }
+        } catch (e) {
+            console.error('[project-fair-admin] Error inicializando MasterForm en confirmación manual:', e?.message);
         }
-    } catch (e) {
-        console.error('[project-fair-admin] Error inicializando MasterForm en confirmación manual:', e?.message);
     }
 
     // Auditoría inmutable en ProjectFairEvent
+    const valor = `${currency === 'COP' ? '$' + amount.toLocaleString('es-CO') : 'US$' + amount.toLocaleString('en-US')} ${currency}`;
+    const soporte = receipt ? `Comprobante adjunto: ${receipt.name}` : `Soporte: ${evidence}`;
     await logEvent(submission.id, {
         type: 'payment_confirmed_manually',
-        title: 'Pago confirmado administrativamente',
-        detail: `${currency === 'COP' ? '$' + amount.toLocaleString('es-CO') : '$' + amount} ${currency} · Ref: ${reference} · Medio: ${paymentMethod}\nMotivo: ${reason}`,
+        title: coveredRows.length ? 'Pago confirmado administrativamente (inscripción completa)' : 'Pago confirmado administrativamente',
+        detail: `${valor} · Ref: ${reference} · Medio: ${paymentMethod}\n${soporte}`
+            + (coveredRows.length ? `\nCubre también: ${coveredRows.map(r => r.publicRef || r.id).join(', ')}` : '')
+            + `\nMotivo: ${reason}`,
         actor,
         metadata: {
             reference,
@@ -1982,19 +2108,67 @@ export const confirmManualPayment = withAccess(async (req, res, { cfg, access })
             amount,
             currency,
             paymentMethod,
-            evidence,
+            evidence: evidence || null,
+            receipt: receipt ? { name: receipt.name, mime: receipt.mime, bytes: receipt.bytes } : null,
+            coveredProjectIds: coveredRows.map(r => r.id),
             reason,
             previousStatus,
             previousWorkflow,
         },
     });
+    for (const r of coveredRows) {
+        await logEvent(r.id, {
+            type: 'payment_confirmed_manually',
+            title: 'Pago confirmado administrativamente (inscripción conjunta)',
+            detail: `Cubierto por el pago confirmado en ${updated.publicRef || updated.id}: ${valor} · Ref: ${reference}\nMotivo: ${reason}`,
+            actor,
+            metadata: { coveredBy: updated.id, reference, amount, currency },
+        });
+    }
 
     const tags = await loadTagsFor([updated.id]);
     res.json({
         success: true,
         submission: mapRow({ ...updated, tags: tags[updated.id] || [] }, access),
+        covered: coveredRows.map(r => ({ id: r.id, publicRef: r.publicRef, projectName: r.projectName })),
     });
 }, 'managePayments');
+
+// POST /admin/postulaciones/:id/manual-payment/receipt-url
+// v4.1308 — URL prefirmada para subir el comprobante de la confirmación manual.
+export const manualReceiptUploadUrl = withAccess(async (req, res) => {
+    const { rows } = await db.query('SELECT id, status FROM "ProjectFairSubmission" WHERE id = $1 LIMIT 1', [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Postulación no encontrada' });
+    if (String(rows[0].status) === 'paid') return res.status(409).json({ error: 'Esta postulación ya tiene el pago confirmado.' });
+    const { filename, contentType, size } = req.body || {};
+    const result = await presignManualReceipt({
+        submissionId: rows[0].id,
+        contentType: clean(contentType, 100),
+        filename: clean(filename, 200),
+        size: Number(size),
+    });
+    if (!result.ok) return res.status(422).json({ error: result.errores[0], errores: result.errores });
+    res.json({ key: result.key, uploadUrl: result.uploadUrl, contentType: result.contentType });
+}, 'managePayments');
+
+// GET /admin/postulaciones/:id/manual-payment/receipt
+// v4.1308 — Enlace firmado (5 minutos) al comprobante de la confirmación
+// manual. Un proyecto cubierto abre el del pago que lo cubrió.
+export const manualReceiptUrl = withAccess(async (req, res) => {
+    const { rows } = await db.query(
+        'SELECT id, metadata, "manualPaymentReceiptKey", "manualPaymentReceiptName", "manualPaymentReceiptMime" FROM "ProjectFairSubmission" WHERE id = $1 LIMIT 1',
+        [req.params.id]);
+    const row = rows[0];
+    if (!row) return res.status(404).json({ error: 'Postulación no encontrada' });
+    const key = row.manualPaymentReceiptKey;
+    const owner = row.metadata?.payment?.coveredBy || row.id;
+    if (!key || !(manualReceiptKeyBelongs(key, row.id) || manualReceiptKeyBelongs(key, owner))) {
+        return res.status(404).json({ error: 'Esta postulación no tiene un comprobante adjunto.' });
+    }
+    const url = await signedReceiptUrl(key);
+    if (!url) return res.status(502).json({ error: 'No se pudo firmar el enlace del comprobante.' });
+    res.json({ url, name: row.manualPaymentReceiptName || 'comprobante', mime: row.manualPaymentReceiptMime || null, expiresInSeconds: 300 });
+}, 'viewPayments');
 
 // GET /admin/submissions/:id/payment-history
 // Visualiza los intentos, confirmaciones, eventos de webhook y acciones administrativas.
@@ -2039,6 +2213,9 @@ export const getPaymentHistory = withAccess(async (req, res, { access }) => {
                 reason: submission.manualPaymentReason,
                 by: submission.manualPaymentBy,
                 at: submission.manualPaymentAt,
+                receipt: submission.manualPaymentReceiptKey
+                    ? { name: submission.manualPaymentReceiptName || 'comprobante', mime: submission.manualPaymentReceiptMime || null, bytes: submission.manualPaymentReceiptBytes == null ? null : Number(submission.manualPaymentReceiptBytes) }
+                    : null,
             },
         },
         attempts: attempts.rows,
@@ -2873,7 +3050,7 @@ export const resolveTransfers = withAccess(async (req, res, { access }) => {
 export default {
     getOverview, listSubmissions, getSubmission, updateSubmission, addComment,
     listTags, createTag, deleteTag, attachTag, detachTag,
-    addFile, deleteFile, syncStripe, resendReceipt, confirmManualPayment, getPaymentHistory,
+    addFile, deleteFile, syncStripe, resendReceipt, confirmManualPayment, manualReceiptUploadUrl, manualReceiptUrl, getPaymentHistory,
     getAlerts, getReports, getIntelligence, getDashboardIntelligence, exportCsv, getCatalog, getSubmissionSnapshot,
     readConvocatoriaConfig, writeConvocatoriaConfig,
     listMasterForms, getMasterForm, downloadMasterFormDocx, reopenMasterForm, lockMasterForm,
