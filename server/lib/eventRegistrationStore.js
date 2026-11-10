@@ -15,6 +15,7 @@ import {
     parseRomanEdition, parseLocation, buildCodePrefix, buildRegistrationCode,
     randomCodeSuffix,
 } from './eventRegistrationSpec.js';
+import { manualPaymentView } from './eventManualPayment.js';
 
 export const clean = (value, max = 250) => String(value ?? '').trim().slice(0, max);
 export const isEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
@@ -481,6 +482,9 @@ export const listPayments = async (registrationId) => {
         paymentMethod: p.paymentMethod, receiptUrl: p.receiptUrl,
         refundedAmount: asNumber(p.refundedAmount), failureMessage: p.failureMessage,
         occurredAt: p.occurredAt,
+        // v4.1310 — La confirmación manual (referencia, medio, motivo, quién y
+        // el comprobante adjunto SIN su clave de S3).
+        manual: p.provider === 'manual' ? manualPaymentView(p.payload) : null,
     }));
 };
 
@@ -521,8 +525,8 @@ export const recordPayment = async (payment) => {
                 ("registrationId", "eventId", provider, "stripeEventId", "checkoutSessionId",
                  "paymentIntentId", "chargeId", "customerId", status, "baseCurrency", "baseAmount",
                  currency, amount, "fxRate", "paymentMethod", "receiptUrl", "refundedAmount",
-                 "failureMessage", payload)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+                 "failureMessage", payload, "occurredAt")
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19, COALESCE($20::timestamptz, NOW()))
              -- El índice único de "stripeEventId" es PARCIAL (sólo cuando no es
              -- nulo). Postgres no lo infiere si no se repite aquí su misma
              -- condición: sin este WHERE la sentencia falla entera.
@@ -539,6 +543,9 @@ export const recordPayment = async (payment) => {
                 payment.refundedAmount ?? null,
                 payment.failureMessage ? clean(payment.failureMessage, 1000) : null,
                 JSON.stringify(payment.payload || {}),
+                // v4.1310 — Un pago confirmado a mano ocurrió cuando el
+                // participante pagó, no cuando el equipo lo registró.
+                payment.occurredAt ? new Date(payment.occurredAt) : null,
             ]
         );
         return rows.length > 0;

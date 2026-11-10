@@ -1178,3 +1178,50 @@ true`). Nació para la XIII Conferencia (Villavicencio 2027): retirar
   el interruptor no lo esconde. Sólo deja de prestarle el nombre y el enlace de
   la categoría oculta (`primary.hiddenByAdmin`), así que muestra lo que el
   administrador escribió para él. Para quitarlo, se oculta en su propia pestaña.
+
+### Confirmar a mano el pago, con el comprobante — v4.1310
+
+Pedido del comité: lo de la Postulación de Proyectos (v4.1308,
+`confirmacion-manual-de-pagos-de-la-feria.md`) también para los inscritos al
+evento — nacionales, internacionales y CADRE. Hasta v4.1309, validar un pago
+por transferencia era «Cambiar a → Pago confirmado» con un comentario: sin
+soporte, sin valor, sin fila de pago, sin correo.
+
+| Pieza | Qué es |
+|---|---|
+| `server/lib/eventManualPayment.js` (+ `.d.ts`) | CRITERIO puro: `MANUAL_CONFIRMABLE_STATUSES` (started, pending_payment, payment_failed, expired, waitlist), `manualConfirmVerdict` (el motivo escrito de los demás), `validateManualPayment`, el prefijo `private/event-manual-payments/{evento}/{inscripción}` y `manualPaymentView` (sin la clave de S3) |
+| `completedReceipts.js` → `presignPrivateReceiptUpload`, `verifyPrivateReceipt` | El MISMO verificador que la Feria: prefijo, peso y primeros bytes |
+| `eventRegistrationController.confirmManualRegistrationPayment` | El CAMINO: UPDATE condicional → `recordPayment({ provider: 'manual' })` → `finalizePaidRegistration` |
+| `POST /admin/registrations/:id/manual-payment/receipt-url` · `POST …/manual-payment` · `GET …/manual-payment/receipt?paymentId=` | Capacidad `payments` del evento (`requirePaymentsCapability`), como mover a un estado liquidado |
+| `src/components/admin/events/ManualPaymentModal.tsx` | La ventana (componente de nivel superior) |
+| `EventRegistrationsManager.tsx` → `DetailSheet` | Botón, «Cambiar a → Pago confirmado» abre la ventana, bloque «Confirmación manual del pago» en «Cobro» |
+
+Pruebas: `npm run test:event:manual-payment` (68; el extremo a extremo con
+`EVENT_E2E_DATABASE_URL=<postgres local desechable>`) y
+`test:event:manual-payment:ui` (14, Chromium contra los routers reales).
+
+**Reglas durables:**
+
+- **⚠️ EL MISMO FINAL QUE STRIPE Y PAYPAL** (`finalizePaidRegistration`):
+  código, cuenta del participante, historial (`payment_confirmed_manually`, con
+  el actor) y correo. El correo es lo único opcional (`notify`, marcado por
+  defecto): Stripe y PayPal avisan siempre.
+- **⚠️ UPDATE CONDICIONAL AL ESTADO, ANTES DE REGISTRAR EL PAGO**
+  (`status = ANY(confirmables)`): dos clics o el webhook a la vez no confirman
+  dos veces ni dejan una fila de pago huérfana. Lo fija una invariante,
+  verificada a la inversa.
+- **QUEDA UNA FILA EN `EventRegistrationPayment`** (`provider = 'manual'`,
+  `succeeded`, `occurredAt` = la fecha REAL del pago). `payload.manual` guarda
+  referencia, medio, soporte, motivo, quién, lo esperado y el comprobante con su
+  clave; `listPayments` lo expone por `manualPaymentView`, SIN la clave. Sin
+  columnas nuevas.
+- **PREFIJO PROPIO**, no el de COLROTARIOS (`private/event-receipts/{evento}/`):
+  una clave de ese prefijo la podría reclamar un formulario de inscripción
+  completada del mismo evento.
+- **Cancelada o reembolsada no se confirma a mano** (409 con la salida: volver a
+  «Pendiente de pago»). La `changeStatus` de siempre sigue existiendo (acciones
+  en bloque); la ficha desvía «Pago confirmado» a la ventana.
+- **Conciliación (dominio propio, sin la Bóveda):** el pago manual cuenta como
+  confirmado por su valor, sin recargo (`paymentOf`), y `viaStripe` es falso
+  (`manual: true`). Si el dinero llegó directo a la cuenta del beneficiario
+  igual figura «pendiente de traslado»: decidir eso es del equipo (pendiente).

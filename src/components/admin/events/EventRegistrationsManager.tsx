@@ -39,6 +39,9 @@ import { chunkIds, BULK_MAX } from '../../../lib/completedRegistrationSpec';
 import { PAID_REGISTRATION_STATUSES, REGISTRATION_TRANSFER_LABELS } from '../../../../server/lib/eventFundsSpec.js';
 import type { RegistrationTransferState } from '../../../../server/lib/eventFundsSpec.js';
 import RegistrationFundsPanel from './RegistrationFundsPanel';
+// v4.1310 — Confirmar a mano el pago, con el comprobante adjunto.
+import ManualPaymentModal from './ManualPaymentModal';
+import { MANUAL_CONFIRMABLE_STATUSES } from '../../../../server/lib/eventManualPayment.js';
 import { fundsApi } from './funds/eventFundsApi';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
@@ -237,6 +240,9 @@ const DetailSheet = ({ registrationId, statuses, onClose, onChanged, onEdit, rel
     const [statusComment, setStatusComment] = useState('');
     const [mail, setMail] = useState({ subject: '', body: '' });
     const [showMail, setShowMail] = useState(false);
+    // v4.1310 — La ventana «Confirmar pago manualmente».
+    const [showManual, setShowManual] = useState(false);
+    const [notice, setNotice] = useState('');
 
     const load = useCallback(() => {
         setLoading(true);
@@ -274,6 +280,24 @@ const DetailSheet = ({ registrationId, statuses, onClose, onChanged, onEdit, rel
     };
 
     const registration: Registration | null = data?.registration || null;
+    const puedeConfirmarManual = Boolean(registration && MANUAL_CONFIRMABLE_STATUSES.includes(registration.status));
+    const pagosManuales: any[] = (data?.payments || []).filter((p: any) => p.provider === 'manual' && p.manual);
+
+    /** Abre el comprobante de una confirmación manual (enlace firmado, 5 min). */
+    const verComprobante = async (paymentId: string) => {
+        // La pestaña se abre ANTES del `await`: el navegador bloquea la que
+        // se abre después.
+        const ventana = window.open('', '_blank');
+        try {
+            const res = await fetch(`${API}/event-registrations/admin/registrations/${registrationId}/manual-payment/receipt?paymentId=${encodeURIComponent(paymentId)}`, { headers: authHeaders() });
+            const d = await res.json().catch(() => null);
+            if (!res.ok || !d?.url) throw new Error(d?.error || 'No se pudo abrir el comprobante.');
+            if (ventana) ventana.location.href = d.url; else window.location.href = d.url;
+        } catch (err: any) {
+            ventana?.close();
+            setError(err?.message || 'No se pudo abrir el comprobante.');
+        }
+    };
     const manualTags: string[] = (registration?.tags || []).filter(t => !SYSTEM_TAG_KEYS.includes(t));
 
     /** Etiqueta legible de una respuesta, usando el formulario de su categoría. */
@@ -295,6 +319,18 @@ const DetailSheet = ({ registrationId, statuses, onClose, onChanged, onEdit, rel
         <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={onClose}>
             <div className="flex h-full w-full max-w-2xl flex-col bg-gray-50 shadow-2xl"
                 onClick={e => e.stopPropagation()}>
+                {showManual && registration && (
+                    <ManualPaymentModal
+                        registration={registration}
+                        onClose={() => setShowManual(false)}
+                        onConfirmed={() => {
+                            setShowManual(false);
+                            setNotice('Pago confirmado. La inscripción quedó en «Pago confirmado» con su soporte y su código de inscripción.');
+                            load();
+                            onChanged();
+                        }}
+                    />
+                )}
                 {/* Cabecera */}
                 <div className="flex items-start justify-between gap-3 border-b border-gray-200 bg-white px-6 py-4">
                     <div className="min-w-0">
@@ -326,6 +362,11 @@ const DetailSheet = ({ registrationId, statuses, onClose, onChanged, onEdit, rel
                             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> {error}
                         </div>
                     )}
+                    {notice && (
+                        <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                            <BadgeCheck className="mt-0.5 h-4 w-4 shrink-0" /> {notice}
+                        </div>
+                    )}
 
                     {loading || !registration ? (
                         <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-blue-600" /></div>
@@ -341,6 +382,9 @@ const DetailSheet = ({ registrationId, statuses, onClose, onChanged, onEdit, rel
                                             onChange={e => {
                                                 const next = e.target.value;
                                                 e.target.value = '';
+                                                // v4.1310 — Confirmar el pago a mano va con su soporte:
+                                                // «Pago confirmado» abre la ventana del comprobante.
+                                                if (next === 'paid' && puedeConfirmarManual) { setNotice(''); setShowManual(true); return; }
                                                 if (next) call('/status', 'PATCH', { status: next, comment: statusComment }, 'status');
                                             }}>
                                             <option value="">Selecciona un estado…</option>
@@ -356,6 +400,12 @@ const DetailSheet = ({ registrationId, statuses, onClose, onChanged, onEdit, rel
                                     </div>
                                 </div>
                                 <div className="mt-3 flex flex-wrap gap-2">
+                                    {puedeConfirmarManual && (
+                                        <button type="button" onClick={() => { setNotice(''); setShowManual(true); }}
+                                            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-emerald-700">
+                                            <BadgeCheck className="h-3.5 w-3.5" /> Confirmar pago manualmente
+                                        </button>
+                                    )}
                                     <button type="button" disabled={busy === 'checkin'}
                                         onClick={() => call('/checkin', 'POST', { undo: Boolean(registration.checkedInAt) }, 'checkin')}
                                         className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-bold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50">
@@ -463,6 +513,33 @@ const DetailSheet = ({ registrationId, statuses, onClose, onChanged, onEdit, rel
                                     <div className="flex justify-between"><dt className="text-gray-500">Pagado el</dt>
                                         <dd className="text-gray-700">{fmtDateTime(registration.paidAt)}</dd></div>
                                 </dl>
+                                {pagosManuales.map((p: any) => (
+                                    <div key={p.id} className="mt-3 rounded-lg border border-violet-200 bg-violet-50/60 p-3 text-xs text-violet-950">
+                                        <p className="mb-2 font-bold uppercase tracking-wide text-violet-900">Confirmación manual del pago</p>
+                                        <dl className="space-y-1">
+                                            {([
+                                                ['Valor recibido', money(p.amount, p.currency)],
+                                                ['Fecha del pago', fmtDateTime(p.manual.paidAt || p.occurredAt)],
+                                                ['Medio', p.manual.method || p.paymentMethod || '—'],
+                                                ['Referencia', p.manual.reference || '—'],
+                                                ['Confirmado por', `${p.manual.by || 'Equipo'} · ${fmtDateTime(p.manual.confirmedAt)}`],
+                                                ...(p.manual.evidence ? [['Referencia del soporte', p.manual.evidence]] : []),
+                                            ] as [string, string][]).map(([k, v]) => (
+                                                <div key={k} className="flex justify-between gap-3"><dt className="font-semibold">{k}</dt><dd className="break-all text-right">{v}</dd></div>
+                                            ))}
+                                            <div className="flex items-center justify-between gap-3">
+                                                <dt className="font-semibold">Comprobante adjunto</dt>
+                                                <dd>{p.manual.receipt ? (
+                                                    <button type="button" onClick={() => verComprobante(p.id)}
+                                                        className="inline-flex items-center gap-1 rounded-md border border-violet-300 bg-white px-2 py-1 font-semibold text-violet-800 hover:bg-violet-100">
+                                                        <FileText className="h-3 w-3" /> {p.manual.receipt.name}
+                                                    </button>
+                                                ) : 'Sin archivo'}</dd>
+                                            </div>
+                                            {p.manual.reason && <p className="rounded bg-white/70 p-2 italic text-gray-700">{p.manual.reason}</p>}
+                                        </dl>
+                                    </div>
+                                ))}
                                 <div className="mt-3 space-y-1 border-t border-gray-100 pt-3 font-mono text-[11px] text-gray-500">
                                     {([
                                         ['Checkout Session', registration.stripeSessionId],

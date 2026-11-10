@@ -34,13 +34,32 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1309.0 | 2026-11-10 (Bóveda: la prueba de la casilla de los cobros sin aportante, al día con el acceso de sólo lectura)
+// UI V4.1310.0 | 2026-11-10 (Inscripciones a eventos: confirmar a mano el pago con el comprobante adjunto)
 // Cache bust: 2026-11-10
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1310.0',
+        title: 'Inscripciones al evento: confirmar a mano el pago, con el comprobante adjunto 🧾',
+        description: 'Lo que se hizo para la Postulación de Proyectos llega a los inscritos al evento —Registro Nacional, Registro Internacional y CADRE—. Hasta ahora, para validar un pago hecho por transferencia o consignación había que elegir «Pago confirmado» en «Cambiar a» y escribir un comentario: sin soporte, sin valor ni referencia, y sin el correo ni el código que recibe quien paga en línea. Ahora la ficha tiene «Confirmar pago manualmente», con el comprobante adjunto, y la inscripción queda exactamente como si hubiera pagado por la pasarela.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'pagos', 'confirmación manual', 'comprobante', 'cadre', 'internacional', 'feria de proyectos'],
+        type: 'feature',
+        impact: 'Alta: el comité valida transferencias y consignaciones de los inscritos con su soporte, y el tablero, el recaudo y la conciliación quedan al día.',
+        changes: [
+            { type: 'added', text: 'Botón «Confirmar pago manualmente» en la ficha de cada inscripción que aún no está pagada (pendiente, fallida, cobro expirado, registro iniciado o lista de espera). Elegir «Pago confirmado» en «Cambiar a» abre la misma ventana, para que ningún pago quede confirmado sin soporte.' },
+            { type: 'added', text: 'La ventana pide referencia, fecha y hora del pago (en hora local), medio (transferencia, consignación, datáfono, efectivo, COLROTARIOS/AvalPay u otro), valor y moneda —prellenados con el valor de la inscripción—, el comprobante y el motivo. Avisa si el valor declarado difiere del de la inscripción y pide una revisión explícita antes de confirmar.' },
+            { type: 'added', text: 'Comprobante adjunto (PDF, JPG, PNG o WebP, hasta 10 MB) con botón o arrastrando el archivo: sube directo a un almacenamiento privado propio de cada inscripción y el servidor comprueba que sea de verdad un PDF o una imagen. La referencia escrita del soporte sigue disponible cuando no hay archivo.' },
+            { type: 'added', text: 'Al confirmar, la inscripción pasa a «Pago confirmado», recibe su código de inscripción y su cuenta de participante, el historial registra quién confirmó y con qué soporte, y —si se deja marcado— sale el mismo correo de inscripción confirmada que recibe quien paga en línea. Queda además una fila de pago con el valor, la moneda y la fecha real del pago.' },
+            { type: 'added', text: 'La sección «Cobro» de la ficha muestra la «Confirmación manual del pago» con el comprobante (se abre con un enlace firmado de 5 minutos), la referencia, el medio, quién confirmó y el motivo.' },
+            { type: 'improved', text: 'El tablero (pagos confirmados, recaudo por moneda y por categoría) y la Conciliación de inscripciones cuentan el pago confirmado a mano por su valor; la conciliación no ofrece «Verificar con Stripe» para él.' },
+            { type: 'fixed', text: 'Dos clics, o el pago en línea llegando al mismo tiempo, no confirman dos veces: la confirmación sólo aplica si la inscripción sigue sin pagar.' },
+            { type: 'added', text: 'Pruebas: test:event:manual-payment (68: criterio, invariantes y el recorrido contra Postgres real con nacional, internacional en USD y CADRE) y test:event:manual-payment:ui (14, en el navegador contra el servidor real, también a 390 px).' },
+        ],
+    },
     {
         version: '4.1309.0',
         title: 'Bóveda: comprobado que un cobro sin aportante se sigue pudiendo trasladar ✅',

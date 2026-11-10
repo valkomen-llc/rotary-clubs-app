@@ -102,6 +102,10 @@ router.post('/admin/registrations/bulk-delete', authMiddleware, json, admin.bulk
 router.get('/admin/registrations/:id', authMiddleware, admin.getRegistrationDetail);
 router.patch('/admin/registrations/:id', authMiddleware, json, admin.updateRegistration);
 router.patch('/admin/registrations/:id/status', authMiddleware, json, admin.changeStatus);
+// v4.1310 — Confirmar a mano el pago, con el comprobante adjunto.
+router.post('/admin/registrations/:id/manual-payment/receipt-url', authMiddleware, json, admin.manualPaymentReceiptUrl);
+router.post('/admin/registrations/:id/manual-payment', authMiddleware, json, admin.confirmManualPayment);
+router.get('/admin/registrations/:id/manual-payment/receipt', authMiddleware, admin.manualPaymentReceipt);
 router.patch('/admin/registrations/:id/tags', authMiddleware, json, admin.updateTags);
 router.patch('/admin/registrations/:id/notes', authMiddleware, json, admin.updateNotes);
 router.post('/admin/registrations/:id/checkin', authMiddleware, json, admin.checkIn);
