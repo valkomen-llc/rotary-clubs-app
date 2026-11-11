@@ -122,7 +122,11 @@ for (const t of Object.keys(OWNED_COLUMNS)) {
     ok(claude.includes('`' + t + '`'), `${t} en CLAUDE.md`);
 }
 const routes = read('server/routes/agentCenter.js');
-ok(/router\.use\(authMiddleware, requirePlatform\)/.test(routes), 'todo el registro exige la plataforma');
+ok(/router\.use\(authMiddleware, resolveScope\)/.test(routes), 'toda la API exige sesión con alcance (plataforma o sitio)');
+for (const r of ["router.get('/templates'", "router.post('/templates'", "router.put('/site-types/:type'", "router.put('/settings'", "router.post('/agency/import'", "router.put('/installations/:id/grants'", "router.post('/rollouts'", "router.post('/installations'", "router.get('/audit'"]) {
+    const line = routes.split('\n').find(l => l.startsWith(r));
+    ok(line && /platformOnly/.test(line), `${r}: sólo la plataforma`);
+}
 ok(routes.indexOf("router.get('/templates'") < routes.indexOf("router.get('/templates/:id'"), 'literales antes que paramétricas');
 const server = read('server/server.js');
 ok(/app\.use\('\/api\/agent-center', agentCenterRoutes\)/.test(server), 'montado en /api/agent-center');

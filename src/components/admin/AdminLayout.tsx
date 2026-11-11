@@ -859,6 +859,13 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
             items.push({ icon: FileText, label: 'Estados Financieros', path: '/admin/estados-financieros', category: 'Compliance' });
         }
 
+        // v4.1317 — AI Agent Command Center para quien administra un sitio: ve y
+        // gestiona SOLO los agentes de su sitio (el servidor fija el alcance). El
+        // RBAC (`agents`) decide además si la entrada se pinta.
+        if (!isSuperAdmin && ['district_admin', 'club_admin'].includes(String(user?.role || ''))) {
+            items.push({ icon: Bot, label: 'Agentes IA', path: '/admin/agentes', category: 'System', keywords: ['agentes', 'ia', 'aprobaciones', 'consumo', 'workflows'] });
+        }
+
         // System — Integraciones + Notificaciones only for super admin
         // Settings: super admin in nav + footer; club users only in footer (not nav)
         if (isSuperAdmin) {

@@ -18,6 +18,7 @@ import { canonicalSiteType, siteTypeAllows, installationState } from './agentReg
 import {
     LIMITS, TOOL_CATALOG, toolByKey, decideToolUse, approvalHash, sanitizeToolArgs, canDelegate, retryDelayMs,
     GRANT_MODES, WORKFLOWS, parseCadence, nextRunAt, idempotencyKeyFor, toneReview, PILOT_TEMPLATES, reviewSubmission,
+    reviewProjectIdea, reviewSiteHealth,
 } from './agentRuntimeSpec.js';
 import { TOOL_EXECUTORS } from './agentToolExecutors.js';
 import { chatWithTools, pickModelSlug } from './agentGateway.js';
@@ -347,7 +348,7 @@ export async function listRuns({ siteId = null, limit = 100 } = {}) {
 
 // ── Workflows (los pilotos) ────────────────────────────────────────────
 async function siteRow(siteId) {
-    const r = await db.query(`SELECT id, name, type FROM "Club" WHERE id::text = $1`, [String(siteId)]);
+    const r = await db.query(`SELECT * FROM "Club" WHERE id::text = $1`, [String(siteId)]);
     if (!r.rows[0]) throw new RegistryError('Sitio no encontrado.', 404);
     return r.rows[0];
 }
@@ -360,7 +361,10 @@ async function pilotInstallation(siteId, templateKey) {
     return r.rows[0]?.id || null;
 }
 
-const PILOT_KEY = { event_registration_review: 'pilot-validacion-inscripciones', fair_submission_review: 'pilot-evaluacion-postulaciones', institutional_comms: 'pilot-comunicaciones' };
+const PILOT_KEY = {
+    event_registration_review: 'pilot-validacion-inscripciones', fair_submission_review: 'pilot-evaluacion-postulaciones', institutional_comms: 'pilot-comunicaciones',
+    project_formulation: 'pilot-formulacion-proyectos', site_audit: 'pilot-auditoria-web', district_report: 'pilot-informes-distritales',
+};
 
 async function aiNarrative({ siteId, workflowKey, prompt, data, gateway, maxTokens = 1500 }) {
     const installationId = await pilotInstallation(siteId, PILOT_KEY[workflowKey]);
@@ -440,6 +444,46 @@ export async function runWorkflow({ workflowKey, siteId, input = {}, trigger = '
             report = { kind: workflowKey, brief, drafts, tone, newsDraft: draft.ok ? draft.draft : null, publishApprovalId: approval?.id || null };
             ai = { text: null, note: ai.note, installationId: ai.installationId };
         }
+        else if (workflowKey === 'project_formulation') {
+            const idea = String(input.idea || '').trim();
+            if (idea.length < 30) throw new RegistryError('Describe la idea del proyecto en al menos 30 caracteres.', 400);
+            const check = reviewProjectIdea(idea);
+            ai = await aiNarrative({ siteId: site.id, workflowKey, gateway, maxTokens: 2500, prompt: 'Con la idea del club, devuelve SOLO un JSON válido con las claves: title, problem, objectives (lista), beneficiaries, activities (lista), indicators (lista de objetos {name, target}), budgetOutline, risks (lista), missingInfo (lista de preguntas para el club). No inventes cifras: si no están en la idea, van a missingInfo.', data: { idea, faltantesDetectados: check.missing.map(m => m.label) } });
+            let draft = null;
+            if (ai.text) { try { draft = JSON.parse(String(ai.text).replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch { draft = null; } }
+            report = { kind: workflowKey, idea, check, draft, draftNote: ai.text && !draft ? 'El modelo no devolvió un JSON válido; se muestra el texto.' : null, rawText: ai.text && !draft ? ai.text : null };
+            ai = { text: null, note: ai.note, installationId: ai.installationId };
+        } else if (workflowKey === 'site_audit') {
+            const [news, events, projects, seo] = await Promise.all([
+                db.query(`SELECT COUNT(*)::int AS n FROM "Post" WHERE "clubId" = $1 AND published = true AND "createdAt" > NOW() - INTERVAL '60 days'`, [String(site.id)]).catch(() => ({ rows: [{ n: 0 }] })),
+                db.query(`SELECT COUNT(*)::int AS n FROM "CalendarEvent" WHERE "clubId" = $1 AND "startDate" >= NOW()`, [String(site.id)]).catch(() => ({ rows: [{ n: 0 }] })),
+                db.query(`SELECT COUNT(*)::int AS n FROM "Project" WHERE "clubId" = $1`, [String(site.id)]).catch(() => ({ rows: [{ n: 0 }] })),
+                TOOL_EXECUTORS.seo_latest_audit({}, ctx),
+            ]);
+            const findings = reviewSiteHealth({ site, newsLast60: news.rows[0].n, upcomingEvents: events.rows[0].n, projects: projects.rows[0].n, seo: seo.audit });
+            report = { kind: workflowKey, metrics: { newsLast60: news.rows[0].n, upcomingEvents: events.rows[0].n, projects: projects.rows[0].n, seoScore: seo.audit?.score ?? null, seoCritical: seo.audit?.criticalCount ?? null }, findings, seoTopIssues: seo.topIssues || [] };
+            if (findings.length) ai = await aiNarrative({ siteId: site.id, workflowKey, gateway, prompt: 'Explica estos hallazgos al equipo técnico en lenguaje sencillo, en orden de prioridad, y propone las tareas concretas para resolverlos.', data: report });
+            else ai = { text: null, note: 'Sin hallazgos: el sitio está en buen estado.' };
+        } else if (workflowKey === 'district_report') {
+            if (canonicalSiteType(site.type) !== 'district') throw new RegistryError('El informe distrital se ejecuta sobre el sitio de un distrito.', 400);
+            const days = Math.min(366, Math.max(7, parseInt(input.days, 10) || 90));
+            const clubs = (await db.query(
+                `SELECT id, name FROM "Club" WHERE id::text <> $1 AND (($2::text IS NOT NULL AND "districtId" = $2) OR ($3::text IS NOT NULL AND district = $3)) ORDER BY name LIMIT 300`,
+                [String(site.id), site.districtId || null, site.district || null]).catch(() => ({ rows: [] }))).rows;
+            const ids = clubs.map(c => String(c.id));
+            const count = async (sql) => (ids.length ? (await db.query(sql, [ids, days]).catch(() => ({ rows: [] }))).rows : []);
+            const [news, events, projects] = await Promise.all([
+                count(`SELECT "clubId", COUNT(*)::int AS n FROM "Post" WHERE "clubId" = ANY($1) AND published = true AND "createdAt" > NOW() - ($2::int * INTERVAL '1 day') GROUP BY "clubId"`),
+                count(`SELECT "clubId", COUNT(*)::int AS n FROM "CalendarEvent" WHERE "clubId" = ANY($1) AND "startDate" > NOW() - ($2::int * INTERVAL '1 day') GROUP BY "clubId"`),
+                count(`SELECT "clubId", COUNT(*)::int AS n FROM "Project" WHERE "clubId" = ANY($1) GROUP BY "clubId"`),
+            ]);
+            const m = (rows) => new Map(rows.map(r => [String(r.clubId), r.n]));
+            const N = m(news), E = m(events), P = m(projects);
+            const perClub = clubs.map(c => ({ clubId: c.id, name: c.name, news: N.get(String(c.id)) || 0, events: E.get(String(c.id)) || 0, projects: P.get(String(c.id)) || 0 }));
+            const totals = perClub.reduce((a, c) => ({ news: a.news + c.news, events: a.events + c.events, projects: a.projects + c.projects }), { news: 0, events: 0, projects: 0 });
+            report = { kind: workflowKey, days, clubs: perClub.length, totals, perClub, quietClubs: perClub.filter(c => c.news === 0 && c.events === 0).map(c => c.name), validation: null };
+            ai = await aiNarrative({ siteId: site.id, workflowKey, gateway, maxTokens: 2500, prompt: `Redacta el BORRADOR del informe distrital de los últimos ${days} días con estos indicadores. Cada cifra debe salir de los datos.`, data: { distrito: site.name, ...report, perClub: perClub.slice(0, 120) } });
+        }
         await db.query(`UPDATE "AgentWorkflowRun" SET status = 'succeeded', report = $2::jsonb, "aiSummary" = $3, "aiNote" = $4, "installationId" = $5, "finishedAt" = NOW() WHERE id = $1`,
             [wr.id, J(report), ai.text, ai.note, ai.installationId || null]);
         await audit(user, { entityType: 'workflow', entityId: wr.id, siteId: site.id, action: 'workflow_run', after: { workflowKey, trigger } });
@@ -449,6 +493,19 @@ export async function runWorkflow({ workflowKey, siteId, input = {}, trigger = '
         if (err instanceof RegistryError) throw err;
         throw new RegistryError(`El workflow falló: ${err?.message || err}`, 500);
     }
+}
+
+/** El distrito valida el informe: queda como documento final, con quién y cuándo. */
+export async function validateWorkflowRun(id, user, note = '') {
+    const run = await getWorkflowRun(id);
+    if (run.workflowKey !== 'district_report') throw new RegistryError('Sólo los informes distritales se validan.', 400);
+    if (run.status !== 'succeeded') throw new RegistryError('El informe no terminó bien.', 409);
+    if (!isPlatformAdmin(user) && !(isSiteManager(user) && String(user.clubId || '') === String(run.siteId))) throw new RegistryError('Sólo el distrito o la plataforma validan este informe.', 403);
+    if (run.report?.validation) throw new RegistryError('El informe ya fue validado.', 409);
+    const validation = { by: actorId(user), role: user?.role || null, at: new Date().toISOString(), note: String(note || '').slice(0, 500) };
+    await db.query(`UPDATE "AgentWorkflowRun" SET report = jsonb_set(report, '{validation}', $2::jsonb) WHERE id = $1`, [run.id, J(validation)]);
+    await audit(user, { entityType: 'workflow', entityId: run.id, siteId: run.siteId, action: 'report_validated', after: validation });
+    return getWorkflowRun(run.id);
 }
 
 export async function listWorkflowRuns({ siteId = null, workflowKey = null, limit = 50 } = {}) {

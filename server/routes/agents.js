@@ -469,84 +469,12 @@ router.delete('/:id', authMiddleware, async (req, res) => {
 });
 
 // ── POST: Deploy agents to ALL active clubs (super admin only) ────────────
-router.post('/deploy-all', authMiddleware, async (req, res) => {
-    try {
-        // Only super admin (administrator role) can do this
-        if (!isPlatformAdmin(req.user)) {
-            return res.status(403).json({ error: 'Solo el super administrador puede desplegar agentes globalmente.' });
-        }
-
-        await ensureTable();
-
-        // Get all active clubs
-        const clubsResult = await db.query(
-            `SELECT id, name FROM "Club" WHERE status = 'active' ORDER BY name ASC`
-        );
-        const clubs = clubsResult.rows;
-
-        if (clubs.length === 0) {
-            return res.json({ success: true, clubsProcessed: 0, message: 'No hay clubes activos.' });
-        }
-
-        let clubsProcessed = 0;
-        let agentsUpserted = 0;
-        let agentsKept = 0;
-        const errors = [];
-
-        for (const club of clubs) {
-            try {
-                const whereClause = '"clubId" = $2::uuid';
-
-                for (const agent of DEFAULT_AGENTS) {
-                    try {
-                        const existing = await db.query(
-                            `SELECT id FROM "Agent" WHERE name = $1 AND ${whereClause}`,
-                            [agent.name, club.id]
-                        );
-
-                        // v4.1314.0 — no se pisa lo que el club personalizó: un
-                        // agente que ya existe en el club se conserva tal cual.
-                        if (existing.rows.length > 0) {
-                            agentsKept++;
-                            continue;
-                        } else {
-                            await db.query(
-                                `INSERT INTO "Agent" (name, role, category, description, "systemPrompt", "aiModel", "avatarSeed", "avatarColor", capabilities, active, "order", greeting, "clubId")
-                                 VALUES ($1, $2, $3, $4, $5, 'gpt-4', $6, $7, $8, true, $9, $10, $11::uuid)`,
-                                [agent.name, agent.role, agent.category, agent.description,
-                                 agent.systemPrompt, agent.avatarSeed, agent.avatarColor,
-                                 agent.capabilities, agent.order, agent.greeting, club.id]
-                            );
-                        }
-                        agentsUpserted++;
-                    } catch (agentErr) {
-                        errors.push(`${club.name} / ${agent.name}: ${agentErr.message}`);
-                    }
-                }
-                clubsProcessed++;
-            } catch (clubErr) {
-                errors.push(`${club.name}: ${clubErr.message}`);
-            }
-        }
-
-        console.log(`Deploy-all: ${clubsProcessed} clubes, ${agentsUpserted} agentes creados, ${agentsKept} conservados`);
-
-        res.json({
-            success: true,
-            clubsProcessed,
-            totalClubs: clubs.length,
-            agentsUpserted,
-            agentsCreated: agentsUpserted,
-            agentsKept,
-            agentsPerClub: DEFAULT_AGENTS.length,
-            errors: errors.length > 0 ? errors : undefined,
-            clubs: clubs.map(c => c.name),
-        });
-
-    } catch (error) {
-        console.error('Deploy-all error:', error);
-        res.status(500).json({ error: 'Error al desplegar agentes: ' + error.message });
-    }
+// v4.1317.0 — RETIRADO. Copiaba los agentes del código a cada club activo de
+// una vez, sin reversión. Lo reemplazan los Despliegues por oleadas del AI Agent
+// Command Center (Agentes IA → Despliegues): destino por tipo de sitio,
+// confirmación, oleadas, compuerta de salud y reversión.
+router.post('/deploy-all', authMiddleware, (req, res) => {
+    res.status(410).json({ error: 'Esta acción se retiró. Usa «Despliegues» en el AI Agent Command Center (Agentes IA).' });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

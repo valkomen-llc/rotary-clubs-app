@@ -26,9 +26,9 @@ const rejects = async (p, re, m) => { await assert.rejects(p, re, m); n++; };
 const admin = { id: 'admin-1', role: 'administrator' };
 
 // ── Base mínima ──────────────────────────────────────────────────────
-const drop = ['AgentTemplate', 'AgentTemplateVersion', 'AgentSkill', 'AgentInstallation', 'AgentAuditLog', 'AgentSiteTypePolicy', 'AgentSetting', 'AgentToolGrant', 'AgentTask', 'AgentRun', 'AgentRunStep', 'AgentApproval', 'AgentWorkflowRun', 'AgentSchedule', 'AgentEvent', 'AiUsageEvent', 'AiUsageDaily', 'AiModelPrice', 'Agent', 'Club', 'User', 'Post', 'Project', 'CalendarEvent', 'EventRegistration', 'EventCompletedRegistration', 'ProjectFairSubmission', 'SeoAudit', 'SeoIssue'];
+const drop = ['AgentRollout', 'AgentRolloutTarget', 'AgentTemplate', 'AgentTemplateVersion', 'AgentSkill', 'AgentInstallation', 'AgentAuditLog', 'AgentSiteTypePolicy', 'AgentSetting', 'AgentToolGrant', 'AgentTask', 'AgentRun', 'AgentRunStep', 'AgentApproval', 'AgentWorkflowRun', 'AgentSchedule', 'AgentEvent', 'AiUsageEvent', 'AiUsageDaily', 'AiModelPrice', 'Agent', 'Club', 'User', 'Post', 'Project', 'CalendarEvent', 'EventRegistration', 'EventCompletedRegistration', 'ProjectFairSubmission', 'SeoAudit', 'SeoIssue'];
 for (const t of drop) await db.query(`DROP TABLE IF EXISTS "${t}" CASCADE`);
-await db.query(`CREATE TABLE "Club" (id TEXT PRIMARY KEY, name TEXT, type TEXT DEFAULT 'club', subdomain TEXT, domain TEXT, status TEXT DEFAULT 'active', district TEXT, city TEXT, country TEXT, "districtId" TEXT)`);
+await db.query(`CREATE TABLE "Club" (id TEXT PRIMARY KEY, name TEXT, type TEXT DEFAULT 'club', subdomain TEXT, domain TEXT, logo TEXT, status TEXT DEFAULT 'active', district TEXT, city TEXT, country TEXT, "districtId" TEXT)`);
 await db.query(`CREATE TABLE "User" (id TEXT PRIMARY KEY, name TEXT, email TEXT, role TEXT, "clubId" TEXT)`);
 await db.query(`CREATE TABLE "Post" (id TEXT PRIMARY KEY, title TEXT, content TEXT, published BOOLEAN DEFAULT false, "clubId" TEXT, category TEXT, "isAI" BOOLEAN DEFAULT false, "createdAt" TIMESTAMPTZ DEFAULT NOW(), "updatedAt" TIMESTAMPTZ DEFAULT NOW())`);
 await db.query(`CREATE TABLE "Project" (id TEXT PRIMARY KEY, "clubId" TEXT)`);
@@ -62,7 +62,7 @@ const gateway = async (req) => {
 };
 
 // ── 1. Pilotos instalados ────────────────────────────────────────────
-eq((await RT.seedPilotTemplates(admin)).created, 3, 'se crean las tres plantillas piloto (borrador)');
+eq((await RT.seedPilotTemplates(admin)).created, 6, 'se crean las seis plantillas piloto (borrador)');
 eq((await RT.seedPilotTemplates(admin)).created, 0, 'idempotente');
 const tpl = async (key) => (await db.query(`SELECT id FROM "AgentTemplate" WHERE key = $1`, [key])).rows[0].id;
 for (const k of ['pilot-validacion-inscripciones', 'pilot-evaluacion-postulaciones', 'pilot-comunicaciones']) await R.publishVersion(await tpl(k), 'v1', admin);
@@ -178,6 +178,65 @@ ok(Math.abs(sum.byModel.find(m => m.model === 'gpt-4o').costUsd - 2.5) < 1e-6, '
 await U.savePrice({ model: 'gpt-4o', provider: 'openai', inputPerMTok: 5, outputPerMTok: 15 }, admin);
 ok((await U.currentPrices()).find(p => p.model === 'gpt-4o').inputPerMTok === 5, 'los precios se editan');
 eq((await U.usageSummary({ days: 7, siteId: F })).totals.errors, 1, 'el resumen se filtra por sitio');
+
+// ── 9. Fase 3: despliegues por oleadas ───────────────────────────────
+const RO = await import(`${REPO}/server/lib/agentRolloutStore.js`);
+for (const k of ['pilot-formulacion-proyectos', 'pilot-auditoria-web', 'pilot-informes-distritales']) await R.publishVersion(await tpl(k), 'v1', admin);
+await db.query(`UPDATE "Club" SET "districtId" = 'dist-1' WHERE id = $1`, [D]);
+for (let i = 1; i <= 4; i++) {
+    await db.query(`INSERT INTO "Club" (id, name, type, "districtId") VALUES ($1, $2, 'club', 'dist-1')`, [`club-${i}`, `Club ${i}`]);
+    await db.query(`INSERT INTO "User" (id, name, email, role, "clubId") VALUES ($1, 'Pres', $2, 'club_admin', $3)`, [`uc${i}`, `c${i}@x.org`, `club-${i}`]);
+}
+await db.query(`INSERT INTO "Post" (id, title, content, published, "clubId") VALUES ('p-c1', 'Noticia club 1', 'x', true, 'club-1')`);
+await db.query(`UPDATE "Club" SET "districtId" = 'dist-1' WHERE id = $1`, [OTHER]);
+const prev = await RO.previewRollout({ name: 'Comunicaciones para clubes', templateKeys: ['pilot-comunicaciones'], siteTypes: ['club'] });
+eq([prev.ok, prev.targets, prev.waves], [true, 5, [1, 1, 3]], 'vista previa: 5 clubes en 1 → 1 → 3');
+const ro = await RO.createRollout({ name: 'Comunicaciones para clubes', templateKeys: ['pilot-comunicaciones'], siteTypes: ['club'] }, admin);
+eq([ro.status, ro.targets.length], ['draft', 5], 'el despliegue nace en borrador con sus 5 destinos');
+await rejects(RO.advanceRollout(ro.id, {}, admin), /escribe el número de sitios/, 'sin escribir el número, no despliega');
+const w1r = await RO.advanceRollout(ro.id, { confirmCount: 5 }, admin);
+eq([w1r.status, w1r.currentWave, w1r.lastWave.created], ['running', 1, 1], 'oleada 1: un sitio');
+const firstInst = (await db.query(`SELECT * FROM "AgentInstallation" WHERE "rolloutId" = $1`, [ro.id])).rows[0];
+eq([firstInst.enabled, firstInst.responsibleUserId], [false, null], 'llega APAGADO: el sitio elige su responsable');
+eq((await RT.listGrants(firstInst.id)).length, 4, 'con las herramientas que pide la versión');
+const instIds = (await db.query(`SELECT id FROM "AgentInstallation" WHERE "rolloutId" = $1`, [ro.id])).rows.map(r => r.id);
+for (let i = 0; i < 6; i++) await db.query(`INSERT INTO "AgentRun" ("taskId", "installationId", status) VALUES ('t-x', $1, $2)`, [instIds[0], i < 3 ? 'failed' : 'succeeded']);
+await rejects(RO.advanceRollout(ro.id, {}, admin), /Despliegue pausado/, 'con 50 % de fallas, la compuerta de salud PAUSA');
+eq((await RO.getRollout(ro.id)).status, 'paused', 'queda pausado');
+const w2r = await RO.advanceRollout(ro.id, { force: true }, admin);
+eq(w2r.currentWave, 2, 'una persona puede reanudar a sabiendas');
+const w3r = await RO.advanceRollout(ro.id, { force: true }, admin);
+eq([w3r.status, w3r.targets.filter(t => t.status === 'installed').length], ['completed', 5], 'completado en los 5 clubes');
+const rb = await RO.rollbackRollout(ro.id, admin);
+eq(rb.status, 'rolled_back', 'revertido');
+const after = (await db.query(`SELECT enabled, "disabledReason" FROM "AgentInstallation" WHERE "rolloutId" = $1`, [ro.id])).rows;
+ok(after.length === 5 && after.every(r => r.enabled === false && /revertido/.test(r.disabledReason)), 'revertir APAGA lo instalado y deja el porqué (no borra)');
+const roF = await RO.createRollout({ name: 'Proyectos para la feria', preset: 'proyectos', siteTypes: ['Feria de Proyectos'], autoActivate: true, waves: [{ percent: 100 }] }, admin);
+const fr = await RO.advanceRollout(roF.id, {}, admin);
+const fInst = (await db.query(`SELECT enabled, "responsibleUserId" FROM "AgentInstallation" WHERE "rolloutId" = $1`, [roF.id])).rows;
+ok(fr.status === 'completed' && fInst.length >= 1 && fInst.every(i => i.enabled && i.responsibleUserId === 'uF'), 'con «encender con el primer administrador», queda activo con su responsable');
+ok(/Ya tenía/.test(fr.targets[0].reason || '') || fr.lastWave.skipped >= 1, 'lo que el sitio ya tenía se informa y no se duplica');
+
+// ── 10. Workflows 1, 7 y 8 ───────────────────────────────────────────
+await R.saveSiteTypePolicy('club', { enabled: true, allowedTeams: [] }, admin);
+const iAud = await install('pilot-auditoria-web', OTHER, 'uO');
+const wa = await RT.runWorkflow({ workflowKey: 'site_audit', siteId: OTHER, user: admin, gateway });
+ok(wa.run.report.findings.some(f => /logotipo/.test(f.finding)) && wa.run.report.findings.every(f => f.task), 'auditoría: hallazgos con su tarea');
+ok(iAud, 'el agente de auditoría redacta las recomendaciones');
+const iRep = await install('pilot-informes-distritales', D, 'uD');
+const wr8 = await RT.runWorkflow({ workflowKey: 'district_report', siteId: D, input: { days: 90 }, user: admin, gateway });
+ok(wr8.run.report.clubs === 5 && wr8.run.report.totals.news === 1, 'informe distrital: los 5 clubes del distrito y su actividad');
+ok(wr8.run.report.quietClubs.length === 3 && !wr8.run.report.quietClubs.includes('Club 1'), 'clubes sin actividad publicada (un evento o una noticia cuentan)');
+await rejects(RT.runWorkflow({ workflowKey: 'district_report', siteId: OTHER, user: admin, gateway }), /sitio de un distrito/, 'el informe distrital sólo sobre un distrito');
+await rejects(RT.validateWorkflowRun(wr8.run.id, { id: 'uO', role: 'club_admin', clubId: OTHER }), /Sólo el distrito/, 'un club no valida el informe del distrito');
+const val = await RT.validateWorkflowRun(wr8.run.id, { id: 'uD', role: 'district_admin', clubId: D }, 'Revisado en la junta');
+ok(val.report.validation?.by === 'uD', 'el distrito lo valida (queda quién y cuándo)');
+await rejects(RT.validateWorkflowRun(wr8.run.id, admin), /ya fue validado/, 'no se valida dos veces');
+ok(iRep, 'informe con agente');
+await install('pilot-formulacion-proyectos', D, 'uD');
+script = [{ text: JSON.stringify({ title: 'Agua segura', problem: 'Sin agua potable', objectives: ['Instalar filtros'], beneficiaries: '120 familias', activities: ['Instalación'], indicators: [{ name: 'Familias con filtro', target: '120' }], budgetOutline: 'USD 15.000', risks: ['Mantenimiento'], missingInfo: ['¿Quién mantiene los filtros?'] }), toolCalls: [], usage: {}, model: 'mock-model' }];
+const wf1 = await RT.runWorkflow({ workflowKey: 'project_formulation', siteId: D, input: { idea: 'Llevar agua potable a 120 familias de una vereda con filtros comunitarios.' }, user: admin, gateway });
+ok(wf1.run.report.draft?.title === 'Agua segura' && wf1.run.report.check.missing.length > 0, 'formulación: borrador estructurado y lo que falta');
 
 await db.pool.end();
 console.log(`✓ test-agents-runtime-e2e: ${n} comprobaciones`);

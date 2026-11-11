@@ -187,3 +187,48 @@ Consumo de IA; en cada instalación, herramientas concedidas, presupuesto y
 
 Pruebas: `test:agents:runtime` (112, sin base ni red, en `prebuild`) y
 `test:agents:runtime:e2e` (41, Postgres LOCAL y modelo simulado).
+
+## Fase 3 — Despliegues por oleadas, mapa, vista por sitio y workflows 1/7/8 (v4.1317.0)
+
+**Despliegues** (`agentRolloutSpec.js` puro + `agentRolloutStore.js`; tablas
+`AgentRollout` y `AgentRolloutTarget`) REEMPLAZAN `POST /api/agents/deploy-all`
+(ahora responde 410). Un despliegue: plantillas sueltas o una PLANTILLA DE
+EQUIPO (`TEAM_PRESETS`: club básico, gestión distrital, proyectos, eventos,
+administración central) × destino por TIPOS DE SITIO (sólo cuentan los
+integrados) o sitios × oleadas (`planWaves`, acumulativas y DETERMINISTAS: el
+mismo despliegue elige los mismos sitios; por omisión 1 piloto → 25 % → 100 %).
+La primera oleada exige ESCRIBIR el número de sitios (`confirmationOk`).
+Avanzar pasa por la compuerta de salud (`healthGate`: con ≥ 5 ejecuciones y
+> 20 % fallidas, PAUSA; una persona puede reanudar a sabiendas). Llega APAGADO y
+cada sitio elige su responsable, salvo «encender con el primer administrador
+del sitio». Lo que el sitio ya tenía se informa, no se duplica. Revertir APAGA
+lo instalado por ese despliegue con su porqué; no borra historial. Lo que la
+plantilla de equipo pide y no está publicado se INFORMA y no se despliega.
+
+**Vista por sitio.** `/api/agent-center` tiene dos alcances (`resolveScope`): la
+plataforma ve todo; quien administra un sitio (`isSiteManager` con `clubId`) ve
+SÓLO el suyo — `siteOf(req, pedido)` ignora el sitio pedido y usa el de la
+sesión, y `ownOr404` devuelve 404 para lo ajeno. Un sitio enciende sus agentes,
+elige responsable (que tiene que administrar ESE sitio), ajusta nombre e
+instrucciones, prueba, decide sus aprobaciones, ejecuta y programa workflows y
+ve su consumo; NO cambia herramientas concedidas, presupuesto, plantillas,
+tipos de sitio ni despliegues (`platformOnly`). Verificado por HTTP con un
+token de club. El menú muestra «Agentes IA» a `district_admin` y `club_admin`
+(el RBAC `agents` decide además).
+
+**Mapa de agentes** (`buildNetwork`, puro): columnas equipo → agente →
+herramienta → módulo; una arista agente→herramienta existe SÓLO si hay una
+concesión real, con estilo activo / inactivo / con error según el estado de las
+instalaciones que la tienen. Una plantilla sin instalar no aparece.
+
+**Workflows 1, 7 y 8**: formulación de proyectos (`reviewProjectIdea` +
+borrador estructurado con IA; lo que falta va a preguntas, no se inventa),
+auditoría de sitios (`reviewSiteHealth`: identidad, contenido, eventos y SEO
+Inteligente, cada hallazgo con su tarea) e informe distrital (indicadores de
+los clubes del distrito por `districtId`/`district`, clubes sin actividad
+publicada, BORRADOR hasta que el distrito lo VALIDA —`validateWorkflowRun`,
+una vez, sólo el distrito o la plataforma—). Tres plantillas nuevas:
+`pilot-formulacion-proyectos`, `pilot-auditoria-web`, `pilot-informes-distritales`.
+
+Pruebas: `test:agents:rollout` (58, sin base, en `prebuild`) y
+`test:agents:runtime:e2e` ampliada a 65.

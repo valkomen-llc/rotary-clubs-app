@@ -437,6 +437,11 @@ export const AUDIT_ACTIONS = {
     workflow_run: 'Workflow ejecutado',
     schedule_saved: 'Programación guardada',
     schedule_deleted: 'Programación eliminada',
+    report_validated: 'Informe validado',
+    rollout_created: 'Despliegue creado',
+    rollout_wave: 'Oleada desplegada',
+    rollout_paused: 'Despliegue pausado',
+    rollout_rolled_back: 'Despliegue revertido',
 };
 
 // ── Ajustes de la plataforma ───────────────────────────────────────────
