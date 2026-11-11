@@ -232,3 +232,54 @@ una vez, sólo el distrito o la plataforma—). Tres plantillas nuevas:
 
 Pruebas: `test:agents:rollout` (58, sin base, en `prebuild`) y
 `test:agents:runtime:e2e` ampliada a 65.
+
+## Fase 4 — Memoria por alcances, observabilidad y revisión financiera (v4.1318.0)
+
+**El maestro sólo recibe lo GLOBAL** (`ingestMemory`): una memoria con club o
+distrito va al cerebro de su sitio y al de su distrito, ya no se copia al
+maestro. La plataforma busca en TODOS los cerebros (`master/query` con
+`brainId: null`); los demás, en el maestro recortado (Fase 0). «Limpiar el
+cerebro maestro» (`purgeMasterPrivateCopies`) quita sólo las copias heredadas
+cuyo ORIGINAL sigue en el cerebro del sitio o del distrito; calcula primero y
+exige escribir LIMPIAR.
+
+**Conocimiento para los agentes** (`agentMemory.js`, herramienta N0
+`knowledge_search`): un agente busca en su sitio, su distrito y lo GLOBAL del
+maestro (`GLOBAL_ONLY`), nunca en otro sitio; cada resultado cita su fuente.
+
+**pgvector, opt-in** (`brainVector.js`): vectores en la tabla LATERAL
+`BrainMemoryVector` (NO en `BrainMemory`, que es de Prisma: una columna en
+runtime la borraría un `db push`), índice HNSW, recorte de alcance traducido a
+SQL (`scopeToSql`). Se activa desde «Conocimiento» sólo si la base permite
+`CREATE EXTENSION vector`; el tick indexa lo nuevo una vez al día; apagado o
+ante cualquier error, vuelve la búsqueda clásica. Probado contra pgvector real.
+Los embeddings ganaron tope de tiempo (antes no tenían) y se miden en Consumo
+de IA (`brain.embedding`).
+
+**Retención** de la memoria operativa (`retentionDays`, 30–3650, por omisión
+180): ejecuciones y pasos; eventos procesados a los 30 días; el detalle de
+consumo a los 400 (el agregado diario no se borra).
+
+**Observabilidad** (`agentObservabilitySpec.js` puro + `agentObservability.js`;
+tabla `AgentAlert`): presupuestos mensuales de PLATAFORMA y de SITIO además del
+de cada instalación (`checkBudgets`: el primer tope alcanzado detiene el gasto
+y se dice cuál). Alertas con `dedupeKey` (una abierta por condición) que se
+RESUELVEN SOLAS cuando la condición desaparece: presupuesto al 80 % y agotado,
+> 20 % de ejecuciones fallidas en la última hora (con ≥ 5), tareas muertas,
+aprobaciones vencidas, proveedor que rechaza por cuenta/credencial/facturación,
+tareas trabadas. Se calculan en el tick cada 10 minutos. Analítica por agente
+(ejecuciones, éxito, tiempo medio, tokens, costo, sitios), por workflow y por
+sitio; un sitio ve la suya.
+
+**Workflow 6: revisión financiera de SÓLO LECTURA** (`finance_review`,
+herramienta N0, `reviewFinance` puro): transacciones del libro mayor de la
+Bóveda que no suman cero, reversos huérfanos y pagos «pagados» sin Stripe,
+comprobante ni fecha. Cada hallazgo con su referencia; la prueba verifica que
+el libro mayor queda INTACTO. Plantilla `pilot-revision-financiera`.
+
+Pantallas nuevas: «Observabilidad» (alertas con reconocer/resolver, rendimiento,
+presupuestos) y «Conocimiento» (memoria por cerebro, pgvector, limpieza del
+maestro, retención) — reemplaza el botón muerto «Vector Memory».
+
+Pruebas: `test:agents:observability` (41, sin base, en `prebuild`) y
+`test:agents:runtime:e2e` ampliada a 87.

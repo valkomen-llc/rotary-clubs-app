@@ -48,6 +48,7 @@ export interface Meta {
     teamPresets: Record<string, { label: string; siteTypes: string[]; templates: string[]; help: string; platform?: boolean }>;
     rolloutStates: Record<string, string>;
     defaultWaves: { count?: number; percent?: number }[];
+    alertKinds: Record<string, { label: string; severity: string }>;
 }
 
 export interface WorkflowDef { key: string; label: string; team: string; pilot: boolean; triggers: string[]; steps: string[]; never: string[]; inputs: Record<string, string> }

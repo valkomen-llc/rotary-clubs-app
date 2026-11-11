@@ -33,6 +33,12 @@
 //   AgentRolloutTarget  cada sitio del despliegue, su oleada y qué se le
 //                       instaló (para revertir exactamente eso).
 //
+// Fase 4 — Observabilidad (v4.1318.0):
+//   AgentAlert   alertas que se abren y se resuelven solas (presupuesto, tasa
+//                de error, tareas muertas o trabadas, proveedor que rechaza).
+// (La tabla lateral de vectores, "BrainMemoryVector", la crea brainVector.js
+// sólo si se activa pgvector.)
+//
 // La tabla heredada "Agent" NO se toca: cada fila migrada queda referida por
 // `legacyAgentId`, y publicar una versión la actualiza (espejo) para que el
 // chat de siempre siga respondiendo con lo publicado durante la transición.
@@ -65,6 +71,8 @@ export const OWNED_COLUMNS = {
     // Fase 3 — despliegues (v4.1317.0)
     AgentRollout: [],
     AgentRolloutTarget: [],
+    // Fase 4 — observabilidad (v4.1318.0)
+    AgentAlert: [],
 };
 const TABLES = Object.keys(OWNED_COLUMNS);
 
@@ -372,6 +380,27 @@ export async function ensureAgentCenterSchema() {
             UNIQUE ("rolloutId", "siteId")
         )
     `);
+
+    // ── Fase 4 ──
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "AgentAlert" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            kind TEXT NOT NULL,
+            severity TEXT NOT NULL DEFAULT 'medium',
+            "dedupeKey" TEXT NOT NULL,
+            "siteId" TEXT,
+            "installationId" TEXT,
+            message TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open',
+            "ackBy" TEXT,
+            "ackAt" TIMESTAMPTZ,
+            "resolvedBy" TEXT,
+            "resolvedAt" TIMESTAMPTZ,
+            "lastSeenAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS "AgentAlert_status_idx" ON "AgentAlert" (status, "createdAt" DESC)`);
 
     _ready = true;
 }

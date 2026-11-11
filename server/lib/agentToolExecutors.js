@@ -10,7 +10,8 @@
 // `content_publish_news` sólo llega aquí desde una aprobación humana.
 // ════════════════════════════════════════════════════════════════════════════
 import db from './db.js';
-import { reviewRegistrations, reviewSubmission, REGISTRATION_FINDING_LABELS } from './agentRuntimeSpec.js';
+import { reviewRegistrations, reviewSubmission, REGISTRATION_FINDING_LABELS, reviewFinance } from './agentRuntimeSpec.js';
+import { searchKnowledgeForSite } from './agentMemory.js';
 
 const safe = async (sql, params) => { try { return (await db.query(sql, params)).rows; } catch { return []; } };
 const clamp = (n, lo, hi, d) => { const v = parseInt(n, 10); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; };
@@ -85,6 +86,29 @@ export const TOOL_EXECUTORS = {
         if (!a) return { ok: true, audit: null, note: 'El sitio todavía no tiene una auditoría de SEO Inteligente.' };
         const issues = await safe(`SELECT path, code, axis, severity, impact FROM "SeoIssue" WHERE "auditId" = $1 AND "clubId" = $2 ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 ELSE 2 END, impact DESC LIMIT 10`, [a.id, ctx.siteId]);
         return { ok: true, audit: a, topIssues: issues };
+    },
+
+    async knowledge_search(args, ctx) {
+        const q = String(args.query || '').trim();
+        if (q.length < 3) return { ok: false, error: 'Escribe qué buscar.' };
+        const results = await searchKnowledgeForSite(ctx.siteId, q, { k: 6 });
+        return { ok: true, results, note: results.length ? 'Cita la fuente (scope, source) de lo que uses.' : 'No hay conocimiento sobre eso en este sitio.' };
+    },
+
+    async finance_review(args, ctx) {
+        const [unbalanced, orphanReversals, regs, fair] = await Promise.all([
+            safe(`SELECT t.id, t.kind, l.currency, SUM(l.minor)::bigint AS total FROM "LedgerTransaction" t JOIN "LedgerLine" l ON l."transactionId" = t.id
+                   WHERE t."clubId" = $1 GROUP BY t.id, t.kind, l.currency HAVING SUM(l.minor) <> 0 LIMIT 100`, [ctx.siteId]),
+            safe(`SELECT t.id, t.reverses FROM "LedgerTransaction" t WHERE t."clubId" = $1 AND t.reverses IS NOT NULL
+                   AND NOT EXISTS (SELECT 1 FROM "LedgerTransaction" o WHERE o.id = t.reverses) LIMIT 100`, [ctx.siteId]),
+            safe(`SELECT id, "publicRef" AS ref, status, "totalAmount" AS amount FROM "EventRegistration" WHERE "clubId" = $1 AND status IN ('paid', 'confirmed') AND COALESCE("totalAmount", 0) > 0
+                   AND "paidAt" IS NULL AND "stripePaymentIntentId" IS NULL AND "receiptUrl" IS NULL LIMIT 100`, [ctx.siteId]),
+            safe(`SELECT id, "publicRef" AS ref, status, COALESCE("amountCop", "amountUsd") AS amount FROM "ProjectFairSubmission" WHERE "clubId" = $1 AND status = 'paid'
+                   AND "paidAt" IS NULL AND "stripePaymentIntentId" IS NULL LIMIT 100`, [ctx.siteId]),
+        ]);
+        const paidWithoutSupport = [...regs.map(r => ({ ...r, source: 'Inscripción a evento' })), ...fair.map(r => ({ ...r, source: 'Postulación de la Feria' }))];
+        const findings = reviewFinance({ unbalanced, orphanReversals, paidWithoutSupport });
+        return { ok: true, readOnly: true, findings, counts: { unbalanced: unbalanced.length, orphanReversals: orphanReversals.length, paidWithoutSupport: paidWithoutSupport.length } };
     },
 
     async content_create_news_draft(args, ctx) {

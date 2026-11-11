@@ -1361,7 +1361,9 @@ router.post('/master/query', authMiddleware, async (req, res) => {
         // v4.1314.0 — el filtro va en la CONSULTA (antes se filtraba después, y
         // quien no tenía club ni distrito veía todo el maestro).
         const scope = await resolveUserScope(req);
-        let results = await searchMemories({ brainId: master.id, query, k, kind, scopeWhere: masterMemoryWhere(req.user, master, scope) });
+        // v4.1318 — el maestro ya no recibe copias de lo de cada sitio: la plataforma
+        // busca en TODOS los cerebros; los demás, en el maestro recortado.
+        let results = await searchMemories({ brainId: isSuperAdmin(req) ? null : master.id, query, k, kind, scopeWhere: masterMemoryWhere(req.user, master, scope) });
         results = results.filter(r => memoryVisible(req.user, master, r.memory, scope));
 
         res.json({ results });

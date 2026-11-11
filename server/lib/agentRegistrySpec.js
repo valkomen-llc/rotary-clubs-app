@@ -449,11 +449,15 @@ export const SETTINGS_DEFAULTS = {
     killSwitch: false,          // apaga TODA ejecución de agentes en la plataforma
     defaultModel: null,         // slug de ai_model_configs; null = el del enrutador
     allowAgencyImport: true,
+    retentionDays: 180,         // memoria operativa (ejecuciones y pasos)
+    vectorSearch: false,        // pgvector en los Cerebros (opt-in)
 };
 export function sanitizeSettings(input = {}, base = SETTINGS_DEFAULTS) {
     const s = { ...SETTINGS_DEFAULTS, ...base };
     if ('killSwitch' in input) s.killSwitch = Boolean(input.killSwitch);
     if ('defaultModel' in input) s.defaultModel = input.defaultModel ? String(input.defaultModel).slice(0, 80) : null;
     if ('allowAgencyImport' in input) s.allowAgencyImport = Boolean(input.allowAgencyImport);
+    if ('retentionDays' in input) { const d = parseInt(input.retentionDays, 10); s.retentionDays = Number.isFinite(d) ? Math.min(3650, Math.max(30, d)) : SETTINGS_DEFAULTS.retentionDays; }
+    if ('vectorSearch' in input) s.vectorSearch = Boolean(input.vectorSearch);
     return s;
 }
