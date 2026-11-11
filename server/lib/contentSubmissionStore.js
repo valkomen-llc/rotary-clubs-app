@@ -1,3 +1,4 @@
+import { emitAgentEvent } from './agentEvents.js'; // v4.1316 — eventos para el AI Agent Command Center
 // ════════════════════════════════════════════════════════════════════
 // Aportes de contenido — la I/O — v4.972.0
 //
@@ -116,6 +117,8 @@ export async function createSubmission({ campaignId, data, files, consentText, w
         rows = r.rows;
     }
     const submission = rows[0];
+    // v4.1316 — aviso al AI Agent Command Center (no lanza ni demora).
+    if (submission) await emitAgentEvent('content_submission.received', submission.originClubId || null, { submissionId: submission.id, campaignId });
 
     let orden = 0;
     for (const f of files) {

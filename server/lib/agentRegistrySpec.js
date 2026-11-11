@@ -430,6 +430,13 @@ export const AUDIT_ACTIONS = {
     legacy_migrated: 'Agentes heredados migrados',
     tool_grant: 'Herramienta concedida',
     tool_revoke: 'Herramienta retirada',
+    approval_executed: 'Aprobación ejecutada',
+    approval_rejected: 'Aprobación rechazada',
+    task_cancelled: 'Tarea cancelada',
+    task_retried: 'Tarea reintentada',
+    workflow_run: 'Workflow ejecutado',
+    schedule_saved: 'Programación guardada',
+    schedule_deleted: 'Programación eliminada',
 };
 
 // ── Ajustes de la plataforma ───────────────────────────────────────────

@@ -17,6 +17,16 @@
 //   AgentSiteTypePolicy    con qué TIPOS DE SITIO se integran los agentes.
 //   AgentSetting           ajustes de la plataforma (interruptor general…).
 //
+// Fase 2 — Runtime (v4.1316.0):
+//   AgentToolGrant     qué herramienta usa cada instalación y en qué modo.
+//   AgentTask          la cola: estado, intentos, lease, idempotencia.
+//   AgentRun           cada ejecución de una tarea (modelo, tokens, costo).
+//   AgentRunStep       cada paso: llamada al modelo o a una herramienta.
+//   AgentApproval      acciones propuestas con su carga CONGELADA y su huella.
+//   AgentWorkflowRun   cada ejecución de un workflow (los pilotos) y su informe.
+//   AgentSchedule      programaciones: diaria, semanal, cada N min, por evento.
+//   AgentEvent         la bandeja de eventos que emiten los módulos.
+//
 // La tabla heredada "Agent" NO se toca: cada fila migrada queda referida por
 // `legacyAgentId`, y publicar una versión la actualiza (espejo) para que el
 // chat de siempre siga respondiendo con lo publicado durante la transición.
@@ -37,6 +47,15 @@ export const OWNED_COLUMNS = {
     AgentAuditLog: [],
     AgentSiteTypePolicy: [],
     AgentSetting: [],
+    // Fase 2 — runtime (v4.1316.0)
+    AgentToolGrant: [],
+    AgentTask: [],
+    AgentRun: [],
+    AgentRunStep: [],
+    AgentApproval: [],
+    AgentWorkflowRun: [],
+    AgentSchedule: [],
+    AgentEvent: [],
 };
 const TABLES = Object.keys(OWNED_COLUMNS);
 
@@ -162,6 +181,152 @@ export async function ensureAgentCenterSchema() {
             "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
     `);
+
+    // ── Fase 2 ──
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "AgentToolGrant" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "installationId" TEXT NOT NULL,
+            tool TEXT NOT NULL,
+            mode TEXT NOT NULL DEFAULT 'read',
+            "grantedBy" TEXT,
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE ("installationId", tool)
+        )
+    `);
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "AgentTask" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "installationId" TEXT NOT NULL,
+            "siteId" TEXT,
+            kind TEXT NOT NULL DEFAULT 'goal',
+            title TEXT,
+            input JSONB NOT NULL DEFAULT '{}'::jsonb,
+            output JSONB,
+            status TEXT NOT NULL DEFAULT 'queued',
+            priority INT NOT NULL DEFAULT 5,
+            attempts INT NOT NULL DEFAULT 0,
+            "maxAttempts" INT NOT NULL DEFAULT 3,
+            "leaseUntil" TIMESTAMPTZ,
+            "dueAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            "parentTaskId" TEXT,
+            "delegationChain" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+            "workflowRunId" TEXT,
+            "requestedBy" TEXT,
+            "idempotencyKey" TEXT UNIQUE,
+            "lastError" TEXT,
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            "finishedAt" TIMESTAMPTZ
+        )
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS "AgentTask_claim_idx" ON "AgentTask" (status, "dueAt", priority)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS "AgentTask_site_idx" ON "AgentTask" ("siteId", "createdAt" DESC)`);
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "AgentRun" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "taskId" TEXT NOT NULL,
+            "installationId" TEXT,
+            "siteId" TEXT,
+            status TEXT NOT NULL DEFAULT 'running',
+            model TEXT,
+            provider TEXT,
+            "inputTokens" INT NOT NULL DEFAULT 0,
+            "outputTokens" INT NOT NULL DEFAULT 0,
+            "costUsd" NUMERIC(14,6) NOT NULL DEFAULT 0,
+            steps INT NOT NULL DEFAULT 0,
+            error TEXT,
+            "startedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            "finishedAt" TIMESTAMPTZ
+        )
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS "AgentRun_task_idx" ON "AgentRun" ("taskId")`);
+    await db.query(`CREATE INDEX IF NOT EXISTS "AgentRun_started_idx" ON "AgentRun" ("startedAt" DESC)`);
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "AgentRunStep" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "runId" TEXT NOT NULL,
+            seq INT NOT NULL,
+            kind TEXT NOT NULL,
+            tool TEXT,
+            args JSONB,
+            result JSONB,
+            ok BOOLEAN NOT NULL DEFAULT true,
+            "latencyMs" INT,
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS "AgentRunStep_run_idx" ON "AgentRunStep" ("runId", seq)`);
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "AgentApproval" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "taskId" TEXT,
+            "runId" TEXT,
+            "installationId" TEXT,
+            "siteId" TEXT,
+            tool TEXT NOT NULL,
+            args JSONB NOT NULL DEFAULT '{}'::jsonb,
+            hash TEXT NOT NULL,
+            risk TEXT NOT NULL,
+            summary TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            "decidedBy" TEXT,
+            "decidedAt" TIMESTAMPTZ,
+            "decisionNote" TEXT,
+            result JSONB,
+            "expiresAt" TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '7 days',
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS "AgentApproval_status_idx" ON "AgentApproval" (status, "createdAt" DESC)`);
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "AgentWorkflowRun" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "workflowKey" TEXT NOT NULL,
+            "siteId" TEXT,
+            "installationId" TEXT,
+            trigger TEXT NOT NULL DEFAULT 'manual',
+            input JSONB NOT NULL DEFAULT '{}'::jsonb,
+            status TEXT NOT NULL DEFAULT 'running',
+            report JSONB,
+            "aiSummary" TEXT,
+            "aiNote" TEXT,
+            "scheduleId" TEXT,
+            "requestedBy" TEXT,
+            "idempotencyKey" TEXT UNIQUE,
+            error TEXT,
+            "startedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            "finishedAt" TIMESTAMPTZ
+        )
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS "AgentWorkflowRun_site_idx" ON "AgentWorkflowRun" ("siteId", "startedAt" DESC)`);
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "AgentSchedule" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "workflowKey" TEXT NOT NULL,
+            "siteId" TEXT NOT NULL,
+            cadence TEXT NOT NULL,
+            input JSONB NOT NULL DEFAULT '{}'::jsonb,
+            enabled BOOLEAN NOT NULL DEFAULT true,
+            "nextRunAt" TIMESTAMPTZ,
+            "lastRunAt" TIMESTAMPTZ,
+            "lastRunId" TEXT,
+            "createdBy" TEXT,
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "AgentEvent" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            type TEXT NOT NULL,
+            "siteId" TEXT,
+            payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+            "processedAt" TIMESTAMPTZ,
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS "AgentEvent_pending_idx" ON "AgentEvent" ("processedAt", "createdAt")`);
 
     _ready = true;
 }

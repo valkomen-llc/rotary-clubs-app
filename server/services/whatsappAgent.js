@@ -209,7 +209,8 @@ async function generateAgentReply({ clubId, contact, messageText, agent, connect
 
     try {
         const reply = await withTimeout(
-            routeToModel(agent.modelSlug || 'gemini-2.5-flash', systemPrompt, userPrompt, history),
+            // v4.1316 — Consumo de IA: atribuido al agente de WhatsApp del sitio.
+            routeToModel(agent.modelSlug || 'gemini-2.5-flash', systemPrompt, userPrompt, history, { feature: 'whatsapp.agent', siteId: clubId }),
             25000, 'agente'
         );
         const text = (reply || '').trim();

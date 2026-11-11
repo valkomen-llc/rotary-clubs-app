@@ -5,6 +5,7 @@
  */
 
 import db from './db.js';
+import { recordAiUsage, usageFromResponse } from './aiUsage.js';
 
 // ── Providers ────────────────────────────────────────────────────────────────
 
@@ -113,7 +114,7 @@ function describeEmpty(modelId, finishReason, data) {
     return `${modelId} devolvió una respuesta vacía (finishReason=${finishReason || 'desconocido'}).`;
 }
 
-async function callGemini({ modelId, apiKey, systemPrompt, userPrompt, history, maxTokens, maxInputChars, notes }) {
+async function callGemini({ modelId, apiKey, systemPrompt, userPrompt, history, maxTokens, maxInputChars, notes, meter = {} }) {
     const key = apiKey || process.env.GEMINI_API_KEY;
     if (!key) throw new Error('Gemini API Key no configurada');
 
@@ -206,7 +207,7 @@ async function callGemini({ modelId, apiKey, systemPrompt, userPrompt, history, 
             // la primera pierde el resto del texto.
             const rawText = (candidate?.content?.parts || []).map(p => p?.text || '').join('') || '';
             console.log(`[Gemini] model=${id} status=${res.status} finishReason=${finishReason} chars=${rawText.length} raw100=${rawText.slice(0,100)}`);
-            if (res.ok && rawText.trim()) return rawText;
+            if (res.ok && rawText.trim()) { Object.assign(meter, { model: id, ...usageFromResponse('google', data) }); return rawText; }
             if (res.ok) {
                 // UNA RESPUESTA VACÍA NO ES UN ÉXITO. Hasta v4.890 se devolvía
                 // el texto vacío como si fuera la respuesta del modelo: la
@@ -236,7 +237,7 @@ async function callGemini({ modelId, apiKey, systemPrompt, userPrompt, history, 
     throw new Error(`Error al conectar con Gemini. Último error: ${lastError}`);
 }
 
-async function callOpenAI({ modelId, apiKey, systemPrompt, userPrompt, history, maxTokens }) {
+async function callOpenAI({ modelId, apiKey, systemPrompt, userPrompt, history, maxTokens, meter = {} }) {
     const key = apiKey || process.env.OPENAI_API_KEY;
     if (!key) throw new Error('OpenAI API Key no configurada');
 
@@ -269,10 +270,11 @@ async function callOpenAI({ modelId, apiKey, systemPrompt, userPrompt, history, 
     // Una respuesta vacía no es un éxito, igual que en Gemini: quien llama
     // fallaría después al leer algo que nunca existió.
     if (!texto.trim()) throw new Error(`OpenAI devolvió una respuesta vacía (finishReason=${data.choices?.[0]?.finish_reason || 'desconocido'}).`);
+    Object.assign(meter, { model: modelId, ...usageFromResponse('openai', data) });
     return texto;
 }
 
-async function callAnthropic({ modelId, apiKey, systemPrompt, userPrompt, history, maxTokens }) {
+async function callAnthropic({ modelId, apiKey, systemPrompt, userPrompt, history, maxTokens, meter = {} }) {
     const key = apiKey || process.env.ANTHROPIC_API_KEY;
     if (!key) throw new Error('Anthropic API Key no configurada');
 
@@ -296,10 +298,11 @@ async function callAnthropic({ modelId, apiKey, systemPrompt, userPrompt, histor
     });
     const data = await res.json();
     if (!res.ok) throw new Error(describeProviderFailure('anthropic', res.status, data.error?.message || ''));
+    Object.assign(meter, { model: modelId, ...usageFromResponse('anthropic', data) });
     return data.content?.[0]?.text || '';
 }
 
-async function callMistral({ modelId, apiKey, systemPrompt, userPrompt, history, maxTokens }) {
+async function callMistral({ modelId, apiKey, systemPrompt, userPrompt, history, maxTokens, meter = {} }) {
     const key = apiKey || process.env.MISTRAL_API_KEY;
     if (!key) throw new Error('Mistral API Key no configurada');
 
@@ -319,10 +322,11 @@ async function callMistral({ modelId, apiKey, systemPrompt, userPrompt, history,
     });
     const data = await res.json();
     if (!res.ok) throw new Error(describeProviderFailure('mistral', res.status, data.error?.message || ''));
+    Object.assign(meter, { model: modelId, ...usageFromResponse('openai', data) });
     return data.choices?.[0]?.message?.content || '';
 }
 
-async function callCustom({ modelId, apiKey, baseUrl, systemPrompt, userPrompt, history, maxTokens }) {
+async function callCustom({ modelId, apiKey, baseUrl, systemPrompt, userPrompt, history, maxTokens, meter = {} }) {
     if (!baseUrl) throw new Error('baseUrl requerida para modelos custom');
 
     const headers = { 'Content-Type': 'application/json' };
@@ -343,6 +347,7 @@ async function callCustom({ modelId, apiKey, baseUrl, systemPrompt, userPrompt, 
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error?.message || 'Error Custom API');
+    Object.assign(meter, { model: modelId, ...usageFromResponse('openai', data) });
     return data.choices?.[0]?.message?.content || '';
 }
 
@@ -472,7 +477,14 @@ async function callModel(slug, systemPrompt, userPrompt, history, options) {
     // Descifrar API key si está guardada en BD
     const apiKey = config.api_key_enc ? decryptKey(config.api_key_enc) : null;
 
-    return await handler({
+    // v4.1316 — Consumo de IA: cada llamada deja su fila (tokens, costo
+    // estimado, latencia, éxito). `meter` lo llena el proveedor; medir nunca
+    // rompe lo medido (recordAiUsage no lanza y tiene tope de tiempo).
+    const meter = { provider: config.provider, model: config.model_id };
+    const t0 = Date.now();
+    try {
+        const out = await handler({
+        meter,
         modelId: config.model_id,
         apiKey,
         baseUrl: config.base_url,
@@ -486,7 +498,13 @@ async function callModel(slug, systemPrompt, userPrompt, history, options) {
         // Cuánto contexto de ENTRADA se conserva, y dónde anotar si se recortó.
         maxInputChars: options.maxInputChars || null,
         notes: Array.isArray(options.notes) ? options.notes : null,
-    });
+        });
+        await recordAiUsage({ ...meter, latencyMs: Date.now() - t0, ok: true, feature: options.feature, siteId: options.siteId });
+        return out;
+    } catch (err) {
+        await recordAiUsage({ ...meter, latencyMs: Date.now() - t0, ok: false, error: err?.message, feature: options.feature, siteId: options.siteId });
+        throw err;
+    }
 }
 
 /**

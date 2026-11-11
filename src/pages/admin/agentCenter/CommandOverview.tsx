@@ -11,6 +11,8 @@ interface Overview {
     settings: { killSwitch: boolean };
     recentAudit: AuditEntry[];
     migratedNow: { templatesCreated: number; installationsCreated: number } | null;
+    runtime: { tasks: Record<string, number>; pendingApprovals: number; runs30d: Record<string, number>; activeSchedules: number };
+    usage30d: { calls: number; costUsd: number; errors: number };
 }
 
 export default function CommandOverview({ meta, onNavigate }: { meta: Meta; onNavigate: (s: string) => void }) {
@@ -47,6 +49,15 @@ export default function CommandOverview({ meta, onNavigate }: { meta: Meta; onNa
                 <Kpi label="Activos" value={(st.active || 0) + (st.running || 0)} hint="con herramientas y motor" />
                 <Kpi label="Solo perfil" value={st.profile_only || 0} hint="conversan, no ejecutan" />
                 <Kpi label="Tipos de sitio integrados" value={`${data.siteTypes.enabled.length}/${data.siteTypes.total}`} />
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+                <Kpi label="Tareas pendientes" value={(data.runtime.tasks.queued || 0) + (data.runtime.tasks.running || 0)} />
+                <Kpi label="Completadas" value={data.runtime.tasks.succeeded || 0} />
+                <Kpi label="Fallidas" value={(data.runtime.tasks.dead || 0) + (data.runtime.tasks.failed || 0)} />
+                <Kpi label="Aprobaciones pendientes" value={data.runtime.pendingApprovals} hint={data.runtime.pendingApprovals ? 'esperan una decisión' : ''} />
+                <Kpi label="Programaciones activas" value={data.runtime.activeSchedules} />
+                <Kpi label="Consumo IA (30 días)" value={`US$ ${Number(data.usage30d.costUsd || 0).toFixed(2)}`} hint={`${data.usage30d.calls || 0} llamadas · estimado`} />
             </div>
 
             <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">

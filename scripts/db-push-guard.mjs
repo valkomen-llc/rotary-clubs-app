@@ -164,6 +164,12 @@
 // AgentSiteTypePolicy y AgentSetting — qué agentes existen, cada versión
 // publicada, dónde trabaja cada uno, con qué tipos de sitio se integran y quién
 // cambió qué: perderlas deja a los sitios sin agentes y sin historial.
+// Y las ocho del runtime de agentes (v4.1316): AgentToolGrant, AgentTask,
+// AgentRun, AgentRunStep, AgentApproval, AgentWorkflowRun, AgentSchedule y
+// AgentEvent — la cola, cada ejecución paso a paso, lo que una persona aprobó
+// con su huella y los informes de los workflows. Y las tres del Consumo de IA:
+// AiUsageEvent, AiUsageDaily y AiModelPrice — cada llamada a un modelo y su
+// costo estimado: perderlas es perder la medición del gasto.
 // Y la traza de cada mensaje entrante de WhatsApp (v4.1285):
 // WhatsAppInboundTrace — el recorrido de cada «Hola» de punta a punta y la
 // única evidencia de qué conversaciones quedaron sin respuesta.

@@ -8,7 +8,7 @@
 // ════════════════════════════════════════════════════════════════════
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Bot, LayoutDashboard, Users, Globe2, PlugZap, Download, ShieldCheck, Settings2 } from 'lucide-react';
+import { Bot, LayoutDashboard, Users, Globe2, PlugZap, Download, ShieldCheck, Settings2, ListChecks, CheckSquare, Workflow, Gauge } from 'lucide-react';
 import AdminLayout from '../../../components/admin/AdminLayout';
 import { acApi } from './agentCenterApi';
 import type { Meta } from './agentCenterApi';
@@ -20,6 +20,10 @@ import InstallationsTab from './InstallationsTab';
 import ImportTab from './ImportTab';
 import GovernanceTab from './GovernanceTab';
 import SettingsTab from './SettingsTab';
+import TasksTab from './TasksTab';
+import ApprovalsTab from './ApprovalsTab';
+import WorkflowsTab from './WorkflowsTab';
+import UsageTab from './UsageTab';
 
 export interface SectionDef { key: string; label: string; icon: React.ElementType; group: string }
 
@@ -27,6 +31,10 @@ export const SECTIONS: SectionDef[] = [
     { key: 'resumen', label: 'Resumen', icon: LayoutDashboard, group: 'Command Center' },
     { key: 'agentes', label: 'Agentes', icon: Users, group: 'Command Center' },
     { key: 'instalaciones', label: 'Instalaciones', icon: PlugZap, group: 'Command Center' },
+    { key: 'workflows', label: 'Workflows', icon: Workflow, group: 'Operación' },
+    { key: 'tareas', label: 'Tareas', icon: ListChecks, group: 'Operación' },
+    { key: 'aprobaciones', label: 'Aprobaciones', icon: CheckSquare, group: 'Operación' },
+    { key: 'consumo', label: 'Consumo de IA', icon: Gauge, group: 'Operación' },
     { key: 'tipos', label: 'Tipos de sitio', icon: Globe2, group: 'Gobierno' },
     { key: 'importar', label: 'Importar', icon: Download, group: 'Gobierno' },
     { key: 'gobierno', label: 'Auditoría', icon: ShieldCheck, group: 'Gobierno' },
@@ -37,6 +45,10 @@ function SectionBody({ section, meta, onNavigate }: { section: string; meta: Met
     switch (section) {
         case 'agentes': return <RegistryTab meta={meta} />;
         case 'instalaciones': return <InstallationsTab meta={meta} />;
+        case 'workflows': return <WorkflowsTab meta={meta} />;
+        case 'tareas': return <TasksTab meta={meta} />;
+        case 'aprobaciones': return <ApprovalsTab meta={meta} />;
+        case 'consumo': return <UsageTab />;
         case 'tipos': return <SiteTypesTab meta={meta} />;
         case 'importar': return <ImportTab meta={meta} />;
         case 'gobierno': return <GovernanceTab meta={meta} />;
