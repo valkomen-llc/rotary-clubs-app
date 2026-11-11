@@ -13,6 +13,7 @@ import {
     agencyRawUrl, agencyCuratedEntry, draftFromAgencyMarkdown, parseAgentMarkdown, slugify, siteTypeAllows,
 } from './agentRegistrySpec.js';
 import { AGENT_SKILLS_BUNDLE } from './agentSkillsBundle.js';
+import { resetVectorStatus } from './brainVector.js';
 
 const asJson = (v) => JSON.stringify(v ?? null);
 const actorOf = (user) => ({ id: user?.id || user?.userId || null, role: user?.role || null });
@@ -61,6 +62,7 @@ export async function saveSettings(input, user) {
         [asJson(after), actorOf(user).id]
     );
     await audit(user, { entityType: 'setting', entityId: 'platform', action: 'setting_changed', before, after });
+    if (before.vectorSearch !== after.vectorSearch) resetVectorStatus();
     return after;
 }
 

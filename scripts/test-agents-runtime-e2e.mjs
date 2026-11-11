@@ -26,7 +26,7 @@ const rejects = async (p, re, m) => { await assert.rejects(p, re, m); n++; };
 const admin = { id: 'admin-1', role: 'administrator' };
 
 // ── Base mínima ──────────────────────────────────────────────────────
-const drop = ['AgentRollout', 'AgentRolloutTarget', 'AgentTemplate', 'AgentTemplateVersion', 'AgentSkill', 'AgentInstallation', 'AgentAuditLog', 'AgentSiteTypePolicy', 'AgentSetting', 'AgentToolGrant', 'AgentTask', 'AgentRun', 'AgentRunStep', 'AgentApproval', 'AgentWorkflowRun', 'AgentSchedule', 'AgentEvent', 'AiUsageEvent', 'AiUsageDaily', 'AiModelPrice', 'Agent', 'Club', 'User', 'Post', 'Project', 'CalendarEvent', 'EventRegistration', 'EventCompletedRegistration', 'ProjectFairSubmission', 'SeoAudit', 'SeoIssue'];
+const drop = ['AgentAlert', 'BrainMemoryVector', 'BrainMemory', 'Brain', 'LedgerLine', 'LedgerTransaction', 'AgentRollout', 'AgentRolloutTarget', 'AgentTemplate', 'AgentTemplateVersion', 'AgentSkill', 'AgentInstallation', 'AgentAuditLog', 'AgentSiteTypePolicy', 'AgentSetting', 'AgentToolGrant', 'AgentTask', 'AgentRun', 'AgentRunStep', 'AgentApproval', 'AgentWorkflowRun', 'AgentSchedule', 'AgentEvent', 'AiUsageEvent', 'AiUsageDaily', 'AiModelPrice', 'Agent', 'Club', 'User', 'Post', 'Project', 'CalendarEvent', 'EventRegistration', 'EventCompletedRegistration', 'ProjectFairSubmission', 'SeoAudit', 'SeoIssue'];
 for (const t of drop) await db.query(`DROP TABLE IF EXISTS "${t}" CASCADE`);
 await db.query(`CREATE TABLE "Club" (id TEXT PRIMARY KEY, name TEXT, type TEXT DEFAULT 'club', subdomain TEXT, domain TEXT, logo TEXT, status TEXT DEFAULT 'active', district TEXT, city TEXT, country TEXT, "districtId" TEXT)`);
 await db.query(`CREATE TABLE "User" (id TEXT PRIMARY KEY, name TEXT, email TEXT, role TEXT, "clubId" TEXT)`);
@@ -62,7 +62,7 @@ const gateway = async (req) => {
 };
 
 // ── 1. Pilotos instalados ────────────────────────────────────────────
-eq((await RT.seedPilotTemplates(admin)).created, 6, 'se crean las seis plantillas piloto (borrador)');
+eq((await RT.seedPilotTemplates(admin)).created, 7, 'se crean las siete plantillas piloto (borrador)');
 eq((await RT.seedPilotTemplates(admin)).created, 0, 'idempotente');
 const tpl = async (key) => (await db.query(`SELECT id FROM "AgentTemplate" WHERE key = $1`, [key])).rows[0].id;
 for (const k of ['pilot-validacion-inscripciones', 'pilot-evaluacion-postulaciones', 'pilot-comunicaciones']) await R.publishVersion(await tpl(k), 'v1', admin);
@@ -143,7 +143,7 @@ await R.updateInstallation(iReg, { budget: { monthlyUsd: 0.01 } }, admin);
 await U.recordAiUsage({ provider: 'openai', model: 'gpt-4o', inputTokens: 1_000_000, outputTokens: 0, ok: true }, { installationId: iReg, siteId: D, feature: 'agents' });
 const t2 = await RT.enqueueTask({ installationId: iReg, goal: 'Otra revisión' });
 await RT.executeTask((await RT.claimTaskById(t2.id))[0], { gateway });
-ok(/Presupuesto mensual agotado/.test((await RT.getTask(t2.id)).lastError), 'presupuesto agotado: no se gasta más');
+ok(/Presupuesto mensual del agente agotado/.test((await RT.getTask(t2.id)).lastError), 'presupuesto agotado: no se gasta más (y se dice cuál tope)');
 await R.updateInstallation(iReg, { budget: { monthlyUsd: null } }, admin);
 await R.saveSettings({ killSwitch: true }, admin);
 const t3 = await RT.enqueueTask({ installationId: iReg, goal: 'Con interruptor' });
@@ -237,6 +237,84 @@ await install('pilot-formulacion-proyectos', D, 'uD');
 script = [{ text: JSON.stringify({ title: 'Agua segura', problem: 'Sin agua potable', objectives: ['Instalar filtros'], beneficiaries: '120 familias', activities: ['Instalación'], indicators: [{ name: 'Familias con filtro', target: '120' }], budgetOutline: 'USD 15.000', risks: ['Mantenimiento'], missingInfo: ['¿Quién mantiene los filtros?'] }), toolCalls: [], usage: {}, model: 'mock-model' }];
 const wf1 = await RT.runWorkflow({ workflowKey: 'project_formulation', siteId: D, input: { idea: 'Llevar agua potable a 120 familias de una vereda con filtros comunitarios.' }, user: admin, gateway });
 ok(wf1.run.report.draft?.title === 'Agua segura' && wf1.run.report.check.missing.length > 0, 'formulación: borrador estructurado y lo que falta');
+
+// ── 11. Fase 4: revisión financiera (sólo lectura) ───────────────────
+await db.query(`CREATE TABLE "LedgerTransaction" (id TEXT PRIMARY KEY, kind TEXT, "clubId" TEXT, currency TEXT, "sourceType" TEXT, "sourceRef" TEXT, reverses TEXT, "occurredAt" TIMESTAMPTZ DEFAULT NOW(), "postedAt" TIMESTAMPTZ DEFAULT NOW(), meta JSONB)`);
+await db.query(`CREATE TABLE "LedgerLine" (id TEXT PRIMARY KEY, "transactionId" TEXT, "accountId" TEXT, "clubId" TEXT, account TEXT, currency TEXT, minor BIGINT, basis TEXT DEFAULT 'real', meta JSONB, "createdAt" TIMESTAMPTZ DEFAULT NOW())`);
+await db.query(`INSERT INTO "LedgerTransaction" (id, kind, "clubId", currency, "sourceType", "sourceRef") VALUES ('tx-ok', 'aporte', $1, 'COP', 's', '1'), ('tx-bad', 'aporte', $1, 'COP', 's', '2'), ('tx-rev', 'reverso', $1, 'COP', 's', '3'), ('tx-otro', 'aporte', $2, 'COP', 's', '4')`, [D, OTHER]);
+await db.query(`UPDATE "LedgerTransaction" SET reverses = 'tx-inexistente' WHERE id = 'tx-rev'`);
+await db.query(`INSERT INTO "LedgerLine" (id, "transactionId", "accountId", "clubId", account, currency, minor) VALUES
+  ('l1', 'tx-ok', 'a', $1, 'caja', 'COP', 1000), ('l2', 'tx-ok', 'b', $1, 'aportes', 'COP', -1000),
+  ('l3', 'tx-bad', 'a', $1, 'caja', 'COP', 1000), ('l4', 'tx-bad', 'b', $1, 'aportes', 'COP', -900),
+  ('l5', 'tx-otro', 'a', $2, 'caja', 'COP', 50)`, [D, OTHER]);
+const ledgerBefore = (await db.query(`SELECT COUNT(*)::int AS n, SUM(minor)::bigint AS s FROM "LedgerLine"`)).rows[0];
+const wfin = await RT.runWorkflow({ workflowKey: 'finance_review', siteId: D, user: admin, gateway });
+const fk = wfin.run.report.findings.map(f => `${f.kind}:${f.ref}`);
+ok(fk.includes('unbalanced:tx-bad') && fk.includes('orphan_reversal:tx-rev') && fk.includes('paid_without_support:R-3'), 'descuadre, reverso huérfano y pago sin soporte, cada uno con su referencia');
+ok(!fk.includes('unbalanced:tx-otro'), 'NO ve el libro mayor de otro sitio');
+eq((await db.query(`SELECT COUNT(*)::int AS n, SUM(minor)::bigint AS s FROM "LedgerLine"`)).rows[0], ledgerBefore, 'el libro mayor queda INTACTO (sólo lectura)');
+
+// ── 12. Fase 4: alertas, presupuestos y retención ────────────────────
+const OB = await import(`${REPO}/server/lib/agentObservability.js`);
+await R.updateInstallation(iReg, { budget: { monthlyUsd: 1 } }, admin);
+const c1 = await OB.computeAlerts();
+ok(c1.opened >= 1 && (await OB.listAlerts({})).some(a => a.kind === 'budget_exhausted' && a.installationId === iReg), 'presupuesto agotado: se abre la alerta');
+eq((await OB.computeAlerts()).opened, 0, 'la misma condición no abre otra alerta');
+await R.updateInstallation(iReg, { budget: { monthlyUsd: null } }, admin);
+await OB.computeAlerts();
+ok(!(await OB.listAlerts({})).some(a => a.dedupeKey === `budget:installation:${iReg}`), 'si la condición desaparece, la alerta se resuelve sola');
+for (let i = 0; i < 6; i++) await db.query(`INSERT INTO "AgentRun" ("taskId", "installationId", "siteId", status) VALUES ('t-err', $1, $2, $3)`, [iComms, D, i < 4 ? 'failed' : 'succeeded']);
+await OB.computeAlerts();
+const errAl = (await OB.listAlerts({ siteId: D })).find(a => a.kind === 'error_rate');
+ok(errAl && /4 de 6/.test(errAl.message), 'muchas ejecuciones fallidas: alerta con el detalle');
+await OB.setAlertStatus(errAl.id, 'acknowledged', admin);
+eq((await OB.listAlerts({ siteId: D })).find(a => a.id === errAl.id).status, 'acknowledged', 'se reconoce');
+await OB.saveBudgets({ sites: { [D]: 0.0001 } }, admin);
+const tb = await RT.enqueueTask({ installationId: iComms, goal: 'Algo con tope del sitio' });
+await RT.executeTask((await RT.claimTaskById(tb.id))[0], { gateway });
+ok(/del sitio agotado/.test((await RT.getTask(tb.id)).lastError), 'el presupuesto del SITIO detiene el gasto');
+await OB.saveBudgets({ sites: { [D]: 0 } }, admin);
+await db.query(`INSERT INTO "AgentRun" (id, "taskId", "installationId", status, "startedAt") VALUES ('run-viejo', 't-v', $1, 'succeeded', NOW() - INTERVAL '400 days')`, [iComms]);
+await db.query(`INSERT INTO "AgentRunStep" ("runId", seq, kind) VALUES ('run-viejo', 1, 'model')`);
+const MEM = await import(`${REPO}/server/lib/agentMemory.js`);
+const pur = await MEM.purgeOperationalMemory({ retentionDays: 180 });
+ok(pur.runs >= 1 && pur.steps >= 1, 'la retención borra las ejecuciones viejas y sus pasos');
+ok((await db.query(`SELECT 1 FROM "AgentRun" WHERE id = 'run-viejo'`)).rows.length === 0, '…y sólo las viejas');
+
+// ── 13. Fase 4: conocimiento por alcances y pgvector ─────────────────
+await db.query(`CREATE TABLE "Brain" (id TEXT PRIMARY KEY, kind TEXT DEFAULT 'CLUB', name TEXT, "identityPrompt" TEXT, "clubId" TEXT UNIQUE, "districtId" TEXT UNIQUE, "isMaster" BOOLEAN DEFAULT false, "memoryCount" INT DEFAULT 0, metadata JSONB DEFAULT '{}', dossier TEXT, "dossierMeta" JSONB DEFAULT '{}', "dossierUpdatedAt" TIMESTAMPTZ, "createdAt" TIMESTAMPTZ DEFAULT NOW(), "updatedAt" TIMESTAMPTZ DEFAULT NOW())`);
+await db.query(`CREATE TABLE "BrainMemory" (id TEXT PRIMARY KEY, "brainId" TEXT, kind TEXT, "sourceId" TEXT, "sourceType" TEXT, title TEXT, content TEXT, embedding DOUBLE PRECISION[] DEFAULT '{}', metadata JSONB DEFAULT '{}', "clubId" TEXT, "districtId" TEXT, "createdAt" TIMESTAMPTZ DEFAULT NOW(), "updatedAt" TIMESTAMPTZ DEFAULT NOW())`);
+await db.query(`INSERT INTO "Brain" (id, kind, name, "clubId", "isMaster") VALUES ('b-master', 'MASTER', 'Maestro', NULL, true), ('b-d', 'CLUB', 'Distrito', $1, false), ('b-o', 'CLUB', 'Otro', $2, false)`, [D, OTHER]);
+const vec = (hot) => `{${Array.from({ length: 768 }, (_, i) => (i === hot ? 1 : 0.001)).join(',')}}`;
+await db.query(`INSERT INTO "BrainMemory" (id, "brainId", kind, "sourceType", "sourceId", title, content, embedding, "clubId") VALUES
+  ('m-global', 'b-master', 'DOC', 'doc', 'g1', 'Guía global de imagen', 'Lineamientos de marca', $1, NULL),
+  ('m-d', 'b-d', 'POST', 'post', 'p1', 'Conferencia del distrito', 'La conferencia será en Pasto', $2, $4),
+  ('m-o', 'b-o', 'POST', 'post', 'p2', 'Secreto del club otro', 'Dato privado', $3, $5),
+  ('m-copia', 'b-master', 'POST', 'post', 'p2', 'Secreto del club otro', 'Dato privado', $3, $5),
+  ('m-huerfana', 'b-master', 'POST', 'post', 'p9', 'Copia sin original', 'x', $3, $5)`, [vec(1), vec(2), vec(3), D, OTHER]);
+const BV = await import(`${REPO}/server/lib/brainVector.js`);
+const ens = await BV.ensureVectorSupport();
+ok(ens.ok, 'pgvector disponible en la base de prueba');
+await R.saveSettings({ vectorSearch: true }, admin);
+const bf = await BV.backfillVectors({ limit: 100 });
+eq([bf.copied, bf.pending], [5, 0], 'los 5 vectores se indexan en la tabla lateral');
+const qv = Array.from({ length: 768 }, (_, i) => (i === 3 ? 1 : 0.001));
+const plain = await BV.vectorSearch({ brainId: 'b-master', qVec: qv, k: 5 });
+eq(plain[0].memory.id, 'm-copia', 'sin recorte, la más parecida primero (ordena la base)');
+ok(!('embedding' in plain[0].memory), 'el vector no viaja en la respuesta');
+const scoped = await BV.vectorSearch({ brainId: 'b-master', qVec: qv, k: 5, scopeWhere: MEM.GLOBAL_ONLY });
+eq(scoped.map(r => r.memory.id), ['m-global'], 'con el recorte global, la copia privada de otro club NO aparece');
+const fakeSearch = async ({ brainId, scopeWhere }) => (await BV.vectorSearch({ brainId, qVec: qv, k: 5, scopeWhere })) || [];
+const know = await MEM.searchKnowledgeForSite(D, 'conferencia', { search: fakeSearch });
+ok(know.some(r => r.title === 'Conferencia del distrito' && r.scope === 'sitio') && know.some(r => r.scope === 'global'), 'el agente de un sitio ve su cerebro y lo global');
+ok(!know.some(r => /Secreto/.test(r.title)), '…y nunca lo de otro club');
+ok(know.every(r => r.source.type && r.source.id), 'cada resultado trae su fuente');
+const pv = await MEM.purgeMasterPrivateCopies({ dryRun: true });
+eq([pv.removable, pv.keptWithoutOriginal], [1, 1], 'sólo la copia con original es removible');
+const pd = await MEM.purgeMasterPrivateCopies({ dryRun: false });
+ok(pd.removed === 1 && (await db.query(`SELECT 1 FROM "BrainMemory" WHERE id = 'm-huerfana'`)).rows.length === 1, 'se quita la copia; la que no tiene original se conserva');
+await R.saveSettings({ vectorSearch: false }, admin);
+eq(await BV.vectorSearch({ brainId: 'b-master', qVec: qv, k: 5 }), null, 'apagado, el camino vectorial cede a la búsqueda de siempre');
 
 await db.pool.end();
 console.log(`✓ test-agents-runtime-e2e: ${n} comprobaciones`);

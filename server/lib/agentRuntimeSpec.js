@@ -109,6 +109,8 @@ export const TOOL_CATALOG = [
     { key: 'seo_latest_audit', module: 'seo', risk: 'N0', team: 'comunicaciones', description: 'Último resultado del SEO Inteligente del sitio: puntaje y problemas abiertos.', parameters: obj({}) },
     { key: 'content_create_news_draft', module: 'news', risk: 'N1', team: 'comunicaciones', description: 'Crea una noticia en BORRADOR (nunca publicada) para que una persona la revise.', parameters: obj({ title: { type: 'string' }, content: { type: 'string', description: 'Cuerpo en HTML simple o texto.' } }, ['title', 'content']) },
     { key: 'content_publish_news', module: 'news', risk: 'N3', team: 'comunicaciones', description: 'Publica una noticia que está en borrador. SIEMPRE requiere aprobación humana.', parameters: obj({ postId: { type: 'string' } }, ['postId']) },
+    { key: 'knowledge_search', module: 'intelligence', risk: 'N0', team: null, description: 'Busca en el conocimiento autorizado del sitio (su cerebro, el de su distrito y lo global de la plataforma). Cada resultado trae su fuente.', parameters: obj({ query: { type: 'string' } }, ['query']) },
+    { key: 'finance_review', module: 'finance', risk: 'N0', team: 'finanzas', description: 'Revisión financiera de SÓLO LECTURA del sitio: transacciones descuadradas del libro mayor, reversos huérfanos y pagos sin soporte.', parameters: obj({}) },
     { key: 'delegate_task', module: 'agents', risk: 'N1', team: null, description: 'Encarga una tarea a otro agente instalado en el mismo ámbito.', parameters: obj({ targetTemplateKey: { type: 'string', description: 'Clave de la plantilla del agente destinatario.' }, goal: { type: 'string' } }, ['targetTemplateKey', 'goal']) },
 ];
 export const TOOL_KEYS = TOOL_CATALOG.map(t => t.key);
@@ -335,7 +337,27 @@ WORKFLOWS.district_report = {
     never: ['Publicar el informe sin validación'],
     inputs: { days: 'período en días (por omisión 90)' },
 };
+WORKFLOWS.finance_review = {
+    key: 'finance_review', label: 'Revisión financiera (sólo lectura)', team: 'finanzas', pilot: false,
+    triggers: ['manual', 'schedule'],
+    steps: ['Leer el libro mayor de la Bóveda y los pagos del sitio (N0)', 'Transacciones descuadradas, reversos huérfanos, pagos sin soporte', 'Informe con la referencia de cada caso', 'Resumen con IA (opcional)', 'Tesorería registra la resolución'],
+    never: ['Modificar saldos o el libro mayor', 'Confirmar o reembolsar pagos'],
+    inputs: {},
+};
 export const WORKFLOW_KEYS = Object.keys(WORKFLOWS);
+
+/**
+ * Hallazgos financieros a partir de filas YA leídas (puro). Cada hallazgo cita
+ * su referencia: id de la transacción o del pago.
+ */
+export function reviewFinance({ unbalanced = [], orphanReversals = [], paidWithoutSupport = [] } = {}) {
+    const f = [];
+    for (const t of unbalanced) f.push({ severity: 'high', kind: 'unbalanced', ref: t.id, evidence: `La transacción ${t.kind || ''} (${t.currency}) no cuadra: la suma de sus líneas es ${Number(t.total) / 100} en lugar de 0.` });
+    for (const t of orphanReversals) f.push({ severity: 'medium', kind: 'orphan_reversal', ref: t.id, evidence: `Reversa una transacción que no existe (${t.reverses}).` });
+    for (const p of paidWithoutSupport) f.push({ severity: 'medium', kind: 'paid_without_support', ref: p.ref || p.id, evidence: `${p.source}: figura «${p.status}» por ${p.amount ?? '—'} sin pago de Stripe, comprobante ni fecha de pago.` });
+    const order = { high: 0, medium: 1, low: 2 };
+    return f.sort((a, b) => order[a.severity] - order[b.severity]);
+}
 
 // ── Chequeos deterministas de los workflows 1 y 7 ─────────────────────
 const IDEA_CHECKS = [
@@ -373,6 +395,12 @@ export function reviewSiteHealth({ site = {}, newsLast60 = 0, upcomingEvents = 0
 
 /** Plantillas por defecto de los pilotos (se crean como borrador en el registro). */
 export const PILOT_TEMPLATES = [
+    {
+        key: 'pilot-revision-financiera', team: 'finanzas', level: 'site', allowedSiteTypes: [],
+        name: 'Revisión financiera', role: 'Detecta inconsistencias del libro mayor y de los pagos, sin tocar nada',
+        tools: [['site_context', 'read'], ['finance_review', 'read']],
+        prompt: 'Eres el agente de Revisión financiera de un sitio rotario. Trabajas en SÓLO LECTURA: recibes hallazgos ya calculados del libro mayor de la Bóveda y de los pagos (transacciones descuadradas, reversos huérfanos, pagos sin soporte) y los explicas a tesorería por orden de importancia, citando la referencia de cada caso y proponiendo qué verificar. Nunca modificas saldos, ni confirmas, ni reembolsas pagos.',
+    },
     {
         key: 'pilot-formulacion-proyectos', team: 'proyectos', level: 'site', allowedSiteTypes: [],
         name: 'Formulación de proyectos', role: 'Ayuda a clubes y distritos a estructurar proyectos de servicio',

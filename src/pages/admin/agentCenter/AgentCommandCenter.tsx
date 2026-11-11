@@ -8,7 +8,7 @@
 // ════════════════════════════════════════════════════════════════════
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Bot, LayoutDashboard, Users, Globe2, PlugZap, Download, ShieldCheck, Settings2, ListChecks, CheckSquare, Workflow, Gauge, Rocket, Network } from 'lucide-react';
+import { Bot, LayoutDashboard, Users, Globe2, PlugZap, Download, ShieldCheck, Settings2, ListChecks, CheckSquare, Workflow, Gauge, Rocket, Network, Activity, Database } from 'lucide-react';
 import AdminLayout from '../../../components/admin/AdminLayout';
 import { acApi } from './agentCenterApi';
 import type { Meta } from './agentCenterApi';
@@ -27,6 +27,8 @@ import UsageTab from './UsageTab';
 import DeploymentsTab from './DeploymentsTab';
 import NetworkTab from './NetworkTab';
 import SiteOverview from './SiteOverview';
+import ObservabilityTab from './ObservabilityTab';
+import KnowledgeTab from './KnowledgeTab';
 
 export interface SectionDef { key: string; label: string; icon: React.ElementType; group: string; site?: boolean; platform?: boolean }
 
@@ -40,6 +42,8 @@ export const SECTIONS: SectionDef[] = [
     { key: 'tareas', label: 'Tareas', icon: ListChecks, group: 'Operación', site: true },
     { key: 'aprobaciones', label: 'Aprobaciones', icon: CheckSquare, group: 'Operación', site: true },
     { key: 'consumo', label: 'Consumo de IA', icon: Gauge, group: 'Operación', site: true },
+    { key: 'observabilidad', label: 'Observabilidad', icon: Activity, group: 'Operación', site: true },
+    { key: 'conocimiento', label: 'Conocimiento', icon: Database, group: 'Gobierno', site: true },
     { key: 'tipos', label: 'Tipos de sitio', icon: Globe2, group: 'Gobierno' },
     { key: 'importar', label: 'Importar', icon: Download, group: 'Gobierno' },
     { key: 'gobierno', label: 'Auditoría', icon: ShieldCheck, group: 'Gobierno' },
@@ -56,6 +60,8 @@ function SectionBody({ section, meta, onNavigate }: { section: string; meta: Met
         case 'tareas': return <TasksTab meta={meta} />;
         case 'aprobaciones': return <ApprovalsTab meta={meta} />;
         case 'consumo': return <UsageTab scope={meta.scope} />;
+        case 'observabilidad': return <ObservabilityTab meta={meta} />;
+        case 'conocimiento': return <KnowledgeTab meta={meta} />;
         case 'tipos': return <SiteTypesTab meta={meta} />;
         case 'importar': return <ImportTab meta={meta} />;
         case 'gobierno': return <GovernanceTab meta={meta} />;

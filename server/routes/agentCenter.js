@@ -19,6 +19,9 @@ import { isPlatformAdmin, isSiteManager } from '../lib/agentScope.js';
 import * as R from '../lib/agentRegistryStore.js';
 import * as RT from '../lib/agentRuntimeStore.js';
 import * as RO from '../lib/agentRolloutStore.js';
+import * as OB from '../lib/agentObservability.js';
+import * as MEM from '../lib/agentMemory.js';
+import { ALERT_KINDS } from '../lib/agentObservabilitySpec.js';
 import db from '../lib/db.js';
 import { usageSummary, recentUsageEvents, currentPrices, savePrice, FEATURE_LABELS } from '../lib/aiUsage.js';
 import { TOOL_CATALOG, RISK, GRANT_MODES, PROHIBITED, WORKFLOWS, TASK_STATES, AGENT_EVENT_TYPES, describeCadence } from '../lib/agentRuntimeSpec.js';
@@ -30,7 +33,7 @@ import { MODULES } from '../lib/rbacSpec.js';
 
 const router = express.Router();
 
-console.log('[agent-center] v4.1317.0 — registro, runtime, despliegues por oleadas, mapa y vista por sitio');
+console.log('[agent-center] v4.1318.0 — registro, runtime, despliegues, mapa, vista por sitio, memoria por alcances y observabilidad');
 
 function resolveScope(req, res, next) {
     if (isPlatformAdmin(req.user)) { req.acScope = { platform: true, siteId: null }; return next(); }
@@ -70,6 +73,7 @@ router.get('/meta', wrap(async (req, res) => {
         risk: RISK, grantModes: GRANT_MODES, prohibited: PROHIBITED, workflows: WORKFLOWS, taskStates: TASK_STATES,
         eventTypes: AGENT_EVENT_TYPES, featureLabels: FEATURE_LABELS,
         teamPresets: TEAM_PRESETS, rolloutStates: ROLLOUT_STATES, defaultWaves: DEFAULT_WAVES,
+        alertKinds: ALERT_KINDS,
     });
 }));
 
@@ -157,6 +161,28 @@ router.get('/network', wrap(async (req, res) => {
     res.json(buildNetwork({ teams: TEAMS, templates: tpls, installations, grants, catalog: TOOL_CATALOG, moduleLabels: { ...moduleLabels, agents: 'Agentes IA' } }));
 }));
 
+// ── Memoria y observabilidad (Fase 4) ──
+router.get('/memory', wrap(async (req, res) => res.json(await MEM.memoryOverview({ siteId: req.acScope.platform ? null : req.acScope.siteId }))));
+router.post('/memory/vector/enable', platformOnly, wrap(async (req, res) => {
+    const ensured = await MEM.ensureVectorSupport();
+    if (!ensured.ok) return res.status(409).json({ error: ensured.reason });
+    await R.saveSettings({ vectorSearch: true }, req.user);
+    res.json({ ...ensured, backfill: await MEM.backfillVectors({ limit: 3000 }), status: await MEM.vectorStatus({ fresh: true }) });
+}));
+router.post('/memory/vector/disable', platformOnly, wrap(async (req, res) => { await R.saveSettings({ vectorSearch: false }, req.user); res.json({ status: await MEM.vectorStatus({ fresh: true }) }); }));
+router.post('/memory/vector/backfill', platformOnly, wrap(async (req, res) => res.json(await MEM.backfillVectors({ limit: 3000 }))));
+router.post('/memory/purge-master', platformOnly, wrap(async (req, res) => {
+    const dryRun = req.body?.confirm !== 'LIMPIAR';
+    const r = await MEM.purgeMasterPrivateCopies({ dryRun });
+    if (!dryRun) await R.audit(req.user, { entityType: 'memory', entityId: 'master', action: 'setting_changed', after: { purgedMasterCopies: r.removed } });
+    res.json(r);
+}));
+router.get('/alerts', wrap(async (req, res) => res.json({ alerts: await OB.listAlerts({ status: req.query.status ?? 'open', siteId: siteOf(req, req.query.siteId) }) })));
+router.post('/alerts/compute', platformOnly, wrap(async (req, res) => res.json(await OB.computeAlerts())));
+router.get('/analytics', wrap(async (req, res) => res.json(await OB.agentAnalytics({ days: Number(req.query.days) || 30, siteId: siteOf(req, req.query.siteId) }))));
+router.get('/budgets', platformOnly, wrap(async (req, res) => res.json(await OB.getBudgets())));
+router.put('/budgets', platformOnly, wrap(async (req, res) => res.json(await OB.saveBudgets(req.body || {}, req.user))));
+
 router.get('/audit', platformOnly, wrap(async (req, res) => res.json({ entries: await R.listAudit({ limit: Number(req.query.limit) || 100, entityId: req.query.entityId || null }) })));
 
 // ── Paramétricas ───────────────────────────────────────────────────────
@@ -223,6 +249,13 @@ router.get('/rollouts/:id', platformOnly, wrap(async (req, res) => res.json(awai
 router.post('/rollouts/:id/advance', platformOnly, wrap(async (req, res) => res.json(await RO.advanceRollout(req.params.id, { confirmCount: req.body?.confirmCount ?? null, force: Boolean(req.body?.force) }, req.user))));
 router.post('/rollouts/:id/pause', platformOnly, wrap(async (req, res) => res.json(await RO.pauseRollout(req.params.id, req.user))));
 router.post('/rollouts/:id/rollback', platformOnly, wrap(async (req, res) => res.json(await RO.rollbackRollout(req.params.id, req.user))));
+
+router.post('/alerts/:id/status', wrap(async (req, res) => {
+    const a = (await OB.listAlerts({ status: '', siteId: null, limit: 300 })).find(x => x.id === req.params.id);
+    if (!a) throw new R.RegistryError('Alerta no encontrada.', 404);
+    ownOr404(req, a.siteId);
+    res.json(await OB.setAlertStatus(req.params.id, String(req.body?.status || ''), req.user));
+}));
 
 router.get('/sites/:id/managers', wrap(async (req, res) => { ownOr404(req, req.params.id); res.json({ users: await R.siteManagers(req.params.id) }); }));
 router.get('/skills/:key', platformOnly, wrap(async (req, res) => res.json(await R.getSkill(req.params.key))));

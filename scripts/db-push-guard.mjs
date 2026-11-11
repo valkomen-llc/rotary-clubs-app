@@ -173,6 +173,10 @@
 // Y las dos de los despliegues de agentes (v4.1317): AgentRollout y
 // AgentRolloutTarget — qué se desplegó, a qué sitios, en qué oleada y qué se
 // instaló en cada uno: sin ellas no se puede revertir exactamente un despliegue.
+// Y la de las alertas de los agentes (v4.1318): AgentAlert. Y la tabla lateral
+// de vectores de los Cerebros, BrainMemoryVector (sólo existe si se activa
+// pgvector): se reconstruye desde BrainMemory, pero su borrado deja a los
+// agentes con la búsqueda clásica hasta reindexar.
 // Y la traza de cada mensaje entrante de WhatsApp (v4.1285):
 // WhatsAppInboundTrace — el recorrido de cada «Hola» de punta a punta y la
 // única evidencia de qué conversaciones quedaron sin respuesta.

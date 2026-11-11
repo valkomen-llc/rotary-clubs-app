@@ -1,3 +1,5 @@
+import { vectorSearch } from '../lib/brainVector.js'; // v4.1318 — búsqueda con pgvector (opt-in)
+import { recordAiUsage } from '../lib/aiUsage.js'; // v4.1318 — Consumo de IA
 // ─────────────────────────────────────────────────────────────────────────────
 // 🧠 BRAIN SERVICE v4.351 — Cerebros IA distribuidos para Club Platform
 //
@@ -93,11 +95,15 @@ export async function embedText(text) {
     };
 
     try {
+        // v4.1318 — con tope de tiempo (antes no tenía) y medido en Consumo de IA.
+        const t0 = Date.now();
         const r = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
+            signal: AbortSignal.timeout(15_000),
         });
+        await recordAiUsage({ provider: 'google', model: EMBED_MODEL, inputTokens: Math.ceil(cleaned.length / 4), outputTokens: 0, latencyMs: Date.now() - t0, ok: r.ok, error: r.ok ? null : `HTTP ${r.status}`, feature: 'brain.embedding' });
         if (!r.ok) {
             const errText = await r.text().catch(() => '');
             console.warn(`[brainService] embed ${r.status}:`, errText.slice(0, 200));
@@ -466,7 +472,11 @@ export async function ingestMemory({
     // Una sola llamada a embed, todos los brains comparten el vector.
     const embedding = await embedText(embedInput);
 
-    const targets = [master, site, district].filter(Boolean);
+    // v4.1318 — EL MAESTRO SÓLO RECIBE LO GLOBAL. Hasta aquí cada memoria de un
+    // club o distrito se copiaba también al maestro, y el maestro terminaba
+    // siendo una copia de lo privado de todos. Lo de un sitio vive en SU
+    // cerebro (y en el de su distrito); la plataforma lo busca ahí.
+    const targets = (clubId || districtId) ? [site, district].filter(Boolean) : [master];
     const results = [];
 
     for (const brain of targets) {
@@ -560,6 +570,12 @@ export function ingestMemorySafe(payload) {
 export async function searchMemories({ brainId, query, k = 8, kind, scopeWhere = null }) {
     if (!(await ensureTables())) return [];
     const qVec = await embedText(query);
+    // v4.1318 — con pgvector activo, ordena la base (índice HNSW) y el recorte de
+    // alcance va en el mismo SQL. Si no está activo o falla: lo de siempre.
+    if (qVec.length > 0) {
+        const v = await vectorSearch({ brainId, qVec, k, kind, scopeWhere });
+        if (v) return v;
+    }
     if (qVec.length === 0) {
         // Sin embedding viable, fallback a búsqueda por LIKE simple.
         const rows = await prisma.brainMemory.findMany({

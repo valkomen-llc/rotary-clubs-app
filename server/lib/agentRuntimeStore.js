@@ -23,6 +23,8 @@ import {
 import { TOOL_EXECUTORS } from './agentToolExecutors.js';
 import { chatWithTools, pickModelSlug } from './agentGateway.js';
 import { withAiContext, monthSpendUsd } from './aiUsage.js';
+import { checkBudgets, computeAlerts } from './agentObservability.js';
+import { purgeOperationalMemory, backfillVectors, vectorStatus } from './agentMemory.js';
 import { isPlatformAdmin, isSiteManager } from './agentScope.js';
 
 const J = (v) => JSON.stringify(v ?? null);
@@ -161,11 +163,9 @@ export async function executeTask(task, { deadline = Date.now() + 120_000, gatew
         return { skipped: 'kill_switch' };
     }
     if (!inst.enabled || state.state === 'disabled') return finishTask(task, 'cancelled', { error: `Agente no disponible: ${state.reason || 'apagado'}` });
-    const budget = Number(inst.budget?.monthlyUsd);
-    if (Number.isFinite(budget) && budget > 0) {
-        const spent = await monthSpendUsd({ installationId: inst.id });
-        if (spent >= budget) return finishTask(task, 'dead', { error: `Presupuesto mensual agotado (${spent.toFixed(2)} de ${budget.toFixed(2)} USD).` });
-    }
+    // v4.1318 — presupuestos de la instalación, del sitio y de la plataforma.
+    const budget = await checkBudgets({ installation: inst });
+    if (!budget.ok) return finishTask(task, 'dead', { error: budget.reason });
 
     const run = (await db.query(`INSERT INTO "AgentRun" ("taskId", "installationId", "siteId") VALUES ($1, $2, $3) RETURNING *`, [task.id, inst.id, inst.siteId])).rows[0];
     return withAiContext({ feature: 'agents', siteId: inst.siteId, installationId: inst.id, runId: run.id, userId: task.requestedBy }, async () => {
@@ -364,6 +364,7 @@ async function pilotInstallation(siteId, templateKey) {
 const PILOT_KEY = {
     event_registration_review: 'pilot-validacion-inscripciones', fair_submission_review: 'pilot-evaluacion-postulaciones', institutional_comms: 'pilot-comunicaciones',
     project_formulation: 'pilot-formulacion-proyectos', site_audit: 'pilot-auditoria-web', district_report: 'pilot-informes-distritales',
+    finance_review: 'pilot-revision-financiera',
 };
 
 async function aiNarrative({ siteId, workflowKey, prompt, data, gateway, maxTokens = 1500 }) {
@@ -371,8 +372,8 @@ async function aiNarrative({ siteId, workflowKey, prompt, data, gateway, maxToke
     if (!installationId) return { text: null, note: `Resumen con IA no disponible: instala y enciende el agente piloto «${PILOT_TEMPLATES.find(p => p.key === PILOT_KEY[workflowKey])?.name}» en este sitio.` };
     const { inst, settings } = await loadInstallationContext(installationId);
     if (settings.killSwitch) return { text: null, note: 'Interruptor general activado: el informe sale sin resumen con IA.' };
-    const budget = Number(inst.budget?.monthlyUsd);
-    if (Number.isFinite(budget) && budget > 0 && (await monthSpendUsd({ installationId })) >= budget) return { text: null, note: 'Presupuesto mensual del agente agotado: el informe sale sin resumen con IA.' };
+    const budget = await checkBudgets({ installation: inst });
+    if (!budget.ok) return { text: null, note: `${budget.reason} El informe sale sin resumen con IA.` };
     try {
         const out = await withAiContext({ feature: 'agents.workflow', siteId, installationId }, async () => gateway({
             slug: await pickModelSlug({ installation: inst, version: { snapshot: inst.snapshot }, settings }),
@@ -444,7 +445,12 @@ export async function runWorkflow({ workflowKey, siteId, input = {}, trigger = '
             report = { kind: workflowKey, brief, drafts, tone, newsDraft: draft.ok ? draft.draft : null, publishApprovalId: approval?.id || null };
             ai = { text: null, note: ai.note, installationId: ai.installationId };
         }
-        else if (workflowKey === 'project_formulation') {
+        else if (workflowKey === 'finance_review') {
+            const r = await TOOL_EXECUTORS.finance_review({}, ctx);
+            report = { kind: workflowKey, readOnly: true, findings: r.findings, counts: r.counts };
+            if (r.findings.length) ai = await aiNarrative({ siteId: site.id, workflowKey, gateway, prompt: 'Explica estos hallazgos a tesorería por orden de importancia, citando la referencia de cada caso, y propone qué verificar. No propongas modificar saldos ni confirmar pagos.', data: r });
+            else ai = { text: null, note: 'Sin hallazgos: el libro mayor y los pagos del sitio cuadran.' };
+        } else if (workflowKey === 'project_formulation') {
             const idea = String(input.idea || '').trim();
             if (idea.length < 30) throw new RegistryError('Describe la idea del proyecto en al menos 30 caracteres.', 400);
             const check = reviewProjectIdea(idea);
@@ -628,7 +634,23 @@ export async function tick({ budgetMs = LIMITS.tickBudgetMs, gateway = chatWithT
         }
     }
 
-    // 3. Tareas de agentes.
+    // 3. Mantenimiento: alertas cada 10 min, retención y vectores cada día.
+    try {
+        const m = (await db.query(`SELECT value FROM "AgentSetting" WHERE key = 'maintenance'`)).rows[0]?.value || {};
+        const now = Date.now();
+        const next = { ...m };
+        if (!m.alertsAt || now - Date.parse(m.alertsAt) > 10 * 60_000) { out.alerts = await computeAlerts(); next.alertsAt = new Date().toISOString(); }
+        if (!m.purgeAt || now - Date.parse(m.purgeAt) > 24 * 3_600_000) {
+            out.purged = await purgeOperationalMemory({ retentionDays: settings.retentionDays });
+            if ((await vectorStatus({ fresh: true })).enabled) out.vectors = await backfillVectors({ limit: 2000 });
+            next.purgeAt = new Date().toISOString();
+        }
+        if (next.alertsAt !== m.alertsAt || next.purgeAt !== m.purgeAt) {
+            await db.query(`INSERT INTO "AgentSetting" (key, value, "updatedAt") VALUES ('maintenance', $1::jsonb, NOW()) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, "updatedAt" = NOW()`, [J(next)]);
+        }
+    } catch (e) { out.errors.push(`mantenimiento: ${e.message}`); }
+
+    // 4. Tareas de agentes.
     while (Date.now() < deadline - 15_000) {
         const batch = await claimTasks(3);
         if (!batch.length) break;

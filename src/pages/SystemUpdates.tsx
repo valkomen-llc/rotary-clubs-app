@@ -34,13 +34,34 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1317.0 | 2026-11-11 (AI Agent Command Center: despliegues, mapa y vista por sitio)
+// UI V4.1318.0 | 2026-11-11 (AI Agent Command Center: memoria, observabilidad y revisión financiera)
 // Cache bust: 2026-11-11
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1318.0',
+        title: 'AI Agent Command Center: memoria por alcances, alertas, presupuestos y revisión financiera 🛡️',
+        description: 'Los agentes consultan sólo el conocimiento autorizado de su sitio, con la fuente de cada dato. El cerebro maestro deja de recibir copias de lo privado de cada club. Llegan las alertas automáticas, los presupuestos por sitio y por plataforma, el rendimiento de cada agente, la búsqueda vectorial con pgvector (opcional) y la revisión financiera de sólo lectura.',
+        date: new Date().toISOString(),
+        tags: ['agentes ia', 'memoria', 'cerebros', 'pgvector', 'alertas', 'presupuestos', 'bóveda', 'revisión financiera'],
+        type: 'feature',
+        impact: 'Alta: más aislamiento entre sitios, gasto bajo control y señales tempranas cuando algo falla.',
+        changes: [
+            { type: 'changed', text: 'El cerebro maestro sólo recibe lo global; lo de cada club o distrito vive en su cerebro. «Limpiar el cerebro maestro» quita las copias heredadas que tienen original, sin perder información.' },
+            { type: 'added', text: 'Conocimiento para los agentes: buscan en su sitio, su distrito y lo global, nunca en otro sitio, y citan la fuente.' },
+            { type: 'added', text: 'Búsqueda con pgvector (opcional): más rápida y con el aislamiento en la misma consulta; si se apaga o falla, vuelve la búsqueda de siempre.' },
+            { type: 'added', text: 'Alertas automáticas que se resuelven solas: presupuesto al 80 % y agotado, muchas ejecuciones fallidas, tareas muertas o trabadas, aprobaciones vencidas y un proveedor de IA que rechaza las llamadas.' },
+            { type: 'added', text: 'Presupuestos mensuales de la plataforma y de cada sitio, además del de cada agente.' },
+            { type: 'added', text: 'Rendimiento por agente, por workflow y por sitio: ejecuciones, éxito, tiempo, tokens y costo.' },
+            { type: 'added', text: 'Revisión financiera de sólo lectura: transacciones del libro mayor que no cuadran, reversos huérfanos y pagos sin soporte. No toca saldos.' },
+            { type: 'added', text: 'Retención configurable de la memoria operativa (por omisión 180 días).' },
+            { type: 'fixed', text: 'Los embeddings de los cerebros tienen tope de tiempo y se miden en Consumo de IA.' },
+            { type: 'added', text: 'Pruebas: test:agents:observability (41) y la prueba de punta a punta ampliada (87, con pgvector real).' },
+        ],
+    },
     {
         version: '4.1317.0',
         title: 'AI Agent Command Center: despliegues por oleadas, mapa de agentes y la vista de cada sitio 🚀',
