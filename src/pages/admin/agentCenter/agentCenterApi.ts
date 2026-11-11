@@ -33,7 +33,18 @@ export interface Meta {
     auditActions: Record<string, string>;
     siteTypes: SiteTypeMeta[];
     agency: { owner: string; repo: string; ref: string; license: string };
+    // Fase 2
+    tools: { key: string; module: string; risk: string; team: string | null; description: string }[];
+    risk: Record<string, { label: string; approval: string }>;
+    grantModes: Record<string, string>;
+    prohibited: string[];
+    workflows: Record<string, WorkflowDef>;
+    taskStates: Record<string, string>;
+    eventTypes: Record<string, string>;
+    featureLabels: Record<string, string>;
 }
+
+export interface WorkflowDef { key: string; label: string; team: string; pilot: boolean; triggers: string[]; steps: string[]; never: string[]; inputs: Record<string, string> }
 
 export interface TemplateDraft {
     name?: string; role?: string; description?: string; systemPrompt?: string; greeting?: string;

@@ -356,7 +356,10 @@ export async function listInstallations({ templateId = null, siteId = null, site
     const { rows } = await db.query(
         `SELECT i.*, t.key AS "templateKey", t.team, t.status AS "templateStatus", t.draft->>'name' AS "templateName",
                 t."avatarSeed", t."avatarColor", c.name AS "siteName", c.type AS "siteType", c.subdomain AS "siteSubdomain",
-                v.version AS "versionNumber"
+                v.version AS "versionNumber",
+                (SELECT COUNT(*)::int FROM "AgentToolGrant" g WHERE g."installationId" = i.id) AS "toolCount",
+                (SELECT r.status FROM "AgentRun" r WHERE r."installationId" = i.id ORDER BY r."startedAt" DESC LIMIT 1) AS "lastRunStatus",
+                (SELECT r.error FROM "AgentRun" r WHERE r."installationId" = i.id ORDER BY r."startedAt" DESC LIMIT 1) AS "lastRunError"
            FROM "AgentInstallation" i
            JOIN "AgentTemplate" t ON t.id = i."templateId"
            LEFT JOIN "Club" c ON c.id::text = i."siteId"
@@ -371,7 +374,10 @@ export async function listInstallations({ templateId = null, siteId = null, site
         .filter(r => !siteType || r.siteType === canonicalSiteType(siteType))
         .map(r => {
             const policy = r.scopeType === 'site' ? policies.get(r.siteType) : null;
-            const st = installationState({ installation: r, template: { status: r.templateStatus, team: r.team }, policy, toolCount: 0 });
+            // v4.1316 — con el runtime activo, el estado ve las herramientas
+            // concedidas y la última ejecución (Ejecutando / Con error).
+            const runtime = { available: true, running: r.lastRunStatus === 'running', lastError: r.lastRunStatus === 'failed' ? (r.lastRunError || 'Falló la última ejecución.') : null };
+            const st = installationState({ installation: r, template: { status: r.templateStatus, team: r.team }, policy, toolCount: r.toolCount || 0, runtime });
             return { ...r, state: st.state, stateReason: st.reason };
         });
 }
@@ -453,8 +459,9 @@ export async function updateInstallation(id, input, user) {
         next.modelPolicy = { preferred: input.modelPolicy.preferred ? String(input.modelPolicy.preferred).slice(0, 80) : null };
     }
     if ('budget' in input && input.budget && typeof input.budget === 'object') {
-        const usd = Number(input.budget.monthlyUsd);
-        next.budget = { monthlyUsd: Number.isFinite(usd) && usd >= 0 ? Math.min(usd, 100000) : null };
+        const raw = input.budget.monthlyUsd;
+        const usd = raw == null || raw === '' ? NaN : Number(raw);
+        next.budget = { monthlyUsd: Number.isFinite(usd) && usd > 0 ? Math.min(usd, 100000) : null };
     }
     const { rows } = await db.query(
         `UPDATE "AgentInstallation" SET enabled = $2, "responsibleUserId" = $3, "disabledReason" = $4, overrides = $5::jsonb,

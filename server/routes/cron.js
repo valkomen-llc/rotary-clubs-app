@@ -854,4 +854,26 @@ router.get('/curation-rotation-tick', async (req, res) => {
     }
 });
 
+// ── Vercel Cron: /api/cron/agents-tick ──────────────────────────────────────
+// v4.1316 — AI Agent Command Center. Cada minuto: vence aprobaciones, dispara
+// las programaciones y los eventos de los módulos, y avanza la cola de tareas de
+// los agentes por pasos dentro de 240 s (la función dura 300). Lo que no entra
+// sigue en el tick siguiente: el lease impide que dos ticks tomen la misma tarea.
+router.get('/agents-tick', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        console.warn('[CRON agents-tick] Unauthorized');
+        return res.status(401).json({ error: 'Unauthorized cron trigger' });
+    }
+    try {
+        const { tick } = await import('../lib/agentRuntimeStore.js');
+        const summary = await tick({ budgetMs: 240_000 });
+        console.log(`[CRON agents-tick] tasks=${summary.tasks} schedules=${summary.schedules} events=${summary.events} errors=${summary.errors?.length || 0}${summary.skipped ? ' skipped=' + summary.skipped : ''}`);
+        res.json({ ok: true, ...summary });
+    } catch (e) {
+        console.error('[CRON agents-tick] error:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 export default router;

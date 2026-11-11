@@ -34,13 +34,36 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1315.0 | 2026-11-11 (AI Agent Command Center: registro e integración por tipo de sitio)
+// UI V4.1316.0 | 2026-11-11 (AI Agent Command Center: runtime, aprobaciones, pilotos y Consumo de IA)
 // Cache bust: 2026-11-11
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1316.0',
+        title: 'AI Agent Command Center: los agentes trabajan, con aprobaciones, y el Consumo de IA se mide 📊',
+        description: 'Los agentes ya ejecutan tareas con herramientas reales y permisos por sitio. Las acciones externas esperan una aprobación humana. Llegan los tres pilotos: revisión de inscripciones a eventos, revisión de postulaciones de la Feria y comunicaciones institucionales. Y el nuevo módulo «Consumo de IA» mide cada llamada a un modelo: tokens, costo estimado, errores y quién lo gastó.',
+        date: new Date().toISOString(),
+        tags: ['agentes ia', 'consumo de ia', 'aprobaciones', 'workflows', 'inscripciones', 'feria de proyectos', 'comunicaciones'],
+        type: 'feature',
+        impact: 'Alta: primera vez que los agentes hacen trabajo real y medible, sin decidir solos lo que es de una persona.',
+        changes: [
+            { type: 'added', text: 'Consumo de IA: costo estimado, llamadas, tokens y errores por día, por modelo, por función (agentes, agente de WhatsApp, otros) y por sitio, con llamadas recientes y precios de referencia editables.' },
+            { type: 'added', text: 'Workflows piloto: revisión de inscripciones (sin comprobante, posibles duplicados, pagos que no cuadran, pendientes y datos incompletos), revisión de postulaciones (requisitos e inconsistencias por campo) y comunicaciones (noticia, redes, WhatsApp y correo con revisión de tono). Se ejecutan a mano, a una hora programada o cuando llega una inscripción o una postulación.' },
+            { type: 'added', text: 'Aprobaciones: publicar una noticia y toda acción externa espera la decisión de la plataforma o de quien administra el sitio. Lo aprobado es exactamente lo propuesto.' },
+            { type: 'added', text: 'Tareas: la cola real con el detalle paso a paso de cada ejecución (modelo, herramientas, tokens y costo), cancelar y reintentar.' },
+            { type: 'added', text: 'En cada instalación: herramientas concedidas por nivel de riesgo, presupuesto mensual y «Probar el agente».' },
+            { type: 'improved', text: 'Los agentes con herramientas pasan de «Solo perfil» a «Activo»; la última ejecución muestra «Ejecutando» o «Con error».' },
+            { type: 'added', text: 'Interruptor general y presupuesto por agente, respetados antes de gastar.' },
+            { type: 'added', text: 'Pruebas: test:agents:runtime (112) y test:agents:runtime:e2e (41).' },
+        ],
+        details: [
+            'Los hallazgos de los pilotos los calcula el sistema con reglas verificables; la IA sólo redacta el resumen. Ningún agente confirma pagos, fusiona registros, aprueba proyectos ni publica sin aprobación.',
+            'El costo es una estimación con precios de referencia: la factura real la emite cada proveedor.',
+        ],
+    },
     {
         version: '4.1315.0',
         title: 'AI Agent Command Center: registro de agentes e integración por tipo de sitio 🤖',

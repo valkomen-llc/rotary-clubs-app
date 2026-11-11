@@ -1,3 +1,4 @@
+import { emitAgentEvent } from '../lib/agentEvents.js'; // v4.1316 — eventos para el AI Agent Command Center
 // ════════════════════════════════════════════════════════════════════
 // Inscripciones a un evento — flujo público — v4.983.0
 //
@@ -756,6 +757,8 @@ const saveRegistration = async (req, res, mode) => {
              VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`,
             keys.map(k => withIdentity[k]));
         row = rows[0];
+        // v4.1316 — aviso al AI Agent Command Center (no lanza ni demora).
+        if (row) await emitAgentEvent('event_registration.created', row.clubId, { eventId: row.eventId, registrationId: row.id });
     }
 
     await replaceCompanions(row.id, event.id, companions, {

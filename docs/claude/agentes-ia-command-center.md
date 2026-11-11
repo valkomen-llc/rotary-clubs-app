@@ -120,3 +120,70 @@ plataforma en esta fase.
 Pruebas: `test:agents:registry` (95, sin base, en `prebuild`) y
 `test:agents:registry:e2e` (45, contra un Postgres LOCAL vacío: migración,
 espejo que conserva lo personalizado, tipos de sitio, instalación, importador).
+
+## Fase 2 — Runtime, Model Gateway, aprobaciones, pilotos y Consumo de IA (v4.1316.0)
+
+**Consumo de IA (pedido del cliente: «un módulo de consumo para poder medir»).**
+`server/lib/aiUsage.js`. Cada llamada que pasa por el enrutador (`ai-router.js`,
+instrumentado con un `meter` que llena cada proveedor y que `callModel` registra
+en éxito Y en falla) o por el gateway de agentes deja una fila en `AiUsageEvent`
+y suma en `AiUsageDaily` (día de Bogotá × sitio × proveedor × modelo × función).
+La ATRIBUCIÓN viaja en un AsyncLocalStorage: `withAiContext({feature, siteId,
+installationId, runId})` o, para no reestructurar una ruta, `enterAiContext` al
+inicio del manejador. El costo es ESTIMADO con `AiModelPrice` (editable en el
+panel; `DEFAULT_PRICES` de referencia) y un modelo sin precio se marca, no se
+inventa. **Medir nunca rompe lo medido**: `recordAiUsage` no lanza y tiene tope
+de 1,5 s. Cobertura honesta: lo que llama al proveedor directamente (módulos
+antiguos con `fetch` propio) todavía no se mide, y la pantalla lo dice.
+
+**Model Gateway** (`agentGateway.js`): `chatWithTools` con herramientas para
+Gemini, OpenAI (y compatibles) y Anthropic; las conversiones son puras y
+probadas sin red. Reutiliza `ai_model_configs`, claves cifradas, la cadena de
+respaldo y `describeProviderFailure`. Un modelo elegido a mano (`explicit`) no
+cae a otro. El modelo de una ejecución: instalación → versión → ajuste → el del
+enrutador.
+
+**Runtime** (`agentRuntimeStore.js`, criterio en `agentRuntimeSpec.js`): cola
+`AgentTask` con reclamo `FOR UPDATE SKIP LOCKED` + lease de 90 s, ejecución por
+PASOS (máx. 12 pasos, 4 herramientas por paso) en el cron `agents-tick` (cada
+minuto, 240 s de los 300) y en «Probar agente»; reintentos a 1, 4 y 16 min;
+`AgentRun`/`AgentRunStep` guardan cada paso. Interruptor general y presupuesto
+mensual por instalación (`monthSpendUsd`) se respetan ANTES de gastar.
+
+**Herramientas** (`TOOL_CATALOG` + `agentToolExecutors.js`): N0 lectura, N1
+borrador, N2 interna, N3 externa. Concesión por instalación (`AgentToolGrant`:
+`read` / `draft` / `act_with_approval`); al instalar se conceden las que pide la
+versión. **Ningún esquema tiene `siteId`/`clubId` y ningún ejecutor lo lee de
+`args`**: el alcance es el de la instalación (la prueba de punta a punta pide un
+evento de otro sitio pasando `siteId` y no obtiene nada). Lo prohibido
+(`PROHIBITED`) no tiene herramienta.
+
+**Aprobaciones** (`AgentApproval`): la carga se CONGELA con su huella
+(`approvalHash`, independiente del orden de claves); al aprobar se recalcula y si
+cambió NO se ejecuta; el reclamo es atómico (dos clics no ejecutan dos veces);
+deciden la plataforma o quien administra ESE sitio; vencen a los 7 días.
+
+**Los tres pilotos** (`WORKFLOWS`, definidos en código): los HALLAZGOS son
+deterministas y citan su fila (`reviewRegistrations`: sin comprobante, posible
+duplicado por correo o documento, pago y estado que no cuadran, pendientes hace
+días, datos incompletos; `reviewSubmission`: requisitos e inconsistencias por
+campo; `toneReview`: hablar en nombre de RI, garantías). La IA SÓLO redacta el
+resumen, y sólo si el agente piloto está instalado y encendido en el sitio; sin
+él, el informe sale completo y dice por qué no hay resumen. Comunicaciones crea
+la noticia como BORRADOR y deja «publicar» como aprobación N3. «Crear agentes
+piloto» siembra las tres plantillas como borrador.
+
+**Programaciones y eventos**: `AgentSchedule` con `daily@HH:MM`,
+`weekly@D@HH:MM`, `every@N` (≥ 15) y `event@tipo`, en hora de Bogotá; el tick
+reprograma ANTES de ejecutar. Los módulos emiten con `emitAgentEvent`
+(`agentEvents.js`, liviano, nunca lanza): `event_registration.created`,
+`event_registration.completed`, `fair_submission.created`,
+`content_submission.received`. Idempotencia por programación+hora y por
+evento+programación.
+
+Pantallas nuevas: Workflows, Tareas (detalle paso a paso), Aprobaciones,
+Consumo de IA; en cada instalación, herramientas concedidas, presupuesto y
+«Probar el agente».
+
+Pruebas: `test:agents:runtime` (112, sin base ni red, en `prebuild`) y
+`test:agents:runtime:e2e` (41, Postgres LOCAL y modelo simulado).

@@ -1,3 +1,4 @@
+import { emitAgentEvent } from '../lib/agentEvents.js'; // v4.1316 — eventos para el AI Agent Command Center
 // ════════════════════════════════════════════════════════════════════
 // Postulación de Proyectos — Feria de Proyectos Rotary Colombia
 // v4.592.0 — Módulo completo: wizard público + pago Stripe + TRM oficial
@@ -2280,6 +2281,8 @@ export const insertProjectRow = async ({ cfg, eventId, data, project, registrati
         draft ? 'draft' : 'received',
         registrationId, projectIndex,
     ]);
+    // v4.1316 — aviso al AI Agent Command Center (sólo postulaciones reales).
+    if (rows[0] && !draft) await emitAgentEvent('fair_submission.created', rows[0].clubId, { submissionId: rows[0].id });
     return rows[0];
 };
 

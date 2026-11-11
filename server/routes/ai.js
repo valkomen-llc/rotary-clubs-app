@@ -5,6 +5,7 @@ import { routeToModel, getDefaultModel, BUILTIN_MODELS, encryptKey, decryptKey }
 // esta ruta y el workflow de Solicitudes de contenido.
 import { canReadAgent, isPlatformAdmin, isSiteManager, resolvePublicClub, RELATED_TO_HOST_SQL, createRateLimiter, clientIp, requestHost } from '../lib/agentScope.js';
 import { resolveSiteId } from '../lib/linkRedirectStore.js';
+import { enterAiContext } from '../lib/aiUsage.js';
 import { getToolsForAgent, getToolsSummary, executeTool, getWorkflowSuggestions } from '../lib/agent-tools.js';
 import { ingestMemorySafe } from '../services/brainService.js';
 
@@ -330,6 +331,9 @@ router.post('/agent-chat', authMiddleware, async (req, res) => {
         agentName = 'Asistente';
         agentPersona = 'Eres un asistente amigable del club Rotario. Ayudas con preguntas generales sobre el club, sus proyectos y actividades. Responde siempre en español de forma concisa y profesional.';
     }
+
+    // v4.1316 — Consumo de IA: lo que gaste esta conversación queda atribuido.
+    enterAiContext({ feature: 'agents.chat', siteId: clubId, userId: req.user?.id });
 
     // ── Build rich context from real club data ──
     const clubContext = await buildClubContext(clubId);

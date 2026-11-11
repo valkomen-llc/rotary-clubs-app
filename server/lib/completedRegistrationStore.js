@@ -1,3 +1,4 @@
+import { emitAgentEvent } from './agentEvents.js'; // v4.1316 — eventos para el AI Agent Command Center
 // ════════════════════════════════════════════════════════════════════
 // Inscripciones completadas — acceso a datos — v4.951.0
 //
@@ -317,6 +318,8 @@ export const insertCompleted = async (data) => {
             clean(data.submissionKey, 80) || null,
         ]
     );
+    // v4.1316 — aviso al AI Agent Command Center (no lanza ni demora).
+    if (rows[0]) await emitAgentEvent('event_registration.completed', rows[0].clubId, { eventId: rows[0].eventId, registrationId: rows[0].id });
     return rows[0];
 };
 
