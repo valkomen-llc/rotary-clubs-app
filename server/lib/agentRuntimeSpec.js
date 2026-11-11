@@ -111,6 +111,7 @@ export const TOOL_CATALOG = [
     { key: 'content_publish_news', module: 'news', risk: 'N3', team: 'comunicaciones', description: 'Publica una noticia que está en borrador. SIEMPRE requiere aprobación humana.', parameters: obj({ postId: { type: 'string' } }, ['postId']) },
     { key: 'knowledge_search', module: 'intelligence', risk: 'N0', team: null, description: 'Busca en el conocimiento autorizado del sitio (su cerebro, el de su distrito y lo global de la plataforma). Cada resultado trae su fuente.', parameters: obj({ query: { type: 'string' } }, ['query']) },
     { key: 'finance_review', module: 'finance', risk: 'N0', team: 'finanzas', description: 'Revisión financiera de SÓLO LECTURA del sitio: transacciones descuadradas del libro mayor, reversos huérfanos y pagos sin soporte.', parameters: obj({}) },
+    { key: 'membership_summary', module: 'members', risk: 'N0', team: 'membresia', description: 'Cifras AGREGADAS de los socios del sitio (total, activos, junta, honorarios, altas y bajas de 90 días, perfiles incompletos) y sus hallazgos. Nunca nombres ni datos de una persona.', parameters: obj({}) },
     { key: 'delegate_task', module: 'agents', risk: 'N1', team: null, description: 'Encarga una tarea a otro agente instalado en el mismo ámbito.', parameters: obj({ targetTemplateKey: { type: 'string', description: 'Clave de la plantilla del agente destinatario.' }, goal: { type: 'string' } }, ['targetTemplateKey', 'goal']) },
 ];
 export const TOOL_KEYS = TOOL_CATALOG.map(t => t.key);
@@ -344,6 +345,14 @@ WORKFLOWS.finance_review = {
     never: ['Modificar saldos o el libro mayor', 'Confirmar o reembolsar pagos'],
     inputs: {},
 };
+// Fase 6 (v4.1319) — workflow 5 del catálogo.
+WORKFLOWS.membership_review = {
+    key: 'membership_review', label: 'Membresía: participación y seguimiento', team: 'membresia', pilot: false,
+    triggers: ['manual', 'schedule'],
+    steps: ['Cifras agregadas de los socios del sitio (N0)', 'Hallazgos: junta, tendencia de altas y bajas, perfiles incompletos', 'Propuestas de acción y borrador de mensaje con IA (opcional)', 'La junta del club decide'],
+    never: ['Perfilar o puntuar a una persona', 'Dar de baja o contactar socios', 'Mostrar nombres o datos personales'],
+    inputs: {},
+};
 export const WORKFLOW_KEYS = Object.keys(WORKFLOWS);
 
 /**
@@ -430,6 +439,12 @@ export const PILOT_TEMPLATES = [
         name: 'Evaluación de postulaciones', role: 'Revisa postulaciones de proyectos y prepara observaciones para el comité',
         tools: [['site_context', 'read'], ['fair_submissions_list', 'read'], ['fair_submission_review', 'read']],
         prompt: 'Eres el agente de Evaluación de postulaciones de la Feria de Proyectos. Recibes, por cada postulación, los requisitos cumplidos y faltantes y las inconsistencias detectadas. Escribe para el comité un resumen breve por postulación: qué está completo, qué falta y qué conviene preguntarle al club, citando el campo de donde sale cada observación. No apruebas, no rechazas y no puntúas proyectos: el comité decide.',
+    },
+    {
+        key: 'pilot-membresia', team: 'membresia', level: 'site', allowedSiteTypes: ['club', 'district'],
+        name: 'Membresía', role: 'Lee cifras agregadas de los socios y propone acciones de participación a la junta',
+        tools: [['site_context', 'read'], ['membership_summary', 'read']],
+        prompt: 'Eres el agente de Membresía de un club rotario. Recibes SOLO cifras agregadas de los socios del club (nunca nombres) y hallazgos ya calculados. Propones a la junta, en español claro, de dos a cuatro acciones concretas de participación, retención o invitación, y un borrador breve de mensaje para los socios. No perfilas, no puntúas y no hablas de ninguna persona en particular: las decisiones sobre los socios son de la junta.',
     },
     {
         key: 'pilot-comunicaciones', team: 'comunicaciones', level: 'site', allowedSiteTypes: [],

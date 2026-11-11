@@ -34,7 +34,7 @@ export interface Meta {
     siteTypes: SiteTypeMeta[];
     agency: { owner: string; repo: string; ref: string; license: string };
     // Fase 2
-    tools: { key: string; module: string; risk: string; team: string | null; description: string }[];
+    tools: { key: string; module: string; risk: string; team: string | null; description: string; parameters?: { properties: Record<string, { type: string; description?: string }>; required?: string[] } }[];
     risk: Record<string, { label: string; approval: string }>;
     grantModes: Record<string, string>;
     prohibited: string[];
@@ -49,6 +49,11 @@ export interface Meta {
     rolloutStates: Record<string, string>;
     defaultWaves: { count?: number; percent?: number }[];
     alertKinds: Record<string, { label: string; severity: string }>;
+    // Fases 5–6
+    stepTypes: Record<string, { label: string; help: string }>;
+    maxSteps: number;
+    feedbackVerdicts: Record<string, string>;
+    pilotStates: Record<string, string>;
 }
 
 export interface WorkflowDef { key: string; label: string; team: string; pilot: boolean; triggers: string[]; steps: string[]; never: string[]; inputs: Record<string, string> }

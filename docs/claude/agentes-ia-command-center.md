@@ -283,3 +283,65 @@ maestro, retención) — reemplaza el botón muerto «Vector Memory».
 
 Pruebas: `test:agents:observability` (41, sin base, en `prebuild`) y
 `test:agents:runtime:e2e` ampliada a 87.
+
+## Fases 5–6 — Piloto controlado, constructor visual y Membresía (v4.1319.0)
+
+Con esta entrega el programa por fases queda COMPLETO (0 → 6).
+
+**Opinión por hallazgo** (`AgentFeedback`, una fila por `(workflowRunId,
+findingRef)`): en cada informe terminado, quien lo revisa marca cada hallazgo
+«Útil», «No útil» o «Falso positivo» (vuelve a pulsar para quitar), y también
+el informe completo (`findingRef = 'run'`). Las referencias las da
+`findingsOf(report)` (puro, `agentScaleSpec.js`) y salen del CASO (código de la
+inscripción, referencia de la postulación o de la transacción), no de la
+posición: una opinión no se cruza de hallazgo si el informe se reordena. Sólo se
+califica lo que está en el informe; un sitio sólo califica lo suyo (404).
+
+**Piloto controlado** (`AgentPilot`, sección «Piloto», sólo la plataforma):
+sitios + workflows (del catálogo o del constructor) + fechas + metas
+(`minUseful` 60 %, `maxFalsePositive` 20 %, `minRated` 20, minutos por hallazgo
+a mano). Las métricas se CALCULAN AL LEER (`getPilot`): ejecuciones y éxito,
+hallazgos, calificados, % útiles, % falsos positivos, tiempo ahorrado (útiles ×
+minutos), costo de IA de los sitios del piloto (sólo `feature LIKE 'agents.%'`
+del Consumo de IA: el asistente de noticias no cuenta), costo por sitio y % de
+aprobaciones rechazadas; desglose por sitio y por workflow. `pilotVerdict` dice
+«faltan opiniones», «cumple» o «no cumple»; la DECISIÓN (escalar, ajustar,
+detener) es humana y al concluir se congela con las métricas del día.
+
+**Constructor visual** (`AgentCustomWorkflow` + `AgentCustomWorkflowVersion`,
+sección «Constructor», también para el sitio): pasos LINEALES — herramienta
+N0/N1, agente instalado, condición «terminar si está vacío» y aprobación humana
+para N2/N3 —, máximo 12, sin bucles: `validateDefinition` rechaza leer un paso
+posterior o el propio, una N3 directa, una aprobación de algo N0/N1, la
+delegación y agentes no publicados. Plantillas `{{input.x}}` y
+`{{steps.N.campo}}` (`resolveTemplate`). Borrador → versión publicada
+INMUTABLE. Un sitio crea workflows sólo para sí; la plataforma, para un sitio o
+compartidos con todos (un sitio los ejecuta y programa, no los edita). Con
+disparo programado o por evento y sitio propio, publicar crea o actualiza su
+programación.
+
+El motor (`runCustomWorkflow`) entra por el MISMO `runWorkflow` con la clave
+`custom:<id>`, así que programaciones, eventos, idempotencia, auditoría y
+listados valen igual; y vuelve a comprobar el riesgo de cada paso al ejecutar,
+el interruptor general y los tres presupuestos en cada paso de agente. El sitio
+de la ejecución sale de la sesión o de la programación (`toolCtx`), nunca de un
+paso. Un paso que falla detiene el workflow y el informe guarda lo que alcanzó
+a hacer. Archivar apaga sus programaciones.
+
+**Workflow 5: Membresía** (`membership_review`, herramienta N0
+`membership_summary`, plantilla `pilot-membresia`): SÓLO cifras agregadas de
+`ClubMember` del sitio (total, activos, junta, honorarios, altas y bajas de 90
+días, perfiles sin foto o descripción) y hallazgos de junta, tendencia y
+perfiles. La consulta no lee nombres ni contactos; la prueba verifica que ni el
+informe ni lo que llega al modelo contienen un nombre. La IA propone acciones a
+la junta; nunca perfila, puntúa ni contacta a una persona.
+
+Corregido de paso: el listado de ejecuciones casteaba `report->>'findings'` a
+número y fallaba cuando el informe trae una LISTA (auditoría, finanzas,
+membresía); ahora cuenta la lista. «Revisión financiera» ya no pedía por error
+un id de postulación y tiene su vista de informe.
+
+Pruebas: `test:agents:scale` (58, sin base, en `prebuild`) y
+`test:agents:scale:e2e` (55, base local con modelo simulado). Las de las fases
+anteriores siguen en verde (la de punta a punta del runtime cuenta ahora ocho
+plantillas piloto).

@@ -36,6 +36,14 @@
 // Fase 4 — Observabilidad (v4.1318.0):
 //   AgentAlert   alertas que se abren y se resuelven solas (presupuesto, tasa
 //                de error, tareas muertas o trabadas, proveedor que rechaza).
+//
+// Fases 5–6 — piloto y escalamiento (v4.1319.0):
+//   AgentPilot                  un piloto con nombre: sitios, workflows, fechas,
+//                               metas y su conclusión.
+//   AgentFeedback               la opinión de quien revisó cada hallazgo (útil,
+//                               no útil, falso positivo): la base de las métricas.
+//   AgentCustomWorkflow         un workflow del constructor visual (borrador).
+//   AgentCustomWorkflowVersion  cada versión publicada, inmutable.
 // (La tabla lateral de vectores, "BrainMemoryVector", la crea brainVector.js
 // sólo si se activa pgvector.)
 //
@@ -73,6 +81,11 @@ export const OWNED_COLUMNS = {
     AgentRolloutTarget: [],
     // Fase 4 — observabilidad (v4.1318.0)
     AgentAlert: [],
+    // Fases 5–6 — piloto y constructor (v4.1319.0)
+    AgentPilot: [],
+    AgentFeedback: [],
+    AgentCustomWorkflow: [],
+    AgentCustomWorkflowVersion: [],
 };
 const TABLES = Object.keys(OWNED_COLUMNS);
 
@@ -401,6 +414,68 @@ export async function ensureAgentCenterSchema() {
         )
     `);
     await db.query(`CREATE INDEX IF NOT EXISTS "AgentAlert_status_idx" ON "AgentAlert" (status, "createdAt" DESC)`);
+
+    // ── Fases 5–6 ──
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "AgentPilot" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            name TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'planned',
+            "siteIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+            "workflowKeys" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+            "startsAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            "endsAt" TIMESTAMPTZ,
+            goals JSONB NOT NULL DEFAULT '{}'::jsonb,
+            notes TEXT,
+            conclusion JSONB,
+            "createdBy" TEXT,
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "AgentFeedback" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "workflowRunId" TEXT NOT NULL,
+            "workflowKey" TEXT,
+            "siteId" TEXT,
+            "findingRef" TEXT NOT NULL,
+            verdict TEXT NOT NULL,
+            note TEXT,
+            "userId" TEXT,
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE ("workflowRunId", "findingRef")
+        )
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS "AgentFeedback_site_idx" ON "AgentFeedback" ("siteId", "createdAt" DESC)`);
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "AgentCustomWorkflow" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            name TEXT NOT NULL,
+            description TEXT,
+            team TEXT NOT NULL DEFAULT 'direccion',
+            "siteId" TEXT,
+            draft JSONB NOT NULL DEFAULT '{}'::jsonb,
+            "publishedVersion" INT,
+            status TEXT NOT NULL DEFAULT 'draft',
+            "createdBy" TEXT,
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "AgentCustomWorkflowVersion" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "workflowId" TEXT NOT NULL,
+            version INT NOT NULL,
+            definition JSONB NOT NULL,
+            changelog TEXT,
+            "publishedBy" TEXT,
+            "publishedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE ("workflowId", version)
+        )
+    `);
 
     _ready = true;
 }

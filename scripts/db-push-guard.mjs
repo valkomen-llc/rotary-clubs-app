@@ -177,6 +177,10 @@
 // de vectores de los Cerebros, BrainMemoryVector (sólo existe si se activa
 // pgvector): se reconstruye desde BrainMemory, pero su borrado deja a los
 // agentes con la búsqueda clásica hasta reindexar.
+// Y las cuatro del piloto y el constructor de workflows (v4.1319): AgentPilot,
+// AgentFeedback (la opinión de quien revisó cada hallazgo: sin ella no hay
+// métricas del piloto), AgentCustomWorkflow y AgentCustomWorkflowVersion (cada
+// versión publicada de un workflow del constructor, inmutable).
 // Y la traza de cada mensaje entrante de WhatsApp (v4.1285):
 // WhatsAppInboundTrace — el recorrido de cada «Hola» de punta a punta y la
 // única evidencia de qué conversaciones quedaron sin respuesta.

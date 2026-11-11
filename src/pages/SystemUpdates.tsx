@@ -34,13 +34,31 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1318.0 | 2026-11-11 (AI Agent Command Center: memoria, observabilidad y revisión financiera)
+// UI V4.1319.0 | 2026-11-11 (AI Agent Command Center: piloto controlado, constructor de workflows y Membresía)
 // Cache bust: 2026-11-11
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1319.0',
+        title: 'AI Agent Command Center: piloto controlado, constructor de workflows y Membresía 🧪',
+        description: 'Termina el programa por fases. Quien revisa un informe califica cada hallazgo (útil, no útil o falso positivo) y con eso el piloto se mide solo: tiempo ahorrado, porcentaje útil, falsos positivos, costo por sitio y aprobaciones rechazadas. Llega el constructor visual para armar workflows propios paso a paso, con versiones y aprobación humana, y el workflow de Membresía con cifras agregadas de los socios.',
+        date: new Date().toISOString(),
+        tags: ['agentes ia', 'piloto', 'métricas', 'constructor de workflows', 'membresía', 'aprobaciones'],
+        type: 'feature',
+        impact: 'Alta: se puede medir con datos si los agentes sirven antes de escalarlos, y cada sitio puede automatizar lo suyo sin programar.',
+        changes: [
+            { type: 'added', text: '«¿Te sirvió?» en cada informe: calificar cada hallazgo y el informe completo.' },
+            { type: 'added', text: 'Sección «Piloto»: sitios, workflows, fechas y metas; métricas por sitio y por workflow, veredicto y la decisión del comité (escalar, ajustar o detener), que queda registrada.' },
+            { type: 'added', text: 'Sección «Constructor»: workflows propios con pasos en orden (leer datos, pedirle algo a un agente, detenerse si no hay nada, proponer acciones que una persona aprueba), máximo 12 pasos, cada publicación es una versión que no cambia; se ejecutan, programan y miden como los del catálogo.' },
+            { type: 'added', text: 'Workflow de Membresía: socios activos, junta, altas y bajas de 90 días y perfiles incompletos, sólo en cifras agregadas, con propuestas de acción para la junta. Nunca nombres ni decisiones sobre una persona.' },
+            { type: 'fixed', text: 'El listado de ejecuciones fallaba al contar los hallazgos de la auditoría, la revisión financiera y la membresía.' },
+            { type: 'fixed', text: 'La revisión financiera ya no pide un id de postulación y tiene su propia vista del informe.' },
+            { type: 'added', text: 'Pruebas: test:agents:scale (58) y test:agents:scale:e2e (55).' },
+        ],
+    },
     {
         version: '4.1318.0',
         title: 'AI Agent Command Center: memoria por alcances, alertas, presupuestos y revisión financiera 🛡️',

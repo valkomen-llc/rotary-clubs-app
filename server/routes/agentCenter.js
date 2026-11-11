@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════════
-// AI Agent Command Center — API (/api/agent-center) — v4.1317.0
+// AI Agent Command Center — API (/api/agent-center) — v4.1319.0
 //
 // DOS ALCANCES (Fase 3):
 //   · la plataforma (administrator / superadmin): todo;
@@ -11,6 +11,10 @@
 // concedidas, despliegues, importador, ajustes, auditoría) es sólo de la
 // plataforma (`platformOnly`).
 //
+// Fases 5–6 (v4.1319): los PILOTOS son de la plataforma; calificar hallazgos y
+// el CONSTRUCTOR de workflows, de quien administra el sitio (lo suyo) o de la
+// plataforma (todo, y los workflows compartidos con todos los sitios).
+//
 // ⚠️ Las rutas literales van ANTES que las paramétricas (check:routes).
 // ════════════════════════════════════════════════════════════════════════════
 import express from 'express';
@@ -21,6 +25,8 @@ import * as RT from '../lib/agentRuntimeStore.js';
 import * as RO from '../lib/agentRolloutStore.js';
 import * as OB from '../lib/agentObservability.js';
 import * as MEM from '../lib/agentMemory.js';
+import * as SC from '../lib/agentScaleStore.js';
+import { STEP_TYPES, MAX_STEPS, FEEDBACK_VERDICTS, PILOT_STATES, findingsOf } from '../lib/agentScaleSpec.js';
 import { ALERT_KINDS } from '../lib/agentObservabilitySpec.js';
 import db from '../lib/db.js';
 import { usageSummary, recentUsageEvents, currentPrices, savePrice, FEATURE_LABELS } from '../lib/aiUsage.js';
@@ -33,7 +39,7 @@ import { MODULES } from '../lib/rbacSpec.js';
 
 const router = express.Router();
 
-console.log('[agent-center] v4.1318.0 — registro, runtime, despliegues, mapa, vista por sitio, memoria por alcances y observabilidad');
+console.log('[agent-center] v4.1319.0 — registro, runtime, despliegues, mapa, vista por sitio, memoria, observabilidad, piloto controlado y constructor de workflows');
 
 function resolveScope(req, res, next) {
     if (isPlatformAdmin(req.user)) { req.acScope = { platform: true, siteId: null }; return next(); }
@@ -69,11 +75,12 @@ router.get('/meta', wrap(async (req, res) => {
         teams: TEAMS, templateStates: TEMPLATE_STATES, origins: ORIGINS, levels: LEVELS,
         installationStates: INSTALLATION_STATES, auditActions: AUDIT_ACTIONS, siteTypes: siteTypeCatalog(),
         agency: { owner: AGENCY_SOURCE.owner, repo: AGENCY_SOURCE.repo, ref: AGENCY_SOURCE.ref, license: AGENCY_SOURCE.license },
-        tools: TOOL_CATALOG.map(t => ({ key: t.key, module: t.module, risk: t.risk, team: t.team, description: t.description })),
+        tools: TOOL_CATALOG.map(t => ({ key: t.key, module: t.module, risk: t.risk, team: t.team, description: t.description, parameters: t.parameters })),
         risk: RISK, grantModes: GRANT_MODES, prohibited: PROHIBITED, workflows: WORKFLOWS, taskStates: TASK_STATES,
         eventTypes: AGENT_EVENT_TYPES, featureLabels: FEATURE_LABELS,
         teamPresets: TEAM_PRESETS, rolloutStates: ROLLOUT_STATES, defaultWaves: DEFAULT_WAVES,
         alertKinds: ALERT_KINDS,
+        stepTypes: STEP_TYPES, maxSteps: MAX_STEPS, feedbackVerdicts: FEEDBACK_VERDICTS, pilotStates: PILOT_STATES,
     });
 }));
 
@@ -183,6 +190,12 @@ router.get('/analytics', wrap(async (req, res) => res.json(await OB.agentAnalyti
 router.get('/budgets', platformOnly, wrap(async (req, res) => res.json(await OB.getBudgets())));
 router.put('/budgets', platformOnly, wrap(async (req, res) => res.json(await OB.saveBudgets(req.body || {}, req.user))));
 
+// ── Piloto y constructor (Fases 5–6) ──
+router.get('/pilots', platformOnly, wrap(async (req, res) => res.json({ pilots: await SC.listPilots() })));
+router.post('/pilots', platformOnly, wrap(async (req, res) => res.status(201).json(await SC.savePilot({ ...(req.body || {}), id: null }, req.user))));
+router.get('/custom-workflows', wrap(async (req, res) => res.json({ workflows: await SC.listCustomWorkflows(req.acScope) })));
+router.post('/custom-workflows', wrap(async (req, res) => res.status(201).json(await SC.createCustomWorkflow(req.body || {}, req.acScope, req.user))));
+
 router.get('/audit', platformOnly, wrap(async (req, res) => res.json({ entries: await R.listAudit({ limit: Number(req.query.limit) || 100, entityId: req.query.entityId || null }) })));
 
 // ── Paramétricas ───────────────────────────────────────────────────────
@@ -231,6 +244,12 @@ router.post('/tasks/:id/cancel', wrap(async (req, res) => { ownOr404(req, (await
 router.post('/tasks/:id/retry', wrap(async (req, res) => { ownOr404(req, (await RT.getTask(req.params.id)).siteId); res.json(await RT.retryTask(req.params.id, req.user)); }));
 router.post('/approvals/:id/decide', wrap(async (req, res) => res.json(await RT.decideApproval(req.params.id, req.body?.decision === 'approve' ? 'approve' : 'reject', req.user, req.body?.note || ''))));
 router.get('/workflow-runs/:id', wrap(async (req, res) => { const r = await RT.getWorkflowRun(req.params.id); ownOr404(req, r.siteId); res.json(r); }));
+router.get('/workflow-runs/:id/feedback', wrap(async (req, res) => {
+    const run = await RT.getWorkflowRun(req.params.id);
+    ownOr404(req, run.siteId);
+    res.json({ feedback: await SC.listFeedback(run.id), findings: findingsOf(run.report) });
+}));
+router.post('/workflow-runs/:id/feedback', wrap(async (req, res) => { ownOr404(req, (await RT.getWorkflowRun(req.params.id)).siteId); res.json({ feedback: await SC.saveFeedback(req.params.id, req.body || {}, req.user) }); }));
 router.post('/workflow-runs/:id/validate', wrap(async (req, res) => res.json(await RT.validateWorkflowRun(req.params.id, req.user, req.body?.note || ''))));
 router.put('/schedules/:id', wrap(async (req, res) => {
     const s = (await RT.listSchedules({})).find(x => x.id === req.params.id);
@@ -244,6 +263,14 @@ router.delete('/schedules/:id', wrap(async (req, res) => {
     ownOr404(req, s.siteId);
     res.json(await RT.deleteSchedule(req.params.id, req.user));
 }));
+
+router.get('/pilots/:id', platformOnly, wrap(async (req, res) => res.json(await SC.getPilot(req.params.id))));
+router.put('/pilots/:id', platformOnly, wrap(async (req, res) => res.json(await SC.savePilot({ ...(req.body || {}), id: req.params.id }, req.user))));
+router.post('/pilots/:id/conclude', platformOnly, wrap(async (req, res) => res.json(await SC.concludePilot(req.params.id, req.body || {}, req.user))));
+router.get('/custom-workflows/:id', wrap(async (req, res) => res.json(await SC.getCustomWorkflow(req.params.id, req.acScope))));
+router.put('/custom-workflows/:id', wrap(async (req, res) => res.json(await SC.saveCustomDraft(req.params.id, req.body || {}, req.acScope, req.user))));
+router.post('/custom-workflows/:id/publish', wrap(async (req, res) => res.json(await SC.publishCustomWorkflow(req.params.id, req.body?.changelog || '', req.acScope, req.user))));
+router.delete('/custom-workflows/:id', wrap(async (req, res) => res.json(await SC.archiveCustomWorkflow(req.params.id, req.acScope, req.user))));
 
 router.get('/rollouts/:id', platformOnly, wrap(async (req, res) => res.json(await RO.getRollout(req.params.id))));
 router.post('/rollouts/:id/advance', platformOnly, wrap(async (req, res) => res.json(await RO.advanceRollout(req.params.id, { confirmCount: req.body?.confirmCount ?? null, force: Boolean(req.body?.force) }, req.user))));

@@ -62,7 +62,7 @@ const gateway = async (req) => {
 };
 
 // ── 1. Pilotos instalados ────────────────────────────────────────────
-eq((await RT.seedPilotTemplates(admin)).created, 7, 'se crean las siete plantillas piloto (borrador)');
+eq((await RT.seedPilotTemplates(admin)).created, 8, 'se crean las ocho plantillas piloto (borrador)');
 eq((await RT.seedPilotTemplates(admin)).created, 0, 'idempotente');
 const tpl = async (key) => (await db.query(`SELECT id FROM "AgentTemplate" WHERE key = $1`, [key])).rows[0].id;
 for (const k of ['pilot-validacion-inscripciones', 'pilot-evaluacion-postulaciones', 'pilot-comunicaciones']) await R.publishVersion(await tpl(k), 'v1', admin);
