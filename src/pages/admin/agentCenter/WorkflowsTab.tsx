@@ -51,13 +51,51 @@ function ReportView({ run }: { run: RunFull }) {
             ))}
         </div>
     );
+    if (r.kind === 'project_formulation') return (
+        <div className="space-y-3">
+            {r.check?.missing?.length > 0 && <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2 text-sm text-amber-900">Falta en la idea: {r.check.missing.map((m: any) => m.label).join(' · ')}</div>}
+            {r.draft ? (
+                <div className="bg-white rounded-2xl border border-gray-100 p-4 space-y-2 text-sm">
+                    <p className="font-black text-gray-800">{r.draft.title}</p>
+                    {[['Problema', r.draft.problem], ['Beneficiarios', r.draft.beneficiaries], ['Presupuesto aproximado', r.draft.budgetOutline]].map(([k, v]: any) => v ? <p key={k}><b>{k}:</b> {String(v)}</p> : null)}
+                    {[['Objetivos', r.draft.objectives], ['Actividades', r.draft.activities], ['Riesgos', r.draft.risks], ['Preguntas para el club', r.draft.missingInfo]].map(([k, v]: any) => Array.isArray(v) && v.length ? <div key={k}><b>{k}:</b><ul className="list-disc pl-5">{v.map((x: any, i: number) => <li key={i}>{typeof x === 'string' ? x : JSON.stringify(x)}</li>)}</ul></div> : null)}
+                    {Array.isArray(r.draft.indicators) && r.draft.indicators.length > 0 && <div><b>Indicadores:</b><ul className="list-disc pl-5">{r.draft.indicators.map((x: any, i: number) => <li key={i}>{x.name}{x.target ? ` — meta: ${x.target}` : ''}</li>)}</ul></div>}
+                </div>
+            ) : <p className="text-sm text-gray-600 whitespace-pre-wrap">{r.rawText || 'Sin borrador (el agente de formulación no está instalado o no respondió).'}</p>}
+        </div>
+    );
+    if (r.kind === 'site_audit') return (
+        <div className="bg-white rounded-2xl border border-gray-100 p-4 space-y-2">
+            <p className="text-xs text-gray-500">Noticias (60 días): {r.metrics?.newsLast60} · Eventos próximos: {r.metrics?.upcomingEvents} · Proyectos: {r.metrics?.projects} · SEO: {r.metrics?.seoScore ?? '—'}/100</p>
+            {(r.findings || []).length === 0 ? <p className="text-sm text-emerald-700">Sin hallazgos.</p> : (
+                <table className="w-full text-xs"><tbody>{r.findings.map((f: any, i: number) => (
+                    <tr key={i} className="border-b border-gray-50 align-top"><td className="py-1 pr-2 font-bold">{f.severity === 'high' ? 'Alta' : f.severity === 'medium' ? 'Media' : 'Baja'}</td><td className="py-1 pr-2 text-gray-700">{f.finding}</td><td className="py-1 text-rotary-blue">{f.task}</td></tr>
+                ))}</tbody></table>
+            )}
+        </div>
+    );
+    if (r.kind === 'district_report') return (
+        <div className="space-y-3">
+            <div className="bg-white rounded-2xl border border-gray-100 p-4 text-sm">
+                <p className="text-gray-700"><b>{r.clubs}</b> clubes · <b>{r.totals?.news}</b> noticias publicadas · <b>{r.totals?.events}</b> eventos · <b>{r.totals?.projects}</b> proyectos (últimos {r.days} días)</p>
+                {r.quietClubs?.length > 0 && <p className="text-xs text-amber-700 mt-1">Sin actividad publicada: {r.quietClubs.slice(0, 30).join(', ')}{r.quietClubs.length > 30 ? '…' : ''}</p>}
+                {r.validation ? <p className="text-xs text-emerald-700 mt-2">Validado el {new Date(r.validation.at).toLocaleString('es-CO')}{r.validation.note ? ` — ${r.validation.note}` : ''}</p> : <p className="text-xs text-gray-500 mt-2">BORRADOR: falta la validación del distrito.</p>}
+            </div>
+            <div className="bg-white rounded-2xl border border-gray-100 p-4 overflow-x-auto">
+                <table className="w-full text-xs"><thead><tr className="text-left text-gray-400"><th className="py-1">Club</th><th className="py-1 text-right">Noticias</th><th className="py-1 text-right">Eventos</th><th className="py-1 text-right">Proyectos</th></tr></thead>
+                    <tbody>{(r.perClub || []).map((c: any) => <tr key={c.clubId} className="border-t border-gray-50"><td className="py-1">{c.name}</td><td className="py-1 text-right tabular-nums">{c.news}</td><td className="py-1 text-right tabular-nums">{c.events}</td><td className="py-1 text-right tabular-nums">{c.projects}</td></tr>)}</tbody></table>
+            </div>
+        </div>
+    );
     return <pre className="text-xs whitespace-pre-wrap">{JSON.stringify(r, null, 2)}</pre>;
 }
 
 function RunDetail({ id, onClose }: { id: string; onClose: () => void }) {
     const [run, setRun] = useState<RunFull | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [note, setNote] = useState('');
     useEffect(() => { acApi<RunFull>(`/workflow-runs/${id}`).then(setRun).catch(e => setError(e.message)); }, [id]);
+    const validate = async () => { try { setRun(await acApi<RunFull>(`/workflow-runs/${id}/validate`, { method: 'POST', body: { note } })); } catch (e: any) { setError(e.message); } };
     return (
         <div className="fixed inset-0 z-50 flex justify-end bg-black/40" role="dialog" aria-modal="true" aria-label="Informe del workflow">
             <div className="w-full max-w-3xl h-full bg-gray-50 overflow-y-auto">
@@ -70,6 +108,12 @@ function RunDetail({ id, onClose }: { id: string; onClose: () => void }) {
                     {run?.aiSummary && <div className="bg-white rounded-2xl border border-blue-100 p-4"><p className="text-xs font-bold text-rotary-blue mb-1">Resumen del agente (borrador asistido por IA)</p><p className="text-sm text-gray-800 whitespace-pre-wrap">{run.aiSummary}</p></div>}
                     {run?.aiNote && <p className="text-xs text-gray-500">{run.aiNote}</p>}
                     {run && <ReportView run={run} />}
+                    {run?.workflowKey === 'district_report' && run.status === 'succeeded' && !run.report?.validation && (
+                        <div className="bg-white rounded-2xl border border-emerald-200 p-4 flex flex-wrap gap-2 items-center">
+                            <input aria-label="Nota de validación" className="flex-1 min-w-[200px] px-3 py-2 rounded-xl border border-gray-200 text-sm" placeholder="Nota de validación (opcional)" value={note} onChange={e => setNote(e.target.value)} />
+                            <button type="button" onClick={validate} className="px-3 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold">Validar informe</button>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
@@ -77,13 +121,19 @@ function RunDetail({ id, onClose }: { id: string; onClose: () => void }) {
 }
 
 function RunForm({ wf, meta, onDone }: { wf: WorkflowDef; meta: Meta; onDone: (msg: string) => void }) {
-    const [siteId, setSiteId] = useState('');
+    const [siteId, setSiteId] = useState(meta.scope === 'site' ? (meta.siteId || '') : '');
+    const [idea, setIdea] = useState('');
+    const [days, setDays] = useState('90');
     const [eventId, setEventId] = useState('');
     const [brief, setBrief] = useState('');
     const [cadence, setCadence] = useState('');
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const input = wf.key === 'institutional_comms' ? { brief } : wf.key === 'event_registration_review' ? (eventId ? { eventId } : {}) : (eventId ? { submissionId: eventId } : {});
+    const input = wf.key === 'institutional_comms' ? { brief }
+        : wf.key === 'project_formulation' ? { idea }
+        : wf.key === 'district_report' ? { days: Number(days) || 90 }
+        : wf.key === 'site_audit' ? {}
+        : wf.key === 'event_registration_review' ? (eventId ? { eventId } : {}) : (eventId ? { submissionId: eventId } : {});
     const run = async () => {
         setBusy(true); setError(null);
         try { await acApi('/workflow-runs', { method: 'POST', body: { workflowKey: wf.key, siteId, input } }); onDone('Workflow ejecutado: el informe está en la lista.'); }
@@ -97,13 +147,16 @@ function RunForm({ wf, meta, onDone }: { wf: WorkflowDef; meta: Meta; onDone: (m
     return (
         <div className="space-y-2 border-t border-gray-50 pt-3">
             <ErrorNote message={error} />
-            <SitePicker meta={meta} value={siteId} onChange={id => setSiteId(id)} idPrefix={`wf-${wf.key}`} />
-            {wf.key === 'institutional_comms'
+            {meta.scope === 'platform' && <SitePicker meta={meta} value={siteId} onChange={id => setSiteId(id)} idPrefix={`wf-${wf.key}`} fixedType={wf.key === 'district_report' ? 'district' : undefined} />}
+            {wf.key === 'project_formulation' ? <textarea aria-label="Idea del proyecto" rows={4} className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm" placeholder="Describe la idea: qué problema, a quién beneficia, dónde, cuánto cuesta y en qué plazo" value={idea} onChange={e => setIdea(e.target.value)} />
+            : wf.key === 'district_report' ? <label className="flex items-center gap-2 text-sm text-gray-600">Período <select aria-label="Período" className="px-2 py-1.5 rounded-lg border border-gray-200 text-sm bg-white" value={days} onChange={e => setDays(e.target.value)}><option value="30">30 días</option><option value="90">90 días</option><option value="180">180 días</option><option value="365">1 año</option></select></label>
+            : wf.key === 'site_audit' ? null
+            : wf.key === 'institutional_comms'
                 ? <textarea aria-label="Qué se quiere comunicar" rows={3} className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm" placeholder="Qué se quiere comunicar, para quién y con qué datos" value={brief} onChange={e => setBrief(e.target.value)} />
                 : <input aria-label="Id opcional" className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm" placeholder={wf.key === 'event_registration_review' ? 'Id del evento (opcional: sin él, los eventos con inscripciones)' : 'Id de la postulación (opcional: sin él, todas)'} value={eventId} onChange={e => setEventId(e.target.value)} />}
             <div className="flex flex-wrap gap-2 items-center">
                 <button type="button" disabled={busy || !siteId} onClick={run} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gray-900 text-white text-sm font-bold disabled:opacity-40"><Play className="w-4 h-4" /> Ejecutar ahora</button>
-                {wf.key !== 'institutional_comms' && (
+                {!['institutional_comms', 'project_formulation'].includes(wf.key) && (
                     <>
                         <select aria-label="Programación" className="px-3 py-2 rounded-xl border border-gray-200 text-sm bg-white" value={cadence} onChange={e => setCadence(e.target.value)}>
                             <option value="">Programar…</option>
@@ -138,10 +191,10 @@ export default function WorkflowsTab({ meta }: { meta: Meta }) {
     return (
         <div className="space-y-5">
             <SectionHeader title="Workflows" subtitle="Los tres pilotos. Los hallazgos los calcula el sistema con reglas verificables; el agente piloto, si está instalado en el sitio, sólo redacta el resumen. Nada se publica ni se decide solo."
-                actions={<button type="button" onClick={seed} className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-bold">Crear agentes piloto</button>} />
+                actions={meta.scope === 'platform' ? <button type="button" onClick={seed} className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-bold">Crear agentes piloto</button> : undefined} />
             <ErrorNote message={error} />
             {notice && <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm rounded-xl px-4 py-2.5">{notice}</div>}
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-3">
                 {wfs.map(wf => (
                     <div key={wf.key} className="bg-white rounded-2xl border border-gray-100 p-4 space-y-2 min-w-0">
                         <p className="font-black text-gray-800">{wf.label}</p>

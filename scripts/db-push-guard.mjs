@@ -170,6 +170,9 @@
 // con su huella y los informes de los workflows. Y las tres del Consumo de IA:
 // AiUsageEvent, AiUsageDaily y AiModelPrice — cada llamada a un modelo y su
 // costo estimado: perderlas es perder la medición del gasto.
+// Y las dos de los despliegues de agentes (v4.1317): AgentRollout y
+// AgentRolloutTarget — qué se desplegó, a qué sitios, en qué oleada y qué se
+// instaló en cada uno: sin ellas no se puede revertir exactamente un despliegue.
 // Y la traza de cada mensaje entrante de WhatsApp (v4.1285):
 // WhatsAppInboundTrace — el recorrido de cada «Hola» de punta a punta y la
 // única evidencia de qué conversaciones quedaron sin respuesta.

@@ -81,7 +81,7 @@ export default function TasksTab({ meta }: { meta: Meta }) {
             <SectionHeader title="Tareas" subtitle="La cola real de los agentes. El proceso automático la avanza cada minuto, por pasos, con reintentos (1, 4 y 16 minutos) y un tope de pasos por ejecución."
                 actions={<>
                     <select id="tasks-status" value={status} onChange={e => setStatus(e.target.value)} className="px-3 py-2 rounded-xl border border-gray-200 text-sm bg-white"><option value="">Todos los estados</option>{Object.entries(meta.taskStates).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
-                    <button type="button" disabled={ticking} onClick={tick} className="px-3 py-2 rounded-xl border border-gray-200 text-sm font-bold disabled:opacity-40">{ticking ? 'Procesando…' : 'Procesar ahora'}</button>
+                    {meta.scope === 'platform' && <button type="button" disabled={ticking} onClick={tick} className="px-3 py-2 rounded-xl border border-gray-200 text-sm font-bold disabled:opacity-40">{ticking ? 'Procesando…' : 'Procesar ahora'}</button>}
                 </>} />
             <ErrorNote message={error} />
             {rows === null ? <div className="text-sm text-gray-400">Cargando…</div> : rows.length === 0 ? <EmptyNote>No hay tareas. Prueba un agente desde «Instalaciones» o ejecuta un workflow.</EmptyNote> : (

@@ -313,10 +313,84 @@ export const WORKFLOWS = {
         inputs: { brief: 'qué se quiere comunicar', audience: 'opcional' },
     },
 };
+// Fase 3 (v4.1317) — workflows 1, 7 y 8 del catálogo.
+WORKFLOWS.project_formulation = {
+    key: 'project_formulation', label: 'Formulación de proyectos sociales', team: 'proyectos', pilot: false,
+    triggers: ['manual'],
+    steps: ['Recibir la idea del club', 'Chequeo de lo que falta (beneficiarios, cifras, lugar, plazo, presupuesto, área de interés)', 'Borrador estructurado con IA: objetivos, actividades, indicadores', 'Lista de información faltante', 'El responsable del proyecto decide'],
+    never: ['Aprobar el proyecto', 'Inventar cifras o beneficiarios'],
+    inputs: { idea: 'la idea del proyecto en texto libre' },
+};
+WORKFLOWS.site_audit = {
+    key: 'site_audit', label: 'Auditoría de sitios', team: 'tecnologia', pilot: false,
+    triggers: ['manual', 'schedule'],
+    steps: ['Revisar identidad, contenido reciente, eventos y la última auditoría SEO (N0)', 'Hallazgos priorizados', 'Tareas técnicas propuestas', 'Recomendaciones con IA (opcional)', 'El equipo técnico decide'],
+    never: ['Cambiar el sitio solo'],
+    inputs: {},
+};
+WORKFLOWS.district_report = {
+    key: 'district_report', label: 'Informe distrital', team: 'analitica', pilot: false,
+    triggers: ['manual', 'schedule'],
+    steps: ['Elegir el distrito', 'Consolidar indicadores de sus clubes (N0)', 'Borrador del informe con IA', 'Validación del distrito', 'Documento final validado'],
+    never: ['Publicar el informe sin validación'],
+    inputs: { days: 'período en días (por omisión 90)' },
+};
 export const WORKFLOW_KEYS = Object.keys(WORKFLOWS);
+
+// ── Chequeos deterministas de los workflows 1 y 7 ─────────────────────
+const IDEA_CHECKS = [
+    { key: 'beneficiaries', label: '¿A quién beneficia y cuántas personas?', re: /benefici|famili|niñ|niñ|jóvenes|jovenes|personas|comunidad|estudiantes|madres|adultos mayores/i },
+    { key: 'numbers', label: 'Cifras concretas (cuántos, cuánto)', re: /\d/ },
+    { key: 'place', label: 'Lugar (municipio, vereda, barrio, institución)', re: /municipio|vereda|barrio|ciudad|colegio|escuela|hospital|corregimiento|departamento|comuna/i },
+    { key: 'budget', label: 'Presupuesto estimado', re: /presupuesto|\$|usd|cop|pesos|d[oó]lares/i },
+    { key: 'timeline', label: 'Plazo o cronograma', re: /mes|semana|año|ano|fecha|trimestre|cronograma|plazo/i },
+    { key: 'focus', label: 'Área de interés de Rotary', re: /agua|saneamiento|salud|materna|infantil|educaci|alfabetiz|paz|conflicto|econom|empleo|ambient|enfermedad/i },
+];
+export function reviewProjectIdea(text) {
+    const t = String(text || '');
+    const present = []; const missing = [];
+    for (const c of IDEA_CHECKS) (c.re.test(t) ? present : missing).push({ key: c.key, label: c.label });
+    if (t.trim().length < 200) missing.unshift({ key: 'length', label: 'Una descripción más completa (mínimo 200 caracteres)' });
+    return { present, missing, ready: missing.length === 0 };
+}
+
+/** Hallazgos de la auditoría de un sitio a partir de datos ya leídos. */
+export function reviewSiteHealth({ site = {}, newsLast60 = 0, upcomingEvents = 0, projects = 0, seo = null } = {}) {
+    const f = [];
+    if (!site.domain) f.push({ severity: 'low', area: 'identidad', finding: 'El sitio no tiene dominio propio (usa el subdominio de la plataforma).', task: 'Evaluar un dominio propio para el sitio.' });
+    if (!site.logo) f.push({ severity: 'medium', area: 'identidad', finding: 'El sitio no tiene logotipo cargado.', task: 'Cargar el logotipo en Configuración → Identidad.' });
+    if (newsLast60 === 0) f.push({ severity: 'medium', area: 'contenido', finding: 'No hay noticias publicadas en los últimos 60 días.', task: 'Publicar al menos una noticia al mes.' });
+    if (upcomingEvents === 0) f.push({ severity: 'low', area: 'contenido', finding: 'No hay eventos próximos en el calendario.', task: 'Publicar las próximas reuniones o actividades.' });
+    if (projects === 0) f.push({ severity: 'medium', area: 'contenido', finding: 'El sitio no muestra proyectos.', task: 'Publicar al menos un proyecto de servicio.' });
+    if (!seo) f.push({ severity: 'medium', area: 'seo', finding: 'El sitio no tiene una auditoría de SEO Inteligente.', task: 'Ejecutar la auditoría en SEO Inteligente.' });
+    else {
+        if (Number(seo.criticalCount) > 0) f.push({ severity: 'high', area: 'seo', finding: `La última auditoría SEO tiene ${seo.criticalCount} problemas críticos.`, task: 'Corregir los problemas críticos de SEO Inteligente.' });
+        if (Number(seo.score) > 0 && Number(seo.score) < 60) f.push({ severity: 'medium', area: 'seo', finding: `Puntaje SEO bajo (${seo.score}/100).`, task: 'Revisar las recomendaciones de SEO Inteligente.' });
+    }
+    const order = { high: 0, medium: 1, low: 2 };
+    return f.sort((a, b) => order[a.severity] - order[b.severity]);
+}
 
 /** Plantillas por defecto de los pilotos (se crean como borrador en el registro). */
 export const PILOT_TEMPLATES = [
+    {
+        key: 'pilot-formulacion-proyectos', team: 'proyectos', level: 'site', allowedSiteTypes: [],
+        name: 'Formulación de proyectos', role: 'Ayuda a clubes y distritos a estructurar proyectos de servicio',
+        tools: [['site_context', 'read']],
+        prompt: 'Eres el agente de Formulación de proyectos de un sitio rotario. A partir de la idea de un club, propones un borrador estructurado: problema, objetivos, beneficiarios, actividades, indicadores medibles, presupuesto aproximado y riesgos. Si un dato no está en la idea, NO lo inventas: lo pones en la lista de información faltante. No apruebas proyectos: el responsable decide.',
+    },
+    {
+        key: 'pilot-auditoria-web', team: 'tecnologia', level: 'any', allowedSiteTypes: [],
+        name: 'Auditoría web', role: 'Revisa la calidad de los sitios y propone tareas técnicas priorizadas',
+        tools: [['site_context', 'read'], ['seo_latest_audit', 'read'], ['content_recent', 'read']],
+        prompt: 'Eres el agente de Auditoría web de Club Platform. Recibes hallazgos ya calculados sobre un sitio (identidad, contenido reciente, eventos y SEO). Explícalos en lenguaje sencillo, priorízalos y propone tareas concretas, sin prometer cambios automáticos: el equipo técnico decide.',
+    },
+    {
+        key: 'pilot-informes-distritales', team: 'analitica', level: 'site', allowedSiteTypes: ['district'],
+        name: 'Informes distritales', role: 'Consolida la actividad de los clubes del distrito en un borrador de informe',
+        tools: [['site_context', 'read']],
+        prompt: 'Eres el agente de Informes distritales. Recibes indicadores YA consolidados de los clubes de un distrito. Redacta un borrador de informe en español: resumen ejecutivo, actividad destacada, clubes con poca actividad publicada y recomendaciones. Cada cifra sale de los datos; si falta un dato, dilo. El informe es un BORRADOR hasta que el distrito lo valide.',
+    },
     {
         key: 'pilot-validacion-inscripciones', team: 'eventos', level: 'site', allowedSiteTypes: ['Evento o Convención', 'district', 'club', 'Feria de Proyectos'],
         name: 'Validación de inscripciones', role: 'Revisa inscripciones a eventos y prepara observaciones para el Equipo de Registro',

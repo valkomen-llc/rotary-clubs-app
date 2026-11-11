@@ -42,6 +42,12 @@ export interface Meta {
     taskStates: Record<string, string>;
     eventTypes: Record<string, string>;
     featureLabels: Record<string, string>;
+    // Fase 3
+    scope: 'platform' | 'site';
+    siteId: string | null;
+    teamPresets: Record<string, { label: string; siteTypes: string[]; templates: string[]; help: string; platform?: boolean }>;
+    rolloutStates: Record<string, string>;
+    defaultWaves: { count?: number; percent?: number }[];
 }
 
 export interface WorkflowDef { key: string; label: string; team: string; pilot: boolean; triggers: string[]; steps: string[]; never: string[]; inputs: Record<string, string> }

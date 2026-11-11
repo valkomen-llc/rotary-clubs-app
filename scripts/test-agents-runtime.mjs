@@ -138,7 +138,7 @@ ok(bad.issues.every(i => i.field && i.evidence), 'cada observación nombra el ca
 // ─── 7. Piloto: comunicaciones ────────────────────────────────────────
 ok(!S.toneReview('Rotary International anuncia que el club ganó todo, garantizado.').ok, 'hablar en nombre de RI y garantizar: se marca');
 ok(S.toneReview('El Club Rotario de Pasto entregó 120 filtros de agua a familias de la vereda El Encano, con el apoyo de socios y voluntarios de la comunidad.').ok, 'un texto normal pasa');
-eq(S.WORKFLOW_KEYS, ['event_registration_review', 'fair_submission_review', 'institutional_comms'], 'los tres pilotos');
+ok(['event_registration_review', 'fair_submission_review', 'institutional_comms'].every(k => S.WORKFLOWS[k]?.pilot), 'los tres pilotos');
 ok(S.PILOT_TEMPLATES.every(p => p.tools.every(([t, m]) => S.toolByKey(t) && S.GRANT_MODES[m])), 'los agentes piloto piden herramientas y modos que existen');
 ok(S.PILOT_TEMPLATES.find(p => p.key === 'pilot-comunicaciones').tools.some(([t, m]) => t === 'content_publish_news' && m === 'act_with_approval'), 'el piloto de comunicaciones publica SÓLO con aprobación');
 

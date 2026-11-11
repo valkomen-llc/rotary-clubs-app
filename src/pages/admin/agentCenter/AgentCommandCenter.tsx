@@ -8,7 +8,7 @@
 // ════════════════════════════════════════════════════════════════════
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Bot, LayoutDashboard, Users, Globe2, PlugZap, Download, ShieldCheck, Settings2, ListChecks, CheckSquare, Workflow, Gauge } from 'lucide-react';
+import { Bot, LayoutDashboard, Users, Globe2, PlugZap, Download, ShieldCheck, Settings2, ListChecks, CheckSquare, Workflow, Gauge, Rocket, Network } from 'lucide-react';
 import AdminLayout from '../../../components/admin/AdminLayout';
 import { acApi } from './agentCenterApi';
 import type { Meta } from './agentCenterApi';
@@ -24,17 +24,22 @@ import TasksTab from './TasksTab';
 import ApprovalsTab from './ApprovalsTab';
 import WorkflowsTab from './WorkflowsTab';
 import UsageTab from './UsageTab';
+import DeploymentsTab from './DeploymentsTab';
+import NetworkTab from './NetworkTab';
+import SiteOverview from './SiteOverview';
 
-export interface SectionDef { key: string; label: string; icon: React.ElementType; group: string }
+export interface SectionDef { key: string; label: string; icon: React.ElementType; group: string; site?: boolean; platform?: boolean }
 
 export const SECTIONS: SectionDef[] = [
-    { key: 'resumen', label: 'Resumen', icon: LayoutDashboard, group: 'Command Center' },
+    { key: 'resumen', label: 'Resumen', icon: LayoutDashboard, group: 'Command Center', site: true },
     { key: 'agentes', label: 'Agentes', icon: Users, group: 'Command Center' },
-    { key: 'instalaciones', label: 'Instalaciones', icon: PlugZap, group: 'Command Center' },
-    { key: 'workflows', label: 'Workflows', icon: Workflow, group: 'Operación' },
-    { key: 'tareas', label: 'Tareas', icon: ListChecks, group: 'Operación' },
-    { key: 'aprobaciones', label: 'Aprobaciones', icon: CheckSquare, group: 'Operación' },
-    { key: 'consumo', label: 'Consumo de IA', icon: Gauge, group: 'Operación' },
+    { key: 'instalaciones', label: 'Instalaciones', icon: PlugZap, group: 'Command Center', site: true },
+    { key: 'despliegues', label: 'Despliegues', icon: Rocket, group: 'Command Center' },
+    { key: 'mapa', label: 'Mapa', icon: Network, group: 'Command Center', site: true },
+    { key: 'workflows', label: 'Workflows', icon: Workflow, group: 'Operación', site: true },
+    { key: 'tareas', label: 'Tareas', icon: ListChecks, group: 'Operación', site: true },
+    { key: 'aprobaciones', label: 'Aprobaciones', icon: CheckSquare, group: 'Operación', site: true },
+    { key: 'consumo', label: 'Consumo de IA', icon: Gauge, group: 'Operación', site: true },
     { key: 'tipos', label: 'Tipos de sitio', icon: Globe2, group: 'Gobierno' },
     { key: 'importar', label: 'Importar', icon: Download, group: 'Gobierno' },
     { key: 'gobierno', label: 'Auditoría', icon: ShieldCheck, group: 'Gobierno' },
@@ -44,16 +49,18 @@ export const SECTIONS: SectionDef[] = [
 function SectionBody({ section, meta, onNavigate }: { section: string; meta: Meta; onNavigate: (s: string) => void }) {
     switch (section) {
         case 'agentes': return <RegistryTab meta={meta} />;
+        case 'despliegues': return <DeploymentsTab meta={meta} />;
+        case 'mapa': return <NetworkTab meta={meta} />;
         case 'instalaciones': return <InstallationsTab meta={meta} />;
         case 'workflows': return <WorkflowsTab meta={meta} />;
         case 'tareas': return <TasksTab meta={meta} />;
         case 'aprobaciones': return <ApprovalsTab meta={meta} />;
-        case 'consumo': return <UsageTab />;
+        case 'consumo': return <UsageTab scope={meta.scope} />;
         case 'tipos': return <SiteTypesTab meta={meta} />;
         case 'importar': return <ImportTab meta={meta} />;
         case 'gobierno': return <GovernanceTab meta={meta} />;
         case 'ajustes': return <SettingsTab />;
-        default: return <CommandOverview meta={meta} onNavigate={onNavigate} />;
+        default: return meta.scope === 'site' ? <SiteOverview meta={meta} onNavigate={onNavigate} /> : <CommandOverview meta={meta} onNavigate={onNavigate} />;
     }
 }
 
@@ -61,7 +68,9 @@ export default function AgentCommandCenter() {
     const [params, setParams] = useSearchParams();
     const [meta, setMeta] = useState<Meta | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const section = SECTIONS.some(s => s.key === params.get('s')) ? (params.get('s') as string) : 'resumen';
+    // Un sitio ve sólo sus secciones: lo que gobierna el ecosistema es de la plataforma.
+    const visible = SECTIONS.filter(s => !meta || meta.scope === 'platform' || s.site);
+    const section = visible.some(s => s.key === params.get('s')) ? (params.get('s') as string) : 'resumen';
 
     useEffect(() => {
         acApi<Meta>('/meta').then(setMeta).catch(e => setError(e.message));
@@ -79,12 +88,12 @@ export default function AgentCommandCenter() {
                     <div className="min-w-0">
                         <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400">Sistema · Agentes IA</p>
                         <h1 className="text-2xl md:text-3xl font-black text-gray-800">AI Agent Command Center</h1>
-                        <p className="text-sm text-gray-500">Centro de inteligencia, automatización y coordinación de agentes de Club Platform.</p>
+                        <p className="text-sm text-gray-500">{meta?.scope === 'site' ? 'Los agentes de tu sitio: qué hacen, qué proponen y cuánto consumen.' : 'Centro de inteligencia, automatización y coordinación de agentes de Club Platform.'}</p>
                     </div>
                 </div>
 
                 <nav aria-label="Secciones del Command Center" className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
-                    {SECTIONS.map(s => {
+                    {visible.map(s => {
                         const Icon = s.icon;
                         const on = s.key === section;
                         return (

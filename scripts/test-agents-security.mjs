@@ -90,8 +90,8 @@ const seed = agents.slice(agents.indexOf('const seedAgents'), agents.indexOf("ro
 ok(!/UPDATE "Agent"/.test(seed), 'la siembra NO reescribe agentes existentes (se perdían las ediciones)');
 ok(/continue;/.test(seed), 'la siembra salta los que ya existen');
 const deploy = agents.slice(agents.indexOf("router.post('/deploy-all'"), agents.indexOf('CONVERSATION HISTORY'));
-ok(!/UPDATE "Agent"/.test(deploy), 'desplegar NO pisa lo que el club personalizó');
-ok(/isPlatformAdmin\(req\.user\)/.test(deploy), 'desplegar es de la plataforma');
+ok(!/UPDATE "Agent"/.test(deploy) && !/INSERT INTO "Agent"/.test(deploy), 'desplegar NO copia ni pisa agentes');
+ok(/res\.status\(410\)/.test(deploy), 'v4.1317: «desplegar a todos» se retiró (410); lo reemplazan los Despliegues por oleadas');
 const put = agents.slice(agents.indexOf("router.put('/:id'"), agents.indexOf("router.delete('/:id'"));
 ok(/loadManageable/.test(put), 'S2: editar pasa por canManageAgent');
 const del = agents.slice(agents.indexOf("router.delete('/:id'"), agents.indexOf("router.post('/deploy-all'"));

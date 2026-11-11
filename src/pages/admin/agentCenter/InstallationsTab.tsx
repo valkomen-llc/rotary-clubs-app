@@ -92,7 +92,7 @@ function GrantsEditor({ inst, meta, onError }: { inst: Installation; meta: Meta;
     };
     return (
         <div className="md:col-span-2">
-            <p className="text-xs font-bold text-gray-600 mb-1">Herramientas concedidas</p>
+            <p className="text-xs font-bold text-gray-600 mb-1">Herramientas concedidas{meta.scope === 'site' ? <span className="font-normal text-gray-400"> (las concede la administración de la plataforma)</span> : null}</p>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-1.5">
                 {meta.tools.map(t => {
                     const g = (grants || []).find(x => x.tool === t.key);
@@ -100,7 +100,7 @@ function GrantsEditor({ inst, meta, onError }: { inst: Installation; meta: Meta;
                         <label key={t.key} className="flex items-center gap-2 text-xs border border-gray-100 rounded-lg px-2 py-1.5">
                             <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${t.risk === 'N3' ? 'bg-red-50 text-red-700' : t.risk === 'N1' ? 'bg-blue-50 text-blue-700' : 'bg-gray-50 text-gray-500'}`}>{t.risk}</span>
                             <span className="flex-1 min-w-0 truncate" title={t.description}><code>{t.key}</code></span>
-                            <select aria-label={`Modo de ${t.key}`} className="px-1.5 py-1 rounded border border-gray-200 text-xs bg-white" value={g?.mode || ''} onChange={e => set(t.key, e.target.value)}>
+                            <select aria-label={`Modo de ${t.key}`} disabled={meta.scope === 'site'} className="px-1.5 py-1 rounded border border-gray-200 text-xs bg-white disabled:bg-gray-50" value={g?.mode || ''} onChange={e => set(t.key, e.target.value)}>
                                 <option value="">No concedida</option>
                                 {Object.entries(meta.grantModes).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                             </select>
@@ -190,19 +190,19 @@ function InstallationRow({ inst, meta, onChanged, onError }: { inst: Installatio
                         <label htmlFor={`ex-${inst.id}`} className="block text-xs font-bold text-gray-600 mb-1">Instrucciones adicionales para este ámbito</label>
                         <textarea id={`ex-${inst.id}`} rows={3} className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm" value={extra} onChange={e => setExtra(e.target.value)} placeholder="Ej.: este club se reúne los martes; firma como «Comité de Imagen Pública»." />
                     </div>
-                    <div>
+                    {meta.scope === 'platform' && <div>
                         <label htmlFor={`bud-${inst.id}`} className="block text-xs font-bold text-gray-600 mb-1">Presupuesto mensual (USD, vacío = sin tope)</label>
                         <input id={`bud-${inst.id}`} type="number" min="0" step="0.5" className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm" defaultValue={inst.budget?.monthlyUsd ?? ''} onBlur={e => patch({ budget: { monthlyUsd: e.target.value === '' ? null : Number(e.target.value) } })} />
-                    </div>
+                    </div>}
                     <GrantsEditor inst={inst} meta={meta} onError={onError} />
                     <TryAgent inst={inst} onError={onError} />
                     <div className="md:col-span-2 flex flex-wrap gap-2 justify-between">
-                        <label className="inline-flex items-center gap-2 text-xs text-gray-600">
+                        <label className={`inline-flex items-center gap-2 text-xs text-gray-600 ${meta.scope === 'site' ? 'invisible' : ''}`}>
                             <input type="checkbox" checked={Boolean(inst.overrides?.pinned)} disabled={busy} onChange={e => patch({ overrides: { pinned: e.target.checked } })} />
                             Fijar la versión actual (no recibir nuevas publicaciones automáticamente)
                         </label>
                         <div className="flex gap-2">
-                            <button type="button" disabled={busy} onClick={remove} className="px-3 py-2 rounded-xl border border-red-200 text-xs font-bold text-red-600">Retirar instalación</button>
+                            {meta.scope === 'platform' && <button type="button" disabled={busy} onClick={remove} className="px-3 py-2 rounded-xl border border-red-200 text-xs font-bold text-red-600">Retirar instalación</button>}
                             <button type="button" disabled={busy} onClick={() => patch({ overrides: { displayName, extraInstructions: extra } })} className="px-3 py-2 rounded-xl bg-gray-900 text-white text-xs font-bold">Guardar ajustes</button>
                         </div>
                     </div>
@@ -231,7 +231,7 @@ export default function InstallationsTab({ meta }: { meta: Meta }) {
     return (
         <div className="space-y-4">
             <SectionHeader title="Instalaciones" subtitle="Dónde trabaja cada agente. Una instalación de sitio se enciende cuando tiene responsable y su tipo de sitio está integrado."
-                actions={<button type="button" onClick={() => setShowInstall(true)} className="inline-flex items-center gap-2 bg-gray-900 text-white text-sm font-bold px-4 py-2.5 rounded-xl"><Plus className="w-4 h-4" /> Instalar agente</button>} />
+                actions={meta.scope === 'platform' ? <button type="button" onClick={() => setShowInstall(true)} className="inline-flex items-center gap-2 bg-gray-900 text-white text-sm font-bold px-4 py-2.5 rounded-xl"><Plus className="w-4 h-4" /> Instalar agente</button> : undefined} />
             <div className="flex flex-wrap gap-2">
                 <input id="inst-filter-q" className="flex-1 min-w-[200px] px-3 py-2.5 rounded-xl border border-gray-200 text-sm" placeholder="Buscar agente o sitio" value={q} onChange={e => setQ(e.target.value)} />
                 <select id="inst-filter-type" className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm bg-white" value={type} onChange={e => setType(e.target.value)}>

@@ -27,6 +27,12 @@
 //   AgentSchedule      programaciones: diaria, semanal, cada N min, por evento.
 //   AgentEvent         la bandeja de eventos que emiten los módulos.
 //
+// Fase 3 — Despliegues (v4.1317.0):
+//   AgentRollout        un despliegue con nombre: qué agentes, a qué tipos de
+//                       sitio o sitios, en qué oleadas, en qué estado.
+//   AgentRolloutTarget  cada sitio del despliegue, su oleada y qué se le
+//                       instaló (para revertir exactamente eso).
+//
 // La tabla heredada "Agent" NO se toca: cada fila migrada queda referida por
 // `legacyAgentId`, y publicar una versión la actualiza (espejo) para que el
 // chat de siempre siga respondiendo con lo publicado durante la transición.
@@ -56,6 +62,9 @@ export const OWNED_COLUMNS = {
     AgentWorkflowRun: [],
     AgentSchedule: [],
     AgentEvent: [],
+    // Fase 3 — despliegues (v4.1317.0)
+    AgentRollout: [],
+    AgentRolloutTarget: [],
 };
 const TABLES = Object.keys(OWNED_COLUMNS);
 
@@ -327,6 +336,42 @@ export async function ensureAgentCenterSchema() {
         )
     `);
     await db.query(`CREATE INDEX IF NOT EXISTS "AgentEvent_pending_idx" ON "AgentEvent" ("processedAt", "createdAt")`);
+
+    // ── Fase 3 ──
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "AgentRollout" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            name TEXT NOT NULL,
+            preset TEXT,
+            "templateKeys" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+            "siteTypes" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+            "siteIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+            platform BOOLEAN NOT NULL DEFAULT false,
+            waves JSONB NOT NULL DEFAULT '[]'::jsonb,
+            "autoActivate" BOOLEAN NOT NULL DEFAULT false,
+            status TEXT NOT NULL DEFAULT 'draft',
+            "currentWave" INT NOT NULL DEFAULT 0,
+            "totalWaves" INT NOT NULL DEFAULT 0,
+            "targetCount" INT NOT NULL DEFAULT 0,
+            notes TEXT,
+            "createdBy" TEXT,
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "AgentRolloutTarget" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "rolloutId" TEXT NOT NULL,
+            "siteId" TEXT,
+            wave INT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            "installationIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+            reason TEXT,
+            "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE ("rolloutId", "siteId")
+        )
+    `);
 
     _ready = true;
 }

@@ -34,13 +34,30 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1316.0 | 2026-11-11 (AI Agent Command Center: runtime, aprobaciones, pilotos y Consumo de IA)
+// UI V4.1317.0 | 2026-11-11 (AI Agent Command Center: despliegues, mapa y vista por sitio)
 // Cache bust: 2026-11-11
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1317.0',
+        title: 'AI Agent Command Center: despliegues por oleadas, mapa de agentes y la vista de cada sitio 🚀',
+        description: '«Desplegar a todos los clubes» se reemplaza por Despliegues: eliges qué agentes o qué equipo, a qué tipos de sitio y en qué oleadas, confirmas escribiendo el número de sitios y puedes pausar o revertir. Cada club y cada distrito tiene ahora su propia vista de Agentes IA. Llegan el mapa de agentes y tres workflows nuevos: formulación de proyectos, auditoría de sitios e informe distrital.',
+        date: new Date().toISOString(),
+        tags: ['agentes ia', 'despliegues', 'tipos de sitio', 'mapa de agentes', 'informe distrital', 'auditoría web', 'proyectos'],
+        type: 'feature',
+        impact: 'Alta: los agentes llegan a los sitios de forma controlada, y cada sitio gestiona y aprueba lo suyo.',
+        changes: [
+            { type: 'added', text: 'Despliegues: plantillas de equipo (club básico, gestión distrital, proyectos, eventos, administración central) o agentes sueltos, destino por tipo de sitio, oleadas (1 sitio piloto → 25 % → 100 %), confirmación escrita, compuerta de salud que pausa si más del 20 % de las ejecuciones falla, y reversión que apaga lo desplegado.' },
+            { type: 'added', text: 'Vista por sitio: quien administra un club o un distrito ve «Agentes IA» con SUS agentes, sus aprobaciones, sus tareas, sus workflows y su consumo; elige responsable y enciende. Lo que gobierna el ecosistema sigue siendo de la plataforma.' },
+            { type: 'added', text: 'Mapa de agentes: equipos, agentes, herramientas y módulos, dibujado sólo con las conexiones reales, con su estado.' },
+            { type: 'added', text: 'Workflows: formulación de proyectos sociales (borrador estructurado y preguntas de lo que falta), auditoría de sitios (hallazgos con su tarea) e informe distrital (indicadores de los clubes, borrador que el distrito valida).' },
+            { type: 'removed', text: '«Desplegar a todos los clubes» (copiaba los agentes a todos los clubes sin reversión).' },
+            { type: 'added', text: 'Pruebas: test:agents:rollout (58) y la prueba de punta a punta ampliada (65).' },
+        ],
+    },
     {
         version: '4.1316.0',
         title: 'AI Agent Command Center: los agentes trabajan, con aprobaciones, y el Consumo de IA se mide 📊',

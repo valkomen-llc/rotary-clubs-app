@@ -54,7 +54,7 @@ function PriceRow({ price, onSave }: { price: Price; onSave: (p: Price) => Promi
     );
 }
 
-export default function UsageTab() {
+export default function UsageTab({ scope = 'platform' }: { scope?: 'platform' | 'site' }) {
     const [days, setDays] = useState(30);
     const [data, setData] = useState<Summary | null>(null);
     const [prices, setPrices] = useState<Price[]>([]);
@@ -63,9 +63,9 @@ export default function UsageTab() {
 
     const load = useCallback(() => {
         acApi<Summary>(`/usage?days=${days}`).then(setData).catch(e => setError(e.message));
-        acApi<{ prices: Price[] }>('/usage/prices').then(d => setPrices(d.prices)).catch(() => setPrices([]));
+        if (scope === 'platform') acApi<{ prices: Price[] }>('/usage/prices').then(d => setPrices(d.prices)).catch(() => setPrices([]));
         acApi<{ events: UsageEvent[] }>('/usage/events?limit=40').then(d => setEvents(d.events)).catch(() => setEvents([]));
-    }, [days]);
+    }, [days, scope]);
     useEffect(load, [load]);
 
     const savePrice = async (p: Price) => {
@@ -133,7 +133,7 @@ export default function UsageTab() {
                     </table>
                 </div>
             </div>
-            <div className="bg-white rounded-2xl border border-gray-100 p-4">
+            {scope === 'platform' && <div className="bg-white rounded-2xl border border-gray-100 p-4">
                 <p className="font-black text-gray-800">Precios de referencia</p>
                 <p className="text-xs text-gray-500">USD por millón de tokens. Verifícalos con cada proveedor: cambian sin aviso.</p>
                 <div className="overflow-x-auto mt-2">
@@ -141,7 +141,7 @@ export default function UsageTab() {
                         <tbody>{prices.map(p => <PriceRow key={p.model} price={p} onSave={savePrice} />)}</tbody></table>
                 </div>
                 <p className="text-[11px] text-gray-400 mt-2">Qué se mide: todo lo que pasa por el enrutador de modelos (asistentes, agente de WhatsApp, generadores que lo usan) y por el motor de agentes. Algunos módulos antiguos llaman al proveedor directamente y todavía no aparecen aquí.</p>
-            </div>
+            </div>}
         </div>
     );
 }
