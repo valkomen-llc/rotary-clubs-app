@@ -96,6 +96,9 @@ const AgentsManagement: React.FC = () => {
         agentsUpserted: number; agentsPerClub: number; clubs: string[];
         errors?: string[];
     } | null>(null);
+    // v4.1314.0 — el número real de agentes por defecto lo dice el servidor;
+    // el modal decía «9» fijo cuando el código siembra 17.
+    const [defaultAgentsCount, setDefaultAgentsCount] = useState<number | null>(null);
 
     const getHeaders = () => ({
         'Content-Type': 'application/json',
@@ -132,6 +135,7 @@ const AgentsManagement: React.FC = () => {
             if (res.ok) {
                 const data = await res.json();
                 setAgents(data.agents || []);
+                if (typeof data.defaultAgentsCount === 'number') setDefaultAgentsCount(data.defaultAgentsCount);
             }
         } catch (e) { console.error('Error fetching agents:', e); }
         finally { setLoading(false); }
@@ -466,14 +470,14 @@ const AgentsManagement: React.FC = () => {
                         </div>
                         <div>
                             <h3 className="font-bold text-gray-800 text-lg">Desplegar agentes a todos los clubes</h3>
-                            <p className="text-xs text-gray-400">Esta acción actualizará los 9 agentes en todos los clubes activos</p>
+                            <p className="text-xs text-gray-400">Esta acción crea los {defaultAgentsCount ?? ''} agentes base en los clubes activos que no los tengan</p>
                         </div>
                     </div>
                     <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-5 text-sm text-amber-700">
                         <strong>¿Qué hace esto?</strong>
                         <ul className="mt-2 space-y-1 text-xs">
-                            <li>✅ Crea los 9 agentes en clubes que aún no los tienen</li>
-                            <li>✅ Actualiza prompts, roles y capacidades en clubes existentes</li>
+                            <li>✅ Crea los {defaultAgentsCount ?? ''} agentes base en clubes que aún no los tienen</li>
+                            <li>✅ Conserva sin cambios los agentes que el club ya tiene y personalizó</li>
                             <li>✅ Incluye los nuevos roles de proyectos (Rafael, Camila, Santiago, Andrés)</li>
                             <li>⚠️ No elimina agentes personalizados que el club haya creado</li>
                         </ul>
@@ -502,7 +506,7 @@ const AgentsManagement: React.FC = () => {
                         </div>
                         <div>
                             <h3 className="font-bold text-gray-800 text-lg">¡Despliegue completado!</h3>
-                            <p className="text-xs text-gray-400">Los agentes han sido sincronizados en todos los clubes</p>
+                            <p className="text-xs text-gray-400">Se crearon los agentes que faltaban; los existentes se conservaron</p>
                         </div>
                     </div>
 
@@ -514,10 +518,10 @@ const AgentsManagement: React.FC = () => {
                         </div>
                         <div className="bg-blue-50 rounded-2xl p-3 text-center">
                             <p className="text-2xl font-black text-blue-600">{deployResult?.agentsUpserted ?? 0}</p>
-                            <p className="text-xs text-blue-600 font-medium">Agentes sincronizados</p>
+                            <p className="text-xs text-blue-600 font-medium">Agentes creados</p>
                         </div>
                         <div className="bg-purple-50 rounded-2xl p-3 text-center">
-                            <p className="text-2xl font-black text-purple-600">{deployResult?.agentsPerClub ?? 9}</p>
+                            <p className="text-2xl font-black text-purple-600">{deployResult?.agentsPerClub ?? defaultAgentsCount ?? 0}</p>
                             <p className="text-xs text-purple-600 font-medium">Agentes por club</p>
                         </div>
                     </div>

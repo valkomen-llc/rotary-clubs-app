@@ -555,7 +555,9 @@ export function ingestMemorySafe(payload) {
 
 // Busca top-k memorias dentro de un brain (o todos si brainId == null).
 // Devuelve [{ memory, score }] ordenado por score desc.
-export async function searchMemories({ brainId, query, k = 8, kind }) {
+// `scopeWhere` (v4.1314.0): filtro de alcance que decide la RUTA con
+// `agentScope.masterMemoryWhere` — va dentro de la consulta, no después.
+export async function searchMemories({ brainId, query, k = 8, kind, scopeWhere = null }) {
     if (!(await ensureTables())) return [];
     const qVec = await embedText(query);
     if (qVec.length === 0) {
@@ -564,6 +566,7 @@ export async function searchMemories({ brainId, query, k = 8, kind }) {
             where: {
                 ...(brainId ? { brainId } : {}),
                 ...(kind ? { kind } : {}),
+                ...(scopeWhere ? { AND: [scopeWhere] } : {}),
                 OR: [
                     { title:   { contains: query, mode: 'insensitive' } },
                     { content: { contains: query, mode: 'insensitive' } },
@@ -581,6 +584,7 @@ export async function searchMemories({ brainId, query, k = 8, kind }) {
         where: {
             ...(brainId ? { brainId } : {}),
             ...(kind ? { kind } : {}),
+            ...(scopeWhere ? { AND: [scopeWhere] } : {}),
         },
         // Si crece mucho, podemos paginar y batchear. Por ahora pull-all.
         take: 5000,
@@ -1028,10 +1032,10 @@ export async function getBrainDetail(brainId) {
     });
 }
 
-export async function listRecentMemories({ brainId, limit = 20, kind }) {
+export async function listRecentMemories({ brainId, limit = 20, kind, scopeWhere = null }) {
     if (!(await ensureTables())) return [];
     return prisma.brainMemory.findMany({
-        where: { ...(brainId ? { brainId } : {}), ...(kind ? { kind } : {}) },
+        where: { ...(brainId ? { brainId } : {}), ...(kind ? { kind } : {}), ...(scopeWhere ? { AND: [scopeWhere] } : {}) },
         orderBy: { updatedAt: 'desc' },
         take: limit,
         select: {

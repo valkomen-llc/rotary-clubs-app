@@ -3,6 +3,8 @@ import { generateArticleFromContext } from '../lib/articleGenerate.js';
 import { routeToModel, getDefaultModel, BUILTIN_MODELS, encryptKey, decryptKey } from '../lib/ai-router.js';
 // El bucle de generación vive en `articleGenerate.js` (v4.1000): lo comparten
 // esta ruta y el workflow de Solicitudes de contenido.
+import { canReadAgent, isPlatformAdmin, isSiteManager, resolvePublicClub, RELATED_TO_HOST_SQL, createRateLimiter, clientIp, requestHost } from '../lib/agentScope.js';
+import { resolveSiteId } from '../lib/linkRedirectStore.js';
 import { getToolsForAgent, getToolsSummary, executeTool, getWorkflowSuggestions } from '../lib/agent-tools.js';
 import { ingestMemorySafe } from '../services/brainService.js';
 
@@ -246,7 +248,9 @@ router.post('/agent-chat', authMiddleware, async (req, res) => {
 
     // ── Resolve clubId: from JWT first, then by hostname ──
     let clubId = req.user.clubId;
-    if (!clubId && hostname) {
+    // v4.1314.0 — elegir el club por el dominio que manda el navegador sólo vale
+    // para la plataforma; cualquier otra sesión trabaja sobre SU club.
+    if (!clubId && hostname && isPlatformAdmin(req.user)) {
         try {
             const cleanHost = hostname.replace('www.', '').toLowerCase();
             // Priority: exact domain → exact subdomain → hostname contains subdomain
@@ -277,14 +281,15 @@ router.post('/agent-chat', authMiddleware, async (req, res) => {
 
     // Try to find agent in DB first (by UUID id)
     try {
-        const dbAgent = await db.query('SELECT * FROM "Agent" WHERE id::text = $1', [agentId]);
-        if (dbAgent.rows.length > 0) {
+        const dbAgent = await db.query('SELECT * FROM "Agent" WHERE id::text = $1', [String(agentId)]);
+        if (dbAgent.rows.length > 0 && canReadAgent(req.user, dbAgent.rows[0])) {
             const a = dbAgent.rows[0];
             agentName = a.name;
             agentPersona = a.systemPrompt;
             agentCapabilities = a.capabilities || [];
             aiModel = a.aiModel === 'gpt-4' ? 'gpt-4' : a.aiModel === 'gpt-3.5' ? 'gpt-3.5-turbo' : a.aiModel || 'gpt-3.5-turbo';
             // If agent has a clubId and user doesn't, use agent's clubId
+            // (sólo la plataforma llega aquí sin club: canReadAgent ya lo filtró).
             if (!clubId && a.clubId) clubId = a.clubId;
         }
     } catch (dbErr) {
@@ -294,14 +299,19 @@ router.post('/agent-chat', authMiddleware, async (req, res) => {
     // Try by name if UUID lookup didn't work
     if (!agentPersona) {
         try {
-            const dbAgent = await db.query('SELECT * FROM "Agent" WHERE LOWER(name) = LOWER($1)', [agentId]);
+            // v4.1314.0 — por nombre, sólo entre los globales y los del propio club
+            // (antes podía tomar el agente de OTRO club y heredar su clubId).
+            const dbAgent = await db.query(
+                `SELECT * FROM "Agent" WHERE LOWER(name) = LOWER($1) AND ("clubId" IS NULL OR "clubId"::text = $2)
+                  ORDER BY ("clubId" IS NULL) ASC LIMIT 1`,
+                [String(agentId), clubId ? String(clubId) : '']
+            );
             if (dbAgent.rows.length > 0) {
                 const a = dbAgent.rows[0];
                 agentName = a.name;
                 agentPersona = a.systemPrompt;
                 agentCapabilities = a.capabilities || [];
                 aiModel = a.aiModel || 'gpt-3.5-turbo';
-                if (!clubId && a.clubId) clubId = a.clubId;
             }
         } catch (_) {}
     }
@@ -517,8 +527,9 @@ router.post('/assistant-chat', authMiddleware, async (req, res) => {
 
     try {
         // ── Resolve clubId by hostname ──
+        // v4.1314.0 — sólo la plataforma elige club por el dominio del navegador.
         let clubId = req.user.clubId;
-        if (!clubId && hostname) {
+        if (!clubId && hostname && isPlatformAdmin(req.user)) {
             try {
                 const cleanHost = hostname.replace('www.', '').toLowerCase();
                 const clubR = await db.query(
@@ -542,7 +553,9 @@ router.post('/assistant-chat', authMiddleware, async (req, res) => {
         const allCapabilities = ['create_posts', 'create_projects', 'calendar', 'manage_projects',
             'publish_content', 'brand_guidelines', 'design_assets', 'distribute_site_images',
             'approve_site_images', 'manage_site_config', 'analytics'];
-        const agentTools = getToolsForAgent(allCapabilities);
+        // v4.1314.0 — las herramientas que ESCRIBEN (noticias, proyectos,
+        // eventos…) sólo para quien administra un sitio; antes cualquier sesión.
+        const agentTools = isSiteManager(req.user) && clubId ? getToolsForAgent(allCapabilities) : [];
         const toolsSummary = getToolsSummary(allCapabilities);
 
         // ── Club identity ──
@@ -982,9 +995,36 @@ router.post('/suggest-icon', authMiddleware, async (req, res) => {
 });
 
 // PUBLIC chatbot endpoint — no auth required
+// v4.1314.0 — el club ya no se toma del cuerpo a ciegas: manda el DOMINIO de la
+// petición; sólo si el dominio no es de un sitio (la plataforma) se acepta el del
+// cuerpo, y únicamente si el sitio existe. Con límite por IP: gasta modelo.
+const publicChatByIp = createRateLimiter({ windowMs: 60_000, max: 20 });
+
 router.post('/chat', async (req, res) => {
-    const { message, clubId } = req.body;
+    const { message } = req.body || {};
     if (!message) return res.status(400).json({ error: 'Message is required' });
+    if (!publicChatByIp(clientIp(req))) return res.status(429).json({ error: 'Demasiados mensajes seguidos. Intenta de nuevo en un minuto.' });
+
+    let clubId = null;
+    {
+        let hostSiteId = null;
+        try { hostSiteId = await resolveSiteId(requestHost(req)); } catch { hostSiteId = null; }
+        const requested = req.body?.clubId ? String(req.body.clubId) : null;
+        let requestedSiteExists = false;
+        if (!hostSiteId && requested) {
+            try {
+                const r = await db.query(`SELECT 1 FROM "Club" WHERE id::text = $1 LIMIT 1`, [requested]);
+                requestedSiteExists = r.rows.length > 0;
+            } catch { requestedSiteExists = false; }
+        }
+        let requestedRelatedToHost = false;
+        if (hostSiteId && requested && requested !== String(hostSiteId)) {
+            try { requestedRelatedToHost = (await db.query(RELATED_TO_HOST_SQL, [requested, String(hostSiteId)])).rows.length > 0; } catch { requestedRelatedToHost = false; }
+        }
+        const decision = resolvePublicClub({ hostSiteId, requestedClubId: requested, requestedSiteExists, requestedRelatedToHost });
+        if (!decision.ok) return res.status(403).json({ error: 'Sitio no válido para este chat.' });
+        clubId = decision.clubId;
+    }
 
     try {
         // Build rich context using shared function

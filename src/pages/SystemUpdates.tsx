@@ -34,13 +34,38 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1313.0 | 2026-11-10 (Feria de Proyectos: editar el valor de la inscripción de un proyecto)
-// Cache bust: 2026-11-10
+// UI V4.1314.0 | 2026-11-11 (Agentes IA: contención de seguridad, Fase 0)
+// Cache bust: 2026-11-11
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1314.0',
+        title: 'Agentes IA: contención de seguridad (Fase 0 del AI Agent Command Center) 🔒',
+        description: 'Primer paso del plan para convertir el módulo de Agentes IA en el AI Agent Command Center. Sin funciones nuevas: se cierran los accesos que permitían a cualquier sesión, o incluso a un visitante sin sesión, actuar sobre agentes y memorias de otros clubes, y las ediciones a los agentes por defecto dejan de perderse.',
+        date: new Date().toISOString(),
+        tags: ['agentes ia', 'seguridad', 'cerebros', 'memoria', 'mission control', 'aislamiento entre clubes'],
+        type: 'hotfix',
+        impact: 'Alta: cada club ve y cambia sólo lo suyo; el cerebro maestro deja de mostrar a cualquier usuario las memorias de todos los clubes.',
+        changes: [
+            { type: 'fixed', text: 'Editar o borrar un agente exige administrar su club; los agentes globales sólo los cambia la administración de la plataforma. Antes cualquier sesión podía reescribir el prompt de cualquier agente.' },
+            { type: 'fixed', text: 'Las ediciones a los agentes por defecto ya no se pierden: abrir la lista y «Desplegar a todos los clubes» sólo crean los que faltan y conservan lo que el equipo o el club personalizó.' },
+            { type: 'fixed', text: 'El cerebro maestro muestra a cada sitio lo global y lo propio. Antes cualquier sesión leía, buscaba, exportaba o veía en el grafo las memorias de todos los clubes; ahora el recorte va dentro de la consulta.' },
+            { type: 'fixed', text: 'Escribir en un cerebro (identidad, documentos, notas, dossier) exige administrar ese sitio, y nunca con un alcance deducido del dominio. Nadie fuera de la plataforma escribe en el maestro; «/migrate» es sólo de la plataforma.' },
+            { type: 'fixed', text: 'La orquestadora y el chat público ya no aceptan el club que mande cualquiera: manda el dominio de la página (o la sesión), con un límite de solicitudes por IP y por sitio.' },
+            { type: 'fixed', text: 'El chat con agentes sólo usa agentes globales o del propio club, y las herramientas que escriben (noticias, proyectos, eventos) son sólo para quien administra el sitio.' },
+            { type: 'fixed', text: 'Mission Control VIP: el detalle, el avance y las demás acciones sobre una solicitud exigen que esté en el alcance de la sesión, y «Ejecutar automatizaciones» de un sitio procesa sólo sus campañas.' },
+            { type: 'changed', text: 'Un agente nunca publica una noticia: queda en borrador para revisión humana. El envío de WhatsApp, las campañas y la importación de contactos se desactivan para los agentes hasta que exista la aprobación humana (siguen disponibles para las personas en el CRM).' },
+            { type: 'fixed', text: 'El modal de despliegue muestra el número real de agentes base (decía «9» y son 17).' },
+            { type: 'added', text: 'Pruebas: test:agents:security (75, sin base ni red), verificadas a la inversa.' },
+        ],
+        details: [
+            'Criterio único en server/lib/agentScope.js: las rutas lo consultan y no repiten la regla.',
+            'Plan completo y diagnóstico: docs/claude/agentes-ia-command-center.md.',
+        ],
+    },
     {
         version: '4.1313.0',
         title: 'Feria de Proyectos: editar el valor de la inscripción de un proyecto ✏️',
