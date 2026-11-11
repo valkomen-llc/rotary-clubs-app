@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// AI Agent Command Center — /admin/agentes (v4.1315.0)
+// AI Agent Command Center — /admin/agentes (v4.1319.0)
 //
 // Reemplaza la pantalla de «Agentes expertos» y su menú de botones
 // deshabilitados (Task Queue, Schedule, Activity Logs, Vector Memory). Cada
@@ -8,7 +8,7 @@
 // ════════════════════════════════════════════════════════════════════
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Bot, LayoutDashboard, Users, Globe2, PlugZap, Download, ShieldCheck, Settings2, ListChecks, CheckSquare, Workflow, Gauge, Rocket, Network, Activity, Database } from 'lucide-react';
+import { Bot, LayoutDashboard, Users, Globe2, PlugZap, Download, ShieldCheck, Settings2, ListChecks, CheckSquare, Workflow, Gauge, Rocket, Network, Activity, Database, FlaskConical, Blocks } from 'lucide-react';
 import AdminLayout from '../../../components/admin/AdminLayout';
 import { acApi } from './agentCenterApi';
 import type { Meta } from './agentCenterApi';
@@ -29,6 +29,8 @@ import NetworkTab from './NetworkTab';
 import SiteOverview from './SiteOverview';
 import ObservabilityTab from './ObservabilityTab';
 import KnowledgeTab from './KnowledgeTab';
+import PilotTab from './PilotTab';
+import BuilderTab from './BuilderTab';
 
 export interface SectionDef { key: string; label: string; icon: React.ElementType; group: string; site?: boolean; platform?: boolean }
 
@@ -39,6 +41,8 @@ export const SECTIONS: SectionDef[] = [
     { key: 'despliegues', label: 'Despliegues', icon: Rocket, group: 'Command Center' },
     { key: 'mapa', label: 'Mapa', icon: Network, group: 'Command Center', site: true },
     { key: 'workflows', label: 'Workflows', icon: Workflow, group: 'Operación', site: true },
+    { key: 'constructor', label: 'Constructor', icon: Blocks, group: 'Operación', site: true },
+    { key: 'piloto', label: 'Piloto', icon: FlaskConical, group: 'Operación' },
     { key: 'tareas', label: 'Tareas', icon: ListChecks, group: 'Operación', site: true },
     { key: 'aprobaciones', label: 'Aprobaciones', icon: CheckSquare, group: 'Operación', site: true },
     { key: 'consumo', label: 'Consumo de IA', icon: Gauge, group: 'Operación', site: true },
@@ -57,6 +61,8 @@ function SectionBody({ section, meta, onNavigate }: { section: string; meta: Met
         case 'mapa': return <NetworkTab meta={meta} />;
         case 'instalaciones': return <InstallationsTab meta={meta} />;
         case 'workflows': return <WorkflowsTab meta={meta} />;
+        case 'constructor': return <BuilderTab meta={meta} />;
+        case 'piloto': return <PilotTab meta={meta} />;
         case 'tareas': return <TasksTab meta={meta} />;
         case 'aprobaciones': return <ApprovalsTab meta={meta} />;
         case 'consumo': return <UsageTab scope={meta.scope} />;

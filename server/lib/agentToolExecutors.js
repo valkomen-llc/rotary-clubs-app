@@ -12,6 +12,7 @@
 import db from './db.js';
 import { reviewRegistrations, reviewSubmission, REGISTRATION_FINDING_LABELS, reviewFinance } from './agentRuntimeSpec.js';
 import { searchKnowledgeForSite } from './agentMemory.js';
+import { reviewMembership } from './agentScaleSpec.js';
 
 const safe = async (sql, params) => { try { return (await db.query(sql, params)).rows; } catch { return []; } };
 const clamp = (n, lo, hi, d) => { const v = parseInt(n, 10); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; };
@@ -109,6 +110,13 @@ export const TOOL_EXECUTORS = {
         const paidWithoutSupport = [...regs.map(r => ({ ...r, source: 'Inscripción a evento' })), ...fair.map(r => ({ ...r, source: 'Postulación de la Feria' }))];
         const findings = reviewFinance({ unbalanced, orphanReversals, paidWithoutSupport });
         return { ok: true, readOnly: true, findings, counts: { unbalanced: unbalanced.length, orphanReversals: orphanReversals.length, paidWithoutSupport: paidWithoutSupport.length } };
+    },
+
+    // Sólo columnas para CONTAR: ni nombres ni contactos salen de aquí.
+    async membership_summary(args, ctx) {
+        const rows = await safe(`SELECT "isActive", "isBoard", "boardRole", "isHonorary", (image IS NOT NULL AND image <> '') AS "hasImage", (description IS NOT NULL AND btrim(description) <> '') AS "hasDescription", "createdAt", "updatedAt" FROM "ClubMember" WHERE "clubId" = $1`, [ctx.siteId]);
+        const r = reviewMembership(rows.map(x => ({ ...x, image: x.hasImage ? 'y' : '', description: x.hasDescription ? 'y' : '' })));
+        return { ok: true, ...r };
     },
 
     async content_create_news_draft(args, ctx) {

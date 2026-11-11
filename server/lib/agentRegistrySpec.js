@@ -442,6 +442,11 @@ export const AUDIT_ACTIONS = {
     rollout_wave: 'Oleada desplegada',
     rollout_paused: 'Despliegue pausado',
     rollout_rolled_back: 'Despliegue revertido',
+    pilot_saved: 'Piloto guardado',
+    pilot_concluded: 'Piloto concluido',
+    custom_workflow_saved: 'Workflow del constructor guardado',
+    custom_workflow_published: 'Workflow del constructor publicado',
+    custom_workflow_archived: 'Workflow del constructor archivado',
 };
 
 // ── Ajustes de la plataforma ───────────────────────────────────────────
