@@ -307,9 +307,19 @@ export const MODULES = [
     {
         key: 'integrations', label: 'Integraciones', group: 'Administración', scope: 'site',
         actions: ['view', 'manage'],
-        routes: ['/admin/integraciones', '/admin/traducciones', '/admin/agentes'],
+        routes: ['/admin/integraciones', '/admin/traducciones'],
         legacy: 'site_settings', sensitive: true,
         help: 'Credenciales, métodos de pago, modelos de IA y traducción.',
+    },
+    {
+        // v4.1315 — el AI Agent Command Center. Hasta aquí `/admin/agentes`
+        // colgaba de «Integraciones»; tiene su propio módulo con el mismo
+        // puente (`site_settings`), así que nadie que lo abría pierde acceso.
+        key: 'agents', label: 'Agentes IA', group: 'Administración', scope: 'site',
+        actions: ['view', 'edit', 'publish', 'manage'],
+        routes: ['/admin/agentes'],
+        legacy: 'site_settings', sensitive: true,
+        help: 'Los agentes del sitio: ver, ajustar, encender y aprobar lo que proponen.',
     },
     {
         key: 'finance', label: 'Finanzas', group: 'Administración', scope: 'site',
