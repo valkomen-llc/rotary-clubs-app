@@ -8,6 +8,7 @@
 import express from 'express';
 import multer from 'multer';
 import { authMiddleware, roleMiddleware } from '../middleware/auth.js';
+import { isPlatformAdmin, canReadBrain, canWriteBrain, masterMemoryWhere, memoryVisible } from '../lib/agentScope.js';
 import prisma from '../lib/prisma.js';
 import { s3 } from '../lib/storage.js';
 import pkg from '@aws-sdk/client-s3';
@@ -292,7 +293,8 @@ const ensureReady = async (req, res, next) => {
     }
 };
 
-const isSuperAdmin = (req) => req.user?.role === 'administrator';
+// v4.1314.0 — `superadmin` también es la plataforma (mismo criterio que agentScope).
+const isSuperAdmin = (req) => isPlatformAdmin(req.user);
 
 // v4.365: resuelve clubId/districtId del user. El JWT puede no incluirlos
 // (tokens viejos), entonces caemos al User table por userId. Si tampoco
@@ -301,6 +303,7 @@ async function resolveUserScope(req) {
     if (req.__resolvedScope) return req.__resolvedScope;
     let clubId = req.user?.clubId || null;
     let districtId = req.user?.districtId || null;
+    let fromHost = false;
 
     if (!clubId && !districtId && (req.user?.userId || req.user?.id)) {
         try {
@@ -328,11 +331,14 @@ async function resolveUserScope(req) {
             if (club) {
                 clubId = club.id;
                 districtId = districtId || club.districtId || null;
+                fromHost = true;
             }
         } catch { /* ignore */ }
     }
 
-    req.__resolvedScope = { clubId, districtId, role: req.user?.role || null };
+    // `fromHost`: el alcance salió del DOMINIO, no de la sesión. Sirve para leer
+    // (ver el cerebro del sitio que se visita) y NUNCA para escribir.
+    req.__resolvedScope = { clubId, districtId, role: req.user?.role || null, fromHost };
     return req.__resolvedScope;
 }
 
@@ -367,13 +373,22 @@ async function visibleBrainsFor(req) {
 
 async function userCanReadBrain(req, brain) {
     if (!brain) return false;
-    if (isSuperAdmin(req)) return true;
-    if (brain.isMaster) return true;
     // v4.372: usar resolveUserScope que cae a DB si el JWT no tiene clubId
     const scope = await resolveUserScope(req);
-    if (brain.clubId && brain.clubId === scope.clubId) return true;
-    if (brain.districtId && brain.districtId === scope.districtId) return true;
-    return false;
+    return canReadBrain(req.user, brain, scope);
+}
+
+// v4.1314.0 — lo que se ve DENTRO de un cerebro. En el maestro, quien no es la
+// plataforma ve lo global y lo propio; antes veía las memorias de todos los clubes.
+async function memoryWhereFor(req, brain) {
+    const scope = await resolveUserScope(req);
+    return masterMemoryWhere(req.user, brain, scope);
+}
+
+async function userCanWriteBrain(req, brain) {
+    if (!brain) return false;
+    const scope = await resolveUserScope(req);
+    return canWriteBrain(req.user, brain, scope);
 }
 
 // ─── Ping (sin auth, sin DB) ───────────────────────────────────────────────
@@ -411,6 +426,7 @@ const withTimeout = (promise, ms, fallback) => Promise.race([
 // justamente lo que CREA las tablas.
 
 router.post("/migrate", authMiddleware, async (req, res) => {
+    if (!isPlatformAdmin(req.user)) return res.status(403).json({ error: 'Access denied' });
     const t0 = Date.now();
     const results = await runBrainMigration();
     _tablesOkUntil = 0;
@@ -1144,9 +1160,7 @@ router.patch('/:id/settings', authMiddleware, async (req, res) => {
         if (!brain) return res.status(404).json({ error: 'Brain not found' });
 
         const scope = await resolveUserScope(req);
-        const canEdit = isSuperAdmin(req) ||
-            (brain.clubId && brain.clubId === scope.clubId) ||
-            (brain.districtId && brain.districtId === scope.districtId);
+        const canEdit = canWriteBrain(req.user, brain, scope);
         if (!canEdit) return res.status(403).json({ error: 'Access denied', scope, brainClubId: brain.clubId });
 
         const { identityPrompt, config, resetIdentityToAuto, contextNote, kind } = req.body || {};
@@ -1255,9 +1269,7 @@ router.post('/:id/identity/generate', authMiddleware, async (req, res) => {
         if (!brain) return res.status(404).json({ error: 'Brain not found' });
 
         const scope = await resolveUserScope(req);
-        const canEdit = isSuperAdmin(req) ||
-            (brain.clubId && brain.clubId === scope.clubId) ||
-            (brain.districtId && brain.districtId === scope.districtId);
+        const canEdit = canWriteBrain(req.user, brain, scope);
         if (!canEdit) return res.status(403).json({ error: 'Access denied' });
 
         const { contextNote } = req.body || {};
@@ -1287,8 +1299,7 @@ router.post('/:id/sync-onboarding', authMiddleware, async (req, res) => {
         if (!brain) return res.status(404).json({ error: 'Brain not found' });
 
         const scope = await resolveUserScope(req);
-        const canSync = isSuperAdmin(req) ||
-            (brain.clubId && brain.clubId === scope.clubId);
+        const canSync = canWriteBrain(req.user, brain, scope);
         if (!canSync) return res.status(403).json({ error: 'Access denied', scope, brainClubId: brain.clubId });
 
         if (!brain.clubId) return res.status(400).json({ error: 'Brain has no clubId — no hay onboarding del cual sincronizar' });
@@ -1311,7 +1322,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
         if (!detail) return res.status(404).json({ error: 'Brain not found' });
         if (!(await userCanReadBrain(req, detail))) return res.status(403).json({ error: 'Access denied' });
 
-        const memories = await listRecentMemories({ brainId: detail.id, limit: 30 });
+        const memories = await listRecentMemories({ brainId: detail.id, limit: 30, scopeWhere: await memoryWhereFor(req, detail) });
         res.json({ ...detail, recentMemories: memories });
     } catch (err) {
         console.error('[brains] detail:', err);
@@ -1327,7 +1338,7 @@ router.get('/:id/memories', authMiddleware, async (req, res) => {
 
         const limit = Math.min(parseInt(req.query.limit) || 50, 200);
         const kind = req.query.kind || undefined;
-        const memories = await listRecentMemories({ brainId: brain.id, limit, kind });
+        const memories = await listRecentMemories({ brainId: brain.id, limit, kind, scopeWhere: await memoryWhereFor(req, brain) });
         res.json(memories);
     } catch (err) {
         console.error('[brains] memories:', err);
@@ -1347,19 +1358,11 @@ router.post('/master/query', authMiddleware, async (req, res) => {
         if (!query || !query.trim()) return res.status(400).json({ error: 'query required' });
         const master = await getOrCreateMasterBrain();
 
-        let results = await searchMemories({ brainId: master.id, query, k, kind });
-
-        // Non-super-admins ven solo memorias de su scope.
-        if (!isSuperAdmin(req)) {
-            const myClub = req.user.clubId;
-            const myDistrict = req.user.districtId;
-            results = results.filter(r => {
-                if (!myClub && !myDistrict) return true;
-                if (myClub && r.memory.clubId === myClub) return true;
-                if (myDistrict && r.memory.districtId === myDistrict) return true;
-                return false;
-            });
-        }
+        // v4.1314.0 — el filtro va en la CONSULTA (antes se filtraba después, y
+        // quien no tenía club ni distrito veía todo el maestro).
+        const scope = await resolveUserScope(req);
+        let results = await searchMemories({ brainId: master.id, query, k, kind, scopeWhere: masterMemoryWhere(req.user, master, scope) });
+        results = results.filter(r => memoryVisible(req.user, master, r.memory, scope));
 
         res.json({ results });
     } catch (err) {
@@ -1377,7 +1380,7 @@ router.post('/:id/query', authMiddleware, async (req, res) => {
         if (!brain) return res.status(404).json({ error: 'Brain not found' });
         if (!(await userCanReadBrain(req, brain))) return res.status(403).json({ error: 'Access denied' });
 
-        const results = await searchMemories({ brainId: brain.id, query, k, kind });
+        const results = await searchMemories({ brainId: brain.id, query, k, kind, scopeWhere: await memoryWhereFor(req, brain) });
         res.json({ brain: { id: brain.id, name: brain.name, kind: brain.kind, isMaster: brain.isMaster }, results });
     } catch (err) {
         console.error('[brains] query:', err);
@@ -1445,7 +1448,10 @@ router.get('/graph/full', authMiddleware, async (req, res) => {
 
         let memories = [];
         if (includeMemories) {
+            // v4.1314.0 — quien no es la plataforma ve sólo lo global y lo propio.
+            const graphScope = isSuperAdmin(req) ? null : masterMemoryWhere(req.user, { isMaster: true }, await resolveUserScope(req));
             memories = await prisma.brainMemory.findMany({
+                ...(graphScope ? { where: graphScope } : {}),
                 take: memoryLimit,
                 orderBy: { updatedAt: 'desc' },
                 select: {
@@ -1512,9 +1518,10 @@ router.get('/graph/full', authMiddleware, async (req, res) => {
 // solo su scope (master + propio brain + brain del distrito si aplica).
 router.get('/export/payload', authMiddleware, async (req, res) => {
     try {
-        const isAdmin = req.user?.role === 'administrator';
+        const isAdmin = isSuperAdmin(req);
         const myClubId = req.user?.clubId;
         const myDistrictId = req.user?.districtId;
+        const exportScope = isAdmin ? null : masterMemoryWhere(req.user, { isMaster: true }, { clubId: myClubId, districtId: myDistrictId });
 
         const orClauses = [{ isMaster: true }];
         if (myClubId)     orClauses.push({ clubId: myClubId });
@@ -1534,7 +1541,7 @@ router.get('/export/payload', authMiddleware, async (req, res) => {
 
         const [memories, relations] = await Promise.all([
             prisma.brainMemory.findMany({
-                where: { brainId: { in: brainIds } },
+                where: exportScope ? { AND: [{ brainId: { in: brainIds } }, exportScope] } : { brainId: { in: brainIds } },
                 select: {
                     id: true, brainId: true, kind: true, sourceType: true, sourceId: true,
                     title: true, content: true, metadata: true, clubId: true,
@@ -1667,9 +1674,7 @@ router.post('/:id/documents', authMiddleware, docUpload.single('file'), async (r
 
         // Permisos para subir: super admin todo. Resto: solo a su propio brain.
         const scope = await resolveUserScope(req);
-        const canUpload = isSuperAdmin(req) ||
-            (brain.clubId && brain.clubId === scope.clubId) ||
-            (brain.districtId && brain.districtId === scope.districtId);
+        const canUpload = canWriteBrain(req.user, brain, scope);
         if (!canUpload) return res.status(403).json({ error: 'Access denied' });
 
         if (!req.file) return res.status(400).json({ error: 'file required' });
@@ -1735,9 +1740,7 @@ router.delete('/documents/:docId', authMiddleware, async (req, res) => {
         if (!doc) return res.status(404).json({ error: 'Document not found' });
 
         const scope = await resolveUserScope(req);
-        const canDelete = isSuperAdmin(req) ||
-            (doc.brain.clubId && doc.brain.clubId === scope.clubId) ||
-            (doc.brain.districtId && doc.brain.districtId === scope.districtId);
+        const canDelete = canWriteBrain(req.user, doc.brain, scope);
         if (!canDelete) return res.status(403).json({ error: 'Access denied' });
 
         // Borrar el binario de S3 (best effort)
@@ -1769,9 +1772,7 @@ router.post('/documents/:docId/reprocess', authMiddleware, async (req, res) => {
         });
         if (!doc) return res.status(404).json({ error: 'Document not found' });
         const scope = await resolveUserScope(req);
-        const canReprocess = isSuperAdmin(req) ||
-            (doc.brain.clubId && doc.brain.clubId === scope.clubId) ||
-            (doc.brain.districtId && doc.brain.districtId === scope.districtId);
+        const canReprocess = canWriteBrain(req.user, doc.brain, scope);
         if (!canReprocess) return res.status(403).json({ error: 'Access denied' });
 
         if (!doc.s3Key) return res.status(400).json({ error: 'No s3Key — el archivo original no está disponible para re-procesar.' });
@@ -1807,9 +1808,7 @@ router.post('/:id/dossier/regenerate', authMiddleware, async (req, res) => {
         if (!brain) return res.status(404).json({ error: 'Brain not found' });
 
         const scope = await resolveUserScope(req);
-        const canEdit = isSuperAdmin(req) ||
-            (brain.clubId && brain.clubId === scope.clubId) ||
-            (brain.districtId && brain.districtId === scope.districtId);
+        const canEdit = canWriteBrain(req.user, brain, scope);
         if (!canEdit) return res.status(403).json({ error: 'Access denied' });
 
         const result = await regenerateDossier(brain.id, { reason: 'manual' });
@@ -1831,10 +1830,12 @@ router.post('/:id/dossier/regenerate', authMiddleware, async (req, res) => {
 // ─── Ingest manual de nota libre (NOTE kind) ───────────────────────────────
 
 router.post('/:id/notes', authMiddleware, async (req, res) => {
+    // v4.1314.0 — escribir pide permiso de ESCRITURA (antes bastaba con poder leer,
+    // y cualquier sesión escribía notas en el cerebro maestro).
     try {
         const brain = await prisma.brain.findUnique({ where: { id: req.params.id } });
         if (!brain) return res.status(404).json({ error: 'Brain not found' });
-        if (!(await userCanReadBrain(req, brain))) return res.status(403).json({ error: 'Access denied' });
+        if (!(await userCanWriteBrain(req, brain))) return res.status(403).json({ error: 'Access denied' });
 
         const { title, content } = req.body || {};
         if (!title || !content) return res.status(400).json({ error: 'title & content required' });

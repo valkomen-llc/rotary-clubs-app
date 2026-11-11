@@ -42,7 +42,7 @@ export const AGENT_TOOLS = [
                     title:    { type: 'string', description: 'Título de la noticia' },
                     content:  { type: 'string', description: 'Contenido HTML o texto del artículo' },
                     category: { type: 'string', description: 'Categoría: noticias, proyectos, eventos, institucional, blog', enum: ['noticias', 'proyectos', 'eventos', 'institucional', 'blog'] },
-                    published: { type: 'boolean', description: 'Si la noticia debe publicarse inmediatamente (true) o quedar como borrador (false). Default: false' },
+                    published: { type: 'boolean', description: 'Ignorado: la noticia siempre queda como borrador para revisión humana.' },
                 },
                 required: ['title', 'content'],
             },
@@ -287,7 +287,10 @@ const toolExecutors = {
     },
 
     async create_news_post(args, userId, clubId) {
-        const { title, content, category, published } = args;
+        // v4.1314.0 — un agente NUNCA publica: la noticia queda en borrador y la
+        // publica una persona desde Noticias. `published` del modelo se ignora.
+        const { title, content, category } = args;
+        const published = false;
         const result = await db.query(
             `INSERT INTO "Post" (id, title, content, published, "clubId", category, "isAI", "createdAt", "updatedAt")
              VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, true, NOW(), NOW()) RETURNING id, title, published`,
@@ -979,6 +982,7 @@ const toolExecutors = {
 export function getToolsForAgent(capabilities = []) {
     if (!capabilities || capabilities.length === 0) return [];
     return AGENT_TOOLS.filter(tool =>
+        !AGENT_DISABLED_TOOLS.includes(tool.function?.name) &&
         tool.requiredCapabilities.some(cap => capabilities.includes(cap))
     ).map(({ type, function: fn }) => ({ type, function: fn }));
 }
@@ -986,7 +990,16 @@ export function getToolsForAgent(capabilities = []) {
 /**
  * Execute a tool call and return the result
  */
+// v4.1314.0 — herramientas con efecto EXTERNO (envían mensajes a personas o
+// copian datos personales a listas de difusión) desactivadas para los agentes
+// hasta que exista la aprobación humana (Fase 2 del AI Agent Command Center).
+// No se borran: el CRM de WhatsApp las sigue ofreciendo a las personas.
+export const AGENT_DISABLED_TOOLS = ['send_whatsapp_message', 'create_whatsapp_campaign', 'import_leads_to_whatsapp'];
+
 export async function executeTool(toolName, args, userId, clubId) {
+    if (AGENT_DISABLED_TOOLS.includes(toolName)) {
+        return { success: false, action: toolName, message: 'Esta acción necesita aprobación humana y está desactivada para los agentes. Prepárala desde el CRM de WhatsApp.' };
+    }
     const executor = toolExecutors[toolName];
     if (!executor) {
         return { success: false, message: `Herramienta "${toolName}" no encontrada.` };

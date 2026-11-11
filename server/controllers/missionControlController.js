@@ -649,6 +649,15 @@ export const getOperationalCampaigns = async (req, res) => {
  */
 export const runAutomations = async (req, res) => {
     try {
+        // v4.1314.0 — un sitio sólo encola y avanza SUS solicitudes. Antes este
+        // botón recorría las de todos los clubes y lanzaba los barridos globales.
+        const operador = isOperator(req);
+        const alcance = await campaignIdsInScope(req);
+        if (!operador && Array.isArray(alcance) && alcance.length === 0) {
+            return res.json({ ok: true, message: 'No hay campañas en el alcance de este sitio.', enqueued: 0, attended: 0, libraryAttended: 0, reelsAttended: 0 });
+        }
+        const scoped = !operador && Array.isArray(alcance);
+
         // 1. Encolar solicitudes activas que aún no tengan SubmissionArticle
         const { rows: unenqueued } = await db.query(
             `SELECT s.id, s."campaignId", s."originClubId", c."ownerClubId", c."recipientClubId"
@@ -656,8 +665,10 @@ export const runAutomations = async (req, res) => {
              JOIN "ContributionCampaign" c ON c.id = s."campaignId"
              LEFT JOIN "SubmissionArticle" a ON a."submissionId" = s.id
              WHERE a.id IS NULL AND s.status != 'descartado'
+               ${scoped ? 'AND s."campaignId" = ANY($1::text[])' : ''}
              ORDER BY s."createdAt" DESC
-             LIMIT 25`
+             LIMIT 25`,
+            scoped ? [alcance] : []
         );
         for (const sub of unenqueued) {
             try {
@@ -669,6 +680,25 @@ export const runAutomations = async (req, res) => {
             } catch (err) {
                 console.warn('[runAutomations] enqueue error:', sub.id, err?.message);
             }
+        }
+
+        // 2. Un sitio avanza sólo lo suyo; los barridos globales (que recorren
+        //    todos los clubes) quedan para la plataforma y para los crons.
+        if (scoped) {
+            const attended = [];
+            const deadline = Date.now() + 40000;
+            for (const sub of unenqueued.slice(0, 5)) {
+                if (Date.now() > deadline) break;
+                try {
+                    await runArticleUntilDone(sub.id, { sessionClubId: req.user?.clubId || null, budgetMs: Math.max(5000, deadline - Date.now()) });
+                    attended.push(sub.id);
+                } catch (err) { console.warn('[runAutomations] scoped advance:', sub.id, err?.message); }
+            }
+            return res.json({
+                ok: true,
+                message: `Automatizaciones ejecutadas en este sitio: ${unenqueued.length} solicitudes encoladas, ${attended.length} avanzadas. El resto lo atiende el proceso automático cada minuto.`,
+                enqueued: unenqueued.length, attended: attended.length, libraryAttended: 0, reelsAttended: 0,
+            });
         }
 
         // 2. Ejecutar barridos de generación y multimedia (artículos, biblioteca y reels)

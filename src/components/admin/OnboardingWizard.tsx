@@ -429,7 +429,7 @@ const OnboardingWizard = ({ onDismiss }: { onDismiss: () => void }) => {
                     // ── Trigger Orchestrator Background Task ──
                     fetch(`${apiUrl}/agents/orchestrate`.replace(/\/+/g, '/').replace(':/', '://'), {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                         body: JSON.stringify({
                             clubId: club.id,
                             type: 'onboarding_complete',

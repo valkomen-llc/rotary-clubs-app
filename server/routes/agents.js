@@ -2,6 +2,13 @@ import express from 'express';
 import db from '../lib/db.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { executeTool, getToolsForAgent } from '../lib/agent-tools.js';
+import {
+    canReadAgent, canManageAgent, canCreateAgent, isPlatformAdmin,
+    resolvePublicClub, RELATED_TO_HOST_SQL, PUBLIC_ORCHESTRATION_EVENTS, createRateLimiter, clientIp, requestHost,
+} from '../lib/agentScope.js';
+import { resolveSiteId } from '../lib/linkRedirectStore.js';
+import jwt from 'jsonwebtoken';
+import { JWT_SECRET, PLATFORM_AUDIENCE } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -278,17 +285,11 @@ const seedAgents = async (clubId) => {
                 clubId ? [agent.name, clubId] : [agent.name]
             );
 
+            // v4.1314.0 — SÓLO INSERTA LO QUE FALTA. Antes cada GET reescribía
+            // rol, descripción, prompt, saludo y capacidades con la versión del
+            // código, y lo que el equipo editaba se perdía al recargar la lista.
             if (existing.rows.length > 0) {
-                // UPDATE: refresh systemPrompt, description, greeting, capabilities, role
-                await db.query(
-                    `UPDATE "Agent"
-                     SET role = $1, description = $2, "systemPrompt" = $3,
-                         greeting = $4, capabilities = $5, "updatedAt" = NOW()
-                     WHERE name = $6 AND ${clubId ? '"clubId" = $7::uuid' : '"clubId" IS NULL'}`,
-                    clubId
-                        ? [agent.role, agent.description, agent.systemPrompt, agent.greeting, agent.capabilities, agent.name, clubId]
-                        : [agent.role, agent.description, agent.systemPrompt, agent.greeting, agent.capabilities, agent.name]
-                );
+                continue;
             } else {
                 // INSERT: agent doesn't exist yet
                 await db.query(
@@ -300,7 +301,7 @@ const seedAgents = async (clubId) => {
                 );
             }
         }
-        console.log(`Agents upserted for clubId: ${clubId || 'global'}`);
+        // (silencioso: corre en cada listado)
     } catch (err) {
         console.error('Seed agents error:', err.message);
     }
@@ -335,7 +336,7 @@ router.get('/', authMiddleware, async (req, res) => {
             agents = Array.from(agentMap.values()).sort((a, b) => a.order - b.order);
         }
 
-        res.json({ agents });
+        res.json({ agents, defaultAgentsCount: DEFAULT_AGENTS.length });
     } catch (error) {
         console.error('Agent list error:', error);
         res.json({ agents: [] });
@@ -380,8 +381,9 @@ router.get('/conversations', authMiddleware, async (req, res) => {
 
 router.get('/:id', authMiddleware, async (req, res) => {
     try {
-        const result = await db.query('SELECT * FROM "Agent" WHERE id = $1', [req.params.id]);
+        const result = await db.query('SELECT * FROM "Agent" WHERE id::text = $1', [String(req.params.id)]);
         if (result.rows.length === 0) return res.status(404).json({ error: 'Agent not found' });
+        if (!canReadAgent(req.user, result.rows[0])) return res.status(404).json({ error: 'Agent not found' });
         res.json(result.rows[0]);
     } catch (error) {
         console.error('Agent get error:', error);
@@ -394,6 +396,7 @@ router.post('/', authMiddleware, async (req, res) => {
     try {
         const { name, role, category, description, systemPrompt, aiModel, avatarSeed, avatarColor, capabilities, greeting, order } = req.body;
         if (!name || !role) return res.status(400).json({ error: 'name and role are required' });
+        if (!canCreateAgent(req.user)) return res.status(403).json({ error: 'Access denied' });
 
         const result = await db.query(
             `INSERT INTO "Agent" (name, role, category, description, "systemPrompt", "aiModel", "avatarSeed", "avatarColor", capabilities, greeting, "order", "clubId")
@@ -409,8 +412,22 @@ router.post('/', authMiddleware, async (req, res) => {
 });
 
 // ── PUT: Update agent ─────────────────────────────────────────────────────
+// Carga el agente y decide con `canManageAgent`. 404 (no 403) cuando ni
+// siquiera puede verlo: el error no debe confirmar que el id existe.
+async function loadManageable(req, res) {
+    const r = await db.query('SELECT * FROM "Agent" WHERE id::text = $1', [String(req.params.id)]);
+    const agent = r.rows[0];
+    if (!agent || !canReadAgent(req.user, agent)) { res.status(404).json({ error: 'Agent not found' }); return null; }
+    if (!canManageAgent(req.user, agent)) {
+        res.status(403).json({ error: agent.clubId ? 'Solo la administración de este club puede cambiar este agente.' : 'Los agentes globales solo los cambia la administración de la plataforma.' });
+        return null;
+    }
+    return agent;
+}
+
 router.put('/:id', authMiddleware, async (req, res) => {
     try {
+        if (!(await loadManageable(req, res))) return;
         const { name, role, category, description, systemPrompt, aiModel, avatarSeed, avatarColor, capabilities, greeting, active, order } = req.body;
         const result = await db.query(
             `UPDATE "Agent"
@@ -427,9 +444,9 @@ router.put('/:id', authMiddleware, async (req, res) => {
                  active = COALESCE($11, active),
                  "order" = COALESCE($12, "order"),
                  "updatedAt" = NOW()
-             WHERE id = $13
+             WHERE id::text = $13
              RETURNING *`,
-            [name, role, category, description, systemPrompt, aiModel, avatarSeed, avatarColor, capabilities, greeting, active, order, req.params.id]
+            [name, role, category, description, systemPrompt, aiModel, avatarSeed, avatarColor, capabilities, greeting, active, order, String(req.params.id)]
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'Agent not found' });
         res.json(result.rows[0]);
@@ -442,7 +459,8 @@ router.put('/:id', authMiddleware, async (req, res) => {
 // ── DELETE: Delete agent ──────────────────────────────────────────────────
 router.delete('/:id', authMiddleware, async (req, res) => {
     try {
-        await db.query('DELETE FROM "Agent" WHERE id = $1', [req.params.id]);
+        if (!(await loadManageable(req, res))) return;
+        await db.query('DELETE FROM "Agent" WHERE id::text = $1', [String(req.params.id)]);
         res.json({ success: true });
     } catch (error) {
         console.error('Agent delete error:', error);
@@ -454,7 +472,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
 router.post('/deploy-all', authMiddleware, async (req, res) => {
     try {
         // Only super admin (administrator role) can do this
-        if (req.user.role !== 'administrator') {
+        if (!isPlatformAdmin(req.user)) {
             return res.status(403).json({ error: 'Solo el super administrador puede desplegar agentes globalmente.' });
         }
 
@@ -472,6 +490,7 @@ router.post('/deploy-all', authMiddleware, async (req, res) => {
 
         let clubsProcessed = 0;
         let agentsUpserted = 0;
+        let agentsKept = 0;
         const errors = [];
 
         for (const club of clubs) {
@@ -485,15 +504,11 @@ router.post('/deploy-all', authMiddleware, async (req, res) => {
                             [agent.name, club.id]
                         );
 
+                        // v4.1314.0 — no se pisa lo que el club personalizó: un
+                        // agente que ya existe en el club se conserva tal cual.
                         if (existing.rows.length > 0) {
-                            await db.query(
-                                `UPDATE "Agent"
-                                 SET role = $1, description = $2, "systemPrompt" = $3,
-                                     greeting = $4, capabilities = $5, "updatedAt" = NOW()
-                                 WHERE name = $6 AND "clubId" = $7::uuid`,
-                                [agent.role, agent.description, agent.systemPrompt,
-                                 agent.greeting, agent.capabilities, agent.name, club.id]
-                            );
+                            agentsKept++;
+                            continue;
                         } else {
                             await db.query(
                                 `INSERT INTO "Agent" (name, role, category, description, "systemPrompt", "aiModel", "avatarSeed", "avatarColor", capabilities, active, "order", greeting, "clubId")
@@ -514,13 +529,15 @@ router.post('/deploy-all', authMiddleware, async (req, res) => {
             }
         }
 
-        console.log(`Deploy-all: ${clubsProcessed} clubes, ${agentsUpserted} agentes actualizados`);
+        console.log(`Deploy-all: ${clubsProcessed} clubes, ${agentsUpserted} agentes creados, ${agentsKept} conservados`);
 
         res.json({
             success: true,
             clubsProcessed,
             totalClubs: clubs.length,
             agentsUpserted,
+            agentsCreated: agentsUpserted,
+            agentsKept,
             agentsPerClub: DEFAULT_AGENTS.length,
             errors: errors.length > 0 ? errors : undefined,
             clubs: clubs.map(c => c.name),
@@ -793,9 +810,55 @@ router.get('/activity/stats', authMiddleware, async (req, res) => {
 });
 
 // ── Webhook Orquestador Interno (Elena) ───────────────────────────────────
+// v4.1314.0 — antes NO tenía sesión y tomaba el `clubId` del cuerpo: cualquiera
+// podía gastar crédito de IA a nombre de cualquier club. Ahora:
+//   · con sesión, el club es el de la sesión (la plataforma puede indicar otro);
+//   · sin sesión, sólo los eventos de `PUBLIC_ORCHESTRATION_EVENTS`, con el club
+//     resuelto por el DOMINIO de la petición y un límite por IP y por club.
+const orchestrateByIp = createRateLimiter({ windowMs: 60_000, max: 5 });
+const orchestrateByClub = createRateLimiter({ windowMs: 3_600_000, max: 60 });
+
+function optionalSession(req) {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return null;
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        if (decoded.aud && decoded.aud !== PLATFORM_AUDIENCE) return null;
+        return decoded;
+    } catch { return null; }
+}
+
 router.post('/orchestrate', async (req, res) => {
-    const { type, payload, clubId } = req.body;
-    if (!type || !payload || !clubId) return res.status(400).json({ error: 'Faltan campos requeridos' });
+    const { type, payload } = req.body || {};
+    if (!type || !payload) return res.status(400).json({ error: 'Faltan campos requeridos' });
+
+    let clubId = null;
+    const sessionUser = optionalSession(req);
+    if (sessionUser) {
+        clubId = isPlatformAdmin(sessionUser) ? (req.body.clubId || sessionUser.clubId || null) : (sessionUser.clubId || null);
+        if (!clubId) return res.status(400).json({ error: 'La sesión no tiene un sitio asociado.' });
+    } else {
+        if (!PUBLIC_ORCHESTRATION_EVENTS.includes(String(type))) return res.status(401).json({ error: 'No token provided' });
+        if (!orchestrateByIp(clientIp(req))) return res.status(429).json({ error: 'Demasiadas solicitudes. Intenta de nuevo en un minuto.' });
+        let hostSiteId = null;
+        try { hostSiteId = await resolveSiteId(requestHost(req)); } catch { hostSiteId = null; }
+        let requestedSiteExists = false;
+        const requested = req.body.clubId ? String(req.body.clubId) : null;
+        if (!hostSiteId && requested) {
+            try {
+                const r = await db.query(`SELECT 1 FROM "Club" WHERE id::text = $1 AND status = 'active' LIMIT 1`, [requested]);
+                requestedSiteExists = r.rows.length > 0;
+            } catch { requestedSiteExists = false; }
+        }
+        let requestedRelatedToHost = false;
+        if (hostSiteId && requested && requested !== String(hostSiteId)) {
+            try { requestedRelatedToHost = (await db.query(RELATED_TO_HOST_SQL, [requested, String(hostSiteId)])).rows.length > 0; } catch { requestedRelatedToHost = false; }
+        }
+        const decision = resolvePublicClub({ hostSiteId, requestedClubId: requested, requestedSiteExists, requestedRelatedToHost });
+        if (!decision.ok) return res.status(403).json({ error: 'Sitio no válido para esta solicitud.' });
+        clubId = decision.clubId;
+        if (!orchestrateByClub(clubId)) return res.status(429).json({ error: 'Demasiadas solicitudes para este sitio.' });
+    }
 
     try {
         // Encontrar a la agente orquestadora (Elena)
