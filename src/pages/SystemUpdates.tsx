@@ -34,13 +34,37 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1314.0 | 2026-11-11 (Agentes IA: contención de seguridad, Fase 0)
+// UI V4.1315.0 | 2026-11-11 (AI Agent Command Center: registro e integración por tipo de sitio)
 // Cache bust: 2026-11-11
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1315.0',
+        title: 'AI Agent Command Center: registro de agentes e integración por tipo de sitio 🤖',
+        description: 'La pantalla de Agentes IA se convierte en el AI Agent Command Center. Cada agente es ahora una plantilla con versiones publicadas, que se instala en la administración central o en los sitios que elijas. Desde «Tipos de sitio» decides con qué sitios se integran los agentes: clubes, distritos, ferias de proyectos, programas de intercambio, eventos y los demás tipos de la plataforma.',
+        date: new Date().toISOString(),
+        tags: ['agentes ia', 'command center', 'tipos de sitio', 'plantillas', 'the agency', 'auditoría'],
+        type: 'feature',
+        impact: 'Alta: los agentes dejan de ser copias sueltas por club; se gobiernan desde un solo lugar, por tipo de sitio, con versiones y auditoría.',
+        changes: [
+            { type: 'added', text: 'AI Agent Command Center en Agentes IA, con Resumen, Agentes, Instalaciones, Tipos de sitio, Importar, Auditoría y Ajustes. Reemplaza el menú anterior, cuyos botones «Task Queue», «Schedule», «Activity Logs» y «Vector Memory» no hacían nada.' },
+            { type: 'added', text: 'Tipos de sitio: elige con cuáles se integran los agentes (Rotary Club, Distrito, Feria de Proyectos, Programa de Intercambio, Evento o Convención, Zona, Asociación, Colrotarios) y qué equipos trabajan en cada uno. Por omisión, clubes y distritos.' },
+            { type: 'added', text: 'Plantillas con borrador, revisión y versiones publicadas inmutables, editor de instrucciones, habilidades, modelo preferido y tipos de sitio para los que está pensada.' },
+            { type: 'added', text: 'Instalaciones por sitio o en la administración central, con responsable obligatorio para encender, nombre e instrucciones propias del sitio y opción de fijar la versión.' },
+            { type: 'changed', text: 'Los 17 agentes heredados, Elena y los agentes propios de cada club se registran solos con su configuración tal como estaba; lo que cada club personalizó se conserva. Nada se borró.' },
+            { type: 'added', text: 'Estados honestos: «Solo perfil» para los agentes que conversan pero todavía no ejecutan tareas.' },
+            { type: 'added', text: 'Importar: 22 perfiles curados de The Agency (fijados a un commit, licencia MIT, siempre como borrador) y las 48 habilidades del repositorio.' },
+            { type: 'added', text: 'Auditoría de cada cambio de configuración e interruptor general para detener la ejecución de agentes.' },
+            { type: 'added', text: 'Permisos: nuevo módulo «Agentes IA» en Roles y permisos (antes colgaba de Integraciones; nadie pierde acceso).' },
+            { type: 'added', text: 'Pruebas: test:agents:registry (95) y test:agents:registry:e2e (45).' },
+        ],
+        details: [
+            'Publicar una versión actualiza también la tabla de agentes de siempre, así el chat responde con lo publicado mientras llega el motor de ejecución (Fase 2).',
+        ],
+    },
     {
         version: '4.1314.0',
         title: 'Agentes IA: contención de seguridad (Fase 0 del AI Agent Command Center) 🔒',

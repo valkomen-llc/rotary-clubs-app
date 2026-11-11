@@ -154,6 +154,7 @@ import financialRoutes from './routes/financial.js';
 import seoRoutes from './routes/seo.js';
 import crmRoutes from './routes/crm.js';
 import agentsRoutes from './routes/agents.js';
+import agentCenterRoutes from './routes/agentCenter.js';
 import calendarRoutes from './routes/calendar.js';
 import districtsRoutes from './routes/districts.js';
 import documentsRoutes from './routes/documents.js';
@@ -216,6 +217,7 @@ app.use('/api/whatsapp', crmRoutes);
 app.use('/api/crm', crmRoutes);
 
 app.use('/api/agents', agentsRoutes);
+app.use('/api/agent-center', agentCenterRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/admin/districts', districtsRoutes);
 app.use('/api/documents', documentsRoutes);

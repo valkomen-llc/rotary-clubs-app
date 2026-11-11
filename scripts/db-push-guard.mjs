@@ -159,6 +159,11 @@
 // LearningConfig — las colecciones y cursos que cada club construyó durante
 // semanas, sus videos y documentos, quién aprobó y publicó qué: no se
 // reconstruye de ninguna parte.
+// Y las siete del registro del AI Agent Command Center (v4.1315): AgentTemplate,
+// AgentTemplateVersion, AgentSkill, AgentInstallation, AgentAuditLog,
+// AgentSiteTypePolicy y AgentSetting — qué agentes existen, cada versión
+// publicada, dónde trabaja cada uno, con qué tipos de sitio se integran y quién
+// cambió qué: perderlas deja a los sitios sin agentes y sin historial.
 // Y la traza de cada mensaje entrante de WhatsApp (v4.1285):
 // WhatsAppInboundTrace — el recorrido de cada «Hola» de punta a punta y la
 // única evidencia de qué conversaciones quedaron sin respuesta.

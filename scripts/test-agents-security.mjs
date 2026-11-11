@@ -10,7 +10,7 @@
 //    vuelven a los atajos que causaron los hallazgos S1–S8.
 // ════════════════════════════════════════════════════════════════════
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 
 const REPO = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
 const read = (p) => readFileSync(`${REPO}/${p}`, 'utf8');
@@ -147,7 +147,8 @@ if (T) {
 
 const wizard = read('src/components/admin/OnboardingWizard.tsx');
 ok(/agents\/orchestrate[\s\S]{0,200}Authorization: `Bearer \$\{token\}`/.test(wizard), 'el asistente de onboarding manda su sesión');
-const page = read('src/pages/admin/Agents.tsx');
-ok(!/los 9 agentes/.test(page) && /defaultAgentsCount/.test(page), 'el modal ya no dice «9» fijo');
+// v4.1315: la pantalla vieja (Agents.tsx y su menú de botones deshabilitados)
+// la reemplazó el AI Agent Command Center; el número real lo sigue dando el API.
+ok(!existsSync(`${REPO}/src/pages/admin/Agents.tsx`) && !existsSync(`${REPO}/src/components/admin/MissionControlLayout.tsx`), 'sin la pantalla vieja ni su menú de botones muertos');
 
 console.log(`✓ test-agents-security: ${n} comprobaciones`);

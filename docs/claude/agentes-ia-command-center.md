@@ -54,3 +54,69 @@ Pruebas: `npm run test:agents:security` (75, sin base ni red, en `prebuild`).
 Verificadas a la inversa: quitar `requireSubmissionInScope` de una ruta, abrir
 los globales a cualquier club o devolver `true` para el maestro hacen fallar la
 batería.
+
+## Fase 1 — El registro: plantillas, instalaciones y tipos de sitio (v4.1315.0)
+
+`/admin/agentes` es ahora el **AI Agent Command Center** (`src/pages/admin/agentCenter/`),
+dentro de `AdminLayout`. Se borraron `Agents.tsx` y `MissionControlLayout.tsx`
+(el menú de botones deshabilitados). Secciones: Resumen, Agentes, Instalaciones,
+Tipos de sitio, Importar, Auditoría y Ajustes; cada fase suma las suyas cuando su
+fuente de datos existe.
+
+**Plantilla + instalación, no copias.** `AgentTemplate` es QUÉ es un agente
+(borrador de trabajo en `draft`); publicar crea una `AgentTemplateVersion`
+INMUTABLE. `AgentInstallation` es DÓNDE trabaja (`scopeType` `platform` o
+`site` + `siteId`), fijada a una versión; las no fijadas (`overrides.pinned`)
+pasan solas a cada versión nueva. Una plantilla se instala UNA vez por ámbito
+(índice único con `COALESCE("siteId", '')`).
+
+**Tipos de sitio integrables (pedido del cliente).** `AgentSiteTypePolicy`:
+la plataforma elige con qué tipos de sitio se integran los agentes —clubes,
+distritos, ferias de proyectos, programas de intercambio, eventos, zonas,
+asociaciones, Colrotarios— y qué EQUIPOS trabajan en cada uno. El catálogo SALE
+de `ENTITY_TYPES` (`server/lib/entityTypes.js`): un tipo nuevo aparece solo. Por
+omisión sólo `club` y `district` (donde ya había copias heredadas). Un tipo
+apagado no recibe instalaciones nuevas y las que tiene quedan «Deshabilitado»
+(no se borran).
+
+**Estados que se pintan, derivados** (`installationState`): Disponible,
+Instalado, Configurado, **Solo perfil** (encendido sin herramientas ni motor:
+el estado honesto de los heredados), Activo, Ejecutando, Con error,
+Deshabilitado. Un agente de SITIO no se enciende sin responsable.
+
+**Migración de los heredados** (`planLegacyMigration`, puro; `migrateLegacy`,
+idempotente por `legacyAgentId`; corre sola la primera vez que se abre el
+registro): una plantilla por agente global (Elena incluida, aunque sólo existe
+en la base) con su versión 1 = LO QUE HAY EN LA BASE; una por agente propio de
+un club; una instalación por fila, y la copia de un club que difiere del global
+guarda su diferencia en `overrides` (`legacyOverrides`). Antigravity, Santiago,
+Sebastián, Carlos, Mateo y Diego quedan sólo para la administración central.
+
+**Espejo a "Agent"** (`mirrorToLegacy`): publicar actualiza la fila global
+heredada y, en cada copia de club, los campos que ESE club no personalizó. Así
+el chat de siempre responde con lo publicado durante la transición. Encender o
+apagar una instalación también actualiza `active`.
+
+**Importador.** The Agency fijada al commit `8ae6164602c95ca78828b148b9052460ee426885`
+(MIT, atribución en `sourceRef`), sólo de la lista CURADA de 22 perfiles
+(`AGENCY_SOURCE.curated`), descarga con `AbortSignal.timeout`, tope de tamaño y
+siempre como BORRADOR marcado «por adaptar». Las 48 habilidades de
+`.agent/skills` viajan en `server/lib/agentSkillsBundle.js` (la función de
+Vercel no lleva `.agent`): `npm run bundle:agent-skills` lo regenera y
+`test:agents:registry` falla si se desincroniza.
+
+**Permisos.** Nuevo módulo RBAC `agents` (ver, editar, publicar, administrar),
+espejado en `src/lib/rbacSpec.ts`; `/admin/agentes` salió de `integrations` con
+el mismo puente `site_settings`. La API `/api/agent-center` es sólo de la
+plataforma en esta fase.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/agentRegistrySpec.js` | El CRITERIO puro: equipos, tipos de sitio, estados, borradores, Markdown, The Agency, migración |
+| `server/lib/ensureAgentCenterSchema.js` | Las tablas, por fases, con `OWNED_COLUMNS` |
+| `server/lib/agentRegistryStore.js` | La base: plantillas, versiones, espejo, instalaciones, políticas, habilidades, importador, auditoría |
+| `server/routes/agentCenter.js` | `/api/agent-center` |
+
+Pruebas: `test:agents:registry` (95, sin base, en `prebuild`) y
+`test:agents:registry:e2e` (45, contra un Postgres LOCAL vacío: migración,
+espejo que conserva lo personalizado, tipos de sitio, instalación, importador).

@@ -186,7 +186,8 @@ const Perfil = lazyWithRetry(() => import('./pages/admin/Perfil'), 'Perfil');
 const RestablecerPassword = lazyWithRetry(() => import('./pages/RestablecerPassword'), 'RestablecerPassword');
 const EmailMarketing = lazyWithRetry(() => import('./pages/admin/EmailMarketing'), 'EmailMarketing');
 const FAQManagement = lazyWithRetry(() => import('./pages/admin/FAQs'), 'FAQs');
-const AgentsManagement = lazyWithRetry(() => import('./pages/admin/Agents'), 'Agents');
+// v4.1315 — el AI Agent Command Center reemplaza «Agentes expertos» y su menú de botones deshabilitados.
+const AgentsManagement = lazyWithRetry(() => import('./pages/admin/agentCenter/AgentCommandCenter'), 'AgentCommandCenter');
 const MissionControlVIP = lazyWithRetry(() => import('./pages/admin/MissionControlVIP'), 'MissionControlVIP');
 const ContentActivationPage = lazyWithRetry(() => import('./pages/admin/ContentActivation'), 'ContentActivation');
 const RotaryEnAccion = lazyWithRetry(() => import('./pages/RotaryEnAccion'), 'RotaryEnAccion');

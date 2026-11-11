@@ -613,12 +613,29 @@ export const MODULES: ModuleSpec[] = [
         ],
         "routes": [
             "/admin/integraciones",
-            "/admin/traducciones",
-            "/admin/agentes"
+            "/admin/traducciones"
         ],
         "legacy": "site_settings",
         "sensitive": true,
         "help": "Credenciales, métodos de pago, modelos de IA y traducción."
+    },
+    {
+        "key": "agents",
+        "label": "Agentes IA",
+        "group": "Administración",
+        "scope": "site",
+        "actions": [
+            "view",
+            "edit",
+            "publish",
+            "manage"
+        ],
+        "routes": [
+            "/admin/agentes"
+        ],
+        "legacy": "site_settings",
+        "sensitive": true,
+        "help": "Los agentes del sitio: ver, ajustar, encender y aprobar lo que proponen."
     },
     {
         "key": "finance",
@@ -918,6 +935,10 @@ export const ROLE_PRESETS: RolePreset[] = [
             "settings.manage",
             "integrations.view",
             "integrations.manage",
+            "agents.view",
+            "agents.edit",
+            "agents.publish",
+            "agents.manage",
             "finance.view",
             "finance.export",
             "finance.manage",
@@ -1074,6 +1095,10 @@ export const ROLE_PRESETS: RolePreset[] = [
             "settings.manage",
             "integrations.view",
             "integrations.manage",
+            "agents.view",
+            "agents.edit",
+            "agents.publish",
+            "agents.manage",
             "finance.view",
             "finance.export",
             "finance.manage",
@@ -1289,6 +1314,7 @@ export const ROLE_PRESETS: RolePreset[] = [
             "roles.view",
             "settings.view",
             "integrations.view",
+            "agents.view",
             "finance.view",
             "compliance.view",
             "project_fair.view",
