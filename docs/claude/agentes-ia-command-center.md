@@ -367,3 +367,17 @@ que `.agent` sigue en `.vercelignore`.
 recibe Vercel), y en ella `npm run prebuild` y `vite build` en verde. Para
 cualquier prueba nueva de `prebuild` que lea archivos: comprobar que esos
 archivos viajan al despliegue.
+
+## v4.1321.0 — «Ruta de API no encontrada: /api/agent-center/meta»
+
+Con el build ya en verde (v4.1320), el panel abría pero la API respondía 404.
+**Causa**: producción ejecuta `api/index.js` (la función de Vercel), no
+`server/server.js`; el router se montó sólo en `server.js`. Lo mismo les pasaba,
+desde antes, a `/api/cursos` (Cursos y capacitaciones, v4.1302),
+`/api/youth-exchange`, `/api/ngse`, `/api/rotex`, `/api/sponsored-clubs`,
+`/api/seo` y `/api/ping-footer`. **Arreglo**: montados en `api/index.js` con el
+cargador perezoso (`lazyRouter`), y la barrera `check:api-mounts` en `prebuild`
+compara los dos archivos y rompe el build si falta alguno. Verificado
+importando `api/index.js` (el mismo arranque de producción): antes 404 en las
+siete, después cada una llega a su router. El cron `/api/cron/agents-tick` ya
+llegaba (va por el router de `/api/cron`, que sí estaba montado).

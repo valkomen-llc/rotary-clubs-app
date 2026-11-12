@@ -34,13 +34,27 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1320.0 | 2026-11-12 (Los Agentes IA llegan a producción: build de Vercel corregido)
+// UI V4.1321.0 | 2026-11-12 (Centro de Comando de Agentes IA y Cursos conectados en producción)
 // Cache bust: 2026-11-12
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1321.0',
+        title: 'El Centro de Comando de Agentes IA abre en producción 🔧',
+        description: 'Al entrar al Centro de Comando aparecía «Ruta de API no encontrada: /api/agent-center/meta». La API estaba conectada sólo en el servidor local y no en el de producción. Lo mismo les pasaba a Cursos y capacitaciones, Intercambio de Jóvenes, NGSE, Rotex, Clubes Patrocinados y una ruta de SEO. Quedan conectadas y una comprobación del build impide que vuelva a pasar.',
+        date: new Date().toISOString(),
+        tags: ['agentes ia', 'api', 'cursos', 'intercambio de jóvenes', 'despliegue'],
+        type: 'fix',
+        impact: 'Alta: el Centro de Comando, Cursos y los módulos de juventud vuelven a responder en producción.',
+        changes: [
+            { type: 'fixed', text: 'El Centro de Comando de Agentes IA ya no muestra «Ruta de API no encontrada».' },
+            { type: 'fixed', text: 'Cursos y capacitaciones, Intercambio de Jóvenes, NGSE, Rotex, Clubes Patrocinados y /api/seo responden en producción.' },
+            { type: 'added', text: 'El build se detiene si una ruta de la API existe en el servidor local pero no en el de producción.' },
+        ],
+    },
     {
         version: '4.1320.0',
         title: 'Los Agentes IA llegan por fin a producción 🚀',

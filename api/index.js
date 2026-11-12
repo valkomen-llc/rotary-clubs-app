@@ -283,6 +283,18 @@ let _clubCatalog;
 const getClubCatalog = async () => _clubCatalog || (({ default: _clubCatalog } = await import('../server/routes/club-catalog.js')), _clubCatalog);
 // Programas (v4.1280): identidad única, vinculación distrital, activación por clubes.
 let _programs; const getPrograms = async () => _programs || (({ default: _programs } = await import('../server/routes/programs.js')), _programs);
+// v4.1321 — Routers que sólo estaban montados en server/server.js (el servidor
+// LOCAL) y en producción respondían «Ruta de API no encontrada». Producción
+// arranca por ESTE archivo: todo `app.use('/api/…')` de server.js tiene que
+// estar también aquí. Lo fija `scripts/check-api-mounts.mjs` en el prebuild.
+const lazyRouter = (file) => { let r; return async () => r || (({ default: r } = await import(file)), r); };
+const getAgentCenter = lazyRouter('../server/routes/agentCenter.js');
+const getLearning = lazyRouter('../server/routes/learning.js');
+const getSponsoredClubs = lazyRouter('../server/routes/sponsored-clubs.js');
+const getYouthExchange = lazyRouter('../server/routes/youth-exchange.js');
+const getNgse = lazyRouter('../server/routes/ngse.js');
+const getRotex = lazyRouter('../server/routes/rotex.js');
+const getSeo = lazyRouter('../server/routes/seo.js');
 
 // ── Route handlers ────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
@@ -397,6 +409,17 @@ app.use('/api/site-modules', async (req, res, next) => { try { return (await get
 app.use('/api/district-clubs', async (req, res, next) => { try { return (await getDistrictClubs())(req, res, next); } catch (e) { console.error('API Error [district-clubs]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/club-catalog', async (req, res, next) => { try { return (await getClubCatalog())(req, res, next); } catch (e) { console.error('API Error [club-catalog]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/programas', async (req, res, next) => { try { return (await getPrograms())(req, res, next); } catch (e) { console.error('API Error [programas]:', e); res.status(500).json({ error: e.message }); } });
+// v4.1321 — AI Agent Command Center, Cursos (LMS) y los módulos de juventud: antes, sólo en server.js.
+app.post('/api/ping-footer', (req, res) => {
+    res.json({ status: 'alive', timestamp: new Date().toISOString(), bodySize: JSON.stringify(req.body || {}).length });
+});
+app.use('/api/agent-center', async (req, res, next) => { try { return (await getAgentCenter())(req, res, next); } catch (e) { console.error('API Error [agent-center]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/cursos', async (req, res, next) => { try { return (await getLearning())(req, res, next); } catch (e) { console.error('API Error [cursos]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/sponsored-clubs', async (req, res, next) => { try { return (await getSponsoredClubs())(req, res, next); } catch (e) { console.error('API Error [sponsored-clubs]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/youth-exchange', async (req, res, next) => { try { return (await getYouthExchange())(req, res, next); } catch (e) { console.error('API Error [youth-exchange]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/ngse', async (req, res, next) => { try { return (await getNgse())(req, res, next); } catch (e) { console.error('API Error [ngse]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/rotex', async (req, res, next) => { try { return (await getRotex())(req, res, next); } catch (e) { console.error('API Error [rotex]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/seo', async (req, res, next) => { try { return (await getSeo())(req, res, next); } catch (e) { console.error('API Error [seo]:', e); res.status(500).json({ error: e.message }); } });
 
 // ── robots.txt y sitemap.xml EN LA RAÍZ ───────────────────────────────────────
 //

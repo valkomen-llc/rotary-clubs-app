@@ -54,6 +54,11 @@ detalle y la historia de cada una está en el archivo indicado.
   **`check:server-undef`**: el servidor no pasa por ningún compilador. Literal
   antes que su paramétrica; `export default` al final del archivo. Detalle:
   `docs/claude/plantillas-ia.md`.
+- **`npm run check:api-mounts`**: producción arranca por `api/index.js`, NO por
+  `server/server.js` (que sólo usa el servidor local). Toda ruta `/api/…` que
+  se monte en `server.js` va TAMBIÉN en `api/index.js` (cargador perezoso), o
+  en producción responde «Ruta de API no encontrada». Así quedaron hasta
+  v4.1320 el Centro de Comando de Agentes, Cursos y los módulos de juventud.
 - **`npm run test:version`**: el número tiene que coincidir en `package.json`,
   `src/lib/appVersion.ts` y la primera entrada de `SYSTEM_UPDATES`.
 - **Nunca una comilla invertida dentro de un `db.query(\`…\`)`**, tampoco en
