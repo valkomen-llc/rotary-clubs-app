@@ -17,7 +17,7 @@ import {
     Loader2, Mail, MessageSquarePlus, RefreshCw, Search,
     TrendingUp, Wallet, X, ShieldCheck, Paperclip, Settings, FileSignature, Lock, Unlock, FileDown,
     Archive, ArchiveRestore, CheckSquare, Square, Trash2, TagIcon, Banknote, ArrowRight, History, Users, Clapperboard,
-    Layers, PlusCircle, Info, ArrowRightLeft, Pencil,
+    Layers, PlusCircle, Info, ArrowRightLeft, Pencil, Maximize2, Minimize2, FolderOpen,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -25,6 +25,18 @@ import {
     LineChart, Line, PieChart, Pie, Cell, Legend,
 } from 'recharts';
 import { matrixRowsToShow } from '../../lib/projectForms';
+// v4.1324 — Expediente integral del proyecto (lectura completa, edición
+// auditada, traducción al inglés, fichas PDF y libretas).
+import { dossierRequest, TRANSLATION_META, type DossierPayload, type TranslationState, type TranslationStatus } from '../../lib/projectDossier';
+import ExpedienteAccionesMenu, { type ExpedientePane, type OpenRequest } from '../../components/admin/feria/expediente/ExpedienteAccionesMenu';
+import ExpedientesLote from '../../components/admin/feria/expediente/ExpedientesLote';
+import ExpedienteFormulario from '../../components/admin/feria/expediente/ExpedienteFormulario';
+import ExpedienteDocumentos from '../../components/admin/feria/expediente/ExpedienteDocumentos';
+import ExpedienteTraduccion from '../../components/admin/feria/expediente/ExpedienteTraduccion';
+import ExpedienteFichas from '../../components/admin/feria/expediente/ExpedienteFichas';
+import ExpedienteLibreta from '../../components/admin/feria/expediente/ExpedienteLibreta';
+import ExpedienteHistorial from '../../components/admin/feria/expediente/ExpedienteHistorial';
+import PreparacionDocumental from '../../components/admin/feria/expediente/PreparacionDocumental';
 // v4.1308 — Confirmación manual: comprobante adjunto e inscripción completa.
 import {
     subirComprobanteManual, propuestaConfirmacion, montoEsperado, fechaLocalParaInput, fechaInputAIso,
@@ -111,6 +123,9 @@ interface Access {
     // v4.1024 — Archivar y eliminar. Es una capacidad propia, no se deduce de
     // `edit`: sólo la tiene el rol admin.
     remove?: boolean;
+    // v4.1324 — Expediente: traducir/preparar libretas y aprobar traducciones.
+    translate?: boolean;
+    approveTranslation?: boolean;
 }
 interface StateDef { key: string; label: string; color: string; group?: string; legacy?: boolean }
 /** v4.1253 — Los estados heredados del pago se LEEN pero no se ofrecen al elegir. */
@@ -432,6 +447,12 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
     const [loading, setLoading] = useState(true);
     const [tableLoading, setTableLoading] = useState(false);
     const [detailId, setDetailId] = useState<string | null>(null);
+    // v4.1324 — Con qué pestaña se abre el expediente (desde el menú «⋯») y
+    // el estado de traducción de las filas visibles (una sola llamada).
+    const [detailOpen, setDetailOpen] = useState<OpenRequest | null>(null);
+    const [docStates, setDocStates] = useState<Record<string, { state: TranslationState; label: string }>>({});
+    const [showLote, setShowLote] = useState(false);
+    const [docTick, setDocTick] = useState(0);
 
     const [filters, setFilters] = useState({
         search: '', paymentStatus: 'all', workflowStatus: 'all', district: 'all',
@@ -487,6 +508,19 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
     const [pdfBusy, setPdfBusy] = useState(false);
 
     const selectedIds = useMemo(() => new Set(selected.map(r => r.id)), [selected]);
+
+    // v4.1324 — Estado de traducción de las filas visibles: UNA llamada por
+    // página (el servidor lo deriva de las plantillas y las traducciones). Si
+    // falla, la tabla sigue igual: es información de apoyo.
+    useEffect(() => {
+        const ids = rows.map(r => r.id);
+        if (!ids.length) { setDocStates({}); return undefined; }
+        let vivo = true;
+        dossierRequest<{ states: Record<string, { en: { state: TranslationState; label: string } }> }>(`/expedientes/estado?ids=${ids.join(',')}`, currentEventId())
+            .then(d => { if (vivo) setDocStates(Object.fromEntries(Object.entries(d.states || {}).map(([k, v]) => [k, { state: v.en.state, label: v.en.label }]))); })
+            .catch(() => { if (vivo) setDocStates({}); });
+        return () => { vivo = false; };
+    }, [rows, docTick]);
     // Qué acciones en bloque tiene sentido ofrecer. Es sólo para PINTAR: cada
     // ruta comprueba su propio permiso en el servidor, porque esconder un
     // control no protege un endpoint de quien lo conoce (v4.868).
@@ -1543,6 +1577,13 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                         Registrar traslado
                                     </button>
                                 )}
+                                {/* v4.1324 — Fichas PDF en lote y traducción secuencial. */}
+                                {(access?.export || access?.translate) && (
+                                    <button onClick={() => setShowLote(true)}
+                                        className="inline-flex items-center gap-1.5 rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-50">
+                                        <FolderOpen size={13} /> Fichas y traducción
+                                    </button>
+                                )}
                                 <button onClick={() => { setSelected([]); setTransferPlan(null); }} className="ml-auto text-xs font-semibold text-slate-500 hover:text-slate-800">
                                     Limpiar selección
                                 </button>
@@ -1826,9 +1867,19 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                                     {s.paidAt && <p className="text-[11px] text-slate-400">{fmtDate(s.paidAt)}</p>}
                                                 </td>
                                                 <td className="px-3 py-3">
-                                                    <button onClick={() => setDetailId(s.id)} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">
-                                                        <Eye size={13} /> Ver
-                                                    </button>
+                                                    {/* v4.1324 — «Ver» abre el EXPEDIENTE integral; «⋯» da accesos directos. */}
+                                                    <div className="flex items-center gap-1.5">
+                                                        <button onClick={() => { setDetailOpen(null); setDetailId(s.id); }} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">
+                                                            <Eye size={13} /> Ver
+                                                        </button>
+                                                        <ExpedienteAccionesMenu submissionId={s.id} label={s.projectName || s.publicRef} eventId={currentEventId()} access={access || {}}
+                                                            onOpen={req => { setDetailOpen(req); setDetailId(s.id); }} />
+                                                    </div>
+                                                    {docStates[s.id] && docStates[s.id].state !== 'not_started' && (
+                                                        <span title="Estado de la traducción al inglés" className={`mt-1 inline-block whitespace-nowrap rounded-full px-1.5 py-0.5 text-[10px] font-semibold ring-1 ${TRANSLATION_META[docStates[s.id].state]?.cls || ''}`}>
+                                                            EN · {TRANSLATION_META[docStates[s.id].state]?.label || docStates[s.id].label}
+                                                        </span>
+                                                    )}
                                                 </td>
                                             </tr>
                                         );
@@ -2062,13 +2113,21 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                 )}
             </div>
 
+            {showLote && selected.length > 0 && (
+                <ExpedientesLote rows={selected.map(r => ({ id: r.id, publicRef: r.publicRef, projectName: r.projectName }))} eventId={currentEventId()}
+                    access={access || {}} onClose={() => setShowLote(false)}
+                    onChanged={() => setDocTick(t => t + 1)} />
+            )}
+
             {detailId && (
                 <SubmissionDetail
+                    key={`${detailId}-${detailOpen?.pane || 'datos'}`}
                     id={detailId}
+                    openRequest={detailOpen}
                     access={access}
                     catalog={catalog}
                     tags={tags}
-                    onClose={() => setDetailId(null)}
+                    onClose={() => { setDetailId(null); setDetailOpen(null); setDocTick(t => t + 1); }}
                     onChanged={() => {
                         loadRows(pagination.page); loadOverview();
                         // v4.1308 — «N en el sistema · M pagadas» también: una
@@ -2085,7 +2144,7 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
 // ════════════════════════════════════════════════════════════════════
 // Ficha detallada
 // ════════════════════════════════════════════════════════════════════
-const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any) => {
+const SubmissionDetail = ({ id, access, catalog, tags, onClose: closeRaw, onChanged, openRequest }: any) => {
     const [data, setData] = useState<{ submission: Submission; events: TimelineEvent[]; files: FairFile[]; stripeEvents: any[]; registrationSummary?: {
         id: string | null; modality: string; count: number; origin: string; originLabel: string; secondProjectCreatedAt: string | null; currency: string;
         lines: { submissionId: string; projectIndex: number; projectName: string; label: string; amount: number; paid: boolean; owes: boolean }[];
@@ -2096,7 +2155,10 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
     const [saving, setSaving] = useState(false);
     const [comment, setComment] = useState('');
     const [reason, setReason] = useState('');
-    const [pane, setPane] = useState<'datos' | 'pago' | 'historial'>('datos');
+    // v4.1324 — La ficha ES el expediente integral: además de Datos, Pago e
+    // Historial, el formulario completo, documentos, traducción, fichas PDF y
+    // libreta. Abre en la pestaña que pidió el menú «⋯» de la tabla.
+    const [pane, setPaneRaw] = useState<ExpedientePane>((openRequest?.pane as ExpedientePane) || 'datos');
     const [showManualModal, setShowManualModal] = useState(false);
     // v4.1311 — La sustitución por otro proyecto del club.
     const [showSustituir, setShowSustituir] = useState(false);
@@ -2151,6 +2213,39 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
             .finally(() => setLoading(false));
     }, [id]);
     useEffect(() => { load(); }, [load]);
+
+    // ── v4.1324 — Expediente integral ──────────────────────────────────────
+    const [dossier, setDossier] = useState<DossierPayload | null>(null);
+    const [dossierError, setDossierError] = useState<string | null>(null);
+    const [formDirty, setFormDirty] = useState(false);
+    const [trDirty, setTrDirty] = useState(false);
+    const [histKey, setHistKey] = useState(0);
+    const [wide, setWide] = useState<boolean>(() => {
+        try { return localStorage.getItem('fair-expediente-wide') === '1'; } catch { return false; }
+    });
+    const loadDossier = useCallback(() => {
+        setDossierError(null);
+        dossierRequest<DossierPayload>(`/postulaciones/${id}/expediente`, currentEventId())
+            .then(setDossier)
+            .catch(e => setDossierError(e?.message || 'No se pudo abrir el expediente'));
+    }, [id]);
+    useEffect(() => { loadDossier(); }, [loadDossier]);
+    const onTranslationStatus = useCallback((st: TranslationStatus) => {
+        setDossier(d => (d ? { ...d, translation: { en: st } } : d));
+    }, []);
+    const toggleWide = () => setWide(w => {
+        try { localStorage.setItem('fair-expediente-wide', w ? '0' : '1'); } catch { /* sin almacenamiento: sólo esta vez */ }
+        return !w;
+    });
+    // Cambios sin guardar: se avisa antes de cambiar de pestaña o cerrar.
+    const leaveOk = () => !(formDirty || trDirty) || window.confirm('Hay cambios sin guardar en el expediente. ¿Salir sin guardarlos?');
+    const setPane = (p: ExpedientePane) => {
+        if (p === pane) return;
+        if (!leaveOk()) return;
+        setFormDirty(false); setTrDirty(false);
+        setPaneRaw(p);
+    };
+    const onClose = () => { if (leaveOk()) closeRaw(); };
 
     const patch = async (body: Record<string, unknown>, successMsg = 'Cambios guardados') => {
         setSaving(true);
@@ -2317,7 +2412,7 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
 
     return (
         <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/40" onClick={onClose}>
-            <div className="h-full w-full max-w-3xl overflow-y-auto bg-slate-50 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className={`h-full w-full ${wide ? 'max-w-none' : 'max-w-3xl'} overflow-y-auto bg-slate-50 shadow-2xl transition-[max-width]`} onClick={e => e.stopPropagation()}>
                 {loading || !s ? (
                     <div className="flex h-full items-center justify-center text-slate-500"><Loader2 className="mr-2 animate-spin" size={20} /> Cargando ficha…</div>
                 ) : (
@@ -2343,7 +2438,11 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                                         </p>
                                     )}
                                 </div>
-                                <button onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><X size={18} /></button>
+                                <div className="flex shrink-0 items-center gap-1">
+                                    <button onClick={toggleWide} aria-label={wide ? 'Volver al panel lateral' : 'Ver a pantalla completa'} title={wide ? 'Volver al panel lateral' : 'Pantalla completa'}
+                                        className="hidden rounded-lg p-2 text-slate-400 hover:bg-slate-100 sm:inline-flex">{wide ? <Minimize2 size={17} /> : <Maximize2 size={17} />}</button>
+                                    <button onClick={onClose} aria-label="Cerrar el expediente" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><X size={18} /></button>
+                                </div>
                             </div>
 
                             <div className="mt-3 flex flex-wrap gap-2">
@@ -2385,10 +2484,15 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                                 )}
                             </div>
 
-                            <div className="mt-3 flex gap-1 border-b border-slate-100">
-                                {([['datos', 'Datos'], ['pago', 'Pago'], ['historial', 'Historial']] as const).map(([key, label]) => (
-                                    <button key={key} onClick={() => setPane(key)}
-                                        className={`border-b-2 px-3 py-2 text-xs font-semibold ${pane === key ? 'border-blue-700 text-blue-700' : 'border-transparent text-slate-500'}`}>{label}</button>
+                            <div className="-mx-6 mt-3 flex gap-1 overflow-x-auto border-b border-slate-100 px-6" role="tablist" aria-label="Secciones del expediente">
+                                {([['datos', 'Resumen'], ['formulario', 'Formulario completo'], ['documentos', 'Documentos'], ['traduccion', 'Traducción'], ['fichas', 'Fichas PDF'], ['libreta', 'Libreta'], ['pago', 'Pago'], ['historial', 'Historial']] as const).map(([key, label]) => (
+                                    <button key={key} role="tab" aria-selected={pane === key} onClick={() => setPane(key)}
+                                        className={`shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-xs font-semibold ${pane === key ? 'border-blue-700 text-blue-700' : 'border-transparent text-slate-500'}`}>
+                                        {label}
+                                        {key === 'traduccion' && dossier && dossier.translation.en.state !== 'not_started' && (
+                                            <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] ring-1 ${TRANSLATION_META[dossier.translation.en.state].cls}`}>{TRANSLATION_META[dossier.translation.en.state].label}</span>
+                                        )}
+                                    </button>
                                 ))}
                             </div>
                         </header>
@@ -2396,6 +2500,20 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                         <div className="space-y-4 p-6">
                             {pane === 'datos' && (
                                 <>
+                                    {dossier && (
+                                        <Section title="Resumen del proyecto">
+                                            <Row label="Referencia" value={s.publicRef} mono />
+                                            <Row label="Proyecto" value={s.projectName} />
+                                            <Row label="Club / Distrito" value={`${s.clubName} · ${s.district}`} />
+                                            <Row label="Responsable" value={`${s.firstName} ${s.lastName}`} />
+                                            <Row label="Área de enfoque" value={s.focusAreaLabel || s.focusArea} />
+                                            <Row label="Presupuesto" value={s.budgetUsd != null ? `${fmtUsd(s.budgetUsd)} USD` : undefined} />
+                                            <Row label="Estado de la postulación" value={wf?.label} />
+                                            <Row label="Fecha de postulación" value={fmtDateTime(dossier.submission.appliedAt || dossier.submission.createdAt)} />
+                                            <Row label="Edición" value={dossier.edition.name} />
+                                        </Section>
+                                    )}
+                                    {dossier && <PreparacionDocumental data={dossier} onGo={p => setPane(p)} />}
                                     <Section title="Responsable">
                                         <Row label="Nombre" value={`${s.firstName} ${s.lastName}`} />
                                         <Row label="Correo" value={s.email} />
@@ -2537,6 +2655,33 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                                         </Section>
                                     )}
                                 </>
+                            )}
+
+                            {/* v4.1324 — Pestañas del expediente. Esperan a que cargue y dicen el error si no. */}
+                            {['formulario', 'documentos', 'traduccion', 'fichas', 'libreta'].includes(pane) && !dossier && (
+                                dossierError
+                                    ? <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{dossierError} <button onClick={loadDossier} className="ml-2 font-semibold underline">Reintentar</button></div>
+                                    : <div className="flex items-center justify-center py-16 text-slate-500"><Loader2 className="mr-2 animate-spin" size={18} /> Cargando expediente…</div>
+                            )}
+                            {pane === 'formulario' && dossier && (
+                                <ExpedienteFormulario data={dossier} eventId={currentEventId()} wide={wide} startInEdit={!!openRequest?.edit}
+                                    onDirtyChange={setFormDirty} onReload={loadDossier}
+                                    onSaved={next => { setDossier(d => (d ? { ...d, ...next } : d)); setFormDirty(false); setHistKey(k => k + 1); load(); onChanged(); loadDossier(); }} />
+                            )}
+                            {pane === 'documentos' && dossier && (
+                                <ExpedienteDocumentos data={dossier} eventId={currentEventId()} onOpenPayment={() => setPane('pago')} />
+                            )}
+                            {pane === 'traduccion' && dossier && (
+                                <ExpedienteTraduccion submissionId={id} eventId={currentEventId()} access={dossier.access} wide={wide}
+                                    autoStart={!!openRequest?.autoTranslate} onStatusChange={onTranslationStatus} onDirtyChange={setTrDirty} />
+                            )}
+                            {pane === 'fichas' && dossier && (
+                                <ExpedienteFichas submissionId={id} eventId={currentEventId()} canExport={dossier.access.export} translation={dossier.translation.en} />
+                            )}
+                            {pane === 'libreta' && dossier && (
+                                <ExpedienteLibreta submissionId={id} eventId={currentEventId()} access={dossier.access}
+                                    fieldLabels={Object.fromEntries(dossier.dossier.groups.flatMap(g => g.sections.flatMap(sec => sec.fields.map(f => [f.path, `${g.source === 'submission' ? 'Registro inicial' : g.title} · ${f.label}`]))))}
+                                    project={{ publicRef: dossier.submission.publicRef, projectName: dossier.submission.projectName, clubName: dossier.submission.clubName, district: dossier.submission.district, edition: dossier.edition.name }} />
                             )}
 
                             {pane === 'pago' && (
@@ -2867,6 +3012,7 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
 
                             {pane === 'historial' && (
                                 <>
+                                    <ExpedienteHistorial submissionId={id} eventId={currentEventId()} refreshKey={histKey} />
                                     {access.comment && (
                                         <Section title="Nueva observación interna">
                                             <textarea value={comment} onChange={e => setComment(e.target.value)} rows={3}

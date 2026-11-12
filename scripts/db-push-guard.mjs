@@ -87,6 +87,11 @@
 // (v4.1279): EventDocument, EventDocumentVersion, EventDocumentDownload,
 // EventDocumentDaily y EventDocumentVisitor — cuántas veces se pidió la guía
 // de hoteles de cada evento, por versión y por día: tampoco se reconstruye.
+// Y las siete del Expediente integral del proyecto de la Feria (v4.1324):
+// ProjectDossierTranslation, ProjectDossierTranslationField,
+// ProjectDossierTranslationVersion, ProjectDossierRevision,
+// ProjectDossierGlossary, ProjectDossierBooklet y ProjectDossierExport — las
+// traducciones revisadas a mano y sus versiones aprobadas no se reconstruyen.
 //
 // ⚠️ SocialDailyMetric es el HISTÓRICO PROPIO de Facebook e Instagram, y es lo
 // que un `db push` no puede borrar sin consecuencia: Meta guarda 30 días de

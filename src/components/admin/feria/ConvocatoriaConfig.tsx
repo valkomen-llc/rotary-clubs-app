@@ -99,7 +99,7 @@ export interface FairConfig {
         branding?: { headerLogoUrl?: string; footerLogoUrl?: string; footerText?: string };
         sender?: { name?: string; email?: string; replyTo?: string };
     };
-    access: { admins: string[]; finance: string[]; reviewers: string[] };
+    access: { admins: string[]; finance: string[]; reviewers: string[]; translators?: string[] };
     registrationPanel?: Partial<RegistrationPanelConfig>;
     clubId: string | null;
 }
@@ -782,7 +782,13 @@ const ConvocatoriaConfig: React.FC<{ canEdit?: boolean; onSaved?: () => void }> 
                         label="Revisores"
                         value={(config.access?.reviewers || []).join(', ')}
                         onChange={(e: ChangeEvent) => patch('access.reviewers', e.target.value.split(',').map((x: string) => x.trim()).filter(Boolean))}
-                        hint="Consultan proyectos, registran observaciones y mueven estados de revisión. No ven datos financieros."
+                        hint="Consultan proyectos, registran observaciones, mueven estados de revisión y aprueban traducciones. No ven datos financieros."
+                    />
+                    <Input
+                        label="Traductores"
+                        value={(config.access?.translators || []).join(', ')}
+                        onChange={(e: ChangeEvent) => patch('access.translators', e.target.value.split(',').map((x: string) => x.trim()).filter(Boolean))}
+                        hint="Leen el expediente completo de cada proyecto, preparan la traducción al inglés y las libretas, y descargan fichas PDF. No editan la postulación, no aprueban y no ven pagos."
                     />
                 </div>
             </Card>

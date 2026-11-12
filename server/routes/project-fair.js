@@ -181,6 +181,28 @@ router.post('/admin/postulaciones/transfers/resolve', authMiddleware, requireSit
 // paramétricas.
 router.post('/admin/postulaciones/sustitucion/verificar', authMiddleware, fairEdit, express.json(), fair.verifySubstitution);
 router.post('/admin/postulaciones/sustitucion/aplicar', authMiddleware, fairEdit, express.json(), fair.applySubstitution);
+// v4.1324 — Expediente integral del proyecto: lectura completa, edición
+// auditada, traducción al inglés con revisión humana, fichas PDF (español,
+// inglés y bilingüe) y libretas. Literales ANTES de las paramétricas.
+import dossier from '../controllers/projectDossierController.js';
+
+router.get('/admin/expedientes/estado', authMiddleware, fairRead, dossier.getDossierStates);
+router.post('/admin/expedientes/documentos', authMiddleware, fairRead, express.json(), dossier.getDocumentsBulk);
+router.get('/admin/expedientes/glosario', authMiddleware, fairRead, dossier.getGlossary);
+router.post('/admin/expedientes/glosario', authMiddleware, fairManage, express.json(), dossier.saveGlossaryEntry);
+router.delete('/admin/expedientes/glosario/:glossaryId', authMiddleware, fairManage, dossier.deleteGlossaryEntry);
+router.get('/admin/postulaciones/:id/expediente', authMiddleware, fairRead, dossier.getDossier);
+router.patch('/admin/postulaciones/:id/expediente', authMiddleware, fairEdit, express.json({ limit: '2mb' }), dossier.updateDossier);
+router.get('/admin/postulaciones/:id/expediente/historial', authMiddleware, fairRead, dossier.getDossierHistory);
+router.get('/admin/postulaciones/:id/expediente/documento', authMiddleware, fairRead, dossier.getDocument);
+router.get('/admin/postulaciones/:id/traduccion/:lang', authMiddleware, fairRead, dossier.getTranslation);
+router.post('/admin/postulaciones/:id/traduccion/:lang/generar', authMiddleware, fairEdit, express.json(), dossier.generateTranslation);
+router.put('/admin/postulaciones/:id/traduccion/:lang', authMiddleware, fairEdit, express.json({ limit: '2mb' }), dossier.saveTranslation);
+router.post('/admin/postulaciones/:id/traduccion/:lang/aprobar', authMiddleware, fairEdit, express.json(), dossier.approveTranslation);
+router.get('/admin/postulaciones/:id/libreta', authMiddleware, fairRead, dossier.getBooklet);
+router.post('/admin/postulaciones/:id/libreta/preparar', authMiddleware, fairEdit, express.json(), dossier.prepareBooklet);
+router.put('/admin/postulaciones/:id/libreta', authMiddleware, fairEdit, express.json({ limit: '1mb' }), dossier.saveBooklet);
+router.post('/admin/postulaciones/:id/libreta/aprobar', authMiddleware, fairEdit, express.json(), dossier.approveBooklet);
 router.get('/admin/postulaciones', authMiddleware, fairRead, fair.listSubmissions);
 router.get('/admin/postulaciones/:id', authMiddleware, fairRead, fair.getSubmission);
 router.get('/admin/postulaciones/:id/snapshot', authMiddleware, fairRead, fair.getSubmissionSnapshot);

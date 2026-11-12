@@ -56,6 +56,7 @@ export const FEATURE_LABELS = {
     router: 'Otras funciones de IA',
     'whatsapp.agent': 'Agente de WhatsApp',
     'brain.chat': 'Cerebro del sitio',
+    'project_fair.translation': 'Feria de Proyectos (traducción de expedientes)',
 };
 
 // ── Precios de referencia (USD por millón de tokens) ───────────────────

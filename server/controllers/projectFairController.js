@@ -278,6 +278,7 @@ export const DEFAULT_CONFIG = {
         admins: [],     // gestión completa del módulo (además del rol 'administrator')
         finance: [],    // ven pagos, comprobantes y pueden sincronizar con Stripe
         reviewers: [],  // consultan, comentan y mueven estados de revisión
+        translators: [], // v4.1324 — leen expedientes, traducen y descargan fichas
     },
     // ── Panel público de registro (v4.602) ──────────────────────────
     // Copia del panel de inscripción de la Conferencia LATIR: logo, cuenta
