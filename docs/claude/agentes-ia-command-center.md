@@ -353,11 +353,13 @@ en «Error»; producción siguió en v4.1314 (Fase 0).
 
 **Causa**: `test-agents-registry` (en `prebuild`) comparaba
 `AGENT_SKILLS_BUNDLE` con la carpeta `.agent/skills`. Pero `.vercelignore`
-EXCLUYE `.agent`: en el build de Vercel la carpeta no existe, la comparación
-daba «48 habilidades frente a ninguna» y el `prebuild` abortaba. El paquete
+EXCLUYE `.agent`: en el build de Vercel quedan las CARPETAS de
+`.agent/skills` pero sin sus `SKILL.md`, la comparación daba «48 habilidades
+frente a ninguna» y el `prebuild` abortaba. (Un primer arreglo que miraba si el
+directorio existía no alcanzó por eso: hay que contar las habilidades legibles.) El paquete
 (`server/lib/agentSkillsBundle.js`) existe justamente porque `.agent` no viaja.
 
-**Arreglo**: la comparación corre sólo donde la carpeta está (el repo); en el
+**Arreglo**: la comparación corre sólo donde hay habilidades que leer (el repo); en el
 despliegue se comprueba que el paquete traiga habilidades, y una aserción fija
 que `.agent` sigue en `.vercelignore`.
 
