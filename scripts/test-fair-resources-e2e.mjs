@@ -76,7 +76,7 @@ const { default: router } = await import(`${REPO}/server/routes/project-fair.js`
 const { ensureTables } = await import(`${REPO}/server/controllers/projectFairController.js`);
 await ensureTables();
 
-await db.query(`INSERT INTO "ProjectFairConfig" (key, "eventId", config) VALUES ('evt-xii','evt-xii','{}') ON CONFLICT DO NOTHING`);
+await db.query(`INSERT INTO "ProjectFairConfig" (key, "eventId", config) VALUES ('evt-xii','evt-xii','{"access":{"reviewers":["revisora@x.org"]}}') ON CONFLICT (key) DO UPDATE SET config = EXCLUDED.config`);
 const sub = async (ref, wf, extra = {}) => {
     const { rows } = await db.query(`INSERT INTO "ProjectFairSubmission" ("publicRef", "eventId", "firstName", "lastName", email, "clubName", district, "projectName", "workflowStatus", status, "archivedAt", phone, "focusArea")
         VALUES ($1,'evt-xii',$2,'Pérez',$3,$4,$5,$6,$7,'pending_payment',$8,'+57300','agua') RETURNING id`,
@@ -98,6 +98,9 @@ const BASE = `http://127.0.0.1:${srv.address().port}/api/project-fair`;
 const SECRET = process.env.JWT_SECRET || 'rotary_secret_key_2026';
 const admin = jwt.sign({ id: 'u-admin', email: 'admin@feria.org', role: 'administrator', clubId: 'c1' }, SECRET);
 const viewer = jwt.sign({ id: 'u-view', email: 'viewer@x.org', role: 'editor' }, SECRET);
+// v4.1326 — Un perfil de LECTURA legítimo es el de una lista de la convocatoria;
+// `viewer` (otro sitio, sin lista) ya no ve nada.
+const reviewer = jwt.sign({ id: 'u-rev', email: 'revisora@x.org', role: 'editor' }, SECRET);
 const portal = (s) => jwt.sign({ sub: s.accountId, submissionId: s.id, email: s.email, aud: 'project-fair-portal' }, SECRET);
 
 let n = 0;
@@ -222,7 +225,9 @@ ok(r.data.kpis.totalDelivered === 0 && r.data.kpis.pendingProjects === 2, 'rango
 r = await call('GET', `/admin/recursos/presentation_template/analytics.csv${EV}`, admin);
 ok(r.status === 200 && /text\/csv/.test(r.headers.get('content-type')) && String(r.data).includes('FP-A'), 'exportación CSV');
 ok((await call('GET', `/admin/recursos/presentation_template/analytics.csv${EV}`, viewer)).status === 403, 'sin permiso de exportar: 403');
-ok((await call('GET', `/admin/recursos/presentation_template/analytics${EV}`, viewer)).status === 200, 'el perfil de lectura sí consulta la analítica');
+r = await call('GET', `/admin/recursos/presentation_template/analytics${EV}`, viewer);
+ok(r.status === 403 && r.data?.code === 'NO_FAIR_PROFILE', 'v4.1326: sin perfil en la Feria (otro sitio, sin lista) no consulta la analítica: 403');
+ok((await call('GET', `/admin/recursos/presentation_template/analytics${EV}`, reviewer)).status === 200, 'el perfil de lectura de la convocatoria (revisores) sí consulta la analítica');
 
 console.log('── Independencia');
 const after = await db.query('SELECT "publicRef", status, "workflowStatus", "paidAt" FROM "ProjectFairSubmission" ORDER BY "publicRef"');

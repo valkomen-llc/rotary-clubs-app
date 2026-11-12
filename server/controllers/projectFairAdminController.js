@@ -19,8 +19,9 @@
 // sin tener que fusionar dos fuentes ni mantenerlas sincronizadas.
 //
 // Permisos: el rol del módulo se resuelve por rol de plataforma + las listas
-// de correos configuradas en la convocatoria (access.finance / access.reviewers),
-// de modo que no hace falta tocar el modelo global de usuarios.
+// de correos configuradas en la convocatoria (access.finance / access.reviewers
+// / access.translators), de modo que no hace falta tocar el modelo global de
+// usuarios. Desde v4.1326 quien no tiene perfil (`viewer`) no ve nada: 403.
 // ════════════════════════════════════════════════════════════════════
 import Stripe from 'stripe';
 import db from '../lib/db.js';
@@ -74,6 +75,7 @@ import {
     SQL_FDD_COLUMNS, FDD_SORTABLE, FDD_RANGE_FILTERS, sqlAmount, rangeBound, fddAmountsOf,
 } from '../lib/projectFairFddAmounts.js';
 
+console.log('[projectFairAdminController] v4.1326.0 cargado — Sin perfil en la Feria no se ve nada: el rol viewer pierde view y withAccess responde 403 NO_FAIR_PROFILE (antes un club_admin de otro club leía correo, teléfono y documento de cada responsable).');
 console.log('[projectFairAdminController] v4.1325.0 cargado — Sólo el sitio de la Feria administra el módulo: el grant RBAC de project_fair.* cuenta sólo si es del sitio de la Feria (un club_admin de otro club ya no resuelve como admin); las listas Finanzas/Revisores/Traductores vuelven a aplicar.');
 console.log('[projectFairAdminController] v4.1324.0 cargado — Expediente integral del proyecto: lectura completa, edición auditada campo a campo, traducción al inglés con revisión humana y versiones, fichas PDF (español, inglés, bilingüe), libretas y perfil «Traductores». No toca estados ni pagos.');
 console.log('[projectFairAdminController] v4.1313.0 cargado — Editar el valor de la inscripción de un proyecto desde su ficha (250.000 → 100.000 u otro): línea + metadata.amountOverride que respetan el cobro, el desglose y la confirmación manual; motivo obligatorio, historial antes/después, cobro abierto expirado; no toca lo recibido ni Stripe.');
@@ -136,8 +138,19 @@ const ROLE_CAPABILITIES = {
     finance:    { view: true, managePayments: true, viewPayments: true, comment: true, edit: false, changeStatus: false, manageTags: false, export: true, config: false, remove: false, translate: false, approveTranslation: false },
     reviewer:   { view: true, managePayments: false, viewPayments: false, comment: true, edit: false, changeStatus: true, manageTags: true, export: true, config: false, remove: false, translate: true, approveTranslation: true },
     translator: { view: true, managePayments: false, viewPayments: false, comment: true, edit: false, changeStatus: false, manageTags: false, export: true, config: false, remove: false, translate: true, approveTranslation: false },
-    viewer:     { view: true, managePayments: false, viewPayments: false, comment: false, edit: false, changeStatus: false, manageTags: false, export: false, config: false, remove: false, translate: false, approveTranslation: false },
+    // v4.1326 — `viewer` NO VE NADA. Desde v4.1325 sólo resuelve a `viewer`
+    // quien llega de OTRO sitio y no está en ninguna lista de la convocatoria:
+    // en el sitio de la Feria todo perfil que pasa la guardia de la ruta es
+    // `admin`. Con `view: true` ese administrador de otro club seguía leyendo
+    // el listado con correo, teléfono y documento de identidad de cada
+    // responsable. Cerrarlo aquí cubre TODO lo que pasa por `withAccess`
+    // (listado, ficha, expediente, exportaciones, formularios, videos); ocultar
+    // campo por campo habría dejado alguna respuesta sin revisar.
+    viewer:     { view: false, managePayments: false, viewPayments: false, comment: false, edit: false, changeStatus: false, manageTags: false, export: false, config: false, remove: false, translate: false, approveTranslation: false },
 };
+
+/** Lo que se le dice a quien no tiene perfil en el módulo (v4.1326). */
+export const NO_FAIR_PROFILE_MESSAGE = 'Este módulo lo administra el sitio de la Feria de Proyectos. Si formas parte del comité, pide que agreguen tu correo en la configuración de la convocatoria (Administradores, Finanzas, Revisores o Traductores).';
 
 // Columna sobre la que se agregan los recaudos: la del precio anunciado. Es un
 // literal controlado (nunca viene del request), no una interpolación de datos.
@@ -228,7 +241,6 @@ export const resolveAccess = (user, cfg, { ownsFairSite = false } = {}) => {
     else if (listHas(access.finance, email)) role = 'finance';
     else if (listHas(access.reviewers, email)) role = 'reviewer';
     else if (listHas(access.translators, email)) role = 'translator';
-    else if (['district_admin', 'club_admin', 'editor'].includes(user?.role)) role = 'viewer';
     return { role, ...ROLE_CAPABILITIES[role] };
 };
 
@@ -250,7 +262,10 @@ export const withAccess = (handler, capability = 'view') => async (req, res) => 
         const cfg = await readConfigForAdmin(clean(req.query?.evento, 60) || null);
         const access = resolveAccess(req.user, cfg, { ownsFairSite: await isProjectFairSiteAdmin(req, cfg) });
         if (!access[capability]) {
-            return res.status(403).json({ error: 'Tu perfil no tiene permiso para esta acción.' });
+            return res.status(403).json({
+                error: access.role === 'viewer' ? NO_FAIR_PROFILE_MESSAGE : 'Tu perfil no tiene permiso para esta acción.',
+                code: access.role === 'viewer' ? 'NO_FAIR_PROFILE' : 'FAIR_CAPABILITY_DENIED',
+            });
         }
         return await handler(req, res, { cfg, access });
     } catch (error) {

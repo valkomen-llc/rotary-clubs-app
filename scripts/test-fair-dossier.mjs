@@ -303,7 +303,11 @@ if (!URL_DB) {
         const viewDoc = await call(dossierCtl.getDocument, { params: { id: 'sub-1' }, query: { ...Q, lang: 'es' }, user: VIEWER });
         ok('(18) un perfil de sólo lectura NO puede descargar fichas → 403', viewDoc.status === 403);
         const viewRead = await call(dossierCtl.getDossier, { params: { id: 'sub-1' }, query: Q, user: VIEWER });
-        ok('… pero sí leer el expediente', viewRead.status === 200 && viewRead.body.access.edit === false);
+        // v4.1326 — Sin perfil en la Feria (otro sitio, sin lista) no se lee
+        // nada: el expediente lleva documento, correo y teléfono.
+        ok('… y tampoco leer el expediente (v4.1326: sin perfil no se ve nada) → 403', viewRead.status === 403 && viewRead.body?.code === 'NO_FAIR_PROFILE');
+        const revRead = await call(dossierCtl.getDossier, { params: { id: 'sub-1' }, query: Q, user: REVIEWER });
+        ok('… el perfil de lectura de la convocatoria (revisores) sí lo lee, sin editar', revRead.status === 200 && revRead.body.access.edit === false);
 
         // 7 · Traducir (con el perfil de traductor)
         const t1 = await call(dossierCtl.generateTranslation, { params: { id: 'sub-1', lang: 'en' }, query: Q, user: TRANSLATOR, body: {} });

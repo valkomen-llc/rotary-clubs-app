@@ -847,7 +847,8 @@ con la sesión de OTRO club no basta.
 
 **Quién deja de serlo:** `club_admin`, `district_admin` y `editor` de cualquier
 otro sitio (incluidos los sitios de distrito), y membresías de otros sitios con
-`project_fair.*`. Resuelven como `viewer`, salvo que su correo esté en
+`project_fair.*`. Resuelven como `viewer` (desde v4.1326, sin acceso: ver la
+sección siguiente), salvo que su correo esté en
 `access.finance` (→ `finance`), `access.reviewers` (→ `reviewer`) o
 `access.translators` (→ `translator`).
 
@@ -863,13 +864,50 @@ su correo en «Administradores» de la Convocatoria (`access.admins`), o el rol
 `project_fair_manager` en el sitio de la Feria. Lista confirmada por el
 cliente: _(pendiente — anotarla aquí: nombre, correo, rol y sitio)_.
 
-**Lo que este arreglo NO cambia (anotado para una próxima versión):**
+**Lo que este arreglo NO cambió:**
 
-- Un `viewer` sigue viendo los datos personales del listado (correo, teléfono,
-  documento); sólo los de pago están detrás de `viewPayments`. El guardián de
-  la ruta deja pasar a todo `club_admin`/`district_admin`/`editor` de la
-  plataforma, así que hoy cualquiera de ellos puede LEER el listado. Cerrarlo
-  (403 o datos personales detrás de un permiso) es la siguiente decisión.
+- ~~Un `viewer` sigue viendo los datos personales del listado.~~ Cerrado en
+  v4.1326 (sección siguiente).
 - Dentro del sitio de la Feria, `project_fair.view` sigue dando `admin` (con
   `remove` y `managePayments`), como antes. Separar «ver» de «administrar» es
   otro cambio de alcance.
+
+### Sin perfil en la Feria no se ve nada — v4.1326
+
+**El hueco que dejó v4.1325.** El administrador de otro club ya no era `admin`,
+pero resolvía como `viewer` con `view: true`. La guardia de la ruta
+(`requireRoleOrPermission(SITE_ADMIN_ROLES, 'project_fair.view')`) deja pasar a
+todo `club_admin`/`district_admin`/`editor` de la plataforma, y `mapRow` le
+entrega al `viewer` correo, teléfono, tipo y número de documento, ciudad y
+cargo de cada responsable. Sólo los identificadores de Stripe y el comprobante
+estaban detrás de `viewPayments`.
+
+**La decisión: 403, no ocultar campo por campo.** Desde v4.1325, `viewer` sólo
+le toca a quien llega de OTRO sitio y no está en ninguna lista de la
+convocatoria: en el sitio de la Feria todo perfil que pasa la guardia resuelve
+a `admin` (y el resto a `finance`, `reviewer` o `translator`). No hay un
+lector legítimo al que dejarle una vista recortada. Por eso
+`ROLE_CAPABILITIES.viewer` queda con TODAS las capacidades en `false` y
+`withAccess` responde **403 con `code: 'NO_FAIR_PROFILE'`** y un mensaje que
+explica cómo pedir acceso (`NO_FAIR_PROFILE_MESSAGE`). Un solo punto cubre
+listado, ficha, expediente, formularios, exportaciones, Video Pitch, Videos de
+proyectos y recursos: todos pasan por `withAccess`. La alternativa (una
+capacidad `viewPersonalData` y recortar `mapRow`) obligaba a revisar cada
+respuesta de cada controlador; la que se olvidara filtraba en silencio.
+
+- **Regla durable:** no volver a darle `view` a `viewer`. Si algún día hace
+  falta un lector sin datos personales, es un perfil NUEVO con su lista en la
+  convocatoria, no `viewer`.
+- **Fuera de `withAccess`** sólo quedan `GET /admin/ediciones`,
+  `/admin/ediciones/disponibles` (acotado al club de quien pregunta) y
+  `/admin/trm-providers`: ninguno devuelve datos personales.
+- **El panel no se rompe:** la barra lateral sólo muestra el módulo en el sitio
+  de la Feria o a un operador, y `PostulacionesPagos` pinta el `error` del
+  servidor en «No se pudo cargar esta pestaña», así que quien llegue por URL
+  lee el mensaje.
+- **Prueba:** `npm run test:fair:site-admin`. Parte pura: ninguna capacidad
+  para `viewer` con cinco roles. Parte e2e: `withAccess` real devuelve 403 sin
+  correr el manejador, y el `listSubmissions` real con una postulación
+  sembrada no devuelve correo, documento, teléfono ni apellido a un
+  `club_admin` de otro club, pero sí al administrador del sitio de la Feria.
+  Con el controlador de v4.1325 falla (`club_admin.view`).
