@@ -34,13 +34,27 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1325.0 | 2026-11-12 (Postulación de Proyectos: sólo el sitio de la Feria administra el módulo)
+// UI V4.1326.0 | 2026-11-12 (Postulación de Proyectos: sin perfil en la Feria no se ven datos personales)
 // Cache bust: 2026-11-12
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1326.0',
+        title: 'Postulación de Proyectos: sin perfil en la Feria no se ve nada 🔒',
+        description: 'Segunda parte de la corrección de seguridad de v4.1325. Un administrador de otro club ya no era administrador de la Feria, pero todavía podía abrir el listado en «solo lectura» y ver el correo, el teléfono y el documento de identidad de cada responsable. Ahora quien no tiene un perfil en la Feria recibe un aviso que le explica cómo pedir acceso, y no ve ningún dato.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'seguridad', 'permisos', 'datos personales'],
+        type: 'fix',
+        impact: 'Alta: los datos personales de los responsables de cada proyecto sólo los ven el comité y los perfiles que la convocatoria autoriza.',
+        changes: [
+            { type: 'fixed', text: 'El perfil «solo lectura» del módulo ya no ve postulaciones, expedientes, formularios, videos ni exportaciones.' },
+            { type: 'changed', text: 'Quien entra sin perfil ve un aviso: el módulo lo administra el sitio de la Feria y el acceso se pide agregando el correo en la configuración de la convocatoria.' },
+            { type: 'changed', text: 'Sin cambios para el comité del sitio de la Feria, los operadores de la plataforma ni los correos de Administradores, Finanzas, Revisores y Traductores.' },
+        ],
+    },
     {
         version: '4.1325.0',
         title: 'Postulación de Proyectos: sólo el sitio de la Feria administra el módulo 🔒',
