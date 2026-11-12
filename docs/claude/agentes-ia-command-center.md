@@ -381,3 +381,16 @@ compara los dos archivos y rompe el build si falta alguno. Verificado
 importando `api/index.js` (el mismo arranque de producción): antes 404 en las
 siete, después cada una llega a su router. El cron `/api/cron/agents-tick` ya
 llegaba (va por el router de `/api/cron`, que sí estaba montado).
+
+## v4.1322.0 — «No se puede encontrar el módulo '/var/task/server/routes/agentCenter.js'»
+
+El arreglo de v4.1321 montó los routers con un cargador genérico,
+`lazyRouter(file)` → `import(file)`. Vercel arma la función rastreando los
+`import('…')` LITERALES (`@vercel/nft`): con la ruta en una variable no incluyó
+`agentCenter.js` ni los otros seis routers, y en producción el import fallaba.
+En local funcionaba porque Node resuelve cualquier ruta. **Arreglo**: un getter
+por router con la ruta literal, como el resto de `api/index.js`. **Verificado
+con `@vercel/nft`** (la misma traza de Vercel): con `main` faltaban
+`server/routes/agentCenter.js` y `learning.js`; con el arreglo están los siete
+routers y todos los módulos del Centro de Comando. `check:api-mounts` ahora
+también rechaza cualquier `import()` no literal en `api/` y `server/`.
