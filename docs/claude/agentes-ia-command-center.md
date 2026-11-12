@@ -394,3 +394,43 @@ con `@vercel/nft`** (la misma traza de Vercel): con `main` faltaban
 `server/routes/agentCenter.js` y `learning.js`; con el arreglo están los siete
 routers y todos los módulos del Centro de Comando. `check:api-mounts` ahora
 también rechaza cualquier `import()` no literal en `api/` y `server/`.
+
+## v4.1323.0 — El catálogo ES el repositorio de The Agency
+
+**Pedido**: «los agentes que están no son los del repositorio: elimina los que
+tenemos y deja solamente los de https://github.com/msitarzewski/agency-agents».
+Lo que se veía eran los agentes HEREDADOS (Daniel Peña, Elena, Mateo…), que la
+Fase 1 migró solos al abrir el registro, con 23 instalaciones cada uno, más los
+pilotos; del repositorio sólo había una lista curada de 22, importable a mano.
+
+**Ahora**:
+- `server/lib/agencyAgentsBundle.js` (generado por
+  `npm run bundle:agency-agents -- /ruta/al/clon`, que exige el commit
+  `AGENCY_SOURCE.ref`): los **283 agentes de las 18 divisiones** de
+  `divisions.json`. Producción no descarga nada; el paquete (4,2 MB) se carga
+  sólo al usarlo, con `import('./agencyAgentsBundle.js')` literal.
+- `agencyCatalogStore.js`: `resetToAgencyCatalog` borra TODAS las plantillas,
+  versiones, instalaciones y herramientas del registro (vence aprobaciones
+  pendientes y cancela tareas de esas instalaciones) y carga las 283
+  PUBLICADAS en su v1 y SIN instalar. Antes guarda la copia completa en
+  `AgentSetting` (`catalogBackup:<fecha>`) y lo audita (`catalog_reset`). Una
+  transacción con `pg_advisory_xact_lock`. `agencyCatalogOnce` lo hace solo la
+  primera vez que la plataforma abre el registro; después, si cambia el commit
+  fijado, sólo SINCRONIZA (agrega lo que falta, no borra).
+- Equipo por división (`AGENCY_DIVISION_TEAM`; lo curado conserva el suyo); la
+  división viaja en `sourceRef.division` y agrupa la pantalla «Agentes».
+  «Importar» pasó a «Repositorio»: estado, divisiones, «Agregar los que
+  falten» y «Restablecer» (escribir RESTABLECER).
+- Retirados (410): `/migrate-legacy` y `/pilots/seed`; ya no se llaman
+  `migrateLegacyOnce` ni el botón «Crear agentes piloto». Los workflows, sin
+  pilotos, redactan con un agente ENCENDIDO del mismo equipo en el sitio.
+- **No se toca la tabla heredada `Agent`**: alimenta el chat de «Control de
+  Misión VIP», el asistente lateral y la orquestadora. Retirarla rompería esas
+  pantallas; es una decisión aparte.
+
+Pruebas: `test:agents:registry` (164: paquete en el commit fijado, 283, 18
+divisiones, claves únicas, cada división con equipo) y
+`test:agents:catalog:e2e` (23, sobre el estado real de producción: 12
+plantillas y 7 instalaciones → sólo los 283, copia completa, una sola vez
+aunque se abra en dos pestañas, "Agent" intacta, workflows con agente del
+repositorio).

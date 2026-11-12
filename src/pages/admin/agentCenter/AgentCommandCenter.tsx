@@ -49,7 +49,7 @@ export const SECTIONS: SectionDef[] = [
     { key: 'observabilidad', label: 'Observabilidad', icon: Activity, group: 'Operación', site: true },
     { key: 'conocimiento', label: 'Conocimiento', icon: Database, group: 'Gobierno', site: true },
     { key: 'tipos', label: 'Tipos de sitio', icon: Globe2, group: 'Gobierno' },
-    { key: 'importar', label: 'Importar', icon: Download, group: 'Gobierno' },
+    { key: 'importar', label: 'Repositorio', icon: Download, group: 'Gobierno' },
     { key: 'gobierno', label: 'Auditoría', icon: ShieldCheck, group: 'Gobierno' },
     { key: 'ajustes', label: 'Ajustes', icon: Settings2, group: 'Gobierno' },
 ];

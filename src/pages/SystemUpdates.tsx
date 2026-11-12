@@ -34,13 +34,29 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1322.0 | 2026-11-12 (Centro de Comando de Agentes IA: el módulo viaja al servidor)
+// UI V4.1323.0 | 2026-11-12 (Centro de Comando: el catálogo es el repositorio de The Agency)
 // Cache bust: 2026-11-12
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1323.0',
+        title: 'Centro de Comando: el catálogo es el repositorio de The Agency 🤖',
+        description: 'El catálogo de agentes queda con los 283 agentes del repositorio msitarzewski/agency-agents, agrupados por sus 18 divisiones. Los agentes anteriores (los heredados migrados y los pilotos) se retiran del Centro de Comando con una copia completa guardada. Los nuevos llegan publicados y sin instalar: cada sitio instala los que va a usar.',
+        date: new Date().toISOString(),
+        tags: ['agentes ia', 'the agency', 'catálogo'],
+        type: 'feature',
+        impact: 'Alta: el catálogo refleja exactamente el repositorio de referencia.',
+        changes: [
+            { type: 'changed', text: 'El catálogo de «Agentes» son los 283 agentes del repositorio, agrupados por división, con filtro por división.' },
+            { type: 'removed', text: 'Se retiran del Centro de Comando los agentes heredados, sus instalaciones y los agentes piloto (queda una copia completa).' },
+            { type: 'added', text: 'Pestaña «Repositorio»: estado del catálogo, «Agregar los que falten» y «Restablecer» con confirmación.' },
+            { type: 'changed', text: 'Los workflows redactan con un agente del mismo equipo instalado en el sitio.' },
+            { type: 'changed', text: 'El chat de «Control de Misión VIP» y el asistente lateral siguen funcionando como antes.' },
+        ],
+    },
     {
         version: '4.1322.0',
         title: 'Centro de Comando de Agentes IA: el módulo viaja al servidor 🔧',

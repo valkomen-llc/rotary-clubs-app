@@ -201,7 +201,9 @@ export async function listTemplates({ team, status, origin, q } = {}) {
     if (origin) { params.push(origin); where.push(`t.origin = $${params.length}`); }
     if (q) { params.push(`%${String(q).toLowerCase()}%`); where.push(`(LOWER(t.draft->>'name') LIKE $${params.length} OR LOWER(t.draft->>'role') LIKE $${params.length} OR LOWER(t.key) LIKE $${params.length})`); }
     const { rows } = await db.query(
-        `SELECT t.*, v.version AS "currentVersion",
+        // v4.1323 — El listado NO lleva el prompt (283 agentes × ~15 KB = 4 MB
+        // en cada apertura de «Agentes»): la ficha lo trae con getTemplate.
+        `SELECT t.*, (t.draft - 'systemPrompt') AS draft, v.version AS "currentVersion",
                 (SELECT COUNT(*)::int FROM "AgentInstallation" i WHERE i."templateId" = t.id) AS "installationCount",
                 (SELECT COUNT(*)::int FROM "AgentInstallation" i WHERE i."templateId" = t.id AND i.enabled) AS "enabledCount"
            FROM "AgentTemplate" t

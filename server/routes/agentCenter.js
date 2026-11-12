@@ -26,6 +26,7 @@ import * as RO from '../lib/agentRolloutStore.js';
 import * as OB from '../lib/agentObservability.js';
 import * as MEM from '../lib/agentMemory.js';
 import * as SC from '../lib/agentScaleStore.js';
+import * as AC from '../lib/agencyCatalogStore.js';
 import { STEP_TYPES, MAX_STEPS, FEEDBACK_VERDICTS, PILOT_STATES, findingsOf } from '../lib/agentScaleSpec.js';
 import { ALERT_KINDS } from '../lib/agentObservabilitySpec.js';
 import db from '../lib/db.js';
@@ -33,13 +34,13 @@ import { usageSummary, recentUsageEvents, currentPrices, savePrice, FEATURE_LABE
 import { TOOL_CATALOG, RISK, GRANT_MODES, PROHIBITED, WORKFLOWS, TASK_STATES, AGENT_EVENT_TYPES, describeCadence } from '../lib/agentRuntimeSpec.js';
 import { TEAM_PRESETS, ROLLOUT_STATES, DEFAULT_WAVES, buildNetwork } from '../lib/agentRolloutSpec.js';
 import {
-    TEAMS, TEMPLATE_STATES, ORIGINS, LEVELS, INSTALLATION_STATES, AUDIT_ACTIONS, AGENCY_SOURCE, siteTypeCatalog,
+    TEAMS, TEMPLATE_STATES, ORIGINS, LEVELS, INSTALLATION_STATES, AUDIT_ACTIONS, AGENCY_SOURCE, AGENCY_DIVISIONS, siteTypeCatalog,
 } from '../lib/agentRegistrySpec.js';
 import { MODULES } from '../lib/rbacSpec.js';
 
 const router = express.Router();
 
-console.log('[agent-center] v4.1322.0 — registro, runtime, despliegues, mapa, vista por sitio, memoria, observabilidad, piloto controlado y constructor de workflows');
+console.log('[agent-center] v4.1323.0 — catálogo = repositorio de The Agency (283 agentes); registro, runtime, despliegues, mapa, vista por sitio, memoria, observabilidad, piloto controlado y constructor de workflows');
 
 function resolveScope(req, res, next) {
     if (isPlatformAdmin(req.user)) { req.acScope = { platform: true, siteId: null }; return next(); }
@@ -74,7 +75,7 @@ router.get('/meta', wrap(async (req, res) => {
         scope: req.acScope.platform ? 'platform' : 'site', siteId: req.acScope.siteId,
         teams: TEAMS, templateStates: TEMPLATE_STATES, origins: ORIGINS, levels: LEVELS,
         installationStates: INSTALLATION_STATES, auditActions: AUDIT_ACTIONS, siteTypes: siteTypeCatalog(),
-        agency: { owner: AGENCY_SOURCE.owner, repo: AGENCY_SOURCE.repo, ref: AGENCY_SOURCE.ref, license: AGENCY_SOURCE.license },
+        agency: { owner: AGENCY_SOURCE.owner, repo: AGENCY_SOURCE.repo, ref: AGENCY_SOURCE.ref, license: AGENCY_SOURCE.license, divisions: AGENCY_DIVISIONS },
         tools: TOOL_CATALOG.map(t => ({ key: t.key, module: t.module, risk: t.risk, team: t.team, description: t.description, parameters: t.parameters })),
         risk: RISK, grantModes: GRANT_MODES, prohibited: PROHIBITED, workflows: WORKFLOWS, taskStates: TASK_STATES,
         eventTypes: AGENT_EVENT_TYPES, featureLabels: FEATURE_LABELS,
@@ -85,9 +86,11 @@ router.get('/meta', wrap(async (req, res) => {
 }));
 
 router.get('/overview', platformOnly, wrap(async (req, res) => {
-    const migrated = await R.migrateLegacyOnce(req.user);
+    // v4.1323 — El catálogo es el repositorio de The Agency: la primera vez se
+    // restablece solo (con copia de lo borrado); ya no se migran los heredados.
+    const catalogReset = await AC.agencyCatalogOnce(req.user);
     const [base, runtime, usage] = await Promise.all([R.overview(), RT.runtimeOverview(), usageSummary({ days: 30 })]);
-    res.json({ ...base, runtime, usage30d: usage.totals, migratedNow: migrated });
+    res.json({ ...base, runtime, usage30d: usage.totals, catalogReset });
 }));
 
 // La portada de un sitio: sus agentes, lo que espera decisión y su consumo.
@@ -105,10 +108,11 @@ router.get('/site-overview', wrap(async (req, res) => {
 router.get('/settings', platformOnly, wrap(async (req, res) => res.json(await R.getSettings())));
 router.put('/settings', platformOnly, wrap(async (req, res) => res.json(await R.saveSettings(req.body || {}, req.user))));
 router.get('/site-types', platformOnly, wrap(async (req, res) => res.json({ siteTypes: await R.listSiteTypePolicies() })));
-router.post('/migrate-legacy', platformOnly, wrap(async (req, res) => res.json(await R.migrateLegacy(req.user))));
+// v4.1323 — Retirada: el catálogo es SÓLO el repositorio de The Agency.
+router.post('/migrate-legacy', platformOnly, (req, res) => res.status(410).json({ error: 'Retirado en v4.1323: el catálogo es el repositorio de The Agency.' }));
 
 router.get('/templates', platformOnly, wrap(async (req, res) => {
-    await R.migrateLegacyOnce(req.user);
+    await AC.agencyCatalogOnce(req.user);
     const { team, status, origin, q } = req.query;
     res.json({ templates: await R.listTemplates({ team, status, origin, q }) });
 }));
@@ -127,14 +131,12 @@ router.post('/installations', platformOnly, wrap(async (req, res) => {
 router.get('/sites', platformOnly, wrap(async (req, res) => res.json({ sites: await R.searchSites({ q: req.query.q || '', type: req.query.type || null }) })));
 router.get('/skills', platformOnly, wrap(async (req, res) => res.json({ skills: await R.listSkills() })));
 router.post('/skills/sync', platformOnly, wrap(async (req, res) => res.json(await R.syncSkillsFromBundle(req.user))));
-router.get('/agency/catalog', platformOnly, wrap(async (req, res) => {
-    const imported = await R.agencyCatalogStatus();
-    res.json({
-        source: { owner: AGENCY_SOURCE.owner, repo: AGENCY_SOURCE.repo, ref: AGENCY_SOURCE.ref, license: AGENCY_SOURCE.license },
-        entries: AGENCY_SOURCE.curated.map(c => ({ ...c, imported: imported.get(c.path) || null })),
-    });
+router.get('/agency/catalog', platformOnly, wrap(async (req, res) => res.json(await AC.catalogStatus())));
+router.post('/agency/sync', platformOnly, wrap(async (req, res) => res.json(await AC.syncAgencyCatalog(req.user))));
+router.post('/agency/reset', platformOnly, wrap(async (req, res) => {
+    if (req.body?.confirm !== 'RESTABLECER') return res.status(400).json({ error: 'Escribe RESTABLECER para confirmar.' });
+    res.json(await AC.resetToAgencyCatalog(req.user, { reason: 'manual' }));
 }));
-router.post('/agency/import', platformOnly, wrap(async (req, res) => res.json(await R.importAgencyAgent(String(req.body?.path || ''), req.user))));
 
 // ── Runtime ──
 router.get('/tasks', wrap(async (req, res) => res.json({ tasks: await RT.listTasks({ status: req.query.status || null, siteId: siteOf(req, req.query.siteId) }) })));
@@ -147,7 +149,7 @@ router.post('/workflow-runs', wrap(async (req, res) => {
 }));
 router.get('/schedules', wrap(async (req, res) => res.json({ schedules: (await RT.listSchedules({ siteId: siteOf(req, req.query.siteId) })).map(s => ({ ...s, cadenceLabel: describeCadence(s.cadence) })) })));
 router.post('/schedules', wrap(async (req, res) => res.status(201).json(await RT.saveSchedule({ ...(req.body || {}), id: null, siteId: siteOf(req, req.body?.siteId) }, req.user))));
-router.post('/pilots/seed', platformOnly, wrap(async (req, res) => res.json(await RT.seedPilotTemplates(req.user))));
+router.post('/pilots/seed', platformOnly, (req, res) => res.status(410).json({ error: 'Retirado en v4.1323: el catálogo es el repositorio de The Agency.' }));
 router.post('/tick', platformOnly, wrap(async (req, res) => res.json(await RT.tick({ budgetMs: 60_000 }))));
 router.get('/usage', wrap(async (req, res) => res.json(await usageSummary({ days: Number(req.query.days) || 30, siteId: siteOf(req, req.query.siteId) }))));
 router.get('/usage/events', wrap(async (req, res) => res.json({ events: await recentUsageEvents({ limit: Number(req.query.limit) || 50, siteId: siteOf(req, req.query.siteId) }) })));

@@ -72,7 +72,17 @@ eq(S.parseAgentMarkdown('sin frontmatter').body, 'sin frontmatter', 'sin frontma
 eq(S.AGENCY_SOURCE.ref.length, 40, 'The Agency FIJADA a un commit completo');
 eq(S.AGENCY_SOURCE.license, 'MIT', 'licencia MIT');
 ok(S.AGENCY_SOURCE.curated.length >= 20 && S.AGENCY_SOURCE.curated.every(c => S.TEAM_KEYS.includes(c.team)), 'lista curada con equipo válido');
-ok(!S.AGENCY_SOURCE.curated.some(c => /game-development|spatial-computing/.test(c.path)), 'sin juegos ni computación espacial');
+// v4.1323 — El catálogo es TODO el repositorio (la lista curada sólo sugiere el equipo).
+const { AGENCY_BUNDLE } = await import(`${REPO}/server/lib/agencyAgentsBundle.js`);
+eq(AGENCY_BUNDLE.ref, S.AGENCY_SOURCE.ref, 'el paquete está en el commit fijado');
+eq(AGENCY_BUNDLE.agents.length, 283, 'los 283 agentes del repositorio');
+ok(AGENCY_BUNDLE.agents.some(x => x.body.includes("import { test, expect } from './fixtures'")), 'el texto de los prompts llega INTACTO (el «import» va escapado sólo en el archivo, para check-imports)');
+eq(Object.keys(AGENCY_BUNDLE.divisions).length, 18, 'de sus 18 divisiones');
+const tpls = AGENCY_BUNDLE.agents.map(x => S.templateFromAgencyBundle(x));
+eq(new Set(tpls.map(t => t.key)).size, 283, 'una clave única por agente');
+ok(tpls.every(t => S.TEAM_KEYS.includes(t.team) && t.sourceRef.division && t.draft.systemPrompt.length > 200 && t.draft.name), 'cada uno con equipo, división, nombre y prompt');
+ok(Object.keys(AGENCY_BUNDLE.divisions).every(d => S.AGENCY_DIVISION_TEAM[d] && S.AGENCY_DIVISIONS[d]), 'toda división tiene equipo y nombre en español');
+ok(S.AGENCY_SOURCE.curated.every(c => AGENCY_BUNDLE.agents.some(x => x.path === c.path)), 'lo curado existe en el paquete');
 ok(S.agencyRawUrl('support/support-support-responder.md').includes(S.AGENCY_SOURCE.ref), 'la URL usa el commit fijado');
 eq(S.agencyRawUrl('../../etc/passwd'), null, 'una ruta rara no arma URL');
 eq(S.agencyCuratedEntry('engineering/engineering-frontend-developer.md'), null, 'fuera de la lista curada no se importa');
@@ -123,11 +133,18 @@ for (const t of Object.keys(OWNED_COLUMNS)) {
 }
 const routes = read('server/routes/agentCenter.js');
 ok(/router\.use\(authMiddleware, resolveScope\)/.test(routes), 'toda la API exige sesión con alcance (plataforma o sitio)');
-for (const r of ["router.get('/templates'", "router.post('/templates'", "router.put('/site-types/:type'", "router.put('/settings'", "router.post('/agency/import'", "router.put('/installations/:id/grants'", "router.post('/rollouts'", "router.post('/installations'", "router.get('/audit'"]) {
+for (const r of ["router.get('/templates'", "router.post('/templates'", "router.put('/site-types/:type'", "router.put('/settings'", "router.post('/agency/sync'", "router.post('/agency/reset'", "router.get('/agency/catalog'", "router.put('/installations/:id/grants'", "router.post('/rollouts'", "router.post('/installations'", "router.get('/audit'"]) {
     const line = routes.split('\n').find(l => l.startsWith(r));
     ok(line && /platformOnly/.test(line), `${r}: sólo la plataforma`);
 }
 ok(routes.indexOf("router.get('/templates'") < routes.indexOf("router.get('/templates/:id'"), 'literales antes que paramétricas');
+ok(/req\.body\?\.confirm !== 'RESTABLECER'/.test(routes), 'restablecer el catálogo exige escribir RESTABLECER');
+ok(/await AC\.agencyCatalogOnce\(req\.user\)/.test(routes) && !/migrateLegacyOnce\(/.test(routes), 'la plataforma restablece al repositorio; ya no migra los heredados');
+ok(/router\.post\('\/migrate-legacy'[^\n]*status\(410\)/.test(routes) && /router\.post\('\/pilots\/seed'[^\n]*status\(410\)/.test(routes), 'migrar heredados y crear pilotos: retirados');
+const catStore = read('server/lib/agencyCatalogStore.js');
+ok(/await import\('\.\/agencyAgentsBundle\.js'\)/.test(catStore), 'el paquete (4 MB) se carga sólo al usarlo, con ruta literal');
+ok(/catalogBackup:/.test(catStore) && /pg_advisory_xact_lock/.test(catStore), 'copia antes de borrar y candado contra dos restablecimientos');
+ok(!/FROM "Agent"\b|DELETE FROM "Agent"\s/.test(catStore), 'no toca la tabla heredada "Agent" (Control de Misión VIP)');
 const server = read('server/server.js');
 ok(/app\.use\('\/api\/agent-center', agentCenterRoutes\)/.test(server), 'montado en /api/agent-center');
 const { collectSkills } = await import(`${REPO}/scripts/bundle-agent-skills.mjs`);
