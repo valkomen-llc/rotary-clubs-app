@@ -367,9 +367,22 @@ const PILOT_KEY = {
     finance_review: 'pilot-revision-financiera', membership_review: 'pilot-membresia',
 };
 
+/**
+ * v4.1323 — El catálogo es el repositorio de The Agency y ya no trae los
+ * agentes piloto: si no está el piloto, redacta cualquier agente ENCENDIDO en
+ * el sitio del mismo equipo que el workflow.
+ */
+async function teamInstallation(siteId, team) {
+    const r = await db.query(
+        `SELECT i.id FROM "AgentInstallation" i JOIN "AgentTemplate" t ON t.id = i."templateId"
+          WHERE t.team = $1 AND i."siteId" = $2 AND i.enabled AND t.status = 'published' ORDER BY i."createdAt" LIMIT 1`, [team, String(siteId)]);
+    return r.rows[0]?.id || null;
+}
+
 async function aiNarrative({ siteId, workflowKey, prompt, data, gateway, maxTokens = 1500 }) {
-    const installationId = await pilotInstallation(siteId, PILOT_KEY[workflowKey]);
-    if (!installationId) return { text: null, note: `Resumen con IA no disponible: instala y enciende el agente piloto «${PILOT_TEMPLATES.find(p => p.key === PILOT_KEY[workflowKey])?.name}» en este sitio.` };
+    const team = WORKFLOWS[workflowKey]?.team;
+    const installationId = (await pilotInstallation(siteId, PILOT_KEY[workflowKey])) || (team ? await teamInstallation(siteId, team) : null);
+    if (!installationId) return { text: null, note: `Resumen con IA no disponible: instala y enciende en este sitio un agente del equipo «${team || 'del workflow'}».` };
     const { inst, settings } = await loadInstallationContext(installationId);
     if (settings.killSwitch) return { text: null, note: 'Interruptor general activado: el informe sale sin resumen con IA.' };
     const budget = await checkBudgets({ installation: inst });

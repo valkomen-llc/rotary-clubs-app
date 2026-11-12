@@ -11,6 +11,7 @@ export default function RegistryTab({ meta }: { meta: Meta }) {
     const [team, setTeam] = useState('');
     const [status, setStatus] = useState('');
     const [q, setQ] = useState('');
+    const [division, setDivision] = useState('');
     const [openId, setOpenId] = useState<string | null>(null);
     const [creating, setCreating] = useState(false);
 
@@ -35,13 +36,21 @@ export default function RegistryTab({ meta }: { meta: Meta }) {
         } catch (e: any) { setError(e.message); } finally { setCreating(false); }
     };
 
-    const byTeam = meta.teams.map(t => ({ team: t, items: (templates || []).filter(x => x.team === t.key) })).filter(g => g.items.length > 0);
+    // v4.1323 — El catálogo es el repositorio de The Agency: se agrupa por SUS
+    // divisiones; lo que no venga de ahí (plantillas propias), por equipo.
+    const divisions = meta.agency.divisions || {};
+    const divOf = (t: Template) => (t.sourceRef?.division as string) || '';
+    const visible = (templates || []).filter(t => !division || divOf(t) === division);
+    const groups = [
+        ...Object.entries(divisions).map(([key, label]) => ({ key, label, items: visible.filter(t => divOf(t) === key) })),
+        ...meta.teams.map(tm => ({ key: `team:${tm.key}`, label: `Plantillas propias · ${tm.label}`, items: visible.filter(t => !divOf(t) && t.team === tm.key) })),
+    ].filter(g => g.items.length > 0);
 
     return (
         <div className="space-y-5">
             <SectionHeader
                 title="Agentes"
-                subtitle="El catálogo de plantillas. Una plantilla define al agente; publicar crea una versión inmutable que reciben sus instalaciones. Los agentes heredados conservan su configuración."
+                subtitle={`Los agentes del repositorio ${meta.agency.owner}/${meta.agency.repo} (licencia ${meta.agency.license}), agrupados por su división. Vienen en inglés y publicados: instálalos en los sitios que los usarán; adáptalos (nombre, instrucciones) cuando haga falta.`}
                 actions={<button type="button" onClick={create} disabled={creating} className="inline-flex items-center gap-2 bg-gray-900 text-white text-sm font-bold px-4 py-2.5 rounded-xl hover:bg-black disabled:opacity-50"><Plus className="w-4 h-4" /> Nueva plantilla</button>}
             />
             <div className="flex flex-wrap gap-2">
@@ -51,7 +60,11 @@ export default function RegistryTab({ meta }: { meta: Meta }) {
                     <input id="ac-registry-q" value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar por nombre o rol"
                         className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
                 </label>
-                <select id="ac-registry-team" value={team} onChange={e => setTeam(e.target.value)} className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm bg-white">
+                <select id="ac-registry-division" aria-label="División" value={division} onChange={e => setDivision(e.target.value)} className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm bg-white">
+                    <option value="">Todas las divisiones</option>
+                    {Object.entries(divisions).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+                <select id="ac-registry-team" aria-label="Equipo" value={team} onChange={e => setTeam(e.target.value)} className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm bg-white">
                     <option value="">Todos los equipos</option>
                     {meta.teams.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
                 </select>
@@ -62,10 +75,10 @@ export default function RegistryTab({ meta }: { meta: Meta }) {
             </div>
             <ErrorNote message={error} />
             {templates === null ? <div className="text-sm text-gray-400">Cargando el catálogo…</div>
-                : byTeam.length === 0 ? <EmptyNote>No hay plantillas con esos filtros.</EmptyNote>
-                    : byTeam.map(g => (
-                        <div key={g.team.key} className="space-y-2">
-                            <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-gray-500">{g.team.label} <span className="text-gray-300">{g.items.length}</span></h3>
+                : groups.length === 0 ? <EmptyNote>No hay agentes con esos filtros.</EmptyNote>
+                    : groups.map(g => (
+                        <div key={g.key} className="space-y-2">
+                            <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-gray-500">{g.label} <span className="text-gray-300">{g.items.length}</span></h3>
                             <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-3">
                                 {g.items.map(t => (
                                     <button key={t.id} type="button" onClick={() => setOpenId(t.id)}
@@ -73,13 +86,13 @@ export default function RegistryTab({ meta }: { meta: Meta }) {
                                         <AgentAvatar seed={t.avatarSeed || t.draft.name} color={t.avatarColor} size={44} />
                                         <div className="min-w-0 flex-1">
                                             <div className="flex flex-wrap items-center gap-1.5">
-                                                <span className="font-black text-gray-800 truncate">{t.draft.name || t.key}</span>
+                                                <span className="font-black text-gray-800 truncate">{t.sourceRef?.emoji ? `${t.sourceRef.emoji} ` : ''}{t.draft.name || t.key}</span>
                                                 <TemplateStatusPill status={t.status} />
                                                 <OriginBadge origin={t.origin} />
                                             </div>
                                             <p className="text-xs text-gray-500 line-clamp-2 mt-0.5">{t.draft.role}</p>
                                             <p className="text-[11px] text-gray-400 mt-1.5 tabular-nums">
-                                                {t.currentVersion ? `v${t.currentVersion}` : 'sin publicar'} · {t.installationCount || 0} instalaciones ({t.enabledCount || 0} encendidas) · {meta.levels[t.level] ? (t.level === 'platform' ? 'sólo central' : t.level === 'site' ? 'sitios' : 'plataforma y sitios') : t.level}
+                                                {meta.teams.find(tm => tm.key === t.team)?.short} · {t.currentVersion ? `v${t.currentVersion}` : 'sin publicar'} · {t.installationCount || 0} instalaciones ({t.enabledCount || 0} encendidas) · {meta.levels[t.level] ? (t.level === 'platform' ? 'sólo central' : t.level === 'site' ? 'sitios' : 'plataforma y sitios') : t.level}
                                                 {t.draft.needsAdaptation ? ' · por adaptar' : ''}
                                             </p>
                                         </div>

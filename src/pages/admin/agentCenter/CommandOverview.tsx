@@ -10,7 +10,7 @@ interface Overview {
     siteTypes: { enabled: string[]; total: number };
     settings: { killSwitch: boolean };
     recentAudit: AuditEntry[];
-    migratedNow: { templatesCreated: number; installationsCreated: number } | null;
+    catalogReset: { removed?: { templates: number; installations: number }; loaded?: number; added?: number; skipped?: boolean } | null;
     runtime: { tasks: Record<string, number>; pendingApprovals: number; runs30d: Record<string, number>; activeSchedules: number };
     usage30d: { calls: number; costUsd: number; errors: number };
 }
@@ -36,9 +36,9 @@ export default function CommandOverview({ meta, onNavigate }: { meta: Meta; onNa
                     <b>Interruptor general activado:</b> ningún agente ejecuta tareas en la plataforma. Se cambia en Ajustes.
                 </div>
             )}
-            {data.migratedNow && (data.migratedNow.templatesCreated > 0) && (
+            {data.catalogReset?.removed && (
                 <div className="bg-emerald-50 border border-emerald-200 rounded-2xl px-4 py-3 text-sm text-emerald-800">
-                    Se registraron {data.migratedNow.templatesCreated} agentes heredados como plantillas y {data.migratedNow.installationsCreated} instalaciones, con su configuración tal como estaba. Nada se borró.
+                    El catálogo quedó con los {data.catalogReset.loaded} agentes del repositorio {meta.agency.owner}/{meta.agency.repo}. Se retiraron {data.catalogReset.removed.templates} plantillas anteriores y {data.catalogReset.removed.installations} instalaciones (hay una copia completa en «Repositorio»).
                 </div>
             )}
 

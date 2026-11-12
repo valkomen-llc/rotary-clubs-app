@@ -285,6 +285,55 @@ export function agencyCuratedEntry(path) {
     return AGENCY_SOURCE.curated.find(c => c.path === path) || null;
 }
 
+// v4.1323 — El catálogo del Command Center es SÓLO el repositorio: los 283
+// agentes de sus 18 divisiones (server/lib/agencyAgentsBundle.js). Cada
+// división cae en uno de nuestros ocho equipos; la división original viaja en
+// `sourceRef.division` y es la que agrupa la pantalla «Agentes».
+export const AGENCY_DIVISION_TEAM = {
+    academic: 'analitica', design: 'comunicaciones', engineering: 'tecnologia', finance: 'finanzas',
+    'game-development': 'tecnologia', gis: 'analitica', healthcare: 'proyectos', marketing: 'comunicaciones',
+    'paid-media': 'comunicaciones', product: 'proyectos', 'project-management': 'proyectos', research: 'analitica',
+    sales: 'direccion', security: 'tecnologia', 'spatial-computing': 'tecnologia', specialized: 'direccion',
+    support: 'membresia', testing: 'tecnologia',
+};
+// Las divisiones del repositorio (divisions.json), con su nombre en español.
+export const AGENCY_DIVISIONS = {
+    academic: 'Académica', design: 'Diseño', engineering: 'Ingeniería', finance: 'Finanzas',
+    'game-development': 'Desarrollo de videojuegos', gis: 'Información geográfica (GIS)', healthcare: 'Salud',
+    marketing: 'Marketing', 'paid-media': 'Medios pagados', product: 'Producto', 'project-management': 'Gestión de proyectos',
+    research: 'Investigación', sales: 'Ventas', security: 'Seguridad', 'spatial-computing': 'Computación espacial',
+    specialized: 'Especializados', support: 'Soporte', testing: 'Pruebas y calidad',
+};
+export const agencyKeyFor = (path) => 'agency-' + slugify(String(path).replace(/\.md$/, '').split('/').pop());
+
+/**
+ * Un agente del paquete → plantilla PUBLICABLE (en inglés, marcada para
+ * adaptar). Curado: su equipo; si no, el de su división.
+ */
+export function templateFromAgencyBundle(a, ref = AGENCY_SOURCE.ref) {
+    const entry = agencyCuratedEntry(a.path);
+    const name = String(a.name || a.path.split('/').pop().replace(/\.md$/, '')).slice(0, 100);
+    const color = typeof a.color === 'string' && /^#?[0-9a-f]{6}$/i.test(a.color) ? (a.color.startsWith('#') ? a.color : '#' + a.color) : null;
+    return {
+        key: agencyKeyFor(a.path),
+        team: entry?.team || AGENCY_DIVISION_TEAM[a.division] || 'tecnologia',
+        level: 'any',
+        origin: 'agency',
+        sourceRef: { kind: 'agency', owner: AGENCY_SOURCE.owner, repo: AGENCY_SOURCE.repo, ref, path: a.path, license: AGENCY_SOURCE.license, division: a.division, emoji: a.emoji || null, vibe: a.vibe || null, fits: entry?.fits || null },
+        avatarColor: color,
+        draft: {
+            name,
+            role: String(a.vibe || a.description || name).slice(0, 200),
+            description: String(a.description || '').slice(0, 2000),
+            systemPrompt: String(a.body || '').slice(0, 60000),
+            greeting: '', capabilities: [], skills: [], toolRequests: [],
+            modelPolicy: { preferred: null, allowFallback: true },
+            approvalPolicy: { autoApproveN2: false },
+            needsAdaptation: true,
+        },
+    };
+}
+
 /** Un perfil de The Agency → borrador de plantilla (en inglés hasta adaptarlo). */
 export function draftFromAgencyMarkdown(path, text) {
     const entry = agencyCuratedEntry(path);
@@ -442,6 +491,8 @@ export const AUDIT_ACTIONS = {
     rollout_wave: 'Oleada desplegada',
     rollout_paused: 'Despliegue pausado',
     rollout_rolled_back: 'Despliegue revertido',
+    catalog_reset: 'Catálogo restablecido al repositorio de The Agency',
+    catalog_synced: 'Catálogo sincronizado con el repositorio',
     pilot_saved: 'Piloto guardado',
     pilot_concluded: 'Piloto concluido',
     custom_workflow_saved: 'Workflow del constructor guardado',

@@ -272,14 +272,12 @@ export default function WorkflowsTab({ meta }: { meta: Meta }) {
         acApi<{ schedules: Schedule[] }>('/schedules').then(d => setSchedules(d.schedules)).catch(() => setSchedules([]));
     }, []);
     useEffect(load, [load]);
-    const seed = async () => { try { const r = await acApi<{ created: number }>('/pilots/seed', { method: 'POST' }); setNotice(r.created ? `Se crearon ${r.created} agentes piloto como borrador en «Agentes»: revísalos, publícalos e instálalos en los sitios del piloto.` : 'Los agentes piloto ya existían.'); } catch (e: any) { setError(e.message); } };
     const toggleSchedule = async (s: Schedule) => { try { await acApi(`/schedules/${s.id}`, { method: 'PUT', body: { workflowKey: s.workflowKey, siteId: undefined, cadence: s.cadence, enabled: !s.enabled } }); load(); } catch (e: any) { setError(e.message); } };
     const removeSchedule = async (s: Schedule) => { try { await acApi(`/schedules/${s.id}`, { method: 'DELETE' }); load(); } catch (e: any) { setError(e.message); } };
     const wfs = Object.values(meta.workflows);
     return (
         <div className="space-y-5">
-            <SectionHeader title="Workflows" subtitle="Los del catálogo. Los hallazgos los calcula el sistema con reglas verificables; el agente piloto, si está instalado en el sitio, sólo redacta el resumen. Califica cada hallazgo en el informe: esa opinión mide el piloto. Los workflows propios se arman en «Constructor». Nada se publica ni se decide solo."
-                actions={meta.scope === 'platform' ? <button type="button" onClick={seed} className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-bold">Crear agentes piloto</button> : undefined} />
+            <SectionHeader title="Workflows" subtitle="Los del catálogo. Los hallazgos los calcula el sistema con reglas verificables; un agente del equipo del workflow instalado en el sitio, si lo hay, sólo redacta el resumen. Califica cada hallazgo en el informe: esa opinión mide el piloto. Los workflows propios se arman en «Constructor». Nada se publica ni se decide solo." />
             <ErrorNote message={error} />
             {notice && <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm rounded-xl px-4 py-2.5">{notice}</div>}
             <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-3">

@@ -32,7 +32,7 @@ export interface Meta {
     installationStates: Record<string, { label: string; help: string }>;
     auditActions: Record<string, string>;
     siteTypes: SiteTypeMeta[];
-    agency: { owner: string; repo: string; ref: string; license: string };
+    agency: { owner: string; repo: string; ref: string; license: string; divisions?: Record<string, string> };
     // Fase 2
     tools: { key: string; module: string; risk: string; team: string | null; description: string; parameters?: { properties: Record<string, { type: string; description?: string }>; required?: string[] } }[];
     risk: Record<string, { label: string; approval: string }>;
