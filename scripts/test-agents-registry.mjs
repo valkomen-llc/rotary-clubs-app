@@ -9,7 +9,7 @@
 //    habilidades, guardián y CLAUDE.md.
 // ════════════════════════════════════════════════════════════════════
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 
 const REPO = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
 const read = (p) => readFileSync(`${REPO}/${p}`, 'utf8');
@@ -132,8 +132,24 @@ const server = read('server/server.js');
 ok(/app\.use\('\/api\/agent-center', agentCenterRoutes\)/.test(server), 'montado en /api/agent-center');
 const { collectSkills } = await import(`${REPO}/scripts/bundle-agent-skills.mjs`);
 const { AGENT_SKILLS_BUNDLE } = await import(`${REPO}/server/lib/agentSkillsBundle.js`);
-eq(AGENT_SKILLS_BUNDLE.map(s => s.key), collectSkills().map(s => s.key), 'el paquete de habilidades coincide con .agent/skills (npm run bundle:agent-skills)');
-ok(AGENT_SKILLS_BUNDLE.every((s, i) => s.markdown === collectSkills()[i].markdown), '…y su contenido también');
+// `.agent` NO viaja al despliegue (.vercelignore): por eso existe el paquete.
+// Donde la carpeta está (el repo), el paquete tiene que coincidir con ella; en
+// el build de Vercel no hay con qué compararlo y se comprueba que no venga
+// vacío. Hasta v4.1320 esta comparación corría también en Vercel contra una
+// carpeta ausente y tumbaba TODOS los despliegues desde v4.1315.
+// Ojo: Vercel deja las CARPETAS de .agent/skills pero sin sus SKILL.md, así
+// que no basta con que el directorio exista: cuenta si hay habilidades que leer.
+const skillsDir = `${REPO}/.agent/skills`;
+let localSkills = [];
+try { localSkills = existsSync(skillsDir) ? collectSkills() : []; } catch { localSkills = []; }
+if (localSkills.length > 0) {
+    eq(AGENT_SKILLS_BUNDLE.map(s => s.key), localSkills.map(s => s.key), 'el paquete de habilidades coincide con .agent/skills (npm run bundle:agent-skills)');
+    ok(AGENT_SKILLS_BUNDLE.every((s, i) => s.markdown === localSkills[i].markdown), '…y su contenido también');
+} else {
+    ok(AGENT_SKILLS_BUNDLE.length > 0 && AGENT_SKILLS_BUNDLE.every(s => s.key && s.markdown), 'sin .agent/skills (despliegue), el paquete ya generado trae las habilidades');
+}
+const vercelIgnore = read('.vercelignore');
+ok(/^\.agent$/m.test(vercelIgnore), '.agent no viaja al despliegue: el paquete es la fuente allí');
 const store = read('server/lib/agentRegistryStore.js');
 ok(/AbortSignal\.timeout\(timeoutMs\)/.test(store), 'la descarga de The Agency tiene tope de tiempo');
 ok(/agencyCuratedEntry\(path\)/.test(store), 'sólo se descarga de la lista curada');
