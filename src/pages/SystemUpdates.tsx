@@ -34,13 +34,27 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1324.0 | 2026-11-12 (Expediente integral del proyecto: lectura, edición, traducción y fichas PDF)
+// UI V4.1325.0 | 2026-11-12 (Postulación de Proyectos: sólo el sitio de la Feria administra el módulo)
 // Cache bust: 2026-11-12
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1325.0',
+        title: 'Postulación de Proyectos: sólo el sitio de la Feria administra el módulo 🔒',
+        description: 'Corrección de seguridad. El administrador de CUALQUIER club de la plataforma entraba al módulo de Postulación de Proyectos como administrador de la Feria: veía documentos de identidad, correos, teléfonos, pagos y comprobantes, y podía editar, archivar, eliminar y confirmar pagos. Ahora administran el módulo sólo quienes administran el sitio de la Feria, los operadores de la plataforma, el rol «Administrador Institucional de Feria de Proyectos» y los correos de la lista de administradores de la convocatoria.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'seguridad', 'permisos'],
+        type: 'fix',
+        impact: 'Alta: los datos personales y los pagos de la Feria dejan de estar al alcance de los administradores de otros clubes.',
+        changes: [
+            { type: 'fixed', text: 'El permiso de un club sobre SU propio módulo ya no se toma como permiso sobre la Feria: un administrador de otro club entra como «solo lectura».' },
+            { type: 'fixed', text: 'Las listas por correo de la convocatoria (Finanzas, Revisores y Traductores) vuelven a aplicar: antes todos quedaban elevados a administrador.' },
+            { type: 'changed', text: 'Siguen como administradores, sin cambios: quienes administran el sitio de la Feria, los operadores de la plataforma y el rol institucional de la Feria.' },
+        ],
+    },
     {
         version: '4.1324.0',
         title: 'Expediente integral del proyecto: leer, editar, traducir al inglés y fichas PDF 📂',

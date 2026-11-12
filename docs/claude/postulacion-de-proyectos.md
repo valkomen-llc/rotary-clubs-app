@@ -803,3 +803,73 @@ nombre del campo). Cualquier campo de cualquier plantilla puede declarar
   solicitud». `syncFddAportes` pasó a ser `syncFddSections` y sincroniza las
   secciones de `SYNCED_FDD_SECTIONS` (`aportes`, `fdd`); al cambiar otra
   sección de esta plantilla, agregar su clave ahí o el cambio no llega.
+
+### Quién ADMINISTRA el módulo: sólo el sitio de la Feria — v4.1325
+
+**El fallo (preexistente, encontrado al construir el expediente v4.1324).**
+`isProjectFairSiteAdmin` daba el perfil `admin` del módulo a cualquiera cuyo
+grant RBAC tuviera `project_fair.view` o `project_fair.manage`, sin mirar DE QUÉ
+SITIO era ese grant. `resolveUserGrant(user, user.clubId)` resuelve los roles
+heredados `club_admin`, `district_admin` y `editor` a `site_admin`, que tiene
+esos permisos **dentro de su propio sitio**. Resultado: el administrador de
+cualquier club de la plataforma era `admin` de la Feria (documentos de
+identidad, correos, teléfonos, pagos, comprobantes; editar, archivar, eliminar y
+confirmar pagos). Y las listas `access.finance`, `access.reviewers` y
+`access.translators` nunca aplicaban: todos quedaban elevados antes.
+
+**La regla (durable): un grant de sitio cuenta sólo si es DEL SITIO DE LA
+FERIA.** El criterio es puro y vive en `server/lib/projectFairSiteAccess.js`
+(`decideFairSiteAdmin`, `userIsOnFairSite`, `isFairSiteRow`); el controlador sólo
+lee las filas de `Club` y resuelve el grant **después** de comprobar que
+`user.clubId` es el sitio de la Feria. Prueba: `npm run test:fair:site-admin`
+(criterio puro en `prebuild`; con `FAIR_E2E_DATABASE_URL` local, también contra
+Postgres real con el `resolveUserGrant` real). La prueba falla con el código
+anterior (`'admin' !== 'viewer'`).
+
+**El sitio de la Feria** es el `user.clubId` que cumpla cualquiera de:
+`cfg.clubId` de la convocatoria; tipo/`organizationType`/`category` con «feria
+de proyectos» o «project fair» (el criterio de la barra lateral); dominio o
+subdominio con `projectfair` o nombre con «Feria de Proyectos» (el criterio con
+el que `institutionalAccessController` ofrece el rol `project_fair_manager`); o,
+de respaldo, el dominio de la petición cuando ese sitio ES el del usuario (club
+espejo tras suplantar un distrito). Abrir el panel en el dominio de la Feria
+con la sesión de OTRO club no basta.
+
+**Quién es `admin` del módulo desde v4.1325** (sin cambios para todos ellos):
+
+| Quién | Por qué |
+|---|---|
+| `administrator` / `superadmin` | operador de la plataforma, cualquier sitio |
+| rol de usuario `project_fair_manager` | rol institucional de la Feria |
+| `club_admin`, `district_admin`, `editor`, `institutional_user` **del sitio de la Feria** | administran ese sitio (v4.599) |
+| membresía del sitio de la Feria con `project_fair.view`/`manage` o rol `project_fair_manager` | su grant ES de la Feria |
+| correo en `access.admins` de la convocatoria | lista explícita, desde cualquier sitio |
+
+**Quién deja de serlo:** `club_admin`, `district_admin` y `editor` de cualquier
+otro sitio (incluidos los sitios de distrito), y membresías de otros sitios con
+`project_fair.*`. Resuelven como `viewer`, salvo que su correo esté en
+`access.finance` (→ `finance`), `access.reviewers` (→ `reviewer`) o
+`access.translators` (→ `translator`).
+
+**⚠️ PENDIENTE DE CONFIRMAR CON EL CLIENTE (comité de Valledupar).** No hay
+acceso a la base de producción desde el entorno de desarrollo, así que la lista
+de personas concretas que administran hoy el módulo NO se pudo verificar. La
+evidencia del código: la barra lateral sólo muestra «Postulación de Proyectos»
+en un sitio de tipo Feria o a un operador de la plataforma, y el rol
+`project_fair_manager` sólo se ofrece en el sitio de la Feria — así que el uso
+previsto ya era desde ese sitio. Si alguien del comité entra desde OTRO sitio
+(p. ej. el del distrito) y pierde la gestión, **se restituye sin desplegar**:
+su correo en «Administradores» de la Convocatoria (`access.admins`), o el rol
+`project_fair_manager` en el sitio de la Feria. Lista confirmada por el
+cliente: _(pendiente — anotarla aquí: nombre, correo, rol y sitio)_.
+
+**Lo que este arreglo NO cambia (anotado para una próxima versión):**
+
+- Un `viewer` sigue viendo los datos personales del listado (correo, teléfono,
+  documento); sólo los de pago están detrás de `viewPayments`. El guardián de
+  la ruta deja pasar a todo `club_admin`/`district_admin`/`editor` de la
+  plataforma, así que hoy cualquiera de ellos puede LEER el listado. Cerrarlo
+  (403 o datos personales detrás de un permiso) es la siguiente decisión.
+- Dentro del sitio de la Feria, `project_fair.view` sigue dando `admin` (con
+  `remove` y `managePayments`), como antes. Separar «ver» de «administrar» es
+  otro cambio de alcance.
