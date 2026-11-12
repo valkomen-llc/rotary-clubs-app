@@ -51,6 +51,8 @@ import {
     SQL_APPLIED, SQL_DRAFT, SQL_OWES, reminderVerdict,
 } from '../lib/projectFairLifecycle.js';
 import { resolveUserGrant } from '../lib/rbacStore.js';
+// v4.1325 — Quién administra el módulo: el grant cuenta sólo si es del sitio de la Feria.
+import { decideFairSiteAdmin, userIsOnFairSite } from '../lib/projectFairSiteAccess.js';
 // v4.1299 — La INSCRIPCIÓN: uno o dos proyectos por club. Las reglas en SQL
 // se arman en el criterio puro, no a mano acá.
 import {
@@ -72,6 +74,7 @@ import {
     SQL_FDD_COLUMNS, FDD_SORTABLE, FDD_RANGE_FILTERS, sqlAmount, rangeBound, fddAmountsOf,
 } from '../lib/projectFairFddAmounts.js';
 
+console.log('[projectFairAdminController] v4.1325.0 cargado — Sólo el sitio de la Feria administra el módulo: el grant RBAC de project_fair.* cuenta sólo si es del sitio de la Feria (un club_admin de otro club ya no resuelve como admin); las listas Finanzas/Revisores/Traductores vuelven a aplicar.');
 console.log('[projectFairAdminController] v4.1324.0 cargado — Expediente integral del proyecto: lectura completa, edición auditada campo a campo, traducción al inglés con revisión humana y versiones, fichas PDF (español, inglés, bilingüe), libretas y perfil «Traductores». No toca estados ni pagos.');
 console.log('[projectFairAdminController] v4.1313.0 cargado — Editar el valor de la inscripción de un proyecto desde su ficha (250.000 → 100.000 u otro): línea + metadata.amountOverride que respetan el cobro, el desglose y la confirmación manual; motivo obligatorio, historial antes/después, cobro abierto expirado; no toca lo recibido ni Stripe.');
 console.log('[projectFairAdminController] v4.1311.0 cargado — Sustituir una postulación por otra del mismo club con su pago: verificación contra la base, Stripe y la Bóveda; aplicación en una transacción con huella, auditoría antes/después e idempotencia; el pago queda en su ancla (coveredBy).');
@@ -152,11 +155,16 @@ const listHas = (list, email) =>
  * editar su convocatoria. Ahora también cuenta como dueño quien administra un
  * sitio cuyo tipo lo identifica como Feria de Proyectos — el mismo criterio con
  * el que la barra lateral decide mostrar el módulo.
+ *
+ * ⚠️ v4.1325 — EL GRANT RBAC CUENTA SÓLO SI ES DEL SITIO DE LA FERIA. Hasta
+ * v4.1324 bastaba `project_fair.view` en el grant, y `resolveUserGrant` le da
+ * ese permiso a todo `club_admin`/`district_admin`/`editor` DENTRO DE SU
+ * PROPIO SITIO: el administrador de cualquier club entraba como `admin` de la
+ * Feria (datos personales, pagos, comprobantes, eliminar). La decisión vive en
+ * `server/lib/projectFairSiteAccess.js` (pura y probada); aquí sólo se leen
+ * las filas que necesita.
  */
-const FAIR_SITE_HINT = /feria de proyectos|project[ _-]?fair/;
-
-const isFairClubRow = (row) =>
-    !!row && FAIR_SITE_HINT.test(`${row.type || ''} ${row.organizationType || ''} ${row.category || ''}`.toLowerCase());
+const CLUB_SITE_COLUMNS = 'id, name, domain, subdomain, type, "organizationType", category';
 
 /** El sitio (Club) desde cuyo dominio llega la petición, si se puede resolver. */
 const clubFromHost = async (req) => {
@@ -166,7 +174,7 @@ const clubFromHost = async (req) => {
     const sub = bare.split('.')[0];
     try {
         const { rows } = await db.query(`
-            SELECT id, type, "organizationType", category FROM "Club"
+            SELECT ${CLUB_SITE_COLUMNS} FROM "Club"
             WHERE lower(domain) IN ($1, $2) OR lower(subdomain) = $3
             LIMIT 1`, [host, bare, sub]);
         return rows[0] || null;
@@ -179,40 +187,36 @@ const clubFromHost = async (req) => {
 export const isProjectFairSiteAdmin = async (req, cfg) => {
     const user = req?.user;
     if (!user) return false;
-    if (user.role === 'administrator') return true;
-    if (!user.clubId) return false;
-    if (cfg?.clubId && user.clubId === cfg.clubId) return true;
+    // Lo que se decide sin leer la base (operador, rol de la Feria, sin sitio).
+    const sinBase = decideFairSiteAdmin({ user, cfg });
+    if (sinBase || !user.clubId) return sinBase;
 
-    // Reconocimiento explícito del rol institucional o permiso de la feria
-    if (user.role === 'project_fair_manager') return true;
+    // 1) El sitio del usuario.
+    let ownSite = null;
     try {
-        const grant = req.grant || await resolveUserGrant(user, user.clubId);
-        if (grant && (grant.roleKey === 'project_fair_manager' || hasPermission(grant, 'project_fair.manage') || hasPermission(grant, 'project_fair.view'))) {
-            return true;
-        }
-    } catch {
-        // Degrada a comprobación por rol y tipo
-    }
-
-    if (!['club_admin', 'district_admin', 'administrator', 'editor', 'institutional_user'].includes(user?.role)) return false;
-
-    // 1) El sitio del que administra el usuario está marcado como Feria de
-    //    Proyectos (mismo criterio con el que la barra lateral muestra el
-    //    módulo).
-    try {
-        const { rows } = await db.query(
-            'SELECT type, "organizationType", category FROM "Club" WHERE id = $1 LIMIT 1', [user.clubId]);
-        if (isFairClubRow(rows[0])) return true;
+        const { rows } = await db.query(`SELECT ${CLUB_SITE_COLUMNS} FROM "Club" WHERE id = $1 LIMIT 1`, [user.clubId]);
+        ownSite = rows[0] || null;
     } catch (err) {
         console.warn('[project-fair-admin] No pude verificar el tipo del sitio:', err?.message);
     }
+    // 2) Respaldo por el dominio de la petición (sólo si el propio no bastó).
+    const hostSite = userIsOnFairSite({ user, cfg, ownSite }) ? null : await clubFromHost(req);
+    // Si el usuario NO está en el sitio de la Feria, su grant no se consulta:
+    // un `site_admin` de otro club no administra la Feria.
+    if (!userIsOnFairSite({ user, cfg, ownSite, hostSite })) return false;
 
-    // 2) Respaldo: la petición llega desde el dominio de un sitio de feria y el
-    //    usuario administra ese mismo sitio. Cubre los casos donde el `clubId`
-    //    del token apunta a un club espejo (p. ej. tras una suplantación de
-    //    distrito) y por eso el tipo no se reconocía.
-    const host = await clubFromHost(req);
-    return !!host && host.id === user.clubId && isFairClubRow(host);
+    // 3) El grant, resuelto contra el sitio del usuario — que acabamos de
+    //    comprobar que ES el de la Feria. `attachGrant` lo deja en
+    //    `req.rbacGrant` resuelto contra ese mismo `clubId`.
+    let grant = null;
+    try {
+        grant = (req.rbacGrant && String(req.rbacGrant.siteId || user.clubId) === String(user.clubId))
+            ? req.rbacGrant
+            : await resolveUserGrant(user, user.clubId);
+    } catch {
+        // Degrada a la comprobación por rol.
+    }
+    return decideFairSiteAdmin({ user, cfg, ownSite, hostSite, grant, hasPermission });
 };
 
 export const resolveAccess = (user, cfg, { ownsFairSite = false } = {}) => {
