@@ -287,14 +287,18 @@ let _programs; const getPrograms = async () => _programs || (({ default: _progra
 // LOCAL) y en producción respondían «Ruta de API no encontrada». Producción
 // arranca por ESTE archivo: todo `app.use('/api/…')` de server.js tiene que
 // estar también aquí. Lo fija `scripts/check-api-mounts.mjs` en el prebuild.
-const lazyRouter = (file) => { let r; return async () => r || (({ default: r } = await import(file)), r); };
-const getAgentCenter = lazyRouter('../server/routes/agentCenter.js');
-const getLearning = lazyRouter('../server/routes/learning.js');
-const getSponsoredClubs = lazyRouter('../server/routes/sponsored-clubs.js');
-const getYouthExchange = lazyRouter('../server/routes/youth-exchange.js');
-const getNgse = lazyRouter('../server/routes/ngse.js');
-const getRotex = lazyRouter('../server/routes/rotex.js');
-const getSeo = lazyRouter('../server/routes/seo.js');
+// ⚠️ La ruta del import va ESCRITA LITERALMENTE en cada uno: Vercel sólo
+// empaqueta en la función los archivos que encuentra en un `import('…')`
+// literal. Con `import(variable)` (v4.1321) el archivo no viajaba y producción
+// respondía «No se puede encontrar el módulo …/agentCenter.js».
+let _agentCenter, _learning, _sponsoredClubs, _youthExchange, _ngse, _rotex, _seo;
+const getAgentCenter = async () => _agentCenter || (({ default: _agentCenter } = await import('../server/routes/agentCenter.js')), _agentCenter);
+const getLearning = async () => _learning || (({ default: _learning } = await import('../server/routes/learning.js')), _learning);
+const getSponsoredClubs = async () => _sponsoredClubs || (({ default: _sponsoredClubs } = await import('../server/routes/sponsored-clubs.js')), _sponsoredClubs);
+const getYouthExchange = async () => _youthExchange || (({ default: _youthExchange } = await import('../server/routes/youth-exchange.js')), _youthExchange);
+const getNgse = async () => _ngse || (({ default: _ngse } = await import('../server/routes/ngse.js')), _ngse);
+const getRotex = async () => _rotex || (({ default: _rotex } = await import('../server/routes/rotex.js')), _rotex);
+const getSeo = async () => _seo || (({ default: _seo } = await import('../server/routes/seo.js')), _seo);
 
 // ── Route handlers ────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);

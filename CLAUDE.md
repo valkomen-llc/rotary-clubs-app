@@ -59,6 +59,9 @@ detalle y la historia de cada una está en el archivo indicado.
   se monte en `server.js` va TAMBIÉN en `api/index.js` (cargador perezoso), o
   en producción responde «Ruta de API no encontrada». Así quedaron hasta
   v4.1320 el Centro de Comando de Agentes, Cursos y los módulos de juventud.
+  Y el `import('…')` va con la ruta LITERAL: Vercel sólo empaqueta lo que ve
+  escrito; con `import(variable)` el archivo no viaja («No se puede encontrar
+  el módulo …», v4.1321). La misma barrera lo rechaza en `api/` y `server/`.
 - **`npm run test:version`**: el número tiene que coincidir en `package.json`,
   `src/lib/appVersion.ts` y la primera entrada de `SYSTEM_UPDATES`.
 - **Nunca una comilla invertida dentro de un `db.query(\`…\`)`**, tampoco en

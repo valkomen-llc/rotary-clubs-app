@@ -34,13 +34,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1321.0 | 2026-11-12 (Centro de Comando de Agentes IA y Cursos conectados en producción)
+// UI V4.1322.0 | 2026-11-12 (Centro de Comando de Agentes IA: el módulo viaja al servidor)
 // Cache bust: 2026-11-12
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1322.0',
+        title: 'Centro de Comando de Agentes IA: el módulo viaja al servidor 🔧',
+        description: 'Al abrir el Centro de Comando aparecía «No se puede encontrar el módulo …/agentCenter.js». La forma en que se cargaba el módulo impedía que se incluyera en el paquete que se publica en el servidor. Corregido para el Centro de Comando, Cursos y capacitaciones y los módulos de juventud, con una comprobación del build que impide que vuelva a ocurrir.',
+        date: new Date().toISOString(),
+        tags: ['agentes ia', 'cursos', 'despliegue', 'api'],
+        type: 'fix',
+        impact: 'Alta: el Centro de Comando, Cursos y los módulos de juventud cargan en producción.',
+        changes: [
+            { type: 'fixed', text: 'Los módulos del Centro de Comando, Cursos, Intercambio de Jóvenes, NGSE, Rotex, Clubes Patrocinados y SEO se incluyen en el servidor publicado.' },
+            { type: 'added', text: 'El build se detiene si un módulo se carga de una forma que impide publicarlo.' },
+        ],
+    },
     {
         version: '4.1321.0',
         title: 'El Centro de Comando de Agentes IA abre en producción 🔧',
