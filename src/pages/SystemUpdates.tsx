@@ -34,13 +34,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1319.0 | 2026-11-11 (AI Agent Command Center: piloto controlado, constructor de workflows y Membresía)
-// Cache bust: 2026-11-11
+// UI V4.1320.0 | 2026-11-12 (Los Agentes IA llegan a producción: build de Vercel corregido)
+// Cache bust: 2026-11-12
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1320.0',
+        title: 'Los Agentes IA llegan por fin a producción 🚀',
+        description: 'Las versiones 4.1315 a 4.1319 (registro, runtime, despliegues, observabilidad, piloto y constructor de workflows) no se estaban publicando: una comprobación del build buscaba una carpeta que no se envía al servidor y detenía cada despliegue. Corregida, todo lo construido queda disponible.',
+        date: new Date().toISOString(),
+        tags: ['agentes ia', 'despliegue', 'build'],
+        type: 'fix',
+        impact: 'Alta: publica en producción las Fases 1 a 6 del AI Agent Command Center.',
+        changes: [
+            { type: 'fixed', text: 'El build ya no compara las habilidades de los agentes contra la carpeta .agent, que no viaja al despliegue; allí comprueba el paquete ya generado.' },
+            { type: 'added', text: 'Una comprobación fija que .agent sigue fuera del despliegue y que el paquete de habilidades no viene vacío.' },
+        ],
+    },
     {
         version: '4.1319.0',
         title: 'AI Agent Command Center: piloto controlado, constructor de workflows y Membresía 🧪',

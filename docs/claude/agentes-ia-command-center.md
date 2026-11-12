@@ -345,3 +345,23 @@ Pruebas: `test:agents:scale` (58, sin base, en `prebuild`) y
 `test:agents:scale:e2e` (55, base local con modelo simulado). Las de las fases
 anteriores siguen en verde (la de punta a punta del runtime cuenta ahora ocho
 plantillas piloto).
+
+## v4.1320.0 — Los despliegues de v4.1315 a v4.1319 no llegaban a producción
+
+**Síntoma**: en Vercel, todos los despliegues desde v4.1315 (Fase 1) terminaban
+en «Error»; producción siguió en v4.1314 (Fase 0).
+
+**Causa**: `test-agents-registry` (en `prebuild`) comparaba
+`AGENT_SKILLS_BUNDLE` con la carpeta `.agent/skills`. Pero `.vercelignore`
+EXCLUYE `.agent`: en el build de Vercel la carpeta no existe, la comparación
+daba «48 habilidades frente a ninguna» y el `prebuild` abortaba. El paquete
+(`server/lib/agentSkillsBundle.js`) existe justamente porque `.agent` no viaja.
+
+**Arreglo**: la comparación corre sólo donde la carpeta está (el repo); en el
+despliegue se comprueba que el paquete traiga habilidades, y una aserción fija
+que `.agent` sigue en `.vercelignore`.
+
+**Cómo se verificó**: copia del repo SIN lo que excluye `.vercelignore` (lo que
+recibe Vercel), y en ella `npm run prebuild` y `vite build` en verde. Para
+cualquier prueba nueva de `prebuild` que lea archivos: comprobar que esos
+archivos viajan al despliegue.
