@@ -93,3 +93,10 @@ contra Postgres real) y `npm run test:fair:fdd-columns:ui` (navegador, 1500 y
   separa miles; en el campo numérico, decimales). Se leen como miles porque un
   importe en USD no lleva tres decimales, y la celda lo marca con lo que el
   club escribió para que el comité lo confirme.
+
+## «Ver» abre el expediente integral — v4.1324
+
+El botón «Ver» de Proyectos postulados (también embebido aquí) abre el
+expediente completo del proyecto y suma el menú «⋯»; la fila muestra la
+insignia «EN · estado» de la traducción. Todo está en
+`docs/claude/expediente-integral-del-proyecto.md`.

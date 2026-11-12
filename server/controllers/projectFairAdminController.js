@@ -72,6 +72,7 @@ import {
     SQL_FDD_COLUMNS, FDD_SORTABLE, FDD_RANGE_FILTERS, sqlAmount, rangeBound, fddAmountsOf,
 } from '../lib/projectFairFddAmounts.js';
 
+console.log('[projectFairAdminController] v4.1324.0 cargado — Expediente integral del proyecto: lectura completa, edición auditada campo a campo, traducción al inglés con revisión humana y versiones, fichas PDF (español, inglés, bilingüe), libretas y perfil «Traductores». No toca estados ni pagos.');
 console.log('[projectFairAdminController] v4.1313.0 cargado — Editar el valor de la inscripción de un proyecto desde su ficha (250.000 → 100.000 u otro): línea + metadata.amountOverride que respetan el cobro, el desglose y la confirmación manual; motivo obligatorio, historial antes/después, cobro abierto expirado; no toca lo recibido ni Stripe.');
 console.log('[projectFairAdminController] v4.1311.0 cargado — Sustituir una postulación por otra del mismo club con su pago: verificación contra la base, Stripe y la Bóveda; aplicación en una transacción con huella, auditoría antes/después e idempotencia; el pago queda en su ancla (coveredBy).');
 console.log('[projectFairAdminController] v4.1308.0 cargado — Confirmación manual de pagos: comprobante adjunto (S3 privado, validado por sus bytes), el mismo pago puede cubrir la inscripción completa de dos proyectos, y cada fila confirmada deja su línea escrita para sumar al recaudo.');
@@ -122,11 +123,17 @@ export const PRIORITIES = [
 // la que un club entra a su panel, sus formularios y sus adjuntos. Sólo la
 // tiene el rol admin — un `finance` mueve pagos y un `reviewer` mueve estados,
 // y ninguno de los dos tiene por qué poder vaciar el registro.
+// v4.1324 — Expediente integral: `translate` (generar y corregir la
+// traducción, preparar la libreta) y `approveTranslation` (aprobar la versión
+// inglesa y la libreta). Editar el ORIGINAL sigue siendo `edit`; descargar
+// fichas, `export`. El perfil `translator` lee, traduce y exporta: no edita la
+// postulación, no aprueba y no ve pagos.
 const ROLE_CAPABILITIES = {
-    admin:    { view: true, managePayments: true, viewPayments: true, comment: true, edit: true, changeStatus: true, manageTags: true, export: true, config: true, remove: true },
-    finance:  { view: true, managePayments: true, viewPayments: true, comment: true, edit: false, changeStatus: false, manageTags: false, export: true, config: false, remove: false },
-    reviewer: { view: true, managePayments: false, viewPayments: false, comment: true, edit: false, changeStatus: true, manageTags: true, export: true, config: false, remove: false },
-    viewer:   { view: true, managePayments: false, viewPayments: false, comment: false, edit: false, changeStatus: false, manageTags: false, export: false, config: false, remove: false },
+    admin:      { view: true, managePayments: true, viewPayments: true, comment: true, edit: true, changeStatus: true, manageTags: true, export: true, config: true, remove: true, translate: true, approveTranslation: true },
+    finance:    { view: true, managePayments: true, viewPayments: true, comment: true, edit: false, changeStatus: false, manageTags: false, export: true, config: false, remove: false, translate: false, approveTranslation: false },
+    reviewer:   { view: true, managePayments: false, viewPayments: false, comment: true, edit: false, changeStatus: true, manageTags: true, export: true, config: false, remove: false, translate: true, approveTranslation: true },
+    translator: { view: true, managePayments: false, viewPayments: false, comment: true, edit: false, changeStatus: false, manageTags: false, export: true, config: false, remove: false, translate: true, approveTranslation: false },
+    viewer:     { view: true, managePayments: false, viewPayments: false, comment: false, edit: false, changeStatus: false, manageTags: false, export: false, config: false, remove: false, translate: false, approveTranslation: false },
 };
 
 // Columna sobre la que se agregan los recaudos: la del precio anunciado. Es un
@@ -216,6 +223,7 @@ export const resolveAccess = (user, cfg, { ownsFairSite = false } = {}) => {
     if (user?.role === 'administrator' || user?.role === 'project_fair_manager' || listHas(access.admins, email) || ownsFairSite) role = 'admin';
     else if (listHas(access.finance, email)) role = 'finance';
     else if (listHas(access.reviewers, email)) role = 'reviewer';
+    else if (listHas(access.translators, email)) role = 'translator';
     else if (['district_admin', 'club_admin', 'editor'].includes(user?.role)) role = 'viewer';
     return { role, ...ROLE_CAPABILITIES[role] };
 };

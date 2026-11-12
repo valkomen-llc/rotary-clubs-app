@@ -34,13 +34,31 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1323.0 | 2026-11-12 (Centro de Comando: el catálogo es el repositorio de The Agency)
+// UI V4.1324.0 | 2026-11-12 (Expediente integral del proyecto: lectura, edición, traducción y fichas PDF)
 // Cache bust: 2026-11-12
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1324.0',
+        title: 'Expediente integral del proyecto: leer, editar, traducir al inglés y fichas PDF 📂',
+        description: 'Pedido de la gobernadora Ximena para la XII Feria de Proyectos (Valledupar 2027). En «Proyectos postulados», el botón «Ver» abre ahora el EXPEDIENTE completo de cada proyecto: todo lo que el club diligenció (registro, Formulación y Solicitud del FDD, también los campos vacíos), edición administrativa con historial, traducción al inglés asistida por IA con revisión humana, fichas PDF en español, inglés y bilingüe, y libretas de presentación. Nada de esto cambia el estado de la postulación ni el pago.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'expediente', 'traducción', 'pdf', 'libretas'],
+        type: 'feature',
+        impact: 'Alta: el comité puede leer, corregir y traducir cada proyecto y preparar su documentación sin copiar información entre plataformas.',
+        changes: [
+            { type: 'added', text: '«Ver» abre el expediente (a pantalla completa si se desea) con pestañas: Resumen, Formulario completo, Documentos, Traducción, Fichas PDF, Libreta, Pago e Historial.' },
+            { type: 'added', text: 'Menú «⋯» en cada fila: editar, traducir al inglés, descargar PDF en español, inglés o bilingüe y ver el historial.' },
+            { type: 'added', text: 'Edición auditada: resumen de cambios antes de guardar, motivo obligatorio para cifras, aviso de cambios sin guardar y bloqueo si otra persona cambió el campo.' },
+            { type: 'added', text: 'Traducción al inglés: borrador con IA sólo de los textos narrativos, editor de dos columnas, regenerar un campo sin tocar los demás, glosario Rotary, aprobación con versiones y aviso de campos desactualizados.' },
+            { type: 'added', text: 'Fichas PDF con vista previa; la inglesa sin aprobar sale marcada como borrador. Descarga en lote (ZIP) y traducción en lote con progreso.' },
+            { type: 'added', text: 'Libreta de presentación por idioma, armada con los datos del expediente, editable y con aprobación.' },
+            { type: 'added', text: 'Nuevo perfil «Traductores» en la configuración de la convocatoria.' },
+        ],
+    },
     {
         version: '4.1323.0',
         title: 'Centro de Comando: el catálogo es el repositorio de The Agency 🤖',
