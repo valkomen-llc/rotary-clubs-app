@@ -39,7 +39,7 @@ import { MODULES } from '../lib/rbacSpec.js';
 
 const router = express.Router();
 
-console.log('[agent-center] v4.1320.0 — registro, runtime, despliegues, mapa, vista por sitio, memoria, observabilidad, piloto controlado y constructor de workflows');
+console.log('[agent-center] v4.1321.0 — registro, runtime, despliegues, mapa, vista por sitio, memoria, observabilidad, piloto controlado y constructor de workflows');
 
 function resolveScope(req, res, next) {
     if (isPlatformAdmin(req.user)) { req.acScope = { platform: true, siteId: null }; return next(); }
