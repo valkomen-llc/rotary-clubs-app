@@ -498,6 +498,15 @@ export const AUDIT_ACTIONS = {
     custom_workflow_saved: 'Workflow del constructor guardado',
     custom_workflow_published: 'Workflow del constructor publicado',
     custom_workflow_archived: 'Workflow del constructor archivado',
+    // Dirección IA (v4.1329)
+    director_plan_created: 'Plan del Director generado',
+    director_plan_submitted: 'Plan del Director enviado a aprobación',
+    director_plan_approved: 'Plan del Director aprobado',
+    director_plan_changes_requested: 'Cambios solicitados al plan del Director',
+    director_plan_cancelled: 'Plan del Director cancelado',
+    director_plan_step_retry: 'Paso del plan reintentado',
+    director_plan_review_ready: 'Entregable del Director listo para revisión',
+    director_plan_completed: 'Entregable del Director revisado y cerrado',
 };
 
 // ── Ajustes de la plataforma ───────────────────────────────────────────

@@ -444,7 +444,7 @@ export async function runWorkflow({ workflowKey, siteId, input = {}, trigger = '
                 const r = await TOOL_EXECUTORS.fair_submission_review({ submissionId: s.id }, ctx);
                 if (r.ok) reviews.push({ ...r.review, project: r.project });
             }
-            report = { kind: workflowKey, submissions: reviews, complete: reviews.filter(r => r.complete).length, withMissing: reviews.filter(r => !r.complete).length, withIssues: reviews.filter(r => r.issues.length).length };
+            report = { kind: workflowKey, submissions: reviews, complete: reviews.filter(r => r.complete).length, withMissing: reviews.filter(r => !r.complete).length, withIssues: reviews.filter(r => r.issues.length).length, formsIncomplete: reviews.filter(r => r.formsComplete === false).length };
             if (reviews.length) ai = await aiNarrative({ siteId: site.id, workflowKey, gateway, prompt: 'Para el comité evaluador: por cada postulación, una o dos líneas con lo que está completo, lo que falta y qué preguntarle al club. Cita la referencia de la postulación. No puntúes ni recomiendes aprobar o rechazar.', data: reviews.slice(0, 30).map(r => ({ ref: r.ref, proyecto: r.project?.name, club: r.project?.club, faltan: r.missing.map(m => m.label), observaciones: r.issues.map(i => i.evidence) })) });
         } else if (workflowKey === 'institutional_comms') {
             const brief = String(input.brief || '').trim();
@@ -681,7 +681,14 @@ export async function tick({ budgetMs = LIMITS.tickBudgetMs, gateway = chatWithT
         }
     } catch (e) { out.errors.push(`mantenimiento: ${e.message}`); }
 
-    // 4. Tareas de agentes.
+    // 4. Dirección IA (v4.1329): un paso de cada plan aprobado. Import literal
+    //    (Vercel sólo empaqueta lo que ve escrito) y perezoso (evita el ciclo).
+    try {
+        const { advanceDirectorPlans } = await import('./agentDirectorStore.js');
+        out.directorPlans = (await advanceDirectorPlans({ deadline, gateway })).advanced;
+    } catch (e) { out.errors.push(`dirección IA: ${e.message}`); }
+
+    // 5. Tareas de agentes.
     while (Date.now() < deadline - 15_000) {
         const batch = await claimTasks(3);
         if (!batch.length) break;

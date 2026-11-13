@@ -764,6 +764,23 @@ export const approveBooklet = withSchema(async (req, res, { access }) => {
     res.json({ ok: true, booklet: upd.rows[0] || current });
 }, 'approveTranslation');
 
+// ════════════════════════════════════════════════════════════════════════════
+// v4.1329 — Para la Dirección IA (herramientas N0 de los agentes). NO es una
+// ruta: el ejecutor de la herramienta ya comprobó que la postulación es del
+// sitio de la instalación (`clubId`). Sólo lee: el expediente armado con las
+// plantillas vigentes y, si se pide, el ESTADO de su traducción (sin textos).
+// ════════════════════════════════════════════════════════════════════════════
+export async function agentDossierSnapshot(submissionId, { translation = false } = {}) {
+    await ensureProjectDossierSchema();
+    const { rows } = await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = $1 LIMIT 1', [String(submissionId)]);
+    const row = rows[0];
+    if (!row) return null;
+    const { dossier } = await loadDossier(row);
+    if (!translation) return { dossier };
+    const { status } = await statusFor(dossier, row.id, 'en');
+    return { dossier, translation: summaryOf(status) };
+}
+
 export default {
     getDossier, updateDossier, getDossierHistory,
     getTranslation, generateTranslation, saveTranslation, approveTranslation,

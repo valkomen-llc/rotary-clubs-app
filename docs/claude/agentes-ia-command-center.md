@@ -434,3 +434,77 @@ divisiones, claves únicas, cada división con equipo) y
 plantillas y 7 instalaciones → sólo los 283, copia completa, una sola vez
 aunque se abra en dos pestañas, "Agent" intacta, workflows con agente del
 repositorio).
+
+## v4.1329.0 — Dirección IA: Director de Inteligencia y Operaciones Rotarias
+
+**Pedido**: un agente principal que reciba objetivos institucionales, arme
+planes, coordine equipos y entregue resultados reales, con un Director por
+organización (club, distrito, feria, evento, programa) y aprobación humana.
+
+**Diagnóstico de partida (Fase 0 del pedido, verificado en el código).** Lo que
+el Command Center ya tenía funcionando y se REUTILIZA: registro de plantillas e
+instalaciones por sitio, catálogo de 283 agentes, runtime con cola y pasos,
+Model Gateway, 8 workflows con hallazgos deterministas, aprobaciones con huella,
+programaciones y eventos, presupuestos, Consumo de IA, conocimiento por
+alcances y alcance por sesión (`siteOf`/`ownOr404`). Lo que NO existía: una capa
+que convierta un objetivo escrito en un plan, lo haga aprobar y coordine varios
+workflows hasta un entregable. Las cifras en cero de la captura (0
+instalaciones, 0 tareas) eran reales: el catálogo estaba publicado pero nada
+instalado.
+
+**Qué se construyó** (sin acceso nuevo a datos):
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/agentDirectorSpec.js` | El CRITERIO, puro: plantilla del Director, 12 CAPACIDADES (cada una = pasos sobre workflows/herramientas existentes o trabajo humano con enlace), `interpretObjective`, `buildPlan`, estados del plan, `nextStep`, `summarizeStepResult`, `consolidateDeliverable` |
+| `server/lib/agentDirectorStore.js` | Plantilla e instalación del Director, contexto de la organización, planes, decisiones, ejecución por pasos con candado y `advanceDirectorPlans` (tick) |
+| `src/pages/admin/agentCenter/DirectorTab.tsx` | Pestaña «Dirección IA» (también para un sitio) |
+| tabla `AgentDirectorPlan` | objetivo, plan, entregable, historial, costo real, candado |
+
+Endpoints (`/api/agent-center`): `GET /director`, `POST /director/template` y
+`POST /director/install` (sólo plataforma), `GET|POST /director/plans`,
+`GET /director/plans/:id`, `POST /director/plans/:id/decide`
+(`submit|approve|request_changes|retry|cancel|close`), `POST /director/plans/:id/step`.
+
+**Reglas durables:**
+- **⚠️ EL MODELO NO PLANIFICA.** Las capacidades y sus pasos están en código; la
+  interpretación es por palabras clave (sin coincidencia ⇒ preguntas, nunca un
+  plan inventado). La IA del Director sólo REDACTA la lectura del objetivo, sin
+  herramientas, con el objetivo marcado como dato.
+- **EL SITIO ES EL GUARDADO.** El plan toma el sitio de `siteOf` al crearse y
+  cada paso usa `row.siteId`; los workflows y lecturas filtran por él. Un sitio
+  que pide otra organización recibe la suya; un plan ajeno por id ⇒ 404.
+- **INSTALADO ≠ ACTIVO.** Sin el Director instalado, encendido y con
+  responsable (estado «Activo»), el plan nace en borrador con sus bloqueos y no
+  se envía ni se aprueba; los bloqueos se recalculan EN VIVO al aprobar y al
+  ejecutar (`liveBlockers`).
+- **EL DIRECTOR SÓLO LEE.** Plantilla con cuatro herramientas N0; un paso
+  `tool` exige N0; lo que escribe (noticia en borrador) lo hacen los workflows
+  de siempre con sus aprobaciones; el trabajo humano (traducir y aprobar en el
+  Expediente, crear un evento, diseñar un workflow) es un paso `handoff` que
+  queda «para una persona», no se simula.
+- **UN PASO POR LLAMADA, CON CANDADO** (`lockUntil`, 150 s; cambios de estado
+  con `WHERE status = $esperado`). El panel encadena llamadas; el tick avanza un
+  paso de hasta 3 planes por minuto. Cancelar mientras corre un paso gana.
+- **COSTO REAL POR PLAN**: todo corre bajo `withAiContext({ runId:
+  'director:<id>' })`; `costUsd` es la suma del Consumo de IA. El del plan es
+  una ESTIMACIÓN (y se dice; sin precio de referencia no se inventa).
+- **La revisión de postulaciones lee el expediente** (`agentDossierSnapshot` en
+  el controlador del Expediente + `dossierGaps`, puro): formularios sin iniciar
+  y campos vacíos por sección, sin calculados, archivos ni espacios del
+  distrito. Sólo rótulos: ningún valor ni dato personal viaja.
+- **Restablecer el catálogo** (`/agency/reset`) borra TODAS las plantillas,
+  también la del Director: «Crear la plantilla» la vuelve a crear. Por eso
+  `/director/template` e `/install` llaman antes a `agencyCatalogOnce`.
+
+**Pruebas**: `test:agents:director` (99, sin base, en `prebuild`) y
+`test:agents:director:e2e` (69, Postgres LOCAL, tablas de la Feria creadas por
+su propio módulo, modelo simulado, router real por HTTP con tokens de
+plataforma y de dos sitios). Verificadas a la inversa: quitar `ownOr404` de
+`GET /director/plans/:id` o el `canDecide` de `decidePlan` las hace fallar.
+
+**Pendiente (no hecho, a propósito):** versionado y vigencia por documento en
+el conocimiento institucional (hoy: cerebros por alcance con su fuente);
+planes que mezclen capacidades en paralelo; mapa con las aristas Director →
+equipos de sus planes; plantillas de equipo por organización con el Director
+incluido en Despliegues.

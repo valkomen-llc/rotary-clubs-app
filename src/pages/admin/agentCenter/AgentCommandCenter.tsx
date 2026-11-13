@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// AI Agent Command Center — /admin/agentes (v4.1319.0)
+// AI Agent Command Center — /admin/agentes (v4.1329.0: + Dirección IA)
 //
 // Reemplaza la pantalla de «Agentes expertos» y su menú de botones
 // deshabilitados (Task Queue, Schedule, Activity Logs, Vector Memory). Cada
@@ -8,7 +8,7 @@
 // ════════════════════════════════════════════════════════════════════
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Bot, LayoutDashboard, Users, Globe2, PlugZap, Download, ShieldCheck, Settings2, ListChecks, CheckSquare, Workflow, Gauge, Rocket, Network, Activity, Database, FlaskConical, Blocks } from 'lucide-react';
+import { Bot, LayoutDashboard, Users, Globe2, PlugZap, Download, ShieldCheck, Settings2, ListChecks, CheckSquare, Workflow, Gauge, Rocket, Network, Activity, Database, FlaskConical, Blocks, BrainCircuit } from 'lucide-react';
 import AdminLayout from '../../../components/admin/AdminLayout';
 import { acApi } from './agentCenterApi';
 import type { Meta } from './agentCenterApi';
@@ -31,11 +31,13 @@ import ObservabilityTab from './ObservabilityTab';
 import KnowledgeTab from './KnowledgeTab';
 import PilotTab from './PilotTab';
 import BuilderTab from './BuilderTab';
+import DirectorTab from './DirectorTab';
 
 export interface SectionDef { key: string; label: string; icon: React.ElementType; group: string; site?: boolean; platform?: boolean }
 
 export const SECTIONS: SectionDef[] = [
     { key: 'resumen', label: 'Resumen', icon: LayoutDashboard, group: 'Command Center', site: true },
+    { key: 'direccion', label: 'Dirección IA', icon: BrainCircuit, group: 'Command Center', site: true },
     { key: 'agentes', label: 'Agentes', icon: Users, group: 'Command Center' },
     { key: 'instalaciones', label: 'Instalaciones', icon: PlugZap, group: 'Command Center', site: true },
     { key: 'despliegues', label: 'Despliegues', icon: Rocket, group: 'Command Center' },
@@ -56,6 +58,7 @@ export const SECTIONS: SectionDef[] = [
 
 function SectionBody({ section, meta, onNavigate }: { section: string; meta: Meta; onNavigate: (s: string) => void }) {
     switch (section) {
+        case 'direccion': return <DirectorTab meta={meta} onNavigate={onNavigate} />;
         case 'agentes': return <RegistryTab meta={meta} />;
         case 'despliegues': return <DeploymentsTab meta={meta} />;
         case 'mapa': return <NetworkTab meta={meta} />;

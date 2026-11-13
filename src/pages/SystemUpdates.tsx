@@ -34,13 +34,29 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1328.0 | 2026-11-13 (Eventos: Ciclo de Vida de Cuentas, Filtros Rápidos Dinámicos y Activación de Participantes)
+// UI V4.1329.0 | 2026-11-13 (Agentes IA: Dirección IA — Director de Inteligencia y Operaciones Rotarias)
 // Cache bust: 2026-11-13
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1329.0',
+        title: 'Agentes IA: Dirección IA — Director de Inteligencia y Operaciones Rotarias 🧭🤖',
+        description: 'Nueva pestaña «Dirección IA» en el Centro de Comando de Agentes. Cada organización (club, distrito, feria, evento o programa) puede tener su propio Director: el administrador escribe un objetivo, el Director lo interpreta y arma un plan verificable (alcance, entregables, pasos, equipos y agentes, fuentes, herramientas, dependencias, riesgos, costo estimado y aprobaciones). Una persona lo aprueba; los pasos corren uno a uno sobre los workflows y lecturas que ya existen, con el sitio de la organización y nunca otro; el entregable queda para revisión humana con su historial. Primer caso funcional de punta a punta: análisis de los proyectos postulados a la Feria, que ahora lee también la Formulación y la Solicitud del FDD campo por campo. Segundo: inventario de traducción al inglés de los expedientes, con el trabajo de traducir y aprobar en el Expediente.',
+        date: new Date().toISOString(),
+        tags: ['agentes-ia', 'direccion-ia', 'orquestacion', 'feria-de-proyectos', 'aprobaciones', 'multiorganizacion'],
+        type: 'feature',
+        impact: 'Alta: los administradores pasan de conversar con agentes a asignarles objetivos, aprobar planes y recibir entregables verificables, sin que la IA apruebe, pague, publique ni envíe nada.',
+        changes: [
+            { type: 'added', text: 'Pestaña «Dirección IA»: panel del Director (estado, organización, modelo, equipos, agentes operativos, herramientas, conocimiento, workflows, presupuesto y última actividad), consola de objetivos con 12 accesos rápidos, plan de trabajo, ejecución, centro de entregables e historial de decisiones.' },
+            { type: 'added', text: 'Plantilla institucional «Director de Inteligencia y Operaciones Rotarias» (Dirección y estrategia, sólo herramientas de lectura), instalable por organización: instalado no es activo hasta tener responsable y estar encendido.' },
+            { type: 'added', text: 'Planes con estados (borrador, pendiente de aprobación, cambios solicitados, aprobado, en ejecución, requiere intervención, en revisión, completado, cancelado), ejecución por pasos con candado, reintentos, interruptor general y presupuestos respetados antes de gastar.' },
+            { type: 'improved', text: 'La revisión de postulaciones de la Feria lee el expediente real: Formulación y FDD, campos vacíos y formularios sin iniciar.' },
+            { type: 'added', text: 'Herramienta de lectura «Estado de la traducción» de los expedientes y costo real de cada plan medido en Consumo de IA.' },
+        ],
+    },
     {
         version: '4.1328.0',
         title: 'Eventos: Ciclo de Vida de Cuentas, Filtros Rápidos Dinámicos y Activación de Participantes 🛡️⚡',
