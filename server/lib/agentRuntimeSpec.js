@@ -105,6 +105,7 @@ export const TOOL_CATALOG = [
     { key: 'events_registration_review', module: 'events', risk: 'N0', team: 'eventos', description: 'Revisa las inscripciones de un evento y devuelve hallazgos clasificados (sin comprobante, posible duplicado, pago y estado que no cuadran, datos incompletos), cada uno con su evidencia.', parameters: obj({ eventId: { type: 'string', description: 'Id del evento (de events_list).' } }, ['eventId']) },
     { key: 'fair_submissions_list', module: 'project_fair', risk: 'N0', team: 'proyectos', description: 'Lista las postulaciones de la Feria de Proyectos del sitio.', parameters: obj({ limit: { type: 'integer', description: 'Máximo 100.' } }) },
     { key: 'fair_submission_review', module: 'project_fair', risk: 'N0', team: 'proyectos', description: 'Revisa UNA postulación: requisitos cumplidos o faltantes e inconsistencias, con el campo que sostiene cada observación.', parameters: obj({ submissionId: { type: 'string' } }, ['submissionId']) },
+    { key: 'fair_translation_status', module: 'project_fair', risk: 'N0', team: 'proyectos', description: 'Estado de la traducción al inglés del expediente de cada postulación del sitio (sin traducir, borrador, por revisar, aprobada, desactualizada). Sólo lectura: traducir y aprobar se hace en el Expediente.', parameters: obj({ limit: { type: 'integer', description: 'Máximo 60.' } }) },
     { key: 'content_recent', module: 'news', risk: 'N0', team: 'comunicaciones', description: 'Noticias recientes del sitio (título, fecha, si está publicada).', parameters: obj({ limit: { type: 'integer', description: 'Máximo 20.' } }) },
     { key: 'seo_latest_audit', module: 'seo', risk: 'N0', team: 'comunicaciones', description: 'Último resultado del SEO Inteligente del sitio: puntaje y problemas abiertos.', parameters: obj({}) },
     { key: 'content_create_news_draft', module: 'news', risk: 'N1', team: 'comunicaciones', description: 'Crea una noticia en BORRADOR (nunca publicada) para que una persona la revise.', parameters: obj({ title: { type: 'string' }, content: { type: 'string', description: 'Cuerpo en HTML simple o texto.' } }, ['title', 'content']) },
@@ -265,16 +266,49 @@ export const SUBMISSION_REQUIREMENTS = [
     { key: 'contact', label: 'Contacto (correo y teléfono)', test: (s) => /@/.test(String(s.email || '')) && digits(s.phone).length >= 7 },
 ];
 
-export function reviewSubmission(s = {}) {
+/**
+ * v4.1329 — Lo que falta en los FORMULARIOS del proyecto (Formulación, FDD…),
+ * leído del expediente real (`buildDossier`). Sólo rótulos: ningún valor viaja.
+ * No cuentan los campos calculados, los de archivo ni los espacios del
+ * distrito/administración (no los llena el club).
+ */
+export function dossierGaps(dossier) {
+    const out = [];
+    for (const g of dossier?.groups || []) {
+        if (g.source !== 'form') continue;
+        const empty = [];
+        let total = 0;
+        for (const s of g.sections || []) {
+            if (s.district) continue;
+            for (const f of s.fields || []) {
+                if (['computed', 'file'].includes(f.type)) continue;
+                total += 1;
+                if (!f.filled) empty.push(`${s.title} › ${f.label}`);
+            }
+        }
+        out.push({ key: g.key, title: g.title, started: Boolean(g.started), completionPct: Number(g.completionPct || 0), formStatus: g.formStatus || null, total, empty });
+    }
+    return out;
+}
+
+export function reviewSubmission(s = {}, gaps = null) {
     const met = []; const missing = []; const issues = [];
     for (const r of SUBMISSION_REQUIREMENTS) (r.test(s) ? met : missing).push({ key: r.key, label: r.label });
+    for (const g of Array.isArray(gaps) ? gaps : []) {
+        // Observaciones, no requisitos: `complete` sigue midiendo el REGISTRO
+        // (postular no exige haber llenado la Formulación ni el FDD).
+        if (!g.started) { issues.push({ field: g.key, evidence: `${g.title}: sin iniciar.`, empty: [] }); continue; }
+        if (g.empty.length) issues.push({ field: g.key, evidence: `${g.title} (${g.completionPct}%): ${g.empty.length} de ${g.total} campos vacíos — ${g.empty.slice(0, 6).join('; ')}${g.empty.length > 6 ? '…' : ''}`, empty: g.empty });
+        else met.push({ key: `form:${g.key}`, label: `${g.title}: completo` });
+    }
+    const formsComplete = Array.isArray(gaps) ? gaps.every(g => g.started && !g.empty.length) : null;
     const budget = Number(s.budgetUsd);
     if (budget > 0 && budget < 500) issues.push({ field: 'budgetUsd', evidence: `Presupuesto muy bajo para un proyecto (${budget} USD): confirmar la cifra.` });
     if (budget > 2_000_000) issues.push({ field: 'budgetUsd', evidence: `Presupuesto inusualmente alto (${budget} USD): confirmar la cifra.` });
     const desc = String(s.projectDescription || '');
-    if (desc && /lorem ipsum|prueba|test/i.test(desc) && desc.length < 400) issues.push({ field: 'projectDescription', evidence: 'La descripción parece de prueba.' });
+    if (desc && /lorem ipsum|\b(prueba|test)\b/i.test(desc) && desc.length < 400) issues.push({ field: 'projectDescription', evidence: 'La descripción parece de prueba.' });
     if (s.status && !['paid', 'confirmed', 'covered'].includes(s.status)) issues.push({ field: 'status', evidence: `Pago de la inscripción: «${s.status}» (informativo; postular no exige pagar).` });
-    return { submissionId: s.id || null, ref: s.publicRef || null, met, missing, issues, complete: missing.length === 0 };
+    return { submissionId: s.id || null, ref: s.publicRef || null, met, missing, issues, complete: missing.length === 0, formsComplete };
 }
 
 // ── Revisión de tono (piloto W4) ───────────────────────────────────────

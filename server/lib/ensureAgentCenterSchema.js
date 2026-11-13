@@ -86,6 +86,8 @@ export const OWNED_COLUMNS = {
     AgentFeedback: [],
     AgentCustomWorkflow: [],
     AgentCustomWorkflowVersion: [],
+    // Dirección IA (v4.1329.0)
+    AgentDirectorPlan: [],
 };
 const TABLES = Object.keys(OWNED_COLUMNS);
 
@@ -476,6 +478,32 @@ export async function ensureAgentCenterSchema() {
             UNIQUE ("workflowId", version)
         )
     `);
+
+    // v4.1329 — Dirección IA: cada objetivo y su plan, con su recorrido.
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "AgentDirectorPlan" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "siteId" TEXT NOT NULL,
+            objective TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'draft',
+            plan JSONB NOT NULL DEFAULT '{}'::jsonb,
+            deliverable JSONB,
+            history JSONB NOT NULL DEFAULT '[]'::jsonb,
+            "directorInstallationId" TEXT,
+            "previousPlanId" TEXT,
+            "requestedBy" TEXT,
+            "decidedBy" TEXT,
+            "decidedAt" TIMESTAMPTZ,
+            "lockUntil" TIMESTAMPTZ,
+            "costUsd" NUMERIC(14,6) NOT NULL DEFAULT 0,
+            error TEXT,
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            "finishedAt" TIMESTAMPTZ
+        )
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS "AgentDirectorPlan_site_idx" ON "AgentDirectorPlan" ("siteId", "createdAt" DESC)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS "AgentDirectorPlan_status_idx" ON "AgentDirectorPlan" (status)`);
 
     _ready = true;
 }

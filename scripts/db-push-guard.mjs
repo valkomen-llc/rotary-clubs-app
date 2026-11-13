@@ -186,6 +186,9 @@
 // AgentFeedback (la opinión de quien revisó cada hallazgo: sin ella no hay
 // métricas del piloto), AgentCustomWorkflow y AgentCustomWorkflowVersion (cada
 // versión publicada de un workflow del constructor, inmutable).
+// Y la de la Dirección IA (v4.1329): AgentDirectorPlan — cada objetivo que se
+// le dio al Director, el plan que propuso, quién lo aprobó, su ejecución paso a
+// paso y el entregable: es la trazabilidad de lo que se decidió.
 // Y la traza de cada mensaje entrante de WhatsApp (v4.1285):
 // WhatsAppInboundTrace — el recorrido de cada «Hola» de punta a punta y la
 // única evidencia de qué conversaciones quedaron sin respuesta.

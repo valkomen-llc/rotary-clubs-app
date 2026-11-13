@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════════
-// AI Agent Command Center — API (/api/agent-center) — v4.1319.0
+// AI Agent Command Center — API (/api/agent-center) — v4.1329.0
 //
 // DOS ALCANCES (Fase 3):
 //   · la plataforma (administrator / superadmin): todo;
@@ -27,6 +27,7 @@ import * as OB from '../lib/agentObservability.js';
 import * as MEM from '../lib/agentMemory.js';
 import * as SC from '../lib/agentScaleStore.js';
 import * as AC from '../lib/agencyCatalogStore.js';
+import * as DIR from '../lib/agentDirectorStore.js';
 import { STEP_TYPES, MAX_STEPS, FEEDBACK_VERDICTS, PILOT_STATES, findingsOf } from '../lib/agentScaleSpec.js';
 import { ALERT_KINDS } from '../lib/agentObservabilitySpec.js';
 import db from '../lib/db.js';
@@ -40,7 +41,7 @@ import { MODULES } from '../lib/rbacSpec.js';
 
 const router = express.Router();
 
-console.log('[agent-center] v4.1323.0 — catálogo = repositorio de The Agency (283 agentes); registro, runtime, despliegues, mapa, vista por sitio, memoria, observabilidad, piloto controlado y constructor de workflows');
+console.log('[agent-center] v4.1329.0 — Dirección IA: Director de Inteligencia y Operaciones Rotarias (objetivo → plan → aprobación → pasos → entregable); catálogo = repositorio de The Agency; registro, runtime, despliegues, mapa, vista por sitio, memoria, observabilidad, piloto controlado y constructor de workflows');
 
 function resolveScope(req, res, next) {
     if (isPlatformAdmin(req.user)) { req.acScope = { platform: true, siteId: null }; return next(); }
@@ -200,6 +201,34 @@ router.post('/custom-workflows', wrap(async (req, res) => res.status(201).json(a
 
 router.get('/audit', platformOnly, wrap(async (req, res) => res.json({ entries: await R.listAudit({ limit: Number(req.query.limit) || 100, entityId: req.query.entityId || null }) })));
 
+// ── Dirección IA (v4.1329) ──
+// El sitio del Director y de cada plan sale de `siteOf` (la sesión para un
+// sitio); el texto del objetivo nunca elige organización.
+router.get('/director', wrap(async (req, res) => {
+    const siteId = siteOf(req, req.query.siteId);
+    const template = await DIR.directorTemplate();
+    if (!siteId) return res.json({ site: null, template: template ? { id: template.id, status: template.status } : null, planStates: DIR.PLAN_STATES, quickActions: DIR.QUICK_ACTIONS });
+    res.json({ ...(await DIR.directorOverview(siteId)), template: template ? { id: template.id, status: template.status } : null, planStates: DIR.PLAN_STATES });
+}));
+router.post('/director/template', platformOnly, wrap(async (req, res) => {
+    // El catálogo se restablece UNA vez al abrir el registro: si eso no pasó
+    // todavía, pasa antes (si no, borraría la plantilla recién creada).
+    await AC.agencyCatalogOnce(req.user);
+    res.json(await DIR.ensureDirectorTemplate(req.user));
+}));
+router.post('/director/install', platformOnly, wrap(async (req, res) => {
+    if (!req.body?.siteId) return res.status(400).json({ error: 'Falta el sitio.' });
+    await AC.agencyCatalogOnce(req.user);
+    res.status(201).json(await DIR.installDirector(String(req.body.siteId), req.user));
+}));
+router.get('/director/plans', wrap(async (req, res) => res.json({ plans: await DIR.listPlans({ siteId: siteOf(req, req.query.siteId) }) })));
+router.post('/director/plans', wrap(async (req, res) => {
+    const b = req.body || {};
+    const siteId = siteOf(req, b.siteId);
+    if (!siteId) return res.status(400).json({ error: 'Elige la organización.' });
+    res.status(201).json(await DIR.createPlan({ siteId, objective: b.objective, capabilities: Array.isArray(b.capabilities) ? b.capabilities : [], asDraft: Boolean(b.asDraft), previousPlanId: b.previousPlanId || null }, req.user));
+}));
+
 // ── Paramétricas ───────────────────────────────────────────────────────
 router.put('/site-types/:type', platformOnly, wrap(async (req, res) => res.json(await R.saveSiteTypePolicy(req.params.type, req.body || {}, req.user))));
 
@@ -284,6 +313,16 @@ router.post('/alerts/:id/status', wrap(async (req, res) => {
     if (!a) throw new R.RegistryError('Alerta no encontrada.', 404);
     ownOr404(req, a.siteId);
     res.json(await OB.setAlertStatus(req.params.id, String(req.body?.status || ''), req.user));
+}));
+
+router.get('/director/plans/:id', wrap(async (req, res) => { const p = await DIR.getPlan(req.params.id); ownOr404(req, p.siteId); res.json(p); }));
+router.post('/director/plans/:id/decide', wrap(async (req, res) => {
+    ownOr404(req, (await DIR.getPlan(req.params.id)).siteId);
+    res.json(await DIR.decidePlan(req.params.id, String(req.body?.decision || ''), req.user, req.body?.note || ''));
+}));
+router.post('/director/plans/:id/step', wrap(async (req, res) => {
+    ownOr404(req, (await DIR.getPlan(req.params.id)).siteId);
+    res.json(await DIR.runNextStep(req.params.id, req.user));
 }));
 
 router.get('/sites/:id/managers', wrap(async (req, res) => { ownOr404(req, req.params.id); res.json({ users: await R.siteManagers(req.params.id) }); }));

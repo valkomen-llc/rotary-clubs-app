@@ -10,7 +10,7 @@
 // `content_publish_news` sólo llega aquí desde una aprobación humana.
 // ════════════════════════════════════════════════════════════════════════════
 import db from './db.js';
-import { reviewRegistrations, reviewSubmission, REGISTRATION_FINDING_LABELS, reviewFinance } from './agentRuntimeSpec.js';
+import { reviewRegistrations, reviewSubmission, REGISTRATION_FINDING_LABELS, reviewFinance, dossierGaps } from './agentRuntimeSpec.js';
 import { searchKnowledgeForSite } from './agentMemory.js';
 import { reviewMembership } from './agentScaleSpec.js';
 
@@ -73,8 +73,40 @@ export const TOOL_EXECUTORS = {
             `SELECT id, "publicRef", "projectName", "projectDescription", "focusArea", "focusAreaLabel", "budgetUsd", "clubName", district, email, phone, status
                FROM "ProjectFairSubmission" WHERE id::text = $1 AND "clubId" = $2`, [String(args.submissionId || ''), ctx.siteId]);
         if (!s) return { ok: false, error: 'Postulación no encontrada en este sitio.' };
-        const r = reviewSubmission(s);
-        return { ok: true, review: r, project: { ref: s.publicRef, name: s.projectName, club: s.clubName, district: s.district, focusArea: s.focusAreaLabel || s.focusArea, budgetUsd: s.budgetUsd, descriptionExcerpt: String(s.projectDescription || '').slice(0, 600) } };
+        // v4.1329 — también los formularios (Formulación, FDD) del expediente.
+        let gaps = null; let formsNote = null;
+        try {
+            const { agentDossierSnapshot } = await import('../controllers/projectDossierController.js');
+            const snap = await agentDossierSnapshot(String(s.id));
+            if (snap) gaps = dossierGaps(snap.dossier);
+        } catch (e) { formsNote = `No se pudieron leer los formularios: ${e.message}`; }
+        const r = reviewSubmission(s, gaps);
+        return { ok: true, review: { ...r, forms: gaps ? gaps.map(g => ({ key: g.key, title: g.title, started: g.started, completionPct: g.completionPct, empty: g.empty.length, total: g.total })) : null, formsNote }, project:{ ref: s.publicRef, name: s.projectName, club: s.clubName, district: s.district, focusArea: s.focusAreaLabel || s.focusArea, budgetUsd: s.budgetUsd, descriptionExcerpt: String(s.projectDescription || '').slice(0, 600) } };
+    },
+
+    // v4.1329 — Sólo LEE el estado derivado (por huella) de cada expediente. No
+    // genera ni aprueba: eso tiene su propio candado y aprobación en el Expediente.
+    async fair_translation_status(args, ctx) {
+        const limit = clamp(args.limit, 1, 60, 60);
+        const subs = await safe(`SELECT id, "publicRef", "projectName", "clubName" FROM "ProjectFairSubmission" WHERE "clubId" = $1 AND "archivedAt" IS NULL ORDER BY "createdAt" DESC LIMIT $2`, [ctx.siteId, limit])
+            .then(rows => rows.length ? rows : safe(`SELECT id, "publicRef", "projectName", "clubName" FROM "ProjectFairSubmission" WHERE "clubId" = $1 ORDER BY "createdAt" DESC LIMIT $2`, [ctx.siteId, limit]));
+        let snapshot;
+        try { ({ agentDossierSnapshot: snapshot } = await import('../controllers/projectDossierController.js')); }
+        catch (e) { return { ok: false, error: `El Expediente no está disponible: ${e.message}` }; }
+        const projects = [];
+        for (const s of subs) {
+            try {
+                const snap = await snapshot(String(s.id), { translation: true });
+                const t = snap?.translation || {};
+                projects.push({ id: s.id, ref: s.publicRef, name: s.projectName, club: s.clubName, state: t.state || 'not_started', label: t.label || 'Sin traducir', total: t.total || 0, counts: t.counts || null, warnings: t.warnings || 0, approvedAt: t.approvedAt || null });
+            } catch (e) { projects.push({ id: s.id, ref: s.publicRef, name: s.projectName, club: s.clubName, state: 'error', label: `No se pudo leer: ${e.message}`, total: 0 }); }
+        }
+        const counts = {
+            approved: projects.filter(p => p.state === 'approved').length,
+            outdated: projects.filter(p => p.state === 'outdated').length,
+            pending: projects.filter(p => !['approved', 'outdated'].includes(p.state)).length,
+        };
+        return { ok: true, projects, counts, note: 'Traducir, corregir y aprobar se hace en el Expediente de cada proyecto (Postulación de Proyectos → Ver → Traducción).' };
     },
 
     async content_recent(args, ctx) {
