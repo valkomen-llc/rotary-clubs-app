@@ -280,9 +280,15 @@ const applyAccountFilters = async (eventId, query, base) => {
     const enriched = await enrichCompletedRowsWithAccounts(eventId, allRows);
     const matching = filterEnrichedRowsByAccount(enriched, { accountStatus: accFilter, activationStatus: actFilter });
     const matchingIds = matching.map(r => r.id);
+    if (matchingIds.length === 0) {
+        return {
+            where: `${base.where} AND 1 = 0`,
+            values: base.values,
+        };
+    }
     const nextValues = [...base.values, matchingIds];
     return {
-        where: `${base.where} AND id = ANY($${nextValues.length})`,
+        where: `${base.where} AND id = ANY($${nextValues.length}::text[])`,
         values: nextValues,
     };
 };

@@ -17,7 +17,7 @@
 // ════════════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
-    AlertCircle, AlertTriangle, BadgeCheck, CheckSquare, ChevronDown, ChevronUp, Copy, Download,
+    AlertCircle, AlertTriangle, BadgeCheck, CheckCircle2, CheckSquare, ChevronDown, ChevronUp, Copy, Download,
     ExternalLink, Eye, FileSpreadsheet, FileText, Filter, KeyRound, Link2, ListChecks, Loader2, Mail,
     MessageCircle, Paperclip, Pencil, RefreshCw, Save, Search, Send, Settings2, ShieldAlert, ShieldCheck,
     Trash2, UserCheck, UserPlus, Users, X, XCircle,
@@ -1489,7 +1489,7 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
             const res = await fetch(`${API}/event-registrations/admin/completed/${r.id}/account/provision`, {
                 method: 'POST', headers: authHeaders(), body: '{}',
             });
-            const d = await res.json();
+            const d = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(d?.error || 'No se pudo crear la cuenta.');
             const outcome = d.result?.outcome;
             const msg = outcome === 'created'
@@ -1517,7 +1517,7 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                 method: 'POST', headers: authHeaders(),
                 body: JSON.stringify({ channels: ['email'] }),
             });
-            const d = await res.json();
+            const d = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(d?.error || 'No se pudo enviar la invitación.');
             const ok = d.result?.outcome === 'sent';
             setBulkNote({
@@ -1529,6 +1529,29 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
             refresh();
         } catch (err: any) {
             setBulkNote({ ok: false, text: err?.message || 'No se pudo enviar la invitación.' });
+        } finally {
+            setRowBusyId(null);
+        }
+    };
+
+    const quickRowRegenerateInvite = async (r: CompletedRow, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setRowBusyId(r.id);
+        setBulkNote(null);
+        try {
+            const res = await fetch(`${API}/event-registrations/admin/completed/${r.id}/account/regenerate-invitation`, {
+                method: 'POST', headers: authHeaders(),
+                body: JSON.stringify({ channels: ['email'] }),
+            });
+            const d = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(d?.error || 'No se pudo reenviar la invitación.');
+            setBulkNote({
+                ok: true,
+                text: `Nueva invitación generada y enviada a ${r.email || rowName(r)}.`,
+            });
+            refresh();
+        } catch (err: any) {
+            setBulkNote({ ok: false, text: err?.message || 'No se pudo reenviar la invitación.' });
         } finally {
             setRowBusyId(null);
         }
@@ -2116,46 +2139,169 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
             </div>
 
             {/* ── KPIs de Cuentas y Activación ─────────────────────── */}
-            <div className="rounded-xl border border-indigo-100 bg-gradient-to-r from-indigo-50/40 via-white to-purple-50/30 p-3.5">
-                <div className="mb-2.5 flex items-center justify-between">
-                    <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-indigo-900">
-                        <KeyRound className="h-3.5 w-3.5 text-indigo-600" /> Cuentas de acceso y activación
-                    </p>
-                    <span className="text-[11px] text-gray-400">Conciliación con EventAttendeeAccount</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
-                    <button type="button" onClick={() => setFilters(prev => ({ ...prev, accountStatus: 'active' }))}
-                        className="rounded-lg border border-emerald-200 bg-white p-2.5 text-left transition hover:border-emerald-400 hover:shadow-xs">
-                        <p className="text-[11px] font-bold text-emerald-800">Con cuenta activa</p>
-                        <p className="text-xl font-black text-emerald-700">{summary?.accountTotals?.active ?? 0}</p>
-                    </button>
-                    <button type="button" onClick={() => setFilters(prev => ({ ...prev, accountStatus: 'no_account' }))}
-                        className="rounded-lg border border-amber-200 bg-white p-2.5 text-left transition hover:border-amber-400 hover:shadow-xs">
-                        <p className="text-[11px] font-bold text-amber-800">Sin cuenta</p>
-                        <p className="text-xl font-black text-amber-700">{summary?.accountTotals?.no_account ?? 0}</p>
-                    </button>
-                    <button type="button" onClick={() => setFilters(prev => ({ ...prev, accountStatus: 'pending_activation' }))}
-                        className="rounded-lg border border-sky-200 bg-white p-2.5 text-left transition hover:border-sky-400 hover:shadow-xs">
-                        <p className="text-[11px] font-bold text-sky-800">Activación pendiente</p>
-                        <p className="text-xl font-black text-sky-700">{summary?.accountTotals?.pending_activation ?? 0}</p>
-                    </button>
-                    <button type="button" onClick={() => setFilters(prev => ({ ...prev, accountStatus: 'invitation_sent' }))}
-                        className="rounded-lg border border-indigo-200 bg-white p-2.5 text-left transition hover:border-indigo-400 hover:shadow-xs">
-                        <p className="text-[11px] font-bold text-indigo-800">Invitación enviada</p>
-                        <p className="text-xl font-black text-indigo-700">{summary?.accountTotals?.invitation_sent ?? 0}</p>
-                    </button>
-                    <button type="button" onClick={() => setFilters(prev => ({ ...prev, accountStatus: 'invitation_expired' }))}
-                        className="rounded-lg border border-orange-200 bg-white p-2.5 text-left transition hover:border-orange-400 hover:shadow-xs">
-                        <p className="text-[11px] font-bold text-orange-800">Invitación vencida</p>
-                        <p className="text-xl font-black text-orange-700">{summary?.accountTotals?.invitation_expired ?? 0}</p>
-                    </button>
-                    <button type="button" onClick={() => setFilters(prev => ({ ...prev, accountStatus: 'needs_review' }))}
-                        className="rounded-lg border border-red-200 bg-white p-2.5 text-left transition hover:border-red-400 hover:shadow-xs">
-                        <p className="text-[11px] font-bold text-red-800">Requiere revisión</p>
-                        <p className="text-xl font-black text-red-700">{summary?.accountTotals?.needs_review ?? 0}</p>
-                    </button>
-                </div>
-            </div>
+            {(() => {
+                const accTotals = summary?.accountTotals || {};
+                const countActive = accTotals.active ?? summary?.totals?.activeAccounts ?? 0;
+                const countNoAccount = accTotals.no_account ?? accTotals.noAccount ?? summary?.totals?.withoutAccount ?? 0;
+                const countPendingVerification = accTotals.pending_verification ?? accTotals.pendingVerification ?? accTotals.pending_activation ?? accTotals.pendingActivation ?? summary?.totals?.pendingActivation ?? 0;
+                const countInvitationPendingSend = accTotals.invitation_pending_send ?? accTotals.invitationPendingSend ?? accTotals.activationNotSent ?? 0;
+                const countInvitationSent = accTotals.invitation_sent ?? accTotals.invitationSent ?? accTotals.activationSent ?? summary?.totals?.invitationsSent ?? 0;
+                const countInvitationExpired = accTotals.invitation_expired ?? accTotals.invitationExpired ?? accTotals.activationExpired ?? summary?.totals?.invitationsExpired ?? 0;
+                const countNeedsReview = accTotals.needs_review ?? accTotals.needsReview ?? summary?.totals?.needsReview ?? 0;
+
+                return (
+                    <div className="space-y-2">
+                        <div className="rounded-xl border border-indigo-100 bg-gradient-to-r from-indigo-50/40 via-white to-purple-50/30 p-3.5">
+                            <div className="mb-2.5 flex items-center justify-between">
+                                <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-indigo-900">
+                                    <KeyRound className="h-3.5 w-3.5 text-indigo-600" /> Cuentas de acceso y activación
+                                </p>
+                                <span className="text-[11px] text-gray-400">Conciliación con EventAttendeeAccount</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
+                                <button type="button" onClick={() => { setFilters(prev => ({ ...prev, accountStatus: 'active', activationStatus: '' })); setOffset(0); }}
+                                    className="rounded-lg border border-emerald-200 bg-white p-2.5 text-left transition hover:border-emerald-400 hover:shadow-xs">
+                                    <p className="text-[11px] font-bold text-emerald-800">Con cuenta activa</p>
+                                    <p className="text-xl font-black text-emerald-700">{countActive}</p>
+                                </button>
+                                <button type="button" onClick={() => { setFilters(prev => ({ ...prev, accountStatus: 'no_account', activationStatus: '' })); setOffset(0); }}
+                                    className="rounded-lg border border-amber-200 bg-white p-2.5 text-left transition hover:border-amber-400 hover:shadow-xs">
+                                    <p className="text-[11px] font-bold text-amber-800">Sin cuenta</p>
+                                    <p className="text-xl font-black text-amber-700">{countNoAccount}</p>
+                                </button>
+                                <button type="button" onClick={() => { setFilters(prev => ({ ...prev, accountStatus: 'pending_verification', activationStatus: '' })); setOffset(0); }}
+                                    className="rounded-lg border border-sky-200 bg-white p-2.5 text-left transition hover:border-sky-400 hover:shadow-xs">
+                                    <p className="text-[11px] font-bold text-sky-800">Pendiente de verificación</p>
+                                    <p className="text-xl font-black text-sky-700">{countPendingVerification}</p>
+                                </button>
+                                <button type="button" onClick={() => { setFilters(prev => ({ ...prev, accountStatus: 'invitation_sent', activationStatus: '' })); setOffset(0); }}
+                                    className="rounded-lg border border-indigo-200 bg-white p-2.5 text-left transition hover:border-indigo-400 hover:shadow-xs">
+                                    <p className="text-[11px] font-bold text-indigo-800">Invitación enviada</p>
+                                    <p className="text-xl font-black text-indigo-700">{countInvitationSent}</p>
+                                </button>
+                                <button type="button" onClick={() => { setFilters(prev => ({ ...prev, accountStatus: 'invitation_expired', activationStatus: '' })); setOffset(0); }}
+                                    className="rounded-lg border border-orange-200 bg-white p-2.5 text-left transition hover:border-orange-400 hover:shadow-xs">
+                                    <p className="text-[11px] font-bold text-orange-800">Invitación vencida</p>
+                                    <p className="text-xl font-black text-orange-700">{countInvitationExpired}</p>
+                                </button>
+                                <button type="button" onClick={() => { setFilters(prev => ({ ...prev, accountStatus: 'needs_review', activationStatus: '' })); setOffset(0); }}
+                                    className="rounded-lg border border-red-200 bg-white p-2.5 text-left transition hover:border-red-400 hover:shadow-xs">
+                                    <p className="text-[11px] font-bold text-red-800">Requiere revisión</p>
+                                    <p className="text-xl font-black text-red-700">{countNeedsReview}</p>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* ── Barra de filtros rápidos de cuentas ─────────────── */}
+                        <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-gray-200 bg-white p-2 text-xs">
+                            <span className="font-bold text-gray-500 mr-1">Filtros rápidos:</span>
+                            <button type="button"
+                                onClick={() => { setFilters(prev => ({ ...prev, accountStatus: '', activationStatus: '' })); setOffset(0); }}
+                                className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-medium transition ${
+                                    !filters.accountStatus && !filters.activationStatus
+                                        ? 'bg-indigo-600 text-white font-bold shadow-xs'
+                                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                }`}>
+                                Todas las cuentas
+                                <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-mono ${
+                                    !filters.accountStatus && !filters.activationStatus ? 'bg-indigo-700 text-white' : 'bg-gray-200 text-gray-800'
+                                }`}>{summary?.totals?.total ?? total ?? 0}</span>
+                            </button>
+
+                            <button type="button"
+                                onClick={() => { setFilters(prev => ({ ...prev, accountStatus: 'no_account', activationStatus: '' })); setOffset(0); }}
+                                className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-medium transition ${
+                                    filters.accountStatus === 'no_account'
+                                        ? 'bg-amber-500 text-white font-bold shadow-xs'
+                                        : 'bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100'
+                                }`}>
+                                Sin cuenta
+                                <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-mono ${
+                                    filters.accountStatus === 'no_account' ? 'bg-amber-600 text-white' : 'bg-amber-200 text-amber-900'
+                                }`}>{countNoAccount}</span>
+                            </button>
+
+                            <button type="button"
+                                onClick={() => { setFilters(prev => ({ ...prev, accountStatus: 'pending_verification', activationStatus: '' })); setOffset(0); }}
+                                className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-medium transition ${
+                                    filters.accountStatus === 'pending_verification' && !filters.activationStatus
+                                        ? 'bg-sky-600 text-white font-bold shadow-xs'
+                                        : 'bg-sky-50 text-sky-900 border border-sky-200 hover:bg-sky-100'
+                                }`}>
+                                Pendientes de verificación
+                                <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-mono ${
+                                    filters.accountStatus === 'pending_verification' && !filters.activationStatus ? 'bg-sky-700 text-white' : 'bg-sky-200 text-sky-900'
+                                }`}>{countPendingVerification}</span>
+                            </button>
+
+                            <button type="button"
+                                onClick={() => { setFilters(prev => ({ ...prev, accountStatus: 'invitation_pending_send', activationStatus: '' })); setOffset(0); }}
+                                className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-medium transition ${
+                                    filters.accountStatus === 'invitation_pending_send'
+                                        ? 'bg-slate-700 text-white font-bold shadow-xs'
+                                        : 'bg-slate-100 text-slate-800 border border-slate-200 hover:bg-slate-200'
+                                }`}>
+                                Invitación pendiente de envío
+                                <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-mono ${
+                                    filters.accountStatus === 'invitation_pending_send' ? 'bg-slate-800 text-white' : 'bg-slate-200 text-slate-800'
+                                }`}>{countInvitationPendingSend}</span>
+                            </button>
+
+                            <button type="button"
+                                onClick={() => { setFilters(prev => ({ ...prev, accountStatus: 'invitation_sent', activationStatus: '' })); setOffset(0); }}
+                                className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-medium transition ${
+                                    filters.accountStatus === 'invitation_sent'
+                                        ? 'bg-neutral-900 text-white font-bold shadow-xs'
+                                        : 'bg-neutral-100 text-neutral-800 border border-neutral-300 hover:bg-neutral-200'
+                                }`}>
+                                Invitación enviada
+                                <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-mono ${
+                                    filters.accountStatus === 'invitation_sent' ? 'bg-neutral-800 text-white' : 'bg-neutral-200 text-neutral-800'
+                                }`}>{countInvitationSent}</span>
+                            </button>
+
+                            <button type="button"
+                                onClick={() => { setFilters(prev => ({ ...prev, accountStatus: 'invitation_expired', activationStatus: '' })); setOffset(0); }}
+                                className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-medium transition ${
+                                    filters.accountStatus === 'invitation_expired'
+                                        ? 'bg-rose-700 text-white font-bold shadow-xs'
+                                        : 'bg-rose-50 text-rose-900 border border-rose-200 hover:bg-rose-100'
+                                }`}>
+                                Invitación vencida
+                                <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-mono ${
+                                    filters.accountStatus === 'invitation_expired' ? 'bg-rose-800 text-white' : 'bg-rose-200 text-rose-900'
+                                }`}>{countInvitationExpired}</span>
+                            </button>
+
+                            <button type="button"
+                                onClick={() => { setFilters(prev => ({ ...prev, accountStatus: 'active', activationStatus: '' })); setOffset(0); }}
+                                className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-medium transition ${
+                                    filters.accountStatus === 'active'
+                                        ? 'bg-emerald-600 text-white font-bold shadow-xs'
+                                        : 'bg-emerald-50 text-emerald-900 border border-emerald-200 hover:bg-emerald-100'
+                                }`}>
+                                Cuentas activas
+                                <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-mono ${
+                                    filters.accountStatus === 'active' ? 'bg-emerald-700 text-white' : 'bg-emerald-200 text-emerald-900'
+                                }`}>{countActive}</span>
+                            </button>
+
+                            <button type="button"
+                                onClick={() => { setFilters(prev => ({ ...prev, accountStatus: 'needs_review', activationStatus: '' })); setOffset(0); }}
+                                className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-medium transition ${
+                                    filters.accountStatus === 'needs_review'
+                                        ? 'bg-red-600 text-white font-bold shadow-xs'
+                                        : 'bg-red-50 text-red-900 border border-red-200 hover:bg-red-100'
+                                }`}>
+                                Requieren revisión
+                                <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-mono ${
+                                    filters.accountStatus === 'needs_review' ? 'bg-red-700 text-white' : 'bg-red-200 text-red-900'
+                                }`}>{countNeedsReview}</span>
+                            </button>
+                        </div>
+                    </div>
+                );
+            })()}
 
             {/* ── Buscador, filtros y exportación ─────────────────── */}
             <div className="flex flex-wrap items-center gap-2">
@@ -2479,6 +2625,7 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                                 <td className="px-4 py-3 text-xs text-gray-500">{fmtDateTime(r.submittedAt || r.createdAt)}</td>
                                 <td className="whitespace-nowrap px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
                                     <div className="inline-flex items-center gap-1.5">
+                                        {/* Estado 1: Sin cuenta -> Crear */}
                                         {r.accountStatus === 'no_account' && (
                                             <button type="button" disabled={rowBusyId === r.id}
                                                 onClick={e => quickRowProvision(r, e)}
@@ -2488,7 +2635,9 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                                                 Crear
                                             </button>
                                         )}
-                                        {['pending_activation', 'invitation_expired', 'invitation_sent'].includes(r.accountStatus) && (
+
+                                        {/* Estado 2: Pendiente de verificación + No enviada -> Invitar */}
+                                        {(r.accountStatus === 'pending_verification' || r.accountStatus === 'pending_activation') && (r.activationStatus === 'not_sent' || !r.activationStatus) && (
                                             <button type="button" disabled={rowBusyId === r.id}
                                                 onClick={e => quickRowInvite(r, e)}
                                                 title="Enviar invitación de activación"
@@ -2497,9 +2646,54 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                                                 Invitar
                                             </button>
                                         )}
+
+                                        {/* Estado 3: Pendiente de verificación + Invitación enviada -> Ver estado */}
+                                        {(r.accountStatus === 'pending_verification' || r.accountStatus === 'pending_activation' || r.accountStatus === 'invitation_sent') && (r.activationStatus === 'sent' || r.activationStatus === 'delivered') && (
+                                            <button type="button"
+                                                onClick={() => setSelected(r.id)}
+                                                title="Ver estado de invitación"
+                                                className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-800 transition hover:bg-slate-200">
+                                                <KeyRound className="h-3 w-3 text-slate-600" />
+                                                Ver estado
+                                            </button>
+                                        )}
+
+                                        {/* Estado 4: Pendiente de verificación + Invitación vencida -> Reenviar */}
+                                        {(r.accountStatus === 'pending_verification' || r.accountStatus === 'pending_activation' || r.accountStatus === 'invitation_expired') && r.activationStatus === 'expired' && (
+                                            <button type="button" disabled={rowBusyId === r.id}
+                                                onClick={e => quickRowRegenerateInvite(r, e)}
+                                                title="Reenviar invitación con nuevo token de 72h"
+                                                className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-40">
+                                                {rowBusyId === r.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                                                Reenviar
+                                            </button>
+                                        )}
+
+                                        {/* Estado 5: Cuenta activa + Completada -> Ver perfil */}
+                                        {r.accountStatus === 'active' && (
+                                            <button type="button"
+                                                onClick={() => setSelected(r.id)}
+                                                title="Ver perfil de cuenta de acceso"
+                                                className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100">
+                                                <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                                                Ver perfil
+                                            </button>
+                                        )}
+
+                                        {/* Estado 6: Requiere revisión -> Revisar */}
+                                        {r.accountStatus === 'needs_review' && (
+                                            <button type="button"
+                                                onClick={() => setSelected(r.id)}
+                                                title="Revisar coincidencia de identidad"
+                                                className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-100">
+                                                <AlertTriangle className="h-3 w-3 text-red-600" />
+                                                Revisar
+                                            </button>
+                                        )}
+
                                         <button type="button" onClick={() => setSelected(r.id)}
                                             className="rounded-md border border-gray-200 bg-white p-1 text-gray-600 transition hover:bg-gray-50"
-                                            title="Ver detalle">
+                                            title="Ver detalle de inscripción">
                                             <Eye className="h-3.5 w-3.5" />
                                         </button>
                                     </div>

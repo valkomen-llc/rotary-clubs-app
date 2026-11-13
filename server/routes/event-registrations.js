@@ -101,9 +101,12 @@ router.post('/admin/completed/:id/receipt-import/verify', authMiddleware, json, 
 router.post('/admin/completed/:id/receipt-import', authMiddleware, json, completedAdmin.importReceiptFromUrl);
 router.post('/admin/completed/:id/checkin', authMiddleware, json, completedAdmin.checkIn);
 router.post('/admin/completed/:id/account', authMiddleware, json, completedAdmin.provisionSingleAccount);
+router.post('/admin/completed/:id/account/provision', authMiddleware, json, completedAdmin.provisionSingleAccount);
 router.patch('/admin/completed/:id/account/status', authMiddleware, json, completedAdmin.changeAccountStatus);
 router.post('/admin/completed/:id/invitation/send', authMiddleware, json, completedAdmin.sendSingleInvitation);
+router.post('/admin/completed/:id/account/send-invitation', authMiddleware, json, completedAdmin.sendSingleInvitation);
 router.post('/admin/completed/:id/invitation/regenerate', authMiddleware, json, completedAdmin.regenerateSingleInvitation);
+router.post('/admin/completed/:id/account/regenerate-invitation', authMiddleware, json, completedAdmin.regenerateSingleInvitation);
 
 // v4.1263 — Selección y acciones en bloque del listado. Literales ANTES de
 // `/admin/registrations/:id`: si no, «select-all» se leería como un id.

@@ -34,13 +34,29 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1327.0 | 2026-11-13 (Eventos: Creación Masiva de Cuentas, Activación Criptográfica y Portal de Participantes COLROTARIOS)
+// UI V4.1328.0 | 2026-11-13 (Eventos: Ciclo de Vida de Cuentas, Filtros Rápidos Dinámicos y Activación de Participantes)
 // Cache bust: 2026-11-13
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1328.0',
+        title: 'Eventos: Ciclo de Vida de Cuentas, Filtros Rápidos Dinámicos y Activación de Participantes 🛡️⚡',
+        description: 'Actualización integral del ciclo de vida de cuentas para inscripciones COLROTARIOS y eventos distritales: 1) Nuevo estado «Pendiente de verificación» que garantiza que ninguna cuenta recién creada por un administrador nazca como «Cuenta activa» hasta que el participante establezca su contraseña. 2) Barra de filtros rápidos con contadores reales en tiempo real (Todas las cuentas, Sin cuenta, Pendientes de verificación, Invitación pendiente de envío, Invitación enviada, Invitación vencida, Cuentas activas, Requieren revisión). 3) Botones contextuales de acción por fila según la matriz oficial (Crear, Invitar, Ver estado, Reenviar, Ver perfil, Revisar). 4) Protección de endpoints administrativos con respuestas JSON normalizadas para prevenir errores de análisis y alias de rutas para aprovisionamiento e invitaciones. 5) Enrutamiento y autogestión directa en /activar-cuenta y /mi-inscripcion.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'colrotarios', 'ciclo-de-vida-cuentas', 'filtros-rapidos', 'activacion', 'seguridad', 'ux'],
+        type: 'feature',
+        impact: 'Alta: Asegura la separación estricta entre la inscripción al evento y el acceso personal del participante, proporcionando filtros rápidos instantáneos y acciones claras por fila.',
+        changes: [
+            { type: 'added', text: 'Barra de filtros rápidos con 8 opciones y contadores dinámicos calculados desde registros reales.' },
+            { type: 'added', text: 'Estado «Pendiente de verificación» (pending_verification) y separación estricta de las 3 dimensiones: inscripción, cuenta de acceso e invitación.' },
+            { type: 'added', text: 'Acciones dinámicas por fila en la tabla de COLROTARIOS: Crear, Invitar, Ver estado, Reenviar, Ver perfil y Revisar.' },
+            { type: 'fixed', text: 'Captura global de errores API no montadas retornando JSON 404 estandarizado y alias de rutas para aprovisionamiento e invitaciones.' },
+            { type: 'added', text: 'Soporte de ruta /activar-cuenta como alias directo hacia el portal de participantes.' },
+        ],
+    },
     {
         version: '4.1327.0',
         title: 'Eventos: Creación Masiva de Cuentas, Activación Criptográfica y Portal de Participantes COLROTARIOS 🎟️🔐✨',

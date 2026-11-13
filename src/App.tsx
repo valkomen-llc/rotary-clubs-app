@@ -827,6 +827,7 @@ function App() {
                     inscripción. Identidad y permisos propios, ver
                     server/controllers/eventAttendeeController.js */}
                 <Route path="/mi-inscripcion" element={<MiInscripcion />} />
+                <Route path="/activar-cuenta" element={<MiInscripcion />} />
                 <Route path="/feria-proyectos" element={<ProjectFormRedirect />} />
                 <Route path="/inscribir-proyecto" element={<ProjectFormRedirect />} />
 

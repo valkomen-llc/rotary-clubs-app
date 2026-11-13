@@ -529,11 +529,26 @@ export const filterEnrichedRowsByAccount = (enrichedRows = [], query = {}) => {
     const actFilter = typeof query.activationStatus === 'string' ? query.activationStatus.trim() : '';
 
     return enrichedRows.filter(row => {
-        if (accFilter && ACCOUNT_STATUS_KEYS.includes(accFilter)) {
-            if (row.accountStatus !== accFilter) return false;
+        if (accFilter) {
+            if (accFilter === 'pending_verification' || accFilter === 'pending_activation') {
+                if (row.accountStatus !== 'pending_verification' && row.accountStatus !== 'pending_activation') return false;
+            } else if (accFilter === 'invitation_pending_send' || accFilter === 'pending_send') {
+                if ((row.accountStatus !== 'pending_verification' && row.accountStatus !== 'pending_activation')
+                    || (row.activationStatus !== 'not_sent' && row.activationStatus !== 'failed')) return false;
+            } else if (accFilter === 'invitation_sent') {
+                if (row.activationStatus !== 'sent' && row.activationStatus !== 'delivered') return false;
+            } else if (accFilter === 'invitation_expired') {
+                if (row.activationStatus !== 'expired') return false;
+            } else if (row.accountStatus !== accFilter) {
+                return false;
+            }
         }
-        if (actFilter && ACTIVATION_STATUS_KEYS.includes(actFilter)) {
-            if (row.activationStatus !== actFilter) return false;
+        if (actFilter) {
+            if (actFilter === 'sent' || actFilter === 'delivered') {
+                if (row.activationStatus !== 'sent' && row.activationStatus !== 'delivered') return false;
+            } else if (row.activationStatus !== actFilter) {
+                return false;
+            }
         }
         return true;
     });
@@ -560,7 +575,9 @@ export const computeEventAccountTotals = async (eventId, now = new Date()) => {
         total: enriched.length,
         active: 0,
         noAccount: 0,
+        pendingVerification: 0,
         pendingActivation: 0,
+        invitationPendingSend: 0,
         invitationSent: 0,
         invitationExpired: 0,
         suspended: 0,
@@ -574,26 +591,52 @@ export const computeEventAccountTotals = async (eventId, now = new Date()) => {
     };
 
     for (const r of enriched) {
-        if (r.accountStatus === 'active') counts.active += 1;
-        else if (r.accountStatus === 'no_account') counts.noAccount += 1;
-        else if (r.accountStatus === 'pending_activation') counts.pendingActivation += 1;
-        else if (r.accountStatus === 'invitation_sent') counts.invitationSent += 1;
-        else if (r.accountStatus === 'invitation_expired') counts.invitationExpired += 1;
-        else if (r.accountStatus === 'suspended') counts.suspended += 1;
-        else if (r.accountStatus === 'needs_review') counts.needsReview += 1;
+        const isPendingVerif = r.accountStatus === 'pending_verification' || r.accountStatus === 'pending_activation';
+        if (r.accountStatus === 'active') {
+            counts.active += 1;
+        } else if (r.accountStatus === 'no_account') {
+            counts.noAccount += 1;
+        } else if (isPendingVerif) {
+            counts.pendingVerification += 1;
+            counts.pendingActivation += 1;
+            if (r.activationStatus === 'not_sent' || r.activationStatus === 'failed') {
+                counts.invitationPendingSend += 1;
+            }
+        } else if (r.accountStatus === 'suspended') {
+            counts.suspended += 1;
+        } else if (r.accountStatus === 'needs_review') {
+            counts.needsReview += 1;
+        }
 
         if (r.accountState?.reconciliation?.action === 'link_existing') {
             counts.existingDetected += 1;
         }
 
-        if (r.activationStatus === 'completed') counts.activationCompleted += 1;
-        else if (r.activationStatus === 'sent' || r.activationStatus === 'delivered') counts.activationSent += 1;
-        else if (r.activationStatus === 'expired') counts.activationExpired += 1;
-        else if (r.activationStatus === 'failed') counts.activationFailed += 1;
-        else counts.activationNotSent += 1;
+        if (r.activationStatus === 'completed') {
+            counts.activationCompleted += 1;
+        } else if (r.activationStatus === 'sent' || r.activationStatus === 'delivered') {
+            counts.activationSent += 1;
+            counts.invitationSent += 1;
+        } else if (r.activationStatus === 'expired') {
+            counts.activationExpired += 1;
+            counts.invitationExpired += 1;
+        } else if (r.activationStatus === 'failed') {
+            counts.activationFailed += 1;
+        } else {
+            counts.activationNotSent += 1;
+        }
     }
 
-    return counts;
+    return {
+        ...counts,
+        no_account: counts.noAccount,
+        pending_verification: counts.pendingVerification,
+        pending_activation: counts.pendingActivation,
+        invitation_pending_send: counts.invitationPendingSend,
+        invitation_sent: counts.invitationSent,
+        invitation_expired: counts.invitationExpired,
+        needs_review: counts.needsReview,
+    };
 };
 
 /**

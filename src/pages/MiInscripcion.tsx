@@ -233,7 +233,10 @@ const MiInscripcion = () => {
     const resetToken = useMemo(() => new URLSearchParams(window.location.search).get('reset'), []);
     const verifyToken = useMemo(() => new URLSearchParams(window.location.search).get('verificar'), []);
     const claimToken = useMemo(() => new URLSearchParams(window.location.search).get('vincular'), []);
-    const activateToken = useMemo(() => new URLSearchParams(window.location.search).get('activar'), []);
+    const activateToken = useMemo(() => {
+        const p = new URLSearchParams(window.location.search);
+        return p.get('activar') || p.get('token') || p.get('t');
+    }, []);
 
     // Salir cierra la identidad en el sitio entero, no sólo en esta pantalla:
     // el encabezado escucha ese aviso y baja el avatar en el acto (v4.693).

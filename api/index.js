@@ -450,6 +450,13 @@ app.get(['/sitemap.xml', '/sitemap_index.xml'], async (req, res, next) => {
     }
 });
 
+// Captura cualquier método (GET, POST, PUT, PATCH, DELETE) que empiece por /api y no esté montado
+// Evita que Express responda con HTML a peticiones JSON no encontradas
+app.all('/api/*', (req, res) => {
+    console.error(`[api] Ruta no montada: ${req.method} ${req.path}`);
+    return res.status(404).json({ error: `Ruta de API no encontrada: ${req.method} ${req.path}` });
+});
+
 // ── Frontend & SEO Injection ──────────────────────────────────────────────────
 app.get('*', async (req, res) => {
     // v4.649 — Una ruta /api que no esté montada arriba llega hasta aquí. Antes

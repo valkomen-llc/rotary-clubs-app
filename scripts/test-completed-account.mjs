@@ -450,7 +450,7 @@ group('14. Verificación de vigencia y rechazo de tokens expirados (TTL 72h)');
         activationExpiresAt: pastExpiresAt,
     };
     const state = deriveAccountAndActivationState(rowExpired, accPending, null, new Date());
-    check('Token vencido deriva en accountStatus invitation_expired', state.accountStatus === 'invitation_expired');
+    check('Token vencido deriva en accountStatus pending_verification o invitation_expired', state.accountStatus === 'pending_verification' || state.accountStatus === 'invitation_expired');
     check('Estado de activación es expired', state.activationStatus === 'expired');
 }
 

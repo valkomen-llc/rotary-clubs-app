@@ -46,10 +46,17 @@ export const ACCOUNT_STATUSES = [
         description: 'Existe una inscripción, pero no se encontró una cuenta vinculada y verificada.',
     },
     {
+        key: 'pending_verification',
+        label: 'Pendiente de verificación',
+        shortLabel: 'Pendiente de verificación',
+        tone: 'sky',
+        description: 'El administrador creó o aprovisionó la cuenta, pero el participante todavía no ha completado su activación.',
+    },
+    {
         key: 'pending_activation',
-        label: 'Cuenta creada — Activación pendiente',
-        shortLabel: 'Activación pendiente',
-        tone: 'slate',
+        label: 'Pendiente de verificación',
+        shortLabel: 'Pendiente de verificación',
+        tone: 'sky',
         description: 'La cuenta existe, pero el participante todavía no ha establecido sus credenciales personales.',
     },
     {
@@ -99,14 +106,14 @@ export const ACTIVATION_STATUSES = [
     },
     {
         key: 'sent',
-        label: 'Enviada',
-        tone: 'sky',
+        label: 'Invitación enviada',
+        tone: 'dark',
         description: 'La invitación de activación fue despachada al participante.',
     },
     {
         key: 'delivered',
-        label: 'Entregada',
-        tone: 'blue',
+        label: 'Invitación enviada',
+        tone: 'dark',
         description: 'El canal confirmó la entrega de la invitación.',
     },
     {
@@ -123,8 +130,8 @@ export const ACTIVATION_STATUSES = [
     },
     {
         key: 'expired',
-        label: 'Vencida',
-        tone: 'orange',
+        label: 'Invitación vencida',
+        tone: 'rose',
         description: 'El enlace de activación superó su fecha de vigencia.',
     },
     {
@@ -206,7 +213,15 @@ export const isAccountActivated = (account) => {
     const hash = String(account.passwordHash || '').trim();
     if (!hash || hash === UNUSABLE_PASSWORD_HASH) return false;
     if (account.mustChangePassword) return false;
-    return true;
+    // Evidencia real de activación o inicio de sesión
+    if (account.activatedAt || account.lastLoginAt || account.emailVerifiedAt) {
+        return true;
+    }
+    // Contraseña válida con hash bcrypt o argon2 (no temporal inutilizable)
+    if (hash.startsWith('$2') || hash.startsWith('$argon2')) {
+        return true;
+    }
+    return false;
 };
 
 /**
@@ -650,82 +665,32 @@ export const deriveAccountAndActivationState = (row, account = null, reconciliat
         };
     }
 
-    // La cuenta existe pero NO ha completado su activación (`passwordHash === '!'` o `mustChangePassword`)
+    // La cuenta existe pero NO ha completado su activación (`passwordHash === '!'` o `mustChangePassword` o sin evidencia de activación).
+    // Dimensión A (Estado de cuenta): SIEMPRE «Pendiente de verificación» (pending_verification).
+    // Dimensión B (Estado de invitación/activación): independiente del estado de cuenta.
     const sentAt = row?.activationSentAt || linkedAccount.activationSentAt || null;
     const expiresAt = linkedAccount.activationExpiry || row?.activationExpiresAt || null;
     const hasError = Boolean(row?.activationError);
-    const hasActiveToken = Boolean(linkedAccount.activationTokenHash || linkedAccount.resetToken);
 
+    let activationStatus = 'not_sent';
     if (hasError && !sentAt) {
-        return {
-            accountStatus: 'pending_activation',
-            accountStatusMeta: accountStatusMeta('pending_activation'),
-            activationStatus: 'failed',
-            activationStatusMeta: activationStatusMeta('failed'),
-            reviewReason: null,
-            hasLinkedAccount: true,
-            isActivated: false,
-            canCreateAccount: false,
-            canLinkExisting: false,
-            canSendInvitation: true,
-            reconciliation: recon,
-        };
-    }
-
-    if (sentAt || hasActiveToken) {
+        activationStatus = 'failed';
+    } else if (sentAt) {
         const expMs = expiresAt ? new Date(expiresAt).getTime() : null;
         if (expMs && Number.isFinite(expMs) && expMs < nowMs) {
-            return {
-                accountStatus: 'invitation_expired',
-                accountStatusMeta: accountStatusMeta('invitation_expired'),
-                activationStatus: 'expired',
-                activationStatusMeta: activationStatusMeta('expired'),
-                reviewReason: null,
-                hasLinkedAccount: true,
-                isActivated: false,
-                canCreateAccount: false,
-                canLinkExisting: false,
-                canSendInvitation: true,
-                reconciliation: recon,
-            };
+            activationStatus = 'expired';
+        } else if (hasError) {
+            activationStatus = 'failed';
+        } else {
+            activationStatus = 'sent';
         }
-
-        if (hasError) {
-            return {
-                accountStatus: 'pending_activation',
-                accountStatusMeta: accountStatusMeta('pending_activation'),
-                activationStatus: 'failed',
-                activationStatusMeta: activationStatusMeta('failed'),
-                reviewReason: null,
-                hasLinkedAccount: true,
-                isActivated: false,
-                canCreateAccount: false,
-                canLinkExisting: false,
-                canSendInvitation: true,
-                reconciliation: recon,
-            };
-        }
-
-        return {
-            accountStatus: 'invitation_sent',
-            accountStatusMeta: accountStatusMeta('invitation_sent'),
-            activationStatus: sentAt ? 'sent' : 'pending',
-            activationStatusMeta: activationStatusMeta(sentAt ? 'sent' : 'pending'),
-            reviewReason: null,
-            hasLinkedAccount: true,
-            isActivated: false,
-            canCreateAccount: false,
-            canLinkExisting: false,
-            canSendInvitation: true,
-            reconciliation: recon,
-        };
     }
 
     return {
-        accountStatus: 'pending_activation',
-        accountStatusMeta: accountStatusMeta('pending_activation'),
-        activationStatus: 'not_sent',
-        activationStatusMeta: activationStatusMeta('not_sent'),
+        accountStatus: 'pending_verification',
+        accountStatusMeta: accountStatusMeta('pending_verification'),
+        activationStatus,
+        activationStatusMeta: activationStatusMeta(activationStatus),
         reviewReason: null,
         hasLinkedAccount: true,
         isActivated: false,
