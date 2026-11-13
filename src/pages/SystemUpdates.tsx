@@ -34,13 +34,29 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1326.0 | 2026-11-12 (Postulación de Proyectos: sin perfil en la Feria no se ven datos personales)
-// Cache bust: 2026-11-12
+// UI V4.1327.0 | 2026-11-13 (Eventos: Creación Masiva de Cuentas, Activación Criptográfica y Portal de Participantes COLROTARIOS)
+// Cache bust: 2026-11-13
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1327.0',
+        title: 'Eventos: Creación Masiva de Cuentas, Activación Criptográfica y Portal de Participantes COLROTARIOS 🎟️🔐✨',
+        description: 'Actualización integral del sistema de eventos de Club Platform para inscripciones COLROTARIOS y registros históricos: 1) Nueva columna «Cuenta de acceso» y «Activación» con estados reales derivados (activa, sin cuenta, pendiente, invitada, vencida, suspendida, requiere revisión). 2) Conciliación e identificación de identidades existentes por accountId, correo y documento, con detección y aislamiento de colisiones. 3) Motor de aprovisionamiento masivo idempotente por lotes acotados con preflight y reporte. 4) Activación criptográfica mediante enlaces individuales de un solo uso (SHA-256 en reposo, TTL 72h) y contingencia de contraseña temporal bcrypt con cambio obligatorio. 5) Notificaciones omnicanal (Email y WhatsApp) con guardia de destinatario y variables dinámicas. 6) Portal de autogestión /mi-inscripcion para validación de token, establecimiento de contraseña, consulta de comprobante financiero firmado y edición de campos autorizados con protección HTTP 403. 7) Indicadores ejecutivos en tablero y exportaciones completas (CSV, Excel, PDF) con datos de cuenta y activación.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'colrotarios', 'cuentas-acceso', 'activacion-criptografica', 'portal-participantes', 'whatsapp', 'seguridad', 'exportaciones'],
+        type: 'feature',
+        impact: 'Crítica: Permite aprovisionar de forma masiva, segura e idempotente las cuentas de acceso para participantes de eventos e inscripciones históricas sin duplicar personas ni comprometer credenciales.',
+        changes: [
+            { type: 'added', text: 'Columnas de Cuenta de acceso y Activación en Inscripciones COLROTARIOS con pills de estado y acciones rápidas de fila.' },
+            { type: 'added', text: 'Motor masivo de creación y vinculación de cuentas de acceso con preflight, confirmación obligatoria y reporte descargable.' },
+            { type: 'added', text: 'Enlaces criptográficos individuales de activación de un solo uso con hash SHA-256 (72h de vigencia) y despacho por Correo y WhatsApp.' },
+            { type: 'added', text: 'Portal de autogestión /mi-inscripcion con activación de contraseña, visualización de ficha, comprobante firmado S3 y edición de campos autorizados.' },
+            { type: 'added', text: 'Métricas ejecutivas de cuentas y exportación en CSV, Excel y PDF con trazabilidad de accesos.' },
+        ],
+    },
     {
         version: '4.1326.0',
         title: 'Postulación de Proyectos: sin perfil en la Feria no se ve nada 🔒',

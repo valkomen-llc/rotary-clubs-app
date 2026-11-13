@@ -8,9 +8,10 @@
 // módulos de juventud sólo se montaron en server.js. Todo funcionaba en local
 // y en producción respondían «Ruta de API no encontrada».
 // ════════════════════════════════════════════════════════════════════
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
-const REPO = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
+const REPO = fileURLToPath(new URL('..', import.meta.url)).replace(/\/$/, '');
 const local = readFileSync(`${REPO}/server/server.js`, 'utf8');
 const prod = readFileSync(`${REPO}/api/index.js`, 'utf8');
 
@@ -25,7 +26,6 @@ const missing = [...inLocal].filter(p => !covered(p)).sort();
 //    server/: Vercel sólo empaqueta en la función lo que ve en un import('…')
 //    LITERAL. v4.1321 montó los routers con `import(file)` y producción dijo
 //    «No se puede encontrar el módulo '/var/task/server/routes/agentCenter.js'».
-import { readdirSync, statSync } from 'node:fs';
 const walk = (dir) => readdirSync(dir).flatMap(f => {
     const p = `${dir}/${f}`;
     if (f === 'node_modules' || f.startsWith('.')) return [];

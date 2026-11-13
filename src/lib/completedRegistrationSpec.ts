@@ -239,3 +239,193 @@ export const accessPasswordChecks = (password: string, confirm: string) => [
     { key: 'length', label: `Al menos ${ACCESS_PASSWORD_MIN} caracteres`, ok: String(password ?? '').length >= ACCESS_PASSWORD_MIN },
     { key: 'match', label: 'Las dos contraseñas coinciden', ok: Boolean(password) && password === confirm },
 ];
+
+// ── Estados de «Cuenta de acceso» y «Activación» ─────────────────────
+
+export interface AccountStatusMeta {
+    key: string;
+    label: string;
+    shortLabel: string;
+    cls: string;
+    dotCls: string;
+    description: string;
+}
+
+export const ACCOUNT_STATUS_META: Record<string, AccountStatusMeta> = {
+    active: {
+        key: 'active',
+        label: 'Cuenta activa',
+        shortLabel: 'Activa',
+        cls: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+        dotCls: 'bg-emerald-500',
+        description: 'El participante tiene una cuenta válida y ha completado su activación.',
+    },
+    no_account: {
+        key: 'no_account',
+        label: 'Sin cuenta',
+        shortLabel: 'Sin cuenta',
+        cls: 'bg-amber-50 text-amber-800 border-amber-200',
+        dotCls: 'bg-amber-500',
+        description: 'Existe una inscripción, pero no se encontró una cuenta vinculada y verificada.',
+    },
+    pending_activation: {
+        key: 'pending_activation',
+        label: 'Cuenta creada — Activación pendiente',
+        shortLabel: 'Activación pendiente',
+        cls: 'bg-slate-100 text-slate-700 border-slate-200',
+        dotCls: 'bg-slate-500',
+        description: 'La cuenta existe, pero el participante todavía no ha establecido sus credenciales personales.',
+    },
+    invitation_sent: {
+        key: 'invitation_sent',
+        label: 'Invitación enviada',
+        shortLabel: 'Invitada',
+        cls: 'bg-sky-50 text-sky-800 border-sky-200',
+        dotCls: 'bg-sky-500',
+        description: 'Se generó y envió una invitación de activación vigente.',
+    },
+    invitation_expired: {
+        key: 'invitation_expired',
+        label: 'Invitación vencida',
+        shortLabel: 'Invitación vencida',
+        cls: 'bg-orange-50 text-orange-800 border-orange-200',
+        dotCls: 'bg-orange-500',
+        description: 'El enlace de activación expiró sin que el participante completara el proceso.',
+    },
+    suspended: {
+        key: 'suspended',
+        label: 'Cuenta suspendida',
+        shortLabel: 'Suspendida',
+        cls: 'bg-red-50 text-red-800 border-red-200',
+        dotCls: 'bg-red-500',
+        description: 'Existe una cuenta vinculada, pero está deshabilitada administrativamente.',
+    },
+    needs_review: {
+        key: 'needs_review',
+        label: 'Requiere revisión',
+        shortLabel: 'Requiere revisión',
+        cls: 'bg-rose-50 text-rose-800 border-rose-200',
+        dotCls: 'bg-rose-500',
+        description: 'Existen coincidencias ambiguas, conflictos de identidad o información insuficiente.',
+    },
+};
+
+export const accountStatusMeta = (key?: string | null): AccountStatusMeta =>
+    (key && ACCOUNT_STATUS_META[key])
+    || ACCOUNT_STATUS_META.no_account;
+
+export interface ActivationStatusMeta {
+    key: string;
+    label: string;
+    cls: string;
+    description: string;
+}
+
+export const ACTIVATION_STATUS_META: Record<string, ActivationStatusMeta> = {
+    not_sent: {
+        key: 'not_sent',
+        label: 'No enviada',
+        cls: 'text-gray-500 bg-gray-100',
+        description: 'Todavía no se ha enviado invitación de activación.',
+    },
+    sent: {
+        key: 'sent',
+        label: 'Enviada',
+        cls: 'text-sky-700 bg-sky-50',
+        description: 'La invitación de activación fue despachada al participante.',
+    },
+    delivered: {
+        key: 'delivered',
+        label: 'Entregada',
+        cls: 'text-blue-700 bg-blue-50',
+        description: 'El canal confirmó la entrega de la invitación.',
+    },
+    pending: {
+        key: 'pending',
+        label: 'Pendiente',
+        cls: 'text-amber-700 bg-amber-50',
+        description: 'La cuenta espera que el participante abra el enlace y defina su contraseña.',
+    },
+    completed: {
+        key: 'completed',
+        label: 'Completada',
+        cls: 'text-emerald-700 bg-emerald-50',
+        description: 'El participante activó su cuenta y definió su contraseña personal.',
+    },
+    expired: {
+        key: 'expired',
+        label: 'Vencida',
+        cls: 'text-orange-700 bg-orange-50',
+        description: 'El enlace de activación superó su fecha de vigencia.',
+    },
+    failed: {
+        key: 'failed',
+        label: 'Error de envío',
+        cls: 'text-red-700 bg-red-50',
+        description: 'El último intento de envío de invitación registró un error.',
+    },
+};
+
+export const activationStatusMeta = (key?: string | null): ActivationStatusMeta =>
+    (key && ACTIVATION_STATUS_META[key])
+    || ACTIVATION_STATUS_META.not_sent;
+
+export const ACTIVATION_TEMPLATE_VARIABLES = [
+    { token: '{{participant_name}}', label: 'Nombre completo del participante', example: 'Carlos Andrés Rodríguez' },
+    { token: '{{participant_email}}', label: 'Correo electrónico del participante', example: 'carlos@ejemplo.org' },
+    { token: '{{event_name}}', label: 'Nombre del evento', example: 'XIII Conferencia Distrital — Edición Meta' },
+    { token: '{{event_date}}', label: 'Fecha del evento', example: '15 de mayo de 2027' },
+    { token: '{{event_location}}', label: 'Lugar o sede del evento', example: 'Villavicencio, Meta' },
+    { token: '{{registration_code}}', label: 'Código de inscripción', example: 'RPF13-C-ASC4M' },
+    { token: '{{organization_name}}', label: 'Nombre del club, distrito u organización', example: 'Distrito Rotario 4281' },
+    { token: '{{organization_signature}}', label: 'Firma institucional del organizador', example: 'Equipo del Evento · Distrito Rotario 4281' },
+    { token: '{{event_portal_url}}', label: 'URL del portal del evento (/mi-inscripcion)', example: 'https://rotary4281.org/mi-inscripcion' },
+    { token: '{{activation_url}}', label: 'Enlace individual y seguro de activación', example: 'https://rotary4281.org/mi-inscripcion?activar=...' },
+    { token: '{{activation_expiration}}', label: 'Vigencia del enlace de activación', example: '72 horas (hasta el 15 nov 2026, 18:00)' },
+    { token: '{{account_status}}', label: 'Estado actual de la cuenta', example: 'Invitación enviada' },
+    { token: '{{activation_status}}', label: 'Estado de activación', example: 'Pendiente' },
+    { token: '{{support_url}}', label: 'Canal o enlace de soporte del organizador', example: 'https://rotary4281.org/contacto' },
+];
+
+export const DEFAULT_ACTIVATION_EMAIL_SUBJECT =
+    'Activación de cuenta — {{event_name}}';
+
+export const DEFAULT_ACTIVATION_EMAIL_BODY = [
+    'Hola {{participant_name}},',
+    '',
+    'Tu inscripción al evento {{event_name}} se encuentra registrada en nuestra plataforma (código {{registration_code}}).',
+    '',
+    'Para consultar los detalles de tu participación, actualizar tu información autorizada y acceder a los servicios del evento, activa tu cuenta personal desde el siguiente enlace seguro de un solo uso:',
+    '',
+    '{{activation_url}}',
+    '',
+    'Por seguridad, este enlace es personal y tiene vigencia de {{activation_expiration}}.',
+    '',
+    'Si ya habías activado tu cuenta anteriormente, puedes ingresar directamente en:',
+    '{{event_portal_url}}',
+    '',
+    'Cordialmente,',
+    '{{organization_signature}}',
+].join('\n');
+
+export const DEFAULT_ACTIVATION_WHATSAPP_BODY = [
+    'Hola *{{participant_name}}* 👋',
+    '',
+    'Tu inscripción a *{{event_name}}* (código `{{registration_code}}`) ya cuenta con acceso al portal del participante de *{{organization_name}}*.',
+    '',
+    '🔐 *Activa tu cuenta y define tu contraseña personal aquí:*',
+    '{{activation_url}}',
+    '',
+    '⏳ _Este enlace es personal, de un solo uso y vence en {{activation_expiration}}._',
+    '',
+    '{{organization_signature}}',
+].join('\n');
+
+export const AUTHORIZED_PARTICIPANT_FIELDS = [
+    'phone',
+    'eps',
+    'foodAllergy',
+    'emergencyName',
+    'emergencyPhone',
+    'comments',
+] as const;

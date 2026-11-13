@@ -18,13 +18,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
     AlertCircle, AlertTriangle, BadgeCheck, CheckSquare, ChevronDown, ChevronUp, Copy, Download,
-    ExternalLink, Eye, FileSpreadsheet, FileText, Filter, Link2, ListChecks, Loader2, Mail, Paperclip,
-    Pencil, RefreshCw, Save, Search, Send, Settings2, Trash2, Users, X, XCircle,
+    ExternalLink, Eye, FileSpreadsheet, FileText, Filter, KeyRound, Link2, ListChecks, Loader2, Mail,
+    MessageCircle, Paperclip, Pencil, RefreshCw, Save, Search, Send, Settings2, ShieldAlert, ShieldCheck,
+    Trash2, UserCheck, UserPlus, Users, X, XCircle,
 } from 'lucide-react';
 import MediaPicker from '../content-studio/MediaPicker';
 import { uploadMediaFiles } from '../../../lib/mediaUpload';
 import { completedStatusMeta, SOURCE_LABELS, BULK_MAX, chunkIds } from '../../../lib/completedRegistrationSpec';
 import ComprobanteDeLaInscripcion from './ComprobanteDeLaInscripcion';
+import {
+    accountStatusMeta,
+    activationStatusMeta,
+    ACCOUNT_STATUS_META,
+    ACTIVATION_STATUS_META,
+    ACTIVATION_TEMPLATE_VARIABLES,
+    DEFAULT_ACTIVATION_EMAIL_SUBJECT,
+    DEFAULT_ACTIVATION_EMAIL_BODY,
+    DEFAULT_ACTIVATION_WHATSAPP_BODY,
+} from '../../../lib/completedRegistrationSpec';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
 const authHeaders = () => ({
@@ -94,6 +105,48 @@ interface Catalog {
     guestTypes?: CatalogOption[];
     retiredMembership?: Record<string, string>;
     sources: Record<string, string>;
+    accountStatuses?: { key: string; label: string; shortLabel?: string; description?: string }[];
+    activationStatuses?: { key: string; label: string; description?: string }[];
+}
+
+interface AccountReconciliationInfo {
+    action: 'already_linked' | 'link_existing' | 'create_new' | 'needs_review' | 'invalid_email';
+    confidence: string;
+    reasons: string[];
+    reviewReason: string | null;
+    matchedAccountEmail: string | null;
+    matchedAccountId: string | null;
+    matchedExternalIdentity: { realm: string; id: string; email?: string; name?: string } | null;
+    duplicateIds: string[];
+    otherEvents: { eventId: string; source: string; registrationId: string; registrationCode: string | null; status: string }[];
+}
+
+interface AccountStateInfo {
+    accountStatus: string;
+    activationStatus: string;
+    reviewReason: string | null;
+    hasLinkedAccount: boolean;
+    isActivated: boolean;
+    canCreateAccount: boolean;
+    canLinkExisting: boolean;
+    canSendInvitation: boolean;
+    account: {
+        id: string;
+        email: string;
+        firstName: string | null;
+        lastName: string | null;
+        phone: string | null;
+        documentNumber: string | null;
+        status: string;
+        linkedRealm: string | null;
+        isActivated: boolean;
+        activatedAt: string | null;
+        activationSentAt: string | null;
+        activationExpiry: string | null;
+        hasActiveInvitationToken: boolean;
+        lastLoginAt: string | null;
+    } | null;
+    reconciliation: AccountReconciliationInfo;
 }
 
 interface CompletedRow {
@@ -129,6 +182,19 @@ interface CompletedRow {
     comments: string | null;
     flags: { hasDuplicates?: boolean; duplicates?: DuplicateRef[] };
     linkedRegistrationId: string | null;
+    accountId?: string | null;
+    accountLinkedAt?: string | null;
+    accountReviewReason?: string | null;
+    activationSentAt?: string | null;
+    activationChannel?: string | null;
+    activationExpiresAt?: string | null;
+    activationError?: string | null;
+    accountStatus?: string;
+    accountStatusLabel?: string | null;
+    accountStatusShortLabel?: string | null;
+    activationStatus?: string;
+    activationStatusLabel?: string | null;
+    accountState?: AccountStateInfo | null;
     internalNotes: string | null;
     checkedInAt: string | null;
     checkedInBy: string | null;
@@ -154,6 +220,48 @@ interface DuplicateRef {
 const StatusPill = ({ status }: { status: string }) => {
     const meta = completedStatusMeta(status);
     return <span className={`inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-bold ${meta.cls}`}>{meta.label}</span>;
+};
+
+const AccountStatusPill = ({ status, compact = false, title }: { status?: string | null; compact?: boolean; title?: string }) => {
+    const meta = accountStatusMeta(status);
+    return (
+        <span
+            title={title || meta.description}
+            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] font-bold ${meta.cls}`}
+        >
+            <span className={`h-1.5 w-1.5 rounded-full ${meta.dotCls}`} />
+            {compact ? meta.shortLabel : meta.label}
+        </span>
+    );
+};
+
+const ActivationStatusBadge = ({ status, sentAt, channel, error }: {
+    status?: string | null;
+    sentAt?: string | null;
+    channel?: string | null;
+    error?: string | null;
+}) => {
+    const meta = activationStatusMeta(status);
+    return (
+        <div className="flex flex-col items-start gap-0.5">
+            <span
+                title={error || meta.description}
+                className={`inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-semibold ${meta.cls}`}
+            >
+                {meta.label}
+                {channel && (status === 'sent' || status === 'delivered') && (
+                    <span className="text-[10px] opacity-75">
+                        ({channel === 'both' ? 'Correo + WA' : channel === 'whatsapp' ? 'WhatsApp' : 'Correo'})
+                    </span>
+                )}
+            </span>
+            {sentAt && (
+                <span className="text-[10px] text-gray-400">
+                    {fmtDateTime(sentAt)}
+                </span>
+            )}
+        </div>
+    );
 };
 
 const StatCard = ({ label, value, hint }: { label: string; value: string | number; hint?: string }) => (
@@ -237,6 +345,8 @@ const DetailSheet = ({ id, catalog, onClose, onChanged }: {
     const [draft, setDraft] = useState<Record<string, string>>({});
     const [notes, setNotes] = useState('');
     const [notice, setNotice] = useState('');
+    const [generatedActivationUrl, setGeneratedActivationUrl] = useState('');
+    const [copiedActivationUrl, setCopiedActivationUrl] = useState(false);
 
     const load = useCallback(() => {
         setLoading(true);
@@ -330,6 +440,62 @@ const DetailSheet = ({ id, catalog, onClose, onChanged }: {
 
     const saveNotes = () =>
         call('notes', '', { method: 'PATCH', body: JSON.stringify({ internalNotes: notes }) }, 'Notas guardadas.');
+
+    const provisionAccount = async (allowReviewOverride = false, forceAccountId?: string | null) => {
+        await call('provision', '/account', {
+            method: 'POST',
+            body: JSON.stringify({
+                allowReviewOverride,
+                accountId: forceAccountId || undefined,
+            }),
+        }, 'Cuenta de acceso vinculada y aprovisionada.');
+    };
+
+    const sendInvitation = async (channel: 'email' | 'whatsapp' | 'both', includeActive = false) => {
+        await call(`inv-${channel}`, '/invitation/send', {
+            method: 'POST',
+            body: JSON.stringify({ channel, includeActive }),
+        }, `Invitación de activación enviada (${channel === 'both' ? 'Correo y WhatsApp' : channel === 'whatsapp' ? 'WhatsApp' : 'Correo'}).`);
+    };
+
+    const regenerateLink = async () => {
+        setBusy('regen');
+        setError('');
+        try {
+            const res = await fetch(`${API}/event-registrations/admin/completed/${id}/invitation/regenerate`, {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({}),
+            });
+            const d = await res.json();
+            if (!res.ok) throw new Error(d?.error || 'No se pudo regenerar el enlace.');
+            setGeneratedActivationUrl(d.activationUrl || '');
+            setNotice('Nuevo enlace único de activación generado.');
+            setTimeout(() => setNotice(''), 3500);
+            load();
+            onChanged();
+        } catch (err: any) {
+            setError(err?.message || 'No se pudo regenerar el enlace.');
+        } finally {
+            setBusy('');
+        }
+    };
+
+    const toggleAccountSuspension = async (nextStatus: 'active' | 'suspended') => {
+        await call('acc-status', '/account/status', {
+            method: 'PATCH',
+            body: JSON.stringify({ status: nextStatus }),
+        }, nextStatus === 'suspended' ? 'Cuenta suspendida.' : 'Cuenta reactivada.');
+    };
+
+    const copyGeneratedLink = async () => {
+        if (!generatedActivationUrl) return;
+        try {
+            await navigator.clipboard.writeText(generatedActivationUrl);
+            setCopiedActivationUrl(true);
+            setTimeout(() => setCopiedActivationUrl(false), 2000);
+        } catch { /* sin portapapeles */ }
+    };
 
     const dupes: DuplicateRef[] = data?.duplicates?.duplicates || [];
 
@@ -432,6 +598,197 @@ const DetailSheet = ({ id, catalog, onClose, onChanged }: {
                                     {' '}({data.linked.name}{data.linked.categoryLabel ? ` · ${data.linked.categoryLabel}` : ''}),
                                     visible en la pestaña «Inscripciones».
                                 </span>
+                            </div>
+                        )}
+
+                        {/* ── Cuenta de acceso y activación (Secciones 4, 5, 9, 11, 16) ── */}
+                        {r && (
+                            <div className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-4">
+                                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                    <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-indigo-900">
+                                        <KeyRound className="h-4 w-4 text-indigo-600" />
+                                        Cuenta de acceso al evento y activación
+                                    </p>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <AccountStatusPill status={r.accountStatus} />
+                                        <ActivationStatusBadge
+                                            status={r.activationStatus}
+                                            sentAt={r.activationSentAt}
+                                            channel={r.activationChannel}
+                                            error={r.activationError}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Diagnóstico de identidad y conciliación */}
+                                {r.accountState?.reviewReason && (
+                                    <div className="mb-3 flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+                                        <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />
+                                        <div>
+                                            <p className="font-bold">Requiere revisión administrativa de identidad</p>
+                                            <p>{r.accountState.reviewReason}</p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {r.accountState?.account ? (
+                                    <div className="mb-3 rounded-lg border border-white/80 bg-white/90 px-3.5 py-2.5 text-xs text-gray-700">
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <span>
+                                                <strong>Cuenta:</strong>{' '}
+                                                <span className="font-mono" data-no-translate>{r.accountState.account.email}</span>
+                                                {r.accountState.account.linkedRealm && (
+                                                    <span className="ml-2 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700">
+                                                        Vinculada ({r.accountState.account.linkedRealm})
+                                                    </span>
+                                                )}
+                                            </span>
+                                            <span className="text-[11px] text-gray-400">
+                                                {r.accountState.account.isActivated
+                                                    ? `Activada ${r.accountState.account.activatedAt ? fmtDateTime(r.accountState.account.activatedAt) : '✓'}`
+                                                    : 'Credencial personal pendiente'}
+                                            </span>
+                                        </div>
+                                        {r.accountState.account.lastLoginAt && (
+                                            <p className="mt-1 text-[11px] text-gray-500">
+                                                Último acceso al portal: {fmtDateTime(r.accountState.account.lastLoginAt)}
+                                            </p>
+                                        )}
+                                        {r.accountState.account.activationExpiry && !r.accountState.account.isActivated && (
+                                            <p className="mt-1 text-[11px] text-gray-500">
+                                                Vigencia del enlace actual: {fmtDateTime(r.accountState.account.activationExpiry)}
+                                            </p>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <p className="mb-3 text-xs text-gray-600">
+                                        {r.accountState?.reconciliation?.reasons?.[0] || 'Este participante aún no tiene una cuenta de acceso vinculada.'}
+                                    </p>
+                                )}
+
+                                {(r.accountState?.reconciliation?.otherEvents?.length || 0) > 0 && (
+                                    <p className="mb-3 text-[11px] font-medium text-indigo-800">
+                                        Participación detectada en {r.accountState?.reconciliation?.otherEvents.length} otro(s) registro(s) de eventos en Club Platform (se reutiliza la misma identidad).
+                                    </p>
+                                )}
+
+                                {r.activationError && (
+                                    <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                                        <strong>Último error de envío:</strong> {r.activationError}
+                                    </p>
+                                )}
+
+                                {generatedActivationUrl && (
+                                    <div className="mb-3 rounded-lg border border-indigo-200 bg-white p-2.5 text-xs">
+                                        <p className="mb-1 font-bold text-indigo-900">Enlace individual de activación (un solo uso):</p>
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="text"
+                                                readOnly
+                                                value={generatedActivationUrl}
+                                                className="w-full rounded border border-gray-200 bg-gray-50 px-2 py-1 font-mono text-[11px] text-gray-700"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={copyGeneratedLink}
+                                                className="inline-flex shrink-0 items-center gap-1 rounded bg-indigo-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-indigo-700"
+                                            >
+                                                <Copy className="h-3 w-3" /> {copiedActivationUrl ? 'Copiado' : 'Copiar'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="flex flex-wrap gap-2">
+                                    {!r.accountId && r.accountStatus !== 'needs_review' && (
+                                        <button
+                                            type="button"
+                                            disabled={Boolean(busy)}
+                                            onClick={() => provisionAccount(false)}
+                                            className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white transition hover:bg-indigo-700 disabled:opacity-40"
+                                        >
+                                            {busy === 'provision' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserPlus className="h-3.5 w-3.5" />}
+                                            {r.accountState?.canLinkExisting ? 'Vincular cuenta existente' : 'Crear cuenta de acceso'}
+                                        </button>
+                                    )}
+
+                                    {r.accountStatus === 'needs_review' && (
+                                        <>
+                                            {r.accountState?.reconciliation?.matchedAccountId && (
+                                                <button
+                                                    type="button"
+                                                    disabled={Boolean(busy)}
+                                                    onClick={() => provisionAccount(true, r.accountState?.reconciliation?.matchedAccountId)}
+                                                    className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3.5 py-2 text-xs font-bold text-white transition hover:bg-amber-700 disabled:opacity-40"
+                                                >
+                                                    <UserCheck className="h-3.5 w-3.5" /> Aprobar y vincular cuenta existente
+                                                </button>
+                                            )}
+                                            <button
+                                                type="button"
+                                                disabled={Boolean(busy)}
+                                                onClick={() => provisionAccount(true, null)}
+                                                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3.5 py-2 text-xs font-bold text-amber-800 transition hover:bg-amber-50 disabled:opacity-40"
+                                            >
+                                                <ShieldCheck className="h-3.5 w-3.5" /> Aprobar identidad y crear/vincular
+                                            </button>
+                                        </>
+                                    )}
+
+                                    {r.accountStatus !== 'needs_review' && r.accountStatus !== 'suspended' && (
+                                        <>
+                                            <button
+                                                type="button"
+                                                disabled={Boolean(busy)}
+                                                onClick={() => sendInvitation('email', r.accountStatus === 'active')}
+                                                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2 text-xs font-bold text-white transition hover:bg-blue-700 disabled:opacity-40"
+                                            >
+                                                {busy === 'inv-email' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
+                                                {r.activationSentAt ? 'Reenviar invitación (Correo)' : 'Enviar invitación (Correo)'}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                disabled={Boolean(busy) || !r.phone}
+                                                onClick={() => sendInvitation('whatsapp', r.accountStatus === 'active')}
+                                                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:opacity-40"
+                                            >
+                                                {busy === 'inv-whatsapp' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageCircle className="h-3.5 w-3.5" />}
+                                                Enviar por WhatsApp
+                                            </button>
+                                            <button
+                                                type="button"
+                                                disabled={Boolean(busy)}
+                                                onClick={regenerateLink}
+                                                className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-300 bg-white px-3 py-2 text-xs font-bold text-indigo-700 transition hover:bg-indigo-50 disabled:opacity-40"
+                                            >
+                                                {busy === 'regen' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <KeyRound className="h-3.5 w-3.5" />}
+                                                Regenerar enlace único
+                                            </button>
+                                        </>
+                                    )}
+
+                                    {r.accountId && (
+                                        r.accountStatus === 'suspended' ? (
+                                            <button
+                                                type="button"
+                                                disabled={Boolean(busy)}
+                                                onClick={() => toggleAccountSuspension('active')}
+                                                className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-white px-3 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-40"
+                                            >
+                                                Reactivar cuenta
+                                            </button>
+                                        ) : (
+                                            <button
+                                                type="button"
+                                                disabled={Boolean(busy)}
+                                                onClick={() => toggleAccountSuspension('suspended')}
+                                                className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-700 transition hover:bg-red-50 disabled:opacity-40"
+                                            >
+                                                Suspender cuenta
+                                            </button>
+                                        )
+                                    )}
+                                </div>
                             </div>
                         )}
 
@@ -639,8 +996,12 @@ interface Props { eventId: string; eventTitle?: string }
 interface Filters {
     q: string; status: string; method: string; district: string; club: string;
     clubRole: string; from: string; to: string; duplicates: string;
+    accountStatus: string; activationStatus: string; source: string;
 }
-const emptyFilters: Filters = { q: '', status: '', method: '', district: '', club: '', clubRole: '', from: '', to: '', duplicates: '' };
+const emptyFilters: Filters = {
+    q: '', status: '', method: '', district: '', club: '', clubRole: '',
+    from: '', to: '', duplicates: '', accountStatus: '', activationStatus: '', source: '',
+};
 
 const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
     const [config, setConfig] = useState<CompletedConfig | null>(null);
@@ -679,7 +1040,7 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
     // estado de carga y su aviso (cuántos entraron, cuántos quedaron fuera del
     // tope y cuántos están acreditados, que el borrado va a conservar).
     const [selectAllBusy, setSelectAllBusy] = useState(false);
-    const [bulkAction, setBulkAction] = useState<'' | 'status' | 'edit' | 'delete' | 'notify'>('');
+    const [bulkAction, setBulkAction] = useState<'' | 'status' | 'edit' | 'delete' | 'notify' | 'provision' | 'invitations'>('');
     const [bulkBusy, setBulkBusy] = useState(false);
     // v4.965 — el envío en bloque: sólo a quienes aún no lo recibieron, por
     // defecto. Repetirle a 273 personas por un segundo clic es caro y no se
@@ -694,6 +1055,21 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
     const [bulkComment, setBulkComment] = useState('');
     const [bulkField, setBulkField] = useState('clubName');
     const [bulkValue, setBulkValue] = useState('');
+
+    // ── Aprovisionamiento masivo de cuentas e invitaciones ────────────
+    const [preflightBusy, setPreflightBusy] = useState(false);
+    const [provisionSummary, setProvisionSummary] = useState<any>(null);
+    const [invitationSummary, setInvitationSummary] = useState<any>(null);
+    const [invChannels, setInvChannels] = useState<{ email: boolean; whatsapp: boolean }>({ email: true, whatsapp: false });
+    const [invOnlyMissing, setInvOnlyMissing] = useState(true);
+    const [invSubject, setInvSubject] = useState(DEFAULT_ACTIVATION_EMAIL_SUBJECT);
+    const [invBody, setInvBody] = useState(DEFAULT_ACTIVATION_EMAIL_BODY);
+    const [invWhatsappBody, setInvWhatsappBody] = useState(DEFAULT_ACTIVATION_WHATSAPP_BODY);
+    const [invPreviewHtml, setInvPreviewHtml] = useState('');
+    const [invPreviewWhatsapp, setInvPreviewWhatsapp] = useState('');
+    const [invPreviewBusy, setInvPreviewBusy] = useState(false);
+    const [bulkReportRows, setBulkReportRows] = useState<any[]>([]);
+    const [rowBusyId, setRowBusyId] = useState<string | null>(null);
 
     // v4.945 — la notificación de confirmación: vista previa y prueba.
     const [notifInfo, setNotifInfo] = useState<NotificationInfo | null>(null);
@@ -895,6 +1271,269 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
         }
     };
 
+    // ── Aprovisionamiento de cuentas e invitaciones de activación ──────
+    const openProvisionModal = async () => {
+        const ids = [...picked.keys()];
+        if (!ids.length) return;
+        setBulkAction('provision');
+        setPreflightBusy(true);
+        setProvisionSummary(null);
+        setBulkNote(null);
+        try {
+            const res = await fetch(`${API}/event-registrations/admin/completed/accounts/preflight`, {
+                method: 'POST', headers: authHeaders(),
+                body: JSON.stringify({ eventRef: eventId, ids }),
+            });
+            const d = await res.json();
+            if (!res.ok) throw new Error(d?.error || 'No se pudo calcular el resumen de cuentas.');
+            setProvisionSummary(d.summary || null);
+        } catch (err: any) {
+            setBulkNote({ ok: false, text: err?.message || 'No se pudo calcular el resumen de cuentas.' });
+        } finally {
+            setPreflightBusy(false);
+        }
+    };
+
+    const runProvision = async () => {
+        const ids = [...picked.keys()];
+        if (!ids.length) return;
+        setBulkBusy(true);
+        setBulkNote(null);
+        setBulkReportRows([]);
+        const tandas = chunkIds(ids, BULK_MAX);
+        setBulkProgreso({ hechos: 0, total: ids.length });
+        const totals = { created: 0, linkedExisting: 0, alreadyLinked: 0, needsReview: 0, invalidEmail: 0, errors: 0 };
+        const allResults: any[] = [];
+        try {
+            for (const tanda of tandas) {
+                const res = await fetch(`${API}/event-registrations/admin/completed/accounts/provision`, {
+                    method: 'POST', headers: authHeaders(),
+                    body: JSON.stringify({ eventRef: eventId, ids: tanda, confirm: true }),
+                });
+                const d = await res.json();
+                if (!res.ok) throw new Error(d?.error || 'No se pudo completar el aprovisionamiento.');
+                totals.created += Number(d.totals?.created) || 0;
+                totals.linkedExisting += Number(d.totals?.linkedExisting) || 0;
+                totals.alreadyLinked += Number(d.totals?.alreadyLinked) || 0;
+                totals.needsReview += Number(d.totals?.needsReview) || 0;
+                totals.invalidEmail += Number(d.totals?.invalidEmail) || 0;
+                totals.errors += Number(d.totals?.errors) || 0;
+                if (Array.isArray(d.results)) allResults.push(...d.results);
+                setBulkProgreso(prev => ({ hechos: (prev?.hechos || 0) + tanda.length, total: ids.length }));
+            }
+            const partes = [
+                `Aprovisionamiento completado (${ids.length} seleccionado${ids.length === 1 ? '' : 's'}):`,
+                `${totals.created} cuenta${totals.created === 1 ? ' nueva creada' : 's nuevas creadas'}`,
+                `${totals.linkedExisting} cuenta${totals.linkedExisting === 1 ? ' existente vinculada' : 's existentes vinculadas'}`,
+            ];
+            if (totals.alreadyLinked) partes.push(`${totals.alreadyLinked} ya vinculada${totals.alreadyLinked === 1 ? '' : 's'}`);
+            if (totals.needsReview) partes.push(`${totals.needsReview} requiere${totals.needsReview === 1 ? '' : 'n'} revisión por conflicto`);
+            if (totals.invalidEmail) partes.push(`${totals.invalidEmail} sin correo válido`);
+            if (totals.errors) partes.push(`${totals.errors} con error`);
+            setBulkReportRows(allResults);
+            setBulkNote({ ok: totals.errors === 0, text: `${partes.join(' · ')}.` });
+            setBulkAction('');
+            setPicked(new Map());
+            refresh();
+        } catch (err: any) {
+            setBulkNote({ ok: false, text: err?.message || 'No se pudo completar el aprovisionamiento.' });
+        } finally {
+            setBulkBusy(false);
+            setBulkProgreso(null);
+        }
+    };
+
+    const openInvitationsModal = async () => {
+        const ids = [...picked.keys()];
+        if (!ids.length) return;
+        setBulkAction('invitations');
+        setPreflightBusy(true);
+        setInvitationSummary(null);
+        setInvPreviewHtml('');
+        setInvPreviewWhatsapp('');
+        setBulkNote(null);
+        try {
+            const res = await fetch(`${API}/event-registrations/admin/completed/invitations/preflight`, {
+                method: 'POST', headers: authHeaders(),
+                body: JSON.stringify({ eventRef: eventId, ids }),
+            });
+            const d = await res.json();
+            if (!res.ok) throw new Error(d?.error || 'No se pudo calcular el resumen de invitaciones.');
+            setInvitationSummary(d.summary || null);
+        } catch (err: any) {
+            setBulkNote({ ok: false, text: err?.message || 'No se pudo calcular el resumen de invitaciones.' });
+        } finally {
+            setPreflightBusy(false);
+        }
+    };
+
+    const openInvitationPreview = async () => {
+        setInvPreviewBusy(true);
+        try {
+            const firstId = [...picked.keys()][0] || rows[0]?.id || undefined;
+            const res = await fetch(`${API}/event-registrations/admin/completed/invitation-preview`, {
+                method: 'POST', headers: authHeaders(),
+                body: JSON.stringify({
+                    eventRef: eventId,
+                    registrationId: firstId,
+                    subject: invSubject,
+                    body: invBody,
+                    whatsappBody: invWhatsappBody,
+                }),
+            });
+            const d = await res.json();
+            if (!res.ok) throw new Error(d?.error || 'No se pudo generar la vista previa.');
+            setInvPreviewHtml(d.html || '');
+            setInvPreviewWhatsapp(d.whatsappText || '');
+        } catch (err: any) {
+            setBulkNote({ ok: false, text: err?.message || 'No se pudo generar la vista previa.' });
+        } finally {
+            setInvPreviewBusy(false);
+        }
+    };
+
+    const runInvitations = async () => {
+        let pendientes = [...picked.keys()];
+        const total = pendientes.length;
+        const channels: string[] = [];
+        if (invChannels.email) channels.push('email');
+        if (invChannels.whatsapp) channels.push('whatsapp');
+        if (!total || !channels.length) return;
+        setBulkBusy(true);
+        setBulkNote(null);
+        setBulkReportRows([]);
+        setBulkProgreso({ hechos: 0, total });
+        const totals = { sent: 0, provisioned: 0, skippedActive: 0, skippedAlreadySent: 0, skippedConflict: 0, failed: 0 };
+        const allResults: any[] = [];
+        try {
+            for (let vuelta = 0; pendientes.length && vuelta < 40; vuelta++) {
+                const res = await fetch(`${API}/event-registrations/admin/completed/invitations/send`, {
+                    method: 'POST', headers: authHeaders(),
+                    body: JSON.stringify({
+                        eventRef: eventId,
+                        ids: pendientes,
+                        confirm: true,
+                        channels,
+                        onlyMissing: invOnlyMissing,
+                        subject: invSubject,
+                        body: invBody,
+                        whatsappBody: invWhatsappBody,
+                    }),
+                });
+                const d = await res.json();
+                if (!res.ok) throw new Error(d?.error || 'No se pudieron enviar las invitaciones.');
+                totals.sent += Number(d.totals?.sent) || 0;
+                totals.provisioned += Number(d.totals?.provisioned) || 0;
+                totals.skippedActive += Number(d.totals?.skippedActive) || 0;
+                totals.skippedAlreadySent += Number(d.totals?.skippedAlreadySent) || 0;
+                totals.skippedConflict += Number(d.totals?.skippedConflict) || 0;
+                totals.failed += Number(d.totals?.failed) || 0;
+                if (Array.isArray(d.results)) allResults.push(...d.results);
+                const siguientes: string[] = d.pendientes || [];
+                if (siguientes.length >= pendientes.length) break;
+                pendientes = siguientes;
+                setBulkProgreso({ hechos: total - pendientes.length, total });
+            }
+            const partes = [`Se enviaron ${totals.sent} de ${total} invitacion${total === 1 ? '' : 'es'} de activación.`];
+            if (totals.provisioned) partes.push(`${totals.provisioned} cuenta${totals.provisioned === 1 ? ' se aprovisionó' : 's se aprovisionaron'} automáticamente.`);
+            if (totals.skippedActive) partes.push(`${totals.skippedActive} omitida${totals.skippedActive === 1 ? '' : 's'} por tener cuenta activa.`);
+            if (totals.skippedAlreadySent) partes.push(`${totals.skippedAlreadySent} omitida${totals.skippedAlreadySent === 1 ? '' : 's'} por tener invitación vigente.`);
+            if (totals.skippedConflict) partes.push(`${totals.skippedConflict} omitida${totals.skippedConflict === 1 ? '' : 's'} por requerir revisión.`);
+            if (totals.failed) partes.push(`${totals.failed} con error de envío.`);
+            setBulkReportRows(allResults);
+            setBulkNote({ ok: totals.failed === 0 && !pendientes.length, text: partes.join(' ') });
+            setBulkAction('');
+            setPicked(new Map());
+            refresh();
+        } catch (err: any) {
+            setBulkNote({ ok: false, text: err?.message || 'No se pudieron enviar las invitaciones.' });
+        } finally {
+            setBulkBusy(false);
+            setBulkProgreso(null);
+        }
+    };
+
+    const downloadBulkReport = () => {
+        if (!bulkReportRows.length) return;
+        const headers = ['ID Registro', 'Código', 'Participante', 'Correo', 'Resultado', 'Estado cuenta', 'Detalle'];
+        const escapeCsv = (v: unknown) => {
+            const s = String(v ?? '');
+            return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+        };
+        const lines = [
+            headers.join(','),
+            ...bulkReportRows.map(r => [
+                escapeCsv(r.registrationId || ''),
+                escapeCsv(r.registrationCode || ''),
+                escapeCsv(r.name || ''),
+                escapeCsv(r.email || ''),
+                escapeCsv(r.outcome || ''),
+                escapeCsv(r.accountStatus || ''),
+                escapeCsv(r.reason || r.error || ''),
+            ].join(',')),
+        ];
+        const blob = new Blob([`\uFEFF${lines.join('\r\n')}`], { type: 'text/csv;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `reporte-cuentas-${eventId}-${new Date().toISOString().slice(0, 10)}.csv`;
+        link.click();
+        URL.revokeObjectURL(url);
+    };
+
+    const quickRowProvision = async (r: CompletedRow, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setRowBusyId(r.id);
+        setBulkNote(null);
+        try {
+            const res = await fetch(`${API}/event-registrations/admin/completed/${r.id}/account/provision`, {
+                method: 'POST', headers: authHeaders(), body: '{}',
+            });
+            const d = await res.json();
+            if (!res.ok) throw new Error(d?.error || 'No se pudo crear la cuenta.');
+            const outcome = d.result?.outcome;
+            const msg = outcome === 'created'
+                ? `Cuenta creada para ${rowName(r)}.`
+                : outcome === 'linked_existing'
+                    ? `Cuenta existente vinculada para ${rowName(r)}.`
+                    : outcome === 'already_linked'
+                        ? `${rowName(r)} ya tenía cuenta vinculada.`
+                        : d.result?.reason || 'Revisión requerida.';
+            setBulkNote({ ok: outcome !== 'needs_review' && outcome !== 'invalid_email', text: msg });
+            refresh();
+        } catch (err: any) {
+            setBulkNote({ ok: false, text: err?.message || 'No se pudo aprovisionar la cuenta.' });
+        } finally {
+            setRowBusyId(null);
+        }
+    };
+
+    const quickRowInvite = async (r: CompletedRow, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setRowBusyId(r.id);
+        setBulkNote(null);
+        try {
+            const res = await fetch(`${API}/event-registrations/admin/completed/${r.id}/account/send-invitation`, {
+                method: 'POST', headers: authHeaders(),
+                body: JSON.stringify({ channels: ['email'] }),
+            });
+            const d = await res.json();
+            if (!res.ok) throw new Error(d?.error || 'No se pudo enviar la invitación.');
+            const ok = d.result?.outcome === 'sent';
+            setBulkNote({
+                ok,
+                text: ok
+                    ? `Invitación de activación enviada a ${r.email || rowName(r)}.`
+                    : (d.result?.reason || 'No se pudo enviar la invitación.'),
+            });
+            refresh();
+        } catch (err: any) {
+            setBulkNote({ ok: false, text: err?.message || 'No se pudo enviar la invitación.' });
+        } finally {
+            setRowBusyId(null);
+        }
+    };
+
     /**
      * ⚠️ v4.1092 — Las tres acciones se hacen POR TANDAS del tamaño que el
      * servidor acepta (`BULK_MAX`), con el MISMO troceo que él declara. Sin
@@ -905,6 +1544,8 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
      */
     const runBulk = async () => {
         if (bulkAction === 'notify') return runNotify();
+        if (bulkAction === 'provision') return runProvision();
+        if (bulkAction === 'invitations') return runInvitations();
         const ids = [...picked.keys()];
         if (!ids.length || !bulkAction) return;
         setBulkBusy(true);
@@ -1124,6 +1765,15 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                     y += 15;
                 }
             };
+            section('Cuentas de acceso y activación', [
+                ['Cuentas activas', String(summary?.accountTotals?.active ?? t.activeAccounts ?? 0)],
+                ['Sin cuenta vinculada', String(summary?.accountTotals?.noAccount ?? t.withoutAccount ?? 0)],
+                ['Activación pendiente', String(summary?.accountTotals?.pendingActivation ?? t.pendingActivation ?? 0)],
+                ['Invitaciones enviadas', String(summary?.accountTotals?.invitationSent ?? t.invitationsSent ?? 0)],
+                ['Invitaciones vencidas', String(summary?.accountTotals?.invitationExpired ?? t.invitationsExpired ?? 0)],
+                ['Cuentas suspendidas', String(summary?.accountTotals?.suspended ?? t.accountsSuspended ?? 0)],
+                ['Requieren revisión', String(summary?.accountTotals?.needsReview ?? t.needsReview ?? 0)],
+            ]);
             section('Por distrito', (summary?.byDistrict || []).map((d: any) => [d.district, String(d.total)] as [string, string]));
             section('Por club', (summary?.byClub || []).map((c: any) => [c.clubName, String(c.total)] as [string, string]));
 
@@ -1465,6 +2115,48 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                 <StatCard label="Posibles duplicados" value={t.duplicates ?? 0} />
             </div>
 
+            {/* ── KPIs de Cuentas y Activación ─────────────────────── */}
+            <div className="rounded-xl border border-indigo-100 bg-gradient-to-r from-indigo-50/40 via-white to-purple-50/30 p-3.5">
+                <div className="mb-2.5 flex items-center justify-between">
+                    <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-indigo-900">
+                        <KeyRound className="h-3.5 w-3.5 text-indigo-600" /> Cuentas de acceso y activación
+                    </p>
+                    <span className="text-[11px] text-gray-400">Conciliación con EventAttendeeAccount</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
+                    <button type="button" onClick={() => setFilters(prev => ({ ...prev, accountStatus: 'active' }))}
+                        className="rounded-lg border border-emerald-200 bg-white p-2.5 text-left transition hover:border-emerald-400 hover:shadow-xs">
+                        <p className="text-[11px] font-bold text-emerald-800">Con cuenta activa</p>
+                        <p className="text-xl font-black text-emerald-700">{summary?.accountTotals?.active ?? 0}</p>
+                    </button>
+                    <button type="button" onClick={() => setFilters(prev => ({ ...prev, accountStatus: 'no_account' }))}
+                        className="rounded-lg border border-amber-200 bg-white p-2.5 text-left transition hover:border-amber-400 hover:shadow-xs">
+                        <p className="text-[11px] font-bold text-amber-800">Sin cuenta</p>
+                        <p className="text-xl font-black text-amber-700">{summary?.accountTotals?.no_account ?? 0}</p>
+                    </button>
+                    <button type="button" onClick={() => setFilters(prev => ({ ...prev, accountStatus: 'pending_activation' }))}
+                        className="rounded-lg border border-sky-200 bg-white p-2.5 text-left transition hover:border-sky-400 hover:shadow-xs">
+                        <p className="text-[11px] font-bold text-sky-800">Activación pendiente</p>
+                        <p className="text-xl font-black text-sky-700">{summary?.accountTotals?.pending_activation ?? 0}</p>
+                    </button>
+                    <button type="button" onClick={() => setFilters(prev => ({ ...prev, accountStatus: 'invitation_sent' }))}
+                        className="rounded-lg border border-indigo-200 bg-white p-2.5 text-left transition hover:border-indigo-400 hover:shadow-xs">
+                        <p className="text-[11px] font-bold text-indigo-800">Invitación enviada</p>
+                        <p className="text-xl font-black text-indigo-700">{summary?.accountTotals?.invitation_sent ?? 0}</p>
+                    </button>
+                    <button type="button" onClick={() => setFilters(prev => ({ ...prev, accountStatus: 'invitation_expired' }))}
+                        className="rounded-lg border border-orange-200 bg-white p-2.5 text-left transition hover:border-orange-400 hover:shadow-xs">
+                        <p className="text-[11px] font-bold text-orange-800">Invitación vencida</p>
+                        <p className="text-xl font-black text-orange-700">{summary?.accountTotals?.invitation_expired ?? 0}</p>
+                    </button>
+                    <button type="button" onClick={() => setFilters(prev => ({ ...prev, accountStatus: 'needs_review' }))}
+                        className="rounded-lg border border-red-200 bg-white p-2.5 text-left transition hover:border-red-400 hover:shadow-xs">
+                        <p className="text-[11px] font-bold text-red-800">Requiere revisión</p>
+                        <p className="text-xl font-black text-red-700">{summary?.accountTotals?.needs_review ?? 0}</p>
+                    </button>
+                </div>
+            </div>
+
             {/* ── Buscador, filtros y exportación ─────────────────── */}
             <div className="flex flex-wrap items-center gap-2">
                 <div className="relative min-w-[220px] flex-1">
@@ -1527,6 +2219,22 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                         className="inline-flex items-center gap-1.5 rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-40">
                         <Mail className="h-4 w-4" /> Enviar confirmación{picked.size ? ` (${picked.size})` : ''}
                     </button>
+                    <button type="button" disabled={!picked.size || bulkBusy}
+                        onClick={openProvisionModal}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-50 disabled:opacity-40">
+                        <KeyRound className="h-4 w-4" /> Crear cuentas{picked.size ? ` (${picked.size})` : ''}
+                    </button>
+                    <button type="button" disabled={!picked.size || bulkBusy}
+                        onClick={openInvitationsModal}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-purple-300 bg-white px-3 py-1.5 text-sm font-semibold text-purple-700 hover:bg-purple-50 disabled:opacity-40">
+                        <Send className="h-4 w-4" /> Enviar invitaciones{picked.size ? ` (${picked.size})` : ''}
+                    </button>
+                    {bulkReportRows.length > 0 && (
+                        <button type="button" onClick={downloadBulkReport}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-800 hover:bg-emerald-100">
+                            <Download className="h-4 w-4" /> Descargar reporte CSV ({bulkReportRows.length})
+                        </button>
+                    )}
                     <button type="button" disabled={!picked.size || bulkBusy}
                         onClick={() => setBulkAction('delete')}
                         className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-40">
@@ -1606,6 +2314,43 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                         <input type="date" className={inputCls} value={filters.to}
                             onChange={e => setFilters(prev => ({ ...prev, to: e.target.value }))} />
                     </div>
+                    <div>
+                        <label className={labelCls}>Cuenta de acceso</label>
+                        <select className={inputCls} value={filters.accountStatus}
+                            onChange={e => setFilters(prev => ({ ...prev, accountStatus: e.target.value }))}>
+                            <option value="">Todas las cuentas</option>
+                            <option value="active">Con cuenta activa</option>
+                            <option value="no_account">Sin cuenta</option>
+                            <option value="pending_activation">Activación pendiente</option>
+                            <option value="invitation_sent">Invitación enviada</option>
+                            <option value="invitation_expired">Invitación vencida</option>
+                            <option value="suspended">Cuenta suspendida</option>
+                            <option value="needs_review">Requiere revisión</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className={labelCls}>Estado de activación</label>
+                        <select className={inputCls} value={filters.activationStatus}
+                            onChange={e => setFilters(prev => ({ ...prev, activationStatus: e.target.value }))}>
+                            <option value="">Todos los estados</option>
+                            <option value="not_sent">No enviada</option>
+                            <option value="sent">Enviada</option>
+                            <option value="delivered">Entregada</option>
+                            <option value="pending">Pendiente</option>
+                            <option value="completed">Completada</option>
+                            <option value="expired">Vencida</option>
+                            <option value="failed">Error de envío</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className={labelCls}>Fuente de inscripción</label>
+                        <select className={inputCls} value={filters.source}
+                            onChange={e => setFilters(prev => ({ ...prev, source: e.target.value }))}>
+                            <option value="">Todas las fuentes</option>
+                            <option value="manual_completed_registration">Formulario público</option>
+                            <option value="historical_import">Importación histórica</option>
+                        </select>
+                    </div>
                     <div className="flex items-end pb-1.5">
                         <label className="flex items-center gap-2 text-sm text-gray-700">
                             <input type="checkbox" className="h-4 w-4" checked={filters.duplicates === 'only'}
@@ -1651,17 +2396,20 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                                 <th key={f.key} className="whitespace-nowrap px-4 py-3" title={f.label}>{f.label}</th>
                             ))}
                             <th className="whitespace-nowrap px-4 py-3">Comprobante</th>
+                            <th className="whitespace-nowrap px-4 py-3">Cuenta de acceso</th>
+                            <th className="whitespace-nowrap px-4 py-3">Activación</th>
                             <th className="whitespace-nowrap px-4 py-3">Estado</th>
                             <th className="whitespace-nowrap px-4 py-3">Fecha</th>
+                            <th className="whitespace-nowrap px-4 py-3 text-right">Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
                         {loading ? (
-                            <tr><td colSpan={columnas.length + (selectMode ? 6 : 5)} className="px-4 py-12 text-center">
+                            <tr><td colSpan={columnas.length + (selectMode ? 9 : 8)} className="px-4 py-12 text-center">
                                 <Loader2 className="mx-auto h-6 w-6 animate-spin text-blue-600" />
                             </td></tr>
                         ) : rows.length === 0 ? (
-                            <tr><td colSpan={columnas.length + (selectMode ? 6 : 5)} className="px-4 py-12 text-center text-sm text-gray-400">
+                            <tr><td colSpan={columnas.length + (selectMode ? 9 : 8)} className="px-4 py-12 text-center text-sm text-gray-400">
                                 {activeFilters > 0
                                     ? 'Ningún registro cumple los filtros actuales.'
                                     : 'Todavía no llega ningún registro por el formulario público.'}
@@ -1715,8 +2463,47 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                                         ? <Paperclip className="h-4 w-4 text-emerald-600" />
                                         : <span className="text-xs text-gray-300">—</span>}
                                 </td>
+                                <td className="whitespace-nowrap px-4 py-3" onClick={e => e.stopPropagation()}>
+                                    <AccountStatusPill status={r.accountStatus} reason={r.accountReviewReason} />
+                                </td>
+                                <td className="whitespace-nowrap px-4 py-3" onClick={e => e.stopPropagation()}>
+                                    <ActivationStatusBadge
+                                        status={r.activationStatus}
+                                        channel={r.activationChannel}
+                                        sentAt={r.activationSentAt}
+                                        expiresAt={r.activationExpiresAt}
+                                        error={r.activationError}
+                                    />
+                                </td>
                                 <td className="px-4 py-3"><StatusPill status={r.status} /></td>
                                 <td className="px-4 py-3 text-xs text-gray-500">{fmtDateTime(r.submittedAt || r.createdAt)}</td>
+                                <td className="whitespace-nowrap px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
+                                    <div className="inline-flex items-center gap-1.5">
+                                        {r.accountStatus === 'no_account' && (
+                                            <button type="button" disabled={rowBusyId === r.id}
+                                                onClick={e => quickRowProvision(r, e)}
+                                                title="Crear cuenta de acceso"
+                                                className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100 disabled:opacity-40">
+                                                {rowBusyId === r.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserPlus className="h-3 w-3" />}
+                                                Crear
+                                            </button>
+                                        )}
+                                        {['pending_activation', 'invitation_expired', 'invitation_sent'].includes(r.accountStatus) && (
+                                            <button type="button" disabled={rowBusyId === r.id}
+                                                onClick={e => quickRowInvite(r, e)}
+                                                title="Enviar invitación de activación"
+                                                className="inline-flex items-center gap-1 rounded-md border border-purple-200 bg-purple-50 px-2 py-1 text-xs font-semibold text-purple-700 transition hover:bg-purple-100 disabled:opacity-40">
+                                                {rowBusyId === r.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                                                Invitar
+                                            </button>
+                                        )}
+                                        <button type="button" onClick={() => setSelected(r.id)}
+                                            className="rounded-md border border-gray-200 bg-white p-1 text-gray-600 transition hover:bg-gray-50"
+                                            title="Ver detalle">
+                                            <Eye className="h-3.5 w-3.5" />
+                                        </button>
+                                    </div>
+                                </td>
                             </tr>
                         ))}
                     </tbody>
@@ -1766,6 +2553,8 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                             {bulkAction === 'edit' && `Editar un campo en ${picked.size} registro${picked.size === 1 ? '' : 's'}`}
                             {bulkAction === 'delete' && `Eliminar ${picked.size} registro${picked.size === 1 ? '' : 's'}`}
                             {bulkAction === 'notify' && `Enviar la confirmación a ${picked.size} participante${picked.size === 1 ? '' : 's'}`}
+                            {bulkAction === 'provision' && `Crear cuentas de acceso para ${picked.size} participante${picked.size === 1 ? '' : 's'}`}
+                            {bulkAction === 'invitations' && `Enviar invitaciones de activación a ${picked.size} participante${picked.size === 1 ? '' : 's'}`}
                         </h3>
                         <p className="mb-4 text-sm text-gray-500" data-no-translate>
                             {[...picked.values()].slice(0, 8).map(rowName).join(' · ')}
@@ -1870,6 +2659,129 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                             </div>
                         )}
 
+                        {bulkAction === 'provision' && (
+                            <div className="space-y-4">
+                                <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-3.5 text-sm text-indigo-950">
+                                    <p className="font-bold text-indigo-900">Motor de aprovisionamiento de cuentas</p>
+                                    <p className="mt-1 text-xs text-indigo-800">
+                                        Identifica y vincula participantes con cuentas existentes en el ecosistema o crea una cuenta nueva segura. No modifica montos, pagos ni datos de inscripción.
+                                    </p>
+                                </div>
+
+                                {preflightBusy ? (
+                                    <div className="flex items-center justify-center py-8">
+                                        <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
+                                        <span className="ml-2 text-xs font-semibold text-gray-500">Analizando registros y cuentas existentes…</span>
+                                    </div>
+                                ) : provisionSummary ? (
+                                    <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
+                                        <div className="rounded-lg border border-gray-200 bg-gray-50 p-2.5">
+                                            <p className="text-gray-500">Seleccionados</p>
+                                            <p className="text-base font-bold text-gray-900">{provisionSummary.totalSelected ?? picked.size}</p>
+                                        </div>
+                                        <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 p-2.5">
+                                            <p className="text-emerald-700">Nuevas a crear</p>
+                                            <p className="text-base font-bold text-emerald-800">{provisionSummary.newToCreate ?? 0}</p>
+                                        </div>
+                                        <div className="rounded-lg border border-blue-200 bg-blue-50/70 p-2.5">
+                                            <p className="text-blue-700">Existentes a vincular</p>
+                                            <p className="text-base font-bold text-blue-800">{provisionSummary.existingToLink ?? 0}</p>
+                                        </div>
+                                        <div className="rounded-lg border border-gray-200 bg-gray-50 p-2.5">
+                                            <p className="text-gray-500">Ya vinculadas</p>
+                                            <p className="text-base font-bold text-gray-700">{provisionSummary.alreadyLinked ?? 0}</p>
+                                        </div>
+                                        <div className="rounded-lg border border-red-200 bg-red-50/70 p-2.5">
+                                            <p className="text-red-700">Requieren revisión</p>
+                                            <p className="text-base font-bold text-red-800">{provisionSummary.needsReview ?? 0}</p>
+                                        </div>
+                                        <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-2.5">
+                                            <p className="text-amber-700">Sin correo válido</p>
+                                            <p className="text-base font-bold text-amber-800">{provisionSummary.invalidEmail ?? 0}</p>
+                                        </div>
+                                    </div>
+                                ) : null}
+
+                                <p className="text-xs text-gray-500">
+                                    Los registros que requieran revisión o no tengan un correo válido se omitirán automáticamente para resguardar la identidad.
+                                </p>
+                            </div>
+                        )}
+
+                        {bulkAction === 'invitations' && (
+                            <div className="space-y-4">
+                                <div className="rounded-xl border border-purple-200 bg-purple-50/70 p-3.5 text-sm text-purple-950">
+                                    <p className="font-bold text-purple-900">Invitaciones individuales de activación</p>
+                                    <p className="mt-1 text-xs text-purple-800">
+                                        Genera un enlace criptográfico seguro de un solo uso para que cada participante active su cuenta y defina su contraseña personal. Si no tiene cuenta aún, se aprovisionará automáticamente.
+                                    </p>
+                                </div>
+
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className={labelCls}>Canales de envío</label>
+                                        <div className="flex items-center gap-4 text-xs font-semibold text-gray-700">
+                                            <label className="flex items-center gap-1.5 cursor-pointer">
+                                                <input type="checkbox" className="h-4 w-4" checked={invChannels.email}
+                                                    onChange={e => setInvChannels(c => ({ ...c, email: e.target.checked }))} />
+                                                <Mail className="h-3.5 w-3.5 text-blue-600" /> Correo electrónico
+                                            </label>
+                                            <label className="flex items-center gap-1.5 cursor-pointer">
+                                                <input type="checkbox" className="h-4 w-4" checked={invChannels.whatsapp}
+                                                    onChange={e => setInvChannels(c => ({ ...c, whatsapp: e.target.checked }))} />
+                                                <MessageCircle className="h-3.5 w-3.5 text-emerald-600" /> WhatsApp
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <label className="flex items-start gap-2 text-xs text-gray-700 cursor-pointer">
+                                        <input type="checkbox" className="mt-0.5 h-4 w-4" checked={invOnlyMissing}
+                                            onChange={e => setInvOnlyMissing(e.target.checked)} />
+                                        <span>
+                                            Enviar sólo a participantes <strong>sin invitación vigente ni cuenta activa</strong>.
+                                            <span className="block text-[11px] text-gray-400">Desmarca para reenviar a todos los seleccionados que no estén en conflicto.</span>
+                                        </span>
+                                    </label>
+
+                                    <div>
+                                        <label className={labelCls}>Asunto del correo</label>
+                                        <input type="text" className={inputCls} value={invSubject}
+                                            onChange={e => setInvSubject(e.target.value)} />
+                                    </div>
+
+                                    <div>
+                                        <label className={labelCls}>Mensaje del correo</label>
+                                        <textarea className={inputCls} rows={3} value={invBody}
+                                            onChange={e => setInvBody(e.target.value)} />
+                                    </div>
+
+                                    {invChannels.whatsapp && (
+                                        <div>
+                                            <label className={labelCls}>Mensaje para WhatsApp</label>
+                                            <textarea className={inputCls} rows={2} value={invWhatsappBody}
+                                                onChange={e => setInvWhatsappBody(e.target.value)} />
+                                        </div>
+                                    )}
+
+                                    <div className="flex items-center gap-2">
+                                        <button type="button" onClick={openInvitationPreview} disabled={invPreviewBusy}
+                                            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40">
+                                            {invPreviewBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />}
+                                            Vista previa
+                                        </button>
+                                        <span className="text-[11px] text-gray-400">Variables disponibles: <code className="font-mono text-purple-700">{'{{activation_url}}'}</code>, <code className="font-mono text-purple-700">{'{{participant_name}}'}</code></span>
+                                    </div>
+
+                                    {invPreviewHtml && (
+                                        <div className="rounded-xl border border-gray-200 bg-white p-2">
+                                            <iframe sandbox="" srcDoc={invPreviewHtml} title="Vista previa de activación"
+                                                className="h-56 w-full rounded-lg border border-gray-100" />
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
                         {/* El avance de las tandas: una selección grande se manda en
                             varias y sin esto la pantalla se queda quieta minutos. El
                             envío de confirmaciones pinta el suyo en su propio bloque. */}
@@ -1888,7 +2800,8 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                                 disabled={bulkBusy
                                     || (bulkAction === 'status' && (!bulkStatusValue
                                         || (['needs_correction', 'rejected'].includes(bulkStatusValue) && !bulkComment.trim())))
-                                    || (bulkAction === 'edit' && !bulkValue.trim())}
+                                    || (bulkAction === 'edit' && !bulkValue.trim())
+                                    || (bulkAction === 'invitations' && !invChannels.email && !invChannels.whatsapp)}
                                 className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-bold text-white disabled:opacity-50 ${
                                     bulkAction === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'}`}>
                                 {bulkBusy && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -1896,6 +2809,8 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                                 {bulkAction === 'edit' && `Aplicar a ${picked.size}`}
                                 {bulkAction === 'delete' && `Eliminar (${picked.size})`}
                                 {bulkAction === 'notify' && `Enviar (${picked.size})`}
+                                {bulkAction === 'provision' && `Crear cuentas (${picked.size})`}
+                                {bulkAction === 'invitations' && `Enviar invitaciones (${picked.size})`}
                             </button>
                         </div>
                     </div>

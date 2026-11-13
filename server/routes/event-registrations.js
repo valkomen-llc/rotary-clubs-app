@@ -81,6 +81,13 @@ router.post('/admin/completed/import/commit', authMiddleware, jsonBig, completed
 router.get('/admin/completed/import/batches', authMiddleware, completedAdmin.importBatches);
 router.get('/admin/completed/import/batches/:batchId', authMiddleware, completedAdmin.importBatchDetail);
 router.post('/admin/completed/import/batches/:batchId/revert', authMiddleware, json, completedAdmin.importRevert);
+// Creación masiva de cuentas, conciliación de identidad e invitaciones de activación (Correo + WhatsApp).
+// Van ANTES de `/admin/completed/:id` (check:routes).
+router.post('/admin/completed/accounts/preflight', authMiddleware, json, completedAdmin.accountsPreflight);
+router.post('/admin/completed/accounts/provision', authMiddleware, json, completedAdmin.accountsProvision);
+router.post('/admin/completed/invitations/preflight', authMiddleware, json, completedAdmin.invitationsPreflight);
+router.post('/admin/completed/invitations/preview', authMiddleware, json, completedAdmin.invitationPreview);
+router.post('/admin/completed/invitations/send', authMiddleware, json, completedAdmin.invitationsSend);
 router.get('/admin/completed/:id', authMiddleware, completedAdmin.detail);
 router.patch('/admin/completed/:id', authMiddleware, json, completedAdmin.update);
 router.patch('/admin/completed/:id/status', authMiddleware, json, completedAdmin.changeStatus);
@@ -93,6 +100,10 @@ router.put('/admin/completed/:id/receipt', authMiddleware, json, completedAdmin.
 router.post('/admin/completed/:id/receipt-import/verify', authMiddleware, json, completedAdmin.verifyReceiptImportUrl);
 router.post('/admin/completed/:id/receipt-import', authMiddleware, json, completedAdmin.importReceiptFromUrl);
 router.post('/admin/completed/:id/checkin', authMiddleware, json, completedAdmin.checkIn);
+router.post('/admin/completed/:id/account', authMiddleware, json, completedAdmin.provisionSingleAccount);
+router.patch('/admin/completed/:id/account/status', authMiddleware, json, completedAdmin.changeAccountStatus);
+router.post('/admin/completed/:id/invitation/send', authMiddleware, json, completedAdmin.sendSingleInvitation);
+router.post('/admin/completed/:id/invitation/regenerate', authMiddleware, json, completedAdmin.regenerateSingleInvitation);
 
 // v4.1263 — Selección y acciones en bloque del listado. Literales ANTES de
 // `/admin/registrations/:id`: si no, «select-all» se leería como un id.
@@ -121,6 +132,8 @@ router.post('/admin/registrations/:id/message', authMiddleware, json, admin.send
 // club, y `requireAttendeePermission` exige el permiso concreto. Van ANTES de
 // `/:id` para que ninguna ruta pública de un solo segmento se las coma.
 router.post('/portal/login', json, attendee.login);
+router.get('/portal/activate/check', attendee.checkActivationToken);
+router.post('/portal/activate', json, attendee.activateAccount);
 router.post('/portal/forgot', json, attendee.forgotPassword);
 router.post('/portal/reset', json, attendee.resetPassword);
 // Entrada automática al volver de la pasarela o desde otro dispositivo: se
@@ -132,8 +145,12 @@ router.post('/portal/link', json, attendee.linkFromIdentity);
 router.post('/portal/verify', json, attendee.verifyEmail);
 router.get('/portal/me', attendeeAuth,
     requireAttendeePermission(ATTENDEE_PERMISSIONS.VIEW_OWN_REGISTRATION), attendee.getPortalData);
+router.get('/portal/registrations/:id/receipt', attendeeAuth,
+    requireAttendeePermission(ATTENDEE_PERMISSIONS.VIEW_OWN_REGISTRATION), attendee.getOwnReceiptUrl);
 router.get('/portal/registrations/:id', attendeeAuth,
     requireAttendeePermission(ATTENDEE_PERMISSIONS.VIEW_OWN_REGISTRATION), attendee.getOwnRegistration);
+router.patch('/portal/registrations/:id', attendeeAuth, json,
+    requireAttendeePermission(ATTENDEE_PERMISSIONS.UPDATE_OWN_PROFILE), attendee.updateOwnRegistration);
 router.patch('/portal/profile', attendeeAuth, json,
     requireAttendeePermission(ATTENDEE_PERMISSIONS.UPDATE_OWN_PROFILE), attendee.updateProfile);
 // v4.1267 — Los registros de «Completar inscripción» (COLROTARIOS) del

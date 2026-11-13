@@ -11,7 +11,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 
-const REPO = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
+const REPO = decodeURIComponent(new URL('..', import.meta.url).pathname).replace(/\/$/, '');
 const read = (p) => readFileSync(`${REPO}/${p}`, 'utf8');
 let n = 0;
 const ok = (c, m) => { assert.ok(c, m); n++; };

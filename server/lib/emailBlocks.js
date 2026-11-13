@@ -9,7 +9,7 @@ var DEFAULT_TIPOS = [
   { slug: "reconocimiento", name: "Reconocimiento o logro", shortName: "Reconocimientos", icon: "\u{1F3C6}", color: "#ca8a04" },
   { slug: "alianza", name: "Alianza", shortName: "Alianzas", icon: "\u{1F91C}\u{1F91B}", color: "#4d7c0f" },
   { slug: "juventud", name: "Actividad juvenil", shortName: "Actividad juvenil", icon: "\u{1F331}", color: "#16a34a" },
-  { slug: "capacitacion", name: "Capacitaci\xF3n", shortName: "Capacitaci\xF3n", icon: "\u{1F393}", color: "#0d9488" },
+  { slug: "capacitacion", name: "Cursos y capacitaciones", shortName: "Cursos y capacitaciones", icon: "\u{1F393}", color: "#0d9488" },
   { slug: "recaudacion", name: "Recaudaci\xF3n de fondos", shortName: "Recaudaci\xF3n", icon: "\u{1F4B0}", color: "#b45309" },
   { slug: "testimonio", name: "Historia personal o testimonio", shortName: "Historias y testimonios", icon: "\u{1F4AC}", color: "#9333ea" },
   { slug: "convocatoria", name: "Convocatoria", shortName: "Convocatoria", icon: "\u{1F4E2}", color: "#0891b2" },

@@ -42,9 +42,17 @@ import {
 import {
     completedStatusMeta, paymentMethodLabel, membershipLabel,
     participantStages, participantHistoryEntry, participantReceiptLock,
+    SOURCE_LABELS, COMPLETED_SOURCE, clubRoleLabel, guestTypeLabel,
 } from '../lib/completedRegistrationSpec.js';
 import { signedReceiptUrl, presignReceiptUpload } from '../lib/completedReceipts.js';
 import { replaceCompletedReceipt } from '../lib/completedReceiptChange.js';
+import {
+    hashActivationToken,
+    validatePasswordComplexity,
+    validateParticipantProfilePatch,
+    AUTHORIZED_PARTICIPANT_FIELDS,
+    normalizeDocument,
+} from '../lib/completedAccountSpec.js';
 
 console.log('[eventAttendeeController] v4.1291.0 cargado — rol "Asistente al Evento": cuenta propia por correo, panel de sólo lectura de su inscripción y auditoría de ingresos. Desde v4.1267 también los registros de «Completar inscripción» (COLROTARIOS): misma cuenta, vinculación de lo anterior sólo con el correo demostrado. Desde v4.1291 el participante sube o reemplaza su comprobante mientras la inscripción no esté resuelta.');
 
@@ -283,11 +291,36 @@ export const linkRegistrationToAccount = async (registrationId, accountId) => {
  */
 export const attachOrphanRegistrations = async (account) => {
     if (!account?.id || !account?.email) return 0;
-    const { rowCount } = await db.query(
+    const mail = String(account.email).toLowerCase();
+    const { rowCount: regCount } = await db.query(
         `UPDATE "EventRegistration" SET "accountId" = $1, "updatedAt" = NOW()
           WHERE "accountId" IS NULL AND lower(email) = $2`,
-        [account.id, String(account.email).toLowerCase()]);
-    return rowCount;
+        [account.id, mail]);
+
+    let completedCount = 0;
+    try {
+        const { rows: candidates } = await db.query(
+            `SELECT id, "documentNumber", "accountReviewReason"
+               FROM "EventCompletedRegistration"
+              WHERE "accountId" IS NULL AND lower(email) = $1`,
+            [mail],
+        );
+        const accDoc = normalizeDocument(account.documentNumber);
+        for (const cand of candidates) {
+            if (cand.accountReviewReason) continue;
+            const candDoc = normalizeDocument(cand.documentNumber);
+            if (accDoc && candDoc && accDoc !== candDoc) continue;
+            const { rowCount } = await db.query(
+                `UPDATE "EventCompletedRegistration"
+                    SET "accountId" = $1, "accountLinkedAt" = NOW(), "accountLinkedBy" = 'self_activation', "updatedAt" = NOW()
+                  WHERE id = $2 AND "accountId" IS NULL`,
+                [account.id, cand.id],
+            );
+            completedCount += rowCount || 0;
+        }
+    } catch { /* ignorar si la columna aún no existe */ }
+
+    return (regCount || 0) + completedCount;
 };
 
 
@@ -578,17 +611,26 @@ export const describeAttendeeSession = async (account) => {
            LEFT JOIN "CalendarEvent" e ON e.id = r."eventId"
           WHERE r."accountId" = $1
           ORDER BY r."createdAt" DESC`, [account.id]);
-    // v4.1267 — Y los registros del formulario «Completar inscripción»
-    // (COLROTARIOS) que ya están atados a la cuenta.
-    const completed = await db.query(
-        `SELECT c.id, c."eventId", c."registrationCode", c.status, e.title AS "eventTitle"
-           FROM "EventCompletedRegistration" c
-           LEFT JOIN "CalendarEvent" e ON e.id = c."eventId"
-          WHERE c."accountId" = $1
-          ORDER BY c."createdAt" DESC`, [account.id]).catch(() => ({ rows: [] }));
-    const role = account.role || ATTENDEE_ROLES.ATTENDEE;
+    let completedRows = [];
+    try {
+        const { rows: comp } = await db.query(
+            `SELECT c.id, c."eventId", c."registrationCode", c.status,
+                    c."registrationSource", e.title AS "eventTitle"
+               FROM "EventCompletedRegistration" c
+               LEFT JOIN "CalendarEvent" e ON e.id = c."eventId"
+              WHERE c."accountId" = $1
+              ORDER BY c."createdAt" DESC`,
+            [account.id],
+        );
+        completedRows = comp;
+    } catch { /* ignorar */ }
+
+    const role = account.status === 'suspended'
+        ? ATTENDEE_ROLES.SUSPENDED
+        : (account.role || ATTENDEE_ROLES.ATTENDEE);
+
     return {
-        completed: completed.rows.map(c => ({
+        completed: completedRows.map(c => ({
             id: c.id, eventId: c.eventId, eventTitle: c.eventTitle,
             registrationCode: c.registrationCode, status: c.status,
         })),
@@ -596,13 +638,25 @@ export const describeAttendeeSession = async (account) => {
         role,
         roleLabel: ROLE_LABELS[role] || ROLE_LABELS[ATTENDEE_ROLES.ATTENDEE],
         permissions: permissionsFor(role),
-        registrations: rows.map(r => ({
-            id: r.id, eventId: r.eventId, eventTitle: r.eventTitle,
-            publicRef: r.publicRef, registrationCode: r.registrationCode,
-            status: r.status, categoryKey: r.categoryKey, categoryLabel: r.categoryLabel,
-        })),
+        registrations: [
+            ...rows.map(r => ({
+                id: r.id, eventId: r.eventId, eventTitle: r.eventTitle,
+                publicRef: r.publicRef, registrationCode: r.registrationCode,
+                status: r.status, categoryKey: r.categoryKey, categoryLabel: r.categoryLabel,
+                recordType: 'online_registration',
+            })),
+            ...completedRows.map(c => ({
+                id: c.id, eventId: c.eventId, eventTitle: c.eventTitle,
+                publicRef: c.registrationCode, registrationCode: c.registrationCode,
+                status: c.status,
+                categoryKey: 'colrotarios',
+                categoryLabel: SOURCE_LABELS[c.registrationSource] || 'Inscripciones COLROTARIOS',
+                recordType: 'completed_registration',
+            })),
+        ],
         redirect: ATTENDEE_PATH,
         needsPassword: !account.passwordHash || account.passwordHash === UNUSABLE_HASH,
+        mustChangePassword: Boolean(account.mustChangePassword),
         emailVerificationRequired: emailVerificationEnabled(),
         emailVerified: Boolean(account.emailVerifiedAt),
     };
@@ -719,7 +773,16 @@ export const linkFromIdentity = async (req, res) => {
             `SELECT id, "accountId" FROM "EventRegistration"
               WHERE lower(email) = $1 AND "submittedAt" IS NOT NULL
               ORDER BY "createdAt" DESC LIMIT 1`, [email]);
-        if (!rows.length) return res.json({ hasRegistration: false, email });
+        let completedMatch = null;
+        if (!rows.length) {
+            const { rows: compRows } = await db.query(
+                `SELECT id, "accountId" FROM "EventCompletedRegistration"
+                  WHERE lower(email) = $1
+                  ORDER BY "createdAt" DESC LIMIT 1`, [email]).catch(() => ({ rows: [] }));
+            completedMatch = compRows[0] || null;
+        }
+        const matchedRow = rows[0] || completedMatch;
+        if (!matchedRow) return res.json({ hasRegistration: false, email });
 
         // La cuenta es la del correo; si no existe todavía, se crea sin
         // contraseña utilizable —se entra por esta misma vía o por «Olvidé mi
@@ -727,7 +790,7 @@ export const linkFromIdentity = async (req, res) => {
         let account = await findAccountByEmail(email);
         if (!account) account = await ensurePendingAccountFor({ email, firstName: identity?.name, lastName: null, phone: null });
         if (!account) return res.json({ hasRegistration: false, email });
-        if (!rows[0].accountId) await attachOrphanRegistrations(account);
+        if (!matchedRow.accountId) await attachOrphanRegistrations(account);
 
         return res.json({ hasRegistration: true, ...(await issueAttendeeSession(account)) });
     } catch (error) {
@@ -749,6 +812,10 @@ export const authenticateAttendee = async (email, password, req = null, { rememb
     if (!isEmail(mail) || !password) return { ok: false };
 
     const account = await findAccountByEmail(mail);
+    if (account && account.status === 'suspended') {
+        await auditLogin(req, { accountId: account.id, email: mail, outcome: 'suspended' });
+        return { ok: false, suspended: true };
+    }
     if (account && account.passwordHash === UNUSABLE_HASH) {
         // v4.692 — Una cuenta VINCULADA no tiene contraseña propia a propósito:
         // su clave vive en la identidad de origen (el panel del club). Decirle
@@ -762,6 +829,14 @@ export const authenticateAttendee = async (email, password, req = null, { rememb
         }
         await auditLogin(req, { accountId: account.id, email: mail, outcome: 'needs_password' });
         return { ok: false, needsPassword: true };
+    }
+
+    if (account && account.mustChangePassword && account.tempPasswordExpiresAt) {
+        const expMs = new Date(account.tempPasswordExpiresAt).getTime();
+        if (Number.isFinite(expMs) && expMs < Date.now()) {
+            await auditLogin(req, { accountId: account.id, email: mail, outcome: 'temp_password_expired' });
+            return { ok: false, tempPasswordExpired: true };
+        }
     }
 
     const ok = account && await bcrypt.compare(String(password), account.passwordHash).catch(() => false);
@@ -785,9 +860,21 @@ export const login = async (req, res) => {
         }
 
         const result = await authenticateAttendee(email, password, req, { remember: req.body?.remember !== false });
+        if (result.suspended) {
+            return res.status(403).json({
+                error: 'Tu cuenta se encuentra suspendida temporalmente. Comunícate con la organización del evento.',
+                suspended: true,
+            });
+        }
+        if (result.tempPasswordExpired) {
+            return res.status(401).json({
+                error: 'Tu contraseña temporal expiró. Solicita un nuevo enlace de activación.',
+                tempPasswordExpired: true,
+            });
+        }
         if (result.needsPassword) {
             return res.status(409).json({
-                error: 'Tu inscripción está registrada pero aún no tiene contraseña. Usa "Olvidé mi contraseña" para crear una.',
+                error: 'Tu inscripción está registrada pero aún no tiene contraseña. Usa el enlace de activación o "Olvidé mi contraseña" para crear una.',
                 needsPassword: true,
             });
         }
@@ -798,6 +885,168 @@ export const login = async (req, res) => {
     } catch (error) {
         console.error('[event-attendee] login:', error);
         res.status(500).json({ error: 'No pudimos iniciar sesión.' });
+    }
+};
+
+// ── Activación por enlace único criptográfico (Sección 9) ────────────
+
+// GET /portal/activate/check?token=...
+export const checkActivationToken = async (req, res) => {
+    try {
+        await ensureEventRegistrationSchema();
+        const rawToken = clean(req.query?.token || req.body?.token, 500);
+        if (!rawToken) {
+            return res.status(400).json({ valid: false, error: 'Falta el token de activación.' });
+        }
+        const tokenHash = hashActivationToken(rawToken);
+        const { rows } = await db.query(
+            `SELECT * FROM "EventAttendeeAccount"
+              WHERE "activationTokenHash" = $1 LIMIT 1`,
+            [tokenHash],
+        );
+        const account = rows[0];
+        if (!account) {
+            return res.status(400).json({
+                valid: false,
+                code: 'invalid_or_used',
+                error: 'Este enlace de activación no es válido o ya fue utilizado.',
+            });
+        }
+        if (account.status === 'suspended') {
+            return res.status(403).json({
+                valid: false,
+                code: 'suspended',
+                error: 'La cuenta asociada a este enlace se encuentra suspendida.',
+            });
+        }
+        if (account.activationExpiry) {
+            const expMs = new Date(account.activationExpiry).getTime();
+            if (Number.isFinite(expMs) && expMs < Date.now()) {
+                return res.status(410).json({
+                    valid: false,
+                    code: 'expired',
+                    error: 'El enlace de activación ha expirado. Solicita al organizador del evento un nuevo enlace o usa «Olvidé mi contraseña».',
+                });
+            }
+        }
+
+        return res.json({
+            valid: true,
+            account: {
+                email: account.email,
+                firstName: account.firstName || null,
+                lastName: account.lastName || null,
+                expiresAt: account.activationExpiry || null,
+            },
+        });
+    } catch (error) {
+        console.error('[event-attendee] checkActivationToken:', error);
+        return res.status(500).json({ valid: false, error: 'No se pudo verificar el enlace de activación.' });
+    }
+};
+
+// POST /portal/activate — valida token de un solo uso, fija contraseña personal,
+// activa la cuenta e invalida el enlace de inmediato.
+export const activateAccount = async (req, res) => {
+    try {
+        await ensureEventRegistrationSchema();
+        const rawToken = clean(req.body?.token, 500);
+        const password = String(req.body?.password || '');
+
+        if (!rawToken) {
+            return res.status(400).json({ error: 'Falta el enlace de activación.' });
+        }
+        const tokenHash = hashActivationToken(rawToken);
+        const { rows } = await db.query(
+            `SELECT * FROM "EventAttendeeAccount"
+              WHERE "activationTokenHash" = $1 LIMIT 1`,
+            [tokenHash],
+        );
+        const account = rows[0];
+        if (!account) {
+            return res.status(400).json({
+                error: 'Este enlace de activación ya fue utilizado o no es válido.',
+                code: 'invalid_or_used',
+            });
+        }
+        if (account.status === 'suspended') {
+            return res.status(403).json({
+                error: 'Tu cuenta se encuentra suspendida.',
+                code: 'suspended',
+            });
+        }
+        if (account.activationExpiry) {
+            const expMs = new Date(account.activationExpiry).getTime();
+            if (Number.isFinite(expMs) && expMs < Date.now()) {
+                return res.status(410).json({
+                    error: 'El enlace de activación ha expirado. Solicita un nuevo enlace.',
+                    code: 'expired',
+                });
+            }
+        }
+
+        const complexity = validatePasswordComplexity(password, {
+            email: account.email,
+            documentNumber: account.documentNumber,
+        });
+        if (!complexity.valid) {
+            return res.status(400).json({ error: complexity.error });
+        }
+
+        const passwordHash = await bcrypt.hash(password, 10);
+        const { rows: updated } = await db.query(
+            `UPDATE "EventAttendeeAccount"
+                SET "passwordHash" = $1,
+                    "activationTokenHash" = NULL,
+                    "activationExpiry" = NULL,
+                    "resetToken" = NULL,
+                    "resetExpiry" = NULL,
+                    "mustChangePassword" = false,
+                    "tempPasswordExpiresAt" = NULL,
+                    "activatedAt" = COALESCE("activatedAt", NOW()),
+                    "emailVerifiedAt" = COALESCE("emailVerifiedAt", NOW()),
+                    "lastLoginAt" = NOW(),
+                    "updatedAt" = NOW()
+              WHERE id = $2
+              RETURNING *`,
+            [passwordHash, account.id],
+        );
+
+        const activeAccount = updated[0];
+        await attachOrphanRegistrations(activeAccount);
+        await auditLogin(req, { accountId: activeAccount.id, email: activeAccount.email, outcome: 'activated' });
+
+        // Dejar rastro en el historial de las inscripciones completadas vinculadas
+        try {
+            const { rows: compRegs } = await db.query(
+                `SELECT id, "eventId" FROM "EventCompletedRegistration" WHERE "accountId" = $1`,
+                [activeAccount.id],
+            );
+            for (const cr of compRegs) {
+                await recordHistory({
+                    registrationId: cr.id,
+                    eventId: cr.eventId,
+                    type: 'account_activated',
+                    comment: 'El participante activó su cuenta personal y estableció su contraseña.',
+                    actor: {
+                        id: activeAccount.id,
+                        name: [activeAccount.firstName, activeAccount.lastName].filter(Boolean).join(' ') || activeAccount.email,
+                        email: activeAccount.email,
+                    },
+                });
+            }
+        } catch { /* ignorar */ }
+
+        const session = await describeAttendeeSession(activeAccount);
+        return res.json({
+            activated: true,
+            token: signToken(activeAccount),
+            email: activeAccount.email,
+            ...session,
+        });
+    } catch (error) {
+        console.error('[event-attendee] activateAccount:', error);
+        return res.status(500).json({ error: 'No pudimos activar tu cuenta.' });
     }
 };
 
@@ -1007,6 +1256,82 @@ const toAttendeeView = (row, { companions = [], history = [], messages = [], pay
     };
 };
 
+/**
+ * Vista de una inscripción completada (`EventCompletedRegistration` / COLROTARIOS /
+ * importación histórica) para su propio titular en `/mi-inscripcion`.
+ */
+const toCompletedAttendeeView = (row, { history = [], messages = [], event = null } = {}) => {
+    const status = completedStatusMeta(row.status);
+    const roleLabel = row.clubRole === 'otro_cargo'
+        ? (row.clubRoleOther || 'Otro cargo asignado')
+        : clubRoleLabel(row.clubRole);
+
+    return {
+        id: row.id,
+        recordType: 'completed_registration',
+        registrationSource: row.registrationSource || COMPLETED_SOURCE,
+        sourceLabel: SOURCE_LABELS[row.registrationSource] || SOURCE_LABELS[COMPLETED_SOURCE],
+        eventId: row.eventId,
+        event: event ? {
+            id: event.id, title: event.title, slug: event.slug,
+            startDate: event.startDate, endDate: event.endDate, location: event.location,
+        } : null,
+        publicRef: row.registrationCode,
+        registrationCode: row.registrationCode,
+        status: row.status,
+        statusLabel: status.label,
+        statusDescription: status.description || null,
+        settled: Boolean(status.accreditable),
+        categoryKey: 'colrotarios',
+        categoryLabel: SOURCE_LABELS[row.registrationSource] || 'Inscripciones COLROTARIOS',
+        audience: 'rotary',
+        firstName: row.firstName,
+        lastName: row.lastName,
+        documentNumber: row.documentNumber,
+        email: row.email,
+        phone: row.phone,
+        district: row.district,
+        clubName: row.clubName,
+        membershipType: row.membershipType,
+        membershipLabel: membershipLabel(row.membershipType),
+        clubRole: row.clubRole,
+        clubRoleLabel: roleLabel,
+        clubRoleOther: row.clubRoleOther,
+        guestType: row.guestType,
+        guestTypeLabel: guestTypeLabel(row.guestType),
+        eps: row.eps,
+        foodAllergy: row.foodAllergy,
+        emergencyName: row.emergencyName,
+        emergencyPhone: row.emergencyPhone,
+        paymentMethod: row.paymentMethod,
+        paymentMethodLabel: paymentMethodLabel(row.paymentMethod),
+        hasReceipt: Boolean(row.receiptKey),
+        receiptName: row.receiptName || null,
+        receiptMime: row.receiptMime || null,
+        receiptUrl: null,
+        comments: row.comments || '',
+        notes: row.comments || '',
+        answers: parseJson(row.answers, {}),
+        pricing: {},
+        baseCurrency: 'COP',
+        baseAmount: 0,
+        chargeCurrency: 'COP',
+        chargeAmount: 0,
+        companionsCount: 0,
+        companionsAmount: 0,
+        companions: [],
+        checkedInAt: row.checkedInAt,
+        registeredAt: row.submittedAt || row.createdAt,
+        paidAt: row.status === 'payment_confirmed' ? (row.updatedAt || row.submittedAt) : null,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        editableFields: AUTHORIZED_PARTICIPANT_FIELDS,
+        payments: [],
+        messages,
+        history,
+    };
+};
+
 /** Las inscripciones de la cuenta, agrupadas por evento. */
 const loadOwnRegistrations = async (accountId) => {
     const { rows } = await db.query(
@@ -1020,12 +1345,31 @@ const loadOwnRegistrations = async (accountId) => {
     return rows;
 };
 
+const loadOwnCompletedRegistrations = async (accountId) => {
+    try {
+        const { rows } = await db.query(
+            `SELECT c.*, e.title AS "eventTitle", e.slug AS "eventSlug",
+                    e."startDate" AS "eventStart", e."endDate" AS "eventEnd", e.location AS "eventLocation"
+               FROM "EventCompletedRegistration" c
+               LEFT JOIN "CalendarEvent" e ON e.id = c."eventId"
+              WHERE c."accountId" = $1
+              ORDER BY COALESCE(e."startDate", c."createdAt") DESC, c."createdAt" DESC`,
+            [accountId]);
+        return rows;
+    } catch {
+        return [];
+    }
+};
+
 // GET /portal/me
 export const getPortalData = async (req, res) => {
     try {
         await ensureEventRegistrationSchema();
         const account = req.attendee.account;
-        const rows = await loadOwnRegistrations(account.id);
+        const [rows, completedRows] = await Promise.all([
+            loadOwnRegistrations(account.id),
+            loadOwnCompletedRegistrations(account.id),
+        ]);
 
         const registrations = [];
         for (const row of rows) {
@@ -1034,6 +1378,14 @@ export const getPortalData = async (req, res) => {
                 event: {
                     id: row.eventId, title: row.eventTitle, slug: row.eventSlug,
                     startDate: row.eventStart, endDate: row.eventEnd, location: row.eventLocation,
+                },
+            }));
+        }
+        for (const cRow of completedRows) {
+            registrations.push(toCompletedAttendeeView(cRow, {
+                event: {
+                    id: cRow.eventId, title: cRow.eventTitle, slug: cRow.eventSlug,
+                    startDate: cRow.eventStart, endDate: cRow.eventEnd, location: cRow.eventLocation,
                 },
             }));
         }
@@ -1049,6 +1401,8 @@ export const getPortalData = async (req, res) => {
                 firstName: account.firstName,
                 lastName: account.lastName,
                 phone: account.phone,
+                documentNumber: account.documentNumber || null,
+                mustChangePassword: Boolean(account.mustChangePassword),
                 emailVerified: Boolean(account.emailVerifiedAt),
                 emailVerificationRequired: emailVerificationEnabled(),
                 lastLoginAt: account.lastLoginAt,
@@ -1071,6 +1425,7 @@ export const getOwnRegistration = async (req, res) => {
     try {
         await ensureEventRegistrationSchema();
         const accountId = req.attendee.account.id;
+        const regId = clean(req.params.id, 60);
         // El filtro por `accountId` va en el WHERE, no en una comprobación
         // posterior: una inscripción ajena no llega a leerse siquiera.
         const { rows } = await db.query(
@@ -1079,9 +1434,43 @@ export const getOwnRegistration = async (req, res) => {
                FROM "EventRegistration" r
                LEFT JOIN "CalendarEvent" e ON e.id = r."eventId"
               WHERE r.id = $1 AND r."accountId" = $2 LIMIT 1`,
-            [clean(req.params.id, 60), accountId]);
+            [regId, accountId]);
         const row = rows[0];
-        if (!row) return res.status(404).json({ error: 'No encontramos esa inscripción en tu cuenta.' });
+
+        if (!row) {
+            // Buscar en `EventCompletedRegistration` con el mismo aislamiento estricto por `accountId`
+            const { rows: compRows } = await db.query(
+                `SELECT c.*, e.title AS "eventTitle", e.slug AS "eventSlug",
+                        e."startDate" AS "eventStart", e."endDate" AS "eventEnd", e.location AS "eventLocation"
+                   FROM "EventCompletedRegistration" c
+                   LEFT JOIN "CalendarEvent" e ON e.id = c."eventId"
+                  WHERE c.id = $1 AND c."accountId" = $2 LIMIT 1`,
+                [regId, accountId]).catch(() => ({ rows: [] }));
+            const compRow = compRows[0];
+            if (!compRow) {
+                return res.status(404).json({ error: 'No encontramos esa inscripción en tu cuenta.' });
+            }
+
+            const history = (await listHistory(compRow.id))
+                .filter(h => !String(h.type || '').startsWith('note'))
+                .map(h => ({
+                    id: h.id, type: h.type, fromStatus: h.fromStatus, toStatus: h.toStatus,
+                    comment: h.comment, createdAt: h.createdAt,
+                }));
+            const messages = (await listMessages(compRow.id)).map(m => ({
+                id: m.id, channel: m.channel, subject: m.subject,
+                status: m.status, createdAt: m.createdAt,
+            }));
+
+            return res.json(toCompletedAttendeeView(compRow, {
+                history,
+                messages,
+                event: {
+                    id: compRow.eventId, title: compRow.eventTitle, slug: compRow.eventSlug,
+                    startDate: compRow.eventStart, endDate: compRow.eventEnd, location: compRow.eventLocation,
+                },
+            }));
+        }
 
         // Del historial se muestra el rastro de estados y acreditación; los
         // apuntes internos del equipo se quedan en el panel administrativo.
@@ -1114,6 +1503,130 @@ export const getOwnRegistration = async (req, res) => {
     } catch (error) {
         console.error('[event-attendee] getOwnRegistration:', error);
         res.status(500).json({ error: 'No pudimos cargar tu inscripción.' });
+    }
+};
+
+// GET /portal/registrations/:id/receipt — enlace firmado temporal para el propio titular
+export const getOwnReceiptUrl = async (req, res) => {
+    try {
+        await ensureEventRegistrationSchema();
+        const accountId = req.attendee.account.id;
+        const regId = clean(req.params.id, 60);
+        const { rows } = await db.query(
+            `SELECT id, "receiptKey", "receiptName", "receiptMime"
+               FROM "EventCompletedRegistration"
+              WHERE id = $1 AND "accountId" = $2 LIMIT 1`,
+            [regId, accountId],
+        );
+        const row = rows[0];
+        if (!row) {
+            return res.status(404).json({ error: 'No encontramos esa inscripción en tu cuenta.' });
+        }
+        if (!row.receiptKey) {
+            return res.status(404).json({ error: 'Esta inscripción no tiene comprobante adjunto.' });
+        }
+        const url = await signedReceiptUrl(row.receiptKey);
+        if (!url) {
+            return res.status(502).json({ error: 'No se pudo generar el enlace seguro del comprobante.' });
+        }
+        return res.json({ url, name: row.receiptName, mime: row.receiptMime, expiresInSeconds: 300 });
+    } catch (error) {
+        console.error('[event-attendee] getOwnReceiptUrl:', error);
+        return res.status(500).json({ error: 'No se pudo abrir el comprobante.' });
+    }
+};
+
+// PATCH /portal/registrations/:id — actualización de campos autorizados del participante
+// (Sección 17: phone, eps, foodAllergy, emergencyName, emergencyPhone, comments).
+// Bloquea con 403 cualquier intento de alterar datos validados o financieros.
+export const updateOwnRegistration = async (req, res) => {
+    try {
+        await ensureEventRegistrationSchema();
+        const account = req.attendee.account;
+        const regId = clean(req.params.id, 60);
+
+        const { rows: compRows } = await db.query(
+            `SELECT * FROM "EventCompletedRegistration"
+              WHERE id = $1 AND "accountId" = $2 LIMIT 1`,
+            [regId, account.id],
+        );
+        const compRow = compRows[0];
+        if (!compRow) {
+            return res.status(404).json({ error: 'No encontramos esa inscripción en tu cuenta.' });
+        }
+
+        const validation = validateParticipantProfilePatch(req.body || {}, compRow);
+        if (!validation.ok) {
+            return res.status(validation.status).json({
+                error: validation.error,
+                forbiddenFields: validation.forbiddenFields,
+                errors: validation.errors,
+            });
+        }
+
+        const changed = {};
+        const sets = [];
+        const values = [];
+
+        for (const [key, nextVal] of Object.entries(validation.updates)) {
+            const prevVal = String(compRow[key] ?? '').trim();
+            if (prevVal === nextVal) continue;
+            changed[key] = { from: prevVal, to: nextVal };
+            values.push(nextVal);
+            sets.push(`"${key}" = $${values.length}`);
+        }
+
+        if (sets.length === 0) {
+            return res.json({
+                unchanged: true,
+                registration: toCompletedAttendeeView(compRow),
+            });
+        }
+
+        const nextAnswers = { ...parseJson(compRow.answers, {}) };
+        for (const [key, diff] of Object.entries(changed)) {
+            nextAnswers[key] = diff.to;
+        }
+        values.push(JSON.stringify(nextAnswers));
+        sets.push(`answers = $${values.length}`);
+        values.push(compRow.id);
+
+        const { rows: updatedRows } = await db.query(
+            `UPDATE "EventCompletedRegistration"
+                SET ${sets.join(', ')}, "updatedAt" = NOW()
+              WHERE id = $${values.length}
+              RETURNING *`,
+            values,
+        );
+        const updatedRow = updatedRows[0];
+
+        if (changed.phone) {
+            await db.query(
+                `UPDATE "EventAttendeeAccount" SET phone = $1, "updatedAt" = NOW() WHERE id = $2`,
+                [changed.phone.to, account.id],
+            );
+        }
+
+        await recordHistory({
+            registrationId: compRow.id,
+            eventId: compRow.eventId,
+            type: 'attendee_profile_updated',
+            comment: `El participante actualizó sus datos autorizados (${Object.keys(changed).join(', ')}).`,
+            actor: {
+                id: account.id,
+                name: [account.firstName, account.lastName].filter(Boolean).join(' ') || account.email,
+                email: account.email,
+            },
+            payload: { changed },
+        });
+
+        return res.json({
+            updated: true,
+            registration: toCompletedAttendeeView(updatedRow),
+        });
+    } catch (error) {
+        console.error('[event-attendee] updateOwnRegistration:', error);
+        return res.status(500).json({ error: 'No pudimos guardar los cambios de tu inscripción.' });
     }
 };
 
@@ -1526,11 +2039,15 @@ export default {
     attachOrphanRegistrations,
     sendVerificationEmail,
     login,
+    checkActivationToken,
+    activateAccount,
     forgotPassword,
     resetPassword,
     verifyEmail,
     getPortalData,
     getOwnRegistration,
+    getOwnReceiptUrl,
+    updateOwnRegistration,
     updateProfile,
     resolveParticipantAccess,
     attachOrphanCompleted,

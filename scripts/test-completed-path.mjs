@@ -30,17 +30,16 @@ const RECEIPTS = new URL('./scripts/fixtures/receipts-completed-stub.mjs', HERE)
 // `server/lib` se importan entre sí como `'./db.js'`. Y `completedReceipts.js`
 // NO se sustituye cuando llega con `?real`: así el doble re-exporta el
 // criterio verdadero en vez de copiarlo.
-register(
-    `data:text/javascript,
-     const DB=${JSON.stringify(DB)}, M=${JSON.stringify(MAIL)}, R=${JSON.stringify(RECEIPTS)};
-     export async function resolve(s,c,n){
-       if(/(^|\\/)db\\.js$/.test(s)) return {url:DB,shortCircuit:true};
-       if(/EmailService\\.js$/.test(s)) return {url:M,shortCircuit:true};
-       if(/completedReceipts\\.js$/.test(s)) return {url:R,shortCircuit:true};
-       return n(s,c);
-     }`,
-    HERE
-);
+const hookCode = `
+const DB = ${JSON.stringify(DB)}, M = ${JSON.stringify(MAIL)}, R = ${JSON.stringify(RECEIPTS)};
+export async function resolve(s, c, n) {
+    if (/(^|\\/)db\\.js$/.test(s)) return { url: DB, shortCircuit: true };
+    if (/EmailService\\.js$/.test(s)) return { url: M, shortCircuit: true };
+    if (/completedReceipts\\.js$/.test(s)) return { url: R, shortCircuit: true };
+    return n(s, c);
+}
+`;
+register(`data:text/javascript;base64,${Buffer.from(hookCode).toString('base64')}`, HERE);
 
 const db = await import(DB);
 const mail = await import(MAIL);

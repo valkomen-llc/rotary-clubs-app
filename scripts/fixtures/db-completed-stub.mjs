@@ -25,6 +25,10 @@ export const tablas = {
     EventRegistrationMessage: [],
     // v4.950 — los lotes del motor de importación histórica.
     EventImportBatch: [],
+    // Cuentas de asistentes de eventos
+    EventAttendeeAccount: [],
+    User: [],
+    ProjectFairAccount: [],
 };
 
 export const consultas = [];
@@ -354,7 +358,7 @@ const route = async (q, params = []) => {
     // v4.1092 — «seleccionar todo»: las MISMAS condiciones del listado con una
     // lista de columnas enumerada. Las columnas se LEEN del SQL y se proyectan;
     // escribirlas acá a mano daría una fila que el controlador no pidió.
-    if (/^SELECT (?!\*)[\w", ]+ FROM "EventCompletedRegistration" WHERE "eventId" = \$1( AND | ORDER BY)/i.test(q)) {
+    if (/^SELECT (?!\*)[\w", ]+ FROM "EventCompletedRegistration" WHERE "eventId" = \$1(?: AND | ORDER BY|$)/i.test(q)) {
         const cols = splitTop(q.match(/^SELECT (.+?) FROM "EventCompletedRegistration"/i)[1])
             .map(c => c.replace(/"/g, '').trim());
         const rows = tablas.EventCompletedRegistration.filter(whereMatcher(q, params));
@@ -363,6 +367,24 @@ const route = async (q, params = []) => {
         return {
             rows: acotadas.map(r => Object.fromEntries(cols.map(c => [c, r[c] ?? null]))),
         };
+    }
+    if (/FROM "EventAttendeeAccount"/i.test(q)) {
+        if (/WHERE id = ANY\(\$1\)/i.test(q)) {
+            const ids = new Set(params[0] || []);
+            return { rows: (tablas.EventAttendeeAccount || []).filter(a => ids.has(a.id)) };
+        }
+        if (/WHERE lower\(email\) = ANY\(\$1\)/i.test(q)) {
+            const mails = new Set((params[0] || []).map(m => String(m).toLowerCase()));
+            return { rows: (tablas.EventAttendeeAccount || []).filter(a => mails.has(String(a.email).toLowerCase())) };
+        }
+        if (/WHERE "documentNumber" = ANY\(\$1\)/i.test(q)) {
+            const docs = new Set((params[0] || []).map(d => String(d).trim()));
+            return { rows: (tablas.EventAttendeeAccount || []).filter(a => docs.has(String(a.documentNumber).trim())) };
+        }
+        if (/WHERE id = \$1/i.test(q)) {
+            return { rows: (tablas.EventAttendeeAccount || []).filter(a => a.id === params[0]) };
+        }
+        return { rows: tablas.EventAttendeeAccount || [] };
     }
     if (/^SELECT .*COUNT\(\*\)/i.test(q) && /FROM "EventCompletedRegistration" WHERE "eventId" = \$1$/i.test(q)) {
         return runSummary(q, tablas.EventCompletedRegistration.filter(r => r.eventId === params[0]));

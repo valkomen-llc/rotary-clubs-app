@@ -24,6 +24,11 @@ const enviar = async (args) => {
     return { success: true, messageId: `msg-${consecutivo}` };
 };
 
+export const EmailService = {
+    sendPlatformEmail: enviar,
+    sendEmail: enviar,
+};
+
 export default {
     sendPlatformEmail: enviar,
     sendEmail: enviar,

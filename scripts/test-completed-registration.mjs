@@ -13,6 +13,7 @@
 // El bloque del espejo del navegador pide `esbuild` y se salta solo si falta.
 // ════════════════════════════════════════════════════════════════════
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import {
     COMPLETED_SOURCE, ONLINE_SOURCE,
     COMPLETED_STATUS_KEYS, ACCREDITABLE_STATUSES, completedStatusMeta,
@@ -933,7 +934,7 @@ grupo('v4.964 — El listado muestra TODOS los campos del formulario y se despla
     check('el comprobante no entra como campo (es un archivo, tiene su columna aparte)',
         !columnas.includes('receipt') && /<th className="whitespace-nowrap px-4 py-3">Comprobante<\/th>/.test(mgr));
     check('el colSpan del vacío sigue a la cantidad de columnas, no a un número fijo',
-        /colSpan=\{columnas\.length \+ \(selectMode \? 6 : 5\)\}/.test(mgr));
+        /colSpan=\{columnas\.length \+ \(selectMode \? 9 : 8\)\}/.test(mgr));
 
     // La exportación ya llevaba todos los campos: no se tocó (no se ensancha
     // el cambio por simetría).
@@ -1017,7 +1018,7 @@ if (!esbuild) {
     console.log('  … esbuild no está: bloque saltado (npm i --no-save esbuild)');
 } else {
     const { outputFiles } = await esbuild.build({
-        entryPoints: [new URL('../src/lib/completedRegistrationSpec.ts', import.meta.url).pathname],
+        entryPoints: [fileURLToPath(new URL('../src/lib/completedRegistrationSpec.ts', import.meta.url))],
         bundle: true, write: false, format: 'esm', platform: 'neutral',
     });
     const mod = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString('base64')}`);

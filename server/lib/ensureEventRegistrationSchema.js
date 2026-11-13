@@ -72,7 +72,11 @@ const OWNED_REGISTRATION_COLUMNS = [
 ];
 
 // Columnas de `EventAttendeeAccount` añadidas después de crear la tabla.
-const OWNED_ACCOUNT_COLUMNS = ['linkedRealm', 'linkedId'];
+const OWNED_ACCOUNT_COLUMNS = [
+    'linkedRealm', 'linkedId',
+    'documentNumber', 'status', 'activationTokenHash', 'activationExpiry',
+    'activationSentAt', 'activatedAt', 'mustChangePassword', 'tempPasswordExpiresAt',
+];
 
 // Columnas de `EventRegistrationMessage` añadidas después de crear la tabla.
 // ⚠️ La trampa de v4.908, pagada en producción: una columna con su ADD COLUMN
@@ -83,7 +87,11 @@ const OWNED_MESSAGE_COLUMNS = ['providerId'];
 // Columnas de `EventCompletedRegistration` añadidas después de crear la tabla.
 // ⚠️ Misma trampa de v4.908: sin enumerarlas acá, el atajo da el esquema por
 // aplicado y el ALTER no corre jamás en una base que ya tenía la tabla.
-const OWNED_COMPLETED_COLUMNS = ['importBatchId', 'importMeta', 'guestType', 'accountId', 'submissionKey'];
+const OWNED_COMPLETED_COLUMNS = ['importBatchId', 'importMeta', 'guestType',
+    'accountId', 'submissionKey',
+    'accountLinkedAt', 'accountLinkedBy', 'accountReviewReason',
+    'activationSentAt', 'activationChannel', 'activationExpiresAt', 'activationError',
+];
 
 // Columnas de `EventRegistrationCategory` añadidas después de crear la tabla.
 // ⚠️ Misma trampa de v4.908: sin enumerarlas acá, el atajo da el esquema por
@@ -468,7 +476,17 @@ export const ensureEventRegistrationSchema = async () => {
     // quien ya postuló un proyecto y ya se autenticó.
     await addColumn('EventAttendeeAccount', 'linkedRealm', 'VARCHAR(30)');
     await addColumn('EventAttendeeAccount', 'linkedId', 'TEXT');
+    await addColumn('EventAttendeeAccount', 'documentNumber', 'VARCHAR(60)');
+    await addColumn('EventAttendeeAccount', 'status', "VARCHAR(30) NOT NULL DEFAULT 'active'");
+    await addColumn('EventAttendeeAccount', 'activationTokenHash', 'VARCHAR(128)');
+    await addColumn('EventAttendeeAccount', 'activationExpiry', 'TIMESTAMPTZ');
+    await addColumn('EventAttendeeAccount', 'activationSentAt', 'TIMESTAMPTZ');
+    await addColumn('EventAttendeeAccount', 'activatedAt', 'TIMESTAMPTZ');
+    await addColumn('EventAttendeeAccount', 'mustChangePassword', 'BOOLEAN NOT NULL DEFAULT false');
+    await addColumn('EventAttendeeAccount', 'tempPasswordExpiresAt', 'TIMESTAMPTZ');
     await index('EventAttendeeAccount_linked_idx', 'ON "EventAttendeeAccount" ("linkedRealm", "linkedId")');
+    await index('EventAttendeeAccount_doc_idx', 'ON "EventAttendeeAccount" ("documentNumber")');
+    await index('EventAttendeeAccount_act_token_idx', 'ON "EventAttendeeAccount" ("activationTokenHash")');
 
     // ── Inscripciones completadas por fuera de la página (v4.943) ────
     //
@@ -545,15 +563,19 @@ export const ensureEventRegistrationSchema = async () => {
     await addColumn('EventCompletedRegistration', 'importMeta', 'JSONB');
     // v4.951 — el tipo de invitado del formulario de referencia.
     await addColumn('EventCompletedRegistration', 'guestType', 'VARCHAR(200)');
-    await index('EventCompletedRegistration_batch_idx', 'ON "EventCompletedRegistration" ("importBatchId")');
-
-    // v4.1267 — La cuenta del participante. `accountId` ata el registro a su
-    // `EventAttendeeAccount` (la misma del registro en línea): cuenta → evento
-    // → inscripción en UNA fila, y el panel filtra por ella en el WHERE.
-    // Nulo = sin cuenta todavía; nunca se rellena por coincidencia de correo
-    // sin que el titular haya demostrado que el correo es suyo.
+    // Sistema de cuentas de acceso, conciliación y activaciones de un solo uso
     await addColumn('EventCompletedRegistration', 'accountId', 'TEXT');
+    await addColumn('EventCompletedRegistration', 'accountLinkedAt', 'TIMESTAMPTZ');
+    await addColumn('EventCompletedRegistration', 'accountLinkedBy', 'TEXT');
+    await addColumn('EventCompletedRegistration', 'accountReviewReason', 'TEXT');
+    await addColumn('EventCompletedRegistration', 'activationSentAt', 'TIMESTAMPTZ');
+    await addColumn('EventCompletedRegistration', 'activationChannel', 'VARCHAR(30)');
+    await addColumn('EventCompletedRegistration', 'activationExpiresAt', 'TIMESTAMPTZ');
+    await addColumn('EventCompletedRegistration', 'activationError', 'TEXT');
+    await index('EventCompletedRegistration_batch_idx', 'ON "EventCompletedRegistration" ("importBatchId")');
     await index('EventCompletedRegistration_account_idx', 'ON "EventCompletedRegistration" ("accountId")');
+
+    // v4.1267 — La cuenta del participante y `submissionKey`.
     // `submissionKey` la genera el navegador una vez por formulario: un
     // segundo envío con la misma clave (doble clic, recarga, red que reintenta)
     // devuelve el registro que ya existe en vez de crear otro. Único por

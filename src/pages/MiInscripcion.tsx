@@ -35,8 +35,8 @@ import { useLang } from '../contexts/LanguageContext';
 import { activeLocale } from '../lib/locale';
 import {
     AlertCircle, ArrowLeft, ArrowRight, CalendarDays, CheckCircle2, Clock, CreditCard,
-    Circle, ExternalLink, FileText, History, KeyRound, LayoutDashboard, Link2, Loader2, LogOut, Mail, MapPin,
-    Paperclip, QrCode, ShieldCheck, Ticket, Upload, Users, Wallet,
+    Circle, Download, Edit3, ExternalLink, FileText, History, KeyRound, LayoutDashboard, Link2, Loader2, LogOut, Mail, MapPin,
+    Paperclip, QrCode, Save, ShieldCheck, Ticket, Upload, Users, Wallet, X,
 } from 'lucide-react';
 import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
 import { openLoginModal } from '../lib/loginModal';
@@ -79,6 +79,8 @@ interface PaymentEntry {
 
 interface RegistrationView {
     id: string;
+    isCompleted?: boolean;
+    registrationSource?: string;
     eventId: string;
     event: { id: string; title: string; slug: string | null; startDate: string | null; location: string | null } | null;
     publicRef: string;
@@ -90,6 +92,25 @@ interface RegistrationView {
     categoryKey: string;
     categoryLabel: string;
     firstName: string; lastName: string; email: string; phone: string | null;
+    documentType?: string | null;
+    documentNumber?: string | null;
+    district?: string | null;
+    clubName?: string | null;
+    membershipType?: string | null;
+    membershipLabel?: string | null;
+    clubRole?: string | null;
+    clubRoleLabel?: string | null;
+    guestType?: string | null;
+    guestTypeLabel?: string | null;
+    eps?: string | null;
+    foodAllergy?: string | null;
+    emergencyName?: string | null;
+    emergencyPhone?: string | null;
+    hasReceipt?: boolean;
+    receiptName?: string | null;
+    comments?: string | null;
+    canEditParticipantFields?: boolean;
+    editableFields?: string[];
     answers: Record<string, any>;
     baseCurrency: string; baseAmount: number | null;
     chargeCurrency: string; chargeAmount: number | null;
@@ -212,6 +233,7 @@ const MiInscripcion = () => {
     const resetToken = useMemo(() => new URLSearchParams(window.location.search).get('reset'), []);
     const verifyToken = useMemo(() => new URLSearchParams(window.location.search).get('verificar'), []);
     const claimToken = useMemo(() => new URLSearchParams(window.location.search).get('vincular'), []);
+    const activateToken = useMemo(() => new URLSearchParams(window.location.search).get('activar'), []);
 
     // Salir cierra la identidad en el sitio entero, no sólo en esta pantalla:
     // el encabezado escucha ese aviso y baja el avatar en el acto (v4.693).
@@ -403,6 +425,9 @@ const MiInscripcion = () => {
 
     if (!token || !data) {
         const accept = (t: string) => { localStorage.setItem(ATTENDEE_TOKEN_KEY, t); emitSessionChange(); setToken(t); };
+        if (activateToken) {
+            return <AttendeeActivate token={activateToken} onToken={accept} />;
+        }
         return resetToken
             ? <AttendeeReset token={resetToken} onToken={accept} />
             : <AttendeeSignIn notice={notice} hadSession={Boolean(token)} />;
@@ -572,7 +597,76 @@ const MiInscripcion = () => {
 const RegistrationDetail = ({ registration, loading, onBack }: {
     registration: RegistrationView; loading: boolean; onBack: () => void;
 }) => {
-    const r = registration;
+    const [r, setR] = useState<RegistrationView>(registration);
+    useEffect(() => { setR(registration); }, [registration]);
+
+    const [editing, setEditing] = useState(false);
+    const [draft, setDraft] = useState({
+        phone: r.phone || '',
+        eps: r.eps || '',
+        foodAllergy: r.foodAllergy || '',
+        emergencyName: r.emergencyName || '',
+        emergencyPhone: r.emergencyPhone || '',
+        comments: r.comments || '',
+    });
+    const [saving, setSaving] = useState(false);
+    const [editNote, setEditNote] = useState<{ ok: boolean; text: string } | null>(null);
+    const [receiptBusy, setReceiptBusy] = useState(false);
+
+    const startEdit = () => {
+        setDraft({
+            phone: r.phone || '',
+            eps: r.eps || '',
+            foodAllergy: r.foodAllergy || '',
+            emergencyName: r.emergencyName || '',
+            emergencyPhone: r.emergencyPhone || '',
+            comments: r.comments || '',
+        });
+        setEditNote(null);
+        setEditing(true);
+    };
+
+    const saveEdit = async () => {
+        const token = localStorage.getItem(ATTENDEE_TOKEN_KEY);
+        if (!token) return;
+        setSaving(true);
+        setEditNote(null);
+        try {
+            const res = await fetch(`${API}/event-registrations/portal/registrations/${encodeURIComponent(r.id)}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify(draft),
+            });
+            const d = await res.json();
+            if (!res.ok) throw new Error(d?.error || 'No se pudieron guardar los cambios.');
+            setR(prev => ({ ...prev, ...d.registration }));
+            setEditNote({ ok: true, text: 'Tus datos de contacto y logística fueron actualizados correctamente.' });
+            setEditing(false);
+        } catch (e: any) {
+            setEditNote({ ok: false, text: e?.message || 'No se pudieron guardar los cambios.' });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const openReceipt = async () => {
+        const token = localStorage.getItem(ATTENDEE_TOKEN_KEY);
+        if (!token) return;
+        setReceiptBusy(true);
+        try {
+            const res = await fetch(`${API}/event-registrations/portal/registrations/${encodeURIComponent(r.id)}/receipt`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const d = await res.json();
+            if (!res.ok || !d.url) throw new Error(d?.error || 'No se pudo generar el enlace del comprobante.');
+            window.open(d.url, '_blank', 'noopener,noreferrer');
+        } catch (e: any) {
+            alert(e?.message || 'No se pudo descargar el comprobante.');
+        } finally {
+            setReceiptBusy(false);
+        }
+    };
+
     const code = r.registrationCode || r.publicRef;
     // El QR lleva el CÓDIGO, no una URL: en la sede puede no haber internet.
     const qr = useMemo(() => (code ? qrToSvg(code, 168) : ''), [code]);
@@ -589,6 +683,14 @@ const RegistrationDetail = ({ registration, loading, onBack }: {
                 <p className="flex items-center gap-2 text-sm text-slate-500">
                     <Loader2 size={15} className="animate-spin" /> Actualizando…
                 </p>
+            )}
+
+            {editNote && (
+                <div className={`flex items-start gap-2.5 rounded-xl border px-4 py-3 text-sm ${
+                    editNote.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-800'}`}>
+                    {editNote.ok ? <CheckCircle2 size={17} className="mt-0.5 shrink-0" /> : <AlertCircle size={17} className="mt-0.5 shrink-0" />}
+                    <span>{editNote.text}</span>
+                </div>
             )}
 
             {/* Cabecera de la inscripción */}
@@ -635,17 +737,90 @@ const RegistrationDetail = ({ registration, loading, onBack }: {
 
             {/* Datos de la inscripción */}
             <section className="rounded-2xl bg-white p-6 shadow-sm sm:p-9">
-                <h3 className="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide" style={{ color: BLUE }}>
-                    <FileText size={15} /> Tu inscripción
-                </h3>
-                <Row label="Participante" value={`${r.firstName || ''} ${r.lastName || ''}`.trim()} />
-                <Row label="Correo" value={r.email} />
-                {r.phone && <Row label="Teléfono" value={r.phone} />}
-                <Row label="Categoría" value={r.categoryLabel} />
-                <Row label="Estado del formulario" value={r.registeredAt ? 'Enviado' : 'En borrador'} />
-                <Row label="Fecha de registro" value={fmtDateTime(r.registeredAt)} />
-                <Row label="Referencia" value={r.publicRef} />
-                {r.notes && <Row label="Observaciones que registraste" value={r.notes} />}
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                    <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide" style={{ color: BLUE }}>
+                        <FileText size={15} /> Tu inscripción
+                    </h3>
+                    {(r.canEditParticipantFields || r.isCompleted) && !editing && (
+                        <button type="button" onClick={startEdit}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-50">
+                            <Edit3 size={13} /> Editar datos de contacto / logística
+                        </button>
+                    )}
+                </div>
+
+                {editing ? (
+                    <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4">
+                        <p className="mb-3 text-xs font-bold uppercase tracking-wider text-blue-900">Editar información personal autorizada</p>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-700">Teléfono</label>
+                                <input type="text" className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                                    value={draft.phone} onChange={e => setDraft(prev => ({ ...prev, phone: e.target.value }))} />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-700">EPS</label>
+                                <input type="text" className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                                    value={draft.eps} onChange={e => setDraft(prev => ({ ...prev, eps: e.target.value }))} />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-700">Alergia alimentaria</label>
+                                <input type="text" className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                                    value={draft.foodAllergy} onChange={e => setDraft(prev => ({ ...prev, foodAllergy: e.target.value }))} />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-700">Contacto de emergencia</label>
+                                <input type="text" className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                                    value={draft.emergencyName} onChange={e => setDraft(prev => ({ ...prev, emergencyName: e.target.value }))} />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-700">Teléfono de emergencia</label>
+                                <input type="text" className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                                    value={draft.emergencyPhone} onChange={e => setDraft(prev => ({ ...prev, emergencyPhone: e.target.value }))} />
+                            </div>
+                            <div className="sm:col-span-2">
+                                <label className="block text-xs font-semibold text-slate-700">Comentarios adicionales</label>
+                                <textarea rows={2} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                                    value={draft.comments} onChange={e => setDraft(prev => ({ ...prev, comments: e.target.value }))} />
+                            </div>
+                        </div>
+
+                        <div className="mt-4 flex items-center gap-2">
+                            <button type="button" onClick={saveEdit} disabled={saving}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-blue-700 disabled:opacity-50">
+                                {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Guardar cambios
+                            </button>
+                            <button type="button" onClick={() => setEditing(false)}
+                                className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+                                Cancelar
+                            </button>
+                        </div>
+                        <p className="mt-2 text-[11px] text-slate-500">
+                            Por seguridad, tu documento de identidad, correo electrónico y vinculación con el club sólo pueden ser modificados por el equipo organizador del evento.
+                        </p>
+                    </div>
+                ) : (
+                    <div>
+                        <Row label="Participante" value={`${r.firstName || ''} ${r.lastName || ''}`.trim()} />
+                        {r.documentNumber && <Row label="Documento de identidad" value={`${r.documentType || 'CC'} ${r.documentNumber}`} />}
+                        <Row label="Correo electrónico" value={r.email} />
+                        {r.phone && <Row label="Teléfono" value={r.phone} />}
+                        {r.district && <Row label="Distrito rotario" value={r.district} />}
+                        {r.clubName && <Row label="Club" value={r.clubName} />}
+                        {(r.membershipLabel || r.membershipType) && <Row label="Vínculo con el club" value={r.membershipLabel || r.membershipType} />}
+                        {(r.clubRoleLabel || r.clubRole) && <Row label="Cargo rotario" value={r.clubRoleLabel || r.clubRole} />}
+                        {(r.guestTypeLabel || r.guestType) && <Row label="Tipo de invitado" value={r.guestTypeLabel || r.guestType} />}
+                        {r.eps && <Row label="EPS" value={r.eps} />}
+                        {r.foodAllergy && <Row label="Alergia alimentaria" value={r.foodAllergy} />}
+                        {r.emergencyName && <Row label="Contacto de emergencia" value={r.emergencyName} />}
+                        {r.emergencyPhone && <Row label="Teléfono de emergencia" value={r.emergencyPhone} />}
+                        <Row label="Categoría" value={r.categoryLabel} />
+                        <Row label="Estado del formulario" value={r.registeredAt ? 'Enviado' : 'En borrador'} />
+                        <Row label="Fecha de registro" value={fmtDateTime(r.registeredAt)} />
+                        <Row label="Referencia" value={r.publicRef} />
+                        {(r.comments || r.notes) && <Row label="Observaciones" value={r.comments || r.notes} />}
+                    </div>
+                )}
             </section>
 
             {/* Pago */}
@@ -671,11 +846,21 @@ const RegistrationDetail = ({ registration, loading, onBack }: {
                     <Row label="Reembolsado" value={`${fmtDateTime(r.refundedAt)}${
                         r.refundedAmount ? ` · ${money(r.refundedAmount, r.chargeCurrency)}` : ''}`} />
                 )}
-                {r.receiptUrl && (
-                    <a href={r.receiptUrl} target="_blank" rel="noreferrer"
-                        className="mt-4 inline-flex items-center gap-1.5 text-sm font-bold hover:underline" style={{ color: BLUE }}>
-                        Ver el comprobante <ExternalLink size={14} />
-                    </a>
+                {(r.hasReceipt || r.receiptUrl) && (
+                    <div className="mt-4">
+                        {r.receiptUrl ? (
+                            <a href={r.receiptUrl} target="_blank" rel="noreferrer"
+                                className="inline-flex items-center gap-1.5 text-sm font-bold hover:underline" style={{ color: BLUE }}>
+                                Ver el comprobante <ExternalLink size={14} />
+                            </a>
+                        ) : (
+                            <button type="button" onClick={openReceipt} disabled={receiptBusy}
+                                className="inline-flex items-center gap-1.5 text-sm font-bold hover:underline disabled:opacity-50" style={{ color: BLUE }}>
+                                {receiptBusy ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                                Ver / descargar comprobante adjunto
+                            </button>
+                        )}
+                    </div>
                 )}
                 {(r.payments || []).length > 0 && (
                     <div className="mt-5 space-y-2 border-t border-slate-100 pt-4">
@@ -1126,6 +1311,150 @@ const AttendeeReset = ({ token, onToken }: { token: string; onToken: (t: string)
                         className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3 text-[15px] font-bold text-white transition hover:opacity-90 disabled:opacity-60"
                         style={{ background: BLUE }}>
                         {busy ? <Loader2 size={16} className="animate-spin" /> : null} Guardar y entrar
+                    </button>
+                </div>
+            </div>
+            <Footer />
+        </div>
+    );
+};
+
+/** Activación de cuenta desde el enlace criptográfico de un solo uso. */
+const AttendeeActivate = ({ token, onToken }: { token: string; onToken: (t: string) => void }) => {
+    const [password, setPassword] = useState('');
+    const [confirm, setConfirm] = useState('');
+    const [checking, setChecking] = useState(true);
+    const [checkError, setCheckError] = useState('');
+    const [attendeeInfo, setAttendeeInfo] = useState<any>(null);
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState('');
+
+    useEffect(() => {
+        setChecking(true);
+        fetch(`${API}/event-registrations/portal/activate/check?token=${encodeURIComponent(token)}`)
+            .then(async r => {
+                const body = await r.json();
+                if (!r.ok) throw new Error(body?.error || 'Enlace no válido o expirado.');
+                return body;
+            })
+            .then(d => {
+                setAttendeeInfo(d.attendee || null);
+            })
+            .catch(e => {
+                setCheckError(e?.message || 'El enlace de activación es inválido o ha expirado.');
+            })
+            .finally(() => setChecking(false));
+    }, [token]);
+
+    const submit = async () => {
+        setError('');
+        if (password.length < 8) return setError('La contraseña debe tener al menos 8 caracteres.');
+        if (!/[A-Z]/.test(password)) return setError('La contraseña debe contener al menos una letra mayúscula.');
+        if (!/[a-z]/.test(password)) return setError('La contraseña debe contener al menos una letra minúscula.');
+        if (!/[0-9]/.test(password)) return setError('La contraseña debe contener al menos un número.');
+        if (password !== confirm) return setError('Las contraseñas no coinciden.');
+        setBusy(true);
+        try {
+            const res = await fetch(`${API}/event-registrations/portal/activate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token, password }),
+            });
+            const body = await res.json();
+            if (!res.ok) throw new Error(body?.error || 'No pudimos activar la cuenta.');
+            window.history.replaceState(null, '', window.location.pathname);
+            onToken(body.token);
+        } catch (e: any) {
+            setError(e?.message || 'No pudimos activar la cuenta.');
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    if (checking) {
+        return (
+            <div className="min-h-screen bg-rotary-concrete">
+                <Navbar />
+                <div className="flex min-h-[60vh] items-center justify-center text-slate-500">
+                    <Loader2 className="mr-2 animate-spin" size={22} style={{ color: BLUE }} /> Verificando enlace de activación…
+                </div>
+                <Footer />
+            </div>
+        );
+    }
+
+    if (checkError) {
+        return (
+            <div className="min-h-screen bg-rotary-concrete">
+                <Navbar />
+                <div className="mx-auto flex min-h-[70vh] max-w-md items-center px-4 py-12">
+                    <div className="w-full rounded-2xl bg-white p-8 text-center shadow-sm">
+                        <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-red-50 text-red-600">
+                            <AlertCircle size={24} />
+                        </div>
+                        <h1 className="text-xl font-bold text-slate-900">Enlace de activación inválido</h1>
+                        <p className="mt-2 text-sm text-slate-600">{checkError}</p>
+                        <p className="mt-3 text-xs text-slate-400">
+                            Los enlaces de activación son de un solo uso y tienen vigencia limitada. Si ya activaste tu cuenta o necesitas una nueva invitación, contacta al administrador del evento o ingresa con tu contraseña.
+                        </p>
+                        <button
+                            onClick={() => openLoginModal({ next: ATTENDEE_PATH })}
+                            className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3 text-[15px] font-bold text-white transition hover:opacity-90"
+                            style={{ background: BLUE }}>
+                            Ir a iniciar sesión <ArrowRight size={16} />
+                        </button>
+                    </div>
+                </div>
+                <Footer />
+            </div>
+        );
+    }
+
+    return (
+        <div className="min-h-screen bg-rotary-concrete">
+            <Navbar />
+            <div className="mx-auto flex min-h-[70vh] max-w-md items-center px-4 py-12">
+                <div className="w-full rounded-2xl bg-white p-8 shadow-sm">
+                    <div className="mb-5 text-center">
+                        <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full" style={{ background: `${BLUE}14` }}>
+                            <ShieldCheck size={24} style={{ color: BLUE }} />
+                        </div>
+                        <h1 className="text-xl font-bold text-slate-900">Activa tu cuenta de acceso</h1>
+                        {attendeeInfo && (
+                            <div className="mt-2 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
+                                <p className="font-semibold text-slate-800">
+                                    {[attendeeInfo.firstName, attendeeInfo.lastName].filter(Boolean).join(' ') || attendeeInfo.email}
+                                </p>
+                                <p className="text-slate-500">{attendeeInfo.email}</p>
+                                {attendeeInfo.eventTitle && (
+                                    <p className="mt-1 font-semibold text-blue-800">{attendeeInfo.eventTitle}</p>
+                                )}
+                            </div>
+                        )}
+                        <p className="mt-2.5 text-xs text-slate-500">
+                            Establece tu contraseña personal para ingresar a tu espacio de inscripción.
+                        </p>
+                    </div>
+
+                    {error && (
+                        <div className="mb-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-[13px] text-red-800">
+                            <AlertCircle size={15} className="mt-0.5 shrink-0" /> <span>{error}</span>
+                        </div>
+                    )}
+
+                    <div className="grid gap-4">
+                        <Field label="Nueva contraseña" name="new-password" type="password" revealable
+                            value={password} onChange={(e: any) => setPassword(e.target.value)}
+                            placeholder="Mínimo 8 caracteres, mayúscula, minúscula y número" />
+                        <Field label="Confirmar contraseña" name="new-password-confirm" type="password" revealable
+                            value={confirm} onChange={(e: any) => setConfirm(e.target.value)}
+                            placeholder="Repite tu contraseña" />
+                    </div>
+
+                    <button onClick={submit} disabled={busy || !password}
+                        className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3 text-[15px] font-bold text-white transition hover:opacity-90 disabled:opacity-60"
+                        style={{ background: BLUE }}>
+                        {busy ? <Loader2 size={16} className="animate-spin" /> : null} Activar cuenta y continuar
                     </button>
                 </div>
             </div>

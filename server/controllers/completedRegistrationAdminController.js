@@ -61,8 +61,35 @@ import EmailService from '../services/EmailService.js';
 import { sendCompletedConfirmation, PLATFORM_SENDER } from './completedRegistrationController.js';
 import { assertEventCapability, holdsCapability } from '../lib/eventAccess.js';
 import { attachGrant } from '../middleware/institutionalGuard.js';
+import {
+    ACCOUNT_STATUSES,
+    ACCOUNT_STATUS_KEYS,
+    accountStatusMeta,
+    ACTIVATION_STATUSES,
+    ACTIVATION_STATUS_KEYS,
+    activationStatusMeta,
+    ACTIVATION_TEMPLATE_VARIABLES,
+    DEFAULT_ACTIVATION_EMAIL_SUBJECT,
+    DEFAULT_ACTIVATION_EMAIL_BODY,
+    DEFAULT_ACTIVATION_WHATSAPP_BODY,
+    buildActivationVariables,
+    renderActivationEmail,
+    renderActivationWhatsApp,
+} from '../lib/completedAccountSpec.js';
+import {
+    enrichCompletedRowsWithAccounts,
+    filterEnrichedRowsByAccount,
+    computeEventAccountTotals,
+    preflightAccountProvisioning,
+    provisionParticipantAccounts,
+    preflightActivationInvitations,
+    sendActivationInvitations,
+    regenerateParticipantActivationToken,
+    updateParticipantAccountStatus,
+    resolveEventOrigin,
+} from '../lib/completedAccountStore.js';
 
-console.log('[completedRegistrationAdminController] v4.1312.0 cargado — tablero, fichas, validación, exportación, acciones en bloque, la notificación de confirmación, el motor de importación de inscripciones históricas, subir o reemplazar el comprobante desde la ficha (con el anterior conservado en el historial) e IMPORTARLO DESDE UNA URL EXTERNA (descarga en el servidor con guardas contra SSRF, validación por bytes, copia propia en S3, sin tocar el estado ni el pago).');
+console.log('[completedRegistrationAdminController] v4.1327.0 cargado — tablero, fichas, validación, exportación, acciones en bloque, aprovisionamiento de cuentas, invitaciones, motor de importación histórica, comprobantes URL externa y portal de participantes.');
 
 // ── Acceso ───────────────────────────────────────────────────────────
 // El mismo criterio del panel de inscripciones: el evento tiene que pertenecer
@@ -154,6 +181,15 @@ export const getConfig = async (req, res) => {
                 // panel lo pinta con su rótulo y lo ofrece en la edición.
                 guestTypes: GUEST_TYPE_OPTIONS,
                 sources: SOURCE_LABELS,
+                accountStatuses: ACCOUNT_STATUSES,
+                activationStatuses: ACTIVATION_STATUSES,
+            },
+            activationTemplates: {
+                sender: PLATFORM_SENDER,
+                defaultEmailSubject: DEFAULT_ACTIVATION_EMAIL_SUBJECT,
+                defaultEmailBody: DEFAULT_ACTIVATION_EMAIL_BODY,
+                defaultWhatsappBody: DEFAULT_ACTIVATION_WHATSAPP_BODY,
+                variables: ACTIVATION_TEMPLATE_VARIABLES,
             },
         });
     } catch (error) {
@@ -202,6 +238,7 @@ const buildFilters = (eventId, query) => {
     if (list(query.status).length) push('status = ANY(@@)', list(query.status));
     if (list(query.method).length) push('"paymentMethod" = ANY(@@)', list(query.method));
     if (list(query.clubRole).length) push('"clubRole" = ANY(@@)', list(query.clubRole));
+    if (list(query.source).length) push('"registrationSource" = ANY(@@)', list(query.source));
     if (clean(query.district, 60)) push('lower(district) = lower(@@)', clean(query.district, 60));
     if (clean(query.club, 200)) push('"clubName" ILIKE @@', `%${clean(query.club, 200)}%`);
     // v4.959 — el filtro mira la MISMA fecha que pinta la columna «Fecha»
@@ -231,13 +268,32 @@ const SORTABLE = {
     method: '"paymentMethod"', code: '"registrationCode"', district: 'district',
 };
 
+const applyAccountFilters = async (eventId, query, base) => {
+    const accFilter = clean(query?.accountStatus, 40);
+    const actFilter = clean(query?.activationStatus, 40);
+    if (!accFilter && !actFilter) return base;
+
+    const { rows: allRows } = await db.query(
+        `SELECT * FROM "EventCompletedRegistration" WHERE ${base.where}`,
+        base.values,
+    );
+    const enriched = await enrichCompletedRowsWithAccounts(eventId, allRows);
+    const matching = filterEnrichedRowsByAccount(enriched, { accountStatus: accFilter, activationStatus: actFilter });
+    const matchingIds = matching.map(r => r.id);
+    const nextValues = [...base.values, matchingIds];
+    return {
+        where: `${base.where} AND id = ANY($${nextValues.length})`,
+        values: nextValues,
+    };
+};
+
 // GET /admin/completed/list
 export const list = async (req, res) => {
     try {
         const event = await requireEvent(req, res);
         if (!event) return;
 
-        const { where, values } = buildFilters(event.id, req.query);
+        const { where, values } = await applyAccountFilters(event.id, req.query, buildFilters(event.id, req.query));
         const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 50));
         const offset = Math.max(0, Number(req.query.offset) || 0);
         const sort = SORTABLE[req.query.sort] || SORTABLE.createdAt;
@@ -251,11 +307,13 @@ export const list = async (req, res) => {
              LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
             [...values, limit, offset]);
 
+        const enriched = await enrichCompletedRowsWithAccounts(event.id, rows);
+
         res.json({
             event: { id: event.id, slug: event.slug, title: event.title },
             total: countRows[0]?.total || 0,
             limit, offset,
-            registrations: rows.map(mapCompleted),
+            registrations: enriched.map(mapCompleted),
         });
     } catch (error) {
         console.error('[completed-registrations][admin] list:', error);
@@ -283,7 +341,7 @@ export const selectAll = async (req, res) => {
         const event = await requireEvent(req, res);
         if (!event) return;
 
-        const { where, values } = buildFilters(event.id, req.query);
+        const { where, values } = await applyAccountFilters(event.id, req.query, buildFilters(event.id, req.query));
         const sort = SORTABLE[req.query.sort] || SORTABLE.createdAt;
         const dir = String(req.query.dir).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
 
@@ -324,7 +382,7 @@ export const getSummary = async (req, res) => {
         const event = await requireEvent(req, res);
         if (!event) return;
 
-        const [totals, byDistrict, byClub, byStatus] = await Promise.all([
+        const [totals, byDistrict, byClub, byStatus, accountTotals] = await Promise.all([
             db.query(
                 `SELECT COUNT(*)::int AS total,
                         COUNT(*) FILTER (WHERE status = 'submitted')::int AS submitted,
@@ -348,10 +406,21 @@ export const getSummary = async (req, res) => {
                       GROUP BY "clubName" ORDER BY total DESC LIMIT 15`, [event.id]),
             db.query(`SELECT status, COUNT(*)::int AS total FROM "EventCompletedRegistration"
                       WHERE "eventId" = $1 GROUP BY status`, [event.id]),
+            computeEventAccountTotals(event.id),
         ]);
 
         res.json({
-            totals: totals.rows[0],
+            totals: {
+                ...(totals.rows[0] || {}),
+                activeAccounts: accountTotals.active,
+                withoutAccount: accountTotals.noAccount,
+                pendingActivation: accountTotals.pendingActivation,
+                invitationsSent: accountTotals.invitationSent,
+                invitationsExpired: accountTotals.invitationExpired,
+                accountsSuspended: accountTotals.suspended,
+                needsReview: accountTotals.needsReview,
+            },
+            accountTotals,
             byDistrict: byDistrict.rows,
             byClub: byClub.rows,
             byStatus: byStatus.rows.map(r => ({ ...r, ...completedStatusMeta(r.status) })),
@@ -370,7 +439,8 @@ export const detail = async (req, res) => {
         const found = await loadDetail(req, res);
         if (!found) return;
         const { row, event } = found;
-        const registration = mapCompleted(row);
+        const [enrichedRow] = await enrichCompletedRowsWithAccounts(event.id, [row]);
+        const registration = mapCompleted(enrichedRow || row);
 
         // Los duplicados se RECONSULTAN al abrir la ficha: los guardados son
         // la foto del envío, y desde entonces pudo entrar otra inscripción.
@@ -1156,6 +1226,12 @@ const EXPORT_COLUMNS = [
     ['Comprobante', r => (r.hasReceipt ? (r.receiptName || 'Sí') : 'No')],
     ['Comentarios', r => r.comments || ''],
     ['Estado', r => completedStatusMeta(r.status).label],
+    ['Cuenta de acceso', r => r.accountStatusLabel || accountStatusMeta(r.accountStatus).label],
+    ['Activación', r => r.activationStatusLabel || activationStatusMeta(r.activationStatus).label],
+    ['Vinculado el', r => (r.accountLinkedAt ? new Date(r.accountLinkedAt).toISOString() : '')],
+    ['Última invitación enviada', r => (r.activationSentAt ? new Date(r.activationSentAt).toISOString() : '')],
+    ['Canal de activación', r => (r.activationChannel ? (r.activationChannel === 'whatsapp' ? 'WhatsApp' : 'Correo electrónico') : '')],
+    ['Activado el', r => (r.accountState?.activatedAt ? new Date(r.accountState.activatedAt).toISOString() : '')],
     ['Fuente', r => SOURCE_LABELS[r.registrationSource] || SOURCE_LABELS[COMPLETED_SOURCE]],
     ['Posible duplicado', r => (r.flags?.hasDuplicates ? 'Sí' : 'No')],
     ['Acreditado el', r => (r.checkedInAt ? new Date(r.checkedInAt).toISOString() : '')],
@@ -1163,11 +1239,12 @@ const EXPORT_COLUMNS = [
 ];
 
 const fetchForExport = async (event, query) => {
-    const { where, values } = buildFilters(event.id, query);
+    const { where, values } = await applyAccountFilters(event.id, query, buildFilters(event.id, query));
     const { rows } = await db.query(
         `SELECT * FROM "EventCompletedRegistration" WHERE ${where}
          ORDER BY "createdAt" DESC LIMIT 20000`, values);
-    return rows.map(mapCompleted);
+    const enriched = await enrichCompletedRowsWithAccounts(event.id, rows);
+    return enriched.map(mapCompleted);
 };
 
 // GET /admin/completed/export.csv
@@ -1617,6 +1694,311 @@ export const importRevert = async (req, res) => {
     }
 };
 
+// ════════════════════════════════════════════════════════════════════
+// Sistema de creación masiva de cuentas, conciliación e invitaciones
+// de activación (Correo electrónico y WhatsApp)
+// ════════════════════════════════════════════════════════════════════
+
+// POST /admin/completed/accounts/preflight
+export const accountsPreflight = async (req, res) => {
+    try {
+        const event = await requireEvent(req, res);
+        if (!event) return;
+        const ids = Array.isArray(req.body?.ids)
+            ? [...new Set(req.body.ids.map(v => clean(v, 80)).filter(Boolean))]
+            : [];
+        if (!ids.length) {
+            return res.status(400).json({ error: 'Selecciona al menos un participante.' });
+        }
+        if (ids.length > SELECT_ALL_MAX) {
+            return res.status(413).json({ error: `Máximo ${SELECT_ALL_MAX} participantes para previsualización.` });
+        }
+        const summary = await preflightAccountProvisioning({ eventId: event.id, ids });
+        res.json(summary);
+    } catch (error) {
+        console.error('[completed-accounts] preflight:', error);
+        res.status(500).json({ error: 'No se pudo evaluar la selección de cuentas', detail: error?.message });
+    }
+};
+
+// POST /admin/completed/accounts/provision
+export const accountsProvision = async (req, res) => {
+    try {
+        const scope = await bulkScopeFor(req, res);
+        if (!scope) return;
+        const { event, ids } = scope;
+        const actor = actorOf(req);
+        const result = await provisionParticipantAccounts({
+            event,
+            ids,
+            actor,
+            options: {
+                ttlHours: Number(req.body?.ttlHours) || undefined,
+                allowReviewOverride: req.body?.allowReviewOverride === true,
+            },
+        });
+        res.json(result);
+    } catch (error) {
+        console.error('[completed-accounts] provision:', error);
+        res.status(500).json({ error: 'No se pudieron aprovisionar las cuentas', detail: error?.message });
+    }
+};
+
+// POST /admin/completed/invitations/preflight
+export const invitationsPreflight = async (req, res) => {
+    try {
+        const event = await requireEvent(req, res);
+        if (!event) return;
+        const ids = Array.isArray(req.body?.ids)
+            ? [...new Set(req.body.ids.map(v => clean(v, 80)).filter(Boolean))]
+            : [];
+        if (!ids.length) {
+            return res.status(400).json({ error: 'Selecciona al menos un participante.' });
+        }
+        const channel = ['email', 'whatsapp', 'both'].includes(req.body?.channel) ? req.body.channel : 'email';
+        const includeActive = req.body?.includeActive === true;
+        const summary = await preflightActivationInvitations({
+            event,
+            ids,
+            channel,
+            includeActive,
+        });
+        res.json(summary);
+    } catch (error) {
+        console.error('[completed-invitations] preflight:', error);
+        res.status(500).json({ error: 'No se pudo evaluar el envío de invitaciones', detail: error?.message });
+    }
+};
+
+// POST /admin/completed/invitations/preview
+export const invitationPreview = async (req, res) => {
+    try {
+        const event = await requireEvent(req, res);
+        if (!event) return;
+        const edition = await ensureEdition(event);
+        const config = getCompletedConfig(edition);
+        const branding = await eventBrandingFor(event.clubId);
+        const origin = await resolveEventOrigin(event, req.headers?.origin || null);
+        const sampleRow = {
+            ...SAMPLE_REGISTRATION(config, edition),
+            district: '4281',
+            clubName: 'Bogotá Centenario',
+        };
+        const organization = {
+            name: branding?.name || event.title || 'Distrito Rotario 4281',
+            signature: `Equipo de Eventos · ${branding?.name || 'Distrito Rotario 4281'}`,
+        };
+        const variables = buildActivationVariables({
+            row: sampleRow,
+            event,
+            organization,
+            origin,
+            activationUrl: `${origin}/mi-inscripcion?activar=ejemplo-token-seguro`,
+            expiresAt: new Date(Date.now() + 72 * 3600 * 1000),
+            ttlHours: 72,
+        });
+        const emailPreview = renderActivationEmail({
+            subjectTemplate: clean(req.body?.subject, 300) || DEFAULT_ACTIVATION_EMAIL_SUBJECT,
+            bodyTemplate: clean(req.body?.body, 5000) || DEFAULT_ACTIVATION_EMAIL_BODY,
+            variables,
+        });
+        const whatsappPreview = renderActivationWhatsApp({
+            bodyTemplate: clean(req.body?.whatsappBody, 3000) || DEFAULT_ACTIVATION_WHATSAPP_BODY,
+            variables,
+        });
+        res.json({
+            from: PLATFORM_SENDER,
+            variables,
+            email: emailPreview,
+            whatsapp: whatsappPreview,
+        });
+    } catch (error) {
+        console.error('[completed-invitations] preview:', error);
+        res.status(500).json({ error: 'No se pudo generar la vista previa de activación', detail: error?.message });
+    }
+};
+
+// POST /admin/completed/invitations/send
+export const invitationsSend = async (req, res) => {
+    try {
+        const scope = await bulkScopeFor(req, res);
+        if (!scope) return;
+        const { event, ids } = scope;
+        const channel = ['email', 'whatsapp', 'both'].includes(req.body?.channel) ? req.body.channel : 'email';
+        const actor = actorOf(req);
+        const result = await sendActivationInvitations({
+            event,
+            ids,
+            channel,
+            subjectTemplate: clean(req.body?.subject, 300) || DEFAULT_ACTIVATION_EMAIL_SUBJECT,
+            bodyTemplate: clean(req.body?.body, 5000) || DEFAULT_ACTIVATION_EMAIL_BODY,
+            whatsappTemplate: clean(req.body?.whatsappBody, 3000) || DEFAULT_ACTIVATION_WHATSAPP_BODY,
+            ttlHours: Number(req.body?.ttlHours) || undefined,
+            includeActive: req.body?.includeActive === true,
+            autoProvision: req.body?.autoProvision !== false,
+            useContingencyTempPassword: req.body?.useContingencyTempPassword === true,
+            actor,
+            origin: req.headers?.origin || null,
+            budgetMs: NOTIFY_BUDGET_MS,
+        });
+        res.json(result);
+    } catch (error) {
+        console.error('[completed-invitations] send:', error);
+        res.status(500).json({ error: 'No se pudieron enviar las invitaciones', detail: error?.message });
+    }
+};
+
+// POST /admin/completed/:id/account — crear o vincular cuenta individualmente
+export const provisionSingleAccount = async (req, res) => {
+    try {
+        const found = await loadDetail(req, res);
+        if (!found) return;
+        const { row, event } = found;
+        const actor = actorOf(req);
+
+        const result = await provisionParticipantAccounts({
+            event,
+            ids: [row.id],
+            actor,
+            options: {
+                ttlHours: Number(req.body?.ttlHours) || undefined,
+                allowReviewOverride: req.body?.allowReviewOverride === true,
+                forceLinkAccountId: clean(req.body?.accountId, 80) || null,
+            },
+        });
+        const first = result.results[0];
+        if (!first || first.outcome === 'error' || first.outcome === 'invalid_email' || first.outcome === 'needs_review') {
+            return res.status(first?.outcome === 'needs_review' ? 409 : 400).json({
+                error: first?.message || 'No se pudo aprovisionar la cuenta.',
+                outcome: first?.outcome || 'error',
+            });
+        }
+
+        const refreshed = await findCompleted(row.id);
+        const [enriched] = await enrichCompletedRowsWithAccounts(event.id, [refreshed]);
+        res.json({
+            outcome: first.outcome,
+            message: first.message,
+            registration: mapCompleted(enriched),
+            history: await listHistory(row.id),
+        });
+    } catch (error) {
+        console.error('[completed-accounts] single:', error);
+        res.status(500).json({ error: 'No se pudo gestionar la cuenta del participante', detail: error?.message });
+    }
+};
+
+// PATCH /admin/completed/:id/account/status — suspender o reactivar cuenta
+export const changeAccountStatus = async (req, res) => {
+    try {
+        const found = await loadDetail(req, res);
+        if (!found) return;
+        const { row, event } = found;
+        const nextStatus = clean(req.body?.status, 30);
+        const reason = clean(req.body?.reason, 500);
+        const actor = actorOf(req);
+
+        await updateParticipantAccountStatus({
+            event,
+            row,
+            nextStatus,
+            reason,
+            actor,
+        });
+
+        const refreshed = await findCompleted(row.id);
+        const [enriched] = await enrichCompletedRowsWithAccounts(event.id, [refreshed]);
+        res.json({
+            registration: mapCompleted(enriched),
+            history: await listHistory(row.id),
+        });
+    } catch (error) {
+        console.error('[completed-accounts] changeAccountStatus:', error);
+        res.status(400).json({ error: error?.message || 'No se pudo actualizar el estado de la cuenta' });
+    }
+};
+
+// POST /admin/completed/:id/invitation/send — enviar o reenviar invitación individual
+export const sendSingleInvitation = async (req, res) => {
+    try {
+        const found = await loadDetail(req, res);
+        if (!found) return;
+        const { row, event } = found;
+        const channel = ['email', 'whatsapp', 'both'].includes(req.body?.channel) ? req.body.channel : 'email';
+        const actor = actorOf(req);
+
+        const result = await sendActivationInvitations({
+            event,
+            ids: [row.id],
+            channel,
+            subjectTemplate: clean(req.body?.subject, 300) || DEFAULT_ACTIVATION_EMAIL_SUBJECT,
+            bodyTemplate: clean(req.body?.body, 5000) || DEFAULT_ACTIVATION_EMAIL_BODY,
+            whatsappTemplate: clean(req.body?.whatsappBody, 3000) || DEFAULT_ACTIVATION_WHATSAPP_BODY,
+            ttlHours: Number(req.body?.ttlHours) || undefined,
+            includeActive: req.body?.includeActive === true,
+            autoProvision: req.body?.autoProvision !== false,
+            useContingencyTempPassword: req.body?.useContingencyTempPassword === true,
+            actor,
+            origin: req.headers?.origin || null,
+        });
+
+        const first = result.results[0];
+        if (!first || first.outcome !== 'sent') {
+            return res.status(first?.outcome === 'skipped_active' || first?.outcome === 'skipped_review' ? 409 : 502).json({
+                error: first?.message || 'No se pudo enviar la invitación de activación.',
+                outcome: first?.outcome || 'failed',
+            });
+        }
+
+        const refreshed = await findCompleted(row.id);
+        const [enriched] = await enrichCompletedRowsWithAccounts(event.id, [refreshed]);
+        res.json({
+            sent: true,
+            outcome: first.outcome,
+            channels: first.channels,
+            warning: first.warning || null,
+            registration: mapCompleted(enriched),
+            messages: await listMessages(row.id),
+            history: await listHistory(row.id),
+        });
+    } catch (error) {
+        console.error('[completed-invitations] sendSingle:', error);
+        res.status(500).json({ error: 'No se pudo enviar la invitación', detail: error?.message });
+    }
+};
+
+// POST /admin/completed/:id/invitation/regenerate — regenerar enlace de activación
+export const regenerateSingleInvitation = async (req, res) => {
+    try {
+        const found = await loadDetail(req, res);
+        if (!found) return;
+        const { row, event } = found;
+        const actor = actorOf(req);
+
+        const regen = await regenerateParticipantActivationToken({
+            event,
+            row,
+            actor,
+            ttlHours: Number(req.body?.ttlHours) || undefined,
+            origin: req.headers?.origin || null,
+        });
+
+        const refreshed = await findCompleted(row.id);
+        const [enriched] = await enrichCompletedRowsWithAccounts(event.id, [refreshed]);
+        res.json({
+            regenerated: true,
+            activationUrl: regen.activationUrl,
+            expiresAt: regen.expiresAt.toISOString(),
+            ttlHours: regen.ttlHours,
+            registration: mapCompleted(enriched),
+            history: await listHistory(row.id),
+        });
+    } catch (error) {
+        console.error('[completed-invitations] regenerateSingle:', error);
+        res.status(400).json({ error: error?.message || 'No se pudo regenerar el enlace de activación' });
+    }
+};
+
 export default {
     getConfig, saveConfig,
     list, getSummary, detail,
@@ -1628,4 +2010,8 @@ export default {
     bulkNotify,
     importInspect, importPreflight, importCommit,
     importBatches, importBatchDetail, importRevert,
+    accountsPreflight, accountsProvision,
+    invitationsPreflight, invitationPreview, invitationsSend,
+    provisionSingleAccount, changeAccountStatus,
+    sendSingleInvitation, regenerateSingleInvitation,
 };
