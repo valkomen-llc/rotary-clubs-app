@@ -18,6 +18,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { PROJECT_FAIR_FORM_PATH, PROJECT_FAIR_REGISTER_PATH } from '../../../lib/ctaLinks';
+import PostCloseEditingCard, { type PostCloseEditingConfig } from './PostCloseEditingCard';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('rotary_token')}` });
@@ -62,6 +63,8 @@ export interface FairConfig {
     formPath: string;
     edition: { number: number; ordinal: string; name: string; city: string; country: string; year: number; dates?: string; key: string };
     deadline: string;
+    /** v4.1330 — Edición de los proyectos YA inscritos después del cierre. */
+    postCloseEditing?: PostCloseEditingConfig;
     presentation: { minMinutes?: number; maxMinutes: number };
     registration: {
         priceMode?: 'COP' | 'USD'; amountCop: number; amountUsd?: number; currency: string; concept: string; maxProjectsPerClub: number;
@@ -319,7 +322,7 @@ const ConvocatoriaConfig: React.FC<{ canEdit?: boolean; onSaved?: () => void }> 
                 )}
             </div>
 
-            <fieldset disabled={!canEdit} className="space-y-5 disabled:opacity-70">
+            <fieldset disabled={!canEdit} className="min-w-0 space-y-5 disabled:opacity-70">
             <Card title="Edición del evento" icon={MapPin}>
                 <div className="grid gap-4 sm:grid-cols-2">
                     <Input label="Nombre completo del evento" value={config.edition.name} onChange={(e: ChangeEvent) => patch('edition.name', e.target.value)} />
@@ -335,7 +338,7 @@ const ConvocatoriaConfig: React.FC<{ canEdit?: boolean; onSaved?: () => void }> 
                     <Input label="Año" type="number" value={config.edition.year} onChange={(e: ChangeEvent) => patch('edition.year', Number(e.target.value))} />
                     <Input label="Fechas (opcional)" value={config.edition.dates || ''} onChange={(e: ChangeEvent) => patch('edition.dates', e.target.value)} hint="Ej: 15 y 16 de octubre de 2026" />
                     <Input label="Clave interna de la edición" value={config.edition.key} onChange={(e: ChangeEvent) => patch('edition.key', e.target.value)} hint="Se guarda en cada inscripción para diferenciar ediciones." />
-                    <Input label="Fecha límite de postulación" type="date" value={config.deadline || ''} onChange={(e: ChangeEvent) => patch('deadline', e.target.value)} />
+                    <Input label="Fecha límite de postulación" type="date" value={config.deadline || ''} onChange={(e: ChangeEvent) => patch('deadline', e.target.value)} hint="Cierra las postulaciones NUEVAS (formulario público y envío de borradores). La edición de lo ya inscrito se configura en «Edición de proyectos después del cierre»." />
                     <Input label="Minutos de presentación (mínimo)" type="number" value={config.presentation.minMinutes ?? ''} onChange={(e: ChangeEvent) => patch('presentation.minMinutes', Number(e.target.value))} hint="Déjalo en 0 si sólo quieres anunciar un tope máximo." />
                     <Input label="Minutos de presentación (máximo)" type="number" value={config.presentation.maxMinutes} onChange={(e: ChangeEvent) => patch('presentation.maxMinutes', Number(e.target.value))} hint={`Con ambos valores el formulario público muestra "${presentationPreview(config.presentation)} por proyecto".`} />
                     <Input label="Dirección pública del formulario" value={config.formPath || ''} onChange={(e: ChangeEvent) => patch('formPath', e.target.value)} hint="Ruta donde vive el formulario. Por defecto /postular-proyecto; las direcciones anteriores siguen redirigiendo aquí." />
@@ -345,6 +348,8 @@ const ConvocatoriaConfig: React.FC<{ canEdit?: boolean; onSaved?: () => void }> 
                     Convocatoria abierta (si se desactiva, la página pública muestra "Convocatoria cerrada")
                 </label>
             </Card>
+
+            <PostCloseEditingCard value={config.postCloseEditing} deadline={config.deadline} onChange={patch} />
 
             <Card title="Valor de inscripción y pago" icon={CreditCard}>
                 {/* El cobro en Stripe siempre se hace en dólares. Lo que se elige

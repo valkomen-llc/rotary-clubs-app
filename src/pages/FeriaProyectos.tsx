@@ -72,6 +72,8 @@ interface FocusArea { key: string; label: string }
 
 interface FairConfig {
     enabled: boolean;
+    /** v4.1330 — ¿Recibe postulaciones NUEVAS? Lo calcula el servidor (apagada o fecha límite vencida). */
+    applications?: { open: boolean; code: string | null; reason: string | null };
     edition: { number: number; ordinal: string; name: string; city: string; country: string; year: number; dates?: string; key: string };
     deadline: string | null;
     presentation: { minMinutes?: number; maxMinutes: number };
@@ -734,7 +736,12 @@ const FeriaProyectos = () => {
         );
     }
 
-    if (config && config.enabled === false) {
+    // v4.1330 — La fecha límite de postulación también cierra el formulario
+    // (antes sólo `enabled`). Quien ACABA de postular (`submission`) sigue
+    // viendo su confirmación aunque el reloj haya cruzado la fecha.
+    const cerradaPorFecha = !!config && config.enabled !== false && config.applications?.open === false && !submission;
+    if (config && (config.enabled === false || cerradaPorFecha)) {
+        const portal = (config as any)?.portal?.path || '/mi-proyecto';
         return (
             <div className="min-h-screen bg-rotary-concrete">
                 <Navbar />
@@ -742,10 +749,24 @@ const FeriaProyectos = () => {
                     <div className="max-w-lg rounded-2xl bg-white p-10 text-center shadow-sm">
                         <Clock className="mx-auto mb-4" size={40} style={{ color: BLUE }} />
                         <h1 className="mb-2 text-2xl font-bold text-slate-900">Convocatoria cerrada</h1>
-                        <p className="text-slate-600">
-                            En este momento no estamos recibiendo postulaciones para la {config.edition?.name}.
-                            Escríbenos si necesitas más información.
-                        </p>
+                        {cerradaPorFecha ? (
+                            <>
+                                <p className="text-slate-600">
+                                    {config.applications?.reason || 'La convocatoria para nuevas postulaciones ha finalizado.'}
+                                </p>
+                                <p className="mt-3 text-slate-600">
+                                    Si tu club ya tiene un proyecto registrado, puedes seguir completándolo y actualizándolo desde tu panel.
+                                </p>
+                                <a href={portal} className="mt-5 inline-flex items-center gap-2 rounded-xl px-6 py-3 text-[15px] font-bold text-white shadow-sm hover:opacity-90" style={{ background: BLUE }}>
+                                    Ir a Mi Proyecto
+                                </a>
+                            </>
+                        ) : (
+                            <p className="text-slate-600">
+                                En este momento no estamos recibiendo postulaciones para la {config.edition?.name}.
+                                Escríbenos si necesitas más información.
+                            </p>
+                        )}
                     </div>
                 </div>
                 <Footer />

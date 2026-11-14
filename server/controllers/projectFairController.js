@@ -53,6 +53,7 @@ import { seedDistrictClubs } from '../lib/rotaryClubs.js';
 import {
     isApplied, projectStateOf, projectStateMeta, owesRegistration, LEGACY_PAYMENT_WORKFLOW,
     paymentStatusOf, paymentStatusLabel, paymentDeadlineOf, formsRequirePayment,
+    applicationsClosedOf, FAIR_POST_CLOSE_DEFAULTS,
 } from '../lib/projectFairLifecycle.js';
 // v4.1299 — La INSCRIPCIÓN del club: uno o dos proyectos, un solo pago.
 import {
@@ -112,6 +113,12 @@ export const DEFAULT_CONFIG = {
         key: '12-valledupar',
     },
     deadline: '2026-11-09',
+    // v4.1330 — EDICIÓN DE PROYECTOS DESPUÉS DEL CIERRE. Regla aparte de la
+    // fecha límite: la fecha cierra las postulaciones NUEVAS; esto decide si
+    // lo ya inscrito se puede seguir completando. Por edición (vive en la
+    // convocatoria de cada `eventId`), así una feria no toca a otra. El
+    // criterio es `server/lib/postCloseEditPolicy.js`.
+    postCloseEditing: FAIR_POST_CLOSE_DEFAULTS,
     presentation: { ...DEFAULT_PRESENTATION },
     registration: {
         // Moneda en la que el admin fija el precio (v4.612) y en la que SE
@@ -1462,6 +1469,13 @@ export const listEditions = async () => {
 const toPublicConfig = (cfg, surcharge = null) => ({
     surcharge,
     enabled: cfg.enabled !== false,
+    // v4.1330 — ¿Recibe postulaciones NUEVAS? Lo calcula el servidor con su
+    // reloj (apagada o fecha límite vencida), para que el wizard diga
+    // «convocatoria cerrada» antes de que el club llene todo el formulario.
+    applications: (() => {
+        const v = applicationsClosedOf(cfg);
+        return { open: !v.closed, code: v.code, reason: v.reason };
+    })(),
     formPath: normalizeFormPath(cfg.formPath),
     edition: cfg.edition,
     deadline: cfg.deadline,
@@ -2290,8 +2304,18 @@ export const insertProjectRow = async ({ cfg, eventId, data, project, registrati
 export const createSubmission = async (req, res) => {
     try {
         const { eventId, cfg } = await readOpenEdition();
-        if (cfg.enabled === false) {
-            return res.status(403).json({ error: 'La convocatoria no está disponible en este momento.' });
+        // v4.1330 — La fecha límite cierra las postulaciones NUEVAS (antes
+        // sólo lo hacía `enabled`). Se comprueba en el servidor: esconder el
+        // wizard no impide llamar a este endpoint.
+        const cierre = applicationsClosedOf(cfg);
+        if (cierre.closed) {
+            return res.status(403).json({
+                error: cierre.code === 'deadline'
+                    ? `${cierre.reason} Si ya tienes un proyecto registrado, ingresa a tu panel para seguir completándolo.`
+                    : 'La convocatoria no está disponible en este momento.',
+                code: cierre.code === 'deadline' ? 'applications_closed' : 'disabled',
+                portalPath: cfg.portal?.path || '/mi-proyecto',
+            });
         }
 
         const draft = String(req.body?.mode || '').toLowerCase() === 'draft';

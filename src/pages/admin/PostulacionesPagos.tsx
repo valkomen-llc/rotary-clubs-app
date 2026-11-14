@@ -17,7 +17,7 @@ import {
     Loader2, Mail, MessageSquarePlus, RefreshCw, Search,
     TrendingUp, Wallet, X, ShieldCheck, Paperclip, Settings, FileSignature, Lock, Unlock, FileDown,
     Archive, ArchiveRestore, CheckSquare, Square, Trash2, TagIcon, Banknote, ArrowRight, History, Users, Clapperboard,
-    Layers, PlusCircle, Info, ArrowRightLeft, Pencil, Maximize2, Minimize2, FolderOpen,
+    Layers, PlusCircle, Info, ArrowRightLeft, Pencil, PenLine, Maximize2, Minimize2, FolderOpen,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -162,6 +162,11 @@ interface Submission {
     addedVia?: string | null; isExtension?: boolean;
     coveredProjects?: { id: string; publicRef: string | null; projectName: string; projectIndex: number }[];
     withdrawnByClub?: boolean;
+    // v4.1330 — Edición después del cierre: marcas que deja el servidor al
+    // guardar los formularios del club (`metadata`).
+    lastClubEditAt?: string | null;
+    postCloseEdit?: PostCloseEdit | null;
+    editRequests?: Record<string, { at: string; note?: string | null; by?: string | null }> | null;
     // v4.1311 — Sustitución: el retirado sabe por cuál se cambió; el
     // conservado, qué pago lo respalda, quién lo hizo y qué pasó con el suyo.
     substitution?: {
@@ -464,6 +469,8 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
         vista: 'all',
         // v4.1299 — Cantidad de proyectos del club (1 | 2) y posición (1 | 2).
         proyectos: 'all', indice: 'all', origen: 'all',
+        // v4.1330 — Actualizaciones posteriores al cierre (catálogo del servidor).
+        actualizaciones: 'all',
         // v4.1024 — Lo archivado no se ve por defecto: es lo que significa
         // archivar. El valor viaja al servidor, que es quien filtra.
         archivadas: 'activas',
@@ -1483,6 +1490,8 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                     ['proyectos', 'Proyectos del club', [{ value: '1', label: 'Clubes con un proyecto' }, { value: '2', label: 'Clubes con dos proyectos' }]],
                                     ['indice', 'Posición en la inscripción', [{ value: '1', label: 'Primer proyecto' }, { value: '2', label: 'Segundo proyecto (tarifa especial)' }]],
                                     ['origen', 'Origen del segundo proyecto', [{ value: 'inicial', label: 'Inscripción inicial de dos proyectos' }, { value: 'ampliacion', label: 'Ampliación posterior desde «Mi proyecto»' }]],
+                                    // v4.1330 — Qué proyectos se editaron después del cierre.
+                                    ['actualizaciones', 'Actualizaciones posteriores al cierre', (catalog?.postCloseViews || []).map((o: { key: string; label: string }) => ({ value: o.key, label: o.label }))],
                                 ].map(([key, label, options]: any) => (
                                     <label key={key} className="block">
                                         <span className="mb-1 block text-xs font-semibold text-slate-600">{label}</span>
@@ -1515,7 +1524,7 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                 ))}
                                 <div className="flex items-end gap-2">
                                     <button onClick={() => loadRows(1)} className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: BLUE }}>Aplicar</button>
-                                    <button onClick={() => { setFilters({ search: '', paymentStatus: 'all', workflowStatus: 'all', district: 'all', focusArea: 'all', priority: 'all', tagId: '', from: '', to: '', budgetMin: '', budgetMax: '', fddMin: '', fddMax: '', fapMin: '', fapMax: '', vista: 'all', proyectos: 'all', indice: 'all', origen: 'all', archivadas: 'activas' }); reloadNext(); }}
+                                    <button onClick={() => { setFilters({ search: '', paymentStatus: 'all', workflowStatus: 'all', district: 'all', focusArea: 'all', priority: 'all', tagId: '', from: '', to: '', budgetMin: '', budgetMax: '', fddMin: '', fddMax: '', fapMin: '', fapMax: '', vista: 'all', proyectos: 'all', indice: 'all', origen: 'all', actualizaciones: 'all', archivadas: 'activas' }); reloadNext(); }}
                                         className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600">Limpiar</button>
                                 </div>
                             </div>
@@ -1842,6 +1851,7 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                                             <Layers size={10} /> Proyecto {s.projectIndex || 1} de {Math.max(s.registrationProjects || 1, s.projectIndex || 1)}{(s.projectIndex || 1) > 1 ? (s.isExtension ? ' · ampliación' : ' · tarifa especial') : ''}
                                                         </span>
                                                     ) : null}
+                                                    <PostCloseBadges s={s} />
                                                     {s.tags.length > 0 && (
                                                         <div className="mt-1 flex flex-wrap gap-1">
                                                             {s.tags.map(t => <Badge key={t.id} color={t.color}>{t.label}</Badge>)}
@@ -2039,6 +2049,13 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                                 {f.reviewStatus === 'approved' && <span className="ml-1"><Badge color="emerald">Aprobado</Badge></span>}
                                                 {f.reviewStatus === 'rejected' && <span className="ml-1"><Badge color="red">Rechazado</Badge></span>}
                                                 {f.reviewStatus === 'in_review' && <span className="ml-1"><Badge color="indigo">En revisión</Badge></span>}
+                                                {f.reopenedAt && !f.lockedAt && <span className="ml-1"><Badge color="sky">Edición autorizada</Badge></span>}
+                                                {/* v4.1330 — El club pidió autorización para editar después del cierre. */}
+                                                {f.editRequest && (
+                                                    <span className="mt-1 block text-[11px] font-semibold text-violet-700" title={f.editRequest.note || undefined}>
+                                                        Pide autorización para editar · {fmtDate(f.editRequest.at)}
+                                                    </span>
+                                                )}
                                             </td>
                                             <td className="px-4 py-3 text-xs text-slate-500">
                                                 {f.lastEditedAt ? fmtDateTime(f.lastEditedAt) : '—'}
@@ -2138,6 +2155,99 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                 />
             )}
         </Frame>
+    );
+};
+
+// ════════════════════════════════════════════════════════════════════
+// v4.1330 — Edición de proyectos después del cierre
+// ════════════════════════════════════════════════════════════════════
+interface PostCloseEdit {
+    firstAt?: string; lastAt?: string; pendingReview?: boolean; sensitive?: boolean;
+    forms?: string[]; changes?: number; reviewedAt?: string | null; reviewedBy?: string | null;
+}
+const POST_CLOSE_FORM_LABEL: Record<string, string> = { master: 'Formulación', fdd_2026_2027: 'Solicitud FDD' };
+
+/** Distintivos de la fila: actualizado después del cierre, pendiente, solicitud. */
+const PostCloseBadges = ({ s }: { s: Submission }) => {
+    const pc = s.postCloseEdit;
+    const pedidos = s.editRequests ? Object.keys(s.editRequests).length : 0;
+    if (!pc && !pedidos) return null;
+    return (
+        <div className="mt-1 flex flex-wrap gap-1">
+            {pc && (pc.pendingReview
+                ? <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${pc.sensitive ? 'bg-amber-100 text-amber-800' : 'bg-sky-50 text-sky-800'}`} title={pc.lastAt ? `Último cambio: ${fmtDateTime(pc.lastAt)}` : undefined}>
+                    <PenLine size={10} /> Cambios pendientes de revisión{pc.sensitive ? ' · sensibles' : ''}
+                </span>
+                : <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600" title={pc.reviewedAt ? `Revisado el ${fmtDateTime(pc.reviewedAt)}` : undefined}>
+                    <PenLine size={10} /> Actualizado después de la postulación
+                </span>)}
+            {pedidos > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-bold text-violet-800">
+                    <Unlock size={10} /> Pide autorización para editar
+                </span>
+            )}
+        </div>
+    );
+};
+
+/** Aviso de la ficha: qué cambió el club después del cierre y qué pidió. */
+const PostCloseNotice = ({ s, canReview, onGo, onReviewed }: { s: Submission; canReview: boolean; onGo: () => void; onReviewed: () => void }) => {
+    const [busy, setBusy] = useState(false);
+    const pc = s.postCloseEdit;
+    const pedidos = s.editRequests ? Object.entries(s.editRequests) : [];
+    if (!pc && !pedidos.length) return null;
+    const markReviewed = async () => {
+        setBusy(true);
+        try {
+            const res = await fetch(withEvento(`${API}/project-fair/admin/postulaciones/${s.id}/post-close/reviewed`), { method: 'POST', headers: jsonHeaders(), body: '{}' });
+            const d = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(d?.error || 'No se pudo marcar como revisado.');
+            toast.success('Cambios marcados como revisados');
+            onReviewed();
+        } catch (e: any) {
+            toast.error(e?.message || 'No se pudo marcar como revisado.');
+        } finally {
+            setBusy(false);
+        }
+    };
+    return (
+        <div className="space-y-2">
+            {pc && (
+                <div className={`rounded-xl border px-4 py-3 text-sm ${pc.pendingReview ? 'border-amber-200 bg-amber-50 text-amber-950' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>
+                    <p className="flex items-center gap-2 font-semibold"><PenLine size={15} /> Este proyecto fue modificado después del cierre de postulaciones.</p>
+                    <p className="mt-1 text-xs">
+                        {pc.firstAt ? `Primer cambio: ${fmtDateTime(pc.firstAt)}` : ''}{pc.lastAt ? ` · Último: ${fmtDateTime(pc.lastAt)}` : ''}
+                        {pc.forms?.length ? ` · ${pc.forms.map(f => POST_CLOSE_FORM_LABEL[f] || f).join(', ')}` : ''}
+                        {pc.sensitive && pc.pendingReview ? ' · incluye datos sensibles (presupuesto, montos, club o contactos)' : ''}
+                    </p>
+                    <p className="mt-1 text-xs">
+                        {pc.pendingReview ? 'Cambios pendientes de revisión.' : `Revisado${pc.reviewedBy ? ` por ${pc.reviewedBy}` : ''}${pc.reviewedAt ? ` el ${fmtDateTime(pc.reviewedAt)}` : ''}.`}
+                        {' '}La fecha de postulación, el estado y el pago no cambian por estas ediciones.
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                        <button onClick={onGo} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                            <History size={13} /> Ver cambios en el historial
+                        </button>
+                        {canReview && pc.pendingReview && (
+                            <button onClick={markReviewed} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-800 disabled:opacity-60">
+                                {busy ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />} Marcar cambios como revisados
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
+            {pedidos.length > 0 && (
+                <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-950">
+                    <p className="flex items-center gap-2 font-semibold"><Unlock size={15} /> El club pidió autorización para editar después del cierre.</p>
+                    <ul className="mt-1 space-y-0.5 text-xs">
+                        {pedidos.map(([k, r]) => (
+                            <li key={k}><strong>{POST_CLOSE_FORM_LABEL[k] || k}</strong> · {fmtDateTime(r.at)}{r.note ? ` — «${r.note}»` : ''}</li>
+                        ))}
+                    </ul>
+                    <p className="mt-1 text-xs text-violet-900/80">Para autorizarla, usa «Reabrir edición» en la pestaña Formularios (o «Cerrar edición» para denegarla).</p>
+                </div>
+            )}
+        </div>
     );
 };
 
@@ -2500,6 +2610,7 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose: closeRaw, onChan
                         <div className="space-y-4 p-6">
                             {pane === 'datos' && (
                                 <>
+                                    <PostCloseNotice s={s} canReview={!!access.changeStatus} onGo={() => setPane('historial')} onReviewed={() => { load(); onChanged?.(); }} />
                                     {dossier && (
                                         <Section title="Resumen del proyecto">
                                             <Row label="Referencia" value={s.publicRef} mono />
@@ -2510,6 +2621,7 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose: closeRaw, onChan
                                             <Row label="Presupuesto" value={s.budgetUsd != null ? `${fmtUsd(s.budgetUsd)} USD` : undefined} />
                                             <Row label="Estado de la postulación" value={wf?.label} />
                                             <Row label="Fecha de postulación" value={fmtDateTime(dossier.submission.appliedAt || dossier.submission.createdAt)} />
+                                            <Row label="Última actualización del proyecto" value={s.lastClubEditAt ? fmtDateTime(s.lastClubEditAt) : undefined} />
                                             <Row label="Edición" value={dossier.edition.name} />
                                         </Section>
                                     )}

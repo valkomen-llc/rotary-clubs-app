@@ -33,7 +33,7 @@ import {
 } from '../lib/projectFairRegistration.js';
 // v4.1253 — Lo de arriba desde `validateSubmission`: postular desde el perfil
 // un borrador, y el comprobante del pago.
-import { isApplied, projectStateOf, owesRegistration } from '../lib/projectFairLifecycle.js';
+import { isApplied, projectStateOf, owesRegistration, applicationsClosedOf } from '../lib/projectFairLifecycle.js';
 import { completionOf } from '../lib/projectFairMasterForm.js';
 import { SHORT_SESSION_TTL } from '../middleware/auth.js';
 import { resolveForm } from '../lib/projectFormsRegistry.js';
@@ -575,7 +575,7 @@ export const getPortalData = async (req, res) => {
                     focusAreaLabel: submission.focusAreaLabel || null,
                     budgetUsd: submission.budgetUsd === null || submission.budgetUsd === undefined ? null : Number(submission.budgetUsd),
                 },
-                acceptingApplications: cfg.enabled !== false,
+                acceptingApplications: !applicationsClosedOf(cfg).closed, // v4.1330 — también la fecha límite
             },
             // El veredicto del pago llega RESUELTO: estado, frase, si se puede
             // pagar, con qué rótulo y el historial de intentos. La pantalla lo
@@ -600,6 +600,12 @@ export const getPortalData = async (req, res) => {
             // el otro el bloque de respaldo escrito a mano.
             event: await readEditionEvent(submission.eventId || null),
             deadline: cfg.deadline,
+            // v4.1330 — ¿La convocatoria recibe postulaciones NUEVAS? Es otra
+            // pregunta que «¿puedo editar lo mío?» (`edit.editWindow`).
+            applications: (() => {
+                const v = applicationsClosedOf(cfg);
+                return { open: !v.closed, code: v.code, reason: v.reason };
+            })(),
             portal: cfg.portal,
             nextStep: cfg.redirect,
             ...edit,
@@ -734,7 +740,19 @@ export const submitApplication = async (req, res) => {
         if (isApplied(submission)) return res.json({ success: true, alreadyApplied: true, application: applicationViewOf(submission) });
 
         const cfg = await readConfigForSubmission(submission.eventId || null);
-        if (cfg.enabled === false) return res.status(403).json({ error: 'La convocatoria no está recibiendo postulaciones en este momento.' });
+        // v4.1330 — Enviar un borrador ES postular: después de la fecha
+        // límite ya no se puede (antes sólo lo impedía `enabled`). El
+        // borrador se conserva; el comité puede recibirlo por vía
+        // administrativa si lo autoriza.
+        const cierre = applicationsClosedOf(cfg);
+        if (cierre.closed) {
+            return res.status(403).json({
+                error: cierre.code === 'deadline'
+                    ? `${cierre.reason} Tu borrador quedó guardado; si necesitas presentarlo, escríbele al comité organizador.`
+                    : cierre.reason,
+                code: cierre.code === 'deadline' ? 'applications_closed' : 'disabled',
+            });
+        }
 
         const { errors, data } = validateSubmission(asValidationBody(submission, draftFieldsFrom(req.body, submission)), cfg, { skipPassword: true });
         if (Object.keys(errors).length) return res.status(400).json({ error: 'Completa los campos marcados para enviar tu postulación.', fields: errors });

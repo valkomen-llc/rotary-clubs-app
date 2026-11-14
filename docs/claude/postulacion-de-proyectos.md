@@ -911,3 +911,6 @@ respuesta de cada controlador; la que se olvidara filtraba en silencio.
   sembrada no devuelve correo, documento, teléfono ni apellido a un
   `club_admin` de otro club, pero sí al administrador del sitio de la Feria.
   Con el controlador de v4.1325 falla (`club_admin.view`).
+
+
+> **v4.1330 — Edición después del cierre.** La «Fecha límite de postulación» ya no bloquea la edición de los formularios de lo ya inscrito (eso lo decide la política «Edición de proyectos después del cierre») y SÍ cierra las postulaciones nuevas en el servidor. Ver `docs/claude/edicion-de-proyectos-despues-del-cierre.md`.
