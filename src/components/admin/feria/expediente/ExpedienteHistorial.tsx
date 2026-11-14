@@ -12,6 +12,9 @@ const KIND: Record<string, { label: string; cls: string }> = {
     edit: { label: 'Edición del original', cls: 'bg-blue-50 text-blue-800' },
     translation: { label: 'Traducción', cls: 'bg-violet-50 text-violet-800' },
     translation_review: { label: 'Revisión de traducción', cls: 'bg-emerald-50 text-emerald-800' },
+    // v4.1330 — Lo que el club cambió en sus formularios, campo a campo.
+    club_edit: { label: 'Edición del club', cls: 'bg-slate-100 text-slate-700' },
+    club_edit_post_close: { label: 'Edición del club · después del cierre', cls: 'bg-amber-50 text-amber-800' },
 };
 const when = (iso: string) => new Date(iso).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' });
 const show = (v: any) => {
@@ -57,7 +60,7 @@ const ExpedienteHistorial = ({ submissionId, eventId, refreshKey }: { submission
             {!data && !error && <p className="text-sm text-slate-500"><Loader2 size={14} className="mr-1.5 inline animate-spin" /> Cargando…</p>}
             {data && (
                 <>
-                    {data.revisions.length ? <ul className="space-y-2">{data.revisions.map(r => <RevisionItem key={r.id} r={r} />)}</ul> : <p className="text-sm text-slate-500">Sin modificaciones administrativas ni traducciones todavía.</p>}
+                    {data.revisions.length ? <ul className="space-y-2">{data.revisions.map(r => <RevisionItem key={r.id} r={r} />)}</ul> : <p className="text-sm text-slate-500">Sin modificaciones del club, administrativas ni traducciones todavía.</p>}
                     {(data.translationVersions.length > 0 || data.booklets.length > 0 || data.exports.length > 0) && (
                         <div className="mt-3 grid gap-3 text-xs text-slate-600 sm:grid-cols-3">
                             <div><p className="mb-1 font-semibold text-slate-700">Traducciones aprobadas</p>{data.translationVersions.length ? data.translationVersions.map(v => <p key={v.id}>v{v.versionNumber} · {when(v.approvedAt)} · {v.approvedBy}</p>) : <p>—</p>}</div>

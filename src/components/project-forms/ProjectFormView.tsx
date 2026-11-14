@@ -22,7 +22,7 @@ import { FormField, BLUE } from './FormFields';
 import {
     FORM_STATE_META, applicantSections, fieldError, fmtDay, fmtDateTime,
     hasValue, isDistrictSection, readOnlySections, sectionProgress,
-    type Answers, type FormState, type FormTemplate,
+    type Answers, type FormState, type FormTemplate, type EditWindow,
 } from '../../lib/projectForms';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
@@ -39,6 +39,12 @@ interface Loaded {
     deadline: string | null;
     canEdit: boolean;
     reason: string | null;
+    // v4.1330 — Edición después del cierre: fase y campos que el servidor no
+    // va a aceptar (se muestran bloqueados; el servidor igual conserva lo
+    // guardado aunque llegue otra cosa).
+    editWindow?: EditWindow | null;
+    lockedFields?: string[];
+    lockedReason?: string | null;
 }
 
 interface Props {
@@ -240,10 +246,26 @@ const ProjectFormView = ({ token, formKey, onBack, onProgress }: Props) => {
                     </div>
                     <span className="text-sm font-bold text-slate-600">{pct}%</span>
                 </div>
-                {data.deadline && (
+                {data.deadline && data.editWindow?.phase !== 'post_close' && (
                     <p className="mt-2 flex items-center gap-1.5 text-[13px] text-slate-500">
                         <Clock size={13} /> Plazo para diligenciarlo: {fmtDay(data.deadline)}
                     </p>
+                )}
+                {/* v4.1330 — Después del cierre de postulaciones, lo inscrito
+                    se sigue completando y corrigiendo si la política lo permite. */}
+                {data.canEdit && data.editWindow?.phase === 'post_close' && (
+                    <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-[13px] text-sky-950">
+                        <p className="font-semibold">La convocatoria para nuevas postulaciones ha finalizado, pero puedes seguir completando y actualizando este formulario.</p>
+                        <p className="mt-0.5 text-sky-900/80">
+                            Los cambios se guardan en tu proyecto existente y quedan disponibles para revisión del comité organizador.
+                            {data.editWindow.until ? ` Puedes hacer cambios hasta el ${fmtDay(data.editWindow.until)}.` : ''}
+                        </p>
+                    </div>
+                )}
+                {data.canEdit && !!data.lockedFields?.length && data.lockedReason && (
+                    <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[13px] text-slate-700">
+                        <Lock size={15} className="mt-0.5 shrink-0 text-slate-500" /> <span>{data.lockedReason}</span>
+                    </div>
                 )}
 
                 {/* Requisitos del formato oficial */}
@@ -336,17 +358,26 @@ const ProjectFormView = ({ token, formKey, onBack, onProgress }: Props) => {
                                                 estos datos al resolver la solicitud, y no hace falta completarlos para enviarla.
                                             </p>
                                         )}
-                                        {section.fields.map(field => (
-                                            <FormField
-                                                key={field.key}
-                                                field={field}
-                                                value={answers?.[section.key]?.[field.key]}
-                                                answers={answers}
-                                                disabled={!data.canEdit}
-                                                focusAreas={data.focusAreas}
-                                                onChange={v => setValue(section.key, field.key, v)}
-                                            />
-                                        ))}
+                                        {section.fields.map(field => {
+                                            const bloqueado = !!data.lockedFields?.includes(`${section.key}.${field.key}`);
+                                            return (
+                                                <div key={field.key} className={field.width === 'half' ? '' : 'sm:col-span-2'}>
+                                                    <FormField
+                                                        field={field}
+                                                        value={answers?.[section.key]?.[field.key]}
+                                                        answers={answers}
+                                                        disabled={!data.canEdit || bloqueado}
+                                                        focusAreas={data.focusAreas}
+                                                        onChange={v => setValue(section.key, field.key, v)}
+                                                    />
+                                                    {bloqueado && data.canEdit && (
+                                                        <p className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-slate-500">
+                                                            <Lock size={11} /> Requiere autorización del comité
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </div>

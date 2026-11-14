@@ -91,6 +91,25 @@ export interface FormCard {
      */
     available?: boolean;
     hasApproval: boolean; approvalFilled: boolean;
+    /** v4.1330 — Edición después del cierre, resuelta por el servidor. Aditivo. */
+    editWindow?: EditWindow | null;
+    /** v4.1330 — La acción de la tarjeta, decidida con el mismo veredicto que acepta o rechaza el guardado. */
+    action?: { key: 'start' | 'continue' | 'edit' | 'view' | 'pending'; label: string };
+}
+
+/**
+ * v4.1330 — La ventana de edición de un formulario: antes o después del
+ * cierre de postulaciones, por qué, hasta cuándo y si el club puede pedir
+ * autorización. La decide el servidor (`postCloseEditPolicy.js`).
+ */
+export interface EditWindow {
+    phase: 'open' | 'post_close';
+    code: string | null;
+    restricted: boolean;
+    until: string | null;
+    deadline: string | null;
+    requestable: boolean;
+    requestedAt: string | null;
 }
 
 // ── Contenido de un campo ────────────────────────────────────────────

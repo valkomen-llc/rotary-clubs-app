@@ -77,6 +77,9 @@ router.get('/portal/forms', portal.portalAuth, projectForms.getForms);
 router.get('/portal/forms/:formKey', portal.portalAuth, projectForms.getForm);
 router.put('/portal/forms/:formKey', portal.portalAuth, express.json({ limit: '2mb' }), projectForms.saveForm);
 router.post('/portal/forms/:formKey/submit', portal.portalAuth, express.json({ limit: '2mb' }), projectForms.submitForm);
+// v4.1330 — Edición después del cierre: el club PIDE autorización cuando la
+// política la exige (la resuelve el comité con «Reabrir edición»).
+router.post('/portal/forms/:formKey/edit-request', portal.portalAuth, express.json(), projectForms.requestEdit);
 
 // ── Recursos del proyecto: plantilla oficial de presentación (v4.1264) ─
 // El club lista sus recursos y pide la descarga con SU sesión: la postulación
@@ -238,6 +241,8 @@ router.get('/admin/postulaciones/:id/forms/:formKey', authMiddleware, fairRead, 
 router.put('/admin/postulaciones/:id/forms/:formKey/approval', authMiddleware, fairEdit, express.json({ limit: '1mb' }), projectForms.saveApproval);
 router.post('/admin/postulaciones/:id/forms/:formKey/reopen', authMiddleware, fairEdit, express.json(), projectForms.reopenForm);
 router.post('/admin/postulaciones/:id/forms/:formKey/lock', authMiddleware, fairEdit, express.json(), projectForms.lockForm);
+// v4.1330 — El comité revisó los cambios posteriores al cierre.
+router.post('/admin/postulaciones/:id/post-close/reviewed', authMiddleware, fairEdit, express.json(), projectForms.markPostCloseReviewed);
 
 // Recursos y plantillas (v4.1264). Ver y consultar estadísticas exige acceso
 // al módulo; exportar, el permiso de exportación; subir, publicar, reemplazar

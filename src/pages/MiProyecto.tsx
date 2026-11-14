@@ -35,13 +35,13 @@ import { activeLocale } from '../lib/locale';
 import {
     AlertCircle, ArrowRight, CalendarDays, CheckCircle2, ChevronRight, Clock, ExternalLink,
     FileText, KeyRound, LayoutDashboard, Loader2, LogOut, Lock, MapPin, PenLine,
-    ShieldCheck, Trophy, Wallet, Download, Receipt, Send, Save, PlusCircle, Layers, RotateCcw, Trash2,
+    ShieldCheck, Trophy, Wallet, Download, Receipt, Send, Save, PlusCircle, Layers, RotateCcw, Trash2, Unlock,
 } from 'lucide-react';
 import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
 import { PROJECT_FAIR_PORTAL_PATH, PROJECT_FAIR_PORTAL_TOKEN_KEY } from '../lib/ctaLinks';
 import { openLoginModal } from '../lib/loginModal';
 import { forgetSession, rememberProfile, emitSessionChange, useSiteSessions } from '../lib/siteSession';
-import { FORM_STATE_META, fmtDateTime, type FormCard, type FormState } from '../lib/projectForms';
+import { FORM_STATE_META, fmtDateTime, type FormCard, type FormState, type EditWindow } from '../lib/projectForms';
 import { inputCls, BLUE } from '../components/project-forms/FormFields';
 import ProjectFormView from '../components/project-forms/ProjectFormView';
 import { PresentationTemplateCard, NextStepCard } from '../components/project-forms/ProjectResourceCards';
@@ -89,6 +89,10 @@ interface PortalData {
     nextStep: { url: string; name: string; label: string };
     canEdit: boolean;
     reason: string | null;
+    // v4.1330 — La Formulación después del cierre (fase, hasta cuándo) y si la
+    // convocatoria recibe postulaciones NUEVAS: son dos preguntas distintas.
+    editWindow?: EditWindow | null;
+    applications?: { open: boolean; code: string | null; reason: string | null };
 }
 
 interface ApplicationState {
@@ -413,6 +417,33 @@ const MiProyecto = () => {
         setProjectToken(p.token);
     }, []);
 
+    /**
+     * v4.1330 — Pedir autorización para editar un formulario después del
+     * cierre, cuando la política la exige. La resuelve el comité («Reabrir
+     * edición»); hasta entonces la tarjeta dice «Edición pendiente de
+     * autorización».
+     */
+    const requestEdit = useCallback(async (form: FormCard) => {
+        if (!activeToken) return;
+        const note = window.prompt(`Cuéntale al comité organizador qué necesitas ajustar en «${form.title}» (opcional):`, '');
+        if (note === null) return;
+        setNotice(null);
+        try {
+            const res = await fetch(`${API}/project-fair/portal/forms/${encodeURIComponent(form.key)}/edit-request`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${activeToken}` },
+                body: JSON.stringify({ note }),
+            });
+            const resp = await res.json().catch(() => ({}));
+            if (res.status === 401) { logout(); return; }
+            if (!res.ok) throw new Error(resp?.error || 'No pudimos enviar tu solicitud.');
+            setNotice({ kind: 'ok', text: 'Enviamos tu solicitud al comité organizador. Te avisaremos cuando puedas editar el formulario.' });
+            loadPortal(activeToken, true);
+        } catch (e: any) {
+            setNotice({ kind: 'error', text: e?.message || 'No pudimos enviar tu solicitud.' });
+        }
+    }, [activeToken, logout, loadPortal]);
+
     /** Acciones sobre la inscripción (agregar, quitar, restaurar el segundo proyecto). */
     const registrationAction = useCallback(async (path: string, body: any, okText: string) => {
         if (!activeToken) return false;
@@ -693,7 +724,7 @@ const MiProyecto = () => {
                             </div>
                             <div className="rounded-xl border border-slate-200 bg-white p-4">
                                 <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                                    <Clock size={13} /> Plazo
+                                    <Clock size={13} /> Plazo de postulación
                                 </p>
                                 <p className="mt-1 text-lg font-bold text-slate-800">{data.deadline ? fmtDate(data.deadline) : 'Sin fecha límite'}</p>
                                 {/* La fecha sola obliga a hacer la cuenta mental, y una ya
@@ -703,6 +734,16 @@ const MiProyecto = () => {
                                 {(() => {
                                     const aviso = deadlineNotice(data.deadline);
                                     if (!aviso) return <p className="text-xs text-slate-500">Tu club puede enviar cuando esté listo.</p>;
+                                    // v4.1330 — Vencido el plazo de POSTULACIÓN, lo
+                                    // inscrito se sigue editando si la política lo permite:
+                                    // decir «venció» en rojo, sin más, se leía como bloqueo.
+                                    if (aviso.over && data.canEdit && data.editWindow?.phase === 'post_close') {
+                                        return (
+                                            <p className="text-xs font-semibold text-sky-700">
+                                                Postulaciones cerradas · puedes seguir editando{data.editWindow.until ? ` hasta el ${fmtDay(data.editWindow.until)}` : ''}
+                                            </p>
+                                        );
+                                    }
                                     return (
                                         <p className={`text-xs font-semibold ${aviso.over ? 'text-red-600' : aviso.urgent ? 'text-amber-600' : 'text-slate-500'}`}>
                                             {aviso.text}
@@ -753,6 +794,13 @@ const MiProyecto = () => {
                                 <Lock size={17} className="mt-0.5 shrink-0" /> <span>{data.reason}</span>
                             </div>
                         ) : null}
+                        {/* v4.1330 — La convocatoria cerró para postulaciones
+                            NUEVAS, pero lo ya inscrito se sigue trabajando. El
+                            aviso de antes («El plazo de postulación cerró…»)
+                            se leía como un bloqueo total. */}
+                        {data.canEdit && data.editWindow?.phase === 'post_close' ? (
+                            <PostCloseNotice until={data.editWindow.until} />
+                        ) : null}
 
                         {/* Formularios y recursos del proyecto.
                             v4.1264 — Una sola cuadrícula de dos columnas: arriba
@@ -774,7 +822,7 @@ const MiProyecto = () => {
                             )}
 
                             <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                                {forms.map(form => <FormCardTile key={form.key} form={form} onOpen={() => openFormView(form.key)} />)}
+                                {forms.map(form => <FormCardTile key={form.key} form={form} onOpen={() => openFormView(form.key)} onRequest={() => requestEdit(form)} />)}
                                 {/* La descarga no depende del pago ni de los
                                     formularios: es un recurso de apoyo. */}
                                 <PresentationTemplateCard key={`tpl-${data.submission.id}`} token={tokenActivo} onSessionExpired={logout} />
@@ -1481,7 +1529,32 @@ const EventStrip = ({ event, edition }: { event: PortalData['event']; edition: P
     );
 };
 
-const FormCardTile = ({ form, onOpen }: { form: FormCard; onOpen: () => void }) => {
+/**
+ * v4.1330 — La convocatoria cerró para postulaciones NUEVAS, pero el club
+ * sigue completando y corrigiendo su proyecto. Reemplaza al aviso amarillo
+ * con candado, que se leía como un bloqueo total.
+ */
+const fmtDay = (iso?: string | null) => {
+    if (!iso) return '';
+    const d = new Date(`${iso}T12:00:00`);
+    return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' });
+};
+const PostCloseNotice = ({ until }: { until: string | null }) => (
+    <div className="mb-6 flex items-start gap-3 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3.5 text-sm text-sky-950">
+        <PenLine size={17} className="mt-0.5 shrink-0 text-sky-700" />
+        <div>
+            <p className="font-semibold">
+                La convocatoria para nuevas postulaciones ha finalizado. Sin embargo, puedes continuar completando y actualizando la información de tu proyecto registrado.
+            </p>
+            <p className="mt-1 text-sky-900/80">
+                Los cambios se guardarán en tu proyecto existente y estarán disponibles para revisión por el comité organizador.
+                {until ? ` Puedes hacer cambios hasta el ${fmtDay(until)}.` : ''}
+            </p>
+        </div>
+    </div>
+);
+
+const FormCardTile = ({ form, onOpen, onRequest }: { form: FormCard; onOpen: () => void; onRequest?: () => void }) => {
     const meta = FORM_STATE_META[form.state] || FORM_STATE_META.not_started;
     const done = ['submitted', 'in_review', 'approved'].includes(form.state);
     // ADITIVO: ausente —un servidor anterior a v4.979— se comporta como antes.
@@ -1489,14 +1562,21 @@ const FormCardTile = ({ form, onOpen }: { form: FormCard; onOpen: () => void }) 
     // abrir todavía y un botón que no lleva a ninguna parte es peor que
     // ninguno (v4.650). El motivo sigue abajo, con su candado.
     const abrible = form.available !== false;
+    // v4.1330 — Después del cierre, si la política pide autorización, la
+    // tarjeta ofrece DOS acciones (ver y pedir autorización). Dos botones no
+    // pueden ir dentro de otro botón, así que en ese caso el marco es un `div`.
+    const pedible = abrible && !form.canEdit && !!form.editWindow?.requestable && !form.editWindow?.requestedAt && !!onRequest;
+    const pendiente = !form.canEdit && !!form.editWindow?.requestedAt;
+    const etiqueta = form.action?.label
+        || (form.canEdit ? ACTION_LABEL[form.state] : 'Ver formulario');
 
     // Sin acción no es un `button`: un control desactivado que igual se puede
     // enfocar con el tabulador anuncia algo que no va a pasar.
-    const Marco: any = abrible ? 'button' : 'div';
+    const Marco: any = abrible && !pedible ? 'button' : 'div';
 
     return (
         <Marco
-            {...(abrible ? { onClick: onOpen } : { 'aria-disabled': true })}
+            {...(abrible && !pedible ? { onClick: onOpen } : (abrible ? {} : { 'aria-disabled': true }))}
             className={`group flex h-full flex-col rounded-2xl border p-5 text-left shadow-sm transition ${
                 abrible
                     ? 'border-slate-200 bg-white hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md'
@@ -1538,10 +1618,19 @@ const FormCardTile = ({ form, onOpen }: { form: FormCard; onOpen: () => void }) 
                 </p>
             )}
 
-            {abrible ? (
-                <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-bold group-hover:gap-2.5" style={{ color: BLUE }}>
-                    {form.canEdit ? <PenLine size={14} /> : <FileText size={14} />}
-                    {form.canEdit ? ACTION_LABEL[form.state] : 'Ver formulario'}
+            {pedible ? (
+                <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2">
+                    <button type="button" onClick={onOpen} className="inline-flex items-center gap-1.5 text-sm font-bold hover:gap-2.5" style={{ color: BLUE }}>
+                        <FileText size={14} /> {etiqueta} <ChevronRight size={15} className="transition-all" />
+                    </button>
+                    <button type="button" onClick={onRequest} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-[13px] font-semibold text-slate-700 hover:bg-slate-50">
+                        <Unlock size={13} /> Solicitar autorización para editar
+                    </button>
+                </div>
+            ) : abrible ? (
+                <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-bold group-hover:gap-2.5" style={{ color: pendiente ? '#B45309' : BLUE }}>
+                    {form.canEdit ? <PenLine size={14} /> : pendiente ? <Clock size={14} /> : <FileText size={14} />}
+                    {etiqueta}
                     <ChevronRight size={15} className="transition-all" />
                 </span>
             ) : (

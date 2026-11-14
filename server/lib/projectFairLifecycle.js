@@ -28,6 +28,9 @@
 // La única regla de «¿está pagado?» del módulo. Importarla —y no escribir
 // `status === 'paid'` otra vez— es lo que impide dos criterios del cobro.
 import { hasConfirmedPayment } from './projectFairPayment.js';
+// v4.1330 — La edición después del cierre: criterio GENÉRICO de la plataforma.
+// Acá sólo vive lo propio de la Feria (sus estados y sus campos sensibles).
+import { normalizePostClosePolicy, postCloseVerdict, isPastDeadline, formatDateEs } from './postCloseEditPolicy.js';
 
 /**
  * Estados del PROYECTO. Catálogo cerrado. `applied` dice si la postulación ya
@@ -233,4 +236,109 @@ export const reminderVerdict = (row, sent = [], { now = Date.now(), cfg = null, 
         return { ok: false, code: 'too_soon', reason: `Recibió un recordatorio hace menos de ${gap} día${gap === 1 ? '' : 's'}.` };
     }
     return { ok: true, code: null, reason: null };
+};
+
+// ════════════════════════════════════════════════════════════════════
+// v4.1330 — CREAR y EDITAR son dos reglas distintas
+// ════════════════════════════════════════════════════════════════════
+
+/**
+ * ¿Recibe la convocatoria postulaciones NUEVAS? Cierra si el comité la apagó
+ * (`enabled: false`) o si pasó la fecha límite de postulación. Hasta v4.1329
+ * la fecha NO cerraba la creación —sólo la edición de los formularios—, que
+ * es justo al revés de la regla del negocio.
+ *
+ * Lo usan el wizard público (`createSubmission`), el envío de un borrador
+ * desde el perfil (`submitApplication`) y la configuración pública, para que
+ * la pantalla diga «convocatoria cerrada» ANTES de que el club llene el
+ * formulario entero. Las vías administrativas (importación, sustitución) no
+ * pasan por acá: son las excepciones autorizadas.
+ */
+export const applicationsClosedOf = (cfg, now = Date.now()) => {
+    if (cfg?.enabled === false) {
+        return { closed: true, code: 'disabled', reason: 'La convocatoria no está recibiendo postulaciones en este momento.' };
+    }
+    const deadline = /^\d{4}-\d{2}-\d{2}$/.test(String(cfg?.deadline || '').trim()) ? String(cfg.deadline).trim() : null;
+    if (deadline && isPastDeadline(deadline, now)) {
+        return { closed: true, code: 'deadline', deadline, reason: `La convocatoria para nuevas postulaciones finalizó el ${formatDateEs(deadline)}.` };
+    }
+    return { closed: false, code: null, reason: null };
+};
+
+/**
+ * La política de fábrica de la Feria para la edición después del cierre.
+ * Decisión del cliente (v4.1330): ACTIVADA, sin fecha adicional, para todos
+ * los formularios del proyecto, con alcance «todos los campos autorizados».
+ *
+ * Los ESTADOS son los de `PROJECT_STATES`. «Archivado» no es un estado (es
+ * `archivedAt`) y lo resuelve el criterio aparte: no se edita salvo
+ * autorización.
+ *
+ * Los campos SENSIBLES se declaran por ruta y no con `sensitive: true` en las
+ * plantillas a propósito: la copia de la plantilla guardada en la
+ * convocatoria reemplaza los arrays enteros (la trampa de v4.788), así que una
+ * marca escrita en el archivo podría no llegar nunca a producción.
+ */
+export const FAIR_POST_CLOSE_DEFAULTS = {
+    enabled: true,
+    validity: 'open',
+    until: null,
+    forms: [],
+    states: {
+        draft: 'edit',
+        formulating: 'edit',
+        received: 'edit',
+        needs_changes: 'edit',
+        in_review: 'restricted',
+        approved: 'authorization',
+        rejected: 'authorization',
+        withdrawn: 'authorization',
+        sent_to_grants: 'authorization',
+        closed: 'locked',
+    },
+    unknownState: 'authorization',
+    scope: 'all',
+    selectedFields: {},
+    sensitiveFields: {
+        master: [
+            'identificacion.clubName', 'identificacion.district',
+            'presupuesto.*', 'contacto.*',
+        ],
+        fdd_2026_2027: [
+            'club.*', 'presidente.*', 'lfri.*', 'presupuesto.*', 'aportes.*',
+            'fdd.*', 'declaraciones.*', 'aprobacion.*',
+        ],
+    },
+    lockSensitive: 'restricted',
+};
+
+/** La política de UNA edición, saneada sobre la de fábrica. */
+export const fairPostClosePolicyOf = (cfg) => normalizePostClosePolicy(cfg?.postCloseEditing, FAIR_POST_CLOSE_DEFAULTS);
+
+/**
+ * El veredicto de edición posterior al cierre para UN formulario de UNA
+ * postulación. `record` es la fila del formulario: su `reopenedAt` es la
+ * autorización individual del comité («Reabrir edición»).
+ */
+export const fairFormEditVerdict = (row, cfg, formKey, record = null, { now = Date.now() } = {}) => {
+    const state = projectStateOf(row);
+    return postCloseVerdict({
+        deadline: cfg?.deadline || null,
+        policy: fairPostClosePolicyOf(cfg),
+        now,
+        formKey,
+        state,
+        archived: !!row?.archivedAt,
+        authorized: !!record?.reopenedAt,
+        labels: {
+            state: `el proyecto en estado «${projectStateMeta(state).label}»`,
+            contact: 'Si necesitas hacer un ajuste, escríbele al comité organizador.',
+        },
+    });
+};
+
+/** ¿El club ya pidió autorización para editar este formulario? */
+export const editRequestOf = (row, formKey) => {
+    const r = row?.metadata?.editRequests?.[formKey];
+    return r && typeof r === 'object' && r.at ? r : null;
 };

@@ -79,3 +79,6 @@ Pruebas: `npm run test:project-form` (31 casos, sin base ni red).
   postulación que sólo había llenado un concepto ya retirado sigue contando.
   Comprobarlo al retirar un campo de otro tipo, donde la regla puede no valer.
 - Al retirar otra fila: agregarla a `RETIRED_BUDGET_ROWS`, no borrarla y ya.
+
+
+> **v4.1330 — Edición después del cierre.** La «Fecha límite de postulación» ya no bloquea la edición de los formularios de lo ya inscrito (eso lo decide la política «Edición de proyectos después del cierre») y SÍ cierra las postulaciones nuevas en el servidor. Ver `docs/claude/edicion-de-proyectos-despues-del-cierre.md`.

@@ -333,7 +333,7 @@ const cuerpoDe = (nombre) => {
 };
 for (const manejador of ['saveForm', 'submitForm']) {
     const cuerpo = cuerpoDe(manejador);
-    ok(`${manejador} existe y consulta el veredicto`, /editability\(submission, record, cfg, account\)/.test(cuerpo));
+    ok(`${manejador} existe y consulta el veredicto`, /editability\(submission, record, cfg, account(, form\.key)?\)/.test(cuerpo));
     ok(`${manejador} RECHAZA cuando no se puede editar`,
         /if \(!edit\.canEdit\) return res\.status\(403\)/.test(cuerpo));
 }
@@ -374,8 +374,8 @@ ok('el botón se apaga mientras se pide la sesión', /disabled=\{paying\}/.test(
 // La tarjeta sin `available` NO navega, y la ausencia del campo —un servidor
 // anterior— se comporta como antes (regla aditiva).
 ok('la tarjeta deja de ser un enlace sin pago', /const abrible = form\.available !== false;/.test(pantalla));
-ok('y sólo es un botón cuando se puede abrir', /abrible \? 'button' : 'div'/.test(pantalla));
-ok('el clic se cablea sólo si es abrible', /abrible \? \{ onClick: onOpen \}/.test(pantalla));
+ok('y sólo es un botón cuando se puede abrir', /abrible(?: && !pedible)? \? 'button' : 'div'/.test(pantalla));
+ok('el clic se cablea sólo si es abrible', /abrible(?: && !pedible)? \? \{ onClick: onOpen \}/.test(pantalla));
 ok('y se dice qué lo habilita', /Se habilita con el pago/.test(pantalla));
 
 // Entrar por la dirección directa da el candado, no un error rojo: pintar un

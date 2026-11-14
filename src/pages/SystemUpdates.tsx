@@ -34,13 +34,30 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1329.0 | 2026-11-13 (Agentes IA: Dirección IA — Director de Inteligencia y Operaciones Rotarias)
-// Cache bust: 2026-11-13
+// UI V4.1330.0 | 2026-11-14 (Feria de Proyectos: edición de proyectos después del cierre de postulaciones)
+// Cache bust: 2026-11-14
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1330.0',
+        title: 'Feria de Proyectos: los proyectos inscritos se siguen editando después del cierre ✍️',
+        description: 'La fecha límite de postulación y el permiso para editar una postulación existente ahora son dos reglas distintas. La fecha cierra las postulaciones NUEVAS (el formulario público y el envío de borradores, también en el servidor); los clubes que ya tienen un proyecto registrado pueden seguir completando y corrigiendo su Formulación y su Solicitud de Aportes del FDD desde «Mi Proyecto», según la nueva sección «Edición de proyectos después del cierre» de la Convocatoria. Cada cambio queda en el historial campo a campo, el proyecto se marca «Cambios pendientes de revisión» y nunca cambian el estado, la fecha de postulación ni el pago.',
+        date: new Date().toISOString(),
+        tags: ['feria-de-proyectos', 'mi-proyecto', 'formularios', 'convocatoria', 'trazabilidad', 'permisos'],
+        type: 'feature',
+        impact: 'Alta: desbloquea a los clubes con formularios a medias (53 %, 21 %) sin reabrir la convocatoria ni permitir postulaciones nuevas.',
+        changes: [
+            { type: 'fixed', text: 'La «Fecha límite de postulación» bloqueaba la edición de lo ya inscrito y no cerraba la creación de postulaciones nuevas: ahora es al revés, como manda la regla del negocio.' },
+            { type: 'added', text: 'Convocatoria → «Edición de proyectos después del cierre»: activar/desactivar, vigencia (sin fecha adicional, hasta una fecha o sólo con autorización individual), formularios editables, regla por estado del proyecto, alcance (todos, sólo pendientes, campos seleccionados) y campos sensibles.' },
+            { type: 'added', text: '«Mi Proyecto»: aviso contextual en lugar del candado, tarjetas con «Continuar formulario», «Ver y editar formulario», «Ver formulario» o «Edición pendiente de autorización», y «Solicitar autorización para editar» cuando la política la exige.' },
+            { type: 'added', text: 'Campos sensibles (club, distrito, presupuesto, montos, contactos, firmas) bloqueados en el servidor según el estado; el formulario los muestra deshabilitados y explica por qué.' },
+            { type: 'added', text: 'Historial campo a campo de las ediciones del club en el Expediente, con correos y teléfonos enmascarados; filtro «Actualizaciones posteriores al cierre», aviso en la ficha, «Marcar cambios como revisados» y solicitudes de autorización visibles en Formularios.' },
+            { type: 'changed', text: '«Reabrir edición» ya no devuelve a borrador un formulario enviado, y resuelve la solicitud del club.' },
+        ],
+    },
     {
         version: '4.1329.0',
         title: 'Agentes IA: Dirección IA — Director de Inteligencia y Operaciones Rotarias 🧭🤖',

@@ -78,7 +78,7 @@ import {
 console.log('[projectFairAdminController] v4.1326.0 cargado — Sin perfil en la Feria no se ve nada: el rol viewer pierde view y withAccess responde 403 NO_FAIR_PROFILE (antes un club_admin de otro club leía correo, teléfono y documento de cada responsable).');
 console.log('[projectFairAdminController] v4.1325.0 cargado — Sólo el sitio de la Feria administra el módulo: el grant RBAC de project_fair.* cuenta sólo si es del sitio de la Feria (un club_admin de otro club ya no resuelve como admin); las listas Finanzas/Revisores/Traductores vuelven a aplicar.');
 console.log('[projectFairAdminController] v4.1324.0 cargado — Expediente integral del proyecto: lectura completa, edición auditada campo a campo, traducción al inglés con revisión humana y versiones, fichas PDF (español, inglés, bilingüe), libretas y perfil «Traductores». No toca estados ni pagos.');
-console.log('[projectFairAdminController] v4.1313.0 cargado — Editar el valor de la inscripción de un proyecto desde su ficha (250.000 → 100.000 u otro): línea + metadata.amountOverride que respetan el cobro, el desglose y la confirmación manual; motivo obligatorio, historial antes/después, cobro abierto expirado; no toca lo recibido ni Stripe.');
+console.log('[projectFairAdminController] v4.1330.0 cargado — Edición de proyectos después del cierre: filtro «Actualizaciones posteriores al cierre», marca de revisión y solicitudes de autorización en el listado. Antes (v4.1313): Editar el valor de la inscripción de un proyecto desde su ficha (250.000 → 100.000 u otro): línea + metadata.amountOverride que respetan el cobro, el desglose y la confirmación manual; motivo obligatorio, historial antes/después, cobro abierto expirado; no toca lo recibido ni Stripe.');
 console.log('[projectFairAdminController] v4.1311.0 cargado — Sustituir una postulación por otra del mismo club con su pago: verificación contra la base, Stripe y la Bóveda; aplicación en una transacción con huella, auditoría antes/después e idempotencia; el pago queda en su ancla (coveredBy).');
 console.log('[projectFairAdminController] v4.1308.0 cargado — Confirmación manual de pagos: comprobante adjunto (S3 privado, validado por sus bytes), el mismo pago puede cubrir la inscripción completa de dos proyectos, y cada fila confirmada deja su línea escrita para sumar al recaudo.');
 console.log('[projectFairAdminController] v4.1301.0 cargado — La ficha resume la inscripción (modalidad, origen del segundo proyecto, pago original y complementario, total y saldo); indicadores y filtro de ampliaciones posteriores.');
@@ -356,6 +356,11 @@ const mapRow = (row, access) => {
             ? row.metadata.payment.coveredProjects.filter(p => p.id !== row.id).map(p => ({ id: p.id, publicRef: p.publicRef || null, projectName: p.projectName, projectIndex: p.projectIndex }))
             : [],
         withdrawnByClub: !!row.metadata?.withdrawnByClub,
+        // v4.1330 — Edición después del cierre: si el club cambió algo, si
+        // está pendiente de revisión y qué autorizaciones pidió.
+        lastClubEditAt: row.metadata?.lastClubEditAt || null,
+        postCloseEdit: row.metadata?.postCloseEdit || null,
+        editRequests: row.metadata?.editRequests && Object.keys(row.metadata.editRequests).length ? row.metadata.editRequests : null,
         // v4.1311 — Sustitución: el proyecto retirado sabe por cuál se cambió, y
         // el conservado, de quién es el pago que lo respalda (que puede no ser
         // su responsable).
@@ -478,6 +483,9 @@ const buildFilters = (query) => {
                      WHERE COALESCE(h."registrationId", h.id) = COALESCE("ProjectFairSubmission"."registrationId", "ProjectFairSubmission".id)
                        AND h."archivedAt" IS NULL AND COALESCE(h."workflowStatus",'received') <> 'withdrawn') ${cmp}`);
     }
+    // v4.1330 — Actualizaciones posteriores al cierre (catálogo cerrado).
+    const actualizaciones = POST_CLOSE_FILTERS[clean(query.actualizaciones, 30)];
+    if (actualizaciones) where.push(actualizaciones);
     const indice = clean(query.indice, 4);
     if (indice === '1') where.push(SQL_FIRST_PROJECT);
     else if (indice === '2') where.push(SQL_SECOND_PROJECT);
@@ -529,6 +537,35 @@ export const VIEW_FILTERS = {
     // pagarla. Es la lista de a quién conviene escribirle primero.
     sin_intento_de_pago: `${SQL_OWES} AND NOT EXISTS (SELECT 1 FROM "ProjectFairPaymentAttempt" a WHERE a."submissionId" = "ProjectFairSubmission".id)`,
 };
+/**
+ * v4.1330 — «Actualizaciones posteriores al cierre». Leen las marcas que deja
+ * `trackClubChanges` (formularios del proyecto) en `metadata`: no hay columna
+ * nueva ni otra tabla que mantener al día.
+ */
+const SUB = '"ProjectFairSubmission"';
+export const POST_CLOSE_FILTERS = {
+    con: `(${SUB}.metadata->'postCloseEdit') IS NOT NULL`,
+    sin: `(${SUB}.metadata->'postCloseEdit') IS NULL`,
+    pendientes: `${SUB}.metadata->'postCloseEdit'->>'pendingReview' = 'true'`,
+    sensibles: `${SUB}.metadata->'postCloseEdit'->>'pendingReview' = 'true' AND ${SUB}.metadata->'postCloseEdit'->>'sensitive' = 'true'`,
+    solicitudes: `COALESCE(${SUB}.metadata->'editRequests', '{}'::jsonb) <> '{}'::jsonb`,
+    // Formulación sin terminar, o algún otro formulario del proyecto sin
+    // terminar o sin empezar.
+    incompletos: `(NOT EXISTS (SELECT 1 FROM "ProjectFairMasterForm" m WHERE m."submissionId" = ${SUB}.id AND m."completionPct" >= 100)
+                   OR NOT EXISTS (SELECT 1 FROM "ProjectFairProjectForm" f WHERE f."submissionId" = ${SUB}.id)
+                   OR EXISTS (SELECT 1 FROM "ProjectFairProjectForm" f WHERE f."submissionId" = ${SUB}.id AND f."completionPct" < 100))`,
+    sin_cambios_recientes: `COALESCE(NULLIF(${SUB}.metadata->>'lastClubEditAt', '')::timestamptz, ${SUB}."createdAt") < NOW() - INTERVAL '14 days'`,
+};
+export const POST_CLOSE_OPTIONS = [
+    { key: 'con', label: 'Con actualizaciones' },
+    { key: 'sin', label: 'Sin actualizaciones' },
+    { key: 'pendientes', label: 'Pendientes de revisión' },
+    { key: 'sensibles', label: 'Pendientes con datos sensibles' },
+    { key: 'solicitudes', label: 'Solicitudes de autorización' },
+    { key: 'incompletos', label: 'Formularios incompletos' },
+    { key: 'sin_cambios_recientes', label: 'Sin modificaciones recientes (14 días)' },
+];
+
 export const VIEW_OPTIONS = [
     { key: 'postulados', label: 'Postulados' },
     { key: 'en_revision', label: 'En revisión' },
@@ -2616,6 +2653,10 @@ export const getCatalog = withAccess(async (_req, res, { cfg, access }) => {
         // vistas de participación y recaudo del listado.
         paymentViewStates: PAYMENT_VIEW_STATES,
         views: VIEW_OPTIONS,
+        // v4.1330 — Filtro «Actualizaciones posteriores al cierre» y la fecha
+        // de cierre de la edición (para el aviso de la ficha).
+        postCloseViews: POST_CLOSE_OPTIONS,
+        deadline: cfg.deadline || null,
         priorities: PRIORITIES,
         focusAreas: cfg.focusAreas || [],
         configuredDistricts: cfg.districts || [],
@@ -2723,10 +2764,12 @@ export const reopenMasterForm = withAccess(async (req, res, { access }) => {
     const reason = clean(req.body?.reason, 500);
     const { rows } = await db.query(`
         UPDATE "ProjectFairMasterForm"
-        SET status = 'draft', "reopenedAt" = NOW(), "reopenedBy" = $1, "lockedAt" = NULL, "updatedAt" = NOW()
+        SET "reopenedAt" = NOW(), "reopenedBy" = $1, "lockedAt" = NULL, "updatedAt" = NOW()
         WHERE "submissionId" = $2 RETURNING *
     `, [actorFrom(req, access).name, req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Este club todavía no ha iniciado su formulario.' });
+    // v4.1330 — La solicitud de autorización del club, si había, quedó resuelta.
+    await db.query(`UPDATE "ProjectFairSubmission" SET metadata = metadata #- ARRAY['editRequests','master'] WHERE id = $1 AND (metadata->'editRequests'->'master') IS NOT NULL`, [req.params.id]).catch(() => {});
 
     await logEvent(req.params.id, {
         type: 'form_reopened', title: 'Formulación reabierta para edición',

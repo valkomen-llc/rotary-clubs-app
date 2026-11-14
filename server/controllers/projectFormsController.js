@@ -35,8 +35,13 @@ import db from '../lib/db.js';
 // —«¿existe un pago confirmado?»— para el cobro y para esta puerta.
 // v4.1253 — La puerta de los formularios: postulación enviada y, SÓLO si la
 // Convocatoria lo exige expresamente, pago confirmado.
-import { formAccessOf } from '../lib/projectFairLifecycle.js';
-import { ensureTables, logEvent, readConfigForSubmission, APPLICANT_ROLES } from './projectFairController.js';
+import { formAccessOf, fairFormEditVerdict, fairPostClosePolicyOf, editRequestOf } from '../lib/projectFairLifecycle.js';
+// v4.1330 — Edición después del cierre: el criterio genérico (qué campos se
+// bloquean, cómo se aplica el bloqueo y qué cambió, campo a campo).
+import { lockedFieldsFor, applyFieldLocks, diffAnswers, pendingFieldsOf, sameValue, formatDateEs } from '../lib/postCloseEditPolicy.js';
+// La bitácora campo a campo es la del Expediente (v4.1324): no se crea otra.
+import { ensureProjectDossierSchema } from '../lib/ensureProjectDossierSchema.js';
+import { ensureTables, logEvent, readConfigForSubmission, APPLICANT_ROLES, sendFairEmail } from './projectFairController.js';
 import { withAccess, actorFrom } from './projectFairAdminController.js';
 import {
     completionOf, missingRequired, validateAnswers, stripProtected,
@@ -46,7 +51,7 @@ import {
     resolveForm, resolveForms, storageOf, storageIsShared, MASTER_FORM_KEY,
 } from '../lib/projectFormsRegistry.js';
 
-console.log('[projectFormsController] v4.643.0 cargado — Formularios del proyecto: el espacio institucional (aprobación del GD y del Comité de LFRI) lo diligencian el club y el Distrito');
+console.log('[projectFormsController] v4.1330.0 cargado — Formularios del proyecto: la fecha de cierre ya no bloquea la edición de lo inscrito; la decide la política «Edición de proyectos después del cierre», con campos bloqueados en el servidor y bitácora campo a campo');
 
 const clean = (v, max = 250) => String(v ?? '').trim().slice(0, max);
 const isPlainObject = (v) => v && typeof v === 'object' && !Array.isArray(v);
@@ -269,26 +274,189 @@ export const seedAnswersFor = (template, submission, cfg, relatedAnswers = {}) =
 // borrador se termina en el propio perfil.
 export const formIsAvailable = (submission, cfg = null) => formAccessOf(submission, cfg).available;
 
-export const editability = (submission, form, cfg, account = null) => {
+/**
+ * ¿Puede el club editar este formulario?
+ *
+ * ⚠️ v4.1330 — LA FECHA DE CIERRE YA NO DECIDE SOLA. Hasta v4.1329 la última
+ * regla era «pasó `cfg.deadline` → solo lectura (salvo «Reabrir edición»)»:
+ * un club con la Formulación al 53 % no podía terminarla. La fecha límite
+ * ahora cierra las postulaciones NUEVAS (`applicationsClosedOf`) y lo ya
+ * inscrito lo gobierna la política «Edición de proyectos después del cierre»
+ * de la convocatoria (`fairFormEditVerdict`): vigencia, formularios, estados
+ * y, en `lockedFieldsFor`, qué campos quedan bloqueados.
+ *
+ * Las reglas anteriores siguen delante, en el mismo orden: pago (si la
+ * Convocatoria lo exige), reembolso, cierre del comité y aprobación del
+ * Distrito. «Reabrir edición» sigue siendo la autorización individual.
+ *
+ * `editWindow` viaja con la respuesta para que la pantalla no vuelva a
+ * decidir nada: fase (antes o después del cierre), por qué, hasta cuándo y si
+ * el club puede pedir la autorización.
+ */
+export const editability = (submission, form, cfg, account = null, formKey = MASTER_FORM_KEY) => {
     const puerta = formAccessOf(submission, cfg);
     if (!puerta.available) {
-        return { canEdit: false, reason: puerta.reason };
+        return { canEdit: false, reason: puerta.reason, editWindow: null };
     }
+    const v = fairFormEditVerdict(submission, cfg, formKey, form);
+    const request = editRequestOf(submission, formKey);
+    const editWindow = {
+        phase: v.phase, code: v.code, restricted: !!v.restricted,
+        until: v.until, deadline: v.deadline,
+        requestable: false, requestedAt: null,
+    };
     // Rol suspendido (reembolso): conserva consulta y descarga, pierde edición.
     if (account?.role === APPLICANT_ROLES.SUSPENDED) {
-        return { canEdit: false, reason: 'Tu inscripción fue reembolsada. Puedes consultar y descargar tu proyecto, pero ya no editarlo.' };
+        return { canEdit: false, reason: 'Tu inscripción fue reembolsada. Puedes consultar y descargar tu proyecto, pero ya no editarlo.', editWindow };
     }
     if (form?.lockedAt && !form?.reopenedAt) {
-        return { canEdit: false, reason: 'El comité cerró la edición de este formulario.' };
+        return { canEdit: false, reason: 'El comité cerró la edición de este formulario.', editWindow };
     }
     if (form?.reviewStatus === 'approved') {
-        return { canEdit: false, reason: 'El Distrito ya aprobó esta solicitud, así que quedó en solo lectura.' };
+        return { canEdit: false, reason: 'El Distrito ya aprobó esta solicitud, así que quedó en solo lectura.', editWindow };
     }
-    const deadline = cfg?.deadline ? new Date(`${cfg.deadline}T23:59:59-05:00`) : null;
-    if (deadline && !Number.isNaN(deadline.getTime()) && new Date() > deadline && !form?.reopenedAt) {
-        return { canEdit: false, reason: `El plazo de postulación cerró el ${cfg.deadline}. Escríbenos si necesitas hacer un ajuste.` };
+    if (!v.canEdit) {
+        editWindow.requestable = !!v.requestable;
+        editWindow.requestedAt = v.requestable ? (request?.at || null) : null;
+        const reason = editWindow.requestedAt
+            ? `${v.reason} Ya enviaste la solicitud de autorización; el comité organizador la revisará.`
+            : v.reason;
+        return { canEdit: false, reason, editWindow };
     }
-    return { canEdit: true, reason: null };
+    return { canEdit: true, reason: null, editWindow };
+};
+
+// ── Edición después del cierre: campos y bitácora (v4.1330) ──────────
+
+/** Por qué hay campos bloqueados, en una frase para el club. */
+const lockedReasonOf = (edit, cfg) => {
+    const policy = fairPostClosePolicyOf(cfg);
+    const cierre = edit?.editWindow?.deadline ? `Desde el cierre de postulaciones (${formatDateEs(edit.editWindow.deadline)})` : 'Desde el cierre de postulaciones';
+    if (edit?.editWindow?.restricted) return `${cierre}, con tu proyecto en revisión, los datos sensibles (club, presupuesto, montos y contactos) solo se pueden cambiar con autorización del comité organizador.`;
+    if (policy.scope === 'pending') return `${cierre} solo se pueden completar los campos que estaban pendientes. Para corregir un dato ya registrado, escríbele al comité organizador.`;
+    if (policy.scope === 'selected') return `${cierre} solo se pueden modificar los campos habilitados por el comité organizador.`;
+    return `${cierre}, algunos datos sensibles solo se pueden cambiar con autorización del comité organizador.`;
+};
+
+/**
+ * Los campos que el servidor no dejará cambiar en este formulario. Para el
+ * alcance «solo campos pendientes» se usa la FOTO de lo pendiente tomada la
+ * primera vez que el formulario se tocó después del cierre
+ * (`metadata.postCloseBaseline`): si se calculara con lo guardado en cada
+ * autoguardado, un campo se bloquearía en cuanto el club terminara de
+ * escribir su primera letra.
+ */
+const fieldLocksFor = (submission, cfg, form, record) => {
+    const verdict = fairFormEditVerdict(submission, cfg, form.key, record);
+    const policy = fairPostClosePolicyOf(cfg);
+    const baseline = submission?.metadata?.postCloseBaseline?.[form.key];
+    return lockedFieldsFor({
+        template: form.template, saved: record?.answers || {}, verdict, policy, formKey: form.key,
+        pendingPaths: Array.isArray(baseline) ? baseline : null,
+    });
+};
+
+/**
+ * Toma la foto de lo pendiente la PRIMERA vez que el formulario se abre o se
+ * guarda después del cierre. Es un UPDATE condicional: no pisa una foto que
+ * ya exista. Devuelve la postulación con la foto puesta.
+ */
+const ensurePostCloseBaseline = async (submission, cfg, form, record) => {
+    const verdict = fairFormEditVerdict(submission, cfg, form.key, record);
+    if (verdict.phase !== 'post_close') return submission;
+    if (Array.isArray(submission?.metadata?.postCloseBaseline?.[form.key])) return submission;
+    const pending = pendingFieldsOf(form.template, record?.answers || {});
+    const { rows } = await db.query(`
+        UPDATE "ProjectFairSubmission"
+        SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('postCloseBaseline',
+                COALESCE(metadata->'postCloseBaseline', '{}'::jsonb) || jsonb_build_object($2::text, $3::jsonb))
+        WHERE id = $1 AND (metadata->'postCloseBaseline'->$2::text) IS NULL
+        RETURNING *
+    `, [submission.id, form.key, JSON.stringify(pending)]).catch(() => ({ rows: [] }));
+    if (rows[0]) return rows[0];
+    const again = await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = $1', [submission.id]).catch(() => ({ rows: [] }));
+    return again.rows[0] || submission;
+};
+
+/**
+ * Bitácora de lo que cambió el club, campo a campo, en la tabla del
+ * Expediente (`ProjectDossierRevision`): la pestaña «Historial» del
+ * expediente ya la muestra. Los autoguardados de un mismo campo en media
+ * hora se AGRUPAN en una sola fila (el «antes» es el primero, el «después» el
+ * último); si el club deshizo su cambio, la fila desaparece.
+ *
+ * Después del cierre además marca la postulación: «actualizada después del
+ * cierre» y «cambios pendientes de revisión». NUNCA toca el estado del
+ * proyecto, el pago, `appliedAt` ni `createdAt`.
+ */
+const trackClubChanges = async ({ submission, cfg, form, before, after, phase, account, submitted = false }) => {
+    const changes = diffAnswers({ template: form.template, before, after, policy: fairPostClosePolicyOf(cfg), formKey: form.key });
+    const postClose = phase === 'post_close';
+    if (!changes.length && !(postClose && submitted)) return changes;
+    const kind = postClose ? 'club_edit_post_close' : 'club_edit';
+    const actor = { id: account?.id || null, name: submission.email || 'Club', role: 'club' };
+    try {
+        await ensureProjectDossierSchema();
+        for (const c of changes) {
+            const path = `${form.key}.${c.path}`;
+            const reason = [
+                postClose ? 'Edición del club después del cierre de postulaciones' : 'Edición del club',
+                c.sensitive ? 'campo sensible' : null,
+                submitted ? 'al enviar el formulario' : null,
+            ].filter(Boolean).join(' · ');
+            const upd = await db.query(`
+                UPDATE "ProjectDossierRevision" SET "after" = $4::jsonb, reason = $5
+                WHERE id = (
+                    SELECT id FROM "ProjectDossierRevision"
+                    WHERE "submissionId" = $1 AND path = $2 AND kind = $3
+                      AND COALESCE("actorName", '') = $6 AND "createdAt" > NOW() - INTERVAL '30 minutes'
+                    ORDER BY "createdAt" DESC LIMIT 1
+                )
+                RETURNING id, "before"
+            `, [submission.id, path, kind, JSON.stringify(c.after ?? null), reason, actor.name]);
+            if (upd.rows[0]) {
+                if (sameValue(upd.rows[0].before, c.after)) {
+                    await db.query('DELETE FROM "ProjectDossierRevision" WHERE id = $1', [upd.rows[0].id]);
+                }
+                continue;
+            }
+            await db.query(`
+                INSERT INTO "ProjectDossierRevision" ("submissionId", kind, lang, path, label, "before", "after", reason, "actorId", "actorName", "actorRole")
+                VALUES ($1,$2,NULL,$3,$4,$5::jsonb,$6::jsonb,$7,$8,$9,$10)
+            `, [submission.id, kind, path, `${form.template?.shortTitle || form.template?.title || form.key} · ${c.label}`,
+                JSON.stringify(c.before ?? null), JSON.stringify(c.after ?? null), reason, actor.id, actor.name, actor.role]);
+        }
+    } catch (err) {
+        // La bitácora no puede impedir que el club guarde su trabajo.
+        console.warn('[project-forms] bitácora de cambios:', err?.message);
+    }
+
+    const sensitive = changes.some(c => c.sensitive);
+    await db.query(postClose ? `
+        UPDATE "ProjectFairSubmission"
+        SET metadata = COALESCE(metadata, '{}'::jsonb)
+            || jsonb_build_object('lastClubEditAt', NOW()::text)
+            || jsonb_build_object('postCloseEdit', jsonb_build_object(
+                'firstAt', COALESCE(metadata->'postCloseEdit'->>'firstAt', NOW()::text),
+                'lastAt', NOW()::text,
+                'pendingReview', true,
+                'sensitive', (COALESCE((metadata->'postCloseEdit'->>'pendingReview')::boolean, false)
+                              AND COALESCE((metadata->'postCloseEdit'->>'sensitive')::boolean, false)) OR $2::boolean,
+                'forms', (SELECT COALESCE(jsonb_agg(DISTINCT x), '[]'::jsonb)
+                          FROM jsonb_array_elements_text(COALESCE(metadata->'postCloseEdit'->'forms', '[]'::jsonb) || jsonb_build_array($3::text)) AS x),
+                'changes', COALESCE((metadata->'postCloseEdit'->>'changes')::int, 0) + $4::int,
+                'reviewedAt', metadata->'postCloseEdit'->'reviewedAt',
+                'reviewedBy', metadata->'postCloseEdit'->'reviewedBy'
+            ))
+        WHERE id = $1
+    ` : `
+        UPDATE "ProjectFairSubmission"
+        SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('lastClubEditAt', NOW()::text)
+        WHERE id = $1
+    `, postClose ? [submission.id, sensitive, form.key, changes.length] : [submission.id]).catch(err => {
+        console.warn('[project-forms] marca de edición posterior al cierre:', err?.message);
+    });
+    return changes;
 };
 
 // ── Contexto común de las peticiones del panel del club ──────────────
@@ -311,8 +479,21 @@ const portalContext = async (req) => {
  * Proyectos", así que un formulario nuevo aparece ahí sin tocar la pantalla.
  */
 export const cardFor = (form, record, { submission, cfg, account }) => {
-    const edit = editability(submission, record, cfg, account);
+    const edit = editability(submission, record, cfg, account, form.key);
     const state = deriveState(record);
+    const pct = Number(record?.completionPct || 0);
+    // v4.1330 — La acción de la tarjeta la decide el servidor con el MISMO
+    // veredicto que acepta o rechaza las escrituras: la pantalla no puede
+    // ofrecer «editar» si el guardado va a responder 403.
+    const action = !edit.canEdit
+        ? (edit.editWindow?.requestedAt
+            ? { key: 'pending', label: 'Edición pendiente de autorización' }
+            : { key: 'view', label: 'Ver formulario' })
+        : (state === 'not_started'
+            ? { key: 'start', label: 'Diligenciar formulario' }
+            : (pct < 100 && record?.status !== 'submitted'
+                ? { key: 'continue', label: 'Continuar formulario' }
+                : { key: 'edit', label: 'Ver y editar formulario' }));
     return {
         key: form.key,
         title: form.template?.title || form.key,
@@ -331,6 +512,8 @@ export const cardFor = (form, record, { submission, cfg, account }) => {
         lockedAt: record?.lockedAt || null,
         canEdit: edit.canEdit,
         reason: edit.reason,
+        editWindow: edit.editWindow,
+        action,
         // «Se puede ABRIR» es otra pregunta que «se puede EDITAR»: un
         // reembolso o un plazo vencido dejan el formulario en solo lectura y
         // el club sigue pudiendo consultarlo. Sin pago confirmado no hay nada
@@ -427,6 +610,13 @@ export const getForm = async (req, res) => {
             });
         }
 
+        // v4.1330 — Después del cierre: la foto de lo pendiente (para el
+        // alcance «solo campos pendientes») y los campos que el servidor no
+        // va a aceptar, para que la pantalla los muestre bloqueados.
+        const fresh = await ensurePostCloseBaseline(submission, cfg, form, record);
+        const edit = editability(fresh, record, cfg, account, form.key);
+        const lockedFields = edit.canEdit ? fieldLocksFor(fresh, cfg, form, record) : [];
+
         const answers = record?.answers || {};
         res.json({
             formKey: form.key,
@@ -450,7 +640,9 @@ export const getForm = async (req, res) => {
                 projectName: submission.projectName, clubName: submission.clubName,
                 district: submission.district,
             },
-            ...editability(submission, record, cfg, account),
+            ...edit,
+            lockedFields,
+            lockedReason: lockedFields.length ? lockedReasonOf(edit, cfg) : null,
         });
     } catch (error) {
         console.error('[project-forms] getForm:', error);
@@ -469,13 +661,19 @@ export const saveForm = async (req, res) => {
         if (!form) return res.status(404).json({ error: 'Ese formulario no existe.' });
 
         const record = await readRecord(submission.id, form.key);
-        const edit = editability(submission, record, cfg, account);
-        if (!edit.canEdit) return res.status(403).json({ error: edit.reason });
+        const edit = editability(submission, record, cfg, account, form.key);
+        if (!edit.canEdit) return res.status(403).json({ error: edit.reason, editWindow: edit.editWindow });
 
         // Aquí se cae cualquier intento de escribir la sección del Distrito.
-        const answers = stripProtected(form.template, req.body?.answers);
+        // v4.1330 — Y los campos bloqueados por la política posterior al
+        // cierre conservan lo guardado, mande el navegador lo que mande.
+        const fresh = await ensurePostCloseBaseline(submission, cfg, form, record);
+        const before = record?.answers || {};
+        const lockedFields = fieldLocksFor(fresh, cfg, form, record);
+        const answers = applyFieldLocks(stripProtected(form.template, req.body?.answers), before, lockedFields);
         const pct = completionOf(form.template, answers);
         const saved = await writeAnswers(submission.id, form.key, { answers, pct });
+        await trackClubChanges({ submission: fresh, cfg, form, before, after: answers, phase: edit.editWindow?.phase, account });
 
         await saveRevision(submission.id, form.key, {
             answers, pct, action: 'save', actorType: 'club', actorName: submission.email,
@@ -484,6 +682,7 @@ export const saveForm = async (req, res) => {
         res.json({
             completionPct: pct, savedAt: saved.lastEditedAt, status: saved.status,
             state: deriveState(saved), computed: withComputed(form.template, answers),
+            lockedFields,
         });
     } catch (error) {
         console.error('[project-forms] saveForm:', error);
@@ -502,12 +701,16 @@ export const submitForm = async (req, res) => {
         if (!form) return res.status(404).json({ error: 'Ese formulario no existe.' });
 
         const record = await readRecord(submission.id, form.key);
-        const edit = editability(submission, record, cfg, account);
-        if (!edit.canEdit) return res.status(403).json({ error: edit.reason });
+        const edit = editability(submission, record, cfg, account, form.key);
+        if (!edit.canEdit) return res.status(403).json({ error: edit.reason, editWindow: edit.editWindow });
 
+        const fresh = await ensurePostCloseBaseline(submission, cfg, form, record);
+        const before = record?.answers || {};
+        const lockedFields = fieldLocksFor(fresh, cfg, form, record);
         const answers = req.body?.answers !== undefined
-            ? stripProtected(form.template, req.body.answers)
-            : (record?.answers || {});
+            ? applyFieldLocks(stripProtected(form.template, req.body.answers), before, lockedFields)
+            : before;
+        const postClose = edit.editWindow?.phase === 'post_close';
 
         const missing = missingRequired(form.template, answers);
         if (missing.length) {
@@ -527,10 +730,16 @@ export const submitForm = async (req, res) => {
             answers, pct, action: 'submit', actorType: 'club', actorName: submission.email, force: true,
         });
 
+        await trackClubChanges({ submission: fresh, cfg, form, before, after: answers, phase: edit.editWindow?.phase, account, submitted: true });
+
         // La postulación entra a revisión salvo que ya esté más avanzada. Sólo
         // lo hace la Formulación: los formularios de apoyo no mueven el estado
         // general del proyecto.
-        if (form.key === MASTER_FORM_KEY) {
+        // ⚠️ v4.1330 — DESPUÉS DEL CIERRE NO SE MUEVE EL ESTADO. Un proyecto
+        // «Postulado» que completa su Formulación sigue «Postulado»: lo que
+        // se enciende es «Cambios pendientes de revisión» (`trackClubChanges`).
+        // El estado lo decide el comité, no un guardado.
+        if (form.key === MASTER_FORM_KEY && !postClose) {
             await db.query(`
                 UPDATE "ProjectFairSubmission"
                 SET "workflowStatus" = CASE WHEN "workflowStatus" IN ('payment_confirmed','received','pending_payment')
@@ -543,9 +752,11 @@ export const submitForm = async (req, res) => {
         await logEvent(submission.id, {
             type: form.key === MASTER_FORM_KEY ? 'form_submitted_master' : 'project_form_submitted',
             title: `${form.template?.title || form.key}: enviado`,
-            detail: `El club envió el formulario completo (${pct}%).`,
+            detail: postClose
+                ? `El club envió el formulario completo (${pct}%) después del cierre de postulaciones. Queda pendiente de revisión.`
+                : `El club envió el formulario completo (${pct}%).`,
             actor: { name: submission.email, role: 'club' },
-            metadata: { formKey: form.key },
+            metadata: { formKey: form.key, postClose },
         });
 
         res.json({ status: 'submitted', state: deriveState(saved), completionPct: pct, submittedAt: saved.submittedAt });
@@ -555,9 +766,114 @@ export const submitForm = async (req, res) => {
     }
 };
 
+const escHtml = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/**
+ * POST /portal/forms/:formKey/edit-request — v4.1330.
+ *
+ * Cuando la política pide autorización (vigencia «solo con autorización
+ * individual», un estado como «Aprobado», o la edición posterior al cierre
+ * apagada), el club no queda sin salida: PIDE la autorización desde la
+ * tarjeta. Queda en `metadata.editRequests[formKey]`, en el historial del
+ * proyecto y en el filtro «Pendientes de autorización» del panel; si la
+ * convocatoria tiene correos del comité, también les llega un aviso.
+ *
+ * Idempotente: una segunda solicitud del mismo formulario no duplica nada.
+ * La resuelve el comité con «Reabrir edición» (o «Cerrar edición»), que la
+ * borra. La postulación sale del TOKEN, nunca del cuerpo.
+ */
+export const requestEdit = async (req, res) => {
+    try {
+        const ctx = await portalContext(req);
+        if (ctx.error) return res.status(ctx.error.code).json({ error: ctx.error.message });
+        const { cfg, submission, account } = ctx;
+        const form = resolveForm(cfg, req.params.formKey);
+        if (!form) return res.status(404).json({ error: 'Ese formulario no existe.' });
+
+        const record = await readRecord(submission.id, form.key);
+        const edit = editability(submission, record, cfg, account, form.key);
+        if (edit.canEdit) return res.status(409).json({ error: 'Este formulario ya se puede editar.', code: 'already_editable' });
+        if (!edit.editWindow?.requestable) return res.status(409).json({ error: edit.reason || 'Este formulario no admite solicitudes de edición.', code: 'not_requestable' });
+        if (edit.editWindow.requestedAt) {
+            return res.json({ ok: true, alreadyRequested: true, card: cardFor(form, record, { submission, cfg, account }) });
+        }
+
+        const note = clean(req.body?.note, 1000) || null;
+        const { rows } = await db.query(`
+            UPDATE "ProjectFairSubmission"
+            SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('editRequests',
+                    COALESCE(metadata->'editRequests', '{}'::jsonb) || jsonb_build_object($2::text,
+                        jsonb_build_object('at', NOW()::text, 'note', $3::text, 'by', $4::text)))
+            WHERE id = $1 AND (metadata->'editRequests'->$2::text) IS NULL
+            RETURNING *
+        `, [submission.id, form.key, note, submission.email || '']);
+        const updated = rows[0] || (await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = $1', [submission.id])).rows[0];
+
+        if (rows[0]) {
+            const title = form.template?.title || form.key;
+            await logEvent(submission.id, {
+                type: 'form_edit_requested',
+                title: `${title}: solicitud de autorización para editar`,
+                detail: note ? `Motivo del club: ${note}` : 'El club pidió autorización para editar el formulario después del cierre.',
+                actor: { name: submission.email, role: 'club' },
+                metadata: { formKey: form.key },
+            });
+            const admins = Array.isArray(cfg.notifications?.adminEmails) ? cfg.notifications.adminEmails.filter(e => /^\S+@\S+\.\S+$/.test(String(e || ''))) : [];
+            if (admins.length) {
+                await sendFairEmail({
+                    to: admins.join(','),
+                    subject: `Solicitud de edición — ${submission.publicRef} · ${submission.clubName}`,
+                    html: `<p>El club <strong>${escHtml(submission.clubName)}</strong> pidió autorización para editar <strong>${escHtml(title)}</strong> del proyecto <strong>${escHtml(submission.projectName)}</strong> (${escHtml(submission.publicRef)}) después del cierre de postulaciones.</p>`
+                        + (note ? `<p><em>Motivo:</em> ${escHtml(note)}</p>` : '')
+                        + '<p>Para autorizarla, abre la postulación en el panel de la Feria → Formularios → «Reabrir edición».</p>',
+                    cfg,
+                }).catch(() => {});
+            }
+        }
+        res.json({ ok: true, card: cardFor(form, record, { submission: updated, cfg, account }) });
+    } catch (error) {
+        console.error('[project-forms] requestEdit:', error);
+        res.status(500).json({ error: 'No pudimos enviar tu solicitud.' });
+    }
+};
+
+/** Borra la solicitud de autorización de un formulario (la resolvió el comité). */
+export const clearEditRequest = (submissionId, formKey) => db.query(`
+    UPDATE "ProjectFairSubmission"
+    SET metadata = metadata #- ARRAY['editRequests', $2::text]
+    WHERE id = $1 AND (metadata->'editRequests'->$2::text) IS NOT NULL
+`, [submissionId, formKey]).catch(() => {});
+
 // ════════════════════════════════════════════════════════════════════
 // Panel administrativo
 // ════════════════════════════════════════════════════════════════════
+
+/**
+ * POST /admin/postulaciones/:id/post-close/reviewed — v4.1330.
+ *
+ * El comité revisó los cambios que el club hizo después del cierre: apaga
+ * «Cambios pendientes de revisión» y deja quién y cuándo. NO toca el estado
+ * del proyecto ni el pago: aprobar o pedir ajustes sigue siendo «Cambiar
+ * estado». La marca «actualizado después del cierre» se conserva.
+ */
+export const markPostCloseReviewed = withAccess(async (req, res, { access }) => {
+    const actor = actorFrom(req, access);
+    const { rows } = await db.query(`
+        UPDATE "ProjectFairSubmission"
+        SET metadata = jsonb_set(metadata, '{postCloseEdit}', (metadata->'postCloseEdit')
+                || jsonb_build_object('pendingReview', false, 'sensitive', false, 'reviewedAt', NOW()::text, 'reviewedBy', $2::text))
+        WHERE id = $1 AND (metadata->'postCloseEdit') IS NOT NULL
+        RETURNING id, metadata->'postCloseEdit' AS "postCloseEdit"
+    `, [req.params.id, actor.name || 'Comité']);
+    if (!rows[0]) return res.status(404).json({ error: 'Este proyecto no tiene cambios posteriores al cierre.' });
+    await logEvent(req.params.id, {
+        type: 'post_close_reviewed',
+        title: 'Cambios posteriores al cierre revisados',
+        detail: clean(req.body?.note, 500) || null,
+        actor,
+    });
+    res.json({ ok: true, postCloseEdit: rows[0].postCloseEdit });
+}, 'changeStatus');
 
 // GET /admin/forms?formKey=…&formStatus=…&search=…
 export const adminListForms = withAccess(async (req, res, { cfg, access }) => {
@@ -594,6 +910,7 @@ export const adminListForms = withAccess(async (req, res, { cfg, access }) => {
                s.status AS "paymentStatus", s."workflowStatus", s."createdAt",
                f.status AS "formStatus", f."completionPct", f."submittedAt", f."lastEditedAt",
                f."lockedAt", f."reopenedAt", f."reviewStatus", f."reviewedAt", f.approval, f.answers,
+               s.metadata->'editRequests' AS "editRequests",
                (a.id IS NOT NULL) AS "hasAccount", a."lastLoginAt"
         FROM "ProjectFairSubmission" s
         ${join}
@@ -605,8 +922,10 @@ export const adminListForms = withAccess(async (req, res, { cfg, access }) => {
     // `answers` y `approval` se leen para saber si el espacio institucional ya
     // está diligenciado, pero no se devuelven: el listado no necesita cargar
     // las respuestas completas de cada club.
-    const forms = rows.map(({ answers, approval, ...r }) => ({
+    const forms = rows.map(({ answers, approval, editRequests, ...r }) => ({
         ...r,
+        // v4.1330 — La solicitud de autorización del club para ESTE formulario.
+        editRequest: editRequests?.[form.key] || null,
         ...approvalState(form.template, { answers, approval }),
         state: deriveState(r),
     }));
@@ -740,9 +1059,12 @@ const setLock = (lock) => withAccess(async (req, res, { cfg, access }) => {
     if (!form) return res.status(404).json({ error: 'Ese formulario no existe.' });
 
     const table = tableFor(form.key);
+    // v4.1330 — Reabrir YA NO devuelve el formulario a borrador: un
+    // formulario enviado sigue enviado (con su fecha) mientras el club lo
+    // corrige. Antes, autorizar una corrección borraba la constancia del envío.
     const set = lock
         ? `"lockedAt" = NOW(), "reopenedAt" = NULL`
-        : `status = 'draft', "reopenedAt" = NOW(), "reopenedBy" = $2, "lockedAt" = NULL`;
+        : `"reopenedAt" = NOW(), "reopenedBy" = $2, "lockedAt" = NULL`;
     const params = lock ? [req.params.id] : [req.params.id, actorFrom(req, access).name];
     if (storageIsShared(form.key)) params.push(form.key);
 
@@ -752,6 +1074,8 @@ const setLock = (lock) => withAccess(async (req, res, { cfg, access }) => {
         RETURNING *
     `, params);
     if (!rows[0]) return res.status(404).json({ error: 'Este club todavía no ha iniciado este formulario.' });
+    // La solicitud de autorización del club, si había, quedó resuelta.
+    await clearEditRequest(req.params.id, form.key);
 
     await logEvent(req.params.id, {
         type: lock ? 'form_locked' : 'form_reopened',
@@ -769,4 +1093,5 @@ export const reopenForm = setLock(false);
 export default {
     getForms, getForm, saveForm, submitForm,
     adminListForms, adminGetForm, saveApproval, lockForm, reopenForm,
+    requestEdit, markPostCloseReviewed,
 };
