@@ -44,6 +44,10 @@
 //                               no útil, falso positivo): la base de las métricas.
 //   AgentCustomWorkflow         un workflow del constructor visual (borrador).
 //   AgentCustomWorkflowVersion  cada versión publicada, inmutable.
+// Centro de Equipos de IA (v4.1331.0):
+//   AgentTeamMember  a qué OTROS equipos se asocia un agente (muchos a muchos),
+//                    sin copiarlo; la configuración de cada equipo vive en
+//                    "AgentSetting" (clave `teams`).
 // (La tabla lateral de vectores, "BrainMemoryVector", la crea brainVector.js
 // sólo si se activa pgvector.)
 //
@@ -88,6 +92,8 @@ export const OWNED_COLUMNS = {
     AgentCustomWorkflowVersion: [],
     // Dirección IA (v4.1329.0)
     AgentDirectorPlan: [],
+    // Centro de Equipos de IA (v4.1331.0)
+    AgentTeamMember: [],
 };
 const TABLES = Object.keys(OWNED_COLUMNS);
 
@@ -504,6 +510,21 @@ export async function ensureAgentCenterSchema() {
     `);
     await db.query(`CREATE INDEX IF NOT EXISTS "AgentDirectorPlan_site_idx" ON "AgentDirectorPlan" ("siteId", "createdAt" DESC)`);
     await db.query(`CREATE INDEX IF NOT EXISTS "AgentDirectorPlan_status_idx" ON "AgentDirectorPlan" (status)`);
+
+    // v4.1331 — Centro de Equipos de IA: un agente colabora con OTROS equipos
+    // además del principal (`AgentTemplate.team`) sin copiarse. Organiza la
+    // vista y quién redacta un resumen; NO da permisos (la política del tipo
+    // de sitio sigue mirando el equipo principal).
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "AgentTeamMember" (
+            "templateId" TEXT NOT NULL,
+            team TEXT NOT NULL,
+            "createdBy" TEXT,
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY ("templateId", team)
+        )
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS "AgentTeamMember_team_idx" ON "AgentTeamMember" (team)`);
 
     _ready = true;
 }

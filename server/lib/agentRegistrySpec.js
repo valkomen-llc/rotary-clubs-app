@@ -493,6 +493,8 @@ export const AUDIT_ACTIONS = {
     rollout_rolled_back: 'Despliegue revertido',
     catalog_reset: 'Catálogo restablecido al repositorio de The Agency',
     catalog_synced: 'Catálogo sincronizado con el repositorio',
+    team_config_changed: 'Configuración de un equipo cambiada',
+    team_members_changed: 'Agentes asociados a un equipo',
     pilot_saved: 'Piloto guardado',
     pilot_concluded: 'Piloto concluido',
     custom_workflow_saved: 'Workflow del constructor guardado',

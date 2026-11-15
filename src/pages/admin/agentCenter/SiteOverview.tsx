@@ -1,8 +1,10 @@
-// La portada del Command Center para quien administra UN sitio (v4.1317).
+// La portada del Command Center para quien administra UN sitio (v4.1317;
+// v4.1331: con los equipos habilitados para su organización).
 import { useEffect, useState } from 'react';
 import { acApi } from './agentCenterApi';
-import type { Installation, Meta } from './agentCenterApi';
+import type { Installation, Meta, TeamsSummary } from './agentCenterApi';
 import { AgentAvatar, EmptyNote, ErrorNote, Kpi, SectionHeader, StatePill, fmtDate } from './agentCenterUi';
+import TeamCards from './TeamCards';
 
 interface SiteOverviewData {
     site: { id: string; name: string; type: string } | null;
@@ -13,10 +15,14 @@ interface SiteOverviewData {
     usage30d: { calls: number; costUsd: number; errors: number };
 }
 
-export default function SiteOverview({ meta, onNavigate }: { meta: Meta; onNavigate: (s: string) => void }) {
+export default function SiteOverview({ meta, onNavigate }: { meta: Meta; onNavigate: (s: string, extra?: Record<string, string | null>) => void }) {
     const [d, setD] = useState<SiteOverviewData | null>(null);
+    const [teams, setTeams] = useState<TeamsSummary | null>(null);
     const [error, setError] = useState<string | null>(null);
-    useEffect(() => { acApi<SiteOverviewData>('/site-overview').then(setD).catch(e => setError(e.message)); }, []);
+    useEffect(() => {
+        acApi<SiteOverviewData>('/site-overview').then(setD).catch(e => setError(e.message));
+        acApi<TeamsSummary>('/teams').then(setTeams).catch(e => setError(e.message));
+    }, []);
     if (error) return <ErrorNote message={error} />;
     if (!d) return <div className="text-sm text-gray-400">Cargando…</div>;
     const pending = d.installations.filter(i => i.state === 'installed');
@@ -35,6 +41,7 @@ export default function SiteOverview({ meta, onNavigate }: { meta: Meta; onNavig
                 <Kpi label="Llamadas de IA (30 días)" value={d.usage30d.calls || 0} />
                 <Kpi label="Consumo estimado" value={`US$ ${Number(d.usage30d.costUsd || 0).toFixed(2)}`} hint="30 días" />
             </div>
+            <TeamCards data={teams} onOpen={(key) => onNavigate('resumen', { team: key })} />
             <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-3">
                 <SectionHeader title={`Agentes de ${d.site?.name || 'tu sitio'}`} />
                 {d.installations.length === 0 ? <EmptyNote>Todavía no hay agentes instalados en este sitio.</EmptyNote> : (

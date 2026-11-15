@@ -19,6 +19,9 @@
 // redacta la lectura del objetivo: no elige pasos, herramientas ni alcance.
 // ═══════════════════════════════════════════════════════════════════════
 
+import { TEAM_KEYS } from './agentRegistrySpec.js';
+import { installationTeams } from './agentTeamsSpec.js';
+
 export const DIRECTOR_KEY = 'rotary-intelligence-director';
 
 export const DIRECTOR_TEMPLATE = {
@@ -260,8 +263,21 @@ export const CAPABILITIES = [
 export const CAPABILITY_KEYS = CAPABILITIES.map(c => c.key);
 export const capabilityByKey = (k) => CAPABILITIES.find(c => c.key === k) || null;
 
-/** Accesos rápidos de la consola (el texto que se pega en el campo). */
-export const QUICK_ACTIONS = CAPABILITIES.map(c => ({ key: c.key, label: c.label, text: c.quick }));
+/** Los equipos que intervienen en una capacidad (los declarados y los de sus pasos). */
+export function capabilityTeams(c) {
+    if (!c) return [];
+    return [...new Set([...(c.teams || []), ...(c.steps || []).map(s => s.team)])];
+}
+
+/** v4.1331 — Las capacidades en las que interviene alguno de esos equipos. */
+export function capabilitiesForTeams(teams = []) {
+    const sel = (Array.isArray(teams) ? teams : []).filter(t => TEAM_KEYS.includes(t));
+    if (!sel.length) return [];
+    return CAPABILITIES.filter(c => capabilityTeams(c).some(t => sel.includes(t))).map(c => c.key);
+}
+
+/** Accesos rápidos de la consola (el texto que se pega en el campo) y sus equipos. */
+export const QUICK_ACTIONS = CAPABILITIES.map(c => ({ key: c.key, label: c.label, text: c.quick, teams: capabilityTeams(c) }));
 
 // ── Interpretación ─────────────────────────────────────────────────────
 const norm = (s) => String(s || '').normalize('NFC');
@@ -270,8 +286,13 @@ const norm = (s) => String(s || '').normalize('NFC');
  * Lee el objetivo y elige capacidades por palabras clave. Devuelve las
  * coincidencias ordenadas y, si no hay ninguna, preguntas para aclarar.
  * `forced` (claves elegidas a mano desde un acceso rápido) se respeta si existe.
+ *
+ * v4.1331 — `teams`: los equipos que la persona eligió para la iniciativa.
+ * El plan se arma SÓLO con capacidades en las que intervienen; lo que el
+ * objetivo pide y corresponde a otros equipos se informa, no se ejecuta, y sin
+ * coincidencias se pregunta (nunca un plan inventado).
  */
-export function interpretObjective(text, { forced = [] } = {}) {
+export function interpretObjective(text, { forced = [], teams = [] } = {}) {
     const t = norm(text).trim();
     const errors = [];
     if (t.length < LIMITS.minObjective) errors.push(`Describe el objetivo en al menos ${LIMITS.minObjective} caracteres.`);
@@ -287,13 +308,41 @@ export function interpretObjective(text, { forced = [] } = {}) {
     if (!forcedOk.length && chosen.includes('fair_translation') && chosen.includes('fair_review') && !/analiz|revis|faltant|incomplet|resumen/i.test(t)) chosen = chosen.filter(k => k !== 'fair_review');
     // «indicadores» genérico sobra si ya hay un análisis concreto.
     if (!forcedOk.length && chosen.length > 1 && chosen.includes('indicators')) chosen = chosen.filter(k => k !== 'indicators');
+    const teamSel = [...new Set((Array.isArray(teams) ? teams : []).filter(k => TEAM_KEYS.includes(k)))];
+    let excluded = [];
+    if (teamSel.length) {
+        const inTeams = (k) => capabilityTeams(capabilityByKey(k)).some(tm => teamSel.includes(tm));
+        excluded = chosen.filter(k => !inTeams(k));
+        chosen = chosen.filter(inTeams);
+    }
     chosen = [...new Set(chosen)].slice(0, LIMITS.maxCapabilities);
-    const clarify = chosen.length ? [] : [
-        '¿Sobre qué módulo trabajamos: proyectos de la feria, inscripciones de un evento, comunicaciones, membresía, finanzas o el sitio web?',
-        '¿Qué entregable esperas: un informe, un borrador, una lista de pendientes o un workflow?',
-        '¿Para quién es el resultado (comité, junta, gobernación, equipo técnico)?',
-    ];
-    return { text: t, errors, matches: scored, capabilities: chosen, clarify };
+    let clarify = [];
+    if (!chosen.length && teamSel.length) {
+        const label = (k) => capabilityByKey(k)?.label || k;
+        clarify = [
+            ...(excluded.length ? [`Lo que pediste (${excluded.map(label).join('; ')}) lo hacen otros equipos: amplía la selección de equipos o reformula el objetivo.`] : []),
+            `Con los equipos elegidos puedo: ${capabilitiesForTeams(teamSel).map(label).join('; ') || 'nada todavía'}. Usa un acceso rápido o describe el objetivo con esas palabras.`,
+        ];
+    } else if (!chosen.length) {
+        clarify = [
+            '¿Sobre qué módulo trabajamos: proyectos de la feria, inscripciones de un evento, comunicaciones, membresía, finanzas o el sitio web?',
+            '¿Qué entregable esperas: un informe, un borrador, una lista de pendientes o un workflow?',
+            '¿Para quién es el resultado (comité, junta, gobernación, equipo técnico)?',
+        ];
+    }
+    return { text: t, errors, matches: scored, capabilities: chosen, clarify, teams: teamSel, excluded };
+}
+
+/**
+ * v4.1331 — El agente que redacta un paso: uno ENCENDIDO en el sitio que
+ * pertenezca al equipo del paso (el del equipo PRINCIPAL primero; después uno
+ * asociado desde el Centro de Equipos). Asociar no da permisos: un agente
+ * deshabilitado por la política de su equipo principal no está en la lista.
+ */
+const DRAFTING_STATES = ['active', 'running', 'profile_only'];
+export function pickTeamAgent(installations = [], team) {
+    const ready = installations.filter(i => i.enabled && DRAFTING_STATES.includes(i.state));
+    return ready.find(i => i.team === team) || ready.find(i => installationTeams(i).includes(team)) || null;
 }
 
 // ── Plan ───────────────────────────────────────────────────────────────
@@ -369,7 +418,7 @@ export function buildPlan({ interpretation, site, siteType, policy, director = {
             // El agente que redacta: uno ENCENDIDO del mismo equipo en el sitio (el
             // mismo criterio que `aiNarrative` del runtime). Sin él, el paso corre
             // igual y su informe dice por qué no hay resumen con IA.
-            const agent = installations.find(i => i.team === s.team && i.enabled && ['active', 'running', 'profile_only'].includes(i.state)) || null;
+            const agent = pickTeamAgent(installations, s.team);
             if (s.kind === 'workflow' && s.ai && !agent) warnings.push(`Paso ${seq}: no hay un agente encendido del equipo «${s.team}» en este sitio; los hallazgos salen completos, pero sin resumen con IA.`);
             steps.push({
                 id, seq, capability: cap.key, kind: s.kind, label: s.label, team: s.team,
@@ -388,7 +437,7 @@ export function buildPlan({ interpretation, site, siteType, policy, director = {
     const teams = [...new Set(steps.map(s => s.team))];
     const specialists = [];
     for (const cap of caps) for (const team of cap.teams) {
-        const installed = installations.filter(i => i.team === team);
+        const installed = installations.filter(i => installationTeams(i).includes(team));
         const suggested = rankSpecialists(catalog[team] || [], cap.specialists?.[team] || []);
         specialists.push({
             team, capability: cap.key,
@@ -411,6 +460,7 @@ export function buildPlan({ interpretation, site, siteType, policy, director = {
         version: 1,
         objective: interpretation?.text || '',
         interpreted: caps.map(c => c.label),
+        requestedTeams: interpretation?.teams || [],
         matches: interpretation?.matches || [],
         clarify: interpretation?.clarify || [],
         context: { siteId: site?.id ? String(site.id) : null, siteName: site?.name || null, siteType: siteType || null },

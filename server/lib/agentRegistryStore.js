@@ -14,6 +14,7 @@ import {
 } from './agentRegistrySpec.js';
 import { AGENT_SKILLS_BUNDLE } from './agentSkillsBundle.js';
 import { resetVectorStatus } from './brainVector.js';
+import { membershipCte, membershipParam } from './agentTeamMembership.js';
 
 const asJson = (v) => JSON.stringify(v ?? null);
 const actorOf = (user) => ({ id: user?.id || user?.userId || null, role: user?.role || null });
@@ -196,14 +197,22 @@ export async function listTemplates({ team, status, origin, q } = {}) {
     await ensureAgentCenterSchema();
     const where = [];
     const params = [];
-    if (team) { params.push(team); where.push(`t.team = $${params.length}`); }
+    // v4.1331 — «Equipo» filtra por PERTENENCIA: el principal, los asociados a
+    // mano y los que llegan por su categoría (sin copiar agentes).
+    let cte = '';
+    if (team) {
+        params.push(await membershipParam());
+        cte = `WITH ${membershipCte(params.length)} `;
+        params.push(team);
+        where.push(`t.id IN (SELECT "templateId" FROM team_mem WHERE team = $${params.length})`);
+    }
     if (status) { params.push(status); where.push(`t.status = $${params.length}`); }
     if (origin) { params.push(origin); where.push(`t.origin = $${params.length}`); }
     if (q) { params.push(`%${String(q).toLowerCase()}%`); where.push(`(LOWER(t.draft->>'name') LIKE $${params.length} OR LOWER(t.draft->>'role') LIKE $${params.length} OR LOWER(t.key) LIKE $${params.length})`); }
     const { rows } = await db.query(
         // v4.1323 — El listado NO lleva el prompt (283 agentes × ~15 KB = 4 MB
         // en cada apertura de «Agentes»): la ficha lo trae con getTemplate.
-        `SELECT t.*, (t.draft - 'systemPrompt') AS draft, v.version AS "currentVersion",
+        `${cte}SELECT t.*, (t.draft - 'systemPrompt') AS draft, v.version AS "currentVersion",
                 (SELECT COUNT(*)::int FROM "AgentInstallation" i WHERE i."templateId" = t.id) AS "installationCount",
                 (SELECT COUNT(*)::int FROM "AgentInstallation" i WHERE i."templateId" = t.id AND i.enabled) AS "enabledCount"
            FROM "AgentTemplate" t
@@ -351,14 +360,19 @@ export async function mirrorToLegacy(templateId) {
 }
 
 // ── Instalaciones ──────────────────────────────────────────────────────
-export async function listInstallations({ templateId = null, siteId = null, siteType = null } = {}) {
+export async function listInstallations({ templateId = null, templateIds = null, siteId = null, siteType = null } = {}) {
     await ensureAgentCenterSchema();
+    // v4.1331 — `teams`: los equipos del agente (principal primero). Organiza
+    // la vista; el ESTADO sigue mirando el equipo principal (la política).
+    const params = [await membershipParam()];
     const where = [];
-    const params = [];
     if (templateId) { params.push(String(templateId)); where.push(`i."templateId" = $${params.length}`); }
+    if (Array.isArray(templateIds)) { params.push(templateIds.map(String)); where.push(`i."templateId" = ANY($${params.length})`); }
     if (siteId) { params.push(String(siteId)); where.push(`i."siteId" = $${params.length}`); }
     const { rows } = await db.query(
-        `SELECT i.*, t.key AS "templateKey", t.team, t.status AS "templateStatus", t.draft->>'name' AS "templateName",
+        `WITH ${membershipCte(1)}
+         SELECT i.*, t.key AS "templateKey", t.team, t.status AS "templateStatus", t.draft->>'name' AS "templateName",
+                ARRAY(SELECT DISTINCT tm.team FROM team_mem tm WHERE tm."templateId" = t.id) AS teams,
                 t."avatarSeed", t."avatarColor", c.name AS "siteName", c.type AS "siteType", c.subdomain AS "siteSubdomain",
                 v.version AS "versionNumber",
                 (SELECT COUNT(*)::int FROM "AgentToolGrant" g WHERE g."installationId" = i.id) AS "toolCount",
@@ -374,7 +388,7 @@ export async function listInstallations({ templateId = null, siteId = null, site
     );
     const policies = new Map((await listSiteTypePolicies()).map(p => [p.type, p]));
     return rows
-        .map(r => ({ ...r, siteType: r.siteType ? canonicalSiteType(r.siteType) : null }))
+        .map(r => ({ ...r, teams: [r.team, ...(r.teams || []).filter(k => k !== r.team)], siteType: r.siteType ? canonicalSiteType(r.siteType) : null }))
         .filter(r => !siteType || r.siteType === canonicalSiteType(siteType))
         .map(r => {
             const policy = r.scopeType === 'site' ? policies.get(r.siteType) : null;
