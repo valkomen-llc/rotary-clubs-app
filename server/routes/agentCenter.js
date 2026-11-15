@@ -28,6 +28,8 @@ import * as MEM from '../lib/agentMemory.js';
 import * as SC from '../lib/agentScaleStore.js';
 import * as AC from '../lib/agencyCatalogStore.js';
 import * as DIR from '../lib/agentDirectorStore.js';
+import * as TM from '../lib/agentTeamsStore.js';
+import { teamsEffective } from '../lib/agentTeamMembership.js';
 import { STEP_TYPES, MAX_STEPS, FEEDBACK_VERDICTS, PILOT_STATES, findingsOf } from '../lib/agentScaleSpec.js';
 import { ALERT_KINDS } from '../lib/agentObservabilitySpec.js';
 import db from '../lib/db.js';
@@ -41,7 +43,7 @@ import { MODULES } from '../lib/rbacSpec.js';
 
 const router = express.Router();
 
-console.log('[agent-center] v4.1329.0 — Dirección IA: Director de Inteligencia y Operaciones Rotarias (objetivo → plan → aprobación → pasos → entregable); catálogo = repositorio de The Agency; registro, runtime, despliegues, mapa, vista por sitio, memoria, observabilidad, piloto controlado y constructor de workflows');
+console.log('[agent-center] v4.1331.0 — Centro de Equipos de IA: ocho equipos navegables (plantillas, instalados y activos reales por alcance), agentes en varios equipos sin copias, Dirección IA por equipos; Dirección IA, catálogo = repositorio de The Agency; registro, runtime, despliegues, mapa, vista por sitio, memoria, observabilidad, piloto controlado y constructor de workflows');
 
 function resolveScope(req, res, next) {
     if (isPlatformAdmin(req.user)) { req.acScope = { platform: true, siteId: null }; return next(); }
@@ -56,6 +58,14 @@ const ownOr404 = (req, siteId) => {
     if (req.acScope.platform) return true;
     if (String(siteId || '') !== req.acScope.siteId) throw new R.RegistryError('No encontrado.', 404);
     return true;
+};
+/**
+ * v4.1331 — El alcance de las vistas de equipos: la plataforma ve el sistema
+ * central o, si lo pide, la perspectiva de UN sitio; un sitio, siempre el suyo.
+ */
+const teamScope = (req, requested) => {
+    const siteId = siteOf(req, requested);
+    return siteId ? { platform: false, siteId } : { platform: true, siteId: null };
 };
 
 const wrap = (fn) => async (req, res) => {
@@ -72,9 +82,12 @@ router.use(authMiddleware, resolveScope);
 
 // ── Literales ──────────────────────────────────────────────────────────
 router.get('/meta', wrap(async (req, res) => {
+    // v4.1331 — los equipos con su nombre y descripción CONFIGURADOS (las
+    // claves no cambian nunca).
+    const teams = (await teamsEffective()).map(t => ({ key: t.key, label: t.label, short: t.short, help: t.help, summary: t.summary, icon: t.icon, visible: t.visible }));
     res.json({
         scope: req.acScope.platform ? 'platform' : 'site', siteId: req.acScope.siteId,
-        teams: TEAMS, templateStates: TEMPLATE_STATES, origins: ORIGINS, levels: LEVELS,
+        teams: teams.length ? teams : TEAMS, templateStates: TEMPLATE_STATES, origins: ORIGINS, levels: LEVELS,
         installationStates: INSTALLATION_STATES, auditActions: AUDIT_ACTIONS, siteTypes: siteTypeCatalog(),
         agency: { owner: AGENCY_SOURCE.owner, repo: AGENCY_SOURCE.repo, ref: AGENCY_SOURCE.ref, license: AGENCY_SOURCE.license, divisions: AGENCY_DIVISIONS },
         tools: TOOL_CATALOG.map(t => ({ key: t.key, module: t.module, risk: t.risk, team: t.team, description: t.description, parameters: t.parameters })),
@@ -226,8 +239,12 @@ router.post('/director/plans', wrap(async (req, res) => {
     const b = req.body || {};
     const siteId = siteOf(req, b.siteId);
     if (!siteId) return res.status(400).json({ error: 'Elige la organización.' });
-    res.status(201).json(await DIR.createPlan({ siteId, objective: b.objective, capabilities: Array.isArray(b.capabilities) ? b.capabilities : [], asDraft: Boolean(b.asDraft), previousPlanId: b.previousPlanId || null }, req.user));
+    res.status(201).json(await DIR.createPlan({ siteId, objective: b.objective, capabilities: Array.isArray(b.capabilities) ? b.capabilities : [], teams: Array.isArray(b.teams) ? b.teams : [], asDraft: Boolean(b.asDraft), previousPlanId: b.previousPlanId || null }, req.user));
 }));
+
+// ── Centro de Equipos de IA (v4.1331) ──
+// El Resumen por equipos: cuentas AGREGADAS del alcance de la sesión.
+router.get('/teams', wrap(async (req, res) => res.json(await TM.teamsSummary(teamScope(req, req.query.siteId)))));
 
 // ── Paramétricas ───────────────────────────────────────────────────────
 router.put('/site-types/:type', platformOnly, wrap(async (req, res) => res.json(await R.saveSiteTypePolicy(req.params.type, req.body || {}, req.user))));
@@ -324,6 +341,15 @@ router.post('/director/plans/:id/step', wrap(async (req, res) => {
     ownOr404(req, (await DIR.getPlan(req.params.id)).siteId);
     res.json(await DIR.runNextStep(req.params.id, req.user));
 }));
+
+router.get('/teams/:key', wrap(async (req, res) => {
+    const { page, pageSize, q, view } = req.query;
+    res.json(await TM.teamDetail(String(req.params.key), teamScope(req, req.query.siteId), { page, pageSize, q, view }));
+}));
+// Configurar un equipo y asociar agentes: sólo la plataforma. Asociar NO da
+// permisos (la política del tipo de sitio mira el equipo principal).
+router.put('/teams/:key', platformOnly, wrap(async (req, res) => res.json(await TM.saveTeamConfig(String(req.params.key), req.body || {}, req.user))));
+router.post('/teams/:key/members', platformOnly, wrap(async (req, res) => res.json(await TM.setTeamMembers(String(req.params.key), req.body || {}, req.user))));
 
 router.get('/sites/:id/managers', wrap(async (req, res) => { ownOr404(req, req.params.id); res.json({ users: await R.siteManagers(req.params.id) }); }));
 router.get('/skills/:key', platformOnly, wrap(async (req, res) => res.json(await R.getSkill(req.params.key))));

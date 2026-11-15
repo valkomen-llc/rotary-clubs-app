@@ -508,3 +508,87 @@ el conocimiento institucional (hoy: cerebros por alcance con su fuente);
 planes que mezclen capacidades en paralelo; mapa con las aristas Director →
 equipos de sus planes; plantillas de equipo por organización con el Director
 incluido en Despliegues.
+
+## v4.1331.0 — Centro de Equipos de IA
+
+**Pedido**: convertir el Resumen en un centro ejecutivo de los ocho equipos
+institucionales, navegable hasta los agentes de cada equipo, sin reconstruir el
+módulo ni duplicar agentes, permisos ni configuraciones, y con la Dirección IA
+capaz de armar iniciativas por equipos.
+
+**Auditoría de partida (verificada en el código).** Ya existían y se REUTILIZAN:
+`TEAMS` (las ocho claves), `AGENCY_DIVISION_TEAM` (división → equipo
+principal), `installationState` (estados honestos), el alcance por sesión
+(`resolveScope`/`siteOf`/`ownOr404`/`platformOnly`), la ficha
+(`TemplateEditor`), `POST /installations`, `POST /installations/:id/run`
+(«Asignar tarea») y las capacidades del Director, que ya declaraban sus
+equipos. Faltaba: tarjetas que llevaban a «Agentes» sin filtro y mezclaban
+plantillas con instalaciones, un solo equipo por agente, ninguna vista por
+equipo para el sitio, y un Director que elegía agente por `i.team === paso.team`.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/agentTeamsSpec.js` | El CRITERIO, puro: perfiles de los ocho equipos (misión, capacidades, límites, ícono), configuración por lista cerrada, pertenencia, estado operativo, tarjetas, paginación |
+| `server/lib/agentTeamMembership.js` | Configuración guardada (`AgentSetting`, clave `teams`, caché de 30 s) y la consulta de pertenencia (`membershipCte`). Chica a propósito: la importan registro, runtime y Director sin ciclos |
+| `server/lib/agentTeamsStore.js` | `teamsSummary`, `teamDetail` (paginado), `saveTeamConfig`, `setTeamMembers` |
+| tabla `AgentTeamMember` | `(templateId, team)`: a qué OTROS equipos se asocia un agente |
+| `src/pages/admin/agentCenter/TeamCards.tsx` | Las tarjetas del Resumen (plataforma y sitio) |
+| `src/pages/admin/agentCenter/TeamDetail.tsx` | La vista de un equipo (`?s=resumen&team=<clave>`) y su panel de configuración |
+
+Endpoints (`/api/agent-center`): `GET /teams` y `GET /teams/:key`
+(`page`, `pageSize` ≤ 60, `q`, `view` = `all|installed|not_installed`) para
+ambos alcances; `PUT /teams/:key` y `POST /teams/:key/members`
+(`{ add, remove }`, ≤ 200) sólo la plataforma. `POST /director/plans` acepta
+`teams`.
+
+**Reglas durables:**
+- **PERTENECER A UN EQUIPO NO DA PERMISOS.** Pertenencia = equipo principal
+  (`AgentTemplate.team`) ∪ asociados a mano (`AgentTeamMember`) ∪ por categoría
+  (divisiones asociadas en la configuración del equipo). La política del tipo
+  de sitio, `checkInstallable` y «disponible para el sitio» siguen mirando el
+  equipo PRINCIPAL; las herramientas, la concesión de cada instalación. Un
+  agente asociado sólo puede REDACTAR el resumen de un workflow de ese equipo,
+  sin herramientas, y nunca si su instalación está deshabilitada.
+- **Sin copias.** Asociar inserta una fila; el agente, sus versiones y sus
+  instalaciones son los mismos. El equipo principal no se quita desde el
+  equipo: se cambia en la ficha.
+- **Plantillas ≠ instalados ≠ activos.** «Plantillas» = publicadas del equipo
+  (para un sitio: las que su tipo de sitio permite instalar); «Instalados» =
+  instalaciones del alcance; «Activos» = estado `active`/`running`. Una
+  instalación cuenta en cada equipo de su agente. `teamOperationalStatus`
+  NUNCA dice «Operativo» sin un agente activo.
+- **El sitio sale de la sesión** (`teamScope` → `siteOf`). La plataforma puede
+  pedir la perspectiva de un sitio con `?siteId=`. Un sitio no ve equipos
+  ocultos ni los que su tipo de sitio no trabaja (404 en el servidor) y sólo
+  ve sus instalaciones; nunca el nombre de otro sitio.
+- **Ocultar es presentación.** `visible: false` lo esconde de los sitios; no
+  apaga workflows ni instalaciones (eso es la política del tipo de sitio).
+- **La clave de un equipo no cambia nunca**: la usan políticas, plantillas,
+  workflows y planes. Se configuran nombre, descripción, ícono (lista
+  cerrada), orden (10…80 por omisión), visibilidad, responsabilidades y
+  categorías. `/meta` devuelve los nombres configurados.
+- **El Resumen no carga fichas**: plantillas, tareas y ejecuciones por equipo
+  son consultas agregadas; los agentes se cargan al abrir el equipo, por
+  páginas y sin el prompt. El Director (su propia pestaña) no se lista ni se
+  cuenta en los equipos.
+- **Dirección IA por equipos**: `interpretObjective(texto, { teams })` deja
+  sólo capacidades en las que interviene algún equipo elegido; lo pedido que
+  es de otros equipos se informa en `clarify`, sin plan inventado. El plan
+  guarda `requestedTeams`. `pickTeamAgent` elige el agente del equipo
+  principal primero y después uno asociado.
+
+**Pruebas**: `test:agents:teams` (128, sin base, en `prebuild`) y
+`test:agents:teams:e2e` (64, Postgres LOCAL con el catálogo real de 283 y
+modelo simulado: conteos frente a la base, instalado ≠ activo, asociar sin
+copiar y sin permisos, categorías, paginación, Director por equipos, runtime
+que redacta con un asociado sin herramientas, aislamiento por HTTP con tokens
+de dos sitios). Verificadas a la inversa: dejar que un sitio elija otro sitio
+en `teamScope`, quitar el 404 de equipos ocultos/no habilitados o dejar de
+filtrar instalaciones por sitio hacen fallar la de punta a punta. Las de
+punta a punta del Director, registro, runtime (con pgvector), escalamiento y
+catálogo siguen en verde.
+
+**Pendiente (no hecho, a propósito):** filtro de «Tareas» por agente desde la
+vista del equipo (hoy «Ver ejecuciones» abre Tareas completo); el mapa sigue
+dibujando el equipo principal; plantillas de equipo de Despliegues no usan
+todavía las asociaciones.

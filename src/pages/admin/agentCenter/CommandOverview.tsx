@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { acApi } from './agentCenterApi';
-import type { Meta, AuditEntry } from './agentCenterApi';
+import type { Meta, AuditEntry, TeamsSummary } from './agentCenterApi';
 import { Kpi, ErrorNote, SectionHeader, StatePill, fmtDate } from './agentCenterUi';
+import TeamCards from './TeamCards';
 
 interface Overview {
     templates: { total: number; byStatus: Record<string, number> };
@@ -15,12 +16,18 @@ interface Overview {
     usage30d: { calls: number; costUsd: number; errors: number };
 }
 
-export default function CommandOverview({ meta, onNavigate }: { meta: Meta; onNavigate: (s: string) => void }) {
+export default function CommandOverview({ meta, onNavigate }: { meta: Meta; onNavigate: (s: string, extra?: Record<string, string | null>) => void }) {
     const [data, setData] = useState<Overview | null>(null);
+    const [teams, setTeams] = useState<TeamsSummary | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        acApi<Overview>('/overview').then(setData).catch(e => setError(e.message));
+        // /overview primero: la primera vez restablece el catálogo, y las
+        // tarjetas de equipos tienen que contar el catálogo ya cargado.
+        acApi<Overview>('/overview')
+            .then(d => { setData(d); return acApi<TeamsSummary>('/teams'); })
+            .then(setTeams)
+            .catch(e => setError(e.message));
     }, []);
 
     if (error) return <ErrorNote message={error} />;
@@ -60,22 +67,7 @@ export default function CommandOverview({ meta, onNavigate }: { meta: Meta; onNa
                 <Kpi label="Consumo IA (30 días)" value={`US$ ${Number(data.usage30d.costUsd || 0).toFixed(2)}`} hint={`${data.usage30d.calls || 0} llamadas · estimado`} />
             </div>
 
-            <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
-                <SectionHeader title="Equipos de agentes" subtitle="Plantillas e instalaciones por equipo." />
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-                    {meta.teams.map(t => {
-                        const c = data.byTeam[t.key] || { templates: 0, installations: 0 };
-                        return (
-                            <button key={t.key} type="button" onClick={() => onNavigate('agentes')}
-                                className="text-left rounded-xl border border-gray-100 hover:border-blue-200 hover:bg-blue-50/40 transition-colors p-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
-                                <p className="font-bold text-gray-800 text-sm">{t.label}</p>
-                                <p className="text-xs text-gray-500 mt-0.5">{t.help}</p>
-                                <p className="text-xs text-gray-600 mt-2 tabular-nums"><b>{c.templates}</b> plantillas · <b>{c.installations}</b> instalaciones</p>
-                            </button>
-                        );
-                    })}
-                </div>
-            </div>
+            <TeamCards data={teams} onOpen={(key) => onNavigate('resumen', { team: key })} />
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                 <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-3 min-w-0">

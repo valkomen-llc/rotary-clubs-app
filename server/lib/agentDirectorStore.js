@@ -28,6 +28,8 @@ import { chatWithTools, pickModelSlug, resolveModelConfig } from './agentGateway
 import { withAiContext, currentPrices, monthSpendUsd } from './aiUsage.js';
 import { checkBudgets, getBudgets } from './agentObservability.js';
 import { knowledgeBrainsForSite } from './agentMemory.js';
+import { membershipCte, membershipParam } from './agentTeamMembership.js';
+import { installationTeams } from './agentTeamsSpec.js';
 import {
     DIRECTOR_KEY, DIRECTOR_TEMPLATE, PLAN_STATES, LIMITS, QUICK_ACTIONS, CAPABILITIES, canTransitionPlan,
     interpretObjective, buildPlan, stepInput, nextStep, planFinished, summarizeStepResult, consolidateDeliverable, historyEntry,
@@ -126,7 +128,13 @@ async function directorContext(siteId) {
     if (ctx) director.model = await pickModelSlug({ installation: ctx.inst, version: { snapshot: ctx.inst.snapshot }, settings }).catch(() => null);
     const teamsAllowed = (team) => siteTypeAllows(policy, team);
     const teamKeys = TEAMS.map(t => t.key).filter(teamsAllowed);
-    const catalogRows = await safe(`SELECT id, key, team, draft->>'name' AS name, draft->>'role' AS role FROM "AgentTemplate" WHERE status = 'published' AND team = ANY($1) AND key <> $2`, [teamKeys, DIRECTOR_KEY]);
+    // v4.1331 — el catálogo de cada equipo incluye a los agentes ASOCIADOS
+    // (Centro de Equipos): un mismo agente puede sugerirse en dos equipos.
+    const catalogRows = await safe(
+        `WITH ${membershipCte(3)}
+         SELECT DISTINCT t.id, t.key, tm.team, t.draft->>'name' AS name, t.draft->>'role' AS role
+           FROM "AgentTemplate" t JOIN team_mem tm ON tm."templateId" = t.id
+          WHERE t.status = 'published' AND tm.team = ANY($1) AND t.key <> $2`, [teamKeys, DIRECTOR_KEY, await membershipParam()]);
     const catalog = {};
     for (const r of catalogRows) (catalog[r.team] ||= []).push(r);
     return { site, siteType, policy, installations: installations.filter(i => i.templateKey !== DIRECTOR_KEY), director, sources, settings, teamsAllowed, catalog, ctx };
@@ -148,7 +156,7 @@ export async function directorOverview(siteId) {
         site: { id: c.site.id, name: c.site.name, type: c.site.type, siteType: c.siteType },
         policy: { enabled: c.policy.enabled, allowedTeams: c.policy.allowedTeams || [] },
         director: c.director,
-        teams: TEAMS.map(t => ({ ...t, allowed: c.teamsAllowed(t.key), installed: c.installations.filter(i => i.team === t.key).length, operational: operational.filter(i => i.team === t.key).length, catalog: (c.catalog[t.key] || []).length })),
+        teams: TEAMS.map(t => ({ ...t, allowed: c.teamsAllowed(t.key), installed: c.installations.filter(i => installationTeams(i).includes(t.key)).length, operational: operational.filter(i => installationTeams(i).includes(t.key)).length, catalog: (c.catalog[t.key] || []).length })),
         operationalAgents: operational.map(i => ({ id: i.id, name: i.templateName, team: i.team, state: i.state })),
         installedAgents: c.installations.length,
         knowledge: c.sources,
@@ -219,9 +227,9 @@ async function directorRead({ planId, ctx, plan, gateway }) {
     }
 }
 
-export async function createPlan({ siteId, objective, capabilities = [], asDraft = false, previousPlanId = null }, user, { gateway = chatWithTools } = {}) {
+export async function createPlan({ siteId, objective, capabilities = [], teams = [], asDraft = false, previousPlanId = null }, user, { gateway = chatWithTools } = {}) {
     await ensureAgentCenterSchema();
-    const interpretation = interpretObjective(objective, { forced: capabilities });
+    const interpretation = interpretObjective(objective, { forced: capabilities, teams });
     if (interpretation.errors.length) throw new RegistryError(interpretation.errors.join(' '), 400);
     const ctx = await directorContext(siteId);
     const price = ctx.director.model ? await priceFor(ctx.director.model) : null;

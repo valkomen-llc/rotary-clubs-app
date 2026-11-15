@@ -22,7 +22,50 @@ export async function acApi<T = any>(path: string, opts: { method?: string; body
     return data as T;
 }
 
-export interface Team { key: string; label: string; short: string; help: string }
+export interface Team { key: string; label: string; short: string; help: string; summary?: string; icon?: string; visible?: boolean }
+
+// ── Centro de Equipos de IA (v4.1331) ──
+export interface TeamStatus { key: string; label: string; tone: string; help: string }
+export interface TeamCard {
+    key: string; label: string; summary: string; icon: string; visible: boolean; director: boolean;
+    templates: number; published: number; installed: number; enabled: number; active: number; profileOnly: number; errors: number; sites: number;
+    pendingTasks: number; runs30d: number; failedRuns30d: number; lastRunAt: string | null;
+    status: TeamStatus;
+}
+export interface TeamsSummary {
+    scope: 'platform' | 'site';
+    site: { id: string; name: string; type: string } | null;
+    policy: { enabled: boolean; allowedTeams: string[] } | null;
+    teams: TeamCard[];
+}
+export interface TeamAgentInstallation {
+    id: string; scopeType: 'platform' | 'site'; siteId: string | null; siteName: string | null; siteType: string | null;
+    enabled: boolean; state: string; stateReason: string; toolCount: number; responsibleUserId: string | null;
+    lastRunAt: string | null; lastRunStatus: string | null;
+}
+export interface TeamAgent {
+    id: string; key: string; name: string; role: string; description: string; emoji: string | null;
+    avatarSeed: string | null; avatarColor: string | null; status: string; level: string; origin: string; currentVersion: number | null;
+    division: string | null; divisionLabel: string | null; primaryTeam: string; teams: string[]; membership: 'primary' | 'manual' | 'division' | null;
+    installCount: number; state: string; tools: string[]; lastRun: { at: string; status: string } | null;
+    installations: TeamAgentInstallation[]; moreInstallations: number;
+}
+export interface TeamDetailData {
+    scope: 'platform' | 'site';
+    site: { id: string; name: string; type: string } | null;
+    team: {
+        key: string; label: string; summary: string; icon: string; visible: boolean; mission: string; responsibilities: string[];
+        capabilities: string[]; guardrails: string[]; director: boolean; originDivisions: string[]; divisions: string[];
+        sortOrder: number; status: TeamStatus | null; allowed: boolean;
+    };
+    counts: TeamCard | null;
+    capabilities: { key: string; label: string }[];
+    workflows: { key: string; label: string }[];
+    agents: TeamAgent[];
+    page: number; pageSize: number; total: number; view: string; q: string;
+    views: Record<string, string>; membershipKinds: Record<string, string>;
+    icons: Record<string, string>; divisions: Record<string, string>;
+}
 export interface SiteTypeMeta { type: string; label: string; organizationType: string; hint: string; defaultEnabled: boolean }
 export interface Meta {
     teams: Team[];

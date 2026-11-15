@@ -34,13 +34,31 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1330.0 | 2026-11-14 (Feria de Proyectos: edición de proyectos después del cierre de postulaciones)
-// Cache bust: 2026-11-14
+// UI V4.1331.0 | 2026-11-15 (Agentes IA: Centro de Equipos de IA)
+// Cache bust: 2026-11-15
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1331.0',
+        title: 'Agentes IA: el Resumen se convierte en el Centro de Equipos de IA 🧭',
+        description: 'Las ocho tarjetas de equipos del Centro de Comando ahora son puntos de entrada reales. Cada equipo muestra, con datos de la plataforma, cuántas plantillas tiene, cuántos agentes están instalados y cuántos están activos (nunca «operativo» si no hay un agente activo), y abre su propia vista con responsabilidades, límites, capacidades en la Dirección IA y el registro paginado de sus agentes. Un agente puede colaborar con varios equipos sin copiarse, y eso no le da permisos.',
+        date: new Date().toISOString(),
+        tags: ['agentes-ia', 'command-center', 'equipos', 'direccion-ia', 'multi-sitio', 'permisos'],
+        type: 'feature',
+        impact: 'Alta: el administrador ve en una pantalla qué capacidades ofrece cada equipo y qué está realmente funcionando, en el sistema central o en su organización.',
+        changes: [
+            { type: 'added', text: 'Resumen → «Equipos de agentes»: ícono, descripción, estado operativo y tres cifras distintas —plantillas, instalados, activos— calculadas con consultas agregadas del alcance; «Explorar equipo» en cada tarjeta.' },
+            { type: 'added', text: 'Vista de equipo (/admin/agentes?s=resumen&team=…): encabezado con alcance y estado, indicadores (plantillas, instalaciones, activos, tareas pendientes, ejecuciones de 30 días), responsabilidades, límites, capacidades del Director y workflows.' },
+            { type: 'added', text: 'Registro de agentes del equipo, paginado y con búsqueda: especialidad, categoría original, equipo principal, estado, herramientas autorizadas, sitios y última ejecución. «Ver detalles», «Instalar», «Configurar», «Asignar tarea» y «Ver ejecuciones» reutilizan la ficha y las acciones existentes.' },
+            { type: 'added', text: 'Un agente colabora con varios equipos sin duplicarse (asociación a mano o por categoría del catálogo). La política del tipo de sitio sigue mirando su equipo principal: asociar no da permisos.' },
+            { type: 'added', text: 'Configuración de cada equipo (plataforma): nombre, descripción, ícono, orden, visibilidad, responsabilidades y categorías asociadas, con auditoría.' },
+            { type: 'added', text: 'Dirección IA: «Equipos de la iniciativa». El Director arma el plan sólo con capacidades de los equipos elegidos; desde un equipo, «Iniciar con Dirección IA» llega con ese equipo seleccionado.' },
+            { type: 'changed', text: 'El administrador de un sitio ve sólo los equipos habilitados para su organización, con lo instalado en SU sitio; un equipo oculto o no habilitado responde 404 en el servidor.' },
+        ],
+    },
     {
         version: '4.1330.0',
         title: 'Feria de Proyectos: los proyectos inscritos se siguen editando después del cierre ✍️',

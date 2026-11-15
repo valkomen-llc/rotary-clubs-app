@@ -1,5 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
-// AI Agent Command Center — /admin/agentes (v4.1329.0: + Dirección IA)
+// AI Agent Command Center — /admin/agentes (v4.1329.0: + Dirección IA;
+// v4.1331.0: el Resumen es el Centro de Equipos — ?s=resumen&team=<clave>)
 //
 // Reemplaza la pantalla de «Agentes expertos» y su menú de botones
 // deshabilitados (Task Queue, Schedule, Activity Logs, Vector Memory). Cada
@@ -32,6 +33,7 @@ import KnowledgeTab from './KnowledgeTab';
 import PilotTab from './PilotTab';
 import BuilderTab from './BuilderTab';
 import DirectorTab from './DirectorTab';
+import TeamDetail from './TeamDetail';
 
 export interface SectionDef { key: string; label: string; icon: React.ElementType; group: string; site?: boolean; platform?: boolean }
 
@@ -56,7 +58,10 @@ export const SECTIONS: SectionDef[] = [
     { key: 'ajustes', label: 'Ajustes', icon: Settings2, group: 'Gobierno' },
 ];
 
-function SectionBody({ section, meta, onNavigate }: { section: string; meta: Meta; onNavigate: (s: string) => void }) {
+export type Navigate = (s: string, extra?: Record<string, string | null>) => void;
+
+function SectionBody({ section, team, meta, onNavigate }: { section: string; team: string | null; meta: Meta; onNavigate: Navigate }) {
+    if (section === 'resumen' && team) return <TeamDetail key={team} meta={meta} teamKey={team} onBack={() => onNavigate('resumen')} onNavigate={onNavigate} />;
     switch (section) {
         case 'direccion': return <DirectorTab meta={meta} onNavigate={onNavigate} />;
         case 'agentes': return <RegistryTab meta={meta} />;
@@ -91,7 +96,15 @@ export default function AgentCommandCenter() {
         acApi<Meta>('/meta').then(setMeta).catch(e => setError(e.message));
     }, []);
 
-    const go = (s: string) => setParams(prev => { const p = new URLSearchParams(prev); p.set('s', s); return p; }, { replace: true });
+    // `team` sólo vive en la vista de un equipo (o la lleva a Dirección IA):
+    // cambiar de sección lo quita salvo que se pase de nuevo.
+    const go: Navigate = (s, extra) => setParams(prev => {
+        const p = new URLSearchParams(prev);
+        p.set('s', s);
+        p.delete('team');
+        for (const [k, v] of Object.entries(extra || {})) { if (v == null) p.delete(k); else p.set(k, v); }
+        return p;
+    }, { replace: !extra });
 
     return (
         <AdminLayout>
@@ -121,7 +134,7 @@ export default function AgentCommandCenter() {
                 </nav>
 
                 <ErrorNote message={error} />
-                {meta ? <SectionBody section={section} meta={meta} onNavigate={go} /> : !error && <div className="text-sm text-gray-400">Cargando el Command Center…</div>}
+                {meta ? <SectionBody section={section} team={params.get('team')} meta={meta} onNavigate={go} /> : !error && <div className="text-sm text-gray-400">Cargando el Command Center…</div>}
             </div>
         </AdminLayout>
     );

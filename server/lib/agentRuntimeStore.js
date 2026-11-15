@@ -26,6 +26,7 @@ import { withAiContext, monthSpendUsd } from './aiUsage.js';
 import { checkBudgets, computeAlerts } from './agentObservability.js';
 import { purgeOperationalMemory, backfillVectors, vectorStatus } from './agentMemory.js';
 import { isPlatformAdmin, isSiteManager } from './agentScope.js';
+import { membershipCte, membershipParam } from './agentTeamMembership.js';
 
 const J = (v) => JSON.stringify(v ?? null);
 const clip = (v, n) => { const s = typeof v === 'string' ? v : JSON.stringify(v); return s.length > n ? s.slice(0, n) + '…' : s; };
@@ -373,10 +374,21 @@ const PILOT_KEY = {
  * el sitio del mismo equipo que el workflow.
  */
 async function teamInstallation(siteId, team) {
+    // v4.1331 — también un agente ASOCIADO al equipo (Centro de Equipos), el
+    // del equipo principal primero. Asociar no da permisos: el resumen se
+    // redacta sin herramientas y una instalación que su política deshabilita
+    // (por su equipo PRINCIPAL) no cuenta.
     const r = await db.query(
-        `SELECT i.id FROM "AgentInstallation" i JOIN "AgentTemplate" t ON t.id = i."templateId"
-          WHERE t.team = $1 AND i."siteId" = $2 AND i.enabled AND t.status = 'published' ORDER BY i."createdAt" LIMIT 1`, [team, String(siteId)]);
-    return r.rows[0]?.id || null;
+        `WITH ${membershipCte(3)}
+         SELECT i.id FROM "AgentInstallation" i JOIN "AgentTemplate" t ON t.id = i."templateId"
+          WHERE i."siteId" = $2 AND i.enabled AND t.status = 'published'
+            AND EXISTS (SELECT 1 FROM team_mem tm WHERE tm."templateId" = t.id AND tm.team = $1)
+          ORDER BY (t.team = $1) DESC, i."createdAt" LIMIT 10`, [team, String(siteId), await membershipParam()]);
+    for (const row of r.rows) {
+        const { state } = await loadInstallationContext(row.id).catch(() => ({ state: { state: 'disabled' } }));
+        if (!['disabled', 'installed', 'available'].includes(state.state)) return row.id;
+    }
+    return null;
 }
 
 async function aiNarrative({ siteId, workflowKey, prompt, data, gateway, maxTokens = 1500 }) {

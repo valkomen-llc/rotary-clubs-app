@@ -189,6 +189,8 @@
 // Y la de la Dirección IA (v4.1329): AgentDirectorPlan — cada objetivo que se
 // le dio al Director, el plan que propuso, quién lo aprobó, su ejecución paso a
 // paso y el entregable: es la trazabilidad de lo que se decidió.
+// Y la del Centro de Equipos de IA (v4.1331): AgentTeamMember — a qué otros
+// equipos se asocia cada agente del catálogo, sin copiarlo.
 // Y la traza de cada mensaje entrante de WhatsApp (v4.1285):
 // WhatsAppInboundTrace — el recorrido de cada «Hola» de punta a punta y la
 // única evidencia de qué conversaciones quedaron sin respuesta.

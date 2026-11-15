@@ -6,10 +6,15 @@
 // lecturas que YA existen), una persona lo aprueba, los pasos se ejecutan uno
 // a uno y el entregable queda para revisión humana.
 //
+// v4.1331.0 — La iniciativa puede llevar EQUIPOS: el Director arma el plan
+// sólo con capacidades en las que intervienen (desde un equipo del Resumen,
+// «Iniciar con Dirección IA» llega con ese equipo elegido).
+//
 // Cada componente vive a nivel de módulo (nunca dentro de otro) y todos los
 // hooks van arriba, antes de cualquier return.
 // ════════════════════════════════════════════════════════════════════
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { BrainCircuit, Send, Save, Play, CheckCircle2, XCircle, RotateCcw, Ban, FileText, Users, Wrench, Database, Wallet, Clock, AlertTriangle, ExternalLink, ChevronRight, ShieldCheck, ListChecks } from 'lucide-react';
 import { acApi } from './agentCenterApi';
 import type { Meta, Site } from './agentCenterApi';
@@ -25,7 +30,7 @@ interface PlanStep {
     workflowRunId?: string | null; aiSummary?: string | null; aiNote?: string | null; error?: string | null; latencyMs?: number; attempt?: number;
 }
 interface PlanBody {
-    objective: string; interpreted: string[]; clarify: string[]; context: { siteName: string | null; siteType: string | null };
+    objective: string; interpreted: string[]; requestedTeams?: string[]; clarify: string[]; context: { siteName: string | null; siteType: string | null };
     scope: string; deliverables: string[]; steps: PlanStep[]; teams: string[];
     specialists: { team: string; capability: string; installed: { installationId: string; name: string; state: string; enabled: boolean }[]; suggested: { templateId: string; key: string; name: string; role: string }[] }[];
     sources: { id: string; name: string; scope: string; memories: number | null }[];
@@ -50,7 +55,7 @@ interface Overview {
     site: { id: string; name: string; type: string; siteType: string } | null;
     template: { id: string; status: string } | null;
     planStates: Record<string, { label: string; help: string }>;
-    quickActions: { key: string; label: string; text: string }[];
+    quickActions: { key: string; label: string; text: string; teams?: string[] }[];
     policy?: { enabled: boolean; allowedTeams: string[] };
     director?: { installed: boolean; installationId: string | null; enabled: boolean; state: string; stateLabel: string; reason: string; tools: { tool: string; mode: string }[]; model: string | null; responsibleUserId: string | null };
     teams?: { key: string; label: string; allowed: boolean; installed: number; operational: number; catalog: number }[];
@@ -154,7 +159,9 @@ function DirectorPanel({ ov, platform, busy, onTemplate, onInstall, onNavigate }
 }
 
 // ── Consola de objetivos ────────────────────────────────────────────
-function ObjectiveConsole({ quickActions, text, onText, forced, onForced, busy, onCreate }: { quickActions: Overview['quickActions']; text: string; onText: (t: string) => void; forced: string[]; onForced: (k: string[]) => void; busy: boolean; onCreate: (asDraft: boolean) => void }) {
+function ObjectiveConsole({ quickActions, teams, selTeams, onSelTeams, text, onText, forced, onForced, busy, onCreate }: { quickActions: Overview['quickActions']; teams: { key: string; label: string }[]; selTeams: string[]; onSelTeams: (k: string[]) => void; text: string; onText: (t: string) => void; forced: string[]; onForced: (k: string[]) => void; busy: boolean; onCreate: (asDraft: boolean) => void }) {
+    const visibleActions = selTeams.length ? quickActions.filter(q => (q.teams || []).some(t => selTeams.includes(t))) : quickActions;
+    const toggleTeam = (k: string) => { onSelTeams(selTeams.includes(k) ? selTeams.filter(x => x !== k) : [...selTeams, k]); onForced([]); };
     return (
         <div className={card}>
             <label htmlFor="director-objective" className="block text-base font-black text-gray-800">¿Qué necesitas planificar, analizar o ejecutar en tu organización rotaria?</label>
@@ -162,8 +169,19 @@ function ObjectiveConsole({ quickActions, text, onText, forced, onForced, busy, 
             <textarea id="director-objective" value={text} onChange={e => { onText(e.target.value); if (forced.length) onForced([]); }} rows={4} maxLength={4000}
                 className="mt-3 w-full px-3.5 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
                 placeholder="Ej.: Necesito analizar todos los proyectos postulados a la feria, identificar datos faltantes y preparar un resumen para el comité organizador." />
+            <fieldset className="mt-3">
+                <legend className="text-xs font-bold text-gray-600">Equipos de la iniciativa <span className="font-normal text-gray-400">(opcional: el plan usa sólo capacidades de los equipos elegidos)</span></legend>
+                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                    {teams.map(t => (
+                        <button key={t.key} type="button" aria-pressed={selTeams.includes(t.key)} onClick={() => toggleTeam(t.key)}
+                            className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition-colors ${selTeams.includes(t.key) ? 'bg-blue-50 text-rotary-blue border-blue-200' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}>
+                            {t.label}
+                        </button>
+                    ))}
+                </div>
+            </fieldset>
             <div className="flex flex-wrap gap-1.5 mt-2">
-                {quickActions.map(q => (
+                {visibleActions.map(q => (
                     <button key={q.key} type="button" onClick={() => { onText(q.text); onForced([q.key]); }}
                         className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition-colors ${forced.includes(q.key) ? 'bg-orange-50 text-orange-700 border-orange-200' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}>
                         {q.label}
@@ -218,6 +236,7 @@ function PlanView({ plan, meta, busy, running, onDecide, onRun, onRedo }: { plan
                         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400">Plan de trabajo · {plan.siteName || p.context.siteName}</p>
                         <h3 className="text-lg font-black text-gray-800">{p.interpreted.length ? p.interpreted.join(' + ') : 'Objetivo sin interpretar'}</h3>
                         <p className="text-sm text-gray-500 mt-1">«{plan.objective}»</p>
+                        {(p.requestedTeams || []).length > 0 && <p className="text-xs text-gray-500 mt-1">Equipos elegidos: {(p.requestedTeams || []).map(k => meta.teams.find(t => t.key === k)?.label || k).join(', ')}</p>}
                     </div>
                     <PlanChip status={plan.status} label={plan.stateLabel} />
                 </div>
@@ -401,6 +420,8 @@ export default function DirectorTab({ meta, onNavigate }: { meta: Meta; onNaviga
     const [plan, setPlan] = useState<Plan | null>(null);
     const [text, setText] = useState('');
     const [forced, setForced] = useState<string[]>([]);
+    const [searchParams] = useSearchParams();
+    const [selTeams, setSelTeams] = useState<string[]>(() => { const t = searchParams.get('team'); return t && meta.teams.some(x => x.key === t) ? [t] : []; });
     const [previousPlanId, setPreviousPlanId] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
     const [running, setRunning] = useState(false);
@@ -427,7 +448,7 @@ export default function DirectorTab({ meta, onNavigate }: { meta: Meta; onNaviga
         try { await fn(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
     };
     const create = (asDraft: boolean) => act(async () => {
-        const p = await acApi<Plan>('/director/plans', { method: 'POST', body: { siteId, objective: text, capabilities: forced, asDraft, previousPlanId } });
+        const p = await acApi<Plan>('/director/plans', { method: 'POST', body: { siteId, objective: text, capabilities: forced, teams: selTeams, asDraft, previousPlanId } });
         setText(''); setForced([]); setPreviousPlanId(null);
         await load(); setSelected(p.id); setPlan(p);
     });
@@ -473,7 +494,7 @@ export default function DirectorTab({ meta, onNavigate }: { meta: Meta; onNaviga
                         <Kpi label="En revisión" value={ov.plans?.review || 0} hint="Entregables por revisar" />
                         <Kpi label="Requieren intervención" value={ov.plans?.needs_attention || 0} />
                     </div>
-                    <ObjectiveConsole quickActions={ov.quickActions || []} text={text} onText={setText} forced={forced} onForced={setForced} busy={busy} onCreate={create} />
+                    <ObjectiveConsole quickActions={ov.quickActions || []} teams={(ov.teams || meta.teams.map(t => ({ ...t, allowed: true }))).filter(t => t.allowed).map(t => ({ key: t.key, label: meta.teams.find(m => m.key === t.key)?.label || t.label }))} selTeams={selTeams} onSelTeams={setSelTeams} text={text} onText={setText} forced={forced} onForced={setForced} busy={busy} onCreate={create} />
                     {previousPlanId && <p className="text-xs text-gray-500 -mt-3">El nuevo plan quedará enlazado al anterior.</p>}
                     <div className="space-y-2">
                         <p className="text-sm font-black text-gray-800">Planes y entregables</p>
