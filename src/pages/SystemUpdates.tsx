@@ -34,13 +34,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1333.0 | 2026-11-17 (Panel: barra lateral minimizable)
+// UI V4.1334.0 | 2026-11-17 (Panel: logotipo junto al título con el menú minimizado)
 // Cache bust: 2026-11-17
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1334.0',
+        title: 'Panel de control: con el menú minimizado, el logotipo va junto al título',
+        description: 'Al minimizar el menú lateral, el logotipo del sitio ya no se encoge entre los botones de la barra (quedaba ilegible): pasa al encabezado, justo a la izquierda del título de la sección («Dashboard»), a buen tamaño. Al maximizar el menú vuelve a su lugar de siempre.',
+        date: new Date().toISOString(),
+        tags: ['panel', 'menu', 'logotipo', 'todos-los-sitios'],
+        type: 'improvement',
+        impact: 'Baja: la identidad del sitio sigue visible y legible con el menú minimizado.',
+        changes: [
+            { type: 'changed', text: 'Menú minimizado: el logotipo sale de la barra y aparece en el encabezado, a la izquierda del título, enlazado al sitio.' },
+            { type: 'changed', text: 'Menú maximizado y teléfono: el logotipo sigue en la barra, como siempre (nunca se pinta dos veces).' },
+        ],
+    },
     {
         version: '4.1333.0',
         title: 'Panel de control: el menú lateral se puede minimizar ↔️',

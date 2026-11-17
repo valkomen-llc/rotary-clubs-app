@@ -1131,7 +1131,9 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                     aria-label="Menú del panel"
                     data-sidebar={mini ? 'minimizada' : 'maximizada'}
                     className={`fixed lg:static inset-y-0 left-0 w-72 ${mini ? 'lg:w-20' : ''} bg-white border-r border-gray-200 flex flex-col flex-shrink-0 z-40 transform transition-[transform,width] duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
-                    {/* v4.1333 — Minimizada: logotipo compacto, maximizar y buscar. */}
+                    {/* v4.1334 — Minimizada: maximizar y buscar. El logotipo NO va
+                        aquí: en 80 px un logotipo horizontal queda ilegible. Pasa al
+                        encabezado, a la izquierda del título («Dashboard»). */}
                     {mini ? (
                         <div className="flex flex-col items-center gap-2 px-2 pt-5 pb-3">
                             <button type="button" onClick={() => sidebar.setCollapsed(false)}
@@ -1139,13 +1141,6 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                                 className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-500 hover:text-rotary-blue hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rotary-blue/30 transition-colors">
                                 <PanelLeftOpen className="w-5 h-5" />
                             </button>
-                            {(!isSuperAdmin && club?.logo) ? (
-                                <img src={club.logo} alt={club.name} className="w-11 h-11 object-contain" />
-                            ) : (
-                                <div className="w-10 h-10 rounded-xl bg-rotary-blue flex items-center justify-center shadow-lg shadow-rotary-blue/20" aria-hidden="true">
-                                    <div className="w-5 h-5 border-2 border-white rounded-md flex items-center justify-center font-black text-white text-[8px]">R</div>
-                                </div>
-                            )}
                             <button type="button"
                                 onClick={() => { sidebar.setCollapsed(false); setTimeout(() => searchInputRef.current?.focus(), 60); }}
                                 aria-label="Buscar sección" {...navTip.propsFor('Buscar sección (⌘K)')}
@@ -1452,6 +1447,26 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                             >
                                 <Menu className="w-5 h-5" />
                             </button>
+                            {/* v4.1334 — Con el menú minimizado, el logotipo del sitio vive
+                                aquí, a la izquierda del título. Maximizado vuelve a su lugar
+                                en la barra (nunca se pinta dos veces). */}
+                            {mini && (
+                                <Link to="/" aria-label={`Abrir el sitio ${isSuperAdmin ? 'ClubPlatform' : (club?.name || '')}`.trim()} data-logo-encabezado
+                                    className="flex items-center flex-shrink-0 pr-3 mr-1 border-r border-gray-200">
+                                    {isSuperAdmin ? (
+                                        <img src={platformLogo || '/images/platform_logo_premium.png'} alt="ClubPlatform" className="h-9 w-auto max-w-[180px] object-contain rounded-md" />
+                                    ) : club?.logo ? (
+                                        <img src={club.logo} alt={club.name} className="h-10 w-auto max-w-[200px] object-contain" />
+                                    ) : (
+                                        <span className="flex items-center gap-2">
+                                            <span className="w-8 h-8 rounded-lg bg-rotary-blue flex items-center justify-center" aria-hidden="true">
+                                                <span className="w-4 h-4 border-2 border-white rounded flex items-center justify-center font-black text-white text-[7px]">R</span>
+                                            </span>
+                                            <span className="text-sm font-bold text-gray-900 truncate max-w-[160px]">{club?.name || 'Rotary Central'}</span>
+                                        </span>
+                                    )}
+                                </Link>
+                            )}
                             <h2 className="text-sm font-bold text-gray-900">{currentPageTitle}</h2>
                             <div className="h-4 w-[1px] bg-gray-200 hidden sm:block" />
                             <p className="text-xs text-gray-400 font-medium hidden sm:block">

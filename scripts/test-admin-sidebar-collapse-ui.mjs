@@ -70,20 +70,22 @@ const CLUB = { id: 'c1', name: 'Feria de Proyectos', domain: 'feria.test', statu
 const SYSTEM_CHROME = '/opt/pw-browsers/chromium-1243/chrome-linux/chrome';
 const browser = await chromium.launch(existsSync(SYSTEM_CHROME) ? { executablePath: SYSTEM_CHROME } : {});
 
-const abrir = async (viewport, storage = {}) => {
+// Un logotipo HORIZONTAL como el de la Feria (Rotary | Feria de Proyectos Colombia).
+const LOGO = 'data:image/svg+xml;base64,' + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="420" height="96"><rect width="420" height="96" fill="#fff"/><text x="8" y="62" font-size="44" font-family="Arial" font-weight="700" fill="#17458F">Rotary</text><circle cx="185" cy="48" r="30" fill="#F7A81B"/><text x="232" y="40" font-size="20" font-family="Arial" fill="#17458F">Feria de Proyectos</text><text x="232" y="70" font-size="24" font-family="Arial" font-style="italic" fill="#17458F">Colombia</text></svg>').toString('base64');
+const abrir = async (viewport, storage = {}, club = CLUB) => {
     const page = await browser.newPage({ viewport, deviceScaleFactor: SHOT ? 2 : 1 });
     const errores = [];
     page.on('pageerror', e => errores.push(`PAGEERROR: ${e.message}`));
     await page.route('http://localhost/**', r => r.fulfill({ contentType: 'text/html', body: '<!doctype html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="root"></div></body>' }));
     await page.route('**/api/**', r => r.fulfill({ json: {} }));
     await page.route('**/api/auth/me*', r => r.fulfill({ json: { user: USER } }));
-    await page.route('**/api/clubs/by-domain*', r => r.fulfill({ json: CLUB }));
+    await page.route('**/api/clubs/by-domain*', r => r.fulfill({ json: club }));
     await page.goto('http://localhost/admin/dashboard');
     await page.addStyleTag({ content: CSS });
     await page.evaluate(({ st, u, c }) => {
         localStorage.setItem('rotary_token', 'tok'); localStorage.setItem('rotary_user', JSON.stringify(u)); localStorage.setItem('rotary_club', JSON.stringify(c));
         for (const [k, v] of Object.entries(st)) localStorage.setItem(k, v);
-    }, { st: storage, u: USER, c: CLUB });
+    }, { st: storage, u: USER, c: club });
     await page.addScriptTag({ content: JS });
     await page.evaluate(() => window.go('/admin/dashboard'));
     await page.locator('aside[aria-label="Menú del panel"]').waitFor({ timeout: 15000 });
@@ -129,6 +131,13 @@ try {
         await aside.getByRole('button', { name: 'Cerrar sesión' }).hover();
         check('el pie también: «Cerrar sesión»', (await page.getByRole('tooltip').textContent())?.includes('Cerrar sesión'));
         check('la versión no se muestra minimizada', !(await aside.getByText(/Release|Lanzamiento/).count()));
+        const logoBarra = await aside.locator('img').count() + await aside.getByText('Feria de Proyectos', { exact: true }).count();
+        check('minimizada, el logotipo sale de la barra', logoBarra === 0);
+        const enc = page.locator('header [data-logo-encabezado]');
+        const cajaLogo = await enc.boundingBox();
+        const cajaTitulo = await page.locator('header h2').boundingBox();
+        check('… y aparece en el encabezado, justo a la izquierda de «Dashboard»', !!cajaLogo && !!cajaTitulo && cajaLogo.x + cajaLogo.width <= cajaTitulo.x + 1 && cajaTitulo.x - (cajaLogo.x + cajaLogo.width) < 40 && Math.abs((cajaLogo.y + cajaLogo.height / 2) - (cajaTitulo.y + cajaTitulo.height / 2)) < 8);
+        check('el logotipo del encabezado se ve legible (≥ 28 px de alto)', !!cajaLogo && cajaLogo.height >= 28);
         check('la preferencia queda en el navegador', await page.evaluate(() => localStorage.getItem('admin-sidebar-collapsed')) === '1');
         await page.keyboard.press('Control+k');
         await page.waitForTimeout(450);
@@ -138,6 +147,7 @@ try {
         await aside.getByRole('button', { name: 'Maximizar menú' }).click();
         await page.waitForTimeout(450);
         check('«Maximizar menú» la devuelve a 288 px', await anchoMenu(page) === 288);
+        check('maximizada, el logotipo vuelve a la barra y sale del encabezado', !(await page.locator('header [data-logo-encabezado]').count()) && (await aside.getByText('Feria de Proyectos', { exact: true }).count()) === 1);
         check('maximizada no hay títulos flotantes', !(await page.getByRole('tooltip').count()));
         check('sin errores en la página', errores.length === 0, errores.join(' | '));
         await page.close();
@@ -145,8 +155,12 @@ try {
 
     console.log('\n▸ La preferencia se recuerda al volver');
     {
-        const { page, errores } = await abrir({ width: 1440, height: 900 }, { 'admin-sidebar-collapsed': '1' });
+        const { page, errores } = await abrir({ width: 1440, height: 900 }, { 'admin-sidebar-collapsed': '1' }, { ...CLUB, logo: LOGO });
         check('vuelve minimizada', await anchoMenu(page) === 80);
+        const logo = page.locator('header [data-logo-encabezado] img');
+        const caja = await logo.boundingBox();
+        check('con un logotipo horizontal real: va en el encabezado, legible', !!caja && caja.height >= 36 && caja.width >= 120, JSON.stringify(caja));
+        check('… y no queda en la barra minimizada', !(await page.locator('aside[aria-label="Menú del panel"] img').count()));
         await shot(page, 'minimizada-1440');
         check('sin errores en la página', errores.length === 0, errores.join(' | '));
         await page.close();
@@ -158,6 +172,7 @@ try {
         await page.locator('header button').first().click();
         await page.waitForTimeout(450);
         const aside = page.locator('aside[aria-label="Menú del panel"]');
+        check('en el teléfono el logotipo no se mueve al encabezado', !(await page.locator('header [data-logo-encabezado]').count()));
         check('el cajón del teléfono se abre ENTERO (con los títulos)', await anchoMenu(page) === 288 && await aside.getByText('Contactos & Leads', { exact: true }).isVisible());
         check('en el teléfono no se ofrece minimizar', !(await page.getByRole('button', { name: 'Minimizar menú' }).isVisible()));
         check('sin desplazamiento horizontal', await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
