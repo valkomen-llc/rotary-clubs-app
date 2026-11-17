@@ -66,6 +66,15 @@ import EditarValorProyecto, { type AmountOverride, type FairPricing } from '../.
 // segundo formulario, el día que se agregue un campo al desembolso una de las
 // dos pantallas se queda sin él y el fallo es mudo: las dos siguen registrando.
 import BulkDisbursementBar, { type Elegible } from '../../components/admin/wallet/BulkDisbursementBar';
+// v4.1332 — Seguimiento documental: columnas, indicadores, detalle,
+// recordatorios y configuración. Todas las cifras las calcula el servidor.
+import type { DocumentsCompact } from '../../lib/documentTracking';
+import { FDD_KEY } from '../../lib/documentTracking';
+import DocumentTrackingStrip from '../../components/admin/feria/seguimiento/DocumentTrackingStrip';
+import DocumentTrackingDrawer from '../../components/admin/feria/seguimiento/DocumentTrackingDrawer';
+import DocumentRemindersDialog from '../../components/admin/feria/seguimiento/DocumentRemindersDialog';
+import DocumentTrackingConfigDialog from '../../components/admin/feria/seguimiento/DocumentTrackingConfigDialog';
+import { FormCell, FileCell, PitchCell, OverallCell, MobileDocSummary } from '../../components/admin/feria/seguimiento/DocumentTrackingCells';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('rotary_token')}` });
@@ -193,6 +202,8 @@ interface Submission {
     manualPaymentBy?: string | null;
     manualPaymentAt?: string | null;
     manualPaymentReceipt?: { name: string; mime: string | null; bytes: number | null } | null;
+    // v4.1332 — Seguimiento documental (lo calcula el servidor con el motor de «Mi Proyecto»).
+    documents?: DocumentsCompact | null;
 }
 interface TimelineEvent {
     id: string; type: string; title: string; detail: string | null;
@@ -386,6 +397,32 @@ const RankPanel = ({ title, rows, priceMode }: { title: string; rows: any[]; pri
 );
 
 // ════════════════════════════════════════════════════════════════════
+// v4.1332 — Ayudas de las columnas del Seguimiento documental.
+const DOC_HELP: Record<string, string> = {
+    'Formulación': 'Campos obligatorios aplicables diligenciados con formato válido, ÷ total de obligatorios aplicables. Es la misma cifra que ve el club en «Mi Proyecto».',
+    'FDD (avance)': 'Avance de la Solicitud de Aportes del FDD con la misma regla. «No aplica» si el comité lo marcó así para el proyecto o la Convocatoria no lo exige.',
+    'Presentación': 'Estado de entrega: Pendiente, Cargada, En revisión, Validada, Requiere corrección o No aplica. Cargada no implica validada.',
+    'Video': 'Video propio del club, revisado en «Videos de proyectos».',
+    'Video Pitch': 'Servicio de producción profesional: aparte, no suma al avance documental y su pago no es el de la inscripción.',
+    'Avance documental': 'Porcentaje sobre los requisitos OBLIGATORIOS que aplican. Diligenciado y entregado; la validación del comité va aparte. Incluye el semáforo frente a la fecha límite.',
+};
+
+/** v4.1332 — Columnas documentales del Excel (lo mismo que el CSV del servidor). */
+const docExcelColumns = (d?: DocumentsCompact | null): Record<string, string | number> => {
+    if (!d) return {};
+    const r = (k: string) => d.requirements.find(x => x.key === k);
+    const form = (k: string) => { const x = r(k); return !x ? '' : !x.applies ? 'No aplica' : x.pct; };
+    const file = (k: string) => r(k)?.status?.label || '';
+    return {
+        'Formulación (%)': form('master'), 'Solicitud FDD (%)': form(FDD_KEY), 'Presentación': file('presentation'), 'Video': file('video'),
+        'Video Pitch Profesional': d.pitch.label, 'Avance documental (%)': d.overallPct, 'Estado documental': d.docStatus.label,
+        'Validación administrativa': d.validation.label, 'Semáforo': d.risk.label,
+        'Última actualización': d.lastActivityAt ? new Date(d.lastActivityAt).toLocaleString('es-CO') : '',
+        'Último recordatorio': d.lastReminderAt ? new Date(d.lastReminderAt).toLocaleString('es-CO') : '',
+        'Recordatorios enviados': d.reminderCount,
+    };
+};
+
 const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = false, eventId: embedEventId }) => {
     type Tab = 'dashboard' | 'submissions' | 'forms' | 'alerts' | 'config' | 'resources' | 'videopitch';
     // ?tab=config permite enlazar directo a la configuración (y mantiene vivos
@@ -471,6 +508,9 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
         proyectos: 'all', indice: 'all', origen: 'all',
         // v4.1330 — Actualizaciones posteriores al cierre (catálogo del servidor).
         actualizaciones: 'all',
+        // v4.1332 — Seguimiento documental: vista, rango de avance, última
+        // actividad del club y responsable. Los filtra el SERVIDOR.
+        doc: 'all', docMin: '', docMax: '', actividadDesde: '', actividadHasta: '', responsable: '',
         // v4.1024 — Lo archivado no se ve por defecto: es lo que significa
         // archivar. El valor viaja al servidor, que es quien filtra.
         archivadas: 'activas',
@@ -513,6 +553,21 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
     // v4.1125 — Estado del botón PDF del informe ejecutivo. Va aquí, con el
     // resto de los hooks y antes de los returns tempranos (regla v4.689).
     const [pdfBusy, setPdfBusy] = useState(false);
+    // v4.1332 — Seguimiento documental. Hooks aquí, antes de los returns
+    // tempranos (regla v4.689). Las columnas se contraen o expanden y la
+    // preferencia queda en el navegador (es comodidad, no dato).
+    const [showDocCols, setShowDocCols] = useState<boolean>(() => {
+        try { return localStorage.getItem('pp-doc-cols') !== '0'; } catch { return true; }
+    });
+    const [docDrawerId, setDocDrawerId] = useState<string | null>(null);
+    const [docReminderIds, setDocReminderIds] = useState<string[] | null>(null);
+    const [docConfigOpen, setDocConfigOpen] = useState(false);
+    const [docStripKey, setDocStripKey] = useState(0);
+    const [docScopes, setDocScopes] = useState<{ key: string; label: string }[]>([]);
+    const toggleDocCols = useCallback(() => setShowDocCols(v => {
+        try { localStorage.setItem('pp-doc-cols', v ? '0' : '1'); } catch { /* sin almacenamiento */ }
+        return !v;
+    }), []);
 
     const selectedIds = useMemo(() => new Set(selected.map(r => r.id)), [selected]);
 
@@ -822,6 +877,8 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                 'Pago respaldado por': s.coveredBy?.publicRef || '',
                 'Pagado por': s.paidByName || '',
                 ...(access?.viewPayments ? { 'Referencia Stripe': s.stripePaymentIntentId, 'Checkout Session': s.stripeSessionId } : {}),
+                // v4.1332 — Seguimiento documental (mismas cifras del listado).
+                ...docExcelColumns(s.documents),
             }));
             const wb = XLSX.utils.book_new();
             const ws = XLSX.utils.json_to_sheet(sheet);
@@ -1478,6 +1535,26 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                             </div>
                         )}
 
+                        {/* ── v4.1332 — Seguimiento documental ───────────────
+                            Indicadores sobre los filtros activos; cada tarjeta
+                            es también un filtro de la tabla. */}
+                        {currentEventId() && (
+                            <DocumentTrackingStrip
+                                eventId={currentEventId()}
+                                query={queryString({ doc: '', sortBy: '', sortDir: '' })}
+                                activeView={filters.doc}
+                                onPickView={(key) => { setFilters(f => ({ ...f, doc: key })); setSelected([]); setTransferPlan(null); }}
+                                onOpenReminders={() => setDocReminderIds(selectMode ? selected.map(r => r.id) : [])}
+                                onOpenConfig={() => setDocConfigOpen(true)}
+                                canRemind={!!access?.changeStatus}
+                                canConfig={!!access?.config}
+                                showColumns={showDocCols}
+                                onToggleColumns={toggleDocCols}
+                                reloadKey={docStripKey}
+                                onSummary={(sum) => setDocScopes(sum?.reminderScopes || [])}
+                            />
+                        )}
+
                         {showFilters && (
                             <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
                                 {[
@@ -1492,6 +1569,8 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                     ['origen', 'Origen del segundo proyecto', [{ value: 'inicial', label: 'Inscripción inicial de dos proyectos' }, { value: 'ampliacion', label: 'Ampliación posterior desde «Mi proyecto»' }]],
                                     // v4.1330 — Qué proyectos se editaron después del cierre.
                                     ['actualizaciones', 'Actualizaciones posteriores al cierre', (catalog?.postCloseViews || []).map((o: { key: string; label: string }) => ({ value: o.key, label: o.label }))],
+                                    // v4.1332 — Seguimiento documental (catálogo del servidor).
+                                    ['doc', 'Seguimiento documental', (catalog?.docViews || []).map((o: { key: string; label: string }) => ({ value: o.key, label: o.label }))],
                                 ].map(([key, label, options]: any) => (
                                     <label key={key} className="block">
                                         <span className="mb-1 block text-xs font-semibold text-slate-600">{label}</span>
@@ -1518,13 +1597,24 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                     <input type="number" value={filters.budgetMin} onChange={e => setFilters(f => ({ ...f, budgetMin: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
                                 <label className="block"><span className="mb-1 block text-xs font-semibold text-slate-600">Presupuesto máx. (USD)</span>
                                     <input type="number" value={filters.budgetMax} onChange={e => setFilters(f => ({ ...f, budgetMax: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
+                                {/* v4.1332 — Responsable, avance documental y última actividad del club. */}
+                                <label className="block"><span className="mb-1 block text-xs font-semibold text-slate-600">Responsable</span>
+                                    <input value={filters.responsable} onChange={e => setFilters(f => ({ ...f, responsable: e.target.value }))} placeholder="Nombre o apellido" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
+                                {([['docMin', 'Avance documental mín. (%)'], ['docMax', 'Avance documental máx. (%)']] as const).map(([key, label]) => (
+                                    <label key={key} className="block"><span className="mb-1 block text-xs font-semibold text-slate-600">{label}</span>
+                                        <input type="number" min="0" max="100" value={filters[key]} onChange={e => setFilters(f => ({ ...f, [key]: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
+                                ))}
+                                {([['actividadDesde', 'Última modificación desde'], ['actividadHasta', 'Última modificación hasta']] as const).map(([key, label]) => (
+                                    <label key={key} className="block"><span className="mb-1 block text-xs font-semibold text-slate-600">{label}</span>
+                                        <input type="date" value={filters[key]} onChange={e => setFilters(f => ({ ...f, [key]: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
+                                ))}
                                 {([['fddMin', 'FDD mín. (USD)'], ['fddMax', 'FDD máx. (USD)'], ['fapMin', 'Meta FAP mín. (USD)'], ['fapMax', 'Meta FAP máx. (USD)']] as const).map(([key, label]) => (
                                     <label key={key} className="block"><span className="mb-1 block text-xs font-semibold text-slate-600">{label}</span>
                                         <input type="number" min="0" value={filters[key]} onChange={e => setFilters(f => ({ ...f, [key]: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
                                 ))}
                                 <div className="flex items-end gap-2">
                                     <button onClick={() => loadRows(1)} className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: BLUE }}>Aplicar</button>
-                                    <button onClick={() => { setFilters({ search: '', paymentStatus: 'all', workflowStatus: 'all', district: 'all', focusArea: 'all', priority: 'all', tagId: '', from: '', to: '', budgetMin: '', budgetMax: '', fddMin: '', fddMax: '', fapMin: '', fapMax: '', vista: 'all', proyectos: 'all', indice: 'all', origen: 'all', actualizaciones: 'all', archivadas: 'activas' }); reloadNext(); }}
+                                    <button onClick={() => { setFilters({ search: '', paymentStatus: 'all', workflowStatus: 'all', district: 'all', focusArea: 'all', priority: 'all', tagId: '', from: '', to: '', budgetMin: '', budgetMax: '', fddMin: '', fddMax: '', fapMin: '', fapMax: '', vista: 'all', proyectos: 'all', indice: 'all', origen: 'all', actualizaciones: 'all', doc: 'all', docMin: '', docMax: '', actividadDesde: '', actividadHasta: '', responsable: '', archivadas: 'activas' }); reloadNext(); }}
                                         className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600">Limpiar</button>
                                 </div>
                             </div>
@@ -1786,8 +1876,37 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                             </div>
                         )}
 
-                        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-                            <table className="w-full min-w-[1380px] text-sm">
+                        {/* v4.1332 — En pantallas pequeñas, tarjetas con lo esencial y el
+                            avance documental; la tabla completa desde «md». */}
+                        <ul className="space-y-3 md:hidden" aria-label="Proyectos postulados">
+                            {rows.map(s => {
+                                const wf = stateLabel(s.workflowStatus, catalog?.workflowStates);
+                                const pay = stateLabel(s.paymentStatus, catalog?.paymentStates);
+                                return (
+                                    <li key={s.id} className={`rounded-xl border border-slate-200 bg-white p-4 ${selectedIds.has(s.id) ? 'ring-2 ring-sky-300' : ''}`}>
+                                        <div className="flex items-start gap-2">
+                                            {selectMode && (
+                                                <input type="checkbox" checked={selectedIds.has(s.id)} onChange={() => toggleRow(s)}
+                                                    aria-label={`Seleccionar ${s.publicRef} · ${s.projectName}`} className="mt-1 h-4 w-4 rounded border-slate-300" />
+                                            )}
+                                            <div className="min-w-0 flex-1">
+                                                <p className="font-mono text-[11px] font-bold text-slate-500">{s.publicRef}</p>
+                                                <p className="font-semibold text-slate-900">{s.projectName}</p>
+                                                <p className="text-xs text-slate-500">{s.clubName} · {s.district}</p>
+                                                <p className="text-xs text-slate-500">{s.responsable}</p>
+                                                <div className="mt-1 flex flex-wrap gap-1"><Badge color={wf.color}>{wf.label}</Badge><Badge color={pay.color}>{pay.label}</Badge></div>
+                                            </div>
+                                            <button onClick={() => { setDetailOpen(null); setDetailId(s.id); }} className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-700"><Eye size={13} /> Ver</button>
+                                        </div>
+                                        {s.documents && <MobileDocSummary d={s.documents} project={s.projectName} onOpen={() => setDocDrawerId(s.id)} />}
+                                    </li>
+                                );
+                            })}
+                            {!rows.length && !tableLoading && <li className="rounded-xl border border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-400">No hay postulaciones que coincidan con los filtros.</li>}
+                        </ul>
+
+                        <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white md:block">
+                            <table className={`w-full ${showDocCols ? 'min-w-[2000px]' : 'min-w-[1540px]'} text-sm`}>
                                 <thead className="bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-500">
                                     <tr>
                                         {selectMode && (
@@ -1806,9 +1925,14 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                            ['clubName', 'Club / Distrito'], ['', 'Responsable'], ['', 'Área de enfoque'],
                                            ['budgetUsd', 'Presupuesto'], ['fddRequestedUsd', 'FDD'], ['fapGoalUsd', 'FAP'],
                                            ['workflowStatus', 'Estado'], ['paymentStatus', 'Pago'],
-                                           ['amountCop', 'Valor'], ['', '']] as const).map(([sortKey, label], i) => (
+                                           ['amountCop', 'Valor'],
+                                           // v4.1332 — Grupo «Seguimiento documental» (contraíble).
+                                           ...(showDocCols
+                                               ? [['docMaster', 'Formulación'], ['docFdd', 'FDD (avance)'], ['', 'Presentación'], ['', 'Video'], ['', 'Video Pitch'], ['docOverall', 'Avance documental']]
+                                               : [['docOverall', 'Avance documental']]),
+                                           ['', '']] as [string, string][]).map(([sortKey, label], i) => (
                                             <SortHeader key={i} sortKey={sortKey} label={label}
-                                                help={sortKey === 'fddRequestedUsd' || sortKey === 'fapGoalUsd' ? FDD_HELP[sortKey] : undefined}
+                                                help={sortKey === 'fddRequestedUsd' || sortKey === 'fapGoalUsd' ? FDD_HELP[sortKey] : DOC_HELP[label]}
                                                 align={sortKey === 'budgetUsd' || sortKey === 'fddRequestedUsd' || sortKey === 'fapGoalUsd' ? 'right' : 'left'}
                                                 active={!!sortKey && sort.sortBy === sortKey} dir={sort.sortDir}
                                                 onSort={(key) => { setSort(s => ({ sortBy: key, sortDir: s.sortBy === key && s.sortDir === 'desc' ? 'asc' : 'desc' })); reloadNext(); }} />
@@ -1876,6 +2000,23 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                                     {s.amountOverride && <p className="text-[11px] font-semibold text-violet-700" title={s.amountOverride.reason || undefined}>Valor ajustado</p>}
                                                     {s.paidAt && <p className="text-[11px] text-slate-400">{fmtDate(s.paidAt)}</p>}
                                                 </td>
+                                                {/* v4.1332 — Seguimiento documental: cada celda abre el detalle. */}
+                                                {s.documents ? (
+                                                    <>
+                                                        {showDocCols && (
+                                                            <>
+                                                                <FormCell r={s.documents.requirements.find(r => r.key === 'master')} project={s.projectName} onOpen={() => setDocDrawerId(s.id)} />
+                                                                <FormCell r={s.documents.requirements.find(r => r.key === FDD_KEY)} project={s.projectName} onOpen={() => setDocDrawerId(s.id)} />
+                                                                <FileCell r={s.documents.requirements.find(r => r.key === 'presentation')} project={s.projectName} onOpen={() => setDocDrawerId(s.id)} />
+                                                                <FileCell r={s.documents.requirements.find(r => r.key === 'video')} project={s.projectName} onOpen={() => setDocDrawerId(s.id)} />
+                                                                <PitchCell d={s.documents} />
+                                                            </>
+                                                        )}
+                                                        <OverallCell d={s.documents} project={s.projectName} onOpen={() => setDocDrawerId(s.id)} />
+                                                    </>
+                                                ) : (
+                                                    <td colSpan={showDocCols ? 6 : 1} className="px-3 py-3 text-xs text-slate-400">—</td>
+                                                )}
                                                 <td className="px-3 py-3">
                                                     {/* v4.1324 — «Ver» abre el EXPEDIENTE integral; «⋯» da accesos directos. */}
                                                     <div className="flex items-center gap-1.5">
@@ -1895,7 +2036,7 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                         );
                                     })}
                                     {!rows.length && !tableLoading && (
-                                        <tr><td colSpan={selectMode ? 14 : 13} className="px-4 py-12 text-center text-slate-400">No hay postulaciones que coincidan con los filtros.</td></tr>
+                                        <tr><td colSpan={(selectMode ? 14 : 13) + (showDocCols ? 6 : 1)} className="px-4 py-12 text-center text-slate-400">No hay postulaciones que coincidan con los filtros.</td></tr>
                                     )}
                                 </tbody>
                             </table>
@@ -2134,6 +2275,34 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                 <ExpedientesLote rows={selected.map(r => ({ id: r.id, publicRef: r.publicRef, projectName: r.projectName }))} eventId={currentEventId()}
                     access={access || {}} onClose={() => setShowLote(false)}
                     onChanged={() => setDocTick(t => t + 1)} />
+            )}
+
+            {/* v4.1332 — Seguimiento documental: detalle, recordatorios y configuración. */}
+            {docDrawerId && (
+                <DocumentTrackingDrawer
+                    id={docDrawerId}
+                    eventId={currentEventId()}
+                    onClose={() => setDocDrawerId(null)}
+                    onChanged={() => { loadRows(pagination.page); setDocStripKey(k => k + 1); }}
+                    onOpenExpediente={(pane) => { const id = docDrawerId; setDocDrawerId(null); setDetailOpen({ pane }); setDetailId(id); }}
+                    onRemind={(id) => setDocReminderIds([id])}
+                />
+            )}
+            {docReminderIds && (
+                <DocumentRemindersDialog
+                    eventId={currentEventId()}
+                    selectedIds={docReminderIds}
+                    scopes={docScopes.length ? docScopes : [{ key: 'seleccion', label: 'Los proyectos seleccionados' }, { key: 'incompletos', label: 'Todos los proyectos incompletos' }]}
+                    onClose={() => setDocReminderIds(null)}
+                    onSent={() => { loadRows(pagination.page); setDocStripKey(k => k + 1); }}
+                />
+            )}
+            {docConfigOpen && (
+                <DocumentTrackingConfigDialog
+                    eventId={currentEventId()}
+                    onClose={() => setDocConfigOpen(false)}
+                    onSaved={() => { loadRows(pagination.page); setDocStripKey(k => k + 1); }}
+                />
             )}
 
             {detailId && (

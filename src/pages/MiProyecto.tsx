@@ -48,6 +48,9 @@ import { PresentationTemplateCard, NextStepCard } from '../components/project-fo
 import { VideoPitchCard } from '../components/project-forms/VideoPitchCard';
 import VideoPitchRequestView from '../components/project-forms/VideoPitchRequestView';
 import { ProjectVideoCard } from '../components/project-forms/ProjectVideoCard';
+// v4.1332 — Avance documental (la MISMA cifra que ve el comité) y entrega de la presentación.
+import DocumentProgressPanel, { type ClubDocStatus } from '../components/project-forms/DocumentProgressPanel';
+import PresentationDeliveryCard from '../components/project-forms/PresentationDeliveryCard';
 import ProjectVideoView from '../components/project-forms/ProjectVideoView';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
@@ -249,6 +252,10 @@ const MiProyecto = () => {
         return a === 'edit' || a === 'replace' ? a : null;
     });
     const [pvRefresh, setPvRefresh] = useState(0);
+    // v4.1332 — El avance documental lo calcula el servidor; se refresca al
+    // volver de un formulario o tras entregar la presentación.
+    const [docRefresh, setDocRefresh] = useState(0);
+    const [docStatus, setDocStatus] = useState<ClubDocStatus | null>(null);
     // v4.1301 — El asistente «Postula un segundo proyecto de tu club», a
     // pantalla completa y en la URL (?segundoProyecto=1), como los demás.
     const [openSecondProject, setOpenSecondProject] = useState<boolean>(() => new URLSearchParams(window.location.search).get('segundoProyecto') === '1');
@@ -720,7 +727,8 @@ const MiProyecto = () => {
                                 <p className="mt-1 text-lg font-bold" style={{ color: BLUE }}>
                                     {forms.filter(f => ['submitted', 'in_review', 'approved'].includes(f.state)).length} de {forms.length} enviados
                                 </p>
-                                <p className="text-xs text-slate-500">Avance general {Math.round(forms.reduce((a, f) => a + f.completionPct, 0) / (forms.length || 1))}%</p>
+                                {/* v4.1332 — El avance documental del servidor (el mismo del comité). */}
+                                <p className="text-xs text-slate-500">{docStatus ? `Avance documental ${docStatus.overallPct}%` : `Avance general ${Math.round(forms.reduce((a, f) => a + f.completionPct, 0) / (forms.length || 1))}%`}</p>
                             </div>
                             <div className="rounded-xl border border-slate-200 bg-white p-4">
                                 <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
@@ -809,6 +817,9 @@ const MiProyecto = () => {
                             y Rotary 31A (debajo del FDD), que dejó de ser una banda
                             de ancho completo. En el móvil, una columna en ese
                             mismo orden. */}
+                        {/* v4.1332 — Qué falta, con la fecha límite y las correcciones del comité. */}
+                        <DocumentProgressPanel key={`doc-${data.submission.id}`} token={tokenActivo} refreshKey={docRefresh + pvRefresh} onLoaded={setDocStatus} />
+
                         <section>
                             <h2 className="text-lg font-bold text-slate-900">Formularios y recursos del proyecto</h2>
                             <p className="mt-1 text-[15px] text-slate-600">
@@ -834,6 +845,8 @@ const MiProyecto = () => {
                                     independientes: ninguna acción borra información de la otra. */}
                                 <ProjectVideoCard key={`pv-${data.submission.id}`} token={tokenActivo} onSessionExpired={logout} onOpen={action => openProjectVideoView(true, action === 'edit' ? 'edit' : action === 'replace' ? 'replace' : null)} refreshKey={pvRefresh} />
                                 <VideoPitchCard key={`vp-${data.submission.id}`} token={tokenActivo} onSessionExpired={logout} onOpen={action => openVideoPitchView(true, action === 'pay' ? 'pay' : action === 'plan' ? 'plan' : null)} refreshKey={vpRefresh} />
+                                {/* v4.1332 — La ENTREGA de la presentación (ancho completo, al cierre). */}
+                                <PresentationDeliveryCard key={`pres-${data.submission.id}`} token={tokenActivo} onSessionExpired={logout} onChanged={() => setDocRefresh(k => k + 1)} />
                             </div>
                         </section>
                     </>

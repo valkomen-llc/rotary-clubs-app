@@ -3767,14 +3767,14 @@ const safeImageUrl = (url) => {
 };
 
 /** Logo sobre "Comprobante de inscripción", si el admin configuró uno. */
-const headerLogoHtml = (cfg) => {
+export const headerLogoHtml = (cfg) => {
     const url = safeImageUrl(cfg?.notifications?.branding?.headerLogoUrl);
     if (!url) return '';
     return `<div style="margin-bottom:18px"><img src="${url}" alt="" style="max-width:230px;max-height:70px;height:auto;display:inline-block"></div>`;
 };
 
 /** Logo y texto del pie del cuerpo del correo. */
-const footerBrandingHtml = (cfg) => {
+export const footerBrandingHtml = (cfg) => {
     const url = safeImageUrl(cfg?.notifications?.branding?.footerLogoUrl);
     const text = String(cfg?.notifications?.branding?.footerText || '').trim();
     if (!url && !text) return '';

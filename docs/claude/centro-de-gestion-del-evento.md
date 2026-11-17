@@ -100,3 +100,10 @@ El botón «Ver» de Proyectos postulados (también embebido aquí) abre el
 expediente completo del proyecto y suma el menú «⋯»; la fila muestra la
 insignia «EN · estado» de la traducción. Todo está en
 `docs/claude/expediente-integral-del-proyecto.md`.
+
+## Seguimiento documental — v4.1332
+
+Las columnas Formulación / FDD (avance) / Presentación / Video / Video Pitch /
+Avance documental, la franja de indicadores, el detalle y los recordatorios de
+documentación de Proyectos postulados (también embebido aquí) están en
+`docs/claude/seguimiento-documental-de-proyectos.md`.

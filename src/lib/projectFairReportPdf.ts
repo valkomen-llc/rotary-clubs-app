@@ -35,6 +35,8 @@ export interface ReportSubmission {
     createdAt?: string; paidAt?: string | null;
     // v4.1304 — Lo que el club escribió en su Solicitud de Aportes del FDD.
     fddRequestedUsd?: number | null; fapGoalUsd?: number | null;
+    // v4.1332 — Avance documental (lo calcula el servidor; el PDF sólo lo pinta).
+    documents?: { overallPct: number } | null;
 }
 
 // v4.1304 — Importe compacto para la tabla: «5.000», «1.234,50», «0»; «—»
@@ -176,7 +178,8 @@ export async function generateProjectFairReportPdf(
     // v4.1304 — Las abreviaturas de la tabla, con su significado completo.
     doc.setFontSize(7).text(
         'FDD: cantidad solicitada al Distrito del Fondo Distrital Designado 2026-2027 (USD). ' +
-        'FAP: meta de aportes al Fondo Anual de Programas 2026-2027 (USD). «—»: el club aún no lo escribió.',
+        'FAP: meta de aportes al Fondo Anual de Programas 2026-2027 (USD). «—»: el club aún no lo escribió. ' +
+        'DOC.: avance documental sobre los requisitos obligatorios que aplican (diligenciado y entregado; la validación va aparte).',
         M, r.y, { maxWidth: CONTENT_W } as any);
     r.y += 18;
 
@@ -184,8 +187,8 @@ export async function generateProjectFairReportPdf(
         r.note('Aún no hay postulaciones registradas en esta edición.');
     } else {
         // Geometría de la tabla (ancho total = CONTENT_W, sin invasiones).
-        const W_REF = 54, W_EST = 96, W_PAGO = 78, W_AMT = 56;
-        const W_PROJ = CONTENT_W - W_REF - W_EST - W_PAGO - 2 * W_AMT;
+        const W_REF = 54, W_EST = 96, W_PAGO = 78, W_AMT = 56, W_DOC = 34;
+        const W_PROJ = CONTENT_W - W_REF - W_EST - W_PAGO - 2 * W_AMT - W_DOC;
         const PROJ_LH = 11;
         const ROW_PAD = 11;
 
@@ -199,6 +202,7 @@ export async function generateProjectFairReportPdf(
             d.text('PROYECTO', x, r.y + 12); x += W_PROJ;
             d.text('FDD', x + W_AMT - 8, r.y + 12, { align: 'right' } as any); x += W_AMT;
             d.text('FAP', x + W_AMT - 8, r.y + 12, { align: 'right' } as any); x += W_AMT;
+            d.text('DOC.', x + W_DOC - 6, r.y + 12, { align: 'right' } as any); x += W_DOC;
             d.text('ESTADO', x + (W_EST - d.getTextWidth('ESTADO')) / 2, r.y + 12); x += W_EST;
             d.text('PAGO', x + (W_PAGO - d.getTextWidth('PAGO')) / 2, r.y + 12);
             r.y += 18 + 3;
@@ -265,7 +269,8 @@ export async function generateProjectFairReportPdf(
                 d.setFont('helvetica', 'bold').setFontSize(8).setTextColor(...INK);
                 d.text(pdfUsd(s.fddRequestedUsd), x + W_PROJ + W_AMT - 8, cy + 2, { align: 'right' } as any);
                 d.text(pdfUsd(s.fapGoalUsd), x + W_PROJ + 2 * W_AMT - 8, cy + 2, { align: 'right' } as any);
-                const xEst = x + W_PROJ + 2 * W_AMT;
+                d.text(s.documents ? `${s.documents.overallPct}%` : '—', x + W_PROJ + 2 * W_AMT + W_DOC - 6, cy + 2, { align: 'right' } as any);
+                const xEst = x + W_PROJ + 2 * W_AMT + W_DOC;
                 const wb = wfBadge(s.workflowStatus, input.catalog);
                 r.badge(xEst, cy, W_EST, wb.label.slice(0, 26), wb.tone);
                 const pb = payBadge(s.paymentStatus, input.catalog);

@@ -155,6 +155,10 @@
 // ProjectVideo, ProjectVideoVersion, ProjectVideoEvent, ProjectVideoNotification
 // y ProjectVideoConfig — qué video subió cada club, qué versión, qué autorizó
 // y qué decidió el comité: no se reconstruye de ninguna parte.
+// Y las tres del Seguimiento documental de la Feria (v4.1332):
+// ProjectPresentationFile, ProjectDocumentReview y ProjectDocumentReminder —
+// qué presentación entregó cada club, qué validó o pidió corregir el comité y
+// qué recordatorio salió a quién: nada se reconstruye.
 // Y las dos del formulario institucional de programas (v4.1286): ProgramIntake
 // (cada envío, una PROPUESTA con borrador y revisión por ítem) y
 // ProgramIntakeFile (sus archivos, privados hasta aplicarse).

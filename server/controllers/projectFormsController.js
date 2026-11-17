@@ -90,6 +90,19 @@ export const deriveState = (record) => {
     return pct > 0 ? 'in_progress' : 'not_started';
 };
 
+/**
+ * v4.1332 — El avance que se MUESTRA se calcula con la plantilla vigente
+ * (`completionOf` → `formProgressOf`), no se lee de la columna guardada: si el
+ * comité cambia la plantilla o la regla, la tarjeta del club y el Seguimiento
+ * documental del comité dicen la MISMA cifra al instante. La columna
+ * `completionPct` queda como caché (la refresca el seguimiento).
+ */
+export const withLivePct = (template, record) => {
+    if (!record || !template) return record;
+    const pct = completionOf(template, record.answers || {});
+    return Number(record.completionPct) === pct ? record : { ...record, completionPct: pct };
+};
+
 // ── Acceso a las respuestas ──────────────────────────────────────────
 export const readRecord = async (submissionId, formKey) => {
     const table = tableFor(formKey);
@@ -478,7 +491,8 @@ const portalContext = async (req) => {
  * se puede hacer con él. Es lo que dibuja la cuadrícula de "Gestión de
  * Proyectos", así que un formulario nuevo aparece ahí sin tocar la pantalla.
  */
-export const cardFor = (form, record, { submission, cfg, account }) => {
+export const cardFor = (form, rawRecord, { submission, cfg, account }) => {
+    const record = withLivePct(form.template, rawRecord);
     const edit = editability(submission, record, cfg, account, form.key);
     const state = deriveState(record);
     const pct = Number(record?.completionPct || 0);
@@ -616,6 +630,7 @@ export const getForm = async (req, res) => {
         const fresh = await ensurePostCloseBaseline(submission, cfg, form, record);
         const edit = editability(fresh, record, cfg, account, form.key);
         const lockedFields = edit.canEdit ? fieldLocksFor(fresh, cfg, form, record) : [];
+        record = withLivePct(form.template, record);
 
         const answers = record?.answers || {};
         res.json({
@@ -960,7 +975,7 @@ export const adminGetForm = withAccess(async (req, res, { cfg }) => {
     const submission = rows[0];
     if (!submission) return res.status(404).json({ error: 'Postulación no encontrada' });
 
-    const record = await readRecord(submission.id, form.key);
+    const record = withLivePct(form.template, await readRecord(submission.id, form.key));
     const revisions = await db.query(
         `SELECT id, action, "actorType", "actorName", "completionPct", "createdAt"
          FROM "ProjectFairFormRevision" WHERE "submissionId" = $1 AND COALESCE("formKey",'master') = $2
