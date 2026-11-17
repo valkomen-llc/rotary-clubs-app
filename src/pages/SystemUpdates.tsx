@@ -34,13 +34,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1332.0 | 2026-11-17 (Feria: Seguimiento documental de proyectos)
+// UI V4.1333.0 | 2026-11-17 (Panel: barra lateral minimizable)
 // Cache bust: 2026-11-17
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1333.0',
+        title: 'Panel de control: el menú lateral se puede minimizar ↔️',
+        description: 'En todos los sitios del ecosistema, el menú de la izquierda se minimiza con el botón junto al logotipo y queda sólo con los íconos, para dar más espacio a tablas y módulos. Al pasar el cursor —o al llegar con el teclado— sobre un ícono aparece su título. «Maximizar menú» lo devuelve a su tamaño, y el panel recuerda la preferencia en ese navegador.',
+        date: new Date().toISOString(),
+        tags: ['panel', 'menu', 'usabilidad', 'accesibilidad', 'todos-los-sitios'],
+        type: 'improvement',
+        impact: 'Media: más ancho útil para el contenido en escritorio (el menú pasa de 288 a 80 px), sin perder ninguna sección.',
+        changes: [
+            { type: 'added', text: 'Botones «Minimizar menú» y «Maximizar menú» en la barra lateral (escritorio).' },
+            { type: 'added', text: 'Minimizado: sólo íconos, con su título al pasar el cursor o con el foco del teclado; los bloqueados lo indican.' },
+            { type: 'added', text: 'La preferencia queda guardada en el navegador; ⌘K / Ctrl+K maximiza y abre el buscador.' },
+            { type: 'changed', text: 'En el teléfono el menú sigue abriéndose completo, como hasta ahora.' },
+        ],
+    },
     {
         version: '4.1332.0',
         title: 'Feria de Proyectos: Seguimiento documental de los proyectos postulados 📋',
