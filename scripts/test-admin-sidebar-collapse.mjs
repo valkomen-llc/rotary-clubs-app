@@ -26,6 +26,9 @@ ok(/aria-label=\{mini \? item\.label : undefined\}/.test(layout) && /\{\.\.\.nav
 ok(/\{!mini && <span className="flex-1">\{item\.label\}<\/span>\}/.test(layout), 'minimizada: sólo íconos');
 ok(/\$\{mini \? 'lg:w-20' : ''\}/.test(layout), 'ancho 80 px minimizada, 288 px maximizada');
 ok(/miniRef\.current/.test(layout) && /sidebar\.setCollapsed\(false\)/.test(layout), '⌘K maximiza antes de enfocar el buscador');
+ok(/\{mini && \(\s*<Link to="\/"[^>]*data-logo-encabezado/.test(layout) && layout.indexOf('data-logo-encabezado') < layout.indexOf('{currentPageTitle}</h2>'), 'minimizada, el logotipo va en el encabezado, antes del título (v4.1334)');
+const miniBlock = layout.slice(layout.indexOf('{mini ? ('), layout.indexOf('/* Brand Header */'));
+ok(!/<img /.test(miniBlock), 'la barra minimizada no pinta el logotipo (no se duplica ni se vuelve ilegible)');
 ok(!/const \w+ = \(\) => \(?\s*<aside/.test(layout), 'ningún componente declarado dentro del layout');
 
 console.log(`\n✅ ${n} comprobaciones, todas en verde.`);

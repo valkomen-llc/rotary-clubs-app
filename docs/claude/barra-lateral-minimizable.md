@@ -26,6 +26,12 @@ Pruebas: `npm run test:admin:sidebar-collapse` (estática, en `prebuild`) y
 - **Minimizada: 80 px**, íconos centrados, títulos de sección como líneas,
   sin versión ni datos del perfil (sólo su avatar). Maximizada: 288 px, como
   siempre.
+- **El logotipo, minimizada, va en el ENCABEZADO** (v4.1334), a la izquierda
+  del título de la sección, enlazado al sitio: en 80 px un logotipo horizontal
+  (Rotary | Feria…) quedaba ilegible entre los botones. Maximizada —y en el
+  teléfono— vuelve a la barra. Nunca se pinta en los dos sitios a la vez
+  (`data-logo-encabezado` sólo existe con `mini`). Sin logotipo cargado, el
+  respaldo es el ícono «R» con el nombre del sitio.
 - **⚠️ EL TÍTULO FLOTANTE VA FUERA DE LA BARRA, con posición fija.** La lista
   tiene `overflow-y: auto`, que también recorta en horizontal: un globo
   posicionado dentro quedaría cortado contra el borde de 80 px. Se mide el
