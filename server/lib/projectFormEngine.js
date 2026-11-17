@@ -127,24 +127,117 @@ export const flattenFields = (template) =>
 export const applicantFields = (template) =>
     flattenFields(template).filter(f => f.type !== 'computed' && !f.sectionAdminOnly);
 
-/**
- * Porcentaje de avance: proporción de campos obligatorios con contenido.
- * Si la plantilla no tiene obligatorios, se mide sobre todos los del club.
- */
-export const completionOf = (template, answers = {}) => {
-    const fields = applicantFields(template);
-    const required = fields.filter(f => f.required);
-    const target = required.length ? required : fields;
-    if (!target.length) return 0;
-
-    const filled = target.filter(f => hasValue(answers?.[f.sectionKey]?.[f.key], f.type)).length;
-    return Math.round((filled / target.length) * 100);
+// ── Condiciones (v4.1332) ────────────────────────────────────────────
+// Un campo o una sección pueden declarar `appliesIf` (si no se cumple, NO
+// aplica: ni cuenta para el avance ni se exige) y un campo `requiredIf` (es
+// obligatorio sólo cuando se cumple). La condición mira OTRA respuesta:
+//   { field: 'seccion.campo', equals: 'Sí' }
+//   { field: 'seccion.campo', in: ['Sí', 'En trámite'] }
+//   { field: 'seccion.campo', filled: true }
+// Ninguna plantilla de hoy las usa: el motor las entiende para que una
+// sección condicional se declare en la plantilla y no en el código.
+const conditionHolds = (cond, answers = {}) => {
+    if (!cond || typeof cond !== 'object') return true;
+    const [sectionKey, fieldKey] = String(cond.field || '').split('.');
+    if (!sectionKey || !fieldKey) return true;
+    const value = answers?.[sectionKey]?.[fieldKey];
+    const text = Array.isArray(value) ? value.map(v => String(v)) : String(value ?? '').trim();
+    if (cond.filled === true) return Array.isArray(text) ? text.length > 0 : text !== '';
+    if (cond.filled === false) return Array.isArray(text) ? text.length === 0 : text === '';
+    if (Array.isArray(cond.in)) {
+        const opts = cond.in.map(v => String(v));
+        return Array.isArray(text) ? text.some(t => opts.includes(t)) : opts.includes(text);
+    }
+    if (cond.equals !== undefined) {
+        return Array.isArray(text) ? text.includes(String(cond.equals)) : text === String(cond.equals);
+    }
+    return true;
 };
+
+/** ¿Aplica el campo con estas respuestas? (sección y campo). */
+export const fieldApplies = (field, template, answers = {}) => {
+    const section = (template?.sections || []).find(s => s.key === field.sectionKey);
+    return conditionHolds(section?.appliesIf, answers) && conditionHolds(field.appliesIf, answers);
+};
+
+/** ¿Es obligatorio el campo con estas respuestas? */
+export const fieldIsRequired = (field, answers = {}) =>
+    field.required === true || (field.requiredIf ? conditionHolds(field.requiredIf, answers) : false);
+
+/**
+ * Problemas de FORMATO de UN campo ya diligenciado (vacío = sin problemas).
+ * Es la misma regla que `validateAnswers`, campo por campo, para que el
+ * avance no cuente como hecho un correo o una fecha que el envío rechazaría.
+ */
+export const fieldProblem = (field, value) => {
+    if (!hasValue(value, field.type)) return null;
+    const one = validateAnswers({ sections: [{ key: field.sectionKey, title: field.sectionTitle, fields: [{ ...field }] }] },
+        { [field.sectionKey]: { [field.key]: value } });
+    return one[0]?.message || null;
+};
+
+/**
+ * EL AVANCE DE UN FORMULARIO (v4.1332) — la ÚNICA cuenta. La usan la tarjeta
+ * de «Mi Proyecto», el guardado, el envío y el Seguimiento documental del
+ * comité: no hay un segundo cálculo que pueda dar otra cifra.
+ *
+ *   avance = obligatorios APLICABLES, con valor Y con formato válido
+ *            ÷ obligatorios APLICABLES
+ *
+ * · Los opcionales no impiden llegar al 100 %.
+ * · Un campo con valor inválido (correo mal escrito) NO cuenta como hecho.
+ * · Un archivo cuenta cuando hay un enlace válido guardado.
+ * · Sin obligatorios, se mide sobre todos los campos del club (regla de
+ *   siempre).
+ * · 100 % sólo si TODO está hecho: 99,6 % se muestra 99 %, nunca 100 %.
+ */
+export const formProgressOf = (template, answers = {}) => {
+    const fields = applicantFields(template).filter(f => fieldApplies(f, template, answers));
+    const required = fields.filter(f => fieldIsRequired(f, answers));
+    const target = required.length ? required : fields;
+    const sections = new Map();
+    for (const s of (template?.sections || []).filter(s => !s.adminOnly)) {
+        sections.set(s.key, { key: s.key, title: s.title || s.key, total: 0, done: 0, missing: [], invalid: [] });
+    }
+    let done = 0;
+    for (const f of target) {
+        const value = answers?.[f.sectionKey]?.[f.key];
+        const sec = sections.get(f.sectionKey) || { key: f.sectionKey, title: f.sectionTitle, total: 0, done: 0, missing: [], invalid: [] };
+        sections.set(f.sectionKey, sec);
+        sec.total += 1;
+        const item = { section: f.sectionTitle, sectionKey: f.sectionKey, key: f.key, label: f.label, type: f.type };
+        if (!hasValue(value, f.type)) { sec.missing.push(item); continue; }
+        const problem = fieldProblem(f, value);
+        if (problem) { sec.invalid.push({ ...item, message: problem }); continue; }
+        sec.done += 1;
+        done += 1;
+    }
+    const total = target.length;
+    const raw = total ? (done / total) * 100 : 0;
+    const pct = !total ? 0 : (done === total ? 100 : Math.min(99, Math.round(raw)));
+    const list = [...sections.values()].filter(s => s.total > 0).map(s => ({
+        ...s,
+        pct: s.done === s.total ? 100 : Math.min(99, Math.round((s.done / s.total) * 100)),
+        complete: s.done === s.total,
+    }));
+    return {
+        pct,
+        total,
+        done,
+        sections: list,
+        missing: list.flatMap(s => s.missing),
+        invalid: list.flatMap(s => s.invalid),
+    };
+};
+
+/** Porcentaje de avance (ver `formProgressOf`). */
+export const completionOf = (template, answers = {}) => formProgressOf(template, answers).pct;
 
 /** Campos obligatorios sin responder (para avisar antes de enviar). */
 export const missingRequired = (template, answers = {}) =>
     applicantFields(template)
-        .filter(f => f.required && !hasValue(answers?.[f.sectionKey]?.[f.key], f.type))
+        .filter(f => fieldApplies(f, template, answers) && fieldIsRequired(f, answers)
+            && !hasValue(answers?.[f.sectionKey]?.[f.key], f.type))
         .map(f => ({ section: f.sectionTitle, sectionKey: f.sectionKey, key: f.key, label: f.label }));
 
 // ── Campos derivados ─────────────────────────────────────────────────

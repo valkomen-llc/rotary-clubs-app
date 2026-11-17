@@ -72,6 +72,8 @@ router.post('/portal/form/submit', portal.portalAuth, express.json({ limit: '2mb
 // nuevo no agrega endpoints, sólo una entrada en
 // `server/lib/projectFormsRegistry.js`.
 import projectForms from '../controllers/projectFormsController.js';
+// v4.1332 — Seguimiento documental (comité) y entrega de la presentación (club).
+import docTracking from '../controllers/projectDocumentTrackingController.js';
 
 router.get('/portal/forms', portal.portalAuth, projectForms.getForms);
 router.get('/portal/forms/:formKey', portal.portalAuth, projectForms.getForm);
@@ -80,6 +82,13 @@ router.post('/portal/forms/:formKey/submit', portal.portalAuth, express.json({ l
 // v4.1330 — Edición después del cierre: el club PIDE autorización cuando la
 // política la exige (la resuelve el comité con «Reabrir edición»).
 router.post('/portal/forms/:formKey/edit-request', portal.portalAuth, express.json(), projectForms.requestEdit);
+// v4.1332 — El avance documental del propio proyecto y la presentación que
+// entrega el club. La postulación sale del TOKEN, nunca del cuerpo.
+router.get('/portal/document-status', portal.portalAuth, docTracking.portalStatus);
+router.get('/portal/presentation', portal.portalAuth, docTracking.portalPresentation);
+router.post('/portal/presentation/presign', portal.portalAuth, express.json(), docTracking.portalPresentationPresign);
+router.post('/portal/presentation', portal.portalAuth, express.json(), docTracking.portalPresentationRegister);
+router.get('/portal/presentation/:fileId/url', portal.portalAuth, docTracking.portalPresentationUrl);
 
 // ── Recursos del proyecto: plantilla oficial de presentación (v4.1264) ─
 // El club lista sus recursos y pide la descarga con SU sesión: la postulación
@@ -243,6 +252,22 @@ router.post('/admin/postulaciones/:id/forms/:formKey/reopen', authMiddleware, fa
 router.post('/admin/postulaciones/:id/forms/:formKey/lock', authMiddleware, fairEdit, express.json(), projectForms.lockForm);
 // v4.1330 — El comité revisó los cambios posteriores al cierre.
 router.post('/admin/postulaciones/:id/post-close/reviewed', authMiddleware, fairEdit, express.json(), projectForms.markPostCloseReviewed);
+
+// v4.1332 — Seguimiento documental de los proyectos. Los LITERALES (config,
+// recordatorios) van antes de `/:id` (`check:routes`). Leer exige acceso al
+// módulo; revisar, marcar «No aplica» y enviar recordatorios, `changeStatus`;
+// observar, `comment`; configurar, `config` (lo resuelve `withAccess`).
+router.get('/admin/seguimiento-documental', authMiddleware, fairRead, docTracking.getSummary);
+router.get('/admin/seguimiento-documental/config', authMiddleware, fairRead, docTracking.getConfig);
+router.put('/admin/seguimiento-documental/config', authMiddleware, fairManage, express.json(), docTracking.saveConfig);
+router.get('/admin/seguimiento-documental/recordatorios', authMiddleware, fairRead, docTracking.listReminders);
+router.post('/admin/seguimiento-documental/recordatorios', authMiddleware, fairEdit, express.json(), docTracking.sendReminders);
+router.post('/admin/seguimiento-documental/recordatorios/:reminderId/reintentar', authMiddleware, fairEdit, express.json(), docTracking.retryReminder);
+router.get('/admin/seguimiento-documental/:id', authMiddleware, fairRead, docTracking.getDetail);
+router.get('/admin/seguimiento-documental/:id/presentacion/:fileId/url', authMiddleware, fairRead, docTracking.adminPresentationUrl);
+router.post('/admin/seguimiento-documental/:id/revision', authMiddleware, fairEdit, express.json(), docTracking.saveReview);
+router.post('/admin/seguimiento-documental/:id/aplicabilidad', authMiddleware, fairEdit, express.json(), docTracking.saveApplicability);
+router.post('/admin/seguimiento-documental/:id/observacion', authMiddleware, fairEdit, express.json(), docTracking.addObservation);
 
 // Recursos y plantillas (v4.1264). Ver y consultar estadísticas exige acceso
 // al módulo; exportar, el permiso de exportación; subir, publicar, reemplazar

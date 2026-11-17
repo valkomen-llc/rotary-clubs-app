@@ -34,13 +34,33 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1331.0 | 2026-11-15 (Agentes IA: Centro de Equipos de IA)
-// Cache bust: 2026-11-15
+// UI V4.1332.0 | 2026-11-17 (Feria: Seguimiento documental de proyectos)
+// Cache bust: 2026-11-17
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1332.0',
+        title: 'Feria de Proyectos: Seguimiento documental de los proyectos postulados 📋',
+        description: '«Proyectos postulados» se convierte en un centro de control del cumplimiento documental. Cada proyecto muestra el avance REAL de su Formulación y de su Solicitud FDD (la misma cifra que ve el club en «Mi Proyecto»), el estado de su presentación y de su video, el Video Pitch Profesional por separado y un avance documental global calculado sólo sobre lo que aplica, con semáforo frente a una fecha límite configurable. El comité filtra, revisa, pide correcciones y envía recordatorios con vista previa y registro; los clubes entregan su presentación desde «Mi Proyecto» y ven exactamente qué les falta.',
+        date: new Date().toISOString(),
+        tags: ['feria-de-proyectos', 'seguimiento-documental', 'mi-proyecto', 'recordatorios', 'formularios', 'exportaciones'],
+        type: 'feature',
+        impact: 'Alta: el comité identifica en una pantalla qué clubes tienen el proyecto completo y cuáles deben actualizar información antes de la fecha límite, sin revisar formulario por formulario.',
+        changes: [
+            { type: 'added', text: 'Columnas del grupo «Seguimiento documental» (se contraen y expanden): Formulación y FDD con porcentaje, barra y estado; Presentación y Video con su estado de entrega; Video Pitch Profesional aparte; Avance documental con semáforo y validación.' },
+            { type: 'added', text: 'Indicadores sobre los filtros activos: proyectos, documentación completa e incompleta, pendientes de formulación, FDD, presentación y video, pendientes de validación, correcciones y vencidos. Cada tarjeta filtra la tabla.' },
+            { type: 'added', text: 'Filtros nuevos: vistas documentales, rango de avance, última modificación del club, responsable y recordatorio enviado o pendiente; se combinan con todos los anteriores.' },
+            { type: 'added', text: 'Panel de detalle por proyecto: secciones incompletas, campos obligatorios pendientes o con formato incorrecto, archivos y versiones, validar, en revisión, solicitar corrección (el club la ve y recibe correo), «No aplica» con motivo, observaciones internas e historial.' },
+            { type: 'added', text: 'Recordatorios de documentación: a la selección, a todos los incompletos o sólo a Formulación, FDD o documentos; un correo por responsable con todos sus proyectos, vista previa del correo real, confirmación explícita, intervalo mínimo, tope, registro y reintento de fallidos.' },
+            { type: 'added', text: 'Fecha límite documental por edición (y por requisito), requisitos obligatorios / opcionales / no aplica y su peso, configurables; aviso si chocan con el cierre de la edición de formularios.' },
+            { type: 'added', text: '«Mi Proyecto»: panel «Avance documental del proyecto» y tarjeta «Entrega de la presentación del proyecto» (PDF o PPTX validado por sus bytes, con versiones).' },
+            { type: 'changed', text: 'El avance de un formulario cuenta sólo los campos obligatorios APLICABLES con formato válido (un correo mal escrito ya no cuenta) y nunca muestra 100 % con algo pendiente; es la misma regla en «Mi Proyecto» y en el panel.' },
+            { type: 'added', text: 'Exportaciones CSV, Excel y PDF con las columnas documentales, respetando los filtros activos.' },
+        ],
+    },
     {
         version: '4.1331.0',
         title: 'Agentes IA: el Resumen se convierte en el Centro de Equipos de IA 🧭',

@@ -30,6 +30,9 @@ import {
     getAdminConfig, saveAdminConfig, resolvePriceMode, sendFairEmail, buildPaymentReminderHtml,
 } from './projectFairController.js';
 import { buildProjectDocx, DOCX_MIME } from '../lib/projectFairDocx.js';
+// v4.1332 — Seguimiento documental: el criterio (puro) y la lectura por lotes.
+import { compactTracking, hasDocQuery, matchesDocFilters, docSortValue, docViewOptions, DOC_SORTS } from '../lib/projectDocumentTracking.js';
+import { loadTracking } from '../lib/projectDocumentTrackingStore.js';
 import {
     BULK_MAX, BULK_CAPABILITY, planBulk, describeBulkPlan,
     validateBulkPlan, normalizeArchiveView, labelOf,
@@ -435,7 +438,7 @@ const loadTagsFor = async (ids) => {
  * que necesitan las postulaciones aún sin migrar y cualquier consulta interna
  * que no venga del panel.
  */
-const buildFilters = (query) => {
+export const buildFilters = (query) => {
     const where = [];
     const params = [];
     const add = (sql, value) => { params.push(value); where.push(sql.replace('$?', `$${params.length}`)); };
@@ -499,6 +502,11 @@ const buildFilters = (query) => {
     if (query.priority && query.priority !== 'all') add('priority = $?', clean(query.priority, 20));
     if (query.club) add('"clubName" ILIKE $?', `%${clean(query.club, 160)}%`);
     if (query.assignee) add('"assigneeName" ILIKE $?', `%${clean(query.assignee, 160)}%`);
+    // v4.1332 — Responsable del proyecto (nombre o apellido).
+    if (query.responsable) {
+        params.push(`%${clean(query.responsable, 160)}%`);
+        where.push(`(("firstName" || ' ' || COALESCE("lastName",'')) ILIKE $${params.length})`);
+    }
     if (query.category) add('"internalCategory" ILIKE $?', `%${clean(query.category, 120)}%`);
     if (query.from) add('"createdAt" >= $?', new Date(query.from));
     if (query.to) add('"createdAt" <= $?', new Date(`${clean(query.to, 30)}T23:59:59`));
@@ -1485,30 +1493,67 @@ export const getDashboardIntelligence = withAccess(async (req, res, { cfg, acces
 
 // ── Listado ──────────────────────────────────────────────────────────
 // GET /admin/submissions
-export const listSubmissions = withAccess(async (req, res, { access }) => {
+export const listSubmissions = withAccess(async (req, res, { cfg, access }) => {
     const { clause, params } = buildFilters(req.query);
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const pageSize = Math.min(200, Math.max(1, parseInt(req.query.pageSize, 10) || 25));
+    const docSort = Object.prototype.hasOwnProperty.call(DOC_SORTS, String(req.query.sortBy || ''));
     const sortBy = SORTABLE[req.query.sortBy] || SORTABLE.createdAt;
     const sortDir = String(req.query.sortDir).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
 
-    const countRes = await db.query(`SELECT COUNT(*)::int AS total FROM "ProjectFairSubmission" ${clause}`, params);
-    const total = countRes.rows[0]?.total || 0;
+    let total;
+    let pageRows;
+    let tracking;
+    if (hasDocQuery(req.query)) {
+        // v4.1332 — Filtro u orden DOCUMENTAL: el avance sale del motor (el
+        // mismo de «Mi Proyecto»), no de una columna. Se calcula para todas
+        // las filas que pasan los demás filtros —por lotes, una consulta por
+        // fuente— y se filtra y ordena aquí. Así se combina con todo lo demás.
+        const base = await db.query(`SELECT * FROM "ProjectFairSubmission" ${clause}
+                                     ORDER BY ${docSort ? '"createdAt" DESC' : `${sortBy} ${sortDir} NULLS LAST`}, id ASC LIMIT 5000`, params);
+        tracking = await loadTracking(base.rows, cfg);
+        let list = base.rows.filter(r => matchesDocFilters(tracking.get(r.id), req.query));
+        if (docSort) {
+            const dir = sortDir === 'ASC' ? 1 : -1;
+            list = [...list].sort((a, b) => (docSortValue(tracking.get(a.id), req.query.sortBy) - docSortValue(tracking.get(b.id), req.query.sortBy)) * dir
+                || String(a.id).localeCompare(String(b.id)));
+        }
+        total = list.length;
+        const ids = list.slice((page - 1) * pageSize, page * pageSize).map(r => r.id);
+        const full = ids.length
+            ? await db.query(`SELECT *, ${SQL_FDD_COLUMNS} FROM "ProjectFairSubmission" WHERE id = ANY($1::text[])`, [ids])
+            : { rows: [] };
+        const byId = new Map(full.rows.map(r => [r.id, r]));
+        pageRows = ids.map(id => byId.get(id)).filter(Boolean);
+    } else {
+        const countRes = await db.query(`SELECT COUNT(*)::int AS total FROM "ProjectFairSubmission" ${clause}`, params);
+        total = countRes.rows[0]?.total || 0;
 
-    // v4.1304 — `SQL_FDD_COLUMNS` agrega el FDD y el FAP de CADA proyecto.
-    // El desempate por `id` deja estable la paginación cuando muchos valores
-    // coinciden (o faltan).
-    const rowsRes = await db.query(
-        `SELECT *, ${SQL_FDD_COLUMNS} FROM "ProjectFairSubmission" ${clause}
-         ORDER BY ${sortBy} ${sortDir} NULLS LAST, id ASC
-         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-        [...params, pageSize, (page - 1) * pageSize]
-    );
+        // v4.1304 — `SQL_FDD_COLUMNS` agrega el FDD y el FAP de CADA proyecto.
+        // El desempate por `id` deja estable la paginación cuando muchos valores
+        // coinciden (o faltan).
+        const rowsRes = await db.query(
+            `SELECT *, ${SQL_FDD_COLUMNS} FROM "ProjectFairSubmission" ${clause}
+             ORDER BY ${sortBy} ${sortDir} NULLS LAST, id ASC
+             LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+            [...params, pageSize, (page - 1) * pageSize]
+        );
+        pageRows = rowsRes.rows;
+        // El seguimiento de la página. Si falla, la tabla se pinta igual (sin
+        // las columnas documentales): es información de apoyo.
+        tracking = await loadTracking(pageRows, cfg).catch((err) => {
+            console.warn('[project-fair-admin] seguimiento documental:', err?.message);
+            return new Map();
+        });
+    }
 
-    const tagsBySubmission = await loadTagsFor(rowsRes.rows.map(r => r.id));
-    const sizes = await registrationSizesFor(rowsRes.rows);
+    const tagsBySubmission = await loadTagsFor(pageRows.map(r => r.id));
+    const sizes = await registrationSizesFor(pageRows);
     res.json({
-        submissions: rowsRes.rows.map(r => mapRow({ ...r, tags: tagsBySubmission[r.id] || [], registrationProjects: sizes[r.registrationId] ?? 1 }, access)),
+        submissions: pageRows.map(r => {
+            const t = tracking.get(r.id);
+            return { ...mapRow({ ...r, tags: tagsBySubmission[r.id] || [], registrationProjects: sizes[r.registrationId] ?? 1 }, access), documents: t ? compactTracking(t) : null };
+        }),
         pagination: { page, pageSize, total, pages: Math.ceil(total / pageSize) || 1 },
         access,
     });
@@ -2578,9 +2623,13 @@ export const getReports = getIntelligence;
 const csvAmount = (v) => (v === null || v === undefined ? '' : String(Number(v)));
 // GET /admin/export.csv — respeta los mismos filtros del listado. El detalle
 // financiero sólo sale si el perfil puede verlo.
-export const exportCsv = withAccess(async (req, res, { access }) => {
+export const exportCsv = withAccess(async (req, res, { cfg, access }) => {
     const { clause, params } = buildFilters(req.query);
-    const { rows } = await db.query(`SELECT *, ${SQL_FDD_COLUMNS} FROM "ProjectFairSubmission" ${clause} ORDER BY "createdAt" DESC`, params);
+    const { rows: allRows } = await db.query(`SELECT *, ${SQL_FDD_COLUMNS} FROM "ProjectFairSubmission" ${clause} ORDER BY "createdAt" DESC`, params);
+    // v4.1332 — Seguimiento documental: las mismas cifras del listado y los
+    // mismos filtros documentales (si los hay).
+    const tracking = await loadTracking(allRows, cfg).catch(() => new Map());
+    const rows = allRows.filter(r => !tracking.get(r.id) || matchesDocFilters(tracking.get(r.id), req.query));
     const tagsBySubmission = await loadTagsFor(rows.map(r => r.id));
 
     const sizes = await registrationSizesFor(rows);
@@ -2594,6 +2643,10 @@ export const exportCsv = withAccess(async (req, res, { access }) => {
         // v4.1311 — De dónde sale el pago cuando no es de esta fila, y quién
         // lo hizo cuando no fue el responsable.
         'Pago respaldado por', 'Pagado por',
+        // v4.1332 — Seguimiento documental.
+        'Formulación (%)', 'Solicitud FDD (%)', 'Presentación', 'Video', 'Video Pitch Profesional',
+        'Avance documental (%)', 'Estado documental', 'Validación administrativa', 'Semáforo',
+        'Pendientes', 'Última actualización', 'Último recordatorio', 'Recordatorios enviados',
     ];
     if (access.viewPayments) headers.push('Referencia Stripe (PaymentIntent)', 'Checkout Session', 'Charge', 'Método de pago', 'Comprobante');
 
@@ -2619,6 +2672,7 @@ export const exportCsv = withAccess(async (req, res, { access }) => {
             r.paidAt ? new Date(r.paidAt).toISOString() : '',
             r.metadata?.payment?.coveredBy ? (r.metadata.payment.coveredByRef || r.metadata.payment.coveredBy) : '',
             r.metadata?.substitution?.role === 'kept' ? (r.metadata.substitution.payer?.name || '') : '',
+            ...docCsvValues(tracking.get(r.id)),
         ];
         if (access.viewPayments) {
             values.push(r.stripePaymentIntentId, r.stripeSessionId, r.stripeChargeId, r.paymentMethod, r.receiptUrl);
@@ -2630,6 +2684,20 @@ export const exportCsv = withAccess(async (req, res, { access }) => {
     res.setHeader('Content-Disposition', 'attachment; filename="postulaciones-feria-proyectos.csv"');
     res.send('﻿' + lines.join('\n'));
 }, 'export');
+
+/** v4.1332 — Las celdas documentales de una fila del CSV (vacías si no hay seguimiento). */
+const docCsvValues = (t) => {
+    if (!t) return Array(13).fill('');
+    const r = (k) => t.requirements.find(x => x.key === k);
+    const formCell = (x) => (!x ? '' : !x.applies ? 'No aplica' : `${x.pct}`);
+    const fileCell = (x) => (!x ? '' : x.status?.label || '');
+    return [
+        formCell(r('master')), formCell(r('fdd_2026_2027')), fileCell(r('presentation')), fileCell(r('video')), t.pitch?.label || '',
+        t.overallPct, t.docStatus?.label || '', t.validation?.label || '', t.risk?.label || '',
+        t.pending.map(p => `${p.short}: ${p.detail}`).join(' | '),
+        t.lastActivityAt || '', t.lastReminderAt || '', t.reminderCount,
+    ];
+};
 
 // ── Catálogos para los filtros del panel ─────────────────────────────
 export const getCatalog = withAccess(async (_req, res, { cfg, access }) => {
@@ -2656,6 +2724,8 @@ export const getCatalog = withAccess(async (_req, res, { cfg, access }) => {
         // v4.1330 — Filtro «Actualizaciones posteriores al cierre» y la fecha
         // de cierre de la edición (para el aviso de la ficha).
         postCloseViews: POST_CLOSE_OPTIONS,
+        // v4.1332 — Vistas del Seguimiento documental.
+        docViews: docViewOptions(),
         deadline: cfg.deadline || null,
         priorities: PRIORITIES,
         focusAreas: cfg.focusAreas || [],
