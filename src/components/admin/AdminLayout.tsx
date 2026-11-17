@@ -72,7 +72,11 @@ import {
     Sliders,
     Landmark,
     Clapperboard,
+    PanelLeftClose,
+    PanelLeftOpen,
 } from 'lucide-react';
+// v4.1333 — Minimizar / maximizar la barra lateral (todos los sitios).
+import { useSidebarCollapse, useNavTooltip, SidebarTooltip } from './sidebarCollapse';
 import { useAuth } from '../../hooks/useAuth';
 import { useSiteModulesConfig } from '../../hooks/useSiteModulesConfig';
 import { useProjectFairLink } from '../../lib/useProjectFairLink';
@@ -203,6 +207,13 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
     const searchInputRef = useRef<HTMLInputElement>(null);
     const [lockedToast, setLockedToast] = useState<string | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    // v4.1333 — Barra minimizada (sólo íconos, con su título al pasar el
+    // cursor). Sólo en escritorio; la preferencia se recuerda en el navegador.
+    const sidebar = useSidebarCollapse();
+    const mini = sidebar.mini;
+    const navTip = useNavTooltip(mini);
+    const miniRef = useRef(mini);
+    miniRef.current = mini;
 
     // ── Setup Progress (for gating) ──
     const { pct: setupPctHook, isComplete: setupComplete } = useSetupProgress();
@@ -429,11 +440,18 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
         const handleKeyDown = (e: KeyboardEvent) => {
             if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
                 e.preventDefault();
-                searchInputRef.current?.focus();
+                // Minimizada no hay buscador a la vista: se maximiza y luego se enfoca.
+                if (miniRef.current) {
+                    sidebar.setCollapsed(false);
+                    setTimeout(() => searchInputRef.current?.focus(), 60);
+                } else {
+                    searchInputRef.current?.focus();
+                }
             }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // Fetch module settings for club users
@@ -1109,8 +1127,34 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                     />
                 )}
                 {/* Sidebar */}
-                <aside className={`fixed lg:static inset-y-0 left-0 w-72 bg-white border-r border-gray-200 flex flex-col flex-shrink-0 z-40 transform transition-transform duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
-                    {/* Brand Header */}
+                <aside
+                    aria-label="Menú del panel"
+                    data-sidebar={mini ? 'minimizada' : 'maximizada'}
+                    className={`fixed lg:static inset-y-0 left-0 w-72 ${mini ? 'lg:w-20' : ''} bg-white border-r border-gray-200 flex flex-col flex-shrink-0 z-40 transform transition-[transform,width] duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
+                    {/* v4.1333 — Minimizada: logotipo compacto, maximizar y buscar. */}
+                    {mini ? (
+                        <div className="flex flex-col items-center gap-2 px-2 pt-5 pb-3">
+                            <button type="button" onClick={() => sidebar.setCollapsed(false)}
+                                aria-label="Maximizar menú" {...navTip.propsFor('Maximizar menú')}
+                                className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-500 hover:text-rotary-blue hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rotary-blue/30 transition-colors">
+                                <PanelLeftOpen className="w-5 h-5" />
+                            </button>
+                            {(!isSuperAdmin && club?.logo) ? (
+                                <img src={club.logo} alt={club.name} className="w-11 h-11 object-contain" />
+                            ) : (
+                                <div className="w-10 h-10 rounded-xl bg-rotary-blue flex items-center justify-center shadow-lg shadow-rotary-blue/20" aria-hidden="true">
+                                    <div className="w-5 h-5 border-2 border-white rounded-md flex items-center justify-center font-black text-white text-[8px]">R</div>
+                                </div>
+                            )}
+                            <button type="button"
+                                onClick={() => { sidebar.setCollapsed(false); setTimeout(() => searchInputRef.current?.focus(), 60); }}
+                                aria-label="Buscar sección" {...navTip.propsFor('Buscar sección (⌘K)')}
+                                className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:text-rotary-blue hover:bg-gray-50 border border-gray-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-rotary-blue/30 transition-colors">
+                                <Search className="w-4 h-4" />
+                            </button>
+                        </div>
+                    ) : (
+                    /* Brand Header */
                     <div className="p-6 pb-4">
                         <div className="flex items-center justify-between mb-6">
                             <div className="flex items-center gap-3">
@@ -1150,9 +1194,17 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                                     </>
                                 )}
                             </div>
-                            <Link to="/" className="text-gray-400 hover:text-rotary-blue transition-colors">
-                                <ExternalLink className="w-4 h-4" />
-                            </Link>
+                            <div className="flex items-center gap-1">
+                                <Link to="/" className="text-gray-400 hover:text-rotary-blue transition-colors p-1" aria-label="Abrir el sitio" title="Abrir el sitio">
+                                    <ExternalLink className="w-4 h-4" />
+                                </Link>
+                                {/* v4.1333 — Sólo en escritorio: en el teléfono el menú es un cajón. */}
+                                <button type="button" onClick={() => sidebar.setCollapsed(true)}
+                                    aria-label="Minimizar menú" title="Minimizar menú"
+                                    className="hidden lg:inline-flex p-1 rounded-lg text-gray-400 hover:text-rotary-blue hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rotary-blue/30 transition-colors">
+                                    <PanelLeftClose className="w-4 h-4" />
+                                </button>
+                            </div>
                         </div>
 
                         {/* Sidebar Search */}
@@ -1234,11 +1286,19 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                         </div>
                     </div>
 
+                    )}
+
                     {/* Navigation Scroll Area */}
-                    <nav className="flex-1 overflow-y-auto px-4 py-4 space-y-6 scrollbar-hide">
-                        {categories.map((cat) => (
-                            <div key={cat} className="space-y-1">
-                                <p className={`px-4 text-[10px] font-black uppercase tracking-[0.2em] mb-2 ${cat === 'Setup' ? 'text-amber-500' : 'text-gray-400'}`}>{cat === 'Setup' ? '✦ Pendiente' : cat}</p>
+                    <nav onScroll={navTip.hide} className={`flex-1 overflow-y-auto py-4 scrollbar-hide ${mini ? 'px-2 space-y-3' : 'px-4 space-y-6'}`}>
+                        {categories.map((cat, catIndex) => (
+                            <div key={cat} className="space-y-1" role="group" aria-label={cat === 'Setup' ? 'Pendiente' : cat}>
+                                {mini ? (
+                                    // Minimizada, el título de la sección se vuelve una línea
+                                    // (el nombre sigue para lectores de pantalla en el grupo).
+                                    catIndex > 0 ? <div className={`mx-3 mb-3 border-t ${cat === 'Setup' ? 'border-amber-200' : 'border-gray-100'}`} aria-hidden="true" /> : null
+                                ) : (
+                                    <p className={`px-4 text-[10px] font-black uppercase tracking-[0.2em] mb-2 ${cat === 'Setup' ? 'text-amber-500' : 'text-gray-400'}`}>{cat === 'Setup' ? '✦ Pendiente' : cat}</p>
+                                )}
                                 {menuItems
                                     .filter(item => item.category === cat)
                                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1251,16 +1311,21 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                                                 {isLocked ? (
                                                     <button
                                                         onClick={() => setLockedToast('Completa la configuración del sitio para desbloquear esta sección')}
-                                                        className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm text-gray-300 cursor-not-allowed opacity-60"
+                                                        aria-label={mini ? `${item.label} (bloqueado)` : undefined}
+                                                        {...navTip.propsFor(`${item.label} · bloqueado`)}
+                                                        className={`w-full flex items-center rounded-xl text-sm text-gray-300 cursor-not-allowed opacity-60 ${mini ? 'justify-center px-0 py-2.5' : 'gap-3 px-4 py-2.5'}`}
                                                     >
                                                         <item.icon className="w-5 h-5 text-gray-300" />
-                                                        <span className="flex-1 text-left">{item.label}</span>
-                                                        <Lock className="w-3.5 h-3.5 text-gray-300" />
+                                                        {!mini && <span className="flex-1 text-left">{item.label}</span>}
+                                                        {!mini && <Lock className="w-3.5 h-3.5 text-gray-300" />}
                                                     </button>
                                                 ) : (
                                                     <Link
                                                         to={item.path}
-                                                        className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all text-sm group ${isActive
+                                                        aria-label={mini ? item.label : undefined}
+                                                        aria-current={isActive ? 'page' : undefined}
+                                                        {...navTip.propsFor(item.label)}
+                                                        className={`relative flex items-center rounded-xl transition-all text-sm group ${mini ? 'justify-center px-0 py-2.5' : 'gap-3 px-4 py-2.5'} ${isActive
                                                             ? isSetup ? 'bg-amber-50 text-amber-800 font-bold' : 'bg-gray-50 text-gray-900 font-bold'
                                                             : isSetup
                                                                 ? 'text-amber-700 bg-amber-50/60 hover:bg-amber-50 font-semibold border border-amber-100'
@@ -1271,16 +1336,16 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                                                             ? isSetup ? 'text-amber-600' : 'text-rotary-blue'
                                                             : isSetup ? 'text-amber-500' : 'text-gray-400 group-hover:text-gray-600'
                                                             }`} />
-                                                        <span className="flex-1">{item.label}</span>
-                                                        {item.badge === 'config' && user?.role !== 'administrator' && (
+                                                        {!mini && <span className="flex-1">{item.label}</span>}
+                                                        {!mini && item.badge === 'config' && user?.role !== 'administrator' && (
                                                             <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${pctColor} border`}>
                                                                 {setupPct}%
                                                             </span>
                                                         )}
                                                         {isSetup && (
-                                                            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
+                                                            <span className={`w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-shrink-0 ${mini ? 'absolute top-1.5 right-3' : ''}`} />
                                                         )}
-                                                        {item.expandable && <ChevronDown className="w-3.5 h-3.5 text-gray-300" />}
+                                                        {!mini && item.expandable && <ChevronDown className="w-3.5 h-3.5 text-gray-300" />}
                                                     </Link>
                                                 )}
                                             </div>
@@ -1297,7 +1362,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                           que el resumen del control de personas del Reel: un
                           vacío sin motivo es indistinguible de un fallo.
                         */}
-                        {!acceso.loading && acceso.restricted && (
+                        {!mini && !acceso.loading && acceso.restricted && (
                             <div className="mx-1 rounded-xl border border-sky-100 bg-sky-50/60 px-4 py-3">
                                 <p className="text-[11px] font-bold uppercase tracking-wide text-sky-700">Acceso por permisos</p>
                                 <p className="mt-1 text-[11px] leading-relaxed text-sky-900/80">
@@ -1311,18 +1376,21 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                     </nav>
 
                     {/* Sidebar Footer / User Profile */}
-                    <div className="p-4 border-t border-gray-100 bg-white sticky bottom-0">
-                        <div className="flex flex-col gap-1 mb-4">
+                    <div className={`border-t border-gray-100 bg-white sticky bottom-0 ${mini ? 'p-2' : 'p-4'}`}>
+                        <div className={`flex flex-col gap-1 ${mini ? 'mb-2 items-center' : 'mb-4'}`}>
                             {/* Club users: Configurar Sitio with % | Super admin: Settings */}
                             {/* Unified configuration link is now in the main menu items */}
-                            <div className="h-4"></div>
-                            <button onClick={handleLogout} className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-500 hover:text-red-600 rounded-xl hover:bg-red-50 transition-all group">
+                            {!mini && <div className="h-4"></div>}
+                            <button onClick={handleLogout}
+                                aria-label={mini ? 'Cerrar sesión' : undefined}
+                                {...navTip.propsFor('Cerrar sesión')}
+                                className={`flex items-center text-sm text-gray-500 hover:text-red-600 rounded-xl hover:bg-red-50 transition-all group ${mini ? 'justify-center w-11 h-11' : 'gap-3 px-4 py-2.5'}`}>
                                 <LogOut className="w-5 h-5 text-gray-400 group-hover:text-red-500" />
-                                Logout
+                                {!mini && 'Logout'}
                             </button>
                             {/* Mismo criterio: el número de versión es información
                                 interna de la plataforma. */}
-                            {(isSuperAdmin || user?.role === 'district_admin' || user?.role === 'club_admin' || user?.role === 'administrator' || (user as any)?.isSuperAdmin) && (
+                            {!mini && (isSuperAdmin || user?.role === 'district_admin' || user?.role === 'club_admin' || user?.role === 'administrator' || (user as any)?.isSuperAdmin) && (
                                 <div className="flex justify-center mt-2">
                                     <span className="text-[10px] font-black tracking-widest text-gray-300 uppercase py-1 px-2 border border-gray-100 rounded-full bg-gray-50/50">
                                         Release {APP_VERSION}
@@ -1341,8 +1409,10 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                         <button
                             type="button"
                             onClick={() => navigate('/admin/perfil')}
-                            title="Ver mi perfil"
-                            className="w-full p-4 rounded-2xl bg-gray-50 border border-gray-100 flex items-center gap-3 mt-4 text-left hover:bg-gray-100 transition-colors"
+                            title={mini ? undefined : 'Ver mi perfil'}
+                            aria-label={mini ? 'Ver mi perfil' : undefined}
+                            {...navTip.propsFor(`Mi perfil · ${displayNameOf(user as any, user?.email || '')}`)}
+                            className={`w-full rounded-2xl bg-gray-50 border border-gray-100 flex items-center text-left hover:bg-gray-100 transition-colors ${mini ? 'justify-center p-2 mt-2' : 'p-4 gap-3 mt-4'}`}
                         >
                             {(user as any)?.avatarUrl ? (
                                 <img
@@ -1355,16 +1425,20 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                                     {initialsOf(user as any, user?.email || '')}
                                 </div>
                             )}
-                            <div className="flex-1 min-w-0">
-                                <p className="text-xs font-black text-gray-900 truncate">
-                                    {displayNameOf(user as any, user?.email || '')}
-                                </p>
-                                <p className="text-[10px] text-gray-400 truncate font-medium" data-no-translate>{user?.email}</p>
-                            </div>
-                            <HelpCircle className="w-4 h-4 text-gray-300" />
+                            {!mini && (
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-black text-gray-900 truncate">
+                                        {displayNameOf(user as any, user?.email || '')}
+                                    </p>
+                                    <p className="text-[10px] text-gray-400 truncate font-medium" data-no-translate>{user?.email}</p>
+                                </div>
+                            )}
+                            {!mini && <HelpCircle className="w-4 h-4 text-gray-300" />}
                         </button>
                     </div>
                 </aside>
+                {/* v4.1333 — El título del ícono, fuera de la barra para que no se recorte. */}
+                <SidebarTooltip tip={navTip.tip} />
 
                 {/* Main Content Area */}
                 <main className="flex-1 flex flex-col min-w-0 bg-white overflow-hidden relative">
