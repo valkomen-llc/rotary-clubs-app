@@ -120,7 +120,7 @@ export const attachGrant = async (req) => {
  *
  * «Acceso denegado» a secas obliga a diagnosticar a ciegas (regla de v4.859).
  */
-const sessionRejection = (req, grant) => {
+export const sessionRejection = (req, grant) => {
     if (req.user?.institutionalStatus === 'suspended' || grant?.source === 'suspended') {
         return { code: 'account_suspended', error: 'Tu acceso está suspendido. Escríbele al administrador del sitio.' };
     }

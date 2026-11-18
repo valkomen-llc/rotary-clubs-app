@@ -3,7 +3,7 @@
 // /postular-proyecto; los /admin/* requieren token y sirven al configurador.
 import express from 'express';
 import { authMiddleware, requireSiteAdmin, SITE_ADMIN_ROLES } from '../middleware/auth.js';
-import { requireRoleOrPermission } from '../middleware/institutionalGuard.js';
+import { requireRoleOrPermission, attachGrant, sessionRejection } from '../middleware/institutionalGuard.js';
 import {
     getEditions,
     createEdition,
@@ -25,6 +25,18 @@ router.use(clubCatalogFresh);
 const fairRead = requireRoleOrPermission(SITE_ADMIN_ROLES, 'project_fair.view');
 const fairEdit = requireRoleOrPermission(SITE_ADMIN_ROLES, 'project_fair.edit');
 const fairManage = requireRoleOrPermission(SITE_ADMIN_ROLES, 'project_fair.manage');
+// v4.1335 — EXCHANGE: el administrador autorizado del EVENTO consulta los
+// comprobantes de traslado sin ser del comité ni administrador del sitio de la
+// Feria. Esta guardia sólo rechaza la sesión que ya no vale (suspendida,
+// vencida, cerrada); la AUTORIZACIÓN la decide `withAccess` con la capacidad de
+// cada handler (`exchangeView`, o `view`/`exchangeView` en el listado): sin
+// perfil del comité ni acceso de consulta, 403 NO_FAIR_PROFILE.
+const fairOrExchange = async (req, res, next) => {
+    const grant = await attachGrant(req).catch(() => null);
+    const rechazo = sessionRejection(req, grant);
+    if (rechazo) return res.status(403).json(rechazo);
+    return next();
+};
 
 // ── Público ──────────────────────────────────────────────────────────
 router.get('/config', getPublicConfig);
@@ -74,6 +86,8 @@ router.post('/portal/form/submit', portal.portalAuth, express.json({ limit: '2mb
 import projectForms from '../controllers/projectFormsController.js';
 // v4.1332 — Seguimiento documental (comité) y entrega de la presentación (club).
 import docTracking from '../controllers/projectDocumentTrackingController.js';
+// v4.1335 — Exchange: traslados y conciliación financiera de la Feria.
+import exchange from '../controllers/exchangeController.js';
 
 router.get('/portal/forms', portal.portalAuth, projectForms.getForms);
 router.get('/portal/forms/:formKey', portal.portalAuth, projectForms.getForm);
@@ -161,7 +175,7 @@ router.put('/admin/ediciones/vincular', authMiddleware, fairManage, express.json
 router.get('/admin/dashboard-intelligence', authMiddleware, fairRead, fair.getDashboardIntelligence);
 router.get('/admin/inteligencia', authMiddleware, fairRead, fair.getIntelligence);
 router.get('/admin/overview', authMiddleware, fairRead, fair.getOverview);
-router.get('/admin/catalog', authMiddleware, fairRead, fair.getCatalog);
+router.get('/admin/catalog', authMiddleware, fairOrExchange, fair.getCatalog);
 router.get('/admin/alerts', authMiddleware, fairRead, fair.getAlerts);
 router.get('/admin/reports', authMiddleware, fairRead, fair.getReports);
 router.get('/admin/export.csv', authMiddleware, fairRead, fair.exportCsv);
@@ -215,7 +229,21 @@ router.get('/admin/postulaciones/:id/libreta', authMiddleware, fairRead, dossier
 router.post('/admin/postulaciones/:id/libreta/preparar', authMiddleware, fairEdit, express.json(), dossier.prepareBooklet);
 router.put('/admin/postulaciones/:id/libreta', authMiddleware, fairEdit, express.json({ limit: '1mb' }), dossier.saveBooklet);
 router.post('/admin/postulaciones/:id/libreta/aprobar', authMiddleware, fairEdit, express.json(), dossier.approveBooklet);
-router.get('/admin/postulaciones', authMiddleware, fairRead, fair.listSubmissions);
+// v4.1335 — EXCHANGE: traslados y conciliación (literales antes de `/:id`).
+router.get('/admin/exchange/config', authMiddleware, fairOrExchange, exchange.getConfig);
+router.put('/admin/exchange/config', authMiddleware, fairManage, express.json(), exchange.saveConfig);
+router.post('/admin/exchange/accesos', authMiddleware, fairManage, express.json(), exchange.grantAccess);
+router.post('/admin/exchange/accesos/:grantId/revocar', authMiddleware, fairManage, express.json(), exchange.revokeAccess);
+router.get('/admin/exchange/resumen', authMiddleware, fairOrExchange, exchange.getSummary);
+router.get('/admin/exchange/export.csv', authMiddleware, fairOrExchange, exchange.exportExchangeCsv);
+router.get('/admin/exchange/postulaciones/:id', authMiddleware, fairOrExchange, exchange.getProjectExchange);
+router.get('/admin/exchange/operaciones/:opKey/archivo', authMiddleware, fairOrExchange, exchange.getOperationFile);
+router.post('/admin/exchange/operaciones/:opKey/documentos/url', authMiddleware, fairEdit, express.json(), exchange.presignDocument);
+router.post('/admin/exchange/operaciones/:opKey/documentos', authMiddleware, fairEdit, express.json(), exchange.attachDocument);
+router.put('/admin/exchange/operaciones/:opKey/datos', authMiddleware, fairEdit, express.json(), exchange.saveOperationData);
+router.post('/admin/exchange/operaciones/:opKey/estado', authMiddleware, fairEdit, express.json(), exchange.changeOperationStatus);
+router.post('/admin/exchange/documentos/:docId/retirar', authMiddleware, fairEdit, express.json(), exchange.retireDocument);
+router.get('/admin/postulaciones', authMiddleware, fairOrExchange, fair.listSubmissions);
 router.get('/admin/postulaciones/:id', authMiddleware, fairRead, fair.getSubmission);
 router.get('/admin/postulaciones/:id/snapshot', authMiddleware, fairRead, fair.getSubmissionSnapshot);
 router.patch('/admin/postulaciones/:id', authMiddleware, fairEdit, express.json({ limit: '1mb' }), fair.updateSubmission);

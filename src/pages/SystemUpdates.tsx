@@ -34,13 +34,31 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1334.0 | 2026-11-17 (Panel: logotipo junto al título con el menú minimizado)
-// Cache bust: 2026-11-17
+// UI V4.1335.0 | 2026-11-18 (Feria: Exchange — traslados y conciliación financiera)
+// Cache bust: 2026-11-18
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1335.0',
+        title: 'Feria de Proyectos: Exchange — traslados y conciliación financiera 🔁',
+        description: 'Nueva columna «Exchange» en «Proyectos postulados», junto a Pago y Valor: muestra si lo recibido por cada inscripción ya se trasladó de la cuenta que recibe (Mercury) a la del organizador (Colrotarios), si tiene comprobante y si fue conciliado. El pago, el traslado y la conciliación son tres estados distintos: un pago confirmado puede estar «Pendiente» de traslado, «En conciliación» o «Conciliado». El clip abre el comprobante en el mismo visor de los inscritos a eventos, con el detalle de la transferencia, sus asignaciones (una transferencia puede cubrir varios proyectos sin duplicar importes) y su historial.',
+        date: new Date().toISOString(),
+        tags: ['feria', 'exchange', 'finanzas', 'conciliacion', 'comprobantes', 'permisos'],
+        type: 'feature',
+        impact: 'Alta: trazabilidad de qué se recibió, qué se trasladó y qué está pendiente de conciliación, por proyecto y por transferencia.',
+        changes: [
+            { type: 'added', text: 'Columna «Exchange» con estados Pendiente, Falta comprobante, En conciliación, Parcial, Diferencia, Conciliado y Pago directo; el clip abre el comprobante y «Registrar traslado» usa la misma barra de la Bóveda de Fondos (un solo motor de traslados).' },
+            { type: 'added', text: 'Visor de cada proyecto: pago, transferencia (fecha, valor, referencia, cuentas de origen y destino, importe enviado y recibido, tasa REGISTRADA con su fuente, comisión, diferencia), comprobantes, asignaciones a cada proyecto e historial auditable.' },
+            { type: 'added', text: 'Conciliación por un perfil autorizado: adjuntar no concilia; hace falta comprobante y referencia, y una diferencia se explica. Lo conciliado no se edita: se reabre con motivo y el registro original queda en el historial.' },
+            { type: 'added', text: 'Resumen Exchange expandible con indicadores por moneda (recibido, trasladado, conciliado, pendientes y diferencias; COP y USD nunca se suman) y filtros que se combinan con los de pago y documentación, más búsqueda por referencia bancaria y fecha del traslado.' },
+            { type: 'added', text: 'Acceso de CONSULTA para el administrador autorizado del evento: ve la columna y los comprobantes de su edición, sin datos personales; no modifica nada. Se concede, se liga a su usuario y se revoca desde «Cuentas y accesos».' },
+            { type: 'added', text: 'Cuentas de origen y destino configurables por edición (enmascaradas para quien sólo consulta) y soportes adicionales en almacenamiento privado, validados por su contenido.' },
+            { type: 'changed', text: 'Exportaciones: CSV, Excel y PDF del listado con las columnas Exchange; CSV de operaciones (una fila por transferencia) y de asignaciones (una por proyecto, sin repetir el total).' },
+        ],
+    },
     {
         version: '4.1334.0',
         title: 'Panel de control: con el menú minimizado, el logotipo va junto al título',

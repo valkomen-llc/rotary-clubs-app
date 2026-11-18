@@ -74,10 +74,16 @@ import {
 import {
     substitutionPlan, substitutionWrites, substitutionViewOf, paymentFactsOf, stripeFactsOf,
 } from '../lib/projectFairSubstitution.js';
+// v4.1335 — EXCHANGE: traslados y conciliación. La capa de control sobre el
+// motor de la Bóveda (que sólo se LEE); acceso de consulta por evento.
+import { editionEventIdOf, findAccessGrant, loadExchangeFor, compactExchange } from '../lib/exchangeStore.js';
+import { hasExchangeQuery, matchesExchangeFilters, EXCHANGE_FILTERS } from '../lib/exchangeSpec.js';
+import { assertEventCapability } from '../lib/eventAccess.js';
 import {
     SQL_FDD_COLUMNS, FDD_SORTABLE, FDD_RANGE_FILTERS, sqlAmount, rangeBound, fddAmountsOf,
 } from '../lib/projectFairFddAmounts.js';
 
+console.log('[projectFairAdminController] v4.1335.0 cargado — Exchange: columna de traslados y conciliación en el listado (lee la Bóveda, no la escribe), perfil exchange_viewer de consulta para el administrador del evento (sin datos personales) y columnas Exchange en el CSV.');
 console.log('[projectFairAdminController] v4.1326.0 cargado — Sin perfil en la Feria no se ve nada: el rol viewer pierde view y withAccess responde 403 NO_FAIR_PROFILE (antes un club_admin de otro club leía correo, teléfono y documento de cada responsable).');
 console.log('[projectFairAdminController] v4.1325.0 cargado — Sólo el sitio de la Feria administra el módulo: el grant RBAC de project_fair.* cuenta sólo si es del sitio de la Feria (un club_admin de otro club ya no resuelve como admin); las listas Finanzas/Revisores/Traductores vuelven a aplicar.');
 console.log('[projectFairAdminController] v4.1324.0 cargado — Expediente integral del proyecto: lectura completa, edición auditada campo a campo, traducción al inglés con revisión humana y versiones, fichas PDF (español, inglés, bilingüe), libretas y perfil «Traductores». No toca estados ni pagos.');
@@ -137,10 +143,10 @@ export const PRIORITIES = [
 // fichas, `export`. El perfil `translator` lee, traduce y exporta: no edita la
 // postulación, no aprueba y no ve pagos.
 const ROLE_CAPABILITIES = {
-    admin:      { view: true, managePayments: true, viewPayments: true, comment: true, edit: true, changeStatus: true, manageTags: true, export: true, config: true, remove: true, translate: true, approveTranslation: true },
-    finance:    { view: true, managePayments: true, viewPayments: true, comment: true, edit: false, changeStatus: false, manageTags: false, export: true, config: false, remove: false, translate: false, approveTranslation: false },
-    reviewer:   { view: true, managePayments: false, viewPayments: false, comment: true, edit: false, changeStatus: true, manageTags: true, export: true, config: false, remove: false, translate: true, approveTranslation: true },
-    translator: { view: true, managePayments: false, viewPayments: false, comment: true, edit: false, changeStatus: false, manageTags: false, export: true, config: false, remove: false, translate: true, approveTranslation: false },
+    admin:      { view: true, managePayments: true, viewPayments: true, comment: true, edit: true, changeStatus: true, manageTags: true, export: true, config: true, remove: true, translate: true, approveTranslation: true, viewPersonalData: true, exchangeView: true, exchangeDownload: true, exchangeManage: true, exchangeReconcile: true, exchangeConfig: true },
+    finance:    { view: true, managePayments: true, viewPayments: true, comment: true, edit: false, changeStatus: false, manageTags: false, export: true, config: false, remove: false, translate: false, approveTranslation: false, viewPersonalData: true, exchangeView: true, exchangeDownload: true, exchangeManage: true, exchangeReconcile: true, exchangeConfig: false },
+    reviewer:   { view: true, managePayments: false, viewPayments: false, comment: true, edit: false, changeStatus: true, manageTags: true, export: true, config: false, remove: false, translate: true, approveTranslation: true, viewPersonalData: true, exchangeView: false, exchangeDownload: false, exchangeManage: false, exchangeReconcile: false, exchangeConfig: false },
+    translator: { view: true, managePayments: false, viewPayments: false, comment: true, edit: false, changeStatus: false, manageTags: false, export: true, config: false, remove: false, translate: true, approveTranslation: false, viewPersonalData: true, exchangeView: false, exchangeDownload: false, exchangeManage: false, exchangeReconcile: false, exchangeConfig: false },
     // v4.1326 — `viewer` NO VE NADA. Desde v4.1325 sólo resuelve a `viewer`
     // quien llega de OTRO sitio y no está en ninguna lista de la convocatoria:
     // en el sitio de la Feria todo perfil que pasa la guardia de la ruta es
@@ -149,7 +155,16 @@ const ROLE_CAPABILITIES = {
     // responsable. Cerrarlo aquí cubre TODO lo que pasa por `withAccess`
     // (listado, ficha, expediente, exportaciones, formularios, videos); ocultar
     // campo por campo habría dejado alguna respuesta sin revisar.
-    viewer:     { view: false, managePayments: false, viewPayments: false, comment: false, edit: false, changeStatus: false, manageTags: false, export: false, config: false, remove: false, translate: false, approveTranslation: false },
+    viewer:     { view: false, managePayments: false, viewPayments: false, comment: false, edit: false, changeStatus: false, manageTags: false, export: false, config: false, remove: false, translate: false, approveTranslation: false, viewPersonalData: false, exchangeView: false, exchangeDownload: false, exchangeManage: false, exchangeReconcile: false, exchangeConfig: false },
+    // v4.1335 — EXCHANGE: el administrador autorizado del EVENTO (por ejemplo,
+    // quien administra la Conferencia Distrital en el sitio del Distrito) CONSULTA
+    // los comprobantes de traslado de los proyectos de la edición. No es un perfil
+    // del comité: `view` sigue en false, así que el expediente, los formularios y
+    // las exportaciones del módulo le siguen cerrados (v4.1326); el listado le
+    // llega por la capacidad de consulta y SIN datos personales
+    // (`viewPersonalData: false`, proyección en lista blanca de `mapRow`). Nunca
+    // registra, corrige ni concilia. La descarga la decide el acceso concedido.
+    exchange_viewer: { view: false, managePayments: false, viewPayments: false, comment: false, edit: false, changeStatus: false, manageTags: false, export: false, config: false, remove: false, translate: false, approveTranslation: false, viewPersonalData: false, exchangeView: true, exchangeDownload: false, exchangeManage: false, exchangeReconcile: false, exchangeConfig: false },
 };
 
 /** Lo que se le dice a quien no tiene perfil en el módulo (v4.1326). */
@@ -235,7 +250,7 @@ export const isProjectFairSiteAdmin = async (req, cfg) => {
     return decideFairSiteAdmin({ user, cfg, ownSite, hostSite, grant, hasPermission });
 };
 
-export const resolveAccess = (user, cfg, { ownsFairSite = false } = {}) => {
+export const resolveAccess = (user, cfg, { ownsFairSite = false, exchangeGrant = null } = {}) => {
     const email = user?.email || '';
     const access = cfg?.access || {};
 
@@ -244,8 +259,42 @@ export const resolveAccess = (user, cfg, { ownsFairSite = false } = {}) => {
     else if (listHas(access.finance, email)) role = 'finance';
     else if (listHas(access.reviewers, email)) role = 'reviewer';
     else if (listHas(access.translators, email)) role = 'translator';
+    // v4.1335 — Sólo quien NO tiene perfil en el comité cae al acceso de
+    // consulta de Exchange: un perfil del comité nunca se rebaja por tenerlo.
+    else if (exchangeGrant) {
+        return { ...ROLE_CAPABILITIES.exchange_viewer, role: 'exchange_viewer', exchangeDownload: exchangeGrant.canDownload !== false, exchangeVia: exchangeGrant.via || 'grant' };
+    }
     return { role, ...ROLE_CAPABILITIES[role] };
 };
+
+/**
+ * v4.1335 — ¿Quien no tiene perfil en el comité tiene acceso de CONSULTA a
+ * Exchange en esta edición? Dos vías, y ninguna es comparar un correo fijo:
+ *   1. un acceso concedido desde el panel (`ExchangeAccessGrant`), ligado al
+ *      USUARIO y revocable;
+ *   2. la RELACIÓN con el evento: administra el evento de la edición con la
+ *      capacidad sensible `payments` (`assertEventCapability`, el guardia de
+ *      recurso de los eventos).
+ * Nunca lanza: ante un fallo, no hay acceso (lo estricto).
+ */
+const exchangeGrantFor = async (req) => {
+    try {
+        const eventId = await editionEventIdOf(req);
+        if (!eventId) return null;
+        const grant = await findAccessGrant(req.user, eventId);
+        if (grant) return { canDownload: grant.canDownload !== false, via: 'grant', eventId };
+        const event = await assertEventCapability(req, eventId, 'payments').catch(() => null);
+        if (event) return { canDownload: true, via: 'event', eventId };
+    } catch (err) {
+        console.warn('[project-fair-admin] acceso de Exchange:', err?.message);
+    }
+    return null;
+};
+
+/** ¿El acceso tiene la capacidad? `{ any: [...] }` = alguna de ellas. */
+const holds = (access, capability) => (capability && typeof capability === 'object' && Array.isArray(capability.any)
+    ? capability.any.some(c => access[c])
+    : !!access[capability]);
 
 export const actorFrom = (req, access) => ({
     id: req.user?.id || null,
@@ -263,8 +312,13 @@ export const withAccess = (handler, capability = 'view') => async (req, res) => 
         // precios, fechas, plantilla del formulario y permisos son suyos. Sin
         // `evento` se lee la abierta, como hasta v4.682.
         const cfg = await readConfigForAdmin(clean(req.query?.evento, 60) || null);
-        const access = resolveAccess(req.user, cfg, { ownsFairSite: await isProjectFairSiteAdmin(req, cfg) });
-        if (!access[capability]) {
+        let access = resolveAccess(req.user, cfg, { ownsFairSite: await isProjectFairSiteAdmin(req, cfg) });
+        // v4.1335 — Sin perfil del comité: ¿acceso de consulta de Exchange?
+        if (access.role === 'viewer') {
+            const exchangeGrant = await exchangeGrantFor(req);
+            if (exchangeGrant) access = resolveAccess(req.user, cfg, { exchangeGrant });
+        }
+        if (!holds(access, capability)) {
             return res.status(403).json({
                 error: access.role === 'viewer' ? NO_FAIR_PROFILE_MESSAGE : 'Tu perfil no tiene permiso para esta acción.',
                 code: access.role === 'viewer' ? 'NO_FAIR_PROFILE' : 'FAIR_CAPABILITY_DENIED',
@@ -280,6 +334,15 @@ export const withAccess = (handler, capability = 'view') => async (req, res) => 
 // ── Utilidades ───────────────────────────────────────────────────────
 const clean = (v, max = 250) => String(v ?? '').trim().slice(0, max);
 const num = (v) => (v === null || v === undefined ? null : Number(v));
+
+/** v4.1335 — Lo único que ve de una fila quien no tiene `viewPersonalData`. */
+export const RESTRICTED_ROW_FIELDS = [
+    'id', 'publicRef', 'editionKey', 'createdAt', 'clubName', 'district', 'projectName', 'focusArea', 'focusAreaLabel',
+    'budgetUsd', 'paymentStatus', 'workflowStatus', 'projectStateLabel', 'applied', 'appliedAt', 'paymentView',
+    'paymentViewLabel', 'owesRegistration', 'amountCop', 'amountUsd', 'amountReceived', 'chargeCurrency', 'paidAt',
+    'archivedAt', 'paymentConfirmationOrigin', 'registrationId', 'projectIndex', 'projectIndexLabel',
+    'registrationProjects', 'coveredBy', 'coveredProjects', 'isExtension', 'tags',
+];
 
 const mapRow = (row, access) => {
     if (!row) return null;
@@ -394,6 +457,12 @@ const mapRow = (row, access) => {
         // consulta los trajo: listado y exportación).
         ...fddAmountsOf(row),
     };
+    // v4.1335 — Quien sólo CONSULTA Exchange (el administrador del evento) no
+    // ve datos personales: la fila sale en LISTA BLANCA. Una lista negra
+    // dejaría pasar el próximo campo que se agregue arriba.
+    if (access && access.viewPersonalData === false) {
+        return Object.fromEntries(RESTRICTED_ROW_FIELDS.filter(k => k in base).map(k => [k, base[k]]));
+    }
     // Los identificadores de Stripe y el comprobante son datos financieros:
     // sólo los ve quien tiene ese permiso.
     if (access?.viewPayments) {
@@ -1504,16 +1573,27 @@ export const listSubmissions = withAccess(async (req, res, { cfg, access }) => {
     let total;
     let pageRows;
     let tracking;
-    if (hasDocQuery(req.query)) {
+    // v4.1335 — Exchange: el estado del traslado y la conciliación de cada fila.
+    // Con un filtro de Exchange (estado, referencia bancaria, fecha del
+    // traslado) se calcula para todo lo que pasa los demás filtros, igual que
+    // el documental, y se combinan.
+    const exQuery = access.exchangeView && hasExchangeQuery(req.query);
+    let exchange = null;
+    if (hasDocQuery(req.query) || exQuery) {
         // v4.1332 — Filtro u orden DOCUMENTAL: el avance sale del motor (el
         // mismo de «Mi Proyecto»), no de una columna. Se calcula para todas
         // las filas que pasan los demás filtros —por lotes, una consulta por
         // fuente— y se filtra y ordena aquí. Así se combina con todo lo demás.
         const base = await db.query(`SELECT * FROM "ProjectFairSubmission" ${clause}
                                      ORDER BY ${docSort ? '"createdAt" DESC' : `${sortBy} ${sortDir} NULLS LAST`}, id ASC LIMIT 5000`, params);
-        tracking = await loadTracking(base.rows, cfg);
-        let list = base.rows.filter(r => matchesDocFilters(tracking.get(r.id), req.query));
-        if (docSort) {
+        const docQuery = access.view && hasDocQuery(req.query);
+        tracking = docQuery ? await loadTracking(base.rows, cfg) : new Map();
+        let list = docQuery ? base.rows.filter(r => matchesDocFilters(tracking.get(r.id), req.query)) : base.rows;
+        if (exQuery) {
+            exchange = await loadExchangeFor(list);
+            list = list.filter(r => matchesExchangeFilters(exchange.byId.get(String(r.id)), req.query, { refs: exchange.refsById.get(String(r.id)) || [] }));
+        }
+        if (docSort && docQuery) {
             const dir = sortDir === 'ASC' ? 1 : -1;
             list = [...list].sort((a, b) => (docSortValue(tracking.get(a.id), req.query.sortBy) - docSortValue(tracking.get(b.id), req.query.sortBy)) * dir
                 || String(a.id).localeCompare(String(b.id)));
@@ -1541,9 +1621,18 @@ export const listSubmissions = withAccess(async (req, res, { cfg, access }) => {
         pageRows = rowsRes.rows;
         // El seguimiento de la página. Si falla, la tabla se pinta igual (sin
         // las columnas documentales): es información de apoyo.
-        tracking = await loadTracking(pageRows, cfg).catch((err) => {
-            console.warn('[project-fair-admin] seguimiento documental:', err?.message);
-            return new Map();
+        tracking = access.view
+            ? await loadTracking(pageRows, cfg).catch((err) => {
+                console.warn('[project-fair-admin] seguimiento documental:', err?.message);
+                return new Map();
+            })
+            : new Map();
+    }
+    if (access.exchangeView && !exchange) {
+        // Información de apoyo: si falla, la tabla se pinta igual sin la columna.
+        exchange = await loadExchangeFor(pageRows).catch((err) => {
+            console.warn('[project-fair-admin] exchange:', err?.message);
+            return null;
         });
     }
 
@@ -1552,12 +1641,16 @@ export const listSubmissions = withAccess(async (req, res, { cfg, access }) => {
     res.json({
         submissions: pageRows.map(r => {
             const t = tracking.get(r.id);
-            return { ...mapRow({ ...r, tags: tagsBySubmission[r.id] || [], registrationProjects: sizes[r.registrationId] ?? 1 }, access), documents: t ? compactTracking(t) : null };
+            return {
+                ...mapRow({ ...r, tags: tagsBySubmission[r.id] || [], registrationProjects: sizes[r.registrationId] ?? 1 }, access),
+                documents: t ? compactTracking(t) : null,
+                ...(access.exchangeView ? { exchange: compactExchange(exchange?.byId.get(String(r.id))) } : {}),
+            };
         }),
         pagination: { page, pageSize, total, pages: Math.ceil(total / pageSize) || 1 },
         access,
     });
-});
+}, { any: ['view', 'exchangeView'] });
 
 /**
  * v4.1299 — Cuántos proyectos ACTIVOS tiene la inscripción de cada fila de la
@@ -2629,7 +2722,12 @@ export const exportCsv = withAccess(async (req, res, { cfg, access }) => {
     // v4.1332 — Seguimiento documental: las mismas cifras del listado y los
     // mismos filtros documentales (si los hay).
     const tracking = await loadTracking(allRows, cfg).catch(() => new Map());
-    const rows = allRows.filter(r => !tracking.get(r.id) || matchesDocFilters(tracking.get(r.id), req.query));
+    let rows = allRows.filter(r => !tracking.get(r.id) || matchesDocFilters(tracking.get(r.id), req.query));
+    // v4.1335 — Exchange: las mismas cifras de la columna y sus filtros.
+    const exchange = access.exchangeView ? await loadExchangeFor(rows).catch(() => null) : null;
+    if (exchange && hasExchangeQuery(req.query)) {
+        rows = rows.filter(r => matchesExchangeFilters(exchange.byId.get(String(r.id)), req.query, { refs: exchange.refsById.get(String(r.id)) || [] }));
+    }
     const tagsBySubmission = await loadTagsFor(rows.map(r => r.id));
 
     const sizes = await registrationSizesFor(rows);
@@ -2648,6 +2746,7 @@ export const exportCsv = withAccess(async (req, res, { cfg, access }) => {
         'Avance documental (%)', 'Estado documental', 'Validación administrativa', 'Semáforo',
         'Pendientes', 'Última actualización', 'Último recordatorio', 'Recordatorios enviados',
     ];
+    if (access.exchangeView) headers.push(...EXCHANGE_CSV_HEADERS);
     if (access.viewPayments) headers.push('Referencia Stripe (PaymentIntent)', 'Checkout Session', 'Charge', 'Método de pago', 'Comprobante');
 
     const cell = (v) => `"${String(v ?? '').replace(/"/g, '""').replace(/\r?\n/g, ' ')}"`;
@@ -2674,6 +2773,7 @@ export const exportCsv = withAccess(async (req, res, { cfg, access }) => {
             r.metadata?.substitution?.role === 'kept' ? (r.metadata.substitution.payer?.name || '') : '',
             ...docCsvValues(tracking.get(r.id)),
         ];
+        if (access.exchangeView) values.push(...exchangeCsvValues(exchange?.byId.get(String(r.id)), exchange?.operations || {}));
         if (access.viewPayments) {
             values.push(r.stripePaymentIntentId, r.stripeSessionId, r.stripeChargeId, r.paymentMethod, r.receiptUrl);
         }
@@ -2684,6 +2784,33 @@ export const exportCsv = withAccess(async (req, res, { cfg, access }) => {
     res.setHeader('Content-Disposition', 'attachment; filename="postulaciones-feria-proyectos.csv"');
     res.send('﻿' + lines.join('\n'));
 }, 'export');
+
+/**
+ * v4.1335 — Las celdas de Exchange de una fila del CSV. Por PROYECTO: el valor
+ * asignado es el de este proyecto, nunca el total de la operación bancaria
+ * (ése está en el reporte de operaciones, una vez por operación).
+ */
+export const EXCHANGE_CSV_HEADERS = [
+    'Exchange (estado)', 'Valor a trasladar', 'Valor asignado en Exchange', 'Valor conciliado', 'Moneda Exchange',
+    'Fecha del traslado', 'Referencia bancaria', 'Estado de conciliación', 'Fecha de conciliación',
+    'Responsable del registro', 'Operaciones', 'Pago respaldado por (Exchange)',
+];
+const exchangeCsvValues = (x, operations = {}) => {
+    if (!x) return Array(EXCHANGE_CSV_HEADERS.length).fill('');
+    const ops = (x.operationKeys || []).map(k => operations[k]).filter(Boolean);
+    const conciliaciones = ops.map(o => o.statusLabel).filter(Boolean);
+    const fechasConc = ops.map(o => o.reconciledAt).filter(Boolean).sort();
+    const registro = [...new Set(ops.map(o => (o._batch || o._allocations?.[0] || {}).createdByName).filter(Boolean))];
+    return [
+        x.label === '—' ? 'No aplica' : x.label, x.state === 'no_aplica' || x.state === 'pago_directo' ? '' : x.expected,
+        x.allocated || '', x.confirmedAmount || '', x.currency || '',
+        x.lastTransferDate ? String(x.lastTransferDate).slice(0, 10) : '',
+        [...new Set(ops.map(o => o.reference).filter(Boolean))].join(' | '),
+        [...new Set(conciliaciones)].join(' | '),
+        fechasConc.length ? String(fechasConc[fechasConc.length - 1]).slice(0, 10) : '',
+        registro.join(' | '), ops.length || '', x.via?.publicRef || '',
+    ];
+};
 
 /** v4.1332 — Las celdas documentales de una fila del CSV (vacías si no hay seguimiento). */
 const docCsvValues = (t) => {
@@ -2726,6 +2853,8 @@ export const getCatalog = withAccess(async (_req, res, { cfg, access }) => {
         postCloseViews: POST_CLOSE_OPTIONS,
         // v4.1332 — Vistas del Seguimiento documental.
         docViews: docViewOptions(),
+        // v4.1335 — Filtros de Exchange (traslados y conciliación).
+        exchangeFilters: access.exchangeView ? EXCHANGE_FILTERS : [],
         deadline: cfg.deadline || null,
         priorities: PRIORITIES,
         focusAreas: cfg.focusAreas || [],
@@ -2733,13 +2862,13 @@ export const getCatalog = withAccess(async (_req, res, { cfg, access }) => {
         districts: districts.rows.map(r => r.value),
         clubs: clubs.rows.map(r => r.value),
         categories: categories.rows.map(r => r.value),
-        assignees: assignees.rows.map(r => r.value),
+        assignees: access.view ? assignees.rows.map(r => r.value) : [],
         edition: cfg.edition,
         registration: cfg.registration,
         health: health.rows[0] || { submissions: 0, paid: 0, accounts: 0, forms: 0 },
         access,
     });
-});
+}, { any: ['view', 'exchangeView'] });
 
 // ── Ficha completa para exportar a PDF (la arma el cliente) ──────────
 export const getSubmissionSnapshot = withAccess(async (req, res, { cfg, access }) => {
