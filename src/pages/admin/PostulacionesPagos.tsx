@@ -73,6 +73,13 @@ import { FDD_KEY } from '../../lib/documentTracking';
 import DocumentTrackingStrip from '../../components/admin/feria/seguimiento/DocumentTrackingStrip';
 import DocumentTrackingDrawer from '../../components/admin/feria/seguimiento/DocumentTrackingDrawer';
 import DocumentRemindersDialog from '../../components/admin/feria/seguimiento/DocumentRemindersDialog';
+// v4.1335 — EXCHANGE: traslados y conciliación. Registrar el traslado sigue
+// siendo la barra de la Bóveda (arriba); Exchange concilia, documenta y consulta.
+import { exchangeExcelColumns, type ExchangeCompact } from '../../lib/exchange';
+import { ExchangeCell, ExchangeSummaryInline } from '../../components/admin/feria/exchange/ExchangeCells';
+import ExchangeSummary from '../../components/admin/feria/exchange/ExchangeSummary';
+import ExchangeDrawer from '../../components/admin/feria/exchange/ExchangeDrawer';
+import ExchangeSettings from '../../components/admin/feria/exchange/ExchangeSettings';
 import DocumentTrackingConfigDialog from '../../components/admin/feria/seguimiento/DocumentTrackingConfigDialog';
 import { FormCell, FileCell, PitchCell, OverallCell, MobileDocSummary } from '../../components/admin/feria/seguimiento/DocumentTrackingCells';
 
@@ -135,6 +142,13 @@ interface Access {
     // v4.1324 — Expediente: traducir/preparar libretas y aprobar traducciones.
     translate?: boolean;
     approveTranslation?: boolean;
+    // v4.1335 — Exchange: consultar, descargar, gestionar datos y soportes,
+    // conciliar y configurar. `exchange_viewer` = el administrador del evento.
+    exchangeView?: boolean;
+    exchangeDownload?: boolean;
+    exchangeManage?: boolean;
+    exchangeReconcile?: boolean;
+    exchangeConfig?: boolean;
 }
 interface StateDef { key: string; label: string; color: string; group?: string; legacy?: boolean }
 /** v4.1253 — Los estados heredados del pago se LEEN pero no se ofrecen al elegir. */
@@ -204,6 +218,8 @@ interface Submission {
     manualPaymentReceipt?: { name: string; mime: string | null; bytes: number | null } | null;
     // v4.1332 — Seguimiento documental (lo calcula el servidor con el motor de «Mi Proyecto»).
     documents?: DocumentsCompact | null;
+    // v4.1335 — El estado Exchange (sólo con permiso de consulta de Exchange).
+    exchange?: ExchangeCompact | null;
 }
 interface TimelineEvent {
     id: string; type: string; title: string; detail: string | null;
@@ -399,6 +415,8 @@ const RankPanel = ({ title, rows, priceMode }: { title: string; rows: any[]; pri
 // ════════════════════════════════════════════════════════════════════
 // v4.1332 — Ayudas de las columnas del Seguimiento documental.
 const DOC_HELP: Record<string, string> = {
+    // v4.1335 — Exchange.
+    'Exchange': 'Traslado de lo recibido a la cuenta del organizador y su conciliación. Es independiente del estado del pago: un pago confirmado puede estar sin traslado, en conciliación o conciliado. El clip abre el comprobante.',
     'Formulación': 'Campos obligatorios aplicables diligenciados con formato válido, ÷ total de obligatorios aplicables. Es la misma cifra que ve el club en «Mi Proyecto».',
     'FDD (avance)': 'Avance de la Solicitud de Aportes del FDD con la misma regla. «No aplica» si el comité lo marcó así para el proyecto o la Convocatoria no lo exige.',
     'Presentación': 'Estado de entrega: Pendiente, Cargada, En revisión, Validada, Requiere corrección o No aplica. Cargada no implica validada.',
@@ -453,6 +471,9 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
     }, [embedded, embedEventId]);
     const [access, setAccess] = useState<Access | null>(null);
     const [catalog, setCatalog] = useState<any>(null);
+    // v4.1335 — ¿Perfil del comité (`view`)? El administrador del evento sólo
+    // consulta Exchange: sin ficha, expediente ni seguimiento documental.
+    const committeeView = access ? access.view !== false : true;
     const [tags, setTags] = useState<Tag[]>([]);
 
     const [overview, setOverview] = useState<any>(null);
@@ -511,6 +532,8 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
         // v4.1332 — Seguimiento documental: vista, rango de avance, última
         // actividad del club y responsable. Los filtra el SERVIDOR.
         doc: 'all', docMin: '', docMax: '', actividadDesde: '', actividadHasta: '', responsable: '',
+        // v4.1335 — Exchange: estado, referencia bancaria y fecha del traslado.
+        exchange: 'all', exchangeRef: '', trasladoDesde: '', trasladoHasta: '',
         // v4.1024 — Lo archivado no se ve por defecto: es lo que significa
         // archivar. El valor viaja al servidor, que es quien filtra.
         archivadas: 'activas',
@@ -560,6 +583,10 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
         try { return localStorage.getItem('pp-doc-cols') !== '0'; } catch { return true; }
     });
     const [docDrawerId, setDocDrawerId] = useState<string | null>(null);
+    // v4.1335 — Exchange: el visor de un proyecto, la configuración y el refresco del resumen.
+    const [exchangeDrawerId, setExchangeDrawerId] = useState<string | null>(null);
+    const [exchangeConfigOpen, setExchangeConfigOpen] = useState(false);
+    const [exchangeKey, setExchangeKey] = useState(0);
     const [docReminderIds, setDocReminderIds] = useState<string[] | null>(null);
     const [docConfigOpen, setDocConfigOpen] = useState(false);
     const [docStripKey, setDocStripKey] = useState(0);
@@ -618,6 +645,9 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
             if (cat?.error) throw new Error(cat.error);
             setCatalog(cat);
             setAccess(cat.access);
+            // v4.1335 — El administrador del evento (sólo consulta de Exchange)
+            // trabaja en el listado: las demás pestañas son del comité.
+            if (cat.access?.role === 'exchange_viewer') setTab('submissions');
             setTags(Array.isArray(tagList) ? tagList : []);
         }).catch(e => toast.error(e?.message || 'No se pudo cargar el módulo'))
           .finally(() => setLoading(false));
@@ -756,8 +786,10 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
      * Se pide al PULSAR y no en cada cambio de selección: marcar catorce filas
      * serían catorce consultas para pintar un botón que quizá nadie use.
      */
-    const resolverTraslado = useCallback(async () => {
-        const ids = selected.map(r => r.id);
+    // v4.1335 — `idsOverride`: «Registrar traslado» desde la columna Exchange
+    // (o desde su visor) resuelve ESA fila con el mismo servidor y la misma barra.
+    const resolverTraslado = useCallback(async (idsOverride?: string[]) => {
+        const ids = Array.isArray(idsOverride) && idsOverride.length ? idsOverride : selected.map(r => r.id);
         if (!ids.length) return;
         setTransferBusy(true);
         try {
@@ -767,6 +799,7 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
             const data = await res.json().catch(() => null);
             if (!res.ok) throw new Error(data?.error || `El servidor respondió ${res.status}.`);
             setTransferPlan(data);
+            setTimeout(() => document.getElementById('fair-transfer-plan')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
             if (!data?.elegibles?.length) {
                 // Un panel que sale sin nada que trasladar se lee como una
                 // avería: el motivo va a la vista, no a un toast que se va.
@@ -879,6 +912,9 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                 ...(access?.viewPayments ? { 'Referencia Stripe': s.stripePaymentIntentId, 'Checkout Session': s.stripeSessionId } : {}),
                 // v4.1332 — Seguimiento documental (mismas cifras del listado).
                 ...docExcelColumns(s.documents),
+                // v4.1335 — Exchange (mismas cifras de la columna; el detalle por
+                // operación y por asignación sale en los CSV de Exchange).
+                ...(access?.exchangeView ? exchangeExcelColumns(s.exchange) : {}),
             }));
             const wb = XLSX.utils.book_new();
             const ws = XLSX.utils.json_to_sheet(sheet);
@@ -1071,7 +1107,8 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
     if (loading) {
         return <Frame embedded={embedded}><div className="flex h-64 items-center justify-center text-slate-500"><Loader2 className="mr-2 animate-spin" size={20} /> Cargando módulo…</div></Frame>;
     }
-    if (!access?.view) {
+    // v4.1335 — El administrador del evento entra sólo con la consulta de Exchange.
+    if (!access?.view && !access?.exchangeView) {
         return <Frame embedded={embedded}><div className="rounded-xl border border-amber-200 bg-amber-50 p-8 text-center text-amber-800">Tu perfil no tiene acceso a este módulo.</div></Frame>;
     }
 
@@ -1125,7 +1162,7 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                     </div>
                 )}
 
-                {!embedded && <div className="flex gap-1 overflow-x-auto border-b border-slate-200">
+                {!embedded && access?.role !== 'exchange_viewer' && <div className="flex gap-1 overflow-x-auto border-b border-slate-200">
                     {/* «Reportes» desapareció en v4.689: mostraba los mismos
                         indicadores y gráficas que el Dashboard con otros
                         nombres. Todo vive ahora en el Centro de Inteligencia. */}
@@ -1538,7 +1575,20 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                         {/* ── v4.1332 — Seguimiento documental ───────────────
                             Indicadores sobre los filtros activos; cada tarjeta
                             es también un filtro de la tabla. */}
-                        {currentEventId() && (
+                        {/* ── v4.1335 — Exchange: traslados y conciliación (expandible). */}
+                        {access?.exchangeView && (
+                            <ExchangeSummary
+                                eventId={currentEventId() || null}
+                                query={queryString({ exchange: '', sortBy: '', sortDir: '', page: '', pageSize: '' })}
+                                activeFilter={filters.exchange}
+                                filters={catalog?.exchangeFilters || []}
+                                onPickFilter={(key) => { setFilters(f => ({ ...f, exchange: key })); setSelected([]); setTransferPlan(null); }}
+                                onOpenConfig={() => setExchangeConfigOpen(true)}
+                                canConfig={!!access?.exchangeConfig}
+                                reloadKey={exchangeKey}
+                            />
+                        )}
+                        {currentEventId() && committeeView && (
                             <DocumentTrackingStrip
                                 eventId={currentEventId()}
                                 query={queryString({ doc: '', sortBy: '', sortDir: '' })}
@@ -1571,6 +1621,8 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                     ['actualizaciones', 'Actualizaciones posteriores al cierre', (catalog?.postCloseViews || []).map((o: { key: string; label: string }) => ({ value: o.key, label: o.label }))],
                                     // v4.1332 — Seguimiento documental (catálogo del servidor).
                                     ['doc', 'Seguimiento documental', (catalog?.docViews || []).map((o: { key: string; label: string }) => ({ value: o.key, label: o.label }))],
+                                    // v4.1335 — Exchange (catálogo del servidor; vacío sin permiso).
+                                    ...(access?.exchangeView ? [['exchange', 'Exchange (traslado)', (catalog?.exchangeFilters || []).map((o: { key: string; label: string }) => ({ value: o.key, label: o.label }))]] : []),
                                 ].map(([key, label, options]: any) => (
                                     <label key={key} className="block">
                                         <span className="mb-1 block text-xs font-semibold text-slate-600">{label}</span>
@@ -1597,6 +1649,17 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                     <input type="number" value={filters.budgetMin} onChange={e => setFilters(f => ({ ...f, budgetMin: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
                                 <label className="block"><span className="mb-1 block text-xs font-semibold text-slate-600">Presupuesto máx. (USD)</span>
                                     <input type="number" value={filters.budgetMax} onChange={e => setFilters(f => ({ ...f, budgetMax: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
+                                {/* v4.1335 — Exchange: referencia bancaria y fecha del traslado. */}
+                                {access?.exchangeView && (
+                                    <>
+                                        <label className="block"><span className="mb-1 block text-xs font-semibold text-slate-600">Referencia bancaria (Exchange)</span>
+                                            <input value={filters.exchangeRef} onChange={e => setFilters(f => ({ ...f, exchangeRef: e.target.value }))} placeholder="Referencia de la transferencia" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
+                                        {([['trasladoDesde', 'Traslado desde'], ['trasladoHasta', 'Traslado hasta']] as const).map(([key, label]) => (
+                                            <label key={key} className="block"><span className="mb-1 block text-xs font-semibold text-slate-600">{label}</span>
+                                                <input type="date" value={filters[key]} onChange={e => setFilters(f => ({ ...f, [key]: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
+                                        ))}
+                                    </>
+                                )}
                                 {/* v4.1332 — Responsable, avance documental y última actividad del club. */}
                                 <label className="block"><span className="mb-1 block text-xs font-semibold text-slate-600">Responsable</span>
                                     <input value={filters.responsable} onChange={e => setFilters(f => ({ ...f, responsable: e.target.value }))} placeholder="Nombre o apellido" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
@@ -1614,7 +1677,7 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                 ))}
                                 <div className="flex items-end gap-2">
                                     <button onClick={() => loadRows(1)} className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: BLUE }}>Aplicar</button>
-                                    <button onClick={() => { setFilters({ search: '', paymentStatus: 'all', workflowStatus: 'all', district: 'all', focusArea: 'all', priority: 'all', tagId: '', from: '', to: '', budgetMin: '', budgetMax: '', fddMin: '', fddMax: '', fapMin: '', fapMax: '', vista: 'all', proyectos: 'all', indice: 'all', origen: 'all', actualizaciones: 'all', doc: 'all', docMin: '', docMax: '', actividadDesde: '', actividadHasta: '', responsable: '', archivadas: 'activas' }); reloadNext(); }}
+                                    <button onClick={() => { setFilters({ search: '', paymentStatus: 'all', workflowStatus: 'all', district: 'all', focusArea: 'all', priority: 'all', tagId: '', from: '', to: '', budgetMin: '', budgetMax: '', fddMin: '', fddMax: '', fapMin: '', fapMax: '', vista: 'all', proyectos: 'all', indice: 'all', origen: 'all', actualizaciones: 'all', doc: 'all', docMin: '', docMax: '', actividadDesde: '', actividadHasta: '', responsable: '', exchange: 'all', exchangeRef: '', trasladoDesde: '', trasladoHasta: '', archivadas: 'activas' }); reloadNext(); }}
                                         className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600">Limpiar</button>
                                 </div>
                             </div>
@@ -1694,7 +1757,7 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                             qué no y por qué. La barra de abajo es la MISMA de
                             la Bóveda y registra contra el MISMO endpoint. */}
                         {transferPlan && (
-                            <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
+                            <div id="fair-transfer-plan" className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
                                 <div className="mb-3 flex items-start justify-between gap-3">
                                     <div>
                                         <p className="text-sm font-bold text-slate-800">Traslado de lo cobrado</p>
@@ -1747,7 +1810,7 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                     elegidos={(transferPlan.elegibles || []) as Elegible[]}
                                     clubId={transferPlan.clubId || undefined}
                                     onLimpiar={() => setTransferPlan(null)}
-                                    onHecho={() => { setTransferPlan(null); setSelected([]); loadRows(pagination.page); }}
+                                    onHecho={() => { setTransferPlan(null); setSelected([]); loadRows(pagination.page); setExchangeKey(k => k + 1); }}
                                     onRecargar={() => loadRows(pagination.page)}
                                 />
                             </div>
@@ -1896,8 +1959,16 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                                 <p className="text-xs text-slate-500">{s.responsable}</p>
                                                 <div className="mt-1 flex flex-wrap gap-1"><Badge color={wf.color}>{wf.label}</Badge><Badge color={pay.color}>{pay.label}</Badge></div>
                                             </div>
-                                            <button onClick={() => { setDetailOpen(null); setDetailId(s.id); }} className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-700"><Eye size={13} /> Ver</button>
+                                            {committeeView && <button onClick={() => { setDetailOpen(null); setDetailId(s.id); }} className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-700"><Eye size={13} /> Ver</button>}
                                         </div>
+                                        {access?.exchangeView && s.exchange && (
+                                            <div className="mt-2 flex items-center gap-2 border-t border-slate-100 pt-2">
+                                                <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Exchange</span>
+                                                <ExchangeSummaryInline x={s.exchange} project={s.projectName} canRegister={!!access?.managePayments}
+                                                    onOpen={() => setExchangeDrawerId(s.id)}
+                                                    onRegister={() => { setTransferPlan(null); resolverTraslado([s.id]); }} />
+                                            </div>
+                                        )}
                                         {s.documents && <MobileDocSummary d={s.documents} project={s.projectName} onOpen={() => setDocDrawerId(s.id)} />}
                                     </li>
                                 );
@@ -1926,6 +1997,8 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                            ['budgetUsd', 'Presupuesto'], ['fddRequestedUsd', 'FDD'], ['fapGoalUsd', 'FAP'],
                                            ['workflowStatus', 'Estado'], ['paymentStatus', 'Pago'],
                                            ['amountCop', 'Valor'],
+                                           // v4.1335 — Exchange, junto a Pago y Valor: es el seguimiento financiero.
+                                           ...(access?.exchangeView ? [['', 'Exchange']] : []),
                                            // v4.1332 — Grupo «Seguimiento documental» (contraíble).
                                            ...(showDocCols
                                                ? [['docMaster', 'Formulación'], ['docFdd', 'FDD (avance)'], ['', 'Presentación'], ['', 'Video'], ['', 'Video Pitch'], ['docOverall', 'Avance documental']]
@@ -2000,6 +2073,11 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                                     {s.amountOverride && <p className="text-[11px] font-semibold text-violet-700" title={s.amountOverride.reason || undefined}>Valor ajustado</p>}
                                                     {s.paidAt && <p className="text-[11px] text-slate-400">{fmtDate(s.paidAt)}</p>}
                                                 </td>
+                                                {access?.exchangeView && (
+                                                    <ExchangeCell x={s.exchange} project={s.projectName} canRegister={!!access?.managePayments}
+                                                        onOpen={() => setExchangeDrawerId(s.id)}
+                                                        onRegister={() => { setTransferPlan(null); resolverTraslado([s.id]); }} />
+                                                )}
                                                 {/* v4.1332 — Seguimiento documental: cada celda abre el detalle. */}
                                                 {s.documents ? (
                                                     <>
@@ -2019,6 +2097,7 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                                 )}
                                                 <td className="px-3 py-3">
                                                     {/* v4.1324 — «Ver» abre el EXPEDIENTE integral; «⋯» da accesos directos. */}
+                                                    {committeeView && (
                                                     <div className="flex items-center gap-1.5">
                                                         <button onClick={() => { setDetailOpen(null); setDetailId(s.id); }} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">
                                                             <Eye size={13} /> Ver
@@ -2026,6 +2105,7 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                                         <ExpedienteAccionesMenu submissionId={s.id} label={s.projectName || s.publicRef} eventId={currentEventId()} access={access || {}}
                                                             onOpen={req => { setDetailOpen(req); setDetailId(s.id); }} />
                                                     </div>
+                                                    )}
                                                     {docStates[s.id] && docStates[s.id].state !== 'not_started' && (
                                                         <span title="Estado de la traducción al inglés" className={`mt-1 inline-block whitespace-nowrap rounded-full px-1.5 py-0.5 text-[10px] font-semibold ring-1 ${TRANSLATION_META[docStates[s.id].state]?.cls || ''}`}>
                                                             EN · {TRANSLATION_META[docStates[s.id].state]?.label || docStates[s.id].label}
@@ -2036,7 +2116,7 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                         );
                                     })}
                                     {!rows.length && !tableLoading && (
-                                        <tr><td colSpan={(selectMode ? 14 : 13) + (showDocCols ? 6 : 1)} className="px-4 py-12 text-center text-slate-400">No hay postulaciones que coincidan con los filtros.</td></tr>
+                                        <tr><td colSpan={(selectMode ? 14 : 13) + (showDocCols ? 6 : 1) + (access?.exchangeView ? 1 : 0)} className="px-4 py-12 text-center text-slate-400">No hay postulaciones que coincidan con los filtros.</td></tr>
                                     )}
                                 </tbody>
                             </table>
@@ -2278,6 +2358,17 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
             )}
 
             {/* v4.1332 — Seguimiento documental: detalle, recordatorios y configuración. */}
+            {/* v4.1335 — Exchange: el visor de un proyecto y la configuración. */}
+            {exchangeDrawerId && (
+                <ExchangeDrawer
+                    id={exchangeDrawerId}
+                    eventId={currentEventId() || null}
+                    onClose={() => setExchangeDrawerId(null)}
+                    onChanged={() => { loadRows(pagination.page); setExchangeKey(k => k + 1); }}
+                    onRegister={(sid) => { setExchangeDrawerId(null); setTransferPlan(null); resolverTraslado([sid]); }}
+                />
+            )}
+            {exchangeConfigOpen && <ExchangeSettings eventId={currentEventId() || null} onClose={() => setExchangeConfigOpen(false)} />}
             {docDrawerId && (
                 <DocumentTrackingDrawer
                     id={docDrawerId}

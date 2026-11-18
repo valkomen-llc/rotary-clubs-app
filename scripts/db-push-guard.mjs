@@ -195,6 +195,12 @@
 // paso y el entregable: es la trazabilidad de lo que se decidió.
 // Y la del Centro de Equipos de IA (v4.1331): AgentTeamMember — a qué otros
 // equipos se asocia cada agente del catálogo, sin copiarlo.
+// Y las cinco de EXCHANGE, traslados y conciliación de la Feria (v4.1335):
+// ExchangeReconciliation, ExchangeDocument, ExchangeEvent, ExchangeConfig y
+// ExchangeAccessGrant — quién concilió qué transferencia y con qué datos
+// bancarios (tasa, comisión, recibido), sus soportes, el historial, las cuentas
+// de la edición y quién puede consultar: es la trazabilidad financiera, no se
+// reconstruye de ninguna parte (el giro en sí sigue en la Bóveda).
 // Y la traza de cada mensaje entrante de WhatsApp (v4.1285):
 // WhatsAppInboundTrace — el recorrido de cada «Hola» de punta a punta y la
 // única evidencia de qué conversaciones quedaron sin respuesta.
