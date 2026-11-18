@@ -20,7 +20,11 @@ import { catalogForForms, ensureClubCatalogSchema } from '../lib/clubCatalog.js'
 // se vinculan al enviar y se publican al aprobar. Ver clubMediaStore.js.
 import { bindToSubmission, publishMediaInPayload } from '../lib/clubMediaStore.js';
 import { stripSecrets } from '../lib/clubMediaSpec.js';
+// v4.1336 — El año de fundación y los socios llegan como TEXTO LIBRE: nunca
+// `Number(texto)` (daba NaN y la columna INT rechazaba la aprobación entera).
+import { foundationYearFrom, countFrom } from '../lib/clubProfileNumbers.js';
 
+console.log('[districtClubsController] v4.1336.0 cargado — aprobar ya no falla con «sintaxis de entrada inválida para el tipo entero: NaN»: el año de fundación y los socios escritos como texto («15 de marzo de 1927», «35 socios») se leen sin inventar.');
 console.log('[districtClubsController] v4.1306.0 cargado — archivos del formulario con dueño, vinculados al enviar y publicados al aprobar; sin contraseñas en los borradores');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'rotary_secret_key_2026';
@@ -907,7 +911,7 @@ export const reviewSubmission = async (req, res) => {
             cleanSlug,
             payload.city || null,
             payload.state || null,
-            payload.foundationYear ? Number(payload.foundationYear) : null,
+            foundationYearFrom(payload.foundationYear),
             payload.motto || null,
             payload.description || null,
             payload.history || null,
@@ -917,7 +921,7 @@ export const reviewSubmission = async (req, res) => {
             payload.currentPresident || null,
             rotaryPeriod,
             JSON.stringify(payload.boardMembers || []),
-            payload.memberCount ? Number(payload.memberCount) : null,
+            countFrom(payload.memberCount),
             payload.joinInfo || null,
             JSON.stringify(payload.featuredProjects || []),
             payload.logoUrl || null,
@@ -960,7 +964,7 @@ export const reviewSubmission = async (req, res) => {
             payload.city || null,
             payload.state || null,
             payload.country || 'Colombia',
-            payload.foundationYear ? Number(payload.foundationYear) : null,
+            foundationYearFrom(payload.foundationYear),
             payload.motto || null,
             payload.description || null,
             payload.history || null,
@@ -970,7 +974,7 @@ export const reviewSubmission = async (req, res) => {
             payload.currentPresident || null,
             rotaryPeriod,
             JSON.stringify(payload.boardMembers || []),
-            payload.memberCount ? Number(payload.memberCount) : null,
+            countFrom(payload.memberCount),
             payload.joinInfo || null,
             JSON.stringify(payload.featuredProjects || []),
             payload.logoUrl || null,
@@ -1100,7 +1104,7 @@ export const updateClubProfileDirect = async (req, res) => {
         body.slug || null,
         body.city || null,
         body.state || null,
-        body.foundationYear ? Number(body.foundationYear) : null,
+        foundationYearFrom(body.foundationYear),
         body.motto || null,
         body.description || null,
         body.history || null,
@@ -1110,7 +1114,7 @@ export const updateClubProfileDirect = async (req, res) => {
         body.currentPresident || null,
         rotaryPeriod,
         body.boardMembers ? JSON.stringify(body.boardMembers) : null,
-        body.memberCount ? Number(body.memberCount) : null,
+        countFrom(body.memberCount),
         body.joinInfo || null,
         body.featuredProjects ? JSON.stringify(body.featuredProjects) : null,
         body.logoUrl || null,
@@ -1533,7 +1537,7 @@ export const updatePortalProfile = async (req, res) => {
         body.shortName || null,
         body.city || null,
         body.state || null,
-        body.foundationYear ? Number(body.foundationYear) : null,
+        foundationYearFrom(body.foundationYear),
         body.motto || null,
         body.description || null,
         body.history || null,
@@ -1543,7 +1547,7 @@ export const updatePortalProfile = async (req, res) => {
         body.currentPresident || null,
         rotaryPeriod,
         body.boardMembers ? JSON.stringify(body.boardMembers) : null,
-        body.memberCount ? Number(body.memberCount) : null,
+        countFrom(body.memberCount),
         body.joinInfo || null,
         body.featuredProjects ? JSON.stringify(body.featuredProjects) : null,
         body.logoUrl || null,
