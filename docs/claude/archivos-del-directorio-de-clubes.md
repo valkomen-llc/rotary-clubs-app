@@ -127,3 +127,27 @@ quién). Todo `ADD COLUMN` futuro va en `OWNED_COLUMNS`.
   formulario institucional de programas.
 - Los perfiles anteriores conservan sus URLs (p. ej. logos ya publicados): se
   muestran como «En el directorio» y se pueden reemplazar.
+
+## Aprobar una solicitud: los números escritos como texto — v4.1336
+
+Reporte: «Revisar y Validar → Aprobar y Publicar» respondía «sintaxis de
+entrada inválida para el tipo entero: "NaN"» y la solicitud no se podía
+aprobar (caso Club Rotario Pereira y otros que ya habían enviado todo).
+
+- **Causa:** «Año o Fecha de Fundación» es un campo de TEXTO LIBRE y los socios
+  pueden llegar como «35 socios». `reviewSubmission` (crear y actualizar
+  perfil), `updateClubProfileDirect` y `updatePortalProfile` hacían
+  `Number(valor)` → `NaN` → el driver lo manda como «NaN» y las columnas INT
+  (`foundationYear`, `memberCount`) rechazan la sentencia ENTERA. Reproducido
+  contra Postgres real antes de corregir.
+- **Regla durable:** nunca `Number(texto)` hacia una columna INT del Directorio.
+  `server/lib/clubProfileNumbers.js` (puro): `foundationYearFrom` toma el
+  primer año de 4 cifras entre 1900 y el año en curso; `countFrom` toma el
+  único entero no negativo (ambiguo → `null`). Sin dato claro → `null`: el
+  perfil nuevo queda sin ese dato y el actualizado CONSERVA el suyo (COALESCE).
+  El texto original queda en el `payload` de la solicitud.
+- Pruebas: `npm run test:club-profile-numbers` (en `prebuild`, 36, incluye que
+  el controlador no vuelva a usar `Number(...)` en esos campos) y
+  `CLUB_DIR_E2E_DATABASE_URL=…?sslmode=disable npm run test:club-directory:approve:e2e`
+  (16, Postgres real: el caso reportado, cinco formas de fecha, texto sin año,
+  año futuro, actualización sin pisar y edición desde el panel).

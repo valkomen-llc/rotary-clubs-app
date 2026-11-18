@@ -34,13 +34,27 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1335.0 | 2026-11-18 (Feria: Exchange — traslados y conciliación financiera)
+// UI V4.1336.0 | 2026-11-18 (Directorio de Clubes: aprobar solicitudes ya no falla con «NaN»)
 // Cache bust: 2026-11-18
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1336.0',
+        title: 'Directorio de Clubes: las solicitudes se pueden aprobar otra vez ✅',
+        description: 'Al «Revisar y Validar» una solicitud del Directorio de Clubes y pulsar «Aprobar y Publicar», salía «sintaxis de entrada inválida para el tipo entero: "NaN"» y la solicitud no se podía aprobar. La causa: el campo «Año o Fecha de Fundación» admite texto («15 de marzo de 1927», «Fundado en 1954») y el número de socios podía llegar como «35 socios»; la aprobación intentaba guardarlos como número y la base de datos rechazaba todo el registro. Ahora se toma el año y la cifra cuando son claros, y si no lo son el dato queda vacío en el perfil sin bloquear la aprobación. Lo que escribió el club se conserva intacto en la solicitud.',
+        date: new Date().toISOString(),
+        tags: ['directorio', 'clubes', 'aprobacion', 'correccion'],
+        type: 'hotfix',
+        impact: 'Alta: desbloquea la aprobación de las solicitudes ya enviadas por los clubes para aparecer en el Directorio.',
+        changes: [
+            { type: 'fixed', text: 'Aprobar y Publicar: el año de fundación sale de la fecha escrita (15 de marzo de 1927 → 1927) y los socios del texto (35 socios → 35).' },
+            { type: 'fixed', text: 'Un texto sin año o sin número claro ya no bloquea la aprobación: el dato queda vacío y, si el perfil ya lo tenía, se conserva.' },
+            { type: 'fixed', text: 'Lo mismo al editar el perfil desde el panel y desde el portal del club.' },
+        ],
+    },
     {
         version: '4.1335.0',
         title: 'Feria de Proyectos: Exchange — traslados y conciliación financiera 🔁',
