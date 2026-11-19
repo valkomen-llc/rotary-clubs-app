@@ -8,8 +8,13 @@
 //   teclado a un ícono aparece su título. Maximizada: como siempre (288 px).
 // · Sólo en escritorio (≥ 1024 px). En el teléfono el menú es un cajón que se
 //   abre entero: minimizarlo no ahorraría nada y escondería los nombres.
-// · La preferencia se recuerda en ESTE navegador (es comodidad, no un dato):
-//   si el almacenamiento falla, el menú arranca maximizado.
+// · v4.1341 — ARRANCA MINIMIZADA, SIEMPRE. Lo pidió el cliente: el menú
+//   minimizado se ve mejor y maximizarlo es opcional. Maximizar vale sólo
+//   para la sesión de ESTA pestaña (sessionStorage, `admin-sidebar-expanded`):
+//   sobrevive a navegar y a recargar, pero cada visita nueva vuelve a abrir
+//   minimizada. La preferencia anterior (`admin-sidebar-collapsed` en
+//   localStorage, v4.1333) se IGNORA a propósito: quien la guardó en «0»
+//   quedaría maximizado para siempre. Si el almacenamiento falla, minimizada.
 //
 // ⚠️ EL TÍTULO FLOTANTE VA FUERA DE LA BARRA, con posición fija. La lista del
 // menú tiene `overflow-y: auto`, y eso obliga también a recortar en
@@ -19,11 +24,18 @@
 // ════════════════════════════════════════════════════════════════════
 import React, { useCallback, useEffect, useState } from 'react';
 
-export const SIDEBAR_COLLAPSED_KEY = 'admin-sidebar-collapsed';
+/** «1» = maximizada en esta pestaña. Sin la marca: minimizada (lo de fábrica). */
+export const SIDEBAR_EXPANDED_KEY = 'admin-sidebar-expanded';
 const DESKTOP_QUERY = '(min-width: 1024px)';
 
 const readCollapsed = () => {
-    try { return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1'; } catch { return false; }
+    try { return sessionStorage.getItem(SIDEBAR_EXPANDED_KEY) !== '1'; } catch { return true; }
+};
+const storeCollapsed = (collapsed: boolean) => {
+    try {
+        if (collapsed) sessionStorage.removeItem(SIDEBAR_EXPANDED_KEY);
+        else sessionStorage.setItem(SIDEBAR_EXPANDED_KEY, '1');
+    } catch { /* sin almacenamiento */ }
 };
 const isDesktopNow = () => (typeof window !== 'undefined' && typeof window.matchMedia === 'function'
     ? window.matchMedia(DESKTOP_QUERY).matches
@@ -45,13 +57,13 @@ export const useSidebarCollapse = () => {
 
     const setAndStore = useCallback((next: boolean) => {
         setCollapsed(next);
-        try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? '1' : '0'); } catch { /* sin almacenamiento */ }
+        storeCollapsed(next);
     }, []);
     // Sobre el estado actual, no sobre lo guardado: si el almacenamiento falla,
     // el botón tiene que seguir funcionando en los dos sentidos.
     const toggle = useCallback(() => setCollapsed(c => {
         const next = !c;
-        try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? '1' : '0'); } catch { /* sin almacenamiento */ }
+        storeCollapsed(next);
         return next;
     }), []);
 

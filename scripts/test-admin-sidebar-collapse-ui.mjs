@@ -84,7 +84,9 @@ const abrir = async (viewport, storage = {}, club = CLUB) => {
     await page.addStyleTag({ content: CSS });
     await page.evaluate(({ st, u, c }) => {
         localStorage.setItem('rotary_token', 'tok'); localStorage.setItem('rotary_user', JSON.stringify(u)); localStorage.setItem('rotary_club', JSON.stringify(c));
-        for (const [k, v] of Object.entries(st)) localStorage.setItem(k, v);
+        for (const [k, v] of Object.entries(st)) {
+            if (k.startsWith('session:')) sessionStorage.setItem(k.slice(8), v); else localStorage.setItem(k, v);
+        }
     }, { st: storage, u: USER, c: club });
     await page.addScriptTag({ content: JS });
     await page.evaluate(() => window.go('/admin/dashboard'));
@@ -101,7 +103,11 @@ try {
     {
         const { page, errores } = await abrir({ width: 1440, height: 900 });
         const aside = page.locator('aside[aria-label="Menú del panel"]');
-        check('arranca maximizada (288 px)', await anchoMenu(page) === 288);
+        check('arranca MINIMIZADA por defecto (80 px, v4.1341)', await anchoMenu(page) === 80);
+        await aside.getByRole('button', { name: 'Maximizar menú' }).click();
+        await page.waitForTimeout(450);
+        check('«Maximizar menú» es opcional: la abre a 288 px', await anchoMenu(page) === 288);
+        check('maximizar se recuerda sólo en esta pestaña', await page.evaluate(() => sessionStorage.getItem('admin-sidebar-expanded')) === '1');
         check('el botón «Minimizar menú» está a la vista', await page.getByRole('button', { name: 'Minimizar menú' }).isVisible());
         const antes = await anchoContenido(page);
         await shot(page, 'maximizada-1440');
@@ -138,7 +144,7 @@ try {
         const cajaTitulo = await page.locator('header h2').boundingBox();
         check('… y aparece en el encabezado, justo a la izquierda de «Dashboard»', !!cajaLogo && !!cajaTitulo && cajaLogo.x + cajaLogo.width <= cajaTitulo.x + 1 && cajaTitulo.x - (cajaLogo.x + cajaLogo.width) < 40 && Math.abs((cajaLogo.y + cajaLogo.height / 2) - (cajaTitulo.y + cajaTitulo.height / 2)) < 8);
         check('el logotipo del encabezado se ve legible (≥ 28 px de alto)', !!cajaLogo && cajaLogo.height >= 28);
-        check('la preferencia queda en el navegador', await page.evaluate(() => localStorage.getItem('admin-sidebar-collapsed')) === '1');
+        check('al minimizar se borra la marca de la pestaña', await page.evaluate(() => sessionStorage.getItem('admin-sidebar-expanded')) === null);
         await page.keyboard.press('Control+k');
         await page.waitForTimeout(450);
         check('⌘K / Ctrl+K maximiza y enfoca el buscador', await anchoMenu(page) === 288 && await page.evaluate(() => document.activeElement?.getAttribute('placeholder')?.startsWith('Buscar')));
@@ -153,10 +159,10 @@ try {
         await page.close();
     }
 
-    console.log('\n▸ La preferencia se recuerda al volver');
+    console.log('\n▸ Volver al panel: minimizada siempre (v4.1341)');
     {
-        const { page, errores } = await abrir({ width: 1440, height: 900 }, { 'admin-sidebar-collapsed': '1' }, { ...CLUB, logo: LOGO });
-        check('vuelve minimizada', await anchoMenu(page) === 80);
+        const { page, errores } = await abrir({ width: 1440, height: 900 }, { 'admin-sidebar-collapsed': '0' }, { ...CLUB, logo: LOGO });
+        check('vuelve minimizada, aunque quede la preferencia vieja «maximizada»', await anchoMenu(page) === 80);
         const logo = page.locator('header [data-logo-encabezado] img');
         const caja = await logo.boundingBox();
         check('con un logotipo horizontal real: va en el encabezado, legible', !!caja && caja.height >= 36 && caja.width >= 120, JSON.stringify(caja));
@@ -166,9 +172,17 @@ try {
         await page.close();
     }
 
-    console.log('\n▸ Teléfono (390 px) con la preferencia «minimizada»');
+    console.log('\n▸ En la misma pestaña, maximizada se mantiene al recargar');
     {
-        const { page, errores } = await abrir({ width: 390, height: 844 }, { 'admin-sidebar-collapsed': '1' });
+        const { page, errores } = await abrir({ width: 1440, height: 900 }, { 'session:admin-sidebar-expanded': '1' });
+        check('con la marca de la pestaña abre maximizada', await anchoMenu(page) === 288);
+        check('sin errores en la página', errores.length === 0, errores.join(' | '));
+        await page.close();
+    }
+
+    console.log('\n▸ Teléfono (390 px), con la barra minimizada por defecto');
+    {
+        const { page, errores } = await abrir({ width: 390, height: 844 });
         await page.locator('header button').first().click();
         await page.waitForTimeout(450);
         const aside = page.locator('aside[aria-label="Menú del panel"]');

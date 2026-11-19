@@ -34,13 +34,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1340.0 | 2026-11-19 (Feria: plazo de edición completa para los gestores de proyectos)
+// UI V4.1341.0 | 2026-11-19 (el menú del panel arranca minimizado)
 // Cache bust: 2026-11-19
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1341.0',
+        title: 'El menú del panel arranca minimizado ◧',
+        description: 'Para ver mejor el contenido, el menú lateral del panel abre siempre minimizado: sólo los íconos, con su nombre al pasar el cursor. Maximizarlo es opcional («Maximizar menú» o ⌘K / Ctrl+K) y se mantiene mientras sigas en esa pestaña; al volver a entrar al panel abre otra vez minimizado. Vale para todos los sitios. En el teléfono el menú sigue abriéndose completo.',
+        date: new Date().toISOString(),
+        tags: ['panel', 'menu', 'navegacion', 'interfaz'],
+        type: 'improvement',
+        impact: 'Media: más espacio para los módulos desde que se abre el panel.',
+        changes: [
+            { type: 'changed', text: 'El menú lateral arranca minimizado (80 px) en escritorio, en todos los sitios.' },
+            { type: 'changed', text: 'Maximizar se recuerda sólo en la pestaña abierta; una visita nueva vuelve a abrir minimizado. La preferencia anterior guardada en el navegador ya no se usa.' },
+        ],
+    },
     {
         version: '4.1340.0',
         title: 'Feria de Proyectos: los gestores editan TODOS los campos de sus formularios hasta el 20 de noviembre ✏️',
