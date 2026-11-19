@@ -34,13 +34,27 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1336.0 | 2026-11-18 (Directorio de Clubes: aprobar solicitudes ya no falla con «NaN»)
-// Cache bust: 2026-11-18
+// UI V4.1337.0 | 2026-11-19 (Feria: una asistente al evento ya no ve «Ingresa a tu panel» en /mi-proyecto)
+// Cache bust: 2026-11-19
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1337.0',
+        title: 'Feria de Proyectos: los asistentes al evento ya no ven «Ingresa a tu panel» estando dentro 🎟️',
+        description: 'Una asistente al evento con su inscripción pagada, que ya había iniciado sesión (su avatar en el encabezado y «Mi Inscripción al Evento» en el menú), llegaba a /mi-proyecto y la página le pedía «Ingresa a tu panel» y le abría el formulario de ingreso, como si no estuviera dentro. /mi-proyecto es el panel de los clubes que postularon un proyecto, y su cuenta es de asistente. Ahora la página reconoce esa sesión: le dice que ya inició sesión como asistente, la lleva a «Mi Inscripción al Evento» y, sólo si su club postuló un proyecto, le ofrece ingresar con esa cuenta. Además, al iniciar sesión desde una página de un panel que esas credenciales no abren, el sitio la lleva a su propio panel en vez de devolverla a esa página.',
+        date: new Date().toISOString(),
+        tags: ['feria', 'asistentes', 'acceso', 'sesion', 'correccion'],
+        type: 'hotfix',
+        impact: 'Media: los asistentes al evento dejan de creer que el sitio no los reconoce y llegan a su inscripción y su código QR.',
+        changes: [
+            { type: 'fixed', text: '/mi-proyecto con sesión de asistente: «Ya iniciaste sesión como asistente al evento», botón «Ir a Mi Inscripción al Evento», sin abrir el formulario de ingreso encima.' },
+            { type: 'fixed', text: 'Ingresar desde /mi-proyecto con una cuenta que sólo es de asistente lleva a /mi-inscripcion, el destino que calcula el servidor.' },
+            { type: 'fixed', text: '/mi-proyecto recoge la sesión del club apenas se abre (desde el encabezado o el puente por correo), sin recargar la página.' },
+        ],
+    },
     {
         version: '4.1336.0',
         title: 'Directorio de Clubes: las solicitudes se pueden aprobar otra vez ✅',

@@ -49,6 +49,21 @@ export const REALM_META: Record<Realm, { role: string; menu: string; path: strin
     attendee: { role: 'Asistente al Evento', menu: 'Mi Inscripción al Evento', path: '/mi-inscripcion' },
 };
 
+/**
+ * La identidad dueña de una pantalla, o null si la pantalla es de todos
+ * (v4.1337). Sirve para no mandar a alguien, tras ingresar, a un panel cuya
+ * sesión ese ingreso no abrió: lo recibiría «Ingresa a tu panel».
+ */
+export const realmOwningPath = (path?: string | null): Realm | null => {
+    if (!path) return null;
+    const clean = path.split(/[?#]/)[0].replace(/\/+$/, '') || '/';
+    if (clean === '/admin' || clean.startsWith('/admin/')) return 'platform';
+    for (const realm of ['portal', 'attendee'] as Realm[]) {
+        if (clean === REALM_META[realm].path) return realm;
+    }
+    return null;
+};
+
 /** Nombre y organización que se muestran en el menú del avatar. */
 export interface SessionProfile {
     name?: string | null;

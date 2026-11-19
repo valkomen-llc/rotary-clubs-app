@@ -157,3 +157,25 @@ dentro. Lee los tokens que ya existen; no abre ni renueva sesiones.
 - **Toda escritura de un token avisa** (`emitSessionChange`), y el hook escucha
   además `storage` (otra pestaña) y `visibilitychange` (venció en segundo
   plano). Sin el aviso, el avatar aparece recién en la siguiente recarga.
+
+### Un asistente al evento en `/mi-proyecto` (v4.1337)
+
+Una asistente con su inscripción pagada y la sesión abierta (avatar y «Mi
+Inscripción al Evento» en el menú) llegaba a `/mi-proyecto` y veía «Ingresa a
+tu panel» con el formulario de ingreso abierto encima, como si no estuviera
+dentro. Dos causas, dos reglas:
+
+- **`next` sólo se respeta si el ingreso abrió la identidad dueña de esa
+  pantalla.** `realmOwningPath` (`src/lib/siteSession.ts`) dice de quién es una
+  ruta (`/admin/*` → plataforma, `/mi-proyecto` → club, `/mi-inscripcion` →
+  asistente). Si el ingreso no abrió esa identidad, el `Navbar` usa el
+  `redirect` del servidor. Excepción: un administrador del sitio que va a
+  `/mi-proyecto` conserva el destino, porque su sesión del club llega un
+  instante después por `tryProjectFairLogin`.
+- **`/mi-proyecto` con sesión de asistente y sin la del club no pide
+  ingresar**: dice «Ya iniciaste sesión como asistente al evento», lleva a su
+  inscripción y ofrece —sólo si se pulsa— ingresar con la cuenta del proyecto.
+  No abre el modal solo.
+- **`/mi-proyecto` recoge la sesión del club cuando aparece** (escucha
+  `useSiteSessions`), no sólo al montar: el ingreso desde el encabezado o el
+  puente por correo pueden guardarla con la página ya abierta.

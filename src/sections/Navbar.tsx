@@ -24,7 +24,7 @@ import { useProjectFairLink } from '../lib/useProjectFairLink';
 import { useAttendeeLink } from '../lib/useAttendeeLink';
 import { onOpenLoginModal, emitLoginSuccess } from '../lib/loginModal';
 // Las tres identidades del sitio, tal como las ve el encabezado (v4.693).
-import { useSiteSessions, closeAllSessions, initialsOf } from '../lib/siteSession';
+import { useSiteSessions, closeAllSessions, initialsOf, realmOwningPath } from '../lib/siteSession';
 import { useVisitorCountry } from '../hooks/useVisitorCountry';
 
 // El ingreso con Google todavía no tiene flujo: el botón no llevaba ningún
@@ -396,8 +396,6 @@ const Navbar = () => {
       }
       if (!response.ok) throw new Error(data?.error || 'Correo o contraseña incorrectos.');
 
-      const target = afterLogin || data.redirect || '/';
-
       // TODAS las identidades que abren esas credenciales (v4.711). Un mismo
       // rotario puede tener proyecto Y asistencia al evento: se guardan las dos
       // sesiones, cada una en su llave, y el encabezado ofrece los dos paneles.
@@ -422,6 +420,21 @@ const Navbar = () => {
       }
 
       closeLoginModal();
+
+      // v4.1337 — El destino pedido (`next`) sólo se respeta si este ingreso
+      // abrió la identidad dueña de esa pantalla. Una asistente al evento que
+      // entraba desde /mi-proyecto volvía a /mi-proyecto, que sin sesión del
+      // club pinta «Ingresa a tu panel» aunque ella ya estuviera dentro. En ese
+      // caso manda el destino que calculó el servidor (su propio panel).
+      const realmsAbiertos = new Set<string>(abiertas.map((s: any) => s.realm || 'platform'));
+      const dueñoDelDestino = realmOwningPath(afterLogin);
+      // Un administrador del sitio puede tener su proyecto con las mismas
+      // credenciales: esa sesión llega un instante después
+      // (`tryProjectFairLogin`) y /mi-proyecto la recoge sola.
+      const alcanzable = !dueñoDelDestino || realmsAbiertos.has(dueñoDelDestino)
+        || (dueñoDelDestino === 'portal' && entroEnPlataforma);
+      const destinoPedido = afterLogin && alcanzable ? afterLogin : null;
+      const target = destinoPedido || data.redirect || '/';
 
       if (entroEnPlataforma) {
         // Un administrador del sitio puede además haber postulado un proyecto

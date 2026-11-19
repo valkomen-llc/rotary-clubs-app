@@ -278,6 +278,16 @@ const MiProyecto = () => {
     // El otro panel de esta misma persona, si tiene esa sesión abierta.
     const sessions = useSiteSessions();
     const otherPanel = sessions.find(x => x.realm === 'attendee') || null;
+    // v4.1337 — La sesión del club puede abrirse DESPUÉS de montar esta
+    // pantalla: el ingreso del encabezado, o el puente que la descubre por el
+    // correo. Leer el token sólo al montar dejaba «Ingresa a tu panel» con la
+    // sesión ya guardada; ahora se recoge en cuanto aparece.
+    const hasPortalSession = sessions.some(x => x.realm === 'portal');
+    useEffect(() => {
+        if (token || !hasPortalSession) return;
+        const stored = localStorage.getItem(TOKEN_KEY);
+        if (stored) setToken(stored);
+    }, [token, hasPortalSession]);
 
     // Pago en curso: apaga el botón mientras se pide la sesión, así un doble
     // clic no dispara dos peticiones. La protección de verdad está en el
@@ -556,7 +566,7 @@ const MiProyecto = () => {
         const accept = (t: string) => { localStorage.setItem(TOKEN_KEY, t); emitSessionChange(); setToken(t); };
         return resetToken
             ? <PortalReset token={resetToken} onToken={accept} />
-            : <PortalSignIn notice={notice} hadSession={Boolean(token)} />;
+            : <PortalSignIn notice={notice} hadSession={Boolean(token)} attendee={otherPanel} />;
     }
 
     const forms = data.forms || [];
@@ -1662,13 +1672,22 @@ const FormCardTile = ({ form, onOpen, onRequest }: { form: FormCard; onOpen: () 
 // distintos con reglas distintas. Ahora hay un solo acceso —el del ícono del
 // encabezado—, que resuelve por sí mismo si esas credenciales son de un
 // administrador del sitio o de un Gestor de Proyectos.
-const PortalSignIn = ({ notice, hadSession }: { notice: any; hadSession?: boolean }) => {
+//
+// v4.1337 — Quien llega con la sesión de ASISTENTE AL EVENTO ya está dentro del
+// sitio: «Ingresa a tu panel» le decía lo contrario y le abría el formulario
+// encima. Se le dice con qué identidad entró, se le lleva a su inscripción y,
+// sólo si lo pide, se abre el ingreso para la cuenta del proyecto de su club.
+const PortalSignIn = ({ notice, hadSession, attendee }: {
+    notice: any; hadSession?: boolean; attendee?: { email: string; name?: string | null; menu: string; path: string } | null;
+}) => {
     // Con sesión abierta y una carga fallida, el problema NO es el ingreso:
     // decirlo evita mandar a escribir otra vez unas credenciales correctas.
     const failed = Boolean(hadSession && notice?.kind === 'error');
+    const asAttendee = Boolean(attendee) && !failed;
     // Se abre solo al llegar: quien entra a /mi-proyecto viene a entrar.
+    // Salvo que ya esté dentro como asistente: no viene a entrar otra vez.
     useEffect(() => {
-        if (failed) return;
+        if (failed || asAttendee) return;
         openLoginModal({
             next: PROJECT_FAIR_PORTAL_PATH,
             reason: notice?.text || 'Ingresa con el correo y la contraseña que registraste al inscribir tu proyecto.',
@@ -1676,6 +1695,51 @@ const PortalSignIn = ({ notice, hadSession }: { notice: any; hadSession?: boolea
         // Sólo al montar.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    if (asAttendee && attendee) {
+        return (
+            <div className="min-h-screen bg-rotary-concrete">
+                <Navbar />
+                <div className="mx-auto flex min-h-[70vh] max-w-md items-center px-4 py-12">
+                    <div className="w-full rounded-2xl bg-white p-8 text-center shadow-sm">
+                        <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full" style={{ background: `${BLUE}14` }}>
+                            <CheckCircle2 size={22} style={{ color: BLUE }} />
+                        </div>
+                        <h1 className="text-xl font-bold text-slate-900">Ya iniciaste sesión como asistente al evento</h1>
+                        <p className="mt-1.5 text-sm text-slate-500">
+                            {attendee.name ? <><span className="font-semibold text-slate-700">{attendee.name}</span>, tu </> : 'Tu '}
+                            inscripción al evento{attendee.email ? <> (<span className="font-medium text-slate-600">{attendee.email}</span>)</> : null} está en «{attendee.menu}».
+                        </p>
+                        <p className="mt-3 text-[13px] text-slate-500">
+                            Esta página es el panel de los clubes que postularon un proyecto a la Feria. Tu cuenta de asistente no tiene un proyecto asociado.
+                        </p>
+
+                        <Link
+                            to={attendee.path}
+                            className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3 text-[15px] font-bold text-white transition hover:opacity-90"
+                            style={{ background: BLUE }}>
+                            Ir a {attendee.menu} <ArrowRight size={16} />
+                        </Link>
+
+                        <button
+                            onClick={() => openLoginModal({
+                                next: PROJECT_FAIR_PORTAL_PATH,
+                                reason: 'Ingresa con el correo y la contraseña que registraste al inscribir el proyecto de tu club.',
+                            })}
+                            className="mt-3 text-[13px] font-semibold text-slate-500 hover:text-slate-800">
+                            Mi club postuló un proyecto: ingresar con esa cuenta
+                        </button>
+
+                        <p className="mt-6 border-t border-slate-100 pt-4 text-[13px] text-slate-500">
+                            ¿Tu club todavía no inscribe su proyecto?{' '}
+                            <a href="/postular-proyecto" className="font-semibold" style={{ color: BLUE }}>Postúlalo aquí</a>
+                        </p>
+                    </div>
+                </div>
+                <Footer />
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-rotary-concrete">
