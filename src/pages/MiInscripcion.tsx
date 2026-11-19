@@ -229,6 +229,16 @@ const MiInscripcion = () => {
     // El otro panel de esta misma persona, si tiene esa sesión abierta.
     const sessions = useSiteSessions();
     const otherPanel = sessions.find(x => x.realm === 'portal') || null;
+    // v4.1339 — La sesión de asistente puede abrirse con esta pantalla YA
+    // montada: quien ingresa desde el encabezado estando en /mi-inscripcion
+    // vuelve a la misma ruta, React no la vuelve a montar y el token leído al
+    // montar seguía vacío («Consulta tu inscripción» con la sesión abierta).
+    const hasAttendeeSession = sessions.some(x => x.realm === 'attendee');
+    useEffect(() => {
+        if (token || !hasAttendeeSession) return;
+        const stored = localStorage.getItem(ATTENDEE_TOKEN_KEY);
+        if (stored) setToken(stored);
+    }, [token, hasAttendeeSession]);
 
     const resetToken = useMemo(() => new URLSearchParams(window.location.search).get('reset'), []);
     const verifyToken = useMemo(() => new URLSearchParams(window.location.search).get('verificar'), []);

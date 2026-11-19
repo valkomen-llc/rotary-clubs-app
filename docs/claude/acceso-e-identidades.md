@@ -209,3 +209,14 @@ pero con OTRA contraseña sólo veía su panel de asistente (caso real:
   (`viaRealm`) no cuenta como sesión de asistente aquí.
 - Queda en el historial del proyecto (`ProjectFairEvent`, tipo
   `portal_link_attendee`).
+
+### Los paneles recogen su sesión cuando aparece (v4.1339)
+
+`/mi-inscripcion` tenía el mismo defecto que `/mi-proyecto` antes de v4.1337:
+leía su token sólo al montar. Ingresar desde el encabezado estando en esa misma
+página devolvía a la misma ruta, React no la volvía a montar y quedaba
+«Consulta tu inscripción» con la sesión abierta. **Regla**: todo panel que lee
+su token al montar escucha también `useSiteSessions` y lo recoge en cuanto su
+identidad aparece. Verificado en un recorrido completo con Playwright contra
+una base local (asistente con contraseña distinta a la del proyecto, enlace de
+confirmación, segundo ingreso automático).
