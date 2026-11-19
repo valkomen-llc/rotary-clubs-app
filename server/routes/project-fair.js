@@ -49,11 +49,17 @@ router.get('/submissions/:id', getSubmissionStatus);
 // Identidad propia del módulo: el token del panel administrativo no sirve
 // aquí, ni el del club sirve para /admin/*.
 import * as portal from '../controllers/projectFairPortalController.js';
+import { attendeeAuth } from '../controllers/eventAttendeeController.js';
 
 router.get('/portal/check-email', portal.checkEmail);
 // Puente con la sesión de la plataforma: exige token de la plataforma y sólo
 // emite un token del panel para el mismo correo ya autenticado.
 router.get('/portal/link', authMiddleware, portal.linkPlatformUser);
+// v4.1337 — Puente desde la sesión del ASISTENTE AL EVENTO (mismo correo). Sólo
+// abre el panel con el correo demostrado; si no, manda un enlace a ese correo.
+router.post('/portal/link-attendee', attendeeAuth, portal.linkAttendee);
+router.post('/portal/link-attendee/send', attendeeAuth, portal.sendAttendeeLink);
+router.post('/portal/link-attendee/confirm', express.json(), portal.confirmAttendeeLink);
 router.post('/portal/login', express.json(), portal.login);
 router.post('/portal/claim', express.json(), portal.claim);
 router.post('/portal/forgot', express.json(), portal.forgotPassword);

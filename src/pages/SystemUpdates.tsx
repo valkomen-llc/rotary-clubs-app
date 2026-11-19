@@ -34,13 +34,27 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1337.0 | 2026-11-19 (Feria: una asistente al evento ya no ve «Ingresa a tu panel» en /mi-proyecto)
+// UI V4.1338.0 | 2026-11-19 (Feria: la asistente que postuló el proyecto de su club ve los dos paneles)
 // Cache bust: 2026-11-19
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1338.0',
+        title: 'Feria de Proyectos: quien postuló un proyecto y se inscribió al evento ve los dos paneles 🔗',
+        description: 'Una rotaria que postuló el proyecto de su club y además se inscribió al evento con el MISMO correo tiene dos cuentas, cada una con su contraseña. Si las contraseñas eran distintas, al entrar sólo se abría la de asistente y el panel del proyecto no aparecía por ningún lado: el sitio sabía descubrir la inscripción al evento desde el proyecto, pero no al revés. Ahora, con la sesión de asistente, el sitio busca el proyecto de ese correo y abre también «Mi Proyecto». Como una cuenta de asistente se crea escribiendo un correo en el formulario del evento, el panel del proyecto (pagos, formularios, documentos) sólo se abre si el correo está demostrado; si no, «Mi Proyecto» ofrece mandar un enlace a ese mismo correo y abrirlo lo demuestra.',
+        date: new Date().toISOString(),
+        tags: ['feria', 'asistentes', 'acceso', 'sesion', 'proyectos'],
+        type: 'hotfix',
+        impact: 'Alta: la persona que postuló y además asiste gestiona su proyecto y su inscripción con una sola sesión.',
+        changes: [
+            { type: 'added', text: 'Puente asistente → proyecto (POST /api/project-fair/portal/link-attendee): con el correo demostrado entrega el panel del proyecto de ese correo; el encabezado muestra «Mi Proyecto» y «Mi Inscripción al Evento».' },
+            { type: 'added', text: 'Correo sin demostrar: «Mi Proyecto» lleva a «Tu correo tiene un proyecto postulado» con «Enviarme el enlace de confirmación»; el enlace (vence en 2 horas) demuestra el correo, abre el panel y la próxima vez el puente es automático.' },
+            { type: 'fixed', text: 'Si el correo de confirmación no sale, la pantalla lo dice en vez de afirmar que se envió.' },
+        ],
+    },
     {
         version: '4.1337.0',
         title: 'Feria de Proyectos: los asistentes al evento ya no ven «Ingresa a tu panel» estando dentro 🎟️',
