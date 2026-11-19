@@ -34,13 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1338.0 | 2026-11-19 (Feria: la asistente que postuló el proyecto de su club ve los dos paneles)
+// UI V4.1339.0 | 2026-11-19 (Mi Inscripción al Evento carga al ingresar desde la misma página)
 // Cache bust: 2026-11-19
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1339.0',
+        title: '«Mi Inscripción al Evento» carga al ingresar desde la misma página 🎟️',
+        description: 'Quien estaba en /mi-inscripcion sin sesión e ingresaba con el formulario del encabezado quedaba dentro (su avatar aparecía) pero la página seguía mostrando «Consulta tu inscripción» hasta recargar: la pantalla leía la sesión sólo al abrirse y el ingreso la devolvía a la misma ruta. Ahora recoge la sesión en cuanto se abre y muestra la inscripción, el código y, si la persona también gestiona un proyecto, el acceso a «Mi Proyecto».',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'asistentes', 'acceso', 'sesion', 'correccion'],
+        type: 'hotfix',
+        impact: 'Media: los asistentes ven su inscripción justo después de ingresar, sin recargar.',
+        changes: [
+            { type: 'fixed', text: '/mi-inscripcion recoge la sesión del asistente apenas se abre, también cuando el ingreso ocurre con la página ya abierta.' },
+        ],
+    },
     {
         version: '4.1338.0',
         title: 'Feria de Proyectos: quien postuló un proyecto y se inscribió al evento ve los dos paneles 🔗',
