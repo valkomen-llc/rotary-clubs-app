@@ -57,7 +57,9 @@ const { ensureTables } = await import(`${REPO}/server/controllers/projectFairCon
 await ensureTables();
 await db.query(`INSERT INTO "ProjectFairConfig" (key, "eventId", config) VALUES ('edition:evt-ui','evt-ui', $1::jsonb)
     ON CONFLICT ("eventId") WHERE "eventId" IS NOT NULL DO UPDATE SET config = EXCLUDED.config`,
-[JSON.stringify({ deadline: '2026-11-09', registration: { priceMode: 'COP', amountCop: 250000 } })]);
+// v4.1340 — Sin el plazo de edición completa de fábrica (depende del reloj
+// real): aquí se prueban las reglas posteriores al cierre.
+[JSON.stringify({ deadline: '2026-11-09', registration: { priceMode: 'COP', amountCop: 250000 }, postCloseEditing: { fullEditUntil: null } })]);
 
 const sub = async (ref, wf, nombre) => (await db.query(`INSERT INTO "ProjectFairSubmission"
     ("publicRef", "eventId", "firstName", "lastName", email, "clubName", district, "projectName", "workflowStatus", status, phone, "focusArea", "focusAreaLabel", "amountCop", "appliedAt", "projectIndex")
@@ -254,6 +256,8 @@ window.go = () => createRoot(document.getElementById('root')).render(React.creat
     await titulo.waitFor({ timeout: 15000 }).catch(() => {});
     check('la Convocatoria tiene la sección «Edición de proyectos después del cierre»', await titulo.isVisible());
     check('activada por defecto', await page.getByLabel(/Permitir que los proyectos existentes se sigan editando/).isChecked());
+    check('el plazo de edición completa está arriba de la sección', await page.getByText('Plazo de edición completa para los gestores de proyectos').isVisible());
+    check('ofrece ampliar el plazo', (await page.getByRole('button', { name: /Ampliar 7 días/ }).count()) === 1);
     check('ofrece las tres vigencias', (await page.locator('select').filter({ hasText: 'Solo mediante autorización individual' }).count()) === 1);
     // Se mide la SECCIÓN nueva: otras listas de la Convocatoria (con su
     // botón de borrar al lado del campo) ya desbordaban antes de v4.1330.

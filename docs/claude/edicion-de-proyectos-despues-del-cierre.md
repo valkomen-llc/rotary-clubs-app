@@ -90,6 +90,38 @@ y `postCloseBaseline[formKey]`. La bitácora campo a campo es la del Expediente,
   estados. La de una feria vive en la convocatoria de su `eventId` y no toca a
   otra edición ni a otro sitio.
 
+### Plazo de edición completa para los gestores — v4.1340
+
+Caso que lo originó: Rafael Sañudo (club Santa Fe de Bogotá, proyecto
+«Quimbaya Colombia…») con la Formulación ENVIADA (100 %, proyecto «En
+revisión») y el FDD al 51 %. En «En revisión» la política es «con
+restricciones» y los sensibles del FDD de fábrica son `club.*`, `presidente.*`,
+`lfri.*`, `presupuesto.*`, `aportes.*`, `fdd.*`, `declaraciones.*`,
+`aprobacion.*`: casi todo el formulario aparecía con «Requiere autorización del
+comité» y el club no podía terminarlo. El comité pidió que los gestores
+editaran TODOS los campos hasta el 20 de noviembre y poder ampliar esa fecha.
+
+- **`policy.fullEditUntil`** (AAAA-MM-DD o `null`). Mientras esté vigente
+  (todo ese día, hora de Colombia), `postCloseVerdict` devuelve
+  `code: 'full_edit'`, `canEdit: true`, `restricted: false`, `until =
+  fullEditUntil`, ANTES de mirar `enabled`, `forms`, `validity` y la regla del
+  estado; `lockedFieldsFor` no bloquea nada con ese código. Excepciones: un
+  estado «No editable» (`locked`, de fábrica «Cerrado») y el archivo.
+- **Sigue siendo fase `post_close`**: la postulación nueva sigue cerrada, el
+  envío no mueve el estado, la bitácora marca `club_edit_post_close` y
+  «Cambios pendientes de revisión». Sólo se quitan los bloqueos.
+- **De fábrica `'2026-11-20'`** (`FAIR_POST_CLOSE_DEFAULTS`): una
+  configuración guardada SIN la clave lo hereda (deepMerge), así que rige en
+  producción sin tocar la base. Una fecha vencida no tiene efecto, de modo que
+  no abre nada en otra edición. «Quitar plazo» guarda `null` explícito.
+- **La pantalla** (`PostCloseEditingCard.tsx`): bloque arriba de la sección,
+  FUERA del `fieldset` que se deshabilita con la política apagada, con la
+  fecha, estado vigente/vencido, «Ampliar 1/3/7 días» (desde la fecha vigente
+  o desde hoy) y «Quitar plazo». Su `DEFAULT_FULL_EDIT_UNTIL` debe coincidir
+  con el del servidor.
+- **Las pruebas e2e apagan el plazo** en `setConfig` (dependería del reloj
+  real) y lo prueban en su caso propio.
+
 ### Pruebas
 
 - `npm run test:fair:post-close` (82, puro, en `prebuild`): criterio, casos

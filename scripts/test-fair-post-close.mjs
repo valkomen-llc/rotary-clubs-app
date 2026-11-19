@@ -145,7 +145,10 @@ ok('los estados de fábrica son los del pedido', fp.states.received === 'edit' &
 ok('sin `postCloseEditing` guardado, rige la de fábrica', fairPostClosePolicyOf({}).enabled && fairPostClosePolicyOf({}).states.in_review === 'restricted');
 
 const fila = (wf, extra = {}) => ({ id: 's1', workflowStatus: wf, status: 'pending_payment', ...extra });
-const opts = { now: DESPUES };
+// v4.1340 — Los casos A–F son las reglas que rigen DESPUÉS del plazo de
+// edición completa (de fábrica, hasta el 2026-11-20): se evalúan pasado ese
+// plazo. El plazo mismo tiene su sección (2c).
+const opts = { now: MUCHO_DESPUES };
 v = fairFormEditVerdict(fila('received'), cfg, 'master', { completionPct: 53 }, opts);
 ok('Caso A: Formulación al 53 % después del cierre → editable', v.canEdit && v.phase === 'post_close');
 v = fairFormEditVerdict(fila('received'), cfg, 'fdd_2026_2027', { completionPct: 21 }, opts);
@@ -164,6 +167,43 @@ ok('Caso F: edición desactivada → consultable, no editable, con salida', !v.c
 v = fairFormEditVerdict(fila('received', { archivedAt: '2026-11-01' }), cfg, 'master', {}, opts);
 ok('un proyecto archivado (sustituido) no se edita', !v.canEdit && v.code === 'archived');
 ok('editRequestOf lee la solicitud del formulario', !!editRequestOf({ metadata: { editRequests: { master: { at: 'x' } } } }, 'master') && !editRequestOf({}, 'master'));
+
+section('2c. Plazo de edición completa para los gestores (v4.1340)');
+{
+    const ULTIMO_DIA = new Date('2026-11-20T23:30:00-05:00').getTime();
+    const DIA_SIGUIENTE = new Date('2026-11-21T00:00:30-05:00').getTime();
+    const tplFdd = { sections: [
+        { key: 'presidente', fields: [{ key: 'name', type: 'text' }, { key: 'email', type: 'email' }] },
+        { key: 'aportes', fields: [{ key: 'clubAmount', type: 'currency' }] },
+        { key: 'fdd', fields: [{ key: 'requested', type: 'currency' }] },
+        { key: 'declaraciones', fields: [{ key: 'certified', type: 'checkbox' }] },
+    ] };
+    ok('de fábrica, el plazo de la XII Feria es el 2026-11-20', fp.fullEditUntil === '2026-11-20');
+    let w = fairFormEditVerdict(fila('in_review'), cfg, 'fdd_2026_2027', { status: 'draft' }, { now: DESPUES });
+    ok('caso Quimbaya: FDD de un proyecto «En revisión» → editable, sin restricciones', w.canEdit && w.code === 'full_edit' && !w.restricted && w.until === '2026-11-20' && w.phase === 'post_close');
+    let lk2 = lockedFieldsFor({ template: tplFdd, verdict: w, policy: fp, formKey: 'fdd_2026_2027' });
+    ok('dentro del plazo NINGÚN campo del FDD queda bloqueado (presidente, aportes, FDD, declaraciones)', lk2.length === 0);
+    w = fairFormEditVerdict(fila('in_review'), cfg, 'fdd_2026_2027', {}, { now: ULTIMO_DIA });
+    ok('el último día vale entero (hora de Colombia)', w.canEdit && w.code === 'full_edit');
+    w = fairFormEditVerdict(fila('in_review'), cfg, 'fdd_2026_2027', {}, { now: DIA_SIGUIENTE });
+    lk2 = lockedFieldsFor({ template: tplFdd, verdict: w, policy: fp, formKey: 'fdd_2026_2027' });
+    ok('al día siguiente vuelven las reglas: en revisión, sensibles bloqueados', w.canEdit && w.restricted && w.code === null && lk2.length === 5);
+    const ampliado = { ...cfg, postCloseEditing: { fullEditUntil: '2026-11-27' } };
+    w = fairFormEditVerdict(fila('in_review'), ampliado, 'fdd_2026_2027', {}, { now: DIA_SIGUIENTE });
+    ok('el comité AMPLÍA el plazo desde la Convocatoria → se sigue editando todo', w.canEdit && w.code === 'full_edit' && w.until === '2026-11-27');
+    w = fairFormEditVerdict(fila('approved'), cfg, 'master', {}, { now: DESPUES });
+    ok('dentro del plazo, también un estado que pedía autorización', w.canEdit && w.code === 'full_edit');
+    w = fairFormEditVerdict(fila('received'), { ...cfg, postCloseEditing: { validity: 'individual', forms: ['master'] } }, 'fdd_2026_2027', {}, { now: DESPUES });
+    ok('dentro del plazo, todos los formularios aunque la política los restrinja', w.canEdit && w.code === 'full_edit');
+    w = fairFormEditVerdict(fila('closed'), cfg, 'master', {}, { now: DESPUES });
+    ok('un proyecto «Cerrado» (No editable) sigue sin editarse', !w.canEdit && w.code === 'state_locked');
+    w = fairFormEditVerdict(fila('received', { archivedAt: '2026-11-01' }), cfg, 'master', {}, { now: DESPUES });
+    ok('un proyecto archivado sigue sin editarse', !w.canEdit && w.code === 'archived');
+    w = fairFormEditVerdict(fila('in_review'), { ...cfg, postCloseEditing: { fullEditUntil: null } }, 'fdd_2026_2027', {}, { now: DESPUES });
+    ok('«Quitar plazo» (null) → rigen las reglas de siempre', w.canEdit && w.restricted && w.code === null);
+    ok('una fecha inválida no abre nada', normalizePostClosePolicy({ fullEditUntil: 'mañana' }).fullEditUntil === null);
+    ok('el plazo no reabre las postulaciones NUEVAS', applicationsClosedOf(cfg, DESPUES).closed);
+}
 
 section('2b. Crear es otra regla');
 ok('antes de la fecha la convocatoria recibe postulaciones', !applicationsClosedOf(cfg, ANTES).closed);

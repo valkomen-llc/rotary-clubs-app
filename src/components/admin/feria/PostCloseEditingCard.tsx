@@ -11,7 +11,7 @@
 // dentro de otro es un tipo nuevo en cada render y los campos pierden el foco.
 // ════════════════════════════════════════════════════════════════════
 import React from 'react';
-import { PenLine } from 'lucide-react';
+import { CalendarClock, PenLine } from 'lucide-react';
 
 export interface PostCloseEditingConfig {
     enabled?: boolean;
@@ -24,6 +24,8 @@ export interface PostCloseEditingConfig {
     selectedFields?: Record<string, string[]>;
     sensitiveFields?: Record<string, string[]>;
     lockSensitive?: 'restricted' | 'always' | 'never';
+    /** v4.1340 — Hasta ese día los gestores editan TODOS los campos (o null). */
+    fullEditUntil?: string | null;
 }
 
 // Los formularios del proyecto (`server/lib/projectFormsRegistry.js`). Los
@@ -59,6 +61,24 @@ const DEFAULT_STATES: Record<string, string> = {
     sent_to_grants: 'authorization', closed: 'locked',
 };
 
+// El de fábrica (`FAIR_POST_CLOSE_DEFAULTS.fullEditUntil`): la configuración
+// guardada sin la clave lo hereda en el servidor, así que la pantalla muestra
+// el mismo valor que aplica el servidor.
+const DEFAULT_FULL_EDIT_UNTIL = '2026-11-20';
+
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+const fechaLarga = (d: string) => {
+    const [y, m, day] = d.split('-').map(Number);
+    return `${day} de ${MESES[m - 1]} de ${y}`;
+};
+/** Hoy en Colombia, como AAAA-MM-DD (la misma hora de corte del servidor). */
+const hoyBogota = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+const sumarDias = (d: string, n: number) => {
+    const t = new Date(`${d}T12:00:00Z`);
+    t.setUTCDate(t.getUTCDate() + n);
+    return t.toISOString().slice(0, 10);
+};
+
 const selectCls = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100';
 
 const PathsBox = ({ label, hint, value, onChange }: { label: string; hint: string; value: string[]; onChange: (next: string[]) => void }) => (
@@ -87,6 +107,11 @@ const PostCloseEditingCard: React.FC<Props> = ({ value, deadline, onChange }) =>
     const forms = Array.isArray(v.forms) ? v.forms : [];
     const scope = v.scope || 'all';
     const set = (k: string, val: unknown) => onChange(`postCloseEditing.${k}`, val);
+    // `undefined` = nunca se guardó: aplica el de fábrica. `null` = sin plazo.
+    const fullEditUntil = v.fullEditUntil === undefined ? DEFAULT_FULL_EDIT_UNTIL : (v.fullEditUntil || null);
+    const hoy = hoyBogota();
+    const plazoVigente = !!fullEditUntil && fullEditUntil >= hoy;
+    const ampliar = (dias: number) => set('fullEditUntil', sumarDias(plazoVigente && fullEditUntil ? fullEditUntil : hoy, dias));
     const toggleForm = (key: string, on: boolean) => {
         // Vacío = todos. Al desmarcar uno partiendo de «todos», se guarda la
         // lista explícita del resto.
@@ -105,6 +130,43 @@ const PostCloseEditingCard: React.FC<Props> = ({ value, deadline, onChange }) =>
                 Estas reglas deciden, aparte, si los clubes que ya tienen un proyecto registrado pueden seguir completándolo y corrigiéndolo.
                 El servidor las aplica en cada guardado; la edición nunca cambia el estado del proyecto ni el pago, y cada cambio queda en el historial.
             </p>
+
+            <div className={`mb-5 rounded-xl border p-4 ${plazoVigente ? 'border-emerald-200 bg-emerald-50/60' : 'border-slate-200 bg-slate-50'}`}>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                        <p className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                            <CalendarClock size={16} className="text-blue-700" /> Plazo de edición completa para los gestores de proyectos
+                        </p>
+                        <p className="mt-1 text-xs leading-relaxed text-slate-600">
+                            Hasta esta fecha, quien gestiona un proyecto ya inscrito puede editar <strong>todos los campos</strong> de la Formulación y de la Solicitud de Aportes del FDD,
+                            sin campos bloqueados, aunque el proyecto esté «En revisión». Después, aplican las reglas de abajo. Los proyectos «No editables» y los archivados no se abren.
+                        </p>
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${plazoVigente ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'}`}>
+                        {fullEditUntil ? (plazoVigente ? `Vigente hasta el ${fechaLarga(fullEditUntil)}` : `Venció el ${fechaLarga(fullEditUntil)}`) : 'Sin plazo'}
+                    </span>
+                </div>
+                <div className="mt-3 flex flex-wrap items-end gap-2">
+                    <label className="block">
+                        <span className="mb-1 block text-xs font-semibold text-slate-600">Editable hasta (inclusive)</span>
+                        <input type="date" className={selectCls} value={fullEditUntil || ''} min={deadline || undefined}
+                            onChange={e => set('fullEditUntil', e.target.value || null)} />
+                    </label>
+                    {[1, 3, 7].map(n => (
+                        <button key={n} type="button" onClick={() => ampliar(n)}
+                            className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50">
+                            Ampliar {n} {n === 1 ? 'día' : 'días'}
+                        </button>
+                    ))}
+                    {fullEditUntil && (
+                        <button type="button" onClick={() => set('fullEditUntil', null)}
+                            className="rounded-lg px-3 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-100">
+                            Quitar plazo
+                        </button>
+                    )}
+                </div>
+                <p className="mt-2 text-[11px] text-slate-500">Vale todo ese día, hora de Colombia. No reabre las postulaciones nuevas, no cambia el estado ni el pago, y cada cambio queda marcado para revisión del comité. Recuerda guardar la configuración.</p>
+            </div>
 
             <label className="flex items-start gap-2 text-sm text-slate-700">
                 <input type="checkbox" className="mt-0.5 h-4 w-4" checked={enabled} onChange={e => set('enabled', e.target.checked)} />

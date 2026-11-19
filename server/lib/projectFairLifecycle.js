@@ -310,6 +310,13 @@ export const FAIR_POST_CLOSE_DEFAULTS = {
         ],
     },
     lockSensitive: 'restricted',
+    // v4.1340 — Plazo de edición COMPLETA para los gestores de proyectos: hasta
+    // ese día (hora de Colombia) editan todos los campos de la Formulación y
+    // del FDD, sin campos sensibles bloqueados. Lo amplía el comité desde la
+    // Convocatoria. El de fábrica es el de la XII Feria (cierre de
+    // postulaciones: 2026-11-09); una fecha ya vencida no tiene ningún efecto,
+    // así que no abre nada en otra edición.
+    fullEditUntil: '2026-11-20',
 };
 
 /** La política de UNA edición, saneada sobre la de fábrica. */
