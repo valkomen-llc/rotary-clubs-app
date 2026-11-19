@@ -34,13 +34,27 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1339.0 | 2026-11-19 (Mi Inscripción al Evento carga al ingresar desde la misma página)
+// UI V4.1340.0 | 2026-11-19 (Feria: plazo de edición completa para los gestores de proyectos)
 // Cache bust: 2026-11-19
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1340.0',
+        title: 'Feria de Proyectos: los gestores editan TODOS los campos de sus formularios hasta el 20 de noviembre ✏️',
+        description: 'Un gestor con la Formulación ya enviada (proyecto «En revisión») no podía diligenciar la Solicitud de Aportes del FDD: después del cierre de postulaciones, la política bloqueaba los campos sensibles en ese estado, y en el FDD eso eran casi todas las secciones (presidente, aportes, solicitud del FDD, declaraciones y firmas), cada una con «Requiere autorización del comité». Ahora la Convocatoria tiene un «Plazo de edición completa para los gestores de proyectos»: hasta esa fecha (inclusive, hora de Colombia) quien gestiona un proyecto inscrito edita todos los campos de la Formulación y del FDD, sin bloqueos, sea cual sea su estado. El comité lo amplía cuando lo necesite (fecha o «Ampliar 1/3/7 días»). Vencido el plazo, vuelven las reglas de «Edición de proyectos después del cierre».',
+        date: new Date().toISOString(),
+        tags: ['feria', 'proyectos', 'formularios', 'fdd', 'edicion', 'convocatoria'],
+        type: 'hotfix',
+        impact: 'Alta: los clubes terminan de diligenciar la Formulación y el FDD hasta el 20 de noviembre, y el comité puede ampliar el plazo sin pedir un cambio de código.',
+        changes: [
+            { type: 'fixed', text: 'Dentro del plazo, un proyecto «En revisión» ya no ve bloqueados los campos de Presidente, Aportes, Solicitud del FDD ni Declaraciones y firmas; el servidor acepta el guardado.' },
+            { type: 'added', text: 'Convocatoria → «Edición de proyectos después del cierre» → «Plazo de edición completa para los gestores de proyectos»: fecha editable, estado vigente/vencido, «Ampliar 1/3/7 días» y «Quitar plazo». De fábrica: 20 de noviembre de 2026.' },
+            { type: 'changed', text: 'El plazo no reabre las postulaciones nuevas, no mueve el estado ni el pago, y cada cambio sigue marcado para revisión del comité. Los proyectos «Cerrados» y los archivados siguen sin editarse.' },
+        ],
+    },
     {
         version: '4.1339.0',
         title: '«Mi Inscripción al Evento» carga al ingresar desde la misma página 🎟️',

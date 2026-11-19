@@ -117,8 +117,18 @@ export const normalizePostClosePolicy = (raw, defaults = {}) => {
         selectedFields: pathMap(src.selectedFields),
         sensitiveFields: pathMap(src.sensitiveFields),
         lockSensitive: SENSITIVE_KEYS.includes(src.lockSensitive) ? src.lockSensitive : 'restricted',
+        // v4.1340 — Plazo de edición COMPLETA (ver `postCloseVerdict`). Sin
+        // fecha válida no hay plazo y manda el resto de la política.
+        fullEditUntil: dateOk(src.fullEditUntil) ? String(src.fullEditUntil).trim() : null,
     };
 };
+
+/**
+ * ¿Está vigente el plazo de edición completa? Vale todo el día de la fecha
+ * (hora de Colombia), como la fecha límite de postulación.
+ */
+export const fullEditWindowOpen = (policy, now = Date.now()) =>
+    !!policy?.fullEditUntil && !isPastDeadline(policy.fullEditUntil, now);
 
 const formIncluded = (policy, formKey) => !policy.forms.length || policy.forms.includes(formKey);
 
@@ -138,6 +148,7 @@ export const formatDateEs = fmtDate;
  *   canEdit      si el servidor aceptará escrituras
  *   code         por qué (null cuando se puede editar sin más):
  *                  authorized          autorización individual vigente
+ *                  full_edit           plazo de edición completa vigente
  *                  archived            registro archivado
  *                  disabled            la política está apagada
  *                  form_not_included   ese formulario no está en la política
@@ -169,6 +180,20 @@ export const postCloseVerdict = ({
         return { ...base, canEdit: false, code: 'archived', reason: `Este proyecto está archivado: puedes consultarlo, pero ya no editarlo. ${contact}` };
     }
     if (!closed) return { ...base, canEdit: true, code: null, reason: null };
+
+    // v4.1340 — PLAZO DE EDICIÓN COMPLETA. Mientras esté vigente, quien
+    // gestiona un proyecto ya inscrito edita TODOS los campos de TODOS los
+    // formularios, como antes del cierre, sea cual sea el estado del proyecto
+    // (salvo un estado «No editable» y el archivo, ya resuelto arriba). Lo
+    // pidió el comité: con el proyecto «En revisión», la política dejaba
+    // bloqueadas casi todas las secciones del FDD (presidente, aportes, FDD,
+    // declaraciones) y los clubes no podían terminar de diligenciarlo. Sigue
+    // siendo fase `post_close`: la postulación NUEVA sigue cerrada y cada
+    // cambio sigue marcado para revisión del comité.
+    if (fullEditWindowOpen(policy, now)) {
+        const rule = (state && policy.states[state]) || policy.unknownState;
+        if (rule !== 'locked') return { ...base, until: policy.fullEditUntil, canEdit: true, code: 'full_edit', reason: null };
+    }
 
     const closedText = `La convocatoria cerró el ${fmtDate(base.deadline)}`;
     if (!policy.enabled) {
@@ -240,7 +265,9 @@ export const pendingFieldsOf = (template, answers = {}) =>
         .map(f => `${f.sectionKey}.${f.key}`);
 
 export const lockedFieldsFor = ({ template, saved = {}, verdict, policy: rawPolicy, formKey, pendingPaths = null }) => {
-    if (!verdict?.canEdit || verdict.phase !== 'post_close' || verdict.code === 'authorized') return [];
+    // Con autorización individual o dentro del plazo de edición completa no se
+    // bloquea ningún campo.
+    if (!verdict?.canEdit || verdict.phase !== 'post_close' || verdict.code === 'authorized' || verdict.code === 'full_edit') return [];
     const policy = rawPolicy?.states && rawPolicy?.validity ? rawPolicy : normalizePostClosePolicy(rawPolicy);
     const locked = [];
     for (const f of editableFieldsOf(template)) {

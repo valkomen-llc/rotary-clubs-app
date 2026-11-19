@@ -31,7 +31,14 @@ const { ensureTables } = await import(`${REPO}/server/controllers/projectFairCon
 await ensureTables();
 // La convocatoria CERRÓ (fecha en el pasado) y no trae política guardada:
 // rige la de fábrica.
-const setConfig = (config) => db.query(`
+// v4.1340 — Las reglas posteriores al cierre se prueban SIN el plazo de
+// edición completa de fábrica (que depende del reloj real): cada
+// configuración lo apaga salvo que lo traiga. El plazo tiene su caso propio.
+const setConfig = (rawConfig) => {
+    const config = { ...rawConfig, postCloseEditing: { fullEditUntil: null, ...(rawConfig.postCloseEditing || {}) } };
+    return setConfigRaw(config);
+};
+const setConfigRaw = (config) => db.query(`
     INSERT INTO "ProjectFairConfig" (key, "eventId", config) VALUES ('edition:evt-xii','evt-xii', $1::jsonb)
     ON CONFLICT ("eventId") WHERE "eventId" IS NOT NULL DO UPDATE SET config = $1::jsonb, "updatedAt" = NOW()`, [JSON.stringify(config)]);
 const BASE_CFG = { deadline: '2020-01-09', registration: { priceMode: 'COP', amountCop: 250000 } };
@@ -128,6 +135,21 @@ try {
     ok(guardado.identificacion?.clubName !== 'Otro club', 'el club tampoco');
     ok(guardado.objetivos?.projectDescription === 'Descripción corregida', 'la descripción sí');
     ok((await fila(R.id)).workflowStatus === 'in_review', 'sigue «En revisión»');
+
+    console.log('── Plazo de edición completa (v4.1340): «En revisión» edita TODO');
+    await setConfig({ ...BASE_CFG, postCloseEditing: { fullEditUntil: '2099-12-31' } });
+    r = await call('GET', '/portal/forms/master', tR);
+    ok(r.data.canEdit && r.data.lockedFields.length === 0 && r.data.editWindow.code === 'full_edit' && r.data.editWindow.until === '2099-12-31', 'dentro del plazo: sin campos bloqueados y con su fecha');
+    const aR2 = r.data.answers;
+    aR2.identificacion = { ...(aR2.identificacion || {}), clubName: 'Club Santa Fe de Bogotá' };
+    r = await call('PUT', '/portal/forms/master', tR, { answers: aR2 });
+    ok(r.status === 200, 'el guardado se acepta');
+    ok((await db.query('SELECT answers FROM "ProjectFairMasterForm" WHERE "submissionId" = $1', [R.id])).rows[0].answers.identificacion?.clubName === 'Club Santa Fe de Bogotá', 'el campo sensible SÍ se guarda dentro del plazo');
+    ok((await fila(R.id)).workflowStatus === 'in_review', 'y el estado no se mueve');
+    await setConfig({ ...BASE_CFG, postCloseEditing: { fullEditUntil: '2020-01-20' } });
+    r = await call('GET', '/portal/forms/master', tR);
+    ok(r.data.canEdit && r.data.lockedFields.includes('identificacion.clubName') && r.data.editWindow.code === null, 'vencido el plazo, vuelven los bloqueos de «En revisión»');
+    await setConfig(BASE_CFG);
 
     console.log('── Caso D: «Aprobado» pide autorización, el comité la concede');
     const tB = portalToken(B);
