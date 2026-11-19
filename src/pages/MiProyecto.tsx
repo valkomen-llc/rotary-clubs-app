@@ -40,7 +40,8 @@ import {
 import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
 import { PROJECT_FAIR_PORTAL_PATH, PROJECT_FAIR_PORTAL_TOKEN_KEY } from '../lib/ctaLinks';
 import { openLoginModal } from '../lib/loginModal';
-import { forgetSession, rememberProfile, emitSessionChange, useSiteSessions } from '../lib/siteSession';
+import { forgetSession, rememberProfile, emitSessionChange, useSiteSessions, TOKEN_KEY as SESSION_TOKEN_KEY } from '../lib/siteSession';
+import { fetchPortalLinkFromAttendee } from '../lib/usePortalLinkFromAttendee';
 import { FORM_STATE_META, fmtDateTime, type FormCard, type FormState, type EditWindow } from '../lib/projectForms';
 import { inputCls, BLUE } from '../components/project-forms/FormFields';
 import ProjectFormView from '../components/project-forms/ProjectFormView';
@@ -398,6 +399,9 @@ const MiProyecto = () => {
         const submissionId = params.get('submission');
         const sessionId = params.get('session_id');
         if (token) { loadPortal(token); return; }
+        // v4.1337 — El enlace «Abrir el panel de mi proyecto» que recibe una
+        // asistente al evento: lo resuelve el efecto de abajo.
+        if (params.get('vincular')) return;
         if (!submissionId || !sessionId) { setLoading(false); return; }
 
         fetch(`${API}/project-fair/portal/claim`, {
@@ -421,6 +425,39 @@ const MiProyecto = () => {
     }, []);
 
     useEffect(() => { if (activeToken) loadPortal(activeToken); }, [activeToken, loadPortal]);
+
+    // v4.1337 — /mi-proyecto?vincular=… — el enlace que demuestra el correo de
+    // una asistente al evento y abre el panel del proyecto de ese correo.
+    useEffect(() => {
+        const vincular = new URLSearchParams(window.location.search).get('vincular');
+        if (!vincular) return;
+        const cleanUrl = () => {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('vincular');
+            window.history.replaceState(null, '', url.toString());
+        };
+        if (token) { cleanUrl(); return; }
+        fetch(`${API}/project-fair/portal/link-attendee/confirm`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: vincular }),
+        })
+            .then(async r => ({ ok: r.ok, body: await r.json().catch(() => ({})) }))
+            .then(({ ok, body }) => {
+                if (ok && body?.portalToken) {
+                    localStorage.setItem(TOKEN_KEY, body.portalToken);
+                    emitSessionChange();
+                    setToken(body.portalToken);
+                    setNotice({ kind: 'ok', text: 'Tu correo quedó confirmado: ya tienes el panel de tu proyecto y tu inscripción al evento en la misma sesión.' });
+                } else {
+                    setNotice({ kind: 'error', text: body?.error || 'El enlace venció o no es válido.' });
+                    setLoading(false);
+                }
+            })
+            .catch(() => { setNotice({ kind: 'error', text: 'No pudimos abrir el panel de tu proyecto.' }); setLoading(false); })
+            .finally(cleanUrl);
+        // Sólo al montar.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // v4.1299 — Cambiar de proyecto dentro de la inscripción: se cierra lo que
     // estuviera abierto (un formulario es DE un proyecto) y se recarga con el
@@ -566,7 +603,7 @@ const MiProyecto = () => {
         const accept = (t: string) => { localStorage.setItem(TOKEN_KEY, t); emitSessionChange(); setToken(t); };
         return resetToken
             ? <PortalReset token={resetToken} onToken={accept} />
-            : <PortalSignIn notice={notice} hadSession={Boolean(token)} attendee={otherPanel} />;
+            : <PortalSignIn notice={notice} hadSession={Boolean(token)} attendee={otherPanel} onToken={accept} />;
     }
 
     const forms = data.forms || [];
@@ -1677,8 +1714,9 @@ const FormCardTile = ({ form, onOpen, onRequest }: { form: FormCard; onOpen: () 
 // sitio: «Ingresa a tu panel» le decía lo contrario y le abría el formulario
 // encima. Se le dice con qué identidad entró, se le lleva a su inscripción y,
 // sólo si lo pide, se abre el ingreso para la cuenta del proyecto de su club.
-const PortalSignIn = ({ notice, hadSession, attendee }: {
+const PortalSignIn = ({ notice, hadSession, attendee, onToken }: {
     notice: any; hadSession?: boolean; attendee?: { email: string; name?: string | null; menu: string; path: string } | null;
+    onToken?: (t: string) => void;
 }) => {
     // Con sesión abierta y una carga fallida, el problema NO es el ingreso:
     // decirlo evita mandar a escribir otra vez unas credenciales correctas.
@@ -1696,6 +1734,117 @@ const PortalSignIn = ({ notice, hadSession, attendee }: {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    // v4.1337 — ¿El correo de la asistente tiene un proyecto postulado? Con el
+    // correo demostrado el servidor entrega el panel en el acto; si no, se
+    // ofrece mandar el enlace de confirmación a ese mismo correo.
+    const [probe, setProbe] = useState<'checking' | 'none' | 'proof'>(asAttendee ? 'checking' : 'none');
+    const [sending, setSending] = useState(false);
+    const [sentHint, setSentHint] = useState<string | null>(null);
+    const [linkError, setLinkError] = useState<string | null>(null);
+    useEffect(() => {
+        if (!asAttendee) return;
+        let cancelled = false;
+        fetchPortalLinkFromAttendee()
+            .then(data => {
+                if (cancelled) return;
+                if (data?.portalToken && onToken) { onToken(data.portalToken); return; }
+                setProbe(data?.hasProject && data?.needsProof ? 'proof' : 'none');
+            })
+            .catch(() => { if (!cancelled) setProbe('none'); });
+        return () => { cancelled = true; };
+        // Sólo al montar.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    const sendLink = async () => {
+        if (sending) return;
+        setSending(true); setLinkError(null);
+        try {
+            const res = await fetch(`${API}/project-fair/portal/link-attendee/send`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${localStorage.getItem(SESSION_TOKEN_KEY.attendee) || ''}` },
+            });
+            const body = await res.json().catch(() => ({}));
+            if (body?.portalToken && onToken) { onToken(body.portalToken); return; }
+            if (!res.ok || !body?.sent) throw new Error(body?.error || 'No pudimos enviar el enlace.');
+            setSentHint(body.emailHint || attendee?.email || '');
+        } catch (e: any) {
+            setLinkError(e?.message || 'No pudimos enviar el enlace. Inténtalo de nuevo en un momento.');
+        } finally {
+            setSending(false);
+        }
+    };
+
+    if (asAttendee && attendee && probe === 'checking') {
+        return (
+            <div className="min-h-screen bg-rotary-concrete">
+                <Navbar />
+                <div className="flex min-h-[60vh] items-center justify-center text-slate-500">
+                    <Loader2 className="mr-2 animate-spin" size={22} style={{ color: BLUE }} /> Buscando el proyecto de tu correo…
+                </div>
+                <Footer />
+            </div>
+        );
+    }
+
+    if (asAttendee && attendee && probe === 'proof') {
+        return (
+            <div className="min-h-screen bg-rotary-concrete">
+                <Navbar />
+                <div className="mx-auto flex min-h-[70vh] max-w-md items-center px-4 py-12">
+                    <div className="w-full rounded-2xl bg-white p-8 text-center shadow-sm">
+                        <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full" style={{ background: `${BLUE}14` }}>
+                            <ShieldCheck size={22} style={{ color: BLUE }} />
+                        </div>
+                        <h1 className="text-xl font-bold text-slate-900">Tu correo tiene un proyecto postulado</h1>
+                        <p className="mt-1.5 text-sm text-slate-500">
+                            Iniciaste sesión como asistente al evento. Con ese mismo correo
+                            {attendee.email ? <> (<span className="font-medium text-slate-600">{attendee.email}</span>)</> : null} está
+                            postulado el proyecto de tu club. Para abrir también su panel, confirma que el correo es tuyo.
+                        </p>
+
+                        {sentHint !== null ? (
+                            <div className="mt-5 flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-left text-[13px] text-emerald-800">
+                                <CheckCircle2 size={15} className="mt-0.5 shrink-0" />
+                                <span>Te enviamos un enlace a <strong>{sentHint}</strong>. Ábrelo y entrarás al panel de tu proyecto. Vence en 2 horas.</span>
+                            </div>
+                        ) : (
+                            <button
+                                onClick={sendLink}
+                                disabled={sending}
+                                className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3 text-[15px] font-bold text-white transition hover:opacity-90 disabled:opacity-60"
+                                style={{ background: BLUE }}>
+                                {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                                Enviarme el enlace de confirmación
+                            </button>
+                        )}
+                        {linkError && (
+                            <div className="mt-3 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-left text-[13px] text-red-800">
+                                <AlertCircle size={15} className="mt-0.5 shrink-0" /><span>{linkError}</span>
+                            </div>
+                        )}
+
+                        <button
+                            onClick={() => openLoginModal({
+                                next: PROJECT_FAIR_PORTAL_PATH,
+                                email: attendee.email || undefined,
+                                reason: 'Ingresa con la contraseña que registraste al inscribir el proyecto de tu club.',
+                            })}
+                            className="mt-3 text-[13px] font-semibold text-slate-500 hover:text-slate-800">
+                            O ingresa con la contraseña del proyecto
+                        </button>
+
+                        <p className="mt-6 border-t border-slate-100 pt-4 text-[13px] text-slate-500">
+                            Tu inscripción al evento sigue en{' '}
+                            <Link to={attendee.path} className="font-semibold" style={{ color: BLUE }}>{attendee.menu}</Link>.
+                        </p>
+                    </div>
+                </div>
+                <Footer />
+            </div>
+        );
+    }
+
     if (asAttendee && attendee) {
         return (
             <div className="min-h-screen bg-rotary-concrete">
@@ -1711,7 +1860,7 @@ const PortalSignIn = ({ notice, hadSession, attendee }: {
                             inscripción al evento{attendee.email ? <> (<span className="font-medium text-slate-600">{attendee.email}</span>)</> : null} está en «{attendee.menu}».
                         </p>
                         <p className="mt-3 text-[13px] text-slate-500">
-                            Esta página es el panel de los clubes que postularon un proyecto a la Feria. Tu cuenta de asistente no tiene un proyecto asociado.
+                            Esta página es el panel de los clubes que postularon un proyecto a la Feria, y no encontramos un proyecto postulado con tu correo.
                         </p>
 
                         <Link
@@ -1727,7 +1876,7 @@ const PortalSignIn = ({ notice, hadSession, attendee }: {
                                 reason: 'Ingresa con el correo y la contraseña que registraste al inscribir el proyecto de tu club.',
                             })}
                             className="mt-3 text-[13px] font-semibold text-slate-500 hover:text-slate-800">
-                            Mi club postuló un proyecto: ingresar con esa cuenta
+                            Mi club postuló el proyecto con otro correo: ingresar con esa cuenta
                         </button>
 
                         <p className="mt-6 border-t border-slate-100 pt-4 text-[13px] text-slate-500">

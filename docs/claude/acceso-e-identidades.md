@@ -179,3 +179,33 @@ dentro. Dos causas, dos reglas:
 - **`/mi-proyecto` recoge la sesión del club cuando aparece** (escucha
   `useSiteSessions`), no sólo al montar: el ingreso desde el encabezado o el
   puente por correo pueden guardarla con la página ya abierta.
+
+### El puente asistente → proyecto (v4.1338)
+
+El puente de v4.712 iba en UNA dirección: desde la sesión del proyecto (o de la
+plataforma) se descubre la del evento. Al revés no existía, así que una rotaria
+que postuló el proyecto de su club y se inscribió al evento con el MISMO correo
+pero con OTRA contraseña sólo veía su panel de asistente (caso real:
+2026-11-18, «Centro de rehabilitación… autismo»).
+
+`POST /api/project-fair/portal/link-attendee` (`attendeeAuth`) +
+`usePortalLinkFromAttendee` en el `Navbar`, simétrico de `useAttendeeLink`.
+
+- **Sólo con el correo DEMOSTRADO** (`EventAttendeeAccount.emailVerifiedAt`).
+  Una cuenta de asistente la crea cualquiera que escriba un correo en el
+  formulario del evento; el panel del proyecto maneja pagos y documentos del
+  club. Nunca abrirlo por un correo sin demostrar.
+- **Sin demostrar**: la respuesta dice `needsProof` (que el correo tiene cuenta
+  del panel ya lo revela `/portal/check-email`), el menú muestra «Mi Proyecto»
+  y `/mi-proyecto` ofrece «Enviarme el enlace de confirmación»
+  (`/link-attendee/send`, uno por minuto). El enlace `/mi-proyecto?vincular=`
+  (2 h, propósito `portal_link_attendee`, ligado al correo al que se mandó) va a
+  `/link-attendee/confirm`: marca el correo demostrado (`markEmailProven`) y
+  entrega el token del panel. Un enlace de otro propósito o de un correo que ya
+  no es el de la cuenta se rechaza.
+- **Un correo que no salió no se anuncia**: `/send` responde 502 si
+  `sendFairEmail` no tuvo éxito.
+- Un token del panel del club aceptado por el respaldo de `attendeeAuth`
+  (`viaRealm`) no cuenta como sesión de asistente aquí.
+- Queda en el historial del proyecto (`ProjectFairEvent`, tipo
+  `portal_link_attendee`).

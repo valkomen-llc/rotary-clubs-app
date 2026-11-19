@@ -36,12 +36,14 @@ import {
 import { isApplied, projectStateOf, owesRegistration, applicationsClosedOf } from '../lib/projectFairLifecycle.js';
 import { completionOf } from '../lib/projectFairMasterForm.js';
 import { SHORT_SESSION_TTL } from '../middleware/auth.js';
+import { markEmailProven, ATTENDEE_ROLES } from './eventAttendeeController.js';
 import { resolveForm } from '../lib/projectFormsRegistry.js';
 import {
     editability, listPortalForms, seedAnswersFor, formIsAvailable,
     saveForm as saveProjectForm, submitForm as submitProjectForm,
 } from './projectFormsController.js';
 
+console.log('[projectFairPortalController] v4.1338.0 cargado — Puente desde la sesión del ASISTENTE AL EVENTO: con el mismo correo, ya demostrado, abre también el panel del proyecto; sin demostrar, manda un enlace a ese correo (/portal/link-attendee).');
 console.log('[projectFairPortalController] v4.1301.0 cargado — «+ Postular segundo proyecto» desde el encabezado del perfil con su acción resuelta (postular, continuar, completar inscripción, dos proyectos ya registrados); el segundo proyecto creado desde acá queda marcado como ampliación posterior.');
 console.log('[projectFairPortalController] v4.1299.0 cargado — El perfil muestra la INSCRIPCIÓN del club: sus proyectos (uno o dos), un token por proyecto para gestionarlos por separado, el desglose y el pago único; agregar un segundo proyecto (también con el primero ya pagado: cobro complementario), quitarlo antes de pagar y restaurarlo.');
 console.log('[projectFairPortalController] v4.1253.0 cargado — El perfil del club muestra la postulación y el pago POR SEPARADO: un borrador se termina y se envía desde acá, y la inscripción se paga cuando el club quiera, sin que eso condicione su postulación.');
@@ -223,6 +225,198 @@ export const linkPlatformUser = async (req, res) => {
     } catch (error) {
         console.error('[project-fair-portal] linkPlatformUser:', error);
         res.json({ hasProject: false });
+    }
+};
+
+// ════════════════════════════════════════════════════════════════════
+// v4.1337 — PUENTE DESDE LA SESIÓN DEL ASISTENTE AL EVENTO
+//
+// Una rotaria que postuló el proyecto de su club Y se inscribió al evento con
+// el MISMO correo tiene dos cuentas, cada una con su contraseña. Si las
+// contraseñas difieren, `resolveSession` sólo abre la que coincide, y hasta
+// v4.1336 no había forma de descubrir el proyecto desde la sesión de
+// asistente: el puente existía sólo al revés (`/event-registrations/portal/link`).
+//
+// Regla de seguridad: una cuenta de asistente puede crearla cualquiera que
+// escriba un correo en el formulario del evento. Por eso el panel del proyecto
+// —que maneja pagos, formularios y documentos del club— SÓLO se abre si el
+// correo del asistente está DEMOSTRADO (`emailVerifiedAt`: abrió un enlace que
+// llegó a ese buzón). Si no, se manda un enlace A ESE CORREO y abrirlo es la
+// prueba. Misma regla que «vincular lo anterior» de v4.1267.
+// ════════════════════════════════════════════════════════════════════
+
+const LINK_PURPOSE = 'portal_link_attendee';
+
+/** Cuenta del panel para un correo: la suya, o la que se crea para su postulación. */
+const portalAccountForEmail = async (email) => {
+    const found = await db.query('SELECT * FROM "ProjectFairAccount" WHERE lower(email) = $1 LIMIT 1', [email]);
+    if (found.rows[0]) return found.rows[0];
+    const { rows } = await db.query(`
+        SELECT * FROM "ProjectFairSubmission"
+         WHERE lower(email) = $1
+         ORDER BY (status = 'paid') DESC, "createdAt" DESC
+         LIMIT 1`, [email]);
+    if (!rows[0]) return null;
+    return ensureAccountFor(rows[0]);
+};
+
+/** Lo que el navegador necesita para entrar: token, ruta y resumen del proyecto. */
+const portalLinkPayload = async (account) => {
+    const { rows } = await db.query(
+        'SELECT "publicRef", "projectName", "clubName", status FROM "ProjectFairSubmission" WHERE id = $1 LIMIT 1',
+        [account.submissionId]);
+    const cfg = await readConfigForAdmin();
+    return {
+        hasProject: true,
+        portalToken: signToken(account),
+        path: cfg.portal?.path || '/mi-proyecto',
+        submission: rows[0] ? {
+            publicRef: rows[0].publicRef,
+            projectName: rows[0].projectName,
+            clubName: rows[0].clubName,
+            status: rows[0].status,
+        } : null,
+    };
+};
+
+/** `m•••••77@gmail.com`: confirma a qué buzón va el enlace sin exponerlo entero. */
+const maskEmail = (email) => {
+    const [user, domain] = String(email || '').split('@');
+    if (!user || !domain) return '';
+    const head = user.slice(0, 1);
+    const tail = user.length > 3 ? user.slice(-2) : '';
+    return `${head}${'•'.repeat(Math.max(3, user.length - head.length - tail.length))}${tail}@${domain}`;
+};
+
+/** La cuenta del asistente de la sesión, o null si la sesión no es de asistente. */
+const attendeeAccountOf = (req) => {
+    const a = req.attendee;
+    // `attendeeAuth` también acepta el token del panel del club vinculado; ese
+    // ya ES la sesión del proyecto y no tiene nada que descubrir aquí.
+    if (!a?.account || a.viaRealm) return null;
+    if (a.account.role === ATTENDEE_ROLES.SUSPENDED) return null;
+    return a.account;
+};
+
+/**
+ * POST /portal/link-attendee — ¿el correo del asistente tiene un proyecto?
+ * Con el correo demostrado devuelve el token del panel; sin demostrar, sólo
+ * avisa que hace falta confirmarlo (que el correo tiene cuenta del panel ya lo
+ * dice `/portal/check-email`, así que no es información nueva).
+ */
+export const linkAttendee = async (req, res) => {
+    try {
+        await ensureTables();
+        const attendee = attendeeAccountOf(req);
+        const email = String(attendee?.email || '').trim().toLowerCase();
+        if (!isEmail(email)) return res.json({ hasProject: false, email: null });
+
+        const account = await portalAccountForEmail(email);
+        if (!account) return res.json({ hasProject: false, email });
+
+        if (!attendee.emailVerifiedAt) {
+            return res.json({ hasProject: true, needsProof: true, email, emailHint: maskEmail(email) });
+        }
+        await logEvent(account.submissionId, {
+            type: 'portal_link_attendee', title: 'Panel abierto desde la sesión de asistente al evento',
+            detail: `Mismo correo, ya demostrado (${email}).`, metadata: { attendeeAccountId: attendee.id },
+        }).catch(() => {});
+        return res.json({ email, ...(await portalLinkPayload(account)) });
+    } catch (error) {
+        console.error('[project-fair-portal] linkAttendee:', error);
+        // Nunca rompe la pantalla que lo consulta.
+        return res.json({ hasProject: false, email: null });
+    }
+};
+
+// Un envío por cuenta por minuto: el enlace sólo va al propio buzón, pero
+// pulsar diez veces no debe mandar diez correos.
+const lastLinkMail = new Map();
+
+/**
+ * POST /portal/link-attendee/send — manda al correo del asistente el enlace
+ * que demuestra que es suyo y abre el panel del proyecto.
+ */
+export const sendAttendeeLink = async (req, res) => {
+    try {
+        await ensureTables();
+        const attendee = attendeeAccountOf(req);
+        const email = String(attendee?.email || '').trim().toLowerCase();
+        if (!isEmail(email)) return res.status(401).json({ error: 'Inicia sesión como asistente para vincular tu proyecto.' });
+
+        const account = await portalAccountForEmail(email);
+        if (!account) return res.status(404).json({ error: 'No encontramos un proyecto postulado con tu correo.' });
+
+        // Ya demostrado: no hace falta correo, se entra en el acto.
+        if (attendee.emailVerifiedAt) return res.json({ sent: false, email, ...(await portalLinkPayload(account)) });
+
+        const last = lastLinkMail.get(attendee.id) || 0;
+        if (Date.now() - last < 60_000) {
+            return res.json({ sent: true, emailHint: maskEmail(email), throttled: true });
+        }
+        lastLinkMail.set(attendee.id, Date.now());
+
+        const token = jwt.sign({ sub: attendee.id, email, purpose: LINK_PURPOSE }, JWT_SECRET, { expiresIn: '2h' });
+        const cfg = await readConfigForAdmin();
+        const origin = req.headers.origin || 'https://app.clubplatform.org';
+        const link = `${origin}${cfg.portal?.path || '/mi-proyecto'}?vincular=${encodeURIComponent(token)}`;
+        const salida = await sendFairEmail({
+            to: email,
+            subject: `Abre el panel de tu proyecto — ${cfg.edition?.name || 'Feria de Proyectos'}`,
+            cfg,
+            html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;color:#1f2937">
+                <h2 style="color:#17458F">Confirma que este correo es tuyo</h2>
+                <p>Iniciaste sesión como asistente al evento y con este mismo correo está postulado el proyecto de tu club. Para abrir también el panel del proyecto, confirma que el correo es tuyo:</p>
+                <p><a href="${link}" style="display:inline-block;background:#17458F;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">Abrir el panel de mi proyecto</a></p>
+                <p style="font-size:13px;color:#6b7280">El enlace vence en 2 horas. Si no fuiste tú, puedes ignorar este correo.</p>
+            </div>`,
+        });
+        // No se dice «te enviamos» de un correo que no salió.
+        if (!salida?.success) {
+            lastLinkMail.delete(attendee.id);
+            console.error('[project-fair-portal] sendAttendeeLink: el correo no salió:', salida?.error);
+            return res.status(502).json({ error: 'No pudimos enviar el correo de confirmación. Inténtalo de nuevo en un momento o ingresa con la contraseña del proyecto.' });
+        }
+        return res.json({ sent: true, emailHint: maskEmail(email) });
+    } catch (error) {
+        console.error('[project-fair-portal] sendAttendeeLink:', error);
+        return res.status(500).json({ error: 'No pudimos enviar el enlace. Inténtalo de nuevo en un momento.' });
+    }
+};
+
+/**
+ * POST /portal/link-attendee/confirm — el enlace del correo. Abrirlo demuestra
+ * el correo: se marca en la cuenta del asistente (así la próxima vez el puente
+ * es automático) y se entrega el token del panel del proyecto.
+ */
+export const confirmAttendeeLink = async (req, res) => {
+    try {
+        await ensureTables();
+        let payload;
+        try { payload = jwt.verify(clean(req.body?.token, 2000), JWT_SECRET); }
+        catch { return res.status(400).json({ error: 'El enlace venció o no es válido. Pide uno nuevo desde «Mi Proyecto».' }); }
+        if (payload?.purpose !== LINK_PURPOSE || !payload?.sub) return res.status(400).json({ error: 'Enlace no válido.' });
+
+        const email = String(payload.email || '').toLowerCase();
+        const { rows } = await db.query('SELECT * FROM "EventAttendeeAccount" WHERE id = $1 LIMIT 1', [payload.sub]);
+        const attendee = rows[0];
+        // El correo de la cuenta pudo cambiar después de emitir el enlace: el
+        // enlace sólo demuestra el buzón al que se mandó.
+        if (!attendee || String(attendee.email || '').toLowerCase() !== email) {
+            return res.status(400).json({ error: 'Enlace no válido.' });
+        }
+        await markEmailProven(attendee);
+
+        const account = await portalAccountForEmail(email);
+        if (!account) return res.status(404).json({ error: 'No encontramos un proyecto postulado con tu correo.' });
+        await logEvent(account.submissionId, {
+            type: 'portal_link_attendee', title: 'Panel abierto desde la sesión de asistente al evento',
+            detail: `El correo se confirmó con el enlace enviado a ${email}.`, metadata: { attendeeAccountId: attendee.id },
+        }).catch(() => {});
+        return res.json({ email, ...(await portalLinkPayload(account)) });
+    } catch (error) {
+        console.error('[project-fair-portal] confirmAttendeeLink:', error);
+        return res.status(500).json({ error: 'No pudimos abrir el panel de tu proyecto.' });
     }
 };
 

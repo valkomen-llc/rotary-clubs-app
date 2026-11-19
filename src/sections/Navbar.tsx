@@ -22,6 +22,7 @@ import { ATTENDEE_TOKEN_KEY } from '../pages/MiInscripcion';
 import { useEventCta } from '../components/EventRegistrationCta';
 import { useProjectFairLink } from '../lib/useProjectFairLink';
 import { useAttendeeLink } from '../lib/useAttendeeLink';
+import { usePortalLinkFromAttendee } from '../lib/usePortalLinkFromAttendee';
 import { onOpenLoginModal, emitLoginSuccess } from '../lib/loginModal';
 // Las tres identidades del sitio, tal como las ve el encabezado (v4.693).
 import { useSiteSessions, closeAllSessions, initialsOf, realmOwningPath } from '../lib/siteSession';
@@ -206,10 +207,15 @@ const Navbar = () => {
   // correo, sin pedirle que cierre sesión y vuelva a entrar.
   useAttendeeLink(sessions.length > 0 && !sessions.some(s => s.realm === 'attendee'));
   const attendeeSession = sessions.find(s => s.realm === 'attendee') || null;
+  // v4.1337 — Y al revés: quien entró como asistente puede haber postulado el
+  // proyecto de su club con el mismo correo (y otra contraseña).
+  const attendeeProject = usePortalLinkFromAttendee(!!attendeeSession && !sessions.some(s => s.realm === 'portal'));
   // La de la plataforma manda si existe; si no, la primera que haya.
   const primarySession = sessions[0] || null;
   const signedIn = isAuthenticated || sessions.length > 0;
-  const hasProjectPanel = projectLink.hasProject || justLinked || !!portalSession;
+  // Con el correo aún sin confirmar, «Mi Proyecto» lleva a la pantalla que
+  // manda el enlace de confirmación: el proyecto existe y es suyo de encontrar.
+  const hasProjectPanel = projectLink.hasProject || justLinked || !!portalSession || attendeeProject.needsProof;
   const avatarName = (user as any)?.name || primarySession?.name || null;
   const avatarEmail = user?.email || primarySession?.email || '';
   const avatarOrg = primarySession?.realm === 'platform' ? null : primarySession?.org || null;
