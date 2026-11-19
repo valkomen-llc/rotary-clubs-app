@@ -15,7 +15,8 @@ const lib = read('src/components/admin/sidebarCollapse.tsx');
 const layout = read('src/components/admin/AdminLayout.tsx');
 
 ok(/\(min-width: 1024px\)/.test(lib) && /mini: collapsed && isDesktop/.test(lib), 'minimizar sólo aplica en escritorio (≥ 1024 px): el cajón del teléfono va entero');
-ok(/try \{ return localStorage\.getItem/.test(lib) && /catch \{ return false; \}/.test(lib), 'la preferencia se lee con try/catch y, si falla, arranca maximizada');
+ok(/try \{ return sessionStorage\.getItem\(SIDEBAR_EXPANDED_KEY\) !== '1'; \} catch \{ return true; \}/.test(lib), 'arranca MINIMIZADA: sólo la marca de esta pestaña la abre, y si el almacenamiento falla, minimizada (v4.1341)');
+ok(!/localStorage/.test(lib.replace(/\/\/.*$/gm, '')), 'la preferencia vieja de localStorage ya no se lee ni se escribe (v4.1341)');
 ok(/setCollapsed\(c => \{/.test(lib), 'alternar usa el estado actual (funciona aunque el almacenamiento falle)');
 ok(/className="pointer-events-none fixed z-\[200\]/.test(lib) && /role="tooltip"/.test(lib), 'el título flotante es fijo (la lista con overflow no lo recorta) y es un tooltip accesible');
 ok(/onFocus: show\(label\)/.test(lib) && /onBlur: hide/.test(lib), 'el título aparece también con el teclado');

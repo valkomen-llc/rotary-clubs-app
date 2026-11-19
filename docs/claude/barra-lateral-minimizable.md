@@ -39,9 +39,16 @@ Pruebas: `npm run test:admin:sidebar-collapse` (estática, en `prebuild`) y
 - **Accesible**: cada ícono conserva su nombre (`aria-label`), el globo es un
   `role="tooltip"` y aparece también con el teclado (foco). Los bloqueados
   dicen «· bloqueado».
-- **La preferencia es del navegador** (`admin-sidebar-collapsed`), con
-  try/catch: si el almacenamiento falla arranca maximizada y el botón sigue
-  funcionando en los dos sentidos.
+- **⚠️ ARRANCA MINIMIZADA, SIEMPRE (v4.1341).** Pedido del cliente: «que
+  siempre esté minimizado por defecto; maximizar, opcional». Maximizar se
+  recuerda SÓLO en la pestaña (`sessionStorage`, clave
+  `admin-sidebar-expanded` = «1»): sobrevive a navegar y recargar, y cada
+  visita nueva vuelve minimizada. La preferencia de v4.1333
+  (`admin-sidebar-collapsed` en `localStorage`) se ignora a propósito: quien
+  la guardó en «0» quedaría maximizado para siempre. Con try/catch: si el
+  almacenamiento falla arranca minimizada y el botón sigue funcionando en los
+  dos sentidos. (Hasta v4.1340 arrancaba maximizada y recordaba la elección
+  en `localStorage`.)
 - **⌘K / Ctrl+K** con la barra minimizada la maximiza y enfoca el buscador; el
   ícono de lupa hace lo mismo.
 - Un ítem nuevo del menú no necesita nada: hereda ícono, título flotante y
