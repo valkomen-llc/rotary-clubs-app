@@ -767,6 +767,26 @@ abandonada anterior a esa versión no cuenta como intento; y el correo de
 confirmación usa el remitente de la Convocatoria con el respaldo de la
 plataforma, como el comprobante.
 
+#### La caja «Inscripción a la Feria de Proyectos», en acordeón — v4.1343
+
+Pedido del cliente: que la caja de `/mi-proyecto` se minimice como la del
+asistente en `/mi-inscripcion`. `PaymentCallout` (`src/pages/MiProyecto.tsx`):
+
+- **Minimizada por defecto, en cada visita** (estado local, sin recordar). El
+  encabezado es un `<button>` dentro del `<h2>` con `aria-expanded` /
+  `aria-controls`; el cuerpo lleva `hidden` cuando está cerrada.
+- **Cerrada dice lo básico**: el concepto, la edición, el estado del pago y el
+  proyecto con su código (con dos proyectos: «N proyectos · club»).
+- **⚠️ Lo que pide una acción no se esconde**: con `pago.canPay`, «Pagar
+  inscripción» (`PayButton`, un solo componente para cerrada y abierta, que no
+  se duplica) y el aviso quedan a la vista aunque la caja esté cerrada. El
+  veredicto sigue siendo el del servidor.
+- En el teléfono los indicadores bajan debajo del título (`flex-col
+  sm:flex-row`): en fila apretaban el título a una palabra por renglón.
+- Prueba en navegador: `npm run test:fair:registration-accordion:ui` (32,
+  1280 y 390 px, pagado y pendiente; necesita `dist/assets`).
+  `PaymentCallout` se exporta con nombre SÓLO para esa prueba.
+
 ### Rotary Grants 25A → 31A — v4.1254
 
 El destino del «siguiente paso» (`redirect`: perfil del club, confirmación del
