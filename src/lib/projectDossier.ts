@@ -19,7 +19,7 @@ export interface DossierField {
     editable: boolean; lockReason: string | null; sensitive: boolean; personal?: boolean;
     translatable: boolean; glossary: boolean; filled: boolean;
 }
-export interface DossierSection { key: string; title: string; titleEn: string; district?: boolean; fields: DossierField[] }
+export interface DossierSection { key: string; title: string; titleEn: string; district?: boolean; adminOnly?: boolean; fields: DossierField[] }
 export interface DossierGroup {
     key: string; source: 'submission' | 'form'; formKey?: string; title: string; titleEn: string;
     started?: boolean; completionPct?: number; formStatus?: string | null; submittedAt?: string | null;
@@ -155,6 +155,9 @@ export const plainValue = (field: Pick<DossierField, 'type'>, value: any, lang: 
         case 'checkbox': return value === true ? (lang === 'en' ? 'Yes' : 'Sí') : (lang === 'en' ? 'No' : 'No');
         case 'multiselect': return Array.isArray(value) ? value.join(' · ') : String(value);
         case 'clubs': return Array.isArray(value) ? value.join(', ') : String(value);
+        // v4.1347 — Los calculados del formulario son montos en US$ (el
+        // formulario los muestra con `fmtUsd`): la ficha decía «2000» y «250».
+        case 'computed': return Number.isFinite(Number(value)) && String(value).trim() !== '' ? fmtMoney(value, lang) : String(value);
         default: return Array.isArray(value) ? value.join(', ') : String(value);
     }
 };

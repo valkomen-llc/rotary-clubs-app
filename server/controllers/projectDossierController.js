@@ -20,6 +20,7 @@ import { ensureProjectDossierSchema } from '../lib/ensureProjectDossierSchema.js
 import { routeToModel, getDefaultModel } from '../lib/ai-router.js';
 import D from '../lib/projectDossier.js';
 
+console.log('[projectDossierController] v4.1347.0 cargado — Ficha técnica: la Aprobación institucional (districtSpace, la diligencia el club) vuelve a la ficha del gestor; sólo se quita lo adminOnly.');
 console.log('[projectDossierController] v4.1345.0 cargado — Ficha técnica para el gestor: GET /portal/ficha (proyecto del token) con registro, Formulación y FDD, sin documento de identidad, pagos ni espacios del Distrito, logotipo de la Feria y registro de cada descarga.');
 
 const clean = (v, max = 250) => String(v ?? '').trim().slice(0, max);

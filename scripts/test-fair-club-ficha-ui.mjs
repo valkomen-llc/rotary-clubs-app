@@ -132,6 +132,18 @@ try {
     check('el gestor guarda los clubes participantes', pm.status === 200);
     const guardado = (await db.query('SELECT answers FROM "ProjectFairMasterForm" WHERE "submissionId" = $1', [S.id])).rows[0].answers;
     check('quedan en la base como lista', JSON.stringify(guardado.identificacion.participatingClubs) === JSON.stringify(['Pereira', 'Pereira del Otún', 'Pereira Nuevo']));
+
+    console.log('\n▸ Presupuesto (v4.1347, caso Paula Cruz)');
+    // La Formulación SIN «Distrito Colombiano» en dólares; el FDD pide 958.
+    am.presupuesto = { budgetTable: { projectCost: { pesos: '464297236', usd: '136558' }, localClub: { pesos: '20400000', usd: '6000' } } };
+    check('la Formulación guarda su presupuesto', (await call('PUT', '/portal/forms/master', tS, { answers: am })).status === 200);
+    const gf = await call('GET', '/portal/forms/fdd_2026_2027', tS);
+    const af = gf.data.answers;
+    af.presupuesto = { ...(af.presupuesto || {}), budgetUsd: '136558', budgetBreakdown: [
+        { concept: 'Equipment', amountUsd: '132727' }, { concept: 'Monitoring/evaluation', amountUsd: '441' },
+        { concept: 'Project management', amountUsd: '735' }, { concept: 'Operations (Unforeseen)', amountUsd: '' }] };
+    af.fdd = { ...(af.fdd || {}), requestedUsd: '958' };
+    check('el FDD guarda su desglose (el rubro 4 sin valor) y lo solicitado', (await call('PUT', '/portal/forms/fdd_2026_2027', tS, { answers: af })).status === 200);
     let r = await call('GET', '/portal/ficha', null);
     check('sin sesión del perfil, nada', r.status === 401);
     r = await call('GET', '/portal/ficha', tS);
@@ -140,7 +152,8 @@ try {
     check('con el registro, la Formulación y el FDD', keys.includes('submission') && keys.includes('master') && keys.includes('fdd_2026_2027'), keys.join(','));
     const json = JSON.stringify(r.data.es);
     check('NUNCA el documento de identidad', !json.includes('1088123456') && !json.includes('submission.document'));
-    check('ni los espacios institucionales del Distrito', !(r.data.es.groups || []).some(g => g.sections.some(s => s.district)));
+    check('ni lo que escribe sólo el comité (adminOnly)', !(r.data.es.groups || []).some(g => g.sections.some(s => s.adminOnly)));
+    check('sí la Aprobación institucional del FDD, que diligencia el club (v4.1347)', (r.data.es.groups || []).some(g => g.key === 'fdd_2026_2027' && g.sections.some(s => s.key === 'aprobacion')));
     check('trae el logotipo de la Feria (lo descarga el servidor)', typeof r.data.logo === 'string' && r.data.logo.startsWith('data:image/png;base64,'));
     const rx = await call('GET', '/portal/ficha', portalToken(X));
     check('otro club descarga SU ficha, nunca la ajena', rx.status === 200 && rx.data.publicRef === 'FP-OTRO');
@@ -264,6 +277,13 @@ window.go = (t) => createRoot(document.getElementById('root')).render(React.crea
                 check('dice cuántas páginas tiene', /Página 1 de \d+/.test(text), `${pdf.numPages} páginas`);
                 check('aclara que no incluye documento ni pagos', /No incluye documento de identidad ni datos de pago/.test(text));
                 check('la portada nombra a los clubes participantes (v4.1346)', /Clubes participantes:\s*Pereira, Pereira del Otún, Pereira Nuevo/.test(text.replace(/\s+/g, ' ')));
+                const flat = text.replace(/\s+/g, ' ');
+                check('el desglose sale como tabla con cada rubro y su valor', /Equipment US\$ 132\.727/.test(flat) && /Monitoring\/evaluation US\$ 441/.test(flat) && /Project management US\$ 735/.test(flat));
+                check('el rubro sin monto dice «Sin valor»', /Operations \(Unforeseen\) Sin valor/.test(flat));
+                check('total del desglose y diferencia sin detallar (US$ 2.655)', /Total del desglose US\$ 133\.903/.test(flat) && /Diferencia sin detallar: US\$ 2\.655/.test(flat));
+                check('la tabla de la Formulación dice lo solicitado al FDD (US$ 958)', /Solicitado al FDD en la Solicitud de Aportes del FDD: US\$ 958/.test(flat));
+                check('y la Aprobación institucional del FDD está en la ficha', /Aprobación institucional/.test(flat));
+                check('los calculados salen como dinero (Total de aportes esperados US$ 2.000)', /Total de aportes esperados \(US\$\) US\$ 2\.000/.test(flat) && /25% mín\. del aporte al FAP 2023-2024 \(US\$\) US\$ 250/.test(flat));
                 // La ficha del comité (expediente, en español) también en Open Sans.
                 const admin = await call('GET', '/portal/ficha', tS);
                 const b64 = await page.evaluate((p) => window.adminPdf({ ...p.data, kind: 'es', audience: undefined, logo: undefined }), admin);

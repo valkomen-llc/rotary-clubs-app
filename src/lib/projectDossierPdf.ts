@@ -118,6 +118,8 @@ const BRAND_TOP = 96;
 
 class Writer {
     doc: any; y = TOP; header: string; draftMark: string | null; brand: Brand | null = null; top = TOP;
+    /** v4.1347 — Los campos del expediente por ruta, para cruzar datos entre formularios. */
+    index: Map<string, DossierField> = new Map();
     constructor(doc: any, header: string, draftMark: string | null, brand: Brand | null = null) {
         this.doc = doc; this.header = header; this.draftMark = draftMark;
         if (brand) { this.brand = brand; this.top = BRAND_TOP; this.y = BRAND_TOP; }
@@ -269,6 +271,112 @@ function matrixBlock(w: Writer, field: DossierField, label: string, lang: Lang) 
         d.setDrawColor(...LINE); d.setLineWidth(0.5); d.line(M, w.y + 5, M + CW, w.y + 5);
         w.y += 18;
     }
+    // v4.1347 — Caso Paula Cruz: «aquí no me coló la FDD». La tabla de la
+    // Formulación no toma el valor del FDD: si «Distrito Colombiano» está vacío
+    // en dólares, se dice lo que el club solicitó en la Solicitud de Aportes del
+    // FDD —con su origen—, sin escribirlo en la tabla como si el club lo hubiera
+    // puesto ahí.
+    if (field.path === 'master.presupuesto.budgetTable') {
+        const fddUsd = w.index.get('fdd_2026_2027.fdd.requestedUsd')?.value;
+        if (isEmptyValue(value?.colombianDistrict?.usd) && !isEmptyValue(fddUsd)) {
+            const txt = lang === 'en'
+                ? `Requested from the District Designated Fund (DDF request form): ${plainValue({ type: 'currency' }, fddUsd, 'en')}`
+                : `Solicitado al FDD en la Solicitud de Aportes del FDD: ${plainValue({ type: 'currency' }, fddUsd, 'es')}`;
+            w.flow(w.lines(txt, 8.5, CW), 8.5, MUTED, M, false, true);
+        }
+    }
+    w.y += 6;
+}
+
+const BREAKDOWN_TOTALS: Record<string, string> = {
+    // El desglose del FDD se concilia con su «Presupuesto total del proyecto».
+    'fdd_2026_2027.presupuesto.budgetBreakdown': 'fdd_2026_2027.presupuesto.budgetUsd',
+};
+const toNumber = (v: any): number | null => {
+    if (isEmptyValue(v)) return null;
+    const n = Number(String(v).replace(/[^\d.-]/g, ''));
+    return Number.isFinite(n) ? n : null;
+};
+
+/**
+ * v4.1347 — Un repetidor con columnas de dinero (el «Desglose del
+ * presupuesto» del FDD) se dibuja como TABLA: cada rubro con su valor, la
+ * fila de total y, si el formulario tiene el presupuesto total, la diferencia
+ * sin detallar. Así un rubro sin valor salta a la vista (caso Paula Cruz:
+ * «Operations» sin sus US$ 2.655).
+ */
+function moneyRepeaterTable(w: Writer, field: DossierField, label: string, lang: Lang, filled: any[]) {
+    const d = w.doc;
+    const cols = field.columns || [];
+    const colLabel = (i: number) => (lang === 'en' ? field.columnsEn?.[i] || cols[i].label : cols[i].label);
+    const isMoney = (c: { type: string }) => c.type === 'currency' || c.type === 'number';
+    const moneyW = 112;
+    const nMoney = cols.filter(isMoney).length;
+    const textCols = cols.filter(c => !isMoney(c));
+    const numW = 18;
+    const textW = Math.max(80, (CW - numW - nMoney * moneyW) / Math.max(1, textCols.length));
+    const xOf: number[] = [];
+    let x = M + numW;
+    cols.forEach(c => { xOf.push(x); x += isMoney(c) ? moneyW : textW; });
+    const fmt = (c: { type: string }, v: any) => (isEmptyValue(v) ? (lang === 'en' ? 'Not provided' : 'Sin valor') : (isMoney(c) ? plainValue({ type: 'currency' }, v, lang) : String(v)));
+
+    w.ensure(14 + 18 * Math.min(filled.length + 2, 8));
+    w.flow(w.lines(label, 8, CW, true), 8, MUTED, M, true);
+    d.setFillColor(...BAND); d.rect(M, w.y - 10, CW, 16, 'F');
+    d.setFont(fam(d), 'bold'); d.setFontSize(8); d.setTextColor(...MUTED);
+    d.text('#', M + 4, w.y);
+    cols.forEach((c, i) => (isMoney(c)
+        ? d.text(sanitize(colLabel(i)), xOf[i] + moneyW - 4, w.y, { align: 'right' })
+        : d.text(sanitize(colLabel(i)), xOf[i] + 2, w.y)));
+    w.y += 16;
+
+    const totals = cols.map(() => 0);
+    filled.forEach((r, ri) => {
+        const cellLines = cols.map(c => (isMoney(c) ? [fmt(c, r?.[c.key])] : w.lines(fmt(c, r?.[c.key]), 9.5, textW - 8)));
+        const h = Math.max(...cellLines.map(l => l.length)) * 13 + 5;
+        w.ensure(h + 4);
+        d.setFont(fam(d), 'normal'); d.setFontSize(9.5);
+        d.setTextColor(...MUTED); d.text(String(ri + 1), M + 4, w.y);
+        cols.forEach((c, i) => {
+            const v = r?.[c.key];
+            const empty = isEmptyValue(v);
+            d.setFont(fam(d), empty ? 'italic' : 'normal');
+            d.setTextColor(...(empty ? [185, 28, 28] as RGB : INK));
+            if (isMoney(c)) {
+                d.text(sanitize(cellLines[i][0]), xOf[i] + moneyW - 4, w.y, { align: 'right' });
+                const n = toNumber(v); if (n !== null) totals[i] += n;
+            } else {
+                cellLines[i].forEach((ln, li) => d.text(ln, xOf[i] + 2, w.y + li * 13));
+            }
+        });
+        d.setDrawColor(...LINE); d.setLineWidth(0.5); d.line(M, w.y + h - 9, M + CW, w.y + h - 9);
+        w.y += h;
+    });
+
+    // Total
+    w.ensure(20);
+    d.setFont(fam(d), 'bold'); d.setFontSize(9.5); d.setTextColor(...BLUE);
+    d.text(lang === 'en' ? 'Breakdown total' : 'Total del desglose', M + 4, w.y);
+    cols.forEach((c, i) => { if (isMoney(c)) d.text(plainValue({ type: 'currency' }, Math.round(totals[i] * 100) / 100, lang), xOf[i] + moneyW - 4, w.y, { align: 'right' }); });
+    w.y += 14;
+
+    // Conciliación con el presupuesto total del formulario.
+    const totalPath = BREAKDOWN_TOTALS[field.path];
+    const budget = totalPath ? toNumber(w.index.get(totalPath)?.value) : null;
+    const moneyIdx = cols.findIndex(isMoney);
+    if (budget !== null && moneyIdx >= 0) {
+        const diff = Math.round((budget - totals[moneyIdx]) * 100) / 100;
+        const money = (n: number) => plainValue({ type: 'currency' }, n, lang);
+        const txt = diff === 0
+            ? (lang === 'en' ? `Matches the total project budget (${money(budget)}).` : `Coincide con el presupuesto total del proyecto (${money(budget)}).`)
+            : (lang === 'en'
+                ? `Total project budget: ${money(budget)} · Difference not itemized: ${money(diff)}`
+                : `Presupuesto total del proyecto: ${money(budget)} · Diferencia sin detallar: ${money(diff)}`);
+        w.flow(w.lines(txt, 8.5, CW), 8.5, diff === 0 ? MUTED : [185, 28, 28], M, diff !== 0, diff === 0);
+    }
+    if (filled.some(r => cols.some(c => isMoney(c) && isEmptyValue(r?.[c.key])))) {
+        w.flow(w.lines(lang === 'en' ? 'Rows marked «Not provided» have no amount in the form.' : 'Los rubros marcados «Sin valor» no tienen monto en el formulario.', 8, CW), 8, MUTED, M, false, true);
+    }
     w.y += 6;
 }
 
@@ -276,6 +384,11 @@ function repeaterBlock(w: Writer, field: DossierField, label: string, lang: Lang
     const rows: any[] = Array.isArray(lang === 'en' ? field.valueEn : field.value) ? (lang === 'en' ? field.valueEn : field.value) : [];
     const cols = field.columns || [];
     const filled = rows.filter(r => r && Object.values(r).some(v => String(v ?? '').trim() !== ''));
+    if (filled.length && cols.some(c => c.type === 'currency')) {
+        moneyRepeaterTable(w, field, label, lang, filled);
+        if (lang === 'en' && field.untranslated) w.flow([`(${T.en.pending})`], 8.5, MUTED, M + 8, false, true);
+        return;
+    }
     const lineFor = (r: any, i: number) => `${i + 1}. ` + cols.map((c, ci) => {
         const cl = lang === 'en' ? field.columnsEn?.[ci] || c.label : c.label;
         const v = r?.[c.key];
@@ -293,6 +406,8 @@ function repeaterBlock(w: Writer, field: DossierField, label: string, lang: Lang
 }
 
 function renderDossier(w: Writer, dossier: Dossier, lang: Lang) {
+    w.index = new Map();
+    for (const g of dossier.groups) for (const s of g.sections || []) for (const f of s.fields || []) w.index.set(f.path, f);
     for (const g of dossier.groups) {
         const anyField = g.sections.some(s => s.fields.length);
         if (!anyField) continue;
