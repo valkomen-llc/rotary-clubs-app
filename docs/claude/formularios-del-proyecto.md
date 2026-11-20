@@ -82,3 +82,34 @@ Pruebas: `npm run test:project-form` (31 casos, sin base ni red).
 
 
 > **v4.1330 — Edición después del cierre.** La «Fecha límite de postulación» ya no bloquea la edición de los formularios de lo ya inscrito (eso lo decide la política «Edición de proyectos después del cierre») y SÍ cierra las postulaciones nuevas en el servidor. Ver `docs/claude/edicion-de-proyectos-despues-del-cierre.md`.
+
+### Clubes participantes en el proyecto — v4.1346
+
+Pedido de Paula Cruz (Club Pereira del Café): *«el club postulante no es sólo
+Pereira del Café sino los 4 clubes: Pereira, Pereira del Otún, Pereira del
+Café y Pereira Nuevo»*. La ficha técnica nombraba sólo al club que postuló.
+
+- **Campo nuevo en la Formulación**, sección «Identificación del proyecto»,
+  después de «Distrito Rotario»: `participatingClubs`, «Clubes participantes en
+  el proyecto», **opcional** (no cambia el avance de nadie: el avance cuenta
+  sólo los obligatorios).
+- **Tipo nuevo `clubs`** en el motor (`FIELD_TYPES`, `hasValue`,
+  `validateAnswers` y su espejo `src/lib/projectForms.ts`): una LISTA de
+  nombres, sin repetidos (sin distinguir mayúsculas), hasta
+  `MAX_CLUBS_PER_FIELD = 12`. Un texto suelto cuenta como respondido para que
+  la validación lo rechace. Se dibuja con `ClubsField` (chips + el selector
+  ÚNICO `ClubSelector` del Catálogo Maestro, distritos 4271 y 4281): no se
+  escribe un club a mano.
+- **⚠️ LA TRAMPA DE v4.788 AL REVÉS**: lo guardado en la convocatoria tapa
+  también lo que se AGREGA al código. `ensureParticipatingClubsField` lo suma
+  al LEER en `normalizeSavedConfig` (junto a `dropRetiredBudgetRows`), sin
+  escribir en la base; misma referencia si ya está.
+- Se trata como `multiselect` en el Word, el expediente (`coerceValue` deduplica),
+  `DossierValue` y la aprobación; no se traduce (son nombres) ni pasa por el
+  glosario.
+- **La portada de las fichas** (la del gestor y la del comité) dice
+  «Clubes participantes: …» debajo del club y el distrito. La postulación —y
+  el pago— siguen siendo de UN club (`submission.clubName`).
+- Pruebas: `npm run test:fair:participating-clubs` (22, en `prebuild`) y
+  `test:fair:club-ficha:ui` (40: plantilla guardada vieja que recibe el campo,
+  guardado, la portada del PDF y el control a 390 px con el catálogo).

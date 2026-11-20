@@ -40,7 +40,7 @@ const valueParagraphs = (text) =>
 
 const fmtValue = (value, field) => {
     if (value === null || value === undefined || value === '') return '—';
-    if (field?.type === 'multiselect') return Array.isArray(value) ? value.join(', ') || '—' : String(value);
+    if (field?.type === 'multiselect' || field?.type === 'clubs') return Array.isArray(value) ? value.join(', ') || '—' : String(value);
     if (field?.type === 'checkbox') return value ? 'Sí' : 'No';
     if (field?.type === 'currency') {
         const n = Number(value);

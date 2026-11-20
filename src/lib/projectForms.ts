@@ -112,6 +112,9 @@ export interface EditWindow {
     requestedAt: string | null;
 }
 
+/** v4.1346 — Tope de clubes en un campo `clubs` (el mismo que el servidor). */
+export const MAX_CLUBS_PER_FIELD = 12;
+
 // ── Contenido de un campo ────────────────────────────────────────────
 export const hasValue = (value: any, type?: string): boolean => {
     if (value === null || value === undefined) return false;
@@ -123,6 +126,8 @@ export const hasValue = (value: any, type?: string): boolean => {
             row && typeof row === 'object' && Object.values(row).some(v => String(v ?? '').trim() !== ''));
     }
     if (type === 'multiselect') return Array.isArray(value) && value.length > 0;
+    // v4.1346 — Varios clubes del Catálogo Maestro (lista de nombres).
+    if (type === 'clubs') return Array.isArray(value) ? value.some(v => String(v ?? '').trim() !== '') : String(value).trim() !== '';
     if (type === 'checkbox') return value === true;
     if (type === 'number' || type === 'currency' || type === 'percent') {
         return String(value).trim() !== '' && !Number.isNaN(Number(value));
@@ -188,6 +193,10 @@ export const fieldError = (field: FieldDef, value: any): string | null => {
     const text = String(value ?? '').trim();
 
     switch (field.type) {
+        case 'clubs':
+            if (!Array.isArray(value)) return 'Selecciona los clubes de la lista.';
+            if (value.length > MAX_CLUBS_PER_FIELD) return `Puedes agregar hasta ${MAX_CLUBS_PER_FIELD} clubes.`;
+            return null;
         case 'email':
             if (!RE_EMAIL.test(text)) return 'Escribe un correo válido (nombre@dominio.com).';
             break;

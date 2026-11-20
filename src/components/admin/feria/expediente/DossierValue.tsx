@@ -66,7 +66,7 @@ const DossierValue = ({ field, value, lang = 'es' }: { field: DossierField; valu
         );
     }
     if (isEmptyValue(value)) return <EmptyValue lang={lang} />;
-    if (field.type === 'multiselect' && Array.isArray(value)) {
+    if ((field.type === 'multiselect' || field.type === 'clubs') && Array.isArray(value)) {
         return (
             <div className="flex flex-wrap gap-1.5">
                 {value.map((v: string) => <span key={v} className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-800">{v}</span>)}

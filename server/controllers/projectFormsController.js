@@ -51,6 +51,7 @@ import {
     resolveForm, resolveForms, storageOf, storageIsShared, MASTER_FORM_KEY,
 } from '../lib/projectFormsRegistry.js';
 
+console.log('[projectFormsController] v4.1346.0 cargado — Formulación: «Clubes participantes en el proyecto» (tipo clubs, del Catálogo Maestro, opcional, hasta 12), agregado también a las plantillas guardadas al leer.');
 console.log('[projectFormsController] v4.1340.0 cargado — Formularios del proyecto: plazo de edición completa para los gestores (todos los campos, ampliable desde la Convocatoria); después, la política «Edición de proyectos después del cierre», con campos bloqueados en el servidor y bitácora campo a campo');
 
 const clean = (v, max = 250) => String(v ?? '').trim().slice(0, max);
