@@ -614,7 +614,10 @@ export const forgotPassword = async (req, res) => {
         const cfg = await readConfigForAdmin();
         const origin = req.headers.origin || 'https://app.clubplatform.org';
         const link = `${origin}${cfg.portal?.path || '/mi-proyecto'}?reset=${encodeURIComponent(token)}`;
-        await sendFairEmail({
+        // v4.1342 — Antes el resultado se descartaba: si el correo no salía,
+        // nadie se enteraba (caso Mónica Gaitán). Ahora queda en el registro;
+        // el comité tiene además «Usuarios» para dar el acceso a mano.
+        const sent = await sendFairEmail({
             to: account.email,
             subject: `Restablece tu contraseña — ${cfg.edition?.name || 'Feria de Proyectos'}`,
             cfg,
@@ -624,7 +627,8 @@ export const forgotPassword = async (req, res) => {
                 <p><a href="${link}" style="display:inline-block;background:#17458F;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">Crear una contraseña nueva</a></p>
                 <p style="font-size:13px;color:#6b7280">El enlace vence en 2 horas. Si no fuiste tú, puedes ignorar este correo.</p>
             </div>`,
-        }).catch(() => {});
+        }).catch((err) => ({ success: false, error: err?.message }));
+        if (!sent?.success) console.error(`[project-fair-portal] El correo de recuperación a ${account.email} NO salió: ${sent?.error || 'sin detalle'}`);
         res.json(generic);
     } catch (error) {
         console.error('[project-fair-portal] forgotPassword:', error);

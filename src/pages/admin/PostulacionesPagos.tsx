@@ -54,6 +54,7 @@ import RecursosPlantillas from '../../components/admin/feria/RecursosPlantillas'
 // v4.1293 — Video Pitch Profesional: bandeja de solicitudes, guiones con IA, producción y entrega.
 // v4.1298 — Videos de proyectos: videos propios (sin costo) + Video Pitch Profesional, en un solo módulo.
 import ProjectVideosHub from '../../components/admin/feria/ProjectVideosAdmin';
+import UsuariosFeria from '../../components/admin/feria/UsuariosFeria';
 import EdicionesList from '../../components/admin/feria/EdicionesList';
 import ProjectFormApproval from '../../components/admin/feria/ProjectFormApproval';
 // v4.1311 — Sustituir una postulación por otra del mismo club, con su pago.
@@ -149,6 +150,8 @@ interface Access {
     exchangeManage?: boolean;
     exchangeReconcile?: boolean;
     exchangeConfig?: boolean;
+    // v4.1342 — «Usuarios»: ver cuentas y devolver el acceso. Sólo admin.
+    manageUsers?: boolean;
 }
 interface StateDef { key: string; label: string; color: string; group?: string; legacy?: boolean }
 /** v4.1253 — Los estados heredados del pago se LEEN pero no se ofrecen al elegir. */
@@ -442,7 +445,7 @@ const docExcelColumns = (d?: DocumentsCompact | null): Record<string, string | n
 };
 
 const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = false, eventId: embedEventId }) => {
-    type Tab = 'dashboard' | 'submissions' | 'forms' | 'alerts' | 'config' | 'resources' | 'videopitch';
+    type Tab = 'dashboard' | 'submissions' | 'forms' | 'alerts' | 'config' | 'resources' | 'videopitch' | 'users';
     // ?tab=config permite enlazar directo a la configuración (y mantiene vivos
     // los enlaces a la antigua entrada de menú "Postulación de Proyectos").
     const [tab, setTab] = useState<Tab>(() => {
@@ -450,7 +453,7 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
         // sigue en su página.
         if (embedded) return 'submissions';
         const requested = new URLSearchParams(window.location.search).get('tab');
-        return (['dashboard', 'submissions', 'forms', 'alerts', 'config', 'resources', 'videopitch'] as const).includes(requested as Tab)
+        return (['dashboard', 'submissions', 'forms', 'alerts', 'config', 'resources', 'videopitch', 'users'] as const).includes(requested as Tab)
             ? (requested as Tab) : 'dashboard';
     });
     // Edición abierta. Vive en la URL para que el enlace se pueda compartir y
@@ -1171,7 +1174,9 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                        ['alerts', 'Alertas', AlertTriangle],
                        ['config', 'Convocatoria', Settings],
                        ['resources', 'Recursos y plantillas', FileDown],
-                       ['videopitch', 'Videos de proyectos', Clapperboard]] as const).map(([key, label, Icon]) => (
+                       ['videopitch', 'Videos de proyectos', Clapperboard],
+                       // v4.1342 — Sólo para quien puede gestionar usuarios.
+                       ...(access?.manageUsers ? [['users', 'Usuarios', Users]] as const : [])] as const).map(([key, label, Icon]) => (
                         <button key={key} onClick={() => setTab(key)}
                             className={`inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-semibold transition ${
                                 tab === key ? 'border-blue-700 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
@@ -2339,6 +2344,11 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
 
                 {/* ── Video Pitch Profesional (v4.1293) ─────────────────── */}
                 {tab === 'videopitch' && <ProjectVideosHub eventId={eventId} />}
+
+                {/* ── Usuarios (v4.1342) ────────────────────────────────── */}
+                {tab === 'users' && (access?.manageUsers
+                    ? <UsuariosFeria eventId={eventId || null} />
+                    : <p className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-500">Tu perfil no puede gestionar los usuarios de la Feria.</p>)}
 
                 {/* ── Configuración de la convocatoria ──────────────────── */}
                 {tab === 'config' && (

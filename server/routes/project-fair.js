@@ -306,6 +306,16 @@ router.post('/admin/seguimiento-documental/:id/observacion', authMiddleware, fai
 // Recursos y plantillas (v4.1264). Ver y consultar estadísticas exige acceso
 // al módulo; exportar, el permiso de exportación; subir, publicar, reemplazar
 // y editar, el de configuración (lo resuelve `withAccess` en el controlador).
+// v4.1342 — Usuarios de la Feria: cuentas de gestores de proyecto y de
+// asistentes al evento de la edición; contraseña asignada por el comité y
+// enlace de restablecimiento para copiar. Sólo el perfil «admin»
+// (`manageUsers` en `withAccess`), además de la guardia de la ruta.
+import fairUsers from '../controllers/projectFairUsersController.js';
+router.get('/admin/usuarios', authMiddleware, fairManage, fairUsers.listUsers);
+router.get('/admin/usuarios/:realm/:id', authMiddleware, fairManage, fairUsers.getUser);
+router.post('/admin/usuarios/:realm/:id/password', authMiddleware, fairManage, express.json(), fairUsers.setPassword);
+router.post('/admin/usuarios/:realm/:id/reset-link', authMiddleware, fairManage, express.json(), fairUsers.resetLink);
+
 router.get('/admin/recursos', authMiddleware, fairRead, resources.adminListResources);
 router.put('/admin/recursos/:key', authMiddleware, fairManage, express.json(), resources.adminUpdateResource);
 router.post('/admin/recursos/:key/presign', authMiddleware, fairManage, express.json(), resources.adminPresignUpload);
