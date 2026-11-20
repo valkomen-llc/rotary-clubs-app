@@ -132,6 +132,47 @@ quién administra hoy el módulo (quedó como tarea aparte).
   acompaña al botón al desplazar: cerrarlo al desplazar hacía que el propio
   clic lo cerrara.
 
+### La ficha técnica que descarga el GESTOR — v4.1345
+
+Pedido: que el gestor de proyecto pueda descargar desde «Mi Proyecto» la
+ficha técnica con lo que diligenció en la Formulación y en la Solicitud de
+Aportes del FDD, con la Feria en la cabecera y la tipografía de Club Platform
+(Open Sans).
+
+- **`GET /portal/ficha`** (`portalAuth`, `getPortalDocument`): el proyecto sale
+  del TOKEN del perfil, nunca de la URL. Devuelve el mismo `DocumentPayload`
+  que la ficha en español del comité, con `audience: 'club'`, armado con
+  **`forClubDocument`**: `forDocument` con correo y WhatsApp (son del propio
+  club), SIN documento de identidad, SIN pagos y SIN las secciones
+  institucionales del Distrito (`district`: aprobación y notas del comité).
+  Cada descarga queda en `ProjectDossierExport` con `mode = 'club'`.
+- **El logotipo lo trae el SERVIDOR** (`fairLogoOf`: `CalendarEvent.clubId →
+  Club.logo`, sólo https, 5 s, ≤ 1,5 MB, tipo imagen) como data URL: el
+  navegador no depende del CORS del almacenamiento. En el navegador se
+  rasteriza a PNG (`prepareLogo`) para jsPDF. Sin logotipo, la cabecera dice
+  «Feria de Proyectos» en texto.
+- **⚠️ OPEN SANS EN TODAS LAS FICHAS.** Los TTF viven en `public/fonts/pdf`
+  (Regular, Bold, Italic; OFL 1.1 en `OFL.txt`; jsPDF no lee woff2). `newDoc`
+  los carga una vez por sesión y escribe con `fam(doc)`; la ficha del comité,
+  el lote y la libreta también salen en Open Sans. Si no cargan —o el servidor
+  responde la página (200) en vez del archivo: se valida la FIRMA del TTF—, el
+  PDF sale en Helvetica. Nunca se deja de entregar por la letra.
+- La ficha del club (`buildClubFichaPdf`): cabecera blanca con logotipo,
+  «Ficha técnica del proyecto» y la edición; portada con proyecto, club,
+  distrito, referencia y «Contenido de esta ficha» (cada formulario con su
+  avance); pie con página y «No incluye documento de identidad ni datos de
+  pago». Archivo `FP-XXXX-<proyecto>-ficha-tecnica.pdf`.
+- **El botón** (`FichaTecnicaButton`) va DENTRO de «Avance documental del
+  proyecto» (`DocumentProgressPanel`).
+- Prueba: `npm run test:fair:club-ficha:ui` (31, Postgres + navegador): el
+  servidor (sesión, ajeno, sin documento ni Distrito, logotipo, registro), el
+  botón a 1280 y 390 px, el PDF leído con pdfjs (proyecto, club, tildes, los
+  dos formularios, sin documento), Open Sans e imagen del logotipo, la ficha
+  del comité en Open Sans y el respaldo en Helvetica sin la fuente. Y 9
+  invariantes nuevas en `test:fair:dossier`.
+- ⚠️ `test:fair:dossier:ui` falla en «Ver» (no encuentra el botón de la fila
+  FP-EXP001) también en `main` sin este cambio: es previa.
+
 ### Pruebas
 
 - `npm run test:fair:dossier` — criterio y código sin base (va en `prebuild`).

@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, CircleDashed, ClipboardCheck, Clock } from 'lucide-react';
 import { BLUE } from './FormFields';
 import { leerJson } from '../../lib/leerJson';
+import FichaTecnicaButton from './FichaTecnicaButton';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
 
@@ -113,6 +114,9 @@ const DocumentProgressPanel = ({ token, refreshKey = 0, onLoaded }: { token: str
                     ))}
                 </div>
             )}
+
+            {/* v4.1345 — La ficha técnica en PDF con lo que el club diligenció. */}
+            <FichaTecnicaButton token={token} />
         </section>
     );
 };

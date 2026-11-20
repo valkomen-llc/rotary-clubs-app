@@ -144,6 +144,24 @@ ok('vista inglesa: nombres y cifras se conservan', evIdx.get('submission.clubNam
 const doc = D.fieldIndex(D.forDocument(dossier));
 ok('la ficha NUNCA lleva el documento de identidad', !doc.has('submission.document'));
 ok('ni correo/teléfono del responsable salvo que se pidan', !doc.has('submission.email') && D.fieldIndex(D.forDocument(dossier, { includeContact: true })).has('submission.email'));
+// v4.1345 — La ficha que descarga el GESTOR desde «Mi Proyecto».
+const clubDoc = D.forClubDocument(dossier);
+const clubIdx = D.fieldIndex(clubDoc);
+const districtSections = dossier.groups.flatMap(g => g.sections.filter(s => s.district).map(s => `${g.key}.${s.key}`));
+ok('ficha del club: tampoco el documento de identidad', !clubIdx.has('submission.document'));
+ok('ficha del club: sí su correo y su WhatsApp (son suyos)', clubIdx.has('submission.email') && clubIdx.has('submission.phone'));
+ok('ficha del club: la Formulación y el FDD completos', clubIdx.has('master.objetivos.generalObjective') && clubIdx.has('fdd_2026_2027.fdd.requestedUsd'));
+ok('ficha del club: SIN los espacios institucionales del Distrito', districtSections.length > 0 && !clubDoc.groups.some(g => g.sections.some(s => s.district)));
+const ctrlDossier = leer('server/controllers/projectDossierController.js');
+const routesFicha = leer('server/routes/project-fair.js');
+ok('la ruta del club pasa por la sesión del PERFIL', /router\.get\('\/portal\/ficha', portal\.portalAuth, dossier\.getPortalDocument\)/.test(routesFicha));
+const portalFn = ctrlDossier.slice(ctrlDossier.indexOf('export const getPortalDocument'), ctrlDossier.indexOf('// POST /admin/expedientes/documentos'));
+ok('el proyecto sale del TOKEN, nunca de la URL ni del cuerpo', /req\.portal\?\.submissionId/.test(portalFn) && !/req\.(params|query|body)/.test(portalFn));
+ok('usa la ficha del club (sin Distrito) y registra la descarga', /D\.forClubDocument\(dossier\)/.test(portalFn) && /logExport\(\[row\.id\], \{ kind: 'es', mode: 'club'/.test(portalFn));
+ok('el logotipo sólo por https, con tope de tiempo y de tamaño', /AbortSignal\.timeout\(5000\)/.test(ctrlDossier) && /LOGO_MAX_BYTES/.test(ctrlDossier) && /\^https:/.test(ctrlDossier));
+const pdfLib = leer('src/lib/projectDossierPdf.ts');
+ok('el PDF usa Open Sans (con Helvetica de respaldo)', /OpenSans-Regular\.ttf/.test(pdfLib) && /doc\.__fam = 'OpenSans'/.test(pdfLib) && /\|\| 'helvetica'/.test(pdfLib));
+ok('los TTF de Open Sans viajan con su licencia', ['OpenSans-Regular.ttf', 'OpenSans-Bold.ttf', 'OpenSans-Italic.ttf', 'OFL.txt'].every(f => { try { return readFileSync(new URL(`../public/fonts/pdf/${f}`, import.meta.url)).length > 1000; } catch { return false; } }));
 
 // ── 5 ───────────────────────────────────────────────────────────────────────
 console.log('\n5. El estado de la traducción se DERIVA (y es independiente del pago)');

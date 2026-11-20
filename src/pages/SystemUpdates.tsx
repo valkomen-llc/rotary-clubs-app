@@ -34,13 +34,27 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1344.0 | 2026-11-20 (Mi Proyecto: pagar uno o los dos proyectos)
+// UI V4.1345.0 | 2026-11-20 (Mi Proyecto: descargar la ficha técnica del proyecto)
 // Cache bust: 2026-11-19
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1345.0',
+        title: 'Mi Proyecto: los gestores descargan la ficha técnica de su proyecto en PDF 📄',
+        description: 'Hasta ahora sólo el comité podía descargar la ficha del proyecto desde el expediente. Ahora, en «Avance documental del proyecto», el gestor tiene «Descargar ficha técnica (PDF)»: un documento con el registro inicial, la Formulación del proyecto y la Solicitud de Aportes del FDD tal como los diligenció el club, con el logotipo de la Feria en la cabecera, un resumen del avance de cada formulario y la tipografía de Club Platform (Open Sans). No incluye el documento de identidad, los datos de pago ni los espacios internos del Distrito. Las fichas que descarga el comité también pasan a Open Sans.',
+        date: new Date().toISOString(),
+        tags: ['feria', 'mi-proyecto', 'ficha', 'pdf', 'formularios'],
+        type: 'feature',
+        impact: 'Alta: los clubes tienen su proyecto documentado en un PDF listo para consultar, guardar o compartir.',
+        changes: [
+            { type: 'added', text: '«Descargar ficha técnica (PDF)» dentro de «Avance documental del proyecto», en /mi-proyecto.' },
+            { type: 'added', text: 'Cabecera con el logotipo de la Feria, portada con el proyecto, el club y el avance de cada formulario, y pie con página y aclaración de privacidad.' },
+            { type: 'changed', text: 'Las fichas en PDF (del club y del comité) se escriben en Open Sans, con las tildes y la ñ bien; si la fuente no carga, salen en Helvetica.' },
+        ],
+    },
     {
         version: '4.1344.0',
         title: 'Mi Proyecto: completar el pago de uno o de los dos proyectos postulados 💳',
