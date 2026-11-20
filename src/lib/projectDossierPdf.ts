@@ -50,7 +50,7 @@ const T = {
 };
 
 // ── Tipografía: Open Sans, la de Club Platform (v4.1345) ─────────────────────
-// Los TTF viven en /fonts/pdf (OFL 1.1, ver OFL.txt): jsPDF no lee woff2. Se
+// Los TTF viven en /fonts/pdf (OFL 1.1, ver OFL-LICENSE.md): jsPDF no lee woff2. Se
 // descargan una vez por sesión y sólo al generar un PDF. Si no cargan, la ficha
 // sale igual en Helvetica: nunca se deja de entregar el documento por la letra.
 const OPEN_SANS = [
