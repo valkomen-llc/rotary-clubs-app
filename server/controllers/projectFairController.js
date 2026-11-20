@@ -59,11 +59,12 @@ import {
 import {
     pricingRulesOf, lineAmountFor, orderFor, registrationBreakdown, modalityOf,
     coveredIdsFromMetadata, coveredIdsToMetadata, projectIndexLabel, indexOf as projectIndexOf,
-    secondProjectVerdict, activeProjects,
+    secondProjectVerdict, activeProjects, narrowOrder, CHECKOUT_SCOPES,
 } from '../lib/projectFairRegistration.js';
 // v4.1311 — La sustitución vista desde la ficha (la exportación en PDF la pinta).
 import { substitutionViewOf } from '../lib/projectFairSubstitution.js';
 
+console.log('[projectFairController] v4.1344.0 cargado — Pagar uno o los dos: con dos proyectos sin pagar, «Mi Proyecto» ofrece pagar la inscripción completa o sólo el primer proyecto (`scope`), con el total de la pasarela; pagado el primero, el segundo queda como cobro complementario.');
 console.log('[projectFairController] v4.1301.0 cargado — Ampliación desde «Mi proyecto»: cada proyecto guarda por dónde entró (registro inicial o ampliación posterior), el cobro de sólo el segundo proyecto se nombra «Inscripción adicional» en Stripe y en el comprobante.');
 console.log('[projectFairController] v4.1299.0 cargado — Hasta DOS proyectos por club en UNA inscripción (ProjectFairRegistration): primer proyecto a la tarifa de inscripción, segundo con tarifa especial, un solo pago que cubre lo que el club debe; con el primero ya pagado, el segundo se agrega con un cobro complementario. Lo heredado se migra a inscripciones de un proyecto.');
 console.log('[projectFairController] v4.1256.0 cargado — FDD, paso «Solicitud del FDD»: sin «Justificación de la solicitud».');
@@ -2619,7 +2620,7 @@ export const computeOrderPricing = (order, trm) => {
  * (una fila heredada que el comité decidió cobrar igual), la orden es ella
  * sola, como siempre fue.
  */
-export const priceSubmission = async (submission) => {
+export const priceSubmission = async (submission, { scope = 'all' } = {}) => {
     const cfg = await readConfigForSubmission(submission?.eventId || null);
     let trm = null;
     if (resolvePriceMode(cfg) === 'COP') {
@@ -2641,6 +2642,12 @@ export const priceSubmission = async (submission) => {
         // El ancla es la fila que pidió el cobro: el intento se reclama sobre
         // ella y es la que guarda la sesión.
         order = { ...order, anchorId: submission.id };
+        // v4.1344 — «Pagar sólo el primer proyecto»: la orden se recorta a su
+        // primera línea, y sólo si el ancla ES esa línea (el intento y la
+        // sesión viven en el ancla). Si no, se cobra la orden completa.
+        if (CHECKOUT_SCOPES.includes(scope) && scope !== 'all' && order.lines[0]?.submissionId === submission.id) {
+            order = narrowOrder(order, scope);
+        }
     }
     const pricing = computeOrderPricing(order, trm);
     if (!pricing.ready) {
@@ -2656,7 +2663,7 @@ export const priceSubmission = async (submission) => {
     return { cfg, trm, pricing, quote, order, rules, siblings };
 };
 
-export const beginCheckout = async (submissionId, { req = null, returnUrl = null, sessionId = null, actor = null, returnPath = null } = {}) => {
+export const beginCheckout = async (submissionId, { req = null, returnUrl = null, sessionId = null, actor = null, returnPath = null, scope = 'all' } = {}) => {
     await ensureTables();
 
     const { rows } = await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = $1 LIMIT 1', [submissionId]);
@@ -2724,7 +2731,7 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
     //    v4.1253 — Lo calcula `priceSubmission`, el MISMO que usa el perfil
     //    del club para mostrar el total: lo que se anuncia ahí es lo que se
     //    cobra acá, sin una segunda aritmética que se pueda separar.
-    const priced = await priceSubmission(submission);
+    const priced = await priceSubmission(submission, { scope });
     if (priced.blocked) return priced;
     const { cfg, trm, pricing, quote, order } = priced;
     const { amountCop, amountUsd } = pricing;
@@ -3112,6 +3119,7 @@ export const paymentStateFor = async (submission, { siblings: given = null } = {
     //     debe la inscripción (v4.1299).
     let charge = null;
     let order = null;
+    let payOptions = null;
     try {
         if (hasConfirmedPayment(submission) || submission.status === 'refunded') {
             // El recargo guardado con el cobro es { clave: importe }; el
@@ -3165,6 +3173,30 @@ export const paymentStateFor = async (submission, { siblings: given = null } = {
                     anchorId: priced.order.anchorId,
                 };
                 order = { anchorId: priced.order.anchorId, coveredIds: priced.order.coveredIds, count: priced.order.count, total: priced.order.total, currency: priced.order.currency };
+                // v4.1344 — CON DOS PROYECTOS SIN PAGAR, DOS OPCIONES: los dos
+                // (la orden completa) o sólo el primero. Cada una con el total
+                // que de verdad cobra la pasarela (mismo `priceSubmission`).
+                if (priced.order.lines.length >= 2) {
+                    const firstLine = priced.order.lines[0];
+                    const firstRow = siblings.find(r => r.id === firstLine.submissionId) || null;
+                    const solo = firstRow ? await priceSubmission(firstRow, { scope: 'first' }) : null;
+                    if (solo && !solo.blocked && solo.order.lines.length === 1) {
+                        payOptions = [
+                            {
+                                scope: 'all',
+                                label: `Pagar los ${priced.order.lines.length} proyectos`,
+                                detail: priced.order.lines.map(l => `${projectIndexLabel(l.projectIndex)}: ${l.projectName}`).join(' · '),
+                                total: q.chargeAmount, currency: q.chargeCurrency,
+                            },
+                            {
+                                scope: 'first',
+                                label: `Pagar solo el ${projectIndexLabel(firstLine.projectIndex).toLowerCase()}`,
+                                detail: `${firstLine.projectName}. El segundo queda pendiente con su tarifa especial.`,
+                                total: solo.quote.chargeAmount, currency: solo.quote.chargeCurrency,
+                            },
+                        ];
+                    }
+                }
             }
         }
     } catch (err) {
@@ -3183,6 +3215,9 @@ export const paymentStateFor = async (submission, { siblings: given = null } = {
         amountUsd: submission.amountUsd === null || submission.amountUsd === undefined ? null : Number(submission.amountUsd),
         charge,
         order,
+        // v4.1344 — «Pagar los dos» / «Pagar solo el primero» (null con un
+        // solo proyecto por pagar).
+        payOptions: view.canPay ? payOptions : null,
         // v4.1299 — La inscripción entera: cada proyecto con su línea, qué está
         // pagado y qué se debe. Lo que el club ve como «Primer proyecto ·
         // Segundo proyecto · Total».

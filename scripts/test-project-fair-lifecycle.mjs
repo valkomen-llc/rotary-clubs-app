@@ -144,8 +144,11 @@ ok('una sesión caducada no toca el proyecto', !/"workflowStatus" = 'pending_pay
 const admin = leer('server/controllers/projectFairAdminController.js');
 ok('la confirmación manual tampoco', !/THEN 'payment_confirmed'/.test(admin));
 ok('un borrador no se cobra', /if \(!isApplied\(submission\)\) \{\s*return \{\s*blocked: 'draft'/.test(ctrl));
+// v4.1344 — La pasarela le pasa el alcance elegido («los dos» o «sólo el
+// primero»); sigue siendo la MISMA función que usa el perfil.
 ok('el perfil y la pasarela usan el MISMO cálculo', /const priced = await priceSubmission\(submission\);/.test(ctrl)
-    && (ctrl.match(/priceSubmission\(submission\)/g) || []).length >= 2);
+    && /const priced = await priceSubmission\(submission, \{ scope \}\);/.test(ctrl)
+    && (ctrl.match(/priceSubmission\(submission(?:, \{ scope \})?\)/g) || []).length >= 2);
 
 section('11. El perfil del club');
 const portal = leer('server/controllers/projectFairPortalController.js');

@@ -34,13 +34,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1343.0 | 2026-11-20 (Mi Proyecto: la inscripción a la Feria en acordeón)
+// UI V4.1344.0 | 2026-11-20 (Mi Proyecto: pagar uno o los dos proyectos)
 // Cache bust: 2026-11-19
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1344.0',
+        title: 'Mi Proyecto: completar el pago de uno o de los dos proyectos postulados 💳',
+        description: 'Un club con dos proyectos postulados y sin pagar (el caso del club de Fusagasugá) sólo tenía un botón, que cobraba siempre los dos juntos. Ahora la caja «Inscripción a la Feria de Proyectos» ofrece dos opciones, visibles aunque la caja esté cerrada: «Pagar los 2 proyectos» (la inscripción completa) y «Pagar solo el primer proyecto», cada una con el total exacto que cobra la pasarela. Si el club paga sólo el primero, el segundo queda pendiente con su tarifa especial y se paga después con el mismo botón (cobro complementario).',
+        date: new Date().toISOString(),
+        tags: ['feria', 'mi-proyecto', 'pago', 'stripe', 'dos-proyectos'],
+        type: 'improvement',
+        impact: 'Alta: los clubes con dos proyectos pueden completar el pago como les convenga, sin escribirle al comité.',
+        changes: [
+            { type: 'added', text: '«Pagar los 2 proyectos» y «Pagar solo el primer proyecto», con su total (inscripción + comisión de la pasarela + traslado).' },
+            { type: 'changed', text: 'El servidor decide qué cubre cada cobro; el segundo proyecto nunca se cobra solo antes que el primero, y lo pagado se confirma sólo para los proyectos que cubrió ese pago.' },
+        ],
+    },
     {
         version: '4.1343.0',
         title: 'Mi Proyecto: «Inscripción a la Feria de Proyectos» se minimiza, como la del asistente 🗂️',

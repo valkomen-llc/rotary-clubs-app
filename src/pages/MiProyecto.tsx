@@ -162,7 +162,11 @@ interface PaymentState {
     paidAt: string | null;
     receiptUrl: string | null;
     attempts: PaymentAttempt[];
+    /** v4.1344 — Con dos proyectos sin pagar: pagar los dos o sólo el primero. */
+    payOptions?: PayOption[] | null;
 }
+type PayScope = 'all' | 'first';
+interface PayOption { scope: PayScope; label: string; detail: string; total: number | null; currency: string }
 
 const fmtCop = (n?: number | null) => `$${Number(n || 0).toLocaleString(activeLocale(), { maximumFractionDigits: 0 })}`;
 /** Importe en su moneda: pesos sin decimales, dólares con dos. */
@@ -341,7 +345,7 @@ const MiProyecto = () => {
      * no puede terminar en un segundo cobro: se recarga el panel y los
      * formularios se desbloquean solos.
      */
-    const handlePay = useCallback(async () => {
+    const handlePay = useCallback(async (scope: PayScope = 'all') => {
         if (!activeToken || paying) return;
         setPaying(true);
         setNotice(null);
@@ -349,7 +353,7 @@ const MiProyecto = () => {
             const res = await fetch(`${API}/project-fair/portal/checkout`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${activeToken}` },
-                body: JSON.stringify({ returnUrl: window.location.origin }),
+                body: JSON.stringify({ returnUrl: window.location.origin, scope }),
             });
             const body = await res.json().catch(() => ({}));
             if (res.status === 401) { logout(); return; }
@@ -930,21 +934,46 @@ const MiProyecto = () => {
  * pago pendiente, «Pagar inscripción» y el aviso siguen a la vista aunque la
  * caja esté cerrada.
  */
-/** El botón de pago, uno solo para la caja abierta y la cerrada. */
-const PayButton = ({ pago, onPay, paying }: { pago: PaymentState; onPay: () => void; paying: boolean }) => (
-    <button
-        onClick={onPay}
-        disabled={paying}
-        className="inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-[15px] font-bold text-white transition disabled:opacity-60"
-        style={{ backgroundColor: BLUE }}
-    >
-        {paying ? <><Loader2 size={16} className="animate-spin" /> Abriendo el pago…</> : <>{pago.actionLabel || 'Pagar inscripción'} <ArrowRight size={16} /></>}
-    </button>
-);
+/**
+ * El botón de pago, uno solo para la caja abierta y la cerrada.
+ *
+ * v4.1344 — Con dos proyectos sin pagar, el servidor manda DOS opciones
+ * (`pago.payOptions`): pagar los dos (la principal) o sólo el primero. Cada
+ * botón dice cuánto cobra la pasarela. Sin opciones, el botón de siempre.
+ */
+const PayButton = ({ pago, onPay, paying }: { pago: PaymentState; onPay: (scope?: PayScope) => void; paying: boolean }) => {
+    const opciones = pago.payOptions && pago.payOptions.length >= 2 ? pago.payOptions : null;
+    if (!opciones) {
+        return (
+            <button
+                onClick={() => onPay('all')}
+                disabled={paying}
+                className="inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-[15px] font-bold text-white transition disabled:opacity-60"
+                style={{ backgroundColor: BLUE }}
+            >
+                {paying ? <><Loader2 size={16} className="animate-spin" /> Abriendo el pago…</> : <>{pago.actionLabel || 'Pagar inscripción'} <ArrowRight size={16} /></>}
+            </button>
+        );
+    }
+    return (
+        <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap" data-pay-options>
+            {opciones.map((o, i) => (
+                <button key={o.scope} onClick={() => onPay(o.scope)} disabled={paying} title={o.detail}
+                    className={`inline-flex flex-col items-start justify-center rounded-xl px-5 py-2.5 text-left transition disabled:opacity-60 ${i === 0 ? 'text-white' : 'border border-blue-200 bg-white text-blue-800 hover:bg-blue-50'}`}
+                    style={i === 0 ? { backgroundColor: BLUE } : undefined}>
+                    <span className="inline-flex items-center gap-2 text-[15px] font-bold">
+                        {paying ? <Loader2 size={15} className="animate-spin" /> : null}{o.label} <ArrowRight size={15} />
+                    </span>
+                    <span className={`text-xs ${i === 0 ? 'text-white/85' : 'text-blue-700/80'}`}>{fmtMoney(o.total, o.currency)}</span>
+                </button>
+            ))}
+        </div>
+    );
+};
 
 const PaymentCallout = ({ pago, application, submission, registration, eventName, bloqueo, onPay, onReceipt, paying, esperando }: {
     pago: PaymentState; application: ApplicationState | null; submission: PortalData['submission']; registration: RegistrationState | null; eventName: string;
-    bloqueo: string | null; onPay: () => void; onReceipt: () => void; paying: boolean; esperando: boolean;
+    bloqueo: string | null; onPay: (scope?: PayScope) => void; onReceipt: () => void; paying: boolean; esperando: boolean;
 }) => {
     // Sólo los intentos ya resueltos: uno «en curso» no es historia todavía.
     const intentos = (pago.attempts || []).filter(a => a.status !== 'open');

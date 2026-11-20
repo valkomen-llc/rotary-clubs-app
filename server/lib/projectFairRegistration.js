@@ -259,6 +259,31 @@ export const orderFor = (rows = [], rules) => {
 };
 
 /**
+ * v4.1344 — PAGAR UNO O LOS DOS. Con dos proyectos sin pagar, el club puede
+ * pagar la inscripción completa (`all`, lo de siempre) o sólo el PRIMER
+ * proyecto (`first`). El segundo no se paga solo antes que el primero: su
+ * tarifa especial es un ADICIONAL a la primera inscripción. Pagado el
+ * primero, el segundo queda como el cobro complementario de siempre.
+ *
+ * Recorta la orden que ya armó `orderFor` (líneas en orden de posición); no
+ * recalcula importes. Con una sola línea o un alcance desconocido, la orden
+ * queda igual.
+ */
+export const CHECKOUT_SCOPES = ['all', 'first'];
+export const narrowOrder = (order, scope = 'all') => {
+    if (scope !== 'first' || !order || !Array.isArray(order.lines) || order.lines.length < 2) return order;
+    const first = order.lines[0];
+    return {
+        ...order,
+        count: 1,
+        lines: [first],
+        coveredIds: [first.submissionId],
+        anchorId: first.submissionId,
+        total: Math.round(Number(first.amount || 0) * 100) / 100,
+    };
+};
+
+/**
  * El DESGLOSE completo de la inscripción, para mostrarlo: todos los proyectos
  * activos con su línea y si ya está pagada. Es lo que el club ve como
  * «Primer proyecto $250.000 · Segundo proyecto $100.000 · Total $350.000».

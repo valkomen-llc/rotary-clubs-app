@@ -844,8 +844,12 @@ export const startCheckout = async (req, res) => {
                 anchorId = coveredByCheckout(siblings)[0]?.id || own.id;
             }
         } catch { /* se cobra sobre el actual */ }
+        // v4.1344 — Pagar los dos proyectos (`all`, lo de siempre) o sólo el
+        // primero (`first`). Un valor desconocido cobra la orden completa.
+        const scope = req.body?.scope === 'first' ? 'first' : 'all';
         const result = await beginCheckout(anchorId, {
             req,
+            scope,
             returnUrl: req.body?.returnUrl,
             // v4.1253 — El pago iniciado desde el perfil vuelve al perfil.
             returnPath: cfg?.portal?.path || '/mi-proyecto',

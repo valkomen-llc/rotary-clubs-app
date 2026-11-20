@@ -215,3 +215,34 @@ esa AMPLIACIÓN de la inscripción inicial de dos proyectos.
 cada proyecto ya no sale sólo de `lineAmountFor`: `orderFor`,
 `registrationBreakdown` y `manualCoverageFor` pasan por `lineAmountOfRow`, que
 respeta `metadata.amountOverride`. Ver `editar-el-valor-de-un-proyecto.md`.
+
+### Pagar uno o los dos — v4.1344
+
+Pedido (Angélica, club de Fusagasugá): *«Necesito hacer el pago de los dos
+proyectos postulados, ¿por dónde lo puedo hacer?»* y el comité: que el club
+pueda completar el pago **de uno o de los dos** desde «Mi Proyecto».
+
+- **Con dos proyectos postulados y sin pagar, `paymentStateFor` devuelve
+  `payOptions`**: `all` («Pagar los 2 proyectos», la orden completa) y `first`
+  («Pagar solo el primer proyecto»). Cada opción trae el total que cobra la
+  pasarela, calculado con el MISMO `priceSubmission` (recargo incluido). Con
+  un solo proyecto por pagar —o sin `canPay`— es `null` y queda el botón de
+  siempre.
+- **El segundo no se paga solo antes que el primero**: su tarifa especial es
+  un adicional a la primera inscripción. Por eso el único recorte es «el
+  primero» (`narrowOrder(order, 'first')`, puro, en
+  `projectFairRegistration.js`). Pagado el primero, el segundo queda como el
+  cobro complementario de siempre.
+- **`scope` viaja del navegador a `startCheckout`** y sólo se acepta `first`;
+  cualquier otro valor cobra la orden completa. `priceSubmission(submission,
+  { scope })` recorta sólo si el ancla ES la primera línea (el intento y la
+  sesión viven en el ancla); si no, cobra todo.
+- **Nada cambia en la confirmación**: qué cubrió el cobro se sigue leyendo de
+  `coveredSubmissionIds` en su metadata, así que pagar sólo el primero deja
+  sólo el primero `paid`. Una sesión abierta por el otro importe se expira
+  sola (`reusableCheckout` compara el monto).
+- Pantalla: `PayButton` pinta las dos opciones (la principal, «los dos») con
+  su total, también con la caja «Inscripción a la Feria de Proyectos» cerrada.
+- Pruebas: `test:fair:registration` (143, en `prebuild`, con el recorte y las
+  invariantes), `test:fair:pay-scope:e2e` (12, Postgres local, precio en USD
+  para no depender de la TRM) y `test:fair:registration-accordion:ui` (42).

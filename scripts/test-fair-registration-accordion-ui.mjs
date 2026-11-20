@@ -40,13 +40,16 @@ const base = { charge: { currency: 'COP', base: 250000, total: 262500, final: tr
 const PAGADO = { ...base, state: 'paid', status: 'confirmed', statusLabel: 'Confirmado', paid: true, canPay: false, label: 'Pagado', detail: null, actionLabel: null,
     paidAt: '2026-10-07T17:16:00Z', transaction: { reference: 'Fw3dp7kmT71mLVP39b', method: 'tarjeta', amount: 262500, currency: 'COP', refundedAmount: null }, receiptUrl: 'https://pay.stripe.com/receipts/x' };
 const PENDIENTE = { ...base, attempts: [], state: 'pending', status: 'pending', statusLabel: 'Pendiente', paid: false, canPay: true, label: 'Pendiente', detail: 'Tu proyecto ya está postulado. El pago de la inscripción sigue pendiente.', actionLabel: 'Pagar inscripción', paidAt: null, transaction: null };
+const DOS = { ...PENDIENTE, payOptions: [
+    { scope: 'all', label: 'Pagar los 2 proyectos', detail: 'Primer proyecto: Agua · Segundo proyecto: Salud', total: 367500, currency: 'COP' },
+    { scope: 'first', label: 'Pagar solo el primer proyecto', detail: 'Agua. El segundo queda pendiente con su tarifa especial.', total: 262500, currency: 'COP' } ] };
 const SUB = { projectName: 'Caimalito construye paz', publicRef: 'FP-6K5MAX', clubName: 'E-Club Origen' };
 const APP = { publicRef: 'FP-6K5MAX', responsible: 'Leidy Avila', projectStateLabel: 'En revisión', appliedAt: '2026-10-06T20:13:00Z' };
 const noop = () => {};
 window.go = (cual) => createRoot(document.getElementById('root')).render(
   React.createElement('div', { style: { padding: 16 } }, React.createElement(PaymentCallout, {
-    pago: cual === 'pendiente' ? PENDIENTE : PAGADO, application: APP, submission: SUB, registration: null,
-    eventName: 'XII Rotary Project Fair Colombia 2027', bloqueo: null, onPay: () => { window.__pagar = (window.__pagar || 0) + 1; },
+    pago: cual === 'pendiente' ? PENDIENTE : cual === 'dos' ? DOS : PAGADO, application: APP, submission: SUB, registration: null,
+    eventName: 'XII Rotary Project Fair Colombia 2027', bloqueo: null, onPay: (scope) => { window.__pagar = (window.__pagar || 0) + 1; window.__scope = scope; },
     onReceipt: noop, paying: false, esperando: false })));`;
 const JS = (await build({ stdin: { contents: entry, resolveDir: REPO, loader: 'tsx' }, bundle: true, write: false, format: 'iife', platform: 'browser',
     define: { 'import.meta.env.VITE_API_URL': '"/api"', 'process.env.NODE_ENV': '"production"', __APP_VERSION__: '"0.0.0"' }, jsx: 'automatic', logLevel: 'silent',
@@ -117,6 +120,22 @@ try {
         check('sin desplazamiento horizontal', await sinDesborde(p2.page));
         check('sin errores en la página', p2.errores.length === 0, p2.errores.join(' | '));
         await p2.page.close();
+
+        console.log(`\n▸ Dos proyectos sin pagar: pagar uno o los dos (${ancho} px)`);
+        const p3 = await abrir({ width: ancho, height: alto }, 'dos');
+        const caja3 = p3.page.locator('[data-inscripcion-feria]');
+        const ambos = caja3.getByRole('button', { name: /Pagar los 2 proyectos/ });
+        const uno = caja3.getByRole('button', { name: /Pagar solo el primer proyecto/ });
+        check('cerrada, se ven las dos opciones con su total', await ambos.isVisible() && await uno.isVisible()
+            && await caja3.getByText('$367.500').first().isVisible() && await caja3.getByText('$262.500').first().isVisible());
+        await uno.click();
+        check('«Pagar solo el primer proyecto» pide el alcance «first»', await p3.page.evaluate(() => window.__scope) === 'first');
+        await ambos.click();
+        check('«Pagar los 2 proyectos» pide el alcance «all»', await p3.page.evaluate(() => window.__scope) === 'all');
+        await shot(p3.page, `dos-cerrada-${ancho}`);
+        check('sin desplazamiento horizontal', await sinDesborde(p3.page));
+        check('sin errores en la página', p3.errores.length === 0, p3.errores.join(' | '));
+        await p3.page.close();
     }
 } finally { await browser.close(); }
 console.log(`\n${malos.length ? '❌' : '✅'} test:fair:registration-accordion:ui — ${okCount} comprobaciones, ${malos.length} fallas.`);
