@@ -19,6 +19,7 @@ import {
     isActiveProject, activeProjects, coveredByCheckout, orderFor, registrationBreakdown,
     secondProjectVerdict, removeProjectVerdict, coveredIdsFromMetadata, coveredIdsToMetadata,
     SQL_ACTIVE_PROJECT, SQL_FIRST_PROJECT, SQL_SECOND_PROJECT, SQL_REGISTRATION_KEY, projectIndexLabel,
+    narrowOrder, CHECKOUT_SCOPES,
 } from '../server/lib/projectFairRegistration.js';
 import { readFileSync } from 'node:fs';
 
@@ -245,6 +246,32 @@ ok('con el primero pagado el asistente dice «pago complementario»; sin pagar, 
 eq('primero pagado → saldo 100.000', registrationBreakdown(primeroPagado, rules).pendingTotal, 100000);
 eq('ninguno pagado → saldo 350.000', registrationBreakdown(dos, rules).pendingTotal, 350000);
 eq('los dos pagados → saldo 0', registrationBreakdown([row({ id: 'p1', status: 'paid', amountCop: 250000 }), row({ id: 'p2', projectIndex: 2, status: 'paid', amountCop: 100000 })], rules).pendingTotal, 0);
+
+section('v4.1344 — Pagar uno o los dos (caso Fusagasugá)');
+{
+    const dosSinPagar = [row({ id: 'p1', projectIndex: 1, projectName: 'Agua' }), row({ id: 'p2', projectIndex: 2, projectName: 'Salud' })];
+    const completa = orderFor(dosSinPagar, rules);
+    eq('dos alcances: los dos o sólo el primero', CHECKOUT_SCOPES, ['all', 'first']);
+    eq('«los dos» deja la orden igual (350.000, dos cubiertos)', [narrowOrder(completa, 'all').total, narrowOrder(completa, 'all').coveredIds], [350000, ['p1', 'p2']]);
+    const solo = narrowOrder(completa, 'first');
+    eq('«sólo el primero»: 250.000, cubre y ancla sólo el primero', [solo.count, solo.total, solo.coveredIds, solo.anchorId], [1, 250000, ['p1'], 'p1']);
+    eq('la orden original no se toca', completa.coveredIds, ['p1', 'p2']);
+    eq('con una sola línea, recortar no cambia nada', narrowOrder(orderFor([row({ id: 'p1', status: 'paid' }), row({ id: 'p2', projectIndex: 2 })], rules), 'first').coveredIds, ['p2']);
+    eq('un alcance desconocido cobra la orden completa', narrowOrder(completa, 'second').coveredIds, ['p1', 'p2']);
+    // Pagado sólo el primero, lo que queda es el cobro complementario de siempre.
+    const despues = orderFor([row({ id: 'p1', projectIndex: 1, status: 'paid', amountCop: 250000 }), row({ id: 'p2', projectIndex: 2 })], rules);
+    eq('después de pagar sólo el primero, el segundo queda en 100.000', [despues.coveredIds, despues.total], [['p2'], 100000]);
+
+    const fc = leer('server/controllers/projectFairController.js');
+    const pc = leer('server/controllers/projectFairPortalController.js');
+    ok('el servidor sólo acepta «first» o «all» (lo demás cobra todo)', /const scope = req\.body\?\.scope === 'first' \? 'first' : 'all';/.test(pc) && /beginCheckout\(anchorId, \{\s*req,\s*scope,/.test(pc));
+    ok('recorta sólo si el ancla ES la primera línea', /order\.lines\[0\]\?\.submissionId === submission\.id\) \{\s*order = narrowOrder\(order, scope\);/.test(fc));
+    ok('la pasarela cobra con el alcance elegido', /const priced = await priceSubmission\(submission, \{ scope \}\);/.test(fc));
+    ok('las opciones salen del MISMO cálculo y sólo si se puede pagar', /priceSubmission\(firstRow, \{ scope: 'first' \}\)/.test(fc) && /payOptions: view\.canPay \? payOptions : null/.test(fc));
+    ok('qué cubrió el cobro se sigue leyendo de su metadata (sólo el primero queda pagado)', /coveredSubmissionIds: coveredIdsToMetadata\(order\.coveredIds\)/.test(fc));
+    const mp = leer('src/pages/MiProyecto.tsx');
+    ok('la pantalla manda el alcance elegido', /JSON\.stringify\(\{ returnUrl: window\.location\.origin, scope \}\)/.test(mp) && /onPay\(o\.scope\)/.test(mp));
+}
 
 // ════════════════════════════════════════════════════════════════════
 console.log(`\n${fail ? '❌' : '✅'} test:fair:registration — ${pass} pasaron, ${fail} fallaron.\n`);
