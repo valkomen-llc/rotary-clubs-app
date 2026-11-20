@@ -122,7 +122,7 @@ ok(/AND version = \$15 AND status <> 'conciliado'/.test(ctrl), 'la corrección e
 ok(/'exchangeReconcile'\);/.test(ctrl) && /'exchangeManage'\);/.test(ctrl) && /'exchangeConfig'\);/.test(ctrl), 'cada acción con su capacidad en el servidor');
 
 const fair = read('server/controllers/projectFairAdminController.js');
-ok(/exchange_viewer: \{ view: false,[^}]*viewPersonalData: false, exchangeView: true, exchangeDownload: false, exchangeManage: false, exchangeReconcile: false, exchangeConfig: false \}/.test(fair),
+ok(/exchange_viewer: \{ view: false,[^}]*viewPersonalData: false, exchangeView: true, exchangeDownload: false, exchangeManage: false, exchangeReconcile: false, exchangeConfig: false, manageUsers: false \}/.test(fair),
     'el administrador del evento sólo consulta (sin `view`, sin datos personales)');
 ok(/reviewer:[^}]*exchangeView: false/.test(fair) && /translator:[^}]*exchangeView: false/.test(fair), 'revisores y traductores no ven Exchange (no ven pagos)');
 ok(/finance:[^}]*exchangeReconcile: true, exchangeConfig: false/.test(fair), 'finanzas concilia y no configura');

@@ -204,6 +204,9 @@
 // Y la traza de cada mensaje entrante de WhatsApp (v4.1285):
 // WhatsAppInboundTrace — el recorrido de cada «Hola» de punta a punta y la
 // única evidencia de qué conversaciones quedaron sin respuesta.
+// Y la de los Usuarios de la Feria (v4.1342): FairUserAccessLog — quién asignó
+// una contraseña o generó un enlace de restablecimiento a qué cuenta (nunca la
+// contraseña).
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
 

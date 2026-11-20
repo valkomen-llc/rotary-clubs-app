@@ -34,13 +34,29 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1341.0 | 2026-11-19 (el menú del panel arranca minimizado)
+// UI V4.1342.0 | 2026-11-20 (Feria: módulo «Usuarios» para devolver el acceso)
 // Cache bust: 2026-11-19
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1342.0',
+        title: 'Feria de Proyectos: módulo «Usuarios» para devolverle el acceso a quien lo perdió 🔑',
+        description: 'Una gestora de proyecto (Mónica Gaitán) no recibía el correo de recuperar contraseña y no recordaba la suya, y el comité no tenía cómo ayudarla. Ahora Postulación de Proyectos tiene la pestaña «Usuarios»: las cuentas de la edición —gestores de proyecto y asistentes al evento— con su perfil, proyectos o inscripciones, último ingreso y estado de acceso, con búsqueda sin tildes. Desde «Gestionar», el comité asigna una contraseña nueva (escrita o generada, se muestra una sola vez para copiarla, con un mensaje listo para WhatsApp) o genera un enlace de 24 horas para que la persona cree la suya, y puede enviarlo por correo viendo si salió o por qué no. Sólo lo ve el perfil Administrador de la Feria; en la base queda sólo el hash y cada cambio en un historial.',
+        date: new Date().toISOString(),
+        tags: ['feria', 'usuarios', 'acceso', 'contrasena', 'seguridad'],
+        type: 'feature',
+        impact: 'Alta: el comité resuelve en un minuto el «no puedo entrar», sin depender de que llegue el correo.',
+        changes: [
+            { type: 'added', text: 'Pestaña «Usuarios» en Postulación de Proyectos (sólo perfil Administrador): gestores de proyecto y asistentes al evento de la edición, con búsqueda y filtro por tipo.' },
+            { type: 'added', text: '«Asignar una contraseña nueva» (escrita o generada) y «Enlace para que cree su contraseña» (24 horas, una sola vez), con aviso opcional por correo que informa si salió.' },
+            { type: 'added', text: 'Historial por cuenta (quién y cuándo, nunca la contraseña), también en la línea de tiempo del proyecto.' },
+            { type: 'fixed', text: '«Olvidé mi contraseña» del panel del proyecto ya no descarta en silencio un correo que no salió: queda en el registro del servidor.' },
+            { type: 'changed', text: 'Una cuenta de asistente vinculada no recibe clave propia (entra con la de su cuenta de proyecto) y una cuenta suspendida no se reactiva por aquí.' },
+        ],
+    },
     {
         version: '4.1341.0',
         title: 'El menú del panel arranca minimizado ◧',

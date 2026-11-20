@@ -143,10 +143,10 @@ export const PRIORITIES = [
 // fichas, `export`. El perfil `translator` lee, traduce y exporta: no edita la
 // postulación, no aprueba y no ve pagos.
 const ROLE_CAPABILITIES = {
-    admin:      { view: true, managePayments: true, viewPayments: true, comment: true, edit: true, changeStatus: true, manageTags: true, export: true, config: true, remove: true, translate: true, approveTranslation: true, viewPersonalData: true, exchangeView: true, exchangeDownload: true, exchangeManage: true, exchangeReconcile: true, exchangeConfig: true },
-    finance:    { view: true, managePayments: true, viewPayments: true, comment: true, edit: false, changeStatus: false, manageTags: false, export: true, config: false, remove: false, translate: false, approveTranslation: false, viewPersonalData: true, exchangeView: true, exchangeDownload: true, exchangeManage: true, exchangeReconcile: true, exchangeConfig: false },
-    reviewer:   { view: true, managePayments: false, viewPayments: false, comment: true, edit: false, changeStatus: true, manageTags: true, export: true, config: false, remove: false, translate: true, approveTranslation: true, viewPersonalData: true, exchangeView: false, exchangeDownload: false, exchangeManage: false, exchangeReconcile: false, exchangeConfig: false },
-    translator: { view: true, managePayments: false, viewPayments: false, comment: true, edit: false, changeStatus: false, manageTags: false, export: true, config: false, remove: false, translate: true, approveTranslation: false, viewPersonalData: true, exchangeView: false, exchangeDownload: false, exchangeManage: false, exchangeReconcile: false, exchangeConfig: false },
+    admin:      { view: true, managePayments: true, viewPayments: true, comment: true, edit: true, changeStatus: true, manageTags: true, export: true, config: true, remove: true, translate: true, approveTranslation: true, viewPersonalData: true, exchangeView: true, exchangeDownload: true, exchangeManage: true, exchangeReconcile: true, exchangeConfig: true, manageUsers: true },
+    finance:    { view: true, managePayments: true, viewPayments: true, comment: true, edit: false, changeStatus: false, manageTags: false, export: true, config: false, remove: false, translate: false, approveTranslation: false, viewPersonalData: true, exchangeView: true, exchangeDownload: true, exchangeManage: true, exchangeReconcile: true, exchangeConfig: false, manageUsers: false },
+    reviewer:   { view: true, managePayments: false, viewPayments: false, comment: true, edit: false, changeStatus: true, manageTags: true, export: true, config: false, remove: false, translate: true, approveTranslation: true, viewPersonalData: true, exchangeView: false, exchangeDownload: false, exchangeManage: false, exchangeReconcile: false, exchangeConfig: false, manageUsers: false },
+    translator: { view: true, managePayments: false, viewPayments: false, comment: true, edit: false, changeStatus: false, manageTags: false, export: true, config: false, remove: false, translate: true, approveTranslation: false, viewPersonalData: true, exchangeView: false, exchangeDownload: false, exchangeManage: false, exchangeReconcile: false, exchangeConfig: false, manageUsers: false },
     // v4.1326 — `viewer` NO VE NADA. Desde v4.1325 sólo resuelve a `viewer`
     // quien llega de OTRO sitio y no está en ninguna lista de la convocatoria:
     // en el sitio de la Feria todo perfil que pasa la guardia de la ruta es
@@ -155,7 +155,7 @@ const ROLE_CAPABILITIES = {
     // responsable. Cerrarlo aquí cubre TODO lo que pasa por `withAccess`
     // (listado, ficha, expediente, exportaciones, formularios, videos); ocultar
     // campo por campo habría dejado alguna respuesta sin revisar.
-    viewer:     { view: false, managePayments: false, viewPayments: false, comment: false, edit: false, changeStatus: false, manageTags: false, export: false, config: false, remove: false, translate: false, approveTranslation: false, viewPersonalData: false, exchangeView: false, exchangeDownload: false, exchangeManage: false, exchangeReconcile: false, exchangeConfig: false },
+    viewer:     { view: false, managePayments: false, viewPayments: false, comment: false, edit: false, changeStatus: false, manageTags: false, export: false, config: false, remove: false, translate: false, approveTranslation: false, viewPersonalData: false, exchangeView: false, exchangeDownload: false, exchangeManage: false, exchangeReconcile: false, exchangeConfig: false, manageUsers: false },
     // v4.1335 — EXCHANGE: el administrador autorizado del EVENTO (por ejemplo,
     // quien administra la Conferencia Distrital en el sitio del Distrito) CONSULTA
     // los comprobantes de traslado de los proyectos de la edición. No es un perfil
@@ -164,7 +164,7 @@ const ROLE_CAPABILITIES = {
     // llega por la capacidad de consulta y SIN datos personales
     // (`viewPersonalData: false`, proyección en lista blanca de `mapRow`). Nunca
     // registra, corrige ni concilia. La descarga la decide el acceso concedido.
-    exchange_viewer: { view: false, managePayments: false, viewPayments: false, comment: false, edit: false, changeStatus: false, manageTags: false, export: false, config: false, remove: false, translate: false, approveTranslation: false, viewPersonalData: false, exchangeView: true, exchangeDownload: false, exchangeManage: false, exchangeReconcile: false, exchangeConfig: false },
+    exchange_viewer: { view: false, managePayments: false, viewPayments: false, comment: false, edit: false, changeStatus: false, manageTags: false, export: false, config: false, remove: false, translate: false, approveTranslation: false, viewPersonalData: false, exchangeView: true, exchangeDownload: false, exchangeManage: false, exchangeReconcile: false, exchangeConfig: false, manageUsers: false },
 };
 
 /** Lo que se le dice a quien no tiene perfil en el módulo (v4.1326). */
