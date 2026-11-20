@@ -34,13 +34,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1346.0 | 2026-11-20 (Formulación: clubes participantes en el proyecto)
+// UI V4.1347.0 | 2026-11-20 (Ficha técnica: todo lo diligenciado, desglose con total)
 // Cache bust: 2026-11-19
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1347.0',
+        title: 'Ficha técnica del proyecto: todo lo diligenciado, y el presupuesto más claro 📊',
+        description: 'Revisión de Paula Cruz (Pereira del Café) sobre la ficha que descarga desde «Mi Proyecto». La ficha del gestor dejaba fuera la «Aprobación institucional» de la Solicitud del FDD, que el club también diligencia: ahora va. El «Desglose del presupuesto» del FDD pasa a ser una tabla con cada rubro y su valor, «Sin valor» donde falta el monto, el total del desglose y la diferencia frente al presupuesto total (así se ve, por ejemplo, que a «Operations (Unforeseen)» le faltan US$ 2.655). En la tabla de presupuesto de la Formulación, si «Distrito Colombiano» está vacío, la ficha indica lo solicitado al FDD en la otra solicitud. Y los valores calculados salen en US$ como en el formulario.',
+        date: new Date().toISOString(),
+        tags: ['feria', 'ficha', 'pdf', 'presupuesto', 'fdd'],
+        type: 'improvement',
+        impact: 'Alta: la ficha refleja todo lo que el club diligenció y deja ver los montos que faltan.',
+        changes: [
+            { type: 'fixed', text: 'La «Aprobación institucional» del FDD vuelve a la ficha técnica del gestor (sólo se omite lo que escribe exclusivamente el comité).' },
+            { type: 'improved', text: 'Desglose del presupuesto en tabla, con total, rubros «Sin valor» y la diferencia sin detallar frente al presupuesto total.' },
+            { type: 'added', text: 'Bajo la tabla de presupuesto de la Formulación: «Solicitado al FDD en la Solicitud de Aportes del FDD: US$ …» cuando «Distrito Colombiano» está vacío.' },
+            { type: 'fixed', text: '«Total de aportes esperados» y «25 % mín. del aporte al FAP» se muestran en US$.' },
+        ],
+    },
     {
         version: '4.1346.0',
         title: 'Formulación del proyecto: «Clubes participantes» para proyectos de varios clubes 🤝',

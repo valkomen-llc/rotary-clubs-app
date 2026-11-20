@@ -382,6 +382,9 @@ export const buildDossier = ({ submission, forms = [], computed = {}, focusAreas
                     key: section.key, title: section.title,
                     titleEn: LABELS_EN[`${form.key}.${section.key}`] || section.title,
                     district,
+                    // v4.1347 — Lo que escribe SÓLO el comité (columna `approval`).
+                    // `districtSpace` lo diligencia también el club.
+                    adminOnly: section.adminOnly === true,
                     fields: (section.fields || []).map(field => {
                         const value = section.adminOnly ? approval?.[section.key]?.[field.key] : answers?.[section.key]?.[field.key];
                         const path = `${form.key}.${section.key}.${field.key}`;
@@ -920,15 +923,18 @@ export const forDocument = (dossier, { includeContact = false } = {}) => ({
  * v4.1345 — LA FICHA QUE DESCARGA EL CLUB desde «Mi Proyecto». Es la misma
  * ficha del comité (`forDocument`) con lo que el club escribió, sus datos de
  * contacto incluidos (son suyos) y, como siempre, SIN el documento de
- * identidad ni pagos. Se quitan además los espacios institucionales del
- * Distrito (`district`: aprobación y notas del comité): no son información
- * que el club diligenció.
+ * identidad ni pagos. Se quitan además las secciones `adminOnly` (las escribe
+ * sólo el comité, en la columna `approval`).
  */
 export const forClubDocument = (dossier) => {
     const base = forDocument(dossier, { includeContact: true });
     return {
+        // ⚠️ v4.1347 — Sólo se quita lo que escribe el COMITÉ (`adminOnly`). La
+        // «Aprobación institucional» del FDD es `districtSpace`: la diligencia
+        // también el club (v4.643), así que va en su ficha. En v4.1345 se
+        // quitaban las dos y el club no veía en el PDF lo que había escrito.
         groups: base.groups
-            .map(g => ({ ...g, sections: (g.sections || []).filter(s => s.district !== true) }))
+            .map(g => ({ ...g, sections: (g.sections || []).filter(s => s.adminOnly !== true) }))
             .filter(g => g.sections.some(s => (s.fields || []).length)),
     };
 };

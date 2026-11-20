@@ -173,6 +173,29 @@ Aportes del FDD, con la Feria en la cabecera y la tipografía de Club Platform
 - ⚠️ `test:fair:dossier:ui` falla en «Ver» (no encuentra el botón de la fila
   FP-EXP001) también en `main` sin este cambio: es previa.
 
+### La ficha muestra todo lo diligenciado — v4.1347
+
+Revisión de Paula Cruz (Pereira del Café) sobre su ficha descargada:
+
+- **⚠️ v4.1345 quitaba de la ficha del gestor la «Aprobación institucional»
+  del FDD.** Filtraba `district`, que agrupa `districtSpace` (lo diligencian el
+  club Y el Distrito, v4.643) y `adminOnly` (sólo el comité). Ahora el
+  expediente marca `adminOnly` aparte y `forClubDocument` quita SÓLO eso.
+- **El «Desglose del presupuesto» (repetidor con dinero) es una TABLA**
+  (`moneyRepeaterTable`): # · concepto · valor, «Sin valor» en rojo donde no
+  hay monto, «Total del desglose» y la conciliación con su total
+  (`BREAKDOWN_TOTALS`: `fdd_2026_2027.presupuesto.budgetBreakdown` →
+  `…budgetUsd`): «Presupuesto total … · Diferencia sin detallar: US$ 2.655».
+  Antes eran líneas de texto sin total: el rubro «Operations (Unforeseen)» sin
+  valor no se notaba.
+- **La tabla de la Formulación no toma el valor del FDD.** Si «Distrito
+  Colombiano» está vacío en dólares y el FDD tiene «Cantidad solicitada», la
+  ficha dice debajo «Solicitado al FDD en la Solicitud de Aportes del FDD:
+  US$ 958». No se escribe en la tabla como si el club lo hubiera puesto.
+  Para cruzar datos, el `Writer` lleva un índice de campos por ruta.
+- **Los calculados salen como dinero** (`plainValue` → `computed`): la ficha
+  decía «2000» y «250» donde el formulario muestra US$.
+
 ### Pruebas
 
 - `npm run test:fair:dossier` — criterio y código sin base (va en `prebuild`).

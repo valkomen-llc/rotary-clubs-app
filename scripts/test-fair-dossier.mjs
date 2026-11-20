@@ -151,7 +151,15 @@ const districtSections = dossier.groups.flatMap(g => g.sections.filter(s => s.di
 ok('ficha del club: tampoco el documento de identidad', !clubIdx.has('submission.document'));
 ok('ficha del club: sí su correo y su WhatsApp (son suyos)', clubIdx.has('submission.email') && clubIdx.has('submission.phone'));
 ok('ficha del club: la Formulación y el FDD completos', clubIdx.has('master.objetivos.generalObjective') && clubIdx.has('fdd_2026_2027.fdd.requestedUsd'));
-ok('ficha del club: SIN los espacios institucionales del Distrito', districtSections.length > 0 && !clubDoc.groups.some(g => g.sections.some(s => s.district)));
+// v4.1347 — La «Aprobación institucional» del FDD es `districtSpace`: la
+// diligencia también el club, así que VA en su ficha. Sólo se quita `adminOnly`.
+ok('ficha del club: la Aprobación institucional (la diligencia el club) SÍ va', districtSections.length > 0 && clubDoc.groups.some(g => g.sections.some(s => s.district && !s.adminOnly)));
+const conAdmin = { groups: [{ key: 'x', sections: [{ key: 'solo-comite', adminOnly: true, district: true, fields: [{ path: 'x.solo-comite.nota', value: 'interna' }] }, { key: 'club', fields: [{ path: 'x.club.a', value: 'b' }] }] }] };
+ok('ficha del club: SIN lo que escribe sólo el comité (adminOnly)', !D.forClubDocument(conAdmin).groups.some(g => g.sections.some(s => s.adminOnly)));
+ok('el expediente marca adminOnly aparte de districtSpace', /adminOnly: section\.adminOnly === true,/.test(leer('server/lib/projectDossier.js')));
+const pdfLib2 = leer('src/lib/projectDossierPdf.ts');
+ok('el desglose del presupuesto se dibuja como tabla con total y conciliación', /function moneyRepeaterTable/.test(pdfLib2) && /Diferencia sin detallar/.test(pdfLib2) && /'fdd_2026_2027\.presupuesto\.budgetBreakdown': 'fdd_2026_2027\.presupuesto\.budgetUsd'/.test(pdfLib2));
+ok('la tabla de la Formulación dice lo solicitado al FDD si «Distrito Colombiano» está vacío (sin escribirlo en la tabla)', /Solicitado al FDD en la Solicitud de Aportes del FDD/.test(pdfLib2));
 const ctrlDossier = leer('server/controllers/projectDossierController.js');
 const routesFicha = leer('server/routes/project-fair.js');
 ok('la ruta del club pasa por la sesión del PERFIL', /router\.get\('\/portal\/ficha', portal\.portalAuth, dossier\.getPortalDocument\)/.test(routesFicha));
