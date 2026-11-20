@@ -34,13 +34,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1342.0 | 2026-11-20 (Feria: módulo «Usuarios» para devolver el acceso)
+// UI V4.1343.0 | 2026-11-20 (Mi Proyecto: la inscripción a la Feria en acordeón)
 // Cache bust: 2026-11-19
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1343.0',
+        title: 'Mi Proyecto: «Inscripción a la Feria de Proyectos» se minimiza, como la del asistente 🗂️',
+        description: 'La caja de la inscripción en /mi-proyecto mostraba siempre todo el detalle (valor, cargos, transacción, historial y comprobante). Ahora abre minimizada, como la inscripción al evento en /mi-inscripcion: el concepto, el estado del pago y el proyecto con su código. «Ver detalle» la abre con toda la información y «Ocultar detalle» la vuelve a cerrar. Si el pago está pendiente, el botón «Pagar inscripción» sigue a la vista aunque la caja esté cerrada.',
+        date: new Date().toISOString(),
+        tags: ['feria', 'mi-proyecto', 'inscripcion', 'pago', 'interfaz'],
+        type: 'improvement',
+        impact: 'Media: el perfil del proyecto se lee más rápido; el detalle del pago queda a un clic.',
+        changes: [
+            { type: 'changed', text: 'La caja «Inscripción a la Feria de Proyectos» abre minimizada y se despliega como acordeón (también con el teclado).' },
+            { type: 'changed', text: 'Cerrada muestra el concepto, la edición, el estado del pago y el proyecto con su código; con el pago pendiente, también «Pagar inscripción».' },
+        ],
+    },
     {
         version: '4.1342.0',
         title: 'Feria de Proyectos: módulo «Usuarios» para devolverle el acceso a quien lo perdió 🔑',

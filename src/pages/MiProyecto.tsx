@@ -28,12 +28,12 @@
 // La sesión es propia del módulo (token con audiencia project-fair-portal):
 // nunca da acceso al panel administrativo de la plataforma.
 // ════════════════════════════════════════════════════════════════════
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useLang } from '../contexts/LanguageContext';
 import { activeLocale } from '../lib/locale';
 import {
-    AlertCircle, ArrowRight, CalendarDays, CheckCircle2, ChevronRight, Clock, ExternalLink,
+    AlertCircle, ArrowRight, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Clock, ExternalLink,
     FileText, KeyRound, LayoutDashboard, Loader2, LogOut, Lock, MapPin, PenLine,
     ShieldCheck, Trophy, Wallet, Download, Receipt, Send, Save, PlusCircle, Layers, RotateCcw, Trash2, Unlock,
 } from 'lucide-react';
@@ -923,7 +923,25 @@ const MiProyecto = () => {
  *
  * Va en el ámbito del MÓDULO, como todo componente de este archivo: declarada
  * dentro de la página sería un tipo nuevo en cada render (v4.971).
+ *
+ * v4.1343 — ACORDEÓN, MINIMIZADA POR DEFECTO (como la tarjeta del asistente
+ * en /mi-inscripcion). Cerrada dice lo básico: el concepto, el estado del pago
+ * y el proyecto con su código. Lo que pide una ACCIÓN no se esconde: con el
+ * pago pendiente, «Pagar inscripción» y el aviso siguen a la vista aunque la
+ * caja esté cerrada.
  */
+/** El botón de pago, uno solo para la caja abierta y la cerrada. */
+const PayButton = ({ pago, onPay, paying }: { pago: PaymentState; onPay: () => void; paying: boolean }) => (
+    <button
+        onClick={onPay}
+        disabled={paying}
+        className="inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-[15px] font-bold text-white transition disabled:opacity-60"
+        style={{ backgroundColor: BLUE }}
+    >
+        {paying ? <><Loader2 size={16} className="animate-spin" /> Abriendo el pago…</> : <>{pago.actionLabel || 'Pagar inscripción'} <ArrowRight size={16} /></>}
+    </button>
+);
+
 const PaymentCallout = ({ pago, application, submission, registration, eventName, bloqueo, onPay, onReceipt, paying, esperando }: {
     pago: PaymentState; application: ApplicationState | null; submission: PortalData['submission']; registration: RegistrationState | null; eventName: string;
     bloqueo: string | null; onPay: () => void; onReceipt: () => void; paying: boolean; esperando: boolean;
@@ -945,6 +963,12 @@ const PaymentCallout = ({ pago, application, submission, registration, eventName
         slate: 'bg-slate-100 text-slate-700 ring-slate-200',
         amber: 'bg-amber-50 text-amber-800 ring-amber-200',
     };
+    // v4.1343 — Minimizada por defecto; el clic en el encabezado la abre.
+    const [abierta, setAbierta] = useState(false);
+    const cuerpoId = useId();
+    const resumen = variosProyectos && registration
+        ? `${registration.count} proyectos · ${submission.clubName || ''}`.trim()
+        : [submission.projectName, application?.publicRef || submission.publicRef].filter(Boolean).join(' · ');
     const fila = (k: React.ReactNode, v: React.ReactNode) => (
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 py-2 text-sm last:border-0">
             <span className="text-slate-500">{k}</span>
@@ -953,19 +977,46 @@ const PaymentCallout = ({ pago, application, submission, registration, eventName
     );
 
     return (
-        <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                    <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900">
-                        <Wallet size={18} style={{ color: BLUE }} /> Inscripción a la Feria de Proyectos
-                    </h2>
-                    {eventName && <p className="mt-0.5 text-sm text-slate-500">{eventName}</p>}
+        <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6" data-inscripcion-feria>
+            <h2 className="m-0">
+                <button type="button" onClick={() => setAbierta(a => !a)} aria-expanded={abierta} aria-controls={cuerpoId}
+                    className="group flex w-full flex-col gap-3 rounded-xl text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 sm:flex-row sm:items-start sm:justify-between">
+                    <span className="block min-w-0 sm:flex-1" data-inscripcion-titulo>
+                        <span className="flex items-center gap-2 text-lg font-bold text-slate-900">
+                            <Wallet size={18} style={{ color: BLUE }} /> Inscripción a la Feria de Proyectos
+                        </span>
+                        {eventName && <span className="mt-0.5 block text-sm font-normal text-slate-500">{eventName}</span>}
+                        {/* Cerrada: el proyecto (o la inscripción del club) y su código. */}
+                        {!abierta && resumen && (
+                            <span className="mt-1.5 block text-sm font-semibold text-slate-700">{resumen}</span>
+                        )}
+                    </span>
+                    <span className="flex shrink-0 flex-wrap items-center gap-2">
+                        <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ring-1 ${tonoCls[tono]}`}>
+                            {confirmado ? <CheckCircle2 size={13} /> : <Clock size={13} />}
+                            {confirmado ? 'Pago confirmado' : (pago.statusLabel ? `Pago ${pago.statusLabel.toLowerCase()}` : pago.label)}
+                        </span>
+                        <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 group-hover:bg-slate-50">
+                            {abierta ? 'Ocultar detalle' : 'Ver detalle'}
+                            <ChevronDown size={14} className={`transition-transform ${abierta ? 'rotate-180' : ''}`} />
+                        </span>
+                    </span>
+                </button>
+            </h2>
+
+            {/* Cerrada, lo que pide una acción sigue a la vista: el pago pendiente. */}
+            {!abierta && pago?.canPay && (
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <PayButton pago={pago} onPay={onPay} paying={paying} />
+                    {(pago.detail || bloqueo) && (
+                        <p className="min-w-0 basis-full text-xs leading-relaxed text-slate-500 sm:basis-auto sm:flex-1">
+                            {pago.detail}{bloqueo && <span className="mt-1 block">{bloqueo}</span>}
+                        </p>
+                    )}
                 </div>
-                <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ring-1 ${tonoCls[tono]}`}>
-                    {confirmado ? <CheckCircle2 size={13} /> : <Clock size={13} />}
-                    {confirmado ? 'Pago confirmado' : (pago.statusLabel ? `Pago ${pago.statusLabel.toLowerCase()}` : pago.label)}
-                </span>
-            </div>
+            )}
+
+            <div id={cuerpoId} hidden={!abierta}>
 
             {/* El mensaje: sin alarma. El proyecto está postulado aunque el
                 pago siga pendiente, y se dice con todas las letras. */}
@@ -1085,14 +1136,7 @@ const PaymentCallout = ({ pago, application, submission, registration, eventName
                 {/* ⚠️ El botón de pago existe SÓLO si el servidor dice que se
                     puede pagar. Con el pago confirmado no hay botón activo. */}
                 {pago?.canPay ? (
-                    <button
-                        onClick={onPay}
-                        disabled={paying}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-[15px] font-bold text-white transition disabled:opacity-60"
-                        style={{ backgroundColor: BLUE }}
-                    >
-                        {paying ? <><Loader2 size={16} className="animate-spin" /> Abriendo el pago…</> : <>{pago.actionLabel || 'Pagar inscripción'} <ArrowRight size={16} /></>}
-                    </button>
+                    <PayButton pago={pago} onPay={onPay} paying={paying} />
                 ) : confirmado ? (
                     <>
                         <span className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-50 px-4 py-2.5 text-sm font-bold text-emerald-700">
@@ -1110,6 +1154,7 @@ const PaymentCallout = ({ pago, application, submission, registration, eventName
                         )}
                     </>
                 ) : null}
+            </div>
             </div>
 
             {/* Se dice que se está comprobando en vez de dejar la pantalla
@@ -2004,5 +2049,8 @@ const PortalReset = ({ token, onToken }: { token: string; onToken: (t: string) =
         </div>
     );
 };
+
+// v4.1343 — Para la prueba en navegador de la caja de inscripción (acordeón).
+export { PaymentCallout };
 
 export default MiProyecto;
