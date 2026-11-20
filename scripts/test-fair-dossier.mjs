@@ -161,7 +161,7 @@ ok('usa la ficha del club (sin Distrito) y registra la descarga', /D\.forClubDoc
 ok('el logotipo sólo por https, con tope de tiempo y de tamaño', /AbortSignal\.timeout\(5000\)/.test(ctrlDossier) && /LOGO_MAX_BYTES/.test(ctrlDossier) && /\^https:/.test(ctrlDossier));
 const pdfLib = leer('src/lib/projectDossierPdf.ts');
 ok('el PDF usa Open Sans (con Helvetica de respaldo)', /OpenSans-Regular\.ttf/.test(pdfLib) && /doc\.__fam = 'OpenSans'/.test(pdfLib) && /\|\| 'helvetica'/.test(pdfLib));
-ok('los TTF de Open Sans viajan con su licencia', ['OpenSans-Regular.ttf', 'OpenSans-Bold.ttf', 'OpenSans-Italic.ttf', 'OFL.txt'].every(f => { try { return readFileSync(new URL(`../public/fonts/pdf/${f}`, import.meta.url)).length > 1000; } catch { return false; } }));
+ok('los TTF de Open Sans viajan con su licencia', ['OpenSans-Regular.ttf', 'OpenSans-Bold.ttf', 'OpenSans-Italic.ttf', 'OFL-LICENSE.md'].every(f => { try { return readFileSync(new URL(`../public/fonts/pdf/${f}`, import.meta.url)).length > 1000; } catch { return false; } }));
 
 // ── 5 ───────────────────────────────────────────────────────────────────────
 console.log('\n5. El estado de la traducción se DERIVA (y es independiente del pago)');

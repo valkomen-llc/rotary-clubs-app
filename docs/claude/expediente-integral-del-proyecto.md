@@ -152,7 +152,7 @@ Aportes del FDD, con la Feria en la cabecera y la tipografía de Club Platform
   rasteriza a PNG (`prepareLogo`) para jsPDF. Sin logotipo, la cabecera dice
   «Feria de Proyectos» en texto.
 - **⚠️ OPEN SANS EN TODAS LAS FICHAS.** Los TTF viven en `public/fonts/pdf`
-  (Regular, Bold, Italic; OFL 1.1 en `OFL.txt`; jsPDF no lee woff2). `newDoc`
+  (Regular, Bold, Italic; OFL 1.1 en `OFL-LICENSE.md`; jsPDF no lee woff2). ⚠️ La licencia NO puede ser `.txt`: `.gitignore` y `.vercelignore` excluyen `*.txt`, el archivo no viajó y `test:fair:dossier` (que comprueba que está) rompió el primer despliegue de v4.1345. `newDoc`
   los carga una vez por sesión y escribe con `fam(doc)`; la ficha del comité,
   el lote y la libreta también salen en Open Sans. Si no cargan —o el servidor
   responde la página (200) en vez del archivo: se valida la FIRMA del TTF—, el
