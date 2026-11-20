@@ -75,6 +75,10 @@ export interface DocumentPayload {
     projectName: string; clubName: string; district: string; generatedAt: string;
     es: Dossier; en?: Dossier;
     translation?: { mode: 'approved' | 'draft' | 'none'; state: TranslationState; label: string; approvedAt: string | null; approvedBy: string | null; versionNumber: number | null; outdatedSinceApproval: boolean };
+    /** v4.1345 — La ficha que descarga el club desde «Mi Proyecto». */
+    audience?: 'club';
+    /** Logotipo del sitio de la Feria como data URL (lo trae el servidor), o null. */
+    logo?: string | null;
 }
 
 export interface BookletBlock { key: string; label: string; text: string; source: string | null; manual?: boolean; untranslated?: boolean }

@@ -218,6 +218,9 @@ router.post('/admin/postulaciones/sustitucion/aplicar', authMiddleware, fairEdit
 // inglés y bilingüe) y libretas. Literales ANTES de las paramétricas.
 import dossier from '../controllers/projectDossierController.js';
 
+// v4.1345 — La ficha técnica del proyecto que descarga el GESTOR desde «Mi
+// Proyecto» (el proyecto sale del token del perfil, no de la URL).
+router.get('/portal/ficha', portal.portalAuth, dossier.getPortalDocument);
 router.get('/admin/expedientes/estado', authMiddleware, fairRead, dossier.getDossierStates);
 router.post('/admin/expedientes/documentos', authMiddleware, fairRead, express.json(), dossier.getDocumentsBulk);
 router.get('/admin/expedientes/glosario', authMiddleware, fairRead, dossier.getGlossary);

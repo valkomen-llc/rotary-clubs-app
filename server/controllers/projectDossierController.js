@@ -20,6 +20,8 @@ import { ensureProjectDossierSchema } from '../lib/ensureProjectDossierSchema.js
 import { routeToModel, getDefaultModel } from '../lib/ai-router.js';
 import D from '../lib/projectDossier.js';
 
+console.log('[projectDossierController] v4.1345.0 cargado — Ficha técnica para el gestor: GET /portal/ficha (proyecto del token) con registro, Formulación y FDD, sin documento de identidad, pagos ni espacios del Distrito, logotipo de la Feria y registro de cada descarga.');
+
 const clean = (v, max = 250) => String(v ?? '').trim().slice(0, max);
 const ALLOWED_TABLES = new Set(['ProjectFairMasterForm', 'ProjectFairProjectForm']);
 const tableFor = (formKey) => {
@@ -588,6 +590,61 @@ export const getDocument = withSchema(async (req, res, { access }) => {
     res.json(payload);
 }, 'export');
 
+// ════════════════════════════════════════════════════════════════════════════
+// v4.1345 — La ficha técnica que descarga el GESTOR desde «Mi Proyecto».
+// GET /portal/ficha  (portalAuth). El proyecto sale del TOKEN, nunca de la
+// URL: cada club descarga sólo la suya. Mismos datos que la ficha en español
+// del comité (`forClubDocument`), más el logotipo del sitio de la Feria para la
+// cabecera (lo trae el servidor: así el navegador no depende del CORS del
+// almacenamiento para dibujarlo en el PDF).
+// ════════════════════════════════════════════════════════════════════════════
+const LOGO_MAX_BYTES = 1_500_000;
+const LOGO_TYPES = /^image\/(png|jpe?g|webp|svg\+xml|gif)$/i;
+
+const fairLogoOf = async (eventId) => {
+    try {
+        const { rows } = await db.query(`
+            SELECT c.logo FROM "CalendarEvent" e JOIN "Club" c ON c.id = e."clubId"
+             WHERE e.id = $1 LIMIT 1`, [eventId]);
+        const url = String(rows[0]?.logo || '').trim();
+        if (!/^https:\/\//i.test(url)) return null;
+        const r = await fetch(url, { signal: AbortSignal.timeout(5000), redirect: 'follow' });
+        if (!r.ok) return null;
+        const type = String(r.headers.get('content-type') || '').split(';')[0].trim();
+        if (!LOGO_TYPES.test(type)) return null;
+        const buf = Buffer.from(await r.arrayBuffer());
+        if (!buf.length || buf.length > LOGO_MAX_BYTES) return null;
+        return `data:${type};base64,${buf.toString('base64')}`;
+    } catch {
+        return null; // sin logotipo: la cabecera dice el nombre en texto
+    }
+};
+
+export const getPortalDocument = async (req, res) => {
+    try {
+        await ensureProjectDossierSchema();
+        const id = String(req.portal?.submissionId || '');
+        const { rows } = await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = $1 LIMIT 1', [id]);
+        const row = rows[0];
+        if (!row) return res.status(404).json({ error: 'No encontramos tu proyecto.' });
+        const { cfg, dossier } = await loadDossier(row);
+        const edition = await readEditionEvent(row.eventId).catch(() => null);
+        const payload = {
+            id: row.id, publicRef: row.publicRef, kind: 'es', audience: 'club',
+            edition: cfg?.edition?.name || edition?.title || 'Feria de Proyectos',
+            projectName: row.projectName, clubName: row.clubName, district: row.district,
+            generatedAt: new Date().toISOString(),
+            es: D.forClubDocument(dossier),
+            logo: await fairLogoOf(row.eventId),
+        };
+        await logExport([row.id], { kind: 'es', mode: 'club', eventId: row.eventId, actor: { id: req.portal?.sub || null, name: req.portal?.email || 'club' } });
+        res.json(payload);
+    } catch (error) {
+        console.error('[dossier] getPortalDocument:', error);
+        res.status(500).json({ error: 'No pudimos preparar la ficha de tu proyecto.' });
+    }
+};
+
 // POST /admin/expedientes/documentos   { ids:[], lang, use, includeContact }
 export const getDocumentsBulk = withSchema(async (req, res, { access }) => {
     const ids = [...new Set((Array.isArray(req.body?.ids) ? req.body.ids : []).map(x => clean(x, 80)).filter(Boolean))];
@@ -784,7 +841,7 @@ export async function agentDossierSnapshot(submissionId, { translation = false }
 export default {
     getDossier, updateDossier, getDossierHistory,
     getTranslation, generateTranslation, saveTranslation, approveTranslation,
-    getDocument, getDocumentsBulk, getDossierStates,
+    getDocument, getDocumentsBulk, getDossierStates, getPortalDocument,
     getGlossary, saveGlossaryEntry, deleteGlossaryEntry,
     getBooklet, prepareBooklet, saveBooklet, approveBooklet,
 };

@@ -49,22 +49,110 @@ const T = {
     },
 };
 
+// ── Tipografía: Open Sans, la de Club Platform (v4.1345) ─────────────────────
+// Los TTF viven en /fonts/pdf (OFL 1.1, ver OFL.txt): jsPDF no lee woff2. Se
+// descargan una vez por sesión y sólo al generar un PDF. Si no cargan, la ficha
+// sale igual en Helvetica: nunca se deja de entregar el documento por la letra.
+const OPEN_SANS = [
+    { file: 'OpenSans-Regular.ttf', style: 'normal' },
+    { file: 'OpenSans-Bold.ttf', style: 'bold' },
+    { file: 'OpenSans-Italic.ttf', style: 'italic' },
+] as const;
+let openSansCache: Promise<Record<string, string> | null> | null = null;
+const toBase64 = (buf: ArrayBuffer) => {
+    const bytes = new Uint8Array(buf);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+};
+const loadOpenSans = () => {
+    if (!openSansCache) {
+        openSansCache = (async () => {
+            try {
+                const out: Record<string, string> = {};
+                for (const f of OPEN_SANS) {
+                    const r = await fetch(`/fonts/pdf/${f.file}`, { signal: AbortSignal.timeout?.(15000) });
+                    if (!r.ok) return null;
+                    const buf = await r.arrayBuffer();
+                    // ⚠️ Sólo un TTF de verdad (firma 00 01 00 00 o «true»): un
+                    // servidor que responde la página (200) a un archivo que no
+                    // está rompería el PDF entero al usarla como letra.
+                    const sig = new Uint8Array(buf.slice(0, 4));
+                    const isTtf = (sig[0] === 0 && sig[1] === 1 && sig[2] === 0 && sig[3] === 0) || String.fromCharCode(...sig) === 'true';
+                    if (!isTtf || buf.byteLength < 10_000) return null;
+                    out[f.file] = toBase64(buf);
+                }
+                return out;
+            } catch { return null; }
+        })();
+        // Un fallo no queda guardado para siempre: el próximo PDF lo reintenta.
+        openSansCache.then(v => { if (!v) openSansCache = null; });
+    }
+    return openSansCache;
+};
+
+/** La familia con la que se escribe este documento. */
+const fam = (doc: any): string => doc?.__fam || 'helvetica';
+
 async function newDoc(): Promise<any> {
     const { loadJsPdf } = await import('./executiveReportPdf');
     const JsPDF = await loadJsPdf();
-    return new JsPDF({ unit: 'pt', format: 'a4' });
+    const doc = new JsPDF({ unit: 'pt', format: 'a4' });
+    const fonts = await loadOpenSans();
+    if (fonts) {
+        try {
+            for (const f of OPEN_SANS) {
+                doc.addFileToVFS(f.file, fonts[f.file]);
+                doc.addFont(f.file, 'OpenSans', f.style);
+            }
+            doc.__fam = 'OpenSans';
+        } catch { doc.__fam = 'helvetica'; }
+    }
+    return doc;
 }
 
 /** Un cursor de página que sabe cuándo saltar y repinta la cabecera corrida. */
+/** v4.1345 — La cabecera de marca de la ficha del club: logotipo y título. */
+interface Brand { logo: { data: string; w: number; h: number } | null; title: string; edition: string }
+const BRAND_TOP = 96;
+
 class Writer {
-    doc: any; y = TOP; header: string; draftMark: string | null;
-    constructor(doc: any, header: string, draftMark: string | null) { this.doc = doc; this.header = header; this.draftMark = draftMark; }
+    doc: any; y = TOP; header: string; draftMark: string | null; brand: Brand | null = null; top = TOP;
+    constructor(doc: any, header: string, draftMark: string | null, brand: Brand | null = null) {
+        this.doc = doc; this.header = header; this.draftMark = draftMark;
+        if (brand) { this.brand = brand; this.top = BRAND_TOP; this.y = BRAND_TOP; }
+    }
+
+    brandChrome() {
+        const d = this.doc;
+        const b = this.brand!;
+        d.setFillColor(255, 255, 255); d.rect(0, 0, PAGE_W, 70, 'F');
+        // El logotipo de la Feria (o su nombre, si no hay logotipo).
+        if (b.logo) {
+            const maxH = 40; const maxW = 230;
+            const k = Math.min(maxH / b.logo.h, maxW / b.logo.w);
+            try { d.addImage(b.logo.data, 'PNG', M, 16, b.logo.w * k, b.logo.h * k, 'fair-logo', 'FAST'); }
+            catch { /* sin logotipo dibujable: queda el texto de la derecha */ }
+        } else {
+            d.setFont(fam(d), 'bold'); d.setFontSize(13); d.setTextColor(...BLUE);
+            d.text('Feria de Proyectos', M, 36);
+            d.setFont(fam(d), 'normal'); d.setFontSize(8.5); d.setTextColor(...MUTED);
+            d.text('Rotary · Club Platform', M, 50);
+        }
+        d.setFont(fam(d), 'bold'); d.setFontSize(10); d.setTextColor(...BLUE);
+        d.text(sanitize(b.title), PAGE_W - M, 32, { align: 'right' });
+        d.setFont(fam(d), 'normal'); d.setFontSize(8); d.setTextColor(...MUTED);
+        d.text(sanitize(b.edition).slice(0, 70), PAGE_W - M, 46, { align: 'right' });
+        d.setFillColor(...BLUE); d.rect(0, 66, PAGE_W, 3, 'F');
+        d.setFillColor(...GOLD); d.rect(0, 69, PAGE_W, 2, 'F');
+    }
 
     pageChrome() {
+        if (this.brand) { this.brandChrome(); return; }
         const d = this.doc;
         d.setFillColor(...BLUE); d.rect(0, 0, PAGE_W, 34, 'F');
         d.setFillColor(...GOLD); d.rect(0, 34, PAGE_W, 3, 'F');
-        d.setFont('helvetica', 'bold'); d.setFontSize(9); d.setTextColor(255, 255, 255);
+        d.setFont(fam(d), 'bold'); d.setFontSize(9); d.setTextColor(255, 255, 255);
         d.text(this.header.slice(0, 110), M, 22);
         if (this.draftMark) this.watermark(this.draftMark);
     }
@@ -73,30 +161,30 @@ class Writer {
         const d = this.doc;
         d.saveGraphicsState?.();
         try { d.setGState?.(new d.GState({ opacity: 0.12 })); } catch { /* sin transparencia: sigue legible */ }
-        d.setFont('helvetica', 'bold'); d.setFontSize(54); d.setTextColor(200, 40, 40);
+        d.setFont(fam(d), 'bold'); d.setFontSize(54); d.setTextColor(200, 40, 40);
         d.text(text, PAGE_W / 2, PAGE_H / 2 + 40, { align: 'center', angle: 32 });
         d.restoreGraphicsState?.();
         d.setFillColor(254, 242, 242); d.rect(0, 37, PAGE_W, 16, 'F');
-        d.setFont('helvetica', 'bold'); d.setFontSize(7.5); d.setTextColor(185, 28, 28);
+        d.setFont(fam(d), 'bold'); d.setFontSize(7.5); d.setTextColor(185, 28, 28);
         d.text(text, PAGE_W / 2, 48, { align: 'center' });
     }
 
-    newPage() { this.doc.addPage(); this.pageChrome(); this.y = TOP; }
+    newPage() { this.doc.addPage(); this.pageChrome(); this.y = this.top; }
     room() { return BOTTOM - this.y; }
-    ensure(h: number) { if (h > this.room() && h <= BOTTOM - TOP) this.newPage(); }
+    ensure(h: number) { if (h > this.room() && h <= BOTTOM - this.top) this.newPage(); }
 
     lines(text: string, size: number, width = CW, bold = false): string[] {
-        this.doc.setFont('helvetica', bold ? 'bold' : 'normal'); this.doc.setFontSize(size);
+        this.doc.setFont(fam(this.doc), bold ? 'bold' : 'normal'); this.doc.setFontSize(size);
         return this.doc.splitTextToSize(sanitize(text), width);
     }
 
     /** Escribe líneas ya partidas; si no caben, siguen en la página siguiente. */
     flow(lines: string[], size: number, color: RGB, x = M, bold = false, italic = false) {
         const lh = size * 1.38;
-        this.doc.setFont('helvetica', bold ? 'bold' : (italic ? 'italic' : 'normal'));
+        this.doc.setFont(fam(this.doc), bold ? 'bold' : (italic ? 'italic' : 'normal'));
         this.doc.setFontSize(size); this.doc.setTextColor(...color);
         for (const ln of lines) {
-            if (this.y + lh > BOTTOM) { this.newPage(); this.doc.setFont('helvetica', bold ? 'bold' : (italic ? 'italic' : 'normal')); this.doc.setFontSize(size); this.doc.setTextColor(...color); }
+            if (this.y + lh > BOTTOM) { this.newPage(); this.doc.setFont(fam(this.doc), bold ? 'bold' : (italic ? 'italic' : 'normal')); this.doc.setFontSize(size); this.doc.setTextColor(...color); }
             this.doc.text(ln, x, this.y); this.y += lh;
         }
     }
@@ -166,12 +254,12 @@ function matrixBlock(w: Writer, field: DossierField, label: string, lang: Lang) 
     w.flow(w.lines(label, 8, CW, true), 8, MUTED, M, true);
     const d = w.doc;
     d.setFillColor(...BAND); d.rect(M, w.y - 10, CW, 16, 'F');
-    d.setFont('helvetica', 'bold'); d.setFontSize(8); d.setTextColor(...MUTED);
+    d.setFont(fam(d), 'bold'); d.setFontSize(8); d.setTextColor(...MUTED);
     cols.forEach((_, i) => d.text(sanitize(colLabel(i)), M + firstW + colW * i + colW - 6, w.y, { align: 'right' }));
     w.y += 16;
     if (!rows.length) { w.flow([T[lang].notProvided], 9.5, MUTED, M, false, true); w.y += 4; return; }
     for (const r of rows) {
-        d.setFont('helvetica', 'normal'); d.setFontSize(9.5); d.setTextColor(...INK);
+        d.setFont(fam(d), 'normal'); d.setFontSize(9.5); d.setTextColor(...INK);
         d.text(sanitize(lang === 'en' ? (r.labelEn || r.label) : r.label).slice(0, 60), M + 4, w.y);
         cols.forEach((c, i) => {
             const v = value?.[r.key]?.[c.key];
@@ -226,9 +314,9 @@ function renderDossier(w: Writer, dossier: Dossier, lang: Lang) {
 function cover(w: Writer, p: DocumentPayload, title: string, lang: Lang, statusLine?: string | null) {
     const d = w.doc;
     w.y = TOP + 8;
-    d.setFont('helvetica', 'normal'); d.setFontSize(9); d.setTextColor(...MUTED);
+    d.setFont(fam(d), 'normal'); d.setFontSize(9); d.setTextColor(...MUTED);
     d.text(sanitize(p.edition), M, w.y); w.y += 22;
-    d.setFont('helvetica', 'bold'); d.setFontSize(10); d.setTextColor(...GOLD);
+    d.setFont(fam(d), 'bold'); d.setFontSize(10); d.setTextColor(...GOLD);
     d.text(sanitize(title.toUpperCase()), M, w.y); w.y += 22;
     w.flow(w.lines(p.projectName || '-', 20, CW, true), 20, BLUE, M, true);
     w.y += 4;
@@ -257,7 +345,7 @@ function finish(doc: any, p: { publicRef: string; generatedAt: string }, lang: L
     for (let i = 1; i <= total; i++) {
         doc.setPage(i);
         doc.setDrawColor(...LINE); doc.setLineWidth(0.5); doc.line(M, PAGE_H - 36, PAGE_W - M, PAGE_H - 36);
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(...MUTED);
+        doc.setFont(fam(doc), 'normal'); doc.setFontSize(7.5); doc.setTextColor(...MUTED);
         doc.text(sanitize(`${p.publicRef} · ${T[lang].generated} ${when}`), M, PAGE_H - 24);
         doc.text(T[lang].page(i, total), PAGE_W - M, PAGE_H - 24, { align: 'right' });
     }
@@ -301,6 +389,96 @@ async function drawProject(doc: any, p: DocumentPayload, first: boolean) {
     renderDossier(w, p.en || p.es, 'en');
 }
 
+// ── v4.1345 — La ficha técnica que descarga el gestor desde «Mi Proyecto» ──
+/** El logotipo (cualquier formato que el navegador lea) → PNG con su tamaño. */
+async function prepareLogo(dataUrl: string | null | undefined): Promise<Brand['logo']> {
+    if (!dataUrl || typeof Image === 'undefined') return null;
+    try {
+        const img = await new Promise<HTMLImageElement>((ok, fail) => {
+            const i = new Image(); i.onload = () => ok(i); i.onerror = fail; i.src = dataUrl;
+        });
+        const w = img.naturalWidth || img.width; const h = img.naturalHeight || img.height;
+        if (!w || !h) return null;
+        // Se rasteriza a 3× la altura impresa para que se vea nítido.
+        const scale = Math.min(1, 360 / h, 1400 / w) || 1;
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(w * scale)); c.height = Math.max(1, Math.round(h * scale));
+        const ctx = c.getContext('2d'); if (!ctx) return null;
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        return { data: c.toDataURL('image/png'), w: c.width, h: c.height };
+    } catch { return null; }
+}
+
+const CLUB_TITLE = 'Ficha técnica del proyecto';
+
+function clubCover(w: Writer, p: DocumentPayload) {
+    const d = w.doc;
+    w.y = BRAND_TOP + 6;
+    d.setFont(fam(d), 'bold'); d.setFontSize(9); d.setTextColor(...GOLD);
+    d.text(CLUB_TITLE.toUpperCase(), M, w.y); w.y += 20;
+    w.flow(w.lines(p.projectName || '-', 21, CW, true), 21, BLUE, M, true);
+    w.y += 2;
+    w.flow(w.lines(`${p.clubName || ''}${p.district ? ` · Distrito ${String(p.district).replace(/^distrito\s*/i, '')}` : ''}`, 11, CW), 11, INK);
+    w.flow([`${T.es.ref}: ${p.publicRef}`], 9, MUTED);
+    w.y += 10;
+    // Qué contiene: los formularios con su avance.
+    const forms = p.es.groups.filter(g => g.source === 'form');
+    if (forms.length) {
+        const boxH = 22 + forms.length * 16;
+        w.ensure(boxH + 10);
+        d.setFillColor(...BAND); d.roundedRect?.(M, w.y - 4, CW, boxH, 6, 6, 'F') ?? d.rect(M, w.y - 4, CW, boxH, 'F');
+        d.setFont(fam(d), 'bold'); d.setFontSize(8); d.setTextColor(...MUTED);
+        d.text('CONTENIDO DE ESTA FICHA', M + 12, w.y + 10);
+        let y = w.y + 27;
+        for (const g of forms) {
+            d.setFont(fam(d), 'normal'); d.setFontSize(9.5); d.setTextColor(...INK);
+            d.text(sanitize(g.title), M + 12, y);
+            const st = g.started === false ? 'Sin iniciar' : `${Math.round(Number(g.completionPct || 0))} % diligenciado`;
+            d.setFont(fam(d), 'bold'); d.setTextColor(...(g.started === false ? MUTED : BLUE));
+            d.text(st, M + CW - 12, y, { align: 'right' });
+            y += 16;
+        }
+        w.y += boxH + 8;
+    }
+    d.setDrawColor(...LINE); d.setLineWidth(0.8); d.line(M, w.y, M + CW, w.y);
+    w.y += 14;
+}
+
+function clubFinish(doc: any, p: DocumentPayload) {
+    const total = doc.getNumberOfPages();
+    const when = new Date(p.generatedAt).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' });
+    for (let i = 1; i <= total; i++) {
+        doc.setPage(i);
+        doc.setDrawColor(...LINE); doc.setLineWidth(0.5); doc.line(M, PAGE_H - 40, PAGE_W - M, PAGE_H - 40);
+        doc.setFont(fam(doc), 'normal'); doc.setFontSize(7.5); doc.setTextColor(...MUTED);
+        doc.text(sanitize(`${p.publicRef} · Generada desde Mi Proyecto el ${when}`), M, PAGE_H - 28);
+        doc.text(`Página ${i} de ${total}`, PAGE_W - M, PAGE_H - 28, { align: 'right' });
+        doc.setFontSize(6.8);
+        doc.text('Información diligenciada por el club. No incluye documento de identidad ni datos de pago.', M, PAGE_H - 18);
+    }
+}
+
+/**
+ * La ficha técnica del proyecto para el GESTOR: la misma información de la
+ * ficha del comité (registro inicial, Formulación y Solicitud de Aportes del
+ * FDD), con la cabecera de la Feria y Open Sans.
+ */
+export async function buildClubFichaPdf(p: DocumentPayload): Promise<any> {
+    const doc = await newDoc();
+    const brand: Brand = { logo: await prepareLogo(p.logo), title: CLUB_TITLE, edition: p.edition };
+    const w = new Writer(doc, `${p.edition} · ${CLUB_TITLE}`, null, brand);
+    w.pageChrome();
+    clubCover(w, p);
+    renderDossier(w, p.es, 'es');
+    clubFinish(doc, p);
+    return doc;
+}
+
+export const clubFichaFileName = (p: Pick<DocumentPayload, 'publicRef' | 'projectName'>) => {
+    const slug = String(p.projectName || 'proyecto').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').slice(0, 50);
+    return `${p.publicRef}-${slug}-ficha-tecnica.pdf`;
+};
+
 /** El PDF de UN proyecto. */
 export async function buildDossierPdf(p: DocumentPayload): Promise<any> {
     const doc = await newDoc();
@@ -342,7 +520,7 @@ export async function buildBookletPdf(project: { publicRef: string; projectName:
         w.pageChrome();
         const d = doc;
         w.y = TOP + 8;
-        d.setFont('helvetica', 'bold'); d.setFontSize(10); d.setTextColor(...GOLD);
+        d.setFont(fam(d), 'bold'); d.setFontSize(10); d.setTextColor(...GOLD);
         d.text(t.booklet.toUpperCase(), M, w.y); w.y += 22;
         for (const block of b.blocks) {
             const lines = w.lines(block.text || t.notProvided, 13, CW);

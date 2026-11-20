@@ -907,6 +907,23 @@ export const forDocument = (dossier, { includeContact = false } = {}) => ({
     })),
 });
 
+/**
+ * v4.1345 — LA FICHA QUE DESCARGA EL CLUB desde «Mi Proyecto». Es la misma
+ * ficha del comité (`forDocument`) con lo que el club escribió, sus datos de
+ * contacto incluidos (son suyos) y, como siempre, SIN el documento de
+ * identidad ni pagos. Se quitan además los espacios institucionales del
+ * Distrito (`district`: aprobación y notas del comité): no son información
+ * que el club diligenció.
+ */
+export const forClubDocument = (dossier) => {
+    const base = forDocument(dossier, { includeContact: true });
+    return {
+        groups: base.groups
+            .map(g => ({ ...g, sections: (g.sections || []).filter(s => s.district !== true) }))
+            .filter(g => g.sections.some(s => (s.fields || []).length)),
+    };
+};
+
 // ── Libreta de presentación ────────────────────────────────────────────────
 //
 // La libreta es un RESUMEN EDITORIAL del expediente para quien presenta el
@@ -996,5 +1013,5 @@ export default {
     isTargetLang, hashOf, isFilled, mergeGlossary, glossaryLookup, isTranslatableField, buildDossier, fieldIndex,
     translatableItems, isMeaningfulText, fingerprintOf, translationStatus, approvalCheck, auditTranslation,
     planBatches, translationSystemPrompt, translationUserPrompt, parseTranslationResponse, coerceValue, planEdit,
-    applyFormChanges, submissionColumnValue, submissionColumnOf, englishValueOf, englishView, forDocument, prepareBooklet, normalizeBooklet, auditBooklet,
+    applyFormChanges, submissionColumnValue, submissionColumnOf, englishValueOf, englishView, forDocument, forClubDocument, prepareBooklet, normalizeBooklet, auditBooklet,
 };
