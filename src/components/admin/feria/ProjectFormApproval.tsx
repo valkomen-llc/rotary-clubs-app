@@ -276,7 +276,7 @@ const renderAnswer = (field: any, value: any) => {
     if (!hasValue(value, field.type)) return '—';
     if (field.type === 'checkbox') return 'Sí';
     if (field.type === 'date') return fmtDay(String(value));
-    if (field.type === 'multiselect') return (value as string[]).join(', ');
+    if (field.type === 'multiselect' || field.type === 'clubs') return (value as string[]).join(', ');
     if (field.type === 'repeater') {
         return (
             <ul className="ml-4 list-disc">

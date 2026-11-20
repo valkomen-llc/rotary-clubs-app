@@ -32,7 +32,12 @@ export const FIELD_TYPES = [
     'text', 'textarea', 'number', 'currency', 'percent', 'date', 'select',
     'multiselect', 'checkbox', 'url', 'email', 'phone', 'repeater', 'matrix',
     'file', 'computed',
+    // v4.1346 — Varios clubes del Catálogo Maestro (lista de nombres).
+    'clubs',
 ];
+
+/** v4.1346 — Tope de clubes en un campo `clubs`. */
+export const MAX_CLUBS_PER_FIELD = 12;
 
 const isPlainObject = (v) => v && typeof v === 'object' && !Array.isArray(v);
 
@@ -88,6 +93,8 @@ export const hasValue = (value, type) => {
     }
     if (type === 'matrix') return anyCellFilled(value);
     if (type === 'multiselect') return Array.isArray(value) && value.length > 0;
+    // Un texto suelto cuenta como respondido para que la validación lo rechace.
+    if (type === 'clubs') return Array.isArray(value) ? value.some(v => String(v ?? '').trim() !== '') : String(value).trim() !== '';
     if (type === 'checkbox') return value === true;
     if (type === 'number' || type === 'currency' || type === 'percent') {
         return String(value).trim() !== '' && !Number.isNaN(Number(value));
@@ -339,6 +346,15 @@ export const validateAnswers = (template, answers = {}) => {
                 if (Number.isNaN(n)) add(field, 'Escribe un porcentaje.');
                 else if (n < 0 || n > 100) add(field, 'El porcentaje debe estar entre 0 y 100.');
                 break;
+            }
+            case 'clubs': {
+                // v4.1346 — Una lista de nombres de club, sin repetidos y con tope.
+                const list = Array.isArray(value) ? value.map(v => String(v ?? '').trim()).filter(Boolean) : null;
+                if (!list) add(field, 'Selecciona los clubes de la lista.');
+                else if (list.length > MAX_CLUBS_PER_FIELD) add(field, `Puedes agregar hasta ${MAX_CLUBS_PER_FIELD} clubes.`);
+                else if (list.some(n => n.length > 160)) add(field, 'El nombre de un club es demasiado largo.');
+                else if (new Set(list.map(n => n.toLowerCase())).size !== list.length) add(field, 'Un club está repetido.');
+                return;
             }
             case 'select':
                 // `optionsFrom` se resuelve con datos de la convocatoria, que

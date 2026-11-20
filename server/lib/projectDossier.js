@@ -696,6 +696,15 @@ export const coerceValue = (field, raw) => {
             if (v && Array.isArray(field.options) && field.options.length && !field.options.includes(v)) return fail('selecciona una de las opciones disponibles.');
             return { ok: true, value: v };
         }
+        case 'clubs': {
+            // v4.1346 — Clubes participantes: lista de nombres, sin repetidos.
+            if (!Array.isArray(raw)) return fail('debe ser una lista.');
+            const seen = new Set();
+            const list = raw.map(x => str(x).trim()).filter(x => x && !seen.has(x.toLowerCase()) && seen.add(x.toLowerCase()));
+            if (list.length > 12) return fail('hasta 12 clubes.');
+            if (list.some(x => x.length > 160)) return fail('el nombre de un club es demasiado largo.');
+            return { ok: true, value: list };
+        }
         case 'multiselect': {
             if (!Array.isArray(raw)) return fail('debe ser una lista.');
             const list = [...new Set(raw.map(x => str(x).trim()).filter(Boolean))];
@@ -801,7 +810,7 @@ export const planEdit = (dossier, { edits = [], reason = '' } = {}) => {
 
 // Para comparar, '' y null son lo mismo, y un número 4500 es igual a '4500'.
 const normalizeForCompare = (field, v) => {
-    if (v === undefined || v === null) return field.type === 'checkbox' ? false : (field.type === 'multiselect' || field.type === 'repeater' ? [] : '');
+    if (v === undefined || v === null) return field.type === 'checkbox' ? false : (field.type === 'multiselect' || field.type === 'clubs' || field.type === 'repeater' ? [] : '');
     if (['number', 'currency', 'percent'].includes(field.type)) {
         const t = str(v).trim();
         if (t === '') return '';

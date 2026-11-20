@@ -311,6 +311,16 @@ function renderDossier(w: Writer, dossier: Dossier, lang: Lang) {
     }
 }
 
+/** v4.1346 — Los clubes participantes que el club declaró en la Formulación. */
+const participatingClubsOf = (p: DocumentPayload): string[] => {
+    for (const g of p.es?.groups || []) for (const s of g.sections || []) for (const f of s.fields || []) {
+        if (f.path === 'master.identificacion.participatingClubs' && Array.isArray(f.value)) {
+            return (f.value as unknown[]).map(v => String(v ?? '').trim()).filter(Boolean);
+        }
+    }
+    return [];
+};
+
 function cover(w: Writer, p: DocumentPayload, title: string, lang: Lang, statusLine?: string | null) {
     const d = w.doc;
     w.y = TOP + 8;
@@ -321,6 +331,8 @@ function cover(w: Writer, p: DocumentPayload, title: string, lang: Lang, statusL
     w.flow(w.lines(p.projectName || '-', 20, CW, true), 20, BLUE, M, true);
     w.y += 4;
     w.flow(w.lines(`${p.clubName || ''}${p.district ? ` · ${p.district}` : ''}`, 11, CW), 11, INK);
+    const otros = participatingClubsOf(p);
+    if (otros.length) w.flow(w.lines(`${lang === 'en' ? 'Participating clubs' : 'Clubes participantes'}: ${otros.join(', ')}`, 9.5, CW), 9.5, INK);
     w.flow([`${T[lang].ref}: ${p.publicRef}`], 9, MUTED);
     if (statusLine) { w.y += 4; w.flow(w.lines(statusLine, 8.5, CW), 8.5, MUTED, M, false, true); }
     w.y += 8;
@@ -418,7 +430,9 @@ function clubCover(w: Writer, p: DocumentPayload) {
     d.text(CLUB_TITLE.toUpperCase(), M, w.y); w.y += 20;
     w.flow(w.lines(p.projectName || '-', 21, CW, true), 21, BLUE, M, true);
     w.y += 2;
-    w.flow(w.lines(`${p.clubName || ''}${p.district ? ` · Distrito ${String(p.district).replace(/^distrito\s*/i, '')}` : ''}`, 11, CW), 11, INK);
+    w.flow(w.lines(`${p.clubName || ''}${p.district ? ` · Distrito ${String(p.district).replace(/^(rotary\s*)?distrito\s*/i, '')}` : ''}`, 11, CW), 11, INK);
+    const otros = participatingClubsOf(p);
+    if (otros.length) w.flow(w.lines(`Clubes participantes: ${otros.join(', ')}`, 9.5, CW), 9.5, INK);
     w.flow([`${T.es.ref}: ${p.publicRef}`], 9, MUTED);
     w.y += 10;
     // Qué contiene: los formularios con su avance.

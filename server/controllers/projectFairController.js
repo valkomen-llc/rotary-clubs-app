@@ -43,7 +43,7 @@ import { toStripeAmount, fromStripeAmount } from '../lib/money.js';
 import db from '../lib/db.js';
 import { TRM_PROVIDERS } from '../lib/trm.js';
 import EmailService from '../services/EmailService.js';
-import { DEFAULT_MASTER_FORM, dropRetiredBudgetRows } from '../lib/projectFairMasterForm.js';
+import { DEFAULT_MASTER_FORM, dropRetiredBudgetRows, ensureParticipatingClubsField } from '../lib/projectFairMasterForm.js';
 import { DEFAULT_FDD_FORM, syncFddSections } from '../lib/projectFairFddForm.js';
 import { seedDistrictClubs } from '../lib/rotaryClubs.js';
 // v4.1253 — La postulación y el pago son DOS estados independientes. El
@@ -1253,6 +1253,10 @@ export const normalizeSavedConfig = (saved) => {
     if (isPlainObject(out?.masterForm)) {
         const limpio = dropRetiredBudgetRows(out.masterForm);
         if (limpio !== out.masterForm) out = { ...out, masterForm: limpio };
+        // v4.1346 — «Clubes participantes»: lo AGREGADO al código también
+        // queda tapado por la copia guardada; se suma al leer.
+        const conClubes = ensureParticipatingClubsField(out.masterForm);
+        if (conClubes !== out.masterForm) out = { ...out, masterForm: conClubes };
     }
 
     // v4.1255 — El paso «Aportes esperados» del FDD cambió (sin «distritos del

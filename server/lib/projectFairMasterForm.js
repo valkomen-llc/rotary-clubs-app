@@ -104,6 +104,45 @@ export const dropRetiredBudgetRows = (masterForm) => {
     return tocado ? { ...masterForm, sections: limpio } : masterForm;
 };
 
+// ── Clubes participantes (v4.1346) ─────────────────────────────────────────
+//
+// Pedido de Paula Cruz (Club Pereira del Café): su proyecto lo formulan
+// cuatro clubes (Pereira, Pereira del Otún, Pereira del Café y Pereira
+// Nuevo), y la ficha sólo decía el club que postuló. La postulación —y el
+// pago— siguen siendo de UN club; este campo dice quiénes más participan.
+// Opcional: no cambia el avance de nadie.
+export const PARTICIPATING_CLUBS_FIELD = {
+    key: 'participatingClubs',
+    label: 'Clubes participantes en el proyecto',
+    type: 'clubs',
+    required: false,
+    width: 'full',
+    help: 'Si el proyecto lo formulan o ejecutan varios clubes, agrégalos aquí además del club que postula. Búscalos por nombre o ciudad.',
+};
+
+/**
+ * Agrega el campo a una copia GUARDADA de la plantilla que no lo tenga (la
+ * trampa de v4.788 al revés: lo guardado tapa lo que se AGREGA al código, no
+ * sólo lo que se quita). Va después de «Distrito Rotario» si existe; si no, al
+ * final de la sección. Devuelve la MISMA referencia cuando no hay nada que
+ * hacer. Si la convocatoria no tiene la sección «identificacion», no inventa
+ * una.
+ */
+export const ensureParticipatingClubsField = (masterForm) => {
+    const sections = masterForm?.sections;
+    if (!Array.isArray(sections)) return masterForm;
+    const idx = sections.findIndex(s => s?.key === 'identificacion' && Array.isArray(s.fields));
+    if (idx < 0) return masterForm;
+    const section = sections[idx];
+    if (section.fields.some(f => f?.key === PARTICIPATING_CLUBS_FIELD.key)) return masterForm;
+    const after = section.fields.findIndex(f => f?.key === 'district');
+    const fields = [...section.fields];
+    fields.splice(after >= 0 ? after + 1 : fields.length, 0, PARTICIPATING_CLUBS_FIELD);
+    const next = [...sections];
+    next[idx] = { ...section, fields };
+    return { ...masterForm, sections: next };
+};
+
 export const DEFAULT_MASTER_FORM = {
     version: MASTER_FORM_VERSION,
     enabled: true,
@@ -155,6 +194,7 @@ export const DEFAULT_MASTER_FORM = {
             fields: [
                 { key: 'clubName', label: 'Club Rotario', type: 'text', required: true, width: 'half' },
                 { key: 'district', label: 'Distrito Rotario', type: 'text', required: true, width: 'half' },
+                PARTICIPATING_CLUBS_FIELD,
                 { key: 'city', label: 'Ciudad', type: 'text', required: true, width: 'half' },
                 { key: 'projectName', label: 'Nombre del proyecto', type: 'text', required: true, width: 'half' },
                 { key: 'focusAreas', label: 'Áreas de interés', type: 'multiselect', required: true, width: 'full',

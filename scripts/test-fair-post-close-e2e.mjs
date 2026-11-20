@@ -194,6 +194,8 @@ try {
         multiselect: [g.data.focusAreas?.[0]?.label ?? fd.options?.[0] ?? 'x'],
         matrix: { [fd.rows?.[0]?.key || 'r']: { [fd.columns?.[0]?.key || 'c']: '1000' } },
         repeater: [{ [fd.columns?.[0]?.key || fd.fields?.[0]?.key || 'c']: 'x' }],
+        // v4.1346 — Clubes participantes: una lista de nombres.
+        clubs: ['Club Rotario Pereira'],
     }[fd.type] ?? 'x');
     for (const sec of g.data.template.sections.filter(x => !x.adminOnly)) {
         for (const fd of sec.fields || []) {

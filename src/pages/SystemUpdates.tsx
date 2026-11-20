@@ -34,13 +34,27 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1345.0 | 2026-11-20 (Mi Proyecto: descargar la ficha técnica del proyecto)
+// UI V4.1346.0 | 2026-11-20 (Formulación: clubes participantes en el proyecto)
 // Cache bust: 2026-11-19
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1346.0',
+        title: 'Formulación del proyecto: «Clubes participantes» para proyectos de varios clubes 🤝',
+        description: 'Un proyecto formulado por varios clubes (el caso de Pereira del Café, con Pereira, Pereira del Otún y Pereira Nuevo) sólo podía nombrar al club que postuló. Ahora la Formulación tiene, en «Identificación del proyecto», el campo opcional «Clubes participantes en el proyecto»: el gestor busca y agrega los clubes del Catálogo Maestro (hasta 12), y los quita con un clic. La ficha técnica en PDF —la del gestor y la del comité— los nombra en la portada. La postulación y el pago siguen siendo del club que postuló.',
+        date: new Date().toISOString(),
+        tags: ['feria', 'formulacion', 'clubes', 'ficha'],
+        type: 'feature',
+        impact: 'Media: los proyectos conjuntos quedan documentados con todos sus clubes.',
+        changes: [
+            { type: 'added', text: '«Clubes participantes en el proyecto» en la Formulación, con el buscador del Catálogo Maestro (distritos 4271 y 4281), sin repetidos y opcional.' },
+            { type: 'added', text: 'La portada de la ficha técnica muestra «Clubes participantes: …».' },
+            { type: 'changed', text: 'El campo aparece también en las convocatorias que tienen su propia copia de la plantilla, sin tocar sus datos.' },
+        ],
+    },
     {
         version: '4.1345.0',
         title: 'Mi Proyecto: los gestores descargan la ficha técnica de su proyecto en PDF 📄',

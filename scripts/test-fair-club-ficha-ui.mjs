@@ -69,7 +69,13 @@ const { ensureTables } = await import(`${REPO}/server/controllers/projectFairCon
 await ensureTables();
 await db.query(`INSERT INTO "ProjectFairConfig" (key, "eventId", config) VALUES ('edition:evt-ficha','evt-ficha', $1::jsonb)
     ON CONFLICT ("eventId") WHERE "eventId" IS NOT NULL DO UPDATE SET config = $1::jsonb`,
-[JSON.stringify({ deadline: '2099-12-31', edition: { name: 'XII Rotary Project Fair Colombia 2027' }, registration: { priceMode: 'COP', amountCop: 250000 } })]);
+[JSON.stringify({ deadline: '2099-12-31', edition: { name: 'XII Rotary Project Fair Colombia 2027' }, registration: { priceMode: 'COP', amountCop: 250000 },
+    // v4.1346 — Como en producción: la convocatoria tiene su PROPIA copia de la
+    // plantilla, anterior a «Clubes participantes».
+    masterForm: await (async () => {
+        const { DEFAULT_MASTER_FORM } = await import(`${REPO}/server/lib/projectFairMasterForm.js`);
+        return { ...DEFAULT_MASTER_FORM, sections: DEFAULT_MASTER_FORM.sections.map(sec => (sec.key === 'identificacion' ? { ...sec, fields: sec.fields.filter(f => f.key !== 'participatingClubs') } : sec)) };
+    })() })]);
 const sub = async (ref, name, doc) => (await db.query(`
     INSERT INTO "ProjectFairSubmission" ("publicRef", "eventId", "firstName", "lastName", email, "clubName", district, "projectName", "workflowStatus", status, phone, "focusArea", "amountCop", "projectIndex", "documentNumber", "appliedAt")
     VALUES ($1,'evt-ficha','Leidy','Ávila',$2,'E-Club Origen','4281',$3,'in_review','paid','+57 3001112233','paz',250000,1,$4, NOW()) RETURNING *`,
@@ -115,6 +121,17 @@ try {
     console.log('\n▸ El servidor');
     check('la Formulación se guarda', (await fill('master', 'Formulación')).status === 200);
     check('la Solicitud del FDD se guarda', (await fill('fdd_2026_2027', 'FDD')).status === 200);
+
+    console.log('\n▸ Clubes participantes (v4.1346, caso Paula Cruz)');
+    let gm = await call('GET', '/portal/forms/master', tS);
+    const identKeys = (gm.data.template?.sections || []).find(x => x.key === 'identificacion')?.fields.map(f => f.key) || [];
+    check('con una plantilla guardada vieja, el campo aparece igual (se agrega al leer)', identKeys.includes('participatingClubs'));
+    const am = gm.data.answers;
+    am.identificacion = { ...(am.identificacion || {}), participatingClubs: ['Pereira', 'Pereira del Otún', 'Pereira Nuevo'] };
+    let pm = await call('PUT', '/portal/forms/master', tS, { answers: am });
+    check('el gestor guarda los clubes participantes', pm.status === 200);
+    const guardado = (await db.query('SELECT answers FROM "ProjectFairMasterForm" WHERE "submissionId" = $1', [S.id])).rows[0].answers;
+    check('quedan en la base como lista', JSON.stringify(guardado.identificacion.participatingClubs) === JSON.stringify(['Pereira', 'Pereira del Otún', 'Pereira Nuevo']));
     let r = await call('GET', '/portal/ficha', null);
     check('sin sesión del perfil, nada', r.status === 401);
     r = await call('GET', '/portal/ficha', tS);
@@ -136,6 +153,15 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import DocumentProgressPanel from './src/components/project-forms/DocumentProgressPanel';
 import { buildDossierPdf } from './src/lib/projectDossierPdf';
+import { FormField } from './src/components/project-forms/FormFields';
+import { PARTICIPATING_CLUBS_FIELD } from './server/lib/projectFairMasterForm.js';
+const ClubsDemo = () => {
+    const [v, setV] = React.useState(['Pereira']);
+    window.__clubs = v;
+    return React.createElement('div', { style: { padding: 16, maxWidth: 760 }, 'data-demo-clubs': true },
+        React.createElement(FormField, { field: { ...PARTICIPATING_CLUBS_FIELD }, value: v, answers: {}, disabled: false, onChange: setV }));
+};
+window.goClubs = () => createRoot(document.getElementById('root')).render(React.createElement(ClubsDemo));
 // La ficha del COMITÉ (expediente) con la misma letra: se arma en el navegador.
 window.adminPdf = async (payload) => {
     const doc = await buildDossierPdf(payload);
@@ -149,13 +175,20 @@ window.go = (t) => createRoot(document.getElementById('root')).render(React.crea
     const SYSTEM_CHROME = '/opt/pw-browsers/chromium-1243/chrome-linux/chrome';
     const browser = await chromium.launch(existsSync(SYSTEM_CHROME) ? { executablePath: SYSTEM_CHROME } : {});
     try {
-        for (const [modo, vp] of [['normal', { width: 1280, height: 900 }], ['normal', { width: 390, height: 844 }], ['sin-fuente', { width: 1280, height: 900 }]]) {
+        for (const [modo, vp] of [['normal', { width: 1280, height: 900 }], ['normal', { width: 390, height: 844 }], ['sin-fuente', { width: 1280, height: 900 }], ['clubes', { width: 390, height: 844 }]]) {
             const ctx = await browser.newContext({ viewport: vp, acceptDownloads: true, deviceScaleFactor: SHOT ? 2 : 1 });
             const page = await ctx.newPage();
             const errores = [];
             page.on('pageerror', e => errores.push(e.message));
             await page.route('http://localhost/**', async (route) => {
                 const url = new URL(route.request().url());
+                if (url.pathname.startsWith('/api/club-catalog/public/clubs')) {
+                    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ clubs: [
+                        { id: 'c1', name: 'Pereira', shortName: 'Pereira', city: 'Pereira', state: 'Risaralda', country: 'Colombia', districtNumber: 4281, organizationType: 'Club Rotario', clubType: 'rotary' },
+                        { id: 'c2', name: 'Pereira del Otún', shortName: 'Otún', city: 'Pereira', state: 'Risaralda', country: 'Colombia', districtNumber: 4281, organizationType: 'Club Rotario', clubType: 'rotary' },
+                        { id: 'c3', name: 'Pereira Nuevo', shortName: 'Nuevo', city: 'Pereira', state: 'Risaralda', country: 'Colombia', districtNumber: 4281, organizationType: 'Club Rotario', clubType: 'rotary' },
+                    ] }) });
+                }
                 if (url.pathname.startsWith('/api/')) {
                     const res = await realFetch(`${BACK}${url.pathname}${url.search}`, { method: route.request().method(), headers: route.request().headers() });
                     return route.fulfill({ status: res.status, headers: { 'content-type': res.headers.get('content-type') || 'application/json' }, body: Buffer.from(await res.arrayBuffer()) });
@@ -173,6 +206,28 @@ window.go = (t) => createRoot(document.getElementById('root')).render(React.crea
             await page.goto('http://localhost/mi-proyecto');
             await page.addStyleTag({ content: CSS });
             await page.addScriptTag({ content: JS });
+            if (modo === 'clubes') {
+                await page.evaluate(() => window.goClubs());
+                const add = page.getByRole('button', { name: /Agregar club participante/ });
+                await add.waitFor({ timeout: 10000 });
+                await add.click();
+                await page.getByPlaceholder('Nombre, ciudad o departamento').fill('otun');
+                await page.getByText('Pereira del Otún', { exact: true }).first().click();
+                await page.waitForTimeout(200);
+                check('(390 px) se agrega un club del catálogo buscando «otun» (sin tilde)', JSON.stringify(await page.evaluate(() => window.__clubs)) === JSON.stringify(['Pereira', 'Pereira del Otún']));
+                await add.click();
+                await page.getByPlaceholder('Nombre, ciudad o departamento').fill('Pereira');
+                await page.locator('[data-club-selector]').getByText('Pereira', { exact: true }).first().click();
+                check('(390 px) un club repetido no se agrega y se avisa', (await page.evaluate(() => window.__clubs)).length === 2 && await page.getByText(/ya está en la lista/).isVisible());
+                await page.getByRole('button', { name: 'Cancelar' }).click();
+                await page.getByRole('button', { name: 'Quitar Pereira', exact: true }).click();
+                check('(390 px) se quita un club con su botón', JSON.stringify(await page.evaluate(() => window.__clubs)) === JSON.stringify(['Pereira del Otún']));
+                check('(390 px) sin desplazamiento horizontal', await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
+                if (SHOT) await page.locator('[data-demo-clubs]').screenshot({ path: join(SHOT, 'clubes-390.png') });
+                check('(390 px) sin errores en la página (clubes)', errores.length === 0, errores.join(' | '));
+                await ctx.close();
+                continue;
+            }
             await page.evaluate((t) => window.go(t), tS);
             const boton = page.getByRole('button', { name: /Descargar ficha técnica \(PDF\)/ });
             await boton.waitFor({ timeout: 15000 });
@@ -208,6 +263,7 @@ window.go = (t) => createRoot(document.getElementById('root')).render(React.crea
                 check('NO trae el documento de identidad', !text.includes('1088123456'));
                 check('dice cuántas páginas tiene', /Página 1 de \d+/.test(text), `${pdf.numPages} páginas`);
                 check('aclara que no incluye documento ni pagos', /No incluye documento de identidad ni datos de pago/.test(text));
+                check('la portada nombra a los clubes participantes (v4.1346)', /Clubes participantes:\s*Pereira, Pereira del Otún, Pereira Nuevo/.test(text.replace(/\s+/g, ' ')));
                 // La ficha del comité (expediente, en español) también en Open Sans.
                 const admin = await call('GET', '/portal/ficha', tS);
                 const b64 = await page.evaluate((p) => window.adminPdf({ ...p.data, kind: 'es', audience: undefined, logo: undefined }), admin);

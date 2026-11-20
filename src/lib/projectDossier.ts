@@ -154,6 +154,7 @@ export const plainValue = (field: Pick<DossierField, 'type'>, value: any, lang: 
         case 'date': return fmtDay(value, lang);
         case 'checkbox': return value === true ? (lang === 'en' ? 'Yes' : 'Sí') : (lang === 'en' ? 'No' : 'No');
         case 'multiselect': return Array.isArray(value) ? value.join(' · ') : String(value);
+        case 'clubs': return Array.isArray(value) ? value.join(', ') : String(value);
         default: return Array.isArray(value) ? value.join(', ') : String(value);
     }
 };

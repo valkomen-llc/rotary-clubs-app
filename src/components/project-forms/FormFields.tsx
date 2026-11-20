@@ -12,6 +12,7 @@
 import { useState } from 'react';
 import { Info, MessageCircle, Plus, Trash2 } from 'lucide-react';
 import { computeValue, fieldError, fmtUsd, whatsappLink, type Answers, type FieldDef } from '../../lib/projectForms';
+import ClubsField from './ClubsField';
 
 export const BLUE = '#17458F';
 
@@ -98,6 +99,8 @@ export const FormField = ({ field, value, answers, onChange, disabled, focusArea
                         );
                     })}
                 </div>
+            ) : field.type === 'clubs' ? (
+                <ClubsField value={value} disabled={disabled} onChange={v => { setTouched(true); onChange(v); }} />
             ) : field.type === 'checkbox' ? (
                 <label className={`flex items-start gap-2.5 rounded-xl border px-4 py-3 text-sm transition ${
                     value === true ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-slate-300 bg-white text-slate-700'} ${
