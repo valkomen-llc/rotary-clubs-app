@@ -10,7 +10,15 @@ const orderedLanguages = [
     ...SUPPORTED_LANGUAGES.filter((l) => l.code !== 'es'),
 ];
 
-const PublicTopBar: React.FC = () => {
+/**
+ * `rotaryLinks` (v4.1349): la barra EXACTA de la cabecera de un sitio
+ * institucional —Endpolio.org · My Rotary · idioma—, para las páginas que no
+ * montan el `Navbar` del sitio (el sitio web de Club Platform). Sin la prop, la
+ * barra de siempre del calendario: «Iniciar sesión» · idioma.
+ */
+const TOPBAR_LINK = 'items-center gap-1.5 font-bold text-white hover:text-white/80 transition-colors';
+
+const PublicTopBar: React.FC<{ rotaryLinks?: boolean }> = ({ rotaryLinks = false }) => {
     const { lang, setLang } = useLang();
     const [open, setOpen] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
@@ -28,13 +36,21 @@ const PublicTopBar: React.FC = () => {
         <div className="bg-rotary-topbar text-white relative z-[60]" data-no-translate>
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex items-center justify-end gap-6 sm:gap-8 py-4 text-sm">
-                    <a href="https://app.clubplatform.org/"
-                        className="flex items-center gap-1.5 font-bold text-white hover:text-white/80 transition-colors">
-                        Iniciar sesión <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
+                    {rotaryLinks ? (<>
+                        <a href="https://www.endpolio.org" target="_blank" rel="noopener noreferrer" className={`hidden sm:flex ${TOPBAR_LINK}`}>
+                            Endpolio.org <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                        <a href="https://my.rotary.org" target="_blank" rel="noopener noreferrer" className={`hidden sm:flex ${TOPBAR_LINK}`}>
+                            My Rotary <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                    </>) : (
+                        <a href="https://app.clubplatform.org/" className={`flex ${TOPBAR_LINK}`}>
+                            Iniciar sesión <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                    )}
 
                     <div className="relative" ref={ref}>
-                        <button onClick={() => setOpen(!open)} className="flex items-center gap-1.5 font-bold text-white hover:text-white/80 transition-colors">
+                        <button onClick={() => setOpen(!open)} aria-expanded={open} aria-label="Idioma" className="flex items-center gap-1.5 font-bold text-white hover:text-white/80 transition-colors">
                             <Globe className="w-4 h-4" />
                             <span>{current.name}</span>
                             <ChevronDown className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} />

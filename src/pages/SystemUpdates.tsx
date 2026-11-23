@@ -34,13 +34,27 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1348.0 | 2026-11-23 (Sitio web de Club Platform: el sitio institucional de la plataforma)
+// UI V4.1349.0 | 2026-11-23 (Sitio web de Club Platform: cabecera y barra superior institucionales)
 // Cache bust: 2026-11-19
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1349.0',
+        title: 'Sitio web de Club Platform: la misma cabecera y barra superior de los sitios institucionales 🧭',
+        description: 'El sitio de Club Platform nació con una cabecera propia, azul marino. Ahora lleva exactamente la de los sitios institucionales del ecosistema: la barra superior con Endpolio.org, My Rotary y el selector de idioma, y debajo la cabecera blanca con los enlaces en azul, el botón en píldora y «Iniciar sesión» con contorno.',
+        date: new Date().toISOString(),
+        tags: ['plataforma', 'sitio institucional', 'cabecera', 'diseño'],
+        type: 'improvement',
+        impact: 'Media: el sitio de la plataforma se ve como parte del mismo ecosistema que sus sitios.',
+        changes: [
+            { type: 'changed', text: 'Barra superior institucional (Endpolio.org · My Rotary · idioma) en el sitio de Club Platform.' },
+            { type: 'changed', text: 'Cabecera blanca con las mismas clases del menú de los sitios: enlaces, botón principal e «Iniciar sesión».' },
+            { type: 'removed', text: 'La opción «Cabecera oscura / clara» de la pestaña Diseño: la cabecera es la institucional.' },
+        ],
+    },
     {
         version: '4.1348.0',
         title: 'Sitio web de Club Platform: la plataforma administra su propio sitio institucional 🌐',

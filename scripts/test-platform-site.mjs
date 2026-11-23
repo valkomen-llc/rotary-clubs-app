@@ -183,6 +183,14 @@ for (const t of S.BLOCK_TYPE_IDS) ok(view.includes(`case '${t}':`), `el renderiz
 ok(view.includes('SITE_ACTION_BG') && view.includes('SITE_FOOTER_BG') && view.includes('ctaSkin(CTA_SOLID)') && view.includes('bg-rotary-topbar'), 'reutiliza los patrones de la plantilla institucional');
 ok(!/(?:bg|text|border)-rotary-[a-z]+\/\d+/.test(view.replace(/\/\*[\s\S]*?\*\//g, '')), 'ninguna clase rotary-* con opacidad: no existen (v4.719)');
 ok(view.includes('data-no-translate'), 'la marca no se traduce');
+// La cabecera es la de un sitio institucional, no una propia (v4.1349).
+const navbar = read('src/sections/Navbar.tsx'); const topbar = read('src/components/PublicTopBar.tsx');
+ok(view.includes('<PublicTopBar rotaryLinks />') && topbar.includes('bg-rotary-topbar') && topbar.includes('https://www.endpolio.org') && topbar.includes('https://my.rotary.org'), 'barra superior institucional: Endpolio.org · My Rotary · idioma');
+ok(/rotaryLinks = false/.test(topbar) && topbar.includes('Iniciar sesión'), 'y la barra del calendario no cambia para quien ya la usaba');
+ok(view.includes('bg-white shadow-sm sticky top-0 z-50') && navbar.includes('bg-white shadow-sm sticky'), 'cabecera blanca y fija, como el Navbar');
+for (const cls of ['text-rotary-blue font-medium text-sm hover:text-rotary-gold transition-colors', 'items-center justify-center gap-2 font-bold text-sm px-5 py-2.5 rounded-full transition-colors', 'bg-white text-rotary-blue ring-1 ring-inset ring-rotary-blue/25 hover:bg-rotary-blue hover:text-white hover:ring-rotary-blue', 'flex items-center justify-between min-h-[4rem] py-2'])
+    ok(view.includes(cls) && navbar.includes(cls), `mismas clases que el Navbar: «${cls.slice(0, 40)}…»`);
+ok(!/chrome\.header/.test(view), 'ya no hay cabecera oscura propia');
 ok(!/dangerouslySetInnerHTML/.test(view + read('src/pages/PlatformSitePage.tsx')), 'nunca HTML crudo');
 
 // dominio y entornos

@@ -66,12 +66,11 @@ export const DesignTab = ({ site, update, ro }: { site: Site; update: (fn: (s: S
                     <Campo label="Nombre del sitio"><input className={campo} value={s.name} disabled={ro} onChange={e => set('name', e.target.value)} /></Campo>
                     <Campo label="Lema"><input className={campo} value={s.tagline} disabled={ro} onChange={e => set('tagline', e.target.value)} /></Campo>
                     <ImageField label="Logotipo (opcional)" value={s.logoUrl} onChange={v => set('logoUrl', v)} hint="Sin logotipo se muestra el nombre «Club Platform for Rotary» en texto." />
-                    <div className="grid sm:grid-cols-3 gap-3">
+                    <div className="grid sm:grid-cols-2 gap-3">
                         <Campo label="Color de acento"><select className={campo} value={s.accent} disabled={ro} onChange={e => set('accent', e.target.value)}>{ACCENTS.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}</select></Campo>
-                        <Campo label="Cabecera"><select className={campo} value={s.header} disabled={ro} onChange={e => set('header', e.target.value)}><option value="dark">Oscura (azul marino)</option><option value="light">Clara (blanca)</option></select></Campo>
                         <Campo label="Idioma inicial"><select className={campo} value={s.language} disabled={ro} onChange={e => set('language', e.target.value)}><option value="es">Español</option><option value="en">Inglés</option><option value="pt">Portugués</option></select></Campo>
                     </div>
-                    <p className="text-[11px] text-gray-500">La paleta, las tipografías y los fondos son los de la plantilla institucional de los sitios del ecosistema; aquí se elige el acento propio de Club Platform.</p>
+                    <p className="text-[11px] text-gray-500">La barra superior (Endpolio.org · My Rotary · idioma), la cabecera blanca, la paleta, las tipografías y los fondos son los de la plantilla institucional de los sitios del ecosistema; aquí se elige el acento propio de Club Platform.</p>
                     <Campo label="Correo de contacto" hint="A este correo llega el aviso de cada solicitud del formulario. No se muestra en el sitio."><input type="email" className={campo} value={s.contact.email} disabled={ro} onChange={e => set('contact.email', e.target.value)} placeholder="contacto@…" /></Campo>
                 </div>
             </Tarjeta>
@@ -80,7 +79,7 @@ export const DesignTab = ({ site, update, ro }: { site: Site; update: (fn: (s: S
                     <p className="text-[11px] text-gray-500 mb-3">Enlaces a contenedores de la portada. Las páginas con «Mostrar en el menú» se agregan solas.</p>
                     <LinkList items={s.nav.links} onChange={v => set('nav.links', v)} site={site} ro={ro} addLabel="Agregar enlace al menú" />
                     <div className="mt-4"><ButtonEditor label="Botón destacado del menú" value={s.nav.cta} onChange={b => set('nav.cta', b)} page={null} pages={site.pages} disabled={ro} /></div>
-                    <div className="mt-4"><Toggle checked={s.nav.showLogin} onChange={v => set('nav.showLogin', v)} label="Mostrar «Ingresar» (lleva a app.clubplatform.org)" /></div>
+                    <div className="mt-4"><Toggle checked={s.nav.showLogin} onChange={v => set('nav.showLogin', v)} label="Mostrar «Iniciar sesión» en la cabecera (lleva a app.clubplatform.org)" /></div>
                 </Tarjeta>
                 <Tarjeta title="Pie de página">
                     <div className="space-y-4">
