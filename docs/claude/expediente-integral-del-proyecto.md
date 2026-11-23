@@ -226,6 +226,47 @@ Segunda revisión de Paula Cruz: *«en la hoja 1 aún no salen los 4 clubes»* y
   texto del FDD, y lee el PDF con pdfjs. Ojo con las regex sobre el texto
   plano del PDF: «US$ 2.655 Total del desglose» contiene «5 Total».
 
+### La portada dice lo que DILIGENCIÓ el club — v4.1354
+
+Tercera revisión de Paula Cruz: *«hice unos cambios, el título: Cuna de Vida:
+Recuperando la atención neonatal en Pereira tras el terremoto»*, *«aún me sale
+que el club principal es Pereira del Café y no es así, el principal es el
+Pereira Perla del Otún»* y *«ya eliminé el total pero aún me sale»*.
+
+- **La portada leía el REGISTRO** (`submission.projectName`,
+  `submission.clubName`): lo que la cuenta escribió al inscribirse. Lo que el
+  club corrige después vive en la Formulación. `coverIdentityOf(p)` (en
+  `projectDossierPdf.ts`) decide la portada de las DOS fichas (gestor y
+  comité) y el nombre del archivo:
+  - Proyecto: `master.identificacion.projectName` → `fdd_2026_2027.proyecto.projectName`
+    → registro (el mismo orden que la libreta, `BOOKLET_BLOCKS`).
+  - Club principal: el PRIMERO escrito en «Club Rotario» de la Formulación →
+    el del FDD → el del registro. El mismo club con otra escritura («Club
+    Rotario Pereira del Cafe») se muestra como quedó registrado.
+  - Participantes: la lista del campo, el club del REGISTRO si no es el
+    principal (sigue en el proyecto) y los demás escritos en «Club Rotario».
+  - El «Registro inicial de la postulación» sigue mostrando lo inscrito: es
+    el registro, no la portada. El listado del panel también: para cambiar el
+    nombre en todas partes, el comité edita «Nombre del proyecto» del registro
+    en el expediente. El club del registro NO es editable (es el de la cuenta
+    y el pago); el principal se corrige escribiéndolo en «Club Rotario» de la
+    Formulación, que el comité puede editar en el expediente aunque para el
+    gestor esté bloqueado después del cierre (`sensitiveFields`).
+- **«Borré el total pero aún me sale»**: le quitó la PALABRA y dejó el monto.
+  `src/lib/budgetRows.ts` (`totalRowIndexes`) es el criterio ÚNICO del
+  formulario y del PDF: una fila titulada «Total» y variantes, o una fila SIN
+  concepto cuyo monto es exactamente la suma de las demás (con al menos dos
+  rubros más), es el total del club. Con dos filas no se adivina.
+- **El formulario avisa** (`Repeater` en `FormFields.tsx`): debajo de un
+  repetidor con dinero, «Suma de los rubros» (sin las filas de total) y un
+  aviso ámbar «La fila N parece el total del proyecto… quítala con la
+  papelera». No borra nada solo.
+- Pruebas: `test:fair:participating-clubs` (41, en `prebuild`: identidad de la
+  portada, `totalRowIndexes` con sus casos negativos) y
+  `test:fair:club-ficha:ui` (57: título y club principal de la Formulación en
+  la portada leída con pdfjs, nombre del archivo, fila sin concepto, y el
+  aviso del formulario que desaparece al quitar la fila, a 390 px).
+
 ### Pruebas
 
 - `npm run test:fair:dossier` — criterio y código sin base (va en `prebuild`).

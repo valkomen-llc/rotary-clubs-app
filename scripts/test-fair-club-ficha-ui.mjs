@@ -136,14 +136,18 @@ try {
     console.log('\n▸ Presupuesto (v4.1347, caso Paula Cruz)');
     // La Formulación SIN «Distrito Colombiano» en dólares; el FDD pide 958.
     am.presupuesto = { budgetTable: { projectCost: { pesos: '464297236', usd: '136558' }, localClub: { pesos: '20400000', usd: '6000' } } };
-    check('la Formulación guarda su presupuesto', (await call('PUT', '/portal/forms/master', tS, { answers: am })).status === 200);
+    // v4.1354 — Paula cambió el título en la Formulación y el club principal
+    // es Pereira Perla del Otún, no el club con el que se inscribió la cuenta.
+    am.identificacion = { ...(am.identificacion || {}), projectName: 'Cuna de Vida: Recuperando la atención neonatal en Pereira tras el terremoto', clubName: 'Pereira Perla del Otún' };
+    check('la Formulación guarda su presupuesto, el título nuevo y el club principal', (await call('PUT', '/portal/forms/master', tS, { answers: am })).status === 200);
     const gf = await call('GET', '/portal/forms/fdd_2026_2027', tS);
     const af = gf.data.answers;
     af.presupuesto = { ...(af.presupuesto || {}), budgetUsd: '136558', budgetBreakdown: [
         { concept: 'Equipment', amountUsd: '132727' }, { concept: 'Monitoring/evaluation', amountUsd: '441' },
         { concept: 'Project management', amountUsd: '735' }, { concept: 'Operations (Unforeseen)', amountUsd: '2655' },
         // v4.1353 — Paula agregó el total como un rubro más: «por eso me sale el doble».
-        { concept: 'total', amountUsd: '136558' }] };
+        // v4.1354 — Y luego borró la palabra «total» pero dejó el monto.
+        { concept: '', amountUsd: '136558' }] };
     af.fdd = { ...(af.fdd || {}), requestedUsd: '958' };
     // v4.1353 — Otro club escrito en el texto «Nombre del Club Rotario» del FDD.
     af.club = { ...(af.club || {}), clubName: 'E-Club Origen y Club Rotario Dosquebradas' };
@@ -172,6 +176,15 @@ import DocumentProgressPanel from './src/components/project-forms/DocumentProgre
 import { buildDossierPdf } from './src/lib/projectDossierPdf';
 import { FormField } from './src/components/project-forms/FormFields';
 import { PARTICIPATING_CLUBS_FIELD } from './server/lib/projectFairMasterForm.js';
+import { DEFAULT_FDD_FORM } from './server/lib/projectFairFddForm.js';
+const BREAKDOWN = DEFAULT_FDD_FORM.sections.find(x => x.key === 'presupuesto').fields.find(f => f.key === 'budgetBreakdown');
+const DesgloseDemo = () => {
+    const [v, setV] = React.useState([{ concept: 'Equipment', amountUsd: '132727' }, { concept: 'Monitoring/evaluation', amountUsd: '441' }, { concept: 'Project management', amountUsd: '735' }, { concept: 'Operations', amountUsd: '2655' }, { concept: '', amountUsd: '136558' }]);
+    window.__desglose = v;
+    return React.createElement('div', { style: { padding: 16, maxWidth: 760 }, 'data-demo-desglose': true },
+        React.createElement(FormField, { field: { ...BREAKDOWN }, value: v, answers: {}, disabled: false, onChange: setV }));
+};
+window.goDesglose = () => createRoot(document.getElementById('root')).render(React.createElement(DesgloseDemo));
 const ClubsDemo = () => {
     const [v, setV] = React.useState(['Pereira']);
     window.__clubs = v;
@@ -242,6 +255,15 @@ window.go = (t) => createRoot(document.getElementById('root')).render(React.crea
                 check('(390 px) sin desplazamiento horizontal', await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
                 if (SHOT) await page.locator('[data-demo-clubs]').screenshot({ path: join(SHOT, 'clubes-390.png') });
                 check('(390 px) sin errores en la página (clubes)', errores.length === 0, errores.join(' | '));
+                // v4.1354 — El desglose en el FORMULARIO avisa de la fila «total».
+                await page.evaluate(() => window.goDesglose());
+                await page.locator('[data-desglose-suma]').waitFor({ timeout: 10000 });
+                check('(390 px) el desglose muestra la suma de los rubros SIN la fila total', /US\$ 136,558\.00/.test(await page.locator('[data-desglose-suma]').innerText()));
+                check('(390 px) y avisa que la fila 5 parece el total del proyecto', /La fila 5 parece el total/.test(await page.locator('[data-desglose-total-aviso]').innerText()));
+                if (SHOT) await page.locator('[data-demo-desglose]').screenshot({ path: join(SHOT, 'desglose-390.png') });
+                await page.locator('[data-demo-desglose] button[title="Quitar fila"]').nth(4).click();
+                check('(390 px) al quitarla, el aviso desaparece y la suma no cambia', (await page.locator('[data-desglose-total-aviso]').count()) === 0 && /US\$ 136,558\.00/.test(await page.locator('[data-desglose-suma]').innerText()) && (await page.evaluate(() => window.__desglose.length)) === 4);
+                check('(390 px) sin desplazamiento horizontal (desglose)', await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
                 await ctx.close();
                 continue;
             }
@@ -262,7 +284,7 @@ window.go = (t) => createRoot(document.getElementById('root')).render(React.crea
             const [download] = await Promise.all([page.waitForEvent('download', { timeout: 30000 }), boton.click()]);
             const path = await download.path();
             const bytes = readFileSync(path);
-            check(`(${vp.width} px) descarga un PDF con nombre de ficha técnica`, bytes.subarray(0, 5).toString() === '%PDF-' && /^FP-6K5MAX-.*-ficha-tecnica\.pdf$/.test(download.suggestedFilename()), download.suggestedFilename());
+            check(`(${vp.width} px) descarga un PDF con nombre de ficha técnica`, bytes.subarray(0, 5).toString() === '%PDF-' && /^FP-6K5MAX-Cuna-de-Vida-.*-ficha-tecnica\.pdf$/.test(download.suggestedFilename()), download.suggestedFilename());
             check(`(${vp.width} px) escrito en Open Sans`, bytes.toString('latin1').includes('OpenSans'));
             check(`(${vp.width} px) con el logotipo de la Feria en la cabecera`, /\/Subtype\s*\/Image/.test(bytes.toString('latin1')));
             if (vp.width === 1280) {
@@ -274,13 +296,17 @@ window.go = (t) => createRoot(document.getElementById('root')).render(React.crea
                     const c = await (await pdf.getPage(i)).getTextContent();
                     text += c.items.map(it => it.str).join(' ') + '\n';
                 }
-                check('el PDF dice qué es, de qué proyecto y de qué club', /FICHA TÉCNICA DEL PROYECTO/.test(text) && text.includes('Caimalito construye paz') && text.includes('E-Club Origen') && text.includes('FP-6K5MAX'));
+                check('el PDF dice qué es, de qué proyecto y de qué club', /FICHA TÉCNICA DEL PROYECTO/.test(text) && text.includes('Cuna de Vida') && text.includes('E-Club Origen') && text.includes('FP-6K5MAX'));
                 check('con las tildes bien escritas (Open Sans, no Helvetica)', text.includes('Ávila') && /Formulación/.test(text));
                 check('trae la Formulación y la Solicitud de Aportes del FDD', /Formulación del proyecto/.test(text) && /Solicitud de Aportes del FDD/.test(text) && text.includes('Formulación generalObjective') && /FDD /.test(text));
                 check('NO trae el documento de identidad', !text.includes('1088123456'));
                 check('dice cuántas páginas tiene', /Página 1 de \d+/.test(text), `${pdf.numPages} páginas`);
                 check('aclara que no incluye documento ni pagos', /No incluye documento de identidad ni datos de pago/.test(text));
-                check('la portada nombra a los clubes participantes, también los escritos en «Club Rotario» (v4.1346, v4.1353)', /Clubes participantes:\s*Pereira, Pereira del Otún, Pereira Nuevo, Club Rotario Dosquebradas/.test(text.replace(/\s+/g, ' ')));
+                const portada = (await (await pdf.getPage(1)).getTextContent()).items.map(it => it.str).join(' ').replace(/\s+/g, ' ');
+                check('la portada lleva el título escrito en la Formulación (v4.1354)', /Cuna de Vida: Recuperando la atención neonatal en Pereira tras el terremoto/.test(portada), portada.slice(0, 260));
+                check('con el club principal de la Formulación (Pereira Perla del Otún), no el del registro (v4.1354)', /Pereira Perla del Otún · Distrito 4281/.test(portada));
+                check('y el club del registro pasa a los participantes, con los escritos en «Club Rotario» (v4.1346, v4.1353, v4.1354)', /Clubes participantes:\s*Pereira, Pereira del Otún, Pereira Nuevo, E-Club Origen, Club Rotario Dosquebradas/.test(portada));
+                check('el registro inicial conserva lo inscrito', /Caimalito construye paz/.test(text));
                 const flat = text.replace(/\s+/g, ' ');
                 check('el desglose sale como tabla con cada rubro y su valor', /Equipment US\$ 132\.727/.test(flat) && /Monitoring\/evaluation US\$ 441/.test(flat) && /Project management US\$ 735/.test(flat) && /4 Operations \(Unforeseen\) US\$ 2\.655/.test(flat));
                 check('la fila «total» del club NO es un rubro: ni se numera ni se suma (v4.1353)', !/(^|\s)5 total/i.test(flat) && /Total del desglose US\$ 136\.558/.test(flat) && !/273\.116/.test(flat), (flat.match(/.{0,80}Total del desglose.{0,60}/) || [''])[0]);

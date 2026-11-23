@@ -13,6 +13,7 @@ import { useState } from 'react';
 import { Info, MessageCircle, Plus, Trash2 } from 'lucide-react';
 import { computeValue, fieldError, fmtUsd, whatsappLink, type Answers, type FieldDef } from '../../lib/projectForms';
 import ClubsField from './ClubsField';
+import { toAmount, totalRowIndexes } from '../../lib/budgetRows';
 
 export const BLUE = '#17458F';
 
@@ -234,6 +235,16 @@ export const Repeater = ({ field, rows, onChange, disabled }: {
     const update = (i: number, key: string, v: any) =>
         onChange(rows.map((r, ix) => (ix === i ? { ...r, [key]: v } : r)));
 
+    // v4.1354 — Un desglose con dinero muestra la suma de sus rubros y avisa si
+    // una fila parece un TOTAL (caso Paula Cruz: el total agregado como rubro
+    // —o con la palabra borrada y el monto puesto— sumaba el proyecto dos veces).
+    const moneyKey = columns.find(c => c.type === 'currency')?.key;
+    const labelKey = columns.find(c => c.type !== 'currency' && c.type !== 'number')?.key;
+    const totals = moneyKey ? totalRowIndexes(rows, labelKey, moneyKey) : new Set<number>();
+    const itemsSum = moneyKey
+        ? rows.reduce((a, r, i) => (totals.has(i) ? a : a + (toAmount(r?.[moneyKey]) ?? 0)), 0)
+        : 0;
+
     return (
         <div className="space-y-2">
             {rows.map((row, i) => (
@@ -266,6 +277,18 @@ export const Repeater = ({ field, rows, onChange, disabled }: {
                 </button>
             )}
             {!rows.length && disabled && <p className="text-sm text-slate-400">Sin registros.</p>}
+            {moneyKey && rows.length > 0 && (
+                <p data-desglose-suma className="text-[13px] text-slate-600">
+                    Suma de los rubros: <strong className="text-slate-900">{fmtUsd(Math.round(itemsSum * 100) / 100)}</strong>
+                </p>
+            )}
+            {totals.size > 0 && (
+                <p data-desglose-total-aviso role="status" className="rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
+                    {[...totals].map(i => `La fila ${i + 1}`).join(' y ')} {totals.size > 1 ? 'parecen' : 'parece'} el total del
+                    proyecto, no un rubro. No hace falta escribirlo: la suma se calcula sola.
+                    {!disabled && ' Quítala con el ícono de la papelera para que no se cuente dos veces.'}
+                </p>
+            )}
         </div>
     );
 };

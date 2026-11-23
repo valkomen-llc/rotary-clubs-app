@@ -16,6 +16,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 import type { BookletBlock, DocumentPayload, Dossier, DossierField } from './projectDossier';
 import { isEmptyValue, matrixRows, NOT_PROVIDED, plainValue } from './projectDossier';
+import { totalRowIndexes } from './budgetRows';
 
 type Lang = 'es' | 'en';
 type RGB = [number, number, number];
@@ -292,9 +293,7 @@ const BREAKDOWN_TOTALS: Record<string, string> = {
     // El desglose del FDD se concilia con su «Presupuesto total del proyecto».
     'fdd_2026_2027.presupuesto.budgetBreakdown': 'fdd_2026_2027.presupuesto.budgetUsd',
 };
-/** «Total», «TOTAL», «Total general», «Subtotal», «Total presupuesto», «Gran total»… */
-export const TOTAL_ROW_RE = /^(gran\s+)?(sub)?total(es)?(\s+(general|del\s+proyecto|presupuesto|del\s+presupuesto|proyecto|us\$?|usd))?$/;
-const normLabel = (v: any) => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9$]+/g, ' ').trim();
+export { TOTAL_ROW_RE } from './budgetRows';
 const toNumber = (v: any): number | null => {
     if (isEmptyValue(v)) return null;
     const n = Number(String(v).replace(/[^\d.-]/g, ''));
@@ -336,10 +335,11 @@ function moneyRepeaterTable(w: Writer, field: DossierField, label: string, lang:
     // v4.1353 — Una fila que el club tituló «Total» (caso Paula Cruz: «agregué
     // el ítem del total, por eso me sale el doble») NO es un rubro: no se
     // numera ni se suma; se muestra como «Total escrito por el club».
-    const textKey = textCols[0]?.key;
-    const isTotalRow = (r: any) => !!textKey && TOTAL_ROW_RE.test(normLabel(r?.[textKey]));
-    const declared = filled.filter(isTotalRow);
-    const items = filled.filter(r => !isTotalRow(r));
+    // v4.1354 — También la fila SIN concepto cuyo monto es la suma de las demás
+    // (Paula borró la palabra «total» y dejó el monto): `totalRowIndexes`.
+    const totalIdx = totalRowIndexes(filled, textCols[0]?.key, cols.find(isMoney)?.key);
+    const declared = filled.filter((_, i) => totalIdx.has(i));
+    const items = filled.filter((_, i) => !totalIdx.has(i));
 
     const totals = cols.map(() => 0);
     items.forEach((r, ri) => {
@@ -462,39 +462,67 @@ export const clubKey = (s: string): string => String(s || '')
     .filter(t => t && !CLUB_WORDS.has(t)).join(' ');
 /** Los campos de texto «Club Rotario» de los formularios (la Formulación y el FDD). */
 const FORM_CLUB_NAME_PATHS = ['master.identificacion.clubName', 'fdd_2026_2027.club.clubName'];
+/** El nombre del proyecto como lo escribió el club (el mismo orden que la libreta). */
+const FORM_PROJECT_NAME_PATHS = ['master.identificacion.projectName', 'fdd_2026_2027.proyecto.projectName'];
+const splitClubs = (v: string) => v.split(/\s*(?:,|;|\/|\n|\s+y\s+|\s+-\s+)\s*/i).map(x => x.trim()).filter(Boolean);
 
-/**
- * v4.1346 — Los clubes participantes del proyecto, para la portada.
- *
- * v4.1353 — No sólo el campo «Clubes participantes en el proyecto»: si el
- * club escribió los clubes en el texto «Club Rotario» de la Formulación o del
- * FDD (caso Paula Cruz: «en la hoja 1 aún no salen los 4 clubes»), ese texto
- * también va a la portada. Nunca se repite el club que postula ni un club ya
- * listado, comparando sin tildes ni «Club Rotario» / «C.R.».
- */
-export const participatingClubsOf = (p: Pick<DocumentPayload, 'es' | 'clubName'>): string[] => {
+type CoverSource = Pick<DocumentPayload, 'es' | 'clubName' | 'projectName'>;
+const fieldsOf = (p: Partial<CoverSource>) => {
     const fields = new Map<string, DossierField>();
     for (const g of p.es?.groups || []) for (const s of g.sections || []) for (const f of s.fields || []) fields.set(f.path, f);
-    const out: string[] = [];
-    const seen = new Set<string>([clubKey(p.clubName || '')].filter(Boolean));
-    const push = (name: string) => {
+    return fields;
+};
+const textAt = (fields: Map<string, DossierField>, path: string) => {
+    const v = fields.get(path)?.value;
+    return typeof v === 'string' ? v.trim() : '';
+};
+
+/**
+ * v4.1354 — Qué dice la portada: el proyecto, el club principal y los demás
+ * clubes, tal como los DILIGENCIÓ el club, no como quedaron al inscribirse.
+ *
+ * Caso Paula Cruz: cambió el título en la Formulación («Cuna de Vida:
+ * Recuperando la atención neonatal en Pereira tras el terremoto») y la ficha
+ * seguía con el del registro; y «el club principal es Pereira Perla del
+ * Otún, no Pereira del Café» (el club con el que se inscribió la cuenta).
+ *
+ * - Proyecto: Formulación → FDD → registro.
+ * - Club principal: el primero escrito en «Club Rotario» de la Formulación →
+ *   el del FDD → el del registro.
+ * - Clubes participantes (v4.1346, v4.1353): la lista del campo «Clubes
+ *   participantes en el proyecto», el club del registro si no es el
+ *   principal, y los demás escritos en «Club Rotario»; nunca el principal ni
+ *   uno repetido (`clubKey`: sin tildes ni «Club Rotario» / «C.R.»).
+ * El «Registro inicial de la postulación» sigue mostrando lo inscrito.
+ */
+export const coverIdentityOf = (p: Partial<CoverSource>) => {
+    const fields = fieldsOf(p);
+    const projectName = FORM_PROJECT_NAME_PATHS.map(x => textAt(fields, x)).find(Boolean) || String(p.projectName || '').trim();
+    const written = FORM_CLUB_NAME_PATHS.map(x => splitClubs(textAt(fields, x)));
+    const registered = String(p.clubName || '').trim();
+    const firstWritten = written.map(l => l[0]).find(Boolean) || '';
+    // El mismo club con otra escritura («Club Rotario Pereira del Café») se
+    // muestra como quedó registrado.
+    const clubName = firstWritten && clubKey(firstWritten) !== clubKey(registered) ? firstWritten : registered || firstWritten;
+
+    const participating: string[] = [];
+    const seen = new Set<string>([clubKey(clubName)].filter(Boolean));
+    const push = (name: unknown) => {
         const n = String(name ?? '').trim();
         const k = clubKey(n);
         if (!n || !k || seen.has(k)) return;
         seen.add(k);
-        out.push(n);
+        participating.push(n);
     };
     const listed = fields.get('master.identificacion.participatingClubs')?.value;
-    if (Array.isArray(listed)) (listed as unknown[]).forEach(v => push(String(v ?? '')));
-    for (const path of FORM_CLUB_NAME_PATHS) {
-        const v = fields.get(path)?.value;
-        if (typeof v !== 'string' || !v.trim()) continue;
-        // Un texto con varios clubes («Pereira, Pereira del Otún y Pereira
-        // Nuevo») se separa; el club que postula y los ya listados se saltan.
-        v.split(/\s*(?:,|;|\/|\n|\s+y\s+|\s+-\s+)\s*/i).forEach(push);
-    }
-    return out;
+    if (Array.isArray(listed)) (listed as unknown[]).forEach(push);
+    push(p.clubName);
+    written.flat().forEach(push);
+    return { projectName, clubName, participating };
 };
+
+/** v4.1346 — Los clubes participantes de la portada (ver `coverIdentityOf`). */
+export const participatingClubsOf = (p: Partial<CoverSource>): string[] => coverIdentityOf(p).participating;
 
 function cover(w: Writer, p: DocumentPayload, title: string, lang: Lang, statusLine?: string | null) {
     const d = w.doc;
@@ -503,10 +531,11 @@ function cover(w: Writer, p: DocumentPayload, title: string, lang: Lang, statusL
     d.text(sanitize(p.edition), M, w.y); w.y += 22;
     d.setFont(fam(d), 'bold'); d.setFontSize(10); d.setTextColor(...GOLD);
     d.text(sanitize(title.toUpperCase()), M, w.y); w.y += 22;
-    w.flow(w.lines(p.projectName || '-', 20, CW, true), 20, BLUE, M, true);
+    const who = coverIdentityOf(p);
+    w.flow(w.lines(who.projectName || '-', 20, CW, true), 20, BLUE, M, true);
     w.y += 4;
-    w.flow(w.lines(`${p.clubName || ''}${p.district ? ` · ${p.district}` : ''}`, 11, CW), 11, INK);
-    const otros = participatingClubsOf(p);
+    w.flow(w.lines(`${who.clubName || ''}${p.district ? ` · ${p.district}` : ''}`, 11, CW), 11, INK);
+    const otros = who.participating;
     if (otros.length) w.flow(w.lines(`${lang === 'en' ? 'Participating clubs' : 'Clubes participantes'}: ${otros.join(', ')}`, 9.5, CW), 9.5, INK);
     w.flow([`${T[lang].ref}: ${p.publicRef}`], 9, MUTED);
     if (statusLine) { w.y += 4; w.flow(w.lines(statusLine, 8.5, CW), 8.5, MUTED, M, false, true); }
@@ -603,10 +632,11 @@ function clubCover(w: Writer, p: DocumentPayload) {
     w.y = BRAND_TOP + 6;
     d.setFont(fam(d), 'bold'); d.setFontSize(9); d.setTextColor(...GOLD);
     d.text(CLUB_TITLE.toUpperCase(), M, w.y); w.y += 20;
-    w.flow(w.lines(p.projectName || '-', 21, CW, true), 21, BLUE, M, true);
+    const who = coverIdentityOf(p);
+    w.flow(w.lines(who.projectName || '-', 21, CW, true), 21, BLUE, M, true);
     w.y += 2;
-    w.flow(w.lines(`${p.clubName || ''}${p.district ? ` · Distrito ${String(p.district).replace(/^(rotary\s*)?distrito\s*/i, '')}` : ''}`, 11, CW), 11, INK);
-    const otros = participatingClubsOf(p);
+    w.flow(w.lines(`${who.clubName || ''}${p.district ? ` · Distrito ${String(p.district).replace(/^(rotary\s*)?distrito\s*/i, '')}` : ''}`, 11, CW), 11, INK);
+    const otros = who.participating;
     if (otros.length) w.flow(w.lines(`Clubes participantes: ${otros.join(', ')}`, 9.5, CW), 9.5, INK);
     w.flow([`${T.es.ref}: ${p.publicRef}`], 9, MUTED);
     w.y += 10;
@@ -663,8 +693,8 @@ export async function buildClubFichaPdf(p: DocumentPayload): Promise<any> {
     return doc;
 }
 
-export const clubFichaFileName = (p: Pick<DocumentPayload, 'publicRef' | 'projectName'>) => {
-    const slug = String(p.projectName || 'proyecto').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').slice(0, 50);
+export const clubFichaFileName = (p: Pick<DocumentPayload, 'publicRef' | 'projectName'> & Partial<CoverSource>) => {
+    const slug = String(coverIdentityOf(p).projectName || 'proyecto').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').slice(0, 50);
     return `${p.publicRef}-${slug}-ficha-tecnica.pdf`;
 };
 

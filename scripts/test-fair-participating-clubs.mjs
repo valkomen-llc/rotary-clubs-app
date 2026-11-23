@@ -55,7 +55,7 @@ ok('la edición del comité guarda la lista sin repetidos', coerce.ok && JSON.st
 ok('la ficha no la manda a traducir (son nombres)', !D.isTranslatableField(PARTICIPATING_CLUBS_FIELD));
 ok('el Word la escribe separada por comas', /field\?\.type === 'multiselect' \|\| field\?\.type === 'clubs'/.test(read('server/lib/projectFairDocx.js')));
 const pdf = read('src/lib/projectDossierPdf.ts');
-ok('la portada de las fichas nombra a los clubes participantes', /participatingClubsOf\(p\)/.test(pdf) && (pdf.match(/Clubes participantes/g) || []).length >= 2);
+ok('la portada de las fichas nombra a los clubes participantes', (pdf.match(/const who = coverIdentityOf\(p\)/g) || []).length === 2 && (pdf.match(/Clubes participantes/g) || []).length >= 2);
 const ff = read('src/components/project-forms/FormFields.tsx');
 ok('el formulario lo dibuja con el selector del Catálogo Maestro', /field\.type === 'clubs' \? \(\s*<ClubsField/.test(ff) && /ClubSelector/.test(read('src/components/project-forms/ClubsField.tsx')));
 ok('la pantalla y el servidor usan el mismo tope', /MAX_CLUBS_PER_FIELD = 12/.test(read('src/lib/projectForms.ts')) && MAX_CLUBS_PER_FIELD === 12);
@@ -69,11 +69,14 @@ const P = await import('data:text/javascript;base64,' + Buffer.from(bundle.outpu
 const fichaDe = (fields) => ({ clubName: 'Pereira del Café', es: { groups: [{ sections: [{ fields }] }] } });
 ok('con el campo de la lista: esos clubes, sin repetir el que postula',
     JSON.stringify(P.participatingClubsOf(fichaDe([{ path: 'master.identificacion.participatingClubs', value: ['Pereira', 'Pereira del Café', 'Pereira Nuevo'] }]))) === JSON.stringify(['Pereira', 'Pereira Nuevo']));
-const enTexto = P.participatingClubsOf(fichaDe([
+// v4.1354 — En un texto con varios clubes, el PRIMERO es el principal; el
+// club del registro y los demás van a los participantes.
+const enTexto = P.coverIdentityOf(fichaDe([
     { path: 'master.identificacion.participatingClubs', value: [] },
-    { path: 'master.identificacion.clubName', value: 'Pereira, Pereira del Otún, Club Rotario Pereira del Café y Pereira Nuevo' },
+    { path: 'master.identificacion.clubName', value: 'Pereira Perla del Otún, Pereira, Club Rotario Pereira del Café y Pereira Nuevo' },
 ]));
-ok('los clubes escritos en el texto «Club Rotario» de la Formulación también van a la portada', JSON.stringify(enTexto) === JSON.stringify(['Pereira', 'Pereira del Otún', 'Pereira Nuevo']));
+ok('los clubes escritos en el texto «Club Rotario» de la Formulación también van a la portada (el primero, como principal)',
+    enTexto.clubName === 'Pereira Perla del Otún' && JSON.stringify(enTexto.participating) === JSON.stringify(['Pereira del Café', 'Pereira', 'Pereira Nuevo']));
 ok('«C.R.», «Club Rotario» y las tildes no duplican un club', P.participatingClubsOf(fichaDe([
     { path: 'master.identificacion.participatingClubs', value: ['Pereira del Otún'] },
     { path: 'master.identificacion.clubName', value: 'Club Rotario Pereira del Cafe' },
@@ -83,7 +86,32 @@ ok('un solo club en el texto (el que postula) no agrega nada', P.participatingCl
 const esTotal = (s) => P.TOTAL_ROW_RE.test(String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9$]+/g, ' ').trim());
 ok('una fila «total» / «TOTAL:» / «Total (USD)» / «Subtotal» / «Total general» se reconoce', ['total', 'TOTAL:', 'Total (USD)', 'Subtotal', 'Total general', 'Gran total'].every(esTotal));
 ok('un rubro de verdad NO es un total', !['Operations (Unforeseen)', 'Equipment', 'Total equipment purchase', 'Totalizadores'].some(esTotal));
-ok('la fila «total» no se numera ni se suma y el desglose que supera el presupuesto se dice así', /const items = filled\.filter\(r => !isTotalRow\(r\)\)/.test(pdf) && /Total escrito por el club/.test(pdf) && /El desglose lo supera en/.test(pdf));
+ok('la fila «total» no se numera ni se suma y el desglose que supera el presupuesto se dice así', /const items = filled\.filter\(\(_, i\) => !totalIdx\.has\(i\)\)/.test(pdf) && /Total escrito por el club/.test(pdf) && /El desglose lo supera en/.test(pdf));
+
+console.log('\n6. v4.1354 — Lo que DILIGENCIÓ el club manda en la portada (Paula: el título nuevo, «el principal es Pereira Perla del Otún» y «borré el total pero aún me sale»)');
+const id = P.coverIdentityOf({ projectName: '"Cuna de Vida": Dotación de unidades neonatales', clubName: 'Pereira del Café', es: { groups: [{ sections: [{ fields: [
+    { path: 'master.identificacion.projectName', value: 'Cuna de Vida: Recuperando la atención neonatal en Pereira tras el terremoto' },
+    { path: 'master.identificacion.clubName', value: 'Pereira Perla del Otún' },
+    { path: 'master.identificacion.participatingClubs', value: ['Pereira', 'Pereira Perla del Otún', 'Pereira Nuevo'] },
+] }] }] } });
+ok('el título es el de la Formulación, no el del registro', id.projectName === 'Cuna de Vida: Recuperando la atención neonatal en Pereira tras el terremoto');
+ok('el club principal es el escrito en «Club Rotario» de la Formulación', id.clubName === 'Pereira Perla del Otún');
+ok('el club del registro pasa a los participantes; el principal no se repite', JSON.stringify(id.participating) === JSON.stringify(['Pereira', 'Pereira Nuevo', 'Pereira del Café']));
+const igual = P.coverIdentityOf({ projectName: 'Registro', clubName: 'Pereira del Café', es: { groups: [{ sections: [{ fields: [{ path: 'master.identificacion.clubName', value: 'Club Rotario Pereira del Cafe' }] }] }] } });
+ok('el mismo club con otra escritura se muestra como quedó registrado', igual.clubName === 'Pereira del Café' && igual.participating.length === 0);
+ok('sin Formulación: el del FDD, y sin FDD: el del registro', P.coverIdentityOf({ projectName: 'R', clubName: 'X', es: { groups: [{ sections: [{ fields: [{ path: 'fdd_2026_2027.proyecto.projectName', value: 'Del FDD' }] }] }] } }).projectName === 'Del FDD'
+    && P.coverIdentityOf({ projectName: 'R', clubName: 'X', es: { groups: [] } }).projectName === 'R');
+ok('el nombre del archivo usa el título de la Formulación', /^FP-1-Cuna-de-Vida-Recuperando/.test(P.clubFichaFileName({ publicRef: 'FP-1', projectName: 'Viejo', es: { groups: [{ sections: [{ fields: [{ path: 'master.identificacion.projectName', value: 'Cuna de Vida: Recuperando la atención' }] }] }] } })));
+const B = await import('data:text/javascript;base64,' + Buffer.from((await build({ entryPoints: [new URL('../src/lib/budgetRows.ts', import.meta.url).pathname], bundle: true, write: false, format: 'esm', platform: 'node', logLevel: 'silent' })).outputFiles[0].text).toString('base64'));
+const paula = [{ concept: 'Equipment', amountUsd: '132727' }, { concept: 'Monitoring/evaluation', amountUsd: '441' }, { concept: 'Project management', amountUsd: '735' }, { concept: 'Operations', amountUsd: '2655' }];
+const idx = (rows) => [...B.totalRowIndexes(rows, 'concept', 'amountUsd')].join();
+ok('la fila «total» con su monto es un total', idx([...paula, { concept: 'total', amountUsd: '136558' }]) === '4');
+ok('la fila SIN concepto cuyo monto es la suma de las demás también (le borró la palabra)', idx([...paula, { concept: '', amountUsd: '136558' }]) === '4');
+ok('una fila sin concepto con otro monto NO es un total (es un rubro sin nombre)', idx([...paula, { concept: '', amountUsd: '500' }]) === '');
+ok('con sólo dos filas no se adivina', idx([{ concept: 'A', amountUsd: '100' }, { concept: '', amountUsd: '100' }]) === '');
+ok('el desglose real de Paula no tiene totales', idx(paula) === '');
+const ff2 = read('src/components/project-forms/FormFields.tsx');
+ok('el formulario muestra la suma de los rubros y avisa de la fila que parece el total', /data-desglose-suma/.test(ff2) && /data-desglose-total-aviso/.test(ff2) && /totalRowIndexes\(rows, labelKey, moneyKey\)/.test(ff2));
 
 console.log(`\n${fail ? '❌' : '✅'} test:fair:participating-clubs — ${pass} pasaron, ${fail} fallaron.`);
 process.exit(fail ? 1 : 0);
