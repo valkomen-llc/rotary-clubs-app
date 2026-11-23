@@ -34,13 +34,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1352.0 | 2026-11-23 (Perfil público del club: el logotipo pasa al pie de «Contacto y Reuniones»)
+// UI V4.1353.0 | 2026-11-23 (Ficha técnica: los clubes escritos en «Club Rotario» en la portada y la fila «total» del desglose ya no se suma)
 // Cache bust: 2026-11-19
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1353.0',
+        title: 'Ficha técnica: todos los clubes del proyecto en la portada y el desglose sin el total sumado dos veces 📄',
+        description: 'Paula Cruz (Pereira del Café) avisó dos cosas de la ficha técnica en PDF: en la primera hoja no salían los cuatro clubes del proyecto, y en el «Desglose del presupuesto» del FDD el total salía al doble porque había agregado una fila «total». Ahora la portada también toma los clubes escritos en el campo «Club Rotario» de la Formulación o del FDD, y una fila titulada «Total» no se numera ni se suma: se muestra aparte, comparada con la suma de los rubros.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'ficha técnica', 'pdf', 'presupuesto', 'clubes participantes'],
+        type: 'fix',
+        impact: 'Media: la ficha técnica en PDF del gestor y del comité.',
+        changes: [
+            { type: 'fixed', text: 'La portada nombra los clubes participantes del campo «Clubes participantes en el proyecto» y también los que el club escribió en «Club Rotario» (Formulación o FDD), sin repetir el club que postula ni uno ya listado, aunque cambien las tildes o el «Club Rotario» / «C.R.» delante.' },
+            { type: 'fixed', text: 'En el «Desglose del presupuesto», una fila «Total» / «Subtotal» / «Total general» que el club agregó como rubro ya no se numera ni se suma: el total del desglose queda en US$ 136.558 y no en US$ 273.116.' },
+            { type: 'added', text: 'Debajo de la tabla, «Total escrito por el club», comparado con la suma de los rubros (en rojo si no coincide).' },
+            { type: 'improved', text: 'Si el desglose supera el presupuesto total, la ficha lo dice así («El desglose lo supera en …») en vez de una «Diferencia sin detallar» negativa.' },
+        ],
+    },
     {
         version: '4.1352.0',
         title: 'Perfil público del club: el logotipo pasa al pie de «Contacto y Reuniones» 🖼️',

@@ -141,9 +141,13 @@ try {
     const af = gf.data.answers;
     af.presupuesto = { ...(af.presupuesto || {}), budgetUsd: '136558', budgetBreakdown: [
         { concept: 'Equipment', amountUsd: '132727' }, { concept: 'Monitoring/evaluation', amountUsd: '441' },
-        { concept: 'Project management', amountUsd: '735' }, { concept: 'Operations (Unforeseen)', amountUsd: '' }] };
+        { concept: 'Project management', amountUsd: '735' }, { concept: 'Operations (Unforeseen)', amountUsd: '2655' },
+        // v4.1353 — Paula agregó el total como un rubro más: «por eso me sale el doble».
+        { concept: 'total', amountUsd: '136558' }] };
     af.fdd = { ...(af.fdd || {}), requestedUsd: '958' };
-    check('el FDD guarda su desglose (el rubro 4 sin valor) y lo solicitado', (await call('PUT', '/portal/forms/fdd_2026_2027', tS, { answers: af })).status === 200);
+    // v4.1353 — Otro club escrito en el texto «Nombre del Club Rotario» del FDD.
+    af.club = { ...(af.club || {}), clubName: 'E-Club Origen y Club Rotario Dosquebradas' };
+    check('el FDD guarda su desglose (con la fila «total» del club) y lo solicitado', (await call('PUT', '/portal/forms/fdd_2026_2027', tS, { answers: af })).status === 200);
     let r = await call('GET', '/portal/ficha', null);
     check('sin sesión del perfil, nada', r.status === 401);
     r = await call('GET', '/portal/ficha', tS);
@@ -276,11 +280,12 @@ window.go = (t) => createRoot(document.getElementById('root')).render(React.crea
                 check('NO trae el documento de identidad', !text.includes('1088123456'));
                 check('dice cuántas páginas tiene', /Página 1 de \d+/.test(text), `${pdf.numPages} páginas`);
                 check('aclara que no incluye documento ni pagos', /No incluye documento de identidad ni datos de pago/.test(text));
-                check('la portada nombra a los clubes participantes (v4.1346)', /Clubes participantes:\s*Pereira, Pereira del Otún, Pereira Nuevo/.test(text.replace(/\s+/g, ' ')));
+                check('la portada nombra a los clubes participantes, también los escritos en «Club Rotario» (v4.1346, v4.1353)', /Clubes participantes:\s*Pereira, Pereira del Otún, Pereira Nuevo, Club Rotario Dosquebradas/.test(text.replace(/\s+/g, ' ')));
                 const flat = text.replace(/\s+/g, ' ');
-                check('el desglose sale como tabla con cada rubro y su valor', /Equipment US\$ 132\.727/.test(flat) && /Monitoring\/evaluation US\$ 441/.test(flat) && /Project management US\$ 735/.test(flat));
-                check('el rubro sin monto dice «Sin valor»', /Operations \(Unforeseen\) Sin valor/.test(flat));
-                check('total del desglose y diferencia sin detallar (US$ 2.655)', /Total del desglose US\$ 133\.903/.test(flat) && /Diferencia sin detallar: US\$ 2\.655/.test(flat));
+                check('el desglose sale como tabla con cada rubro y su valor', /Equipment US\$ 132\.727/.test(flat) && /Monitoring\/evaluation US\$ 441/.test(flat) && /Project management US\$ 735/.test(flat) && /4 Operations \(Unforeseen\) US\$ 2\.655/.test(flat));
+                check('la fila «total» del club NO es un rubro: ni se numera ni se suma (v4.1353)', !/(^|\s)5 total/i.test(flat) && /Total del desglose US\$ 136\.558/.test(flat) && !/273\.116/.test(flat), (flat.match(/.{0,80}Total del desglose.{0,60}/) || [''])[0]);
+                check('se muestra aparte como el total escrito por el club, que coincide', /Total escrito por el club: US\$ 136\.558 \(coincide con la suma de los rubros/.test(flat));
+                check('y el desglose coincide con el presupuesto total (sin «Diferencia» negativa)', /Coincide con el presupuesto total del proyecto \(US\$ 136\.558\)/.test(flat) && !/Diferencia sin detallar: US\$ -/.test(flat));
                 check('la tabla de la Formulación dice lo solicitado al FDD (US$ 958)', /Solicitado al FDD en la Solicitud de Aportes del FDD: US\$ 958/.test(flat));
                 check('y la Aprobación institucional del FDD está en la ficha', /Aprobación institucional/.test(flat));
                 check('los calculados salen como dinero (Total de aportes esperados US$ 2.000)', /Total de aportes esperados \(US\$\) US\$ 2\.000/.test(flat) && /25% mín\. del aporte al FAP 2023-2024 \(US\$\) US\$ 250/.test(flat));
