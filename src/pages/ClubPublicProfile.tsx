@@ -203,14 +203,8 @@ export const ClubPublicProfile: React.FC = () => {
             <span>{theme.typeLabel} · Distrito {club.districtNumber || 4281}</span>
           </div>
 
-          {/* Logotipo del Club */}
-          {club.logoUrl && (
-            <div className="flex justify-center mb-6">
-              <div className="p-3 bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-white/20 inline-block">
-                <img src={club.logoUrl} alt={club.officialName} className="h-16 md:h-20 w-auto object-contain" />
-              </div>
-            </div>
-          )}
+          {/* v4.1352 — El logotipo ya no va en la portada: se muestra al pie
+              de «Contacto y Reuniones», sin caja. */}
 
           {/* Nombre Oficial */}
           <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold text-white mb-4 drop-shadow-lg tracking-tight">
@@ -490,6 +484,18 @@ export const ClubPublicProfile: React.FC = () => {
               <div className="mt-8 pt-8 border-t border-gray-100 bg-blue-50/50 p-6 rounded-2xl border border-blue-100">
                 <h4 className="text-base font-bold text-rotary-blue mb-2">¿Cómo unirte o participar con nuestro club?</h4>
                 <p className="text-sm text-gray-700 leading-relaxed font-light">{club.joinInfo}</p>
+              </div>
+            )}
+
+            {/* Logotipo del club, sin caja, al pie de la sección (v4.1352) */}
+            {club.logoUrl && (
+              <div className="mt-10 flex justify-center">
+                <img
+                  src={club.logoUrl}
+                  alt={`Logotipo de ${club.officialName}`}
+                  loading="lazy"
+                  className="h-28 md:h-36 w-auto max-w-full object-contain"
+                />
               </div>
             )}
           </div>

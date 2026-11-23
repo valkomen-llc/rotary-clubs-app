@@ -151,3 +151,12 @@ aprobar (caso Club Rotario Pereira y otros que ya habían enviado todo).
   `CLUB_DIR_E2E_DATABASE_URL=…?sslmode=disable npm run test:club-directory:approve:e2e`
   (16, Postgres real: el caso reportado, cinco formas de fecha, texto sin año,
   año futuro, actualización sin pisar y edición desde el panel).
+
+## Dónde se muestra el logotipo en el perfil público (v4.1352)
+
+En `src/pages/ClubPublicProfile.tsx` el logotipo YA NO va en la portada (antes
+iba en una caja blanca sobre la foto). Se muestra al pie de la sección
+«Contacto y Reuniones», centrado y SIN caja (`h-28 md:h-36`, `object-contain`,
+carga diferida), debajo de «¿Cómo unirte o participar con nuestro club?». Sin
+`logoUrl` no se pinta nada. Pedido del Distrito: la portada queda para la foto,
+el nombre y el lema.
