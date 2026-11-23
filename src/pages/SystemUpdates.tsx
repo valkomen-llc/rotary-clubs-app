@@ -34,13 +34,27 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1349.0 | 2026-11-23 (Sitio web de Club Platform: cabecera y barra superior institucionales)
+// UI V4.1350.0 | 2026-11-23 (Directorio de Clubes: primero los clubes que ya diligenciaron su información)
 // Cache bust: 2026-11-19
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1350.0',
+        title: 'Directorio de Clubes: primero los clubes que ya diligenciaron su información 🏛️',
+        description: 'El directorio público (/clubes) se ordenaba sólo por nombre, así que lo primero que se veía eran clubes con la descripción genérica y sin portada. Ahora abren el directorio los clubes que ya completaron su información —con su portada al frente— y después siguen los que todavía no la han diligenciado.',
+        date: new Date().toISOString(),
+        tags: ['directorio de clubes', 'sitio público', 'orden'],
+        type: 'improvement',
+        impact: 'Media: el directorio muestra de entrada los perfiles completos y sus imágenes de portada.',
+        changes: [
+            { type: 'changed', text: 'Primero los clubes con su información diligenciada: solicitud del formulario aprobada, perfil publicado o editado por el Distrito, o actualizado por el club desde su portal.' },
+            { type: 'changed', text: 'Dentro de ese grupo, primero los que tienen imagen de portada; luego por completitud del perfil y por nombre.' },
+            { type: 'changed', text: 'Los clubes sin diligenciar siguen después; los filtros, la búsqueda y los conteos no cambian.' },
+        ],
+    },
     {
         version: '4.1349.0',
         title: 'Sitio web de Club Platform: la misma cabecera y barra superior de los sitios institucionales 🧭',
