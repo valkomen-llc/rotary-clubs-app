@@ -229,9 +229,13 @@ export const DISTRICT_CATALOG = Object.keys(CLUBS_BY_DISTRICT_NUMBER)
         clubs: [...CLUBS_BY_DISTRICT_NUMBER[numero]],
     }));
 
+// v4.1351 — «C.R.» (abreviatura de «Club Rotario») tampoco cuenta: «C.R.
+// Fusagasugá» y «Fusagasugá» son la misma llave. Misma regla que
+// `stripClubAbbreviation` en clubCatalogSpec.js.
 const normKey = (s) => String(s || '')
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .toLowerCase()
+    .replace(/^\s*(?:(?:c\s*\.\s*r|r\s*\.\s*c)\s*\.\s*|(?:c\s*\.?\s*r|r\s*\.?\s*c)\.?\s+)(?=\S)/i, '')
     .replace(/^(club\s+rotario|rotary\s+club(\s+de)?|rotary)\s+/i, '')
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();

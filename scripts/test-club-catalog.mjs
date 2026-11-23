@@ -30,6 +30,25 @@ check('≡ «Armenia International» y «Armenia Internacional»',
 check('el E-Club no recibe «Club Rotario» delante', S.deriveOfficialName('E-Club Origen') === 'Rotary E-Club Origen');
 check('nombre corto desde el oficial', S.deriveShortName('Club Rotario Bogotá Chicó') === 'Bogotá Chicó');
 
+console.log('\n── «C.R.» es «Club Rotario»: se muestra sólo el nombre (v4.1351) ──');
+for (const [entrada, esperado] of [['C.R. Fusagasugá', 'Fusagasugá'], ['C. R. Fusagasugá', 'Fusagasugá'], ['CR Fusagasugá', 'Fusagasugá'],
+    ['C.R.Fusagasugá', 'Fusagasugá'], ['R.C. Fusagasugá', 'Fusagasugá'], ['c.r Fusagasugá', 'Fusagasugá']]) {
+    check(`«${entrada}» → «${esperado}»`, S.stripClubAbbreviation(entrada) === esperado, S.stripClubAbbreviation(entrada));
+}
+for (const intacto of ['Cristo Rey', 'Cra. 5', 'Cali Norte', 'Fusagasugá', 'Crecer Juntos', 'CR']) {
+    check(`«${intacto}» no se toca`, S.stripClubAbbreviation(intacto) === intacto, S.stripClubAbbreviation(intacto));
+}
+check('el oficial abreviado se escribe completo', S.deriveOfficialName('C.R. Fusagasugá') === 'Club Rotario Fusagasugá');
+check('guardar «C.R. Fusagasugá» deja corto y oficial sin abreviatura', (() => {
+    const c = S.shapeClubInput({ officialName: 'C.R. Fusagasugá', shortName: 'C.R. Fusagasugá', districtNumber: 4281 });
+    return c.shortName === 'Fusagasugá' && c.officialName === 'Club Rotario Fusagasugá';
+})());
+check('«C.R. Fusagasugá» y «Fusagasugá» son el mismo texto', S.coreName('C.R. Fusagasugá') === S.coreName('Club Rotario Fusagasugá'));
+check('la tarjeta pública no muestra la abreviatura', (() => {
+    const p = S.publicClubShape({ id: 'x', officialName: 'C.R. Fusagasugá', shortName: 'C.R. Fusagasugá', districtNumber: 4281 });
+    return p.name === 'Club Rotario Fusagasugá' && p.shortName === 'Fusagasugá';
+})());
+
 console.log('\n── Validación: lo opcional no bloquea ──');
 const minimo = S.shapeClubInput({ officialName: 'Club Rotario Nuevo Prueba', districtNumber: '4281' });
 check('un club con sólo nombre y distrito es válido', S.validateClubInput(minimo).ok);
@@ -144,7 +163,19 @@ RC.applyClubCatalogSnapshot({ districts: { 4281: { active: [...RC.SEED_CLUBS_BY_
 
 console.log('\n── El esquema: todo ADD COLUMN está en el atajo ──');
 const src = readFileSync(new URL('../server/lib/clubCatalog.js', import.meta.url), 'utf8');
-const { OWNED_COLUMNS } = await import('../server/lib/clubCatalog.js');
+const { OWNED_COLUMNS, buildSnapshot } = await import('../server/lib/clubCatalog.js');
+
+console.log('\n── El formulario ofrece «Fusagasugá», no «C.R. Fusagasugá» (v4.1351) ──');
+const snap = buildSnapshot([
+    { id: 'id-f', districtNumber: 4281, organizationType: 'rotary', officialName: 'C.R. Fusagasugá', shortName: 'C.R. Fusagasugá', catalogStatus: 'activo', aliases: [] },
+    { id: 'id-b', districtNumber: 4281, organizationType: 'rotary', officialName: 'Club Rotario Buga', shortName: 'Buga', catalogStatus: 'activo', aliases: [] },
+]);
+check('la lista activa muestra sólo el nombre', snap.districts[4281].active.join() === 'Fusagasugá,Buga', snap.districts[4281].active.join());
+RC.applyClubCatalogSnapshot(snap);
+check('el formulario de eventos (DISTRICT_CATALOG) ya no dice «C.R.»',
+    RC.DISTRICT_CATALOG.find(d => d.value === '4281').clubs.join() === 'Buga,Fusagasugá');
+check('una inscripción vieja con «C.R. Fusagasugá» sigue resolviendo al club', RC.resolveCatalogClub('C.R. Fusagasugá', 4281)?.id === 'id-f');
+RC.applyClubCatalogSnapshot({ districts: { 4281: { active: [...RC.SEED_CLUBS_BY_DISTRICT[4281]], known: [] } } });
 const addCols = [...src.matchAll(/ADD COLUMN IF NOT EXISTS "?([A-Za-z]+)"?/g)].map(m => m[1]);
 check('cada ADD COLUMN figura en OWNED_COLUMNS', addCols.every(c => OWNED_COLUMNS.DistrictClubProfile.includes(c)), addCols.join(','));
 check('ningún db.query lleva comilla invertida dentro', !/db\.query\(`[^`]*\\`/.test(src));

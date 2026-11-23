@@ -22,6 +22,7 @@ import {
 import { publicClubShape, CATALOG_STATES, CLUB_TYPES, ORGANIZATION_TYPES, catalogScopeFromRecords } from '../lib/clubCatalogSpec.js';
 import { isPlatformOperator } from '../lib/institutionalAccess.js';
 
+console.log('[club-catalog] v4.1351.0 cargado — «C.R.» (abreviatura de «Club Rotario») ya no forma parte del nombre de un club: los formularios muestran «Fusagasugá», no «C.R. Fusagasugá»; limpieza única con el nombre anterior en la bitácora.');
 console.log('[club-catalog] v4.1270.0 cargado — Catálogo Maestro de Clubes: el equipo del sitio distrital puede agregar y editar clubes (mismo criterio de sitio que districtSite.js)');
 
 const fail = (res, e) => {

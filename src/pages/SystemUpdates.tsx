@@ -34,13 +34,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1350.0 | 2026-11-23 (Directorio de Clubes: primero los clubes que ya diligenciaron su información)
+// UI V4.1351.0 | 2026-11-23 (Catálogo de clubes: sin «C.R.» delante del nombre)
 // Cache bust: 2026-11-19
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1351.0',
+        title: 'Clubes sin «C.R.» delante del nombre: «Fusagasugá», no «C.R. Fusagasugá» 🏷️',
+        description: 'En el formulario de la Conferencia de Villavicencio un club aparecía como «C.R. Fusagasugá». «C.R.» es la abreviatura de «Club Rotario» y la lista sólo debe mostrar el nombre. Ahora el Catálogo Maestro quita la abreviatura de todos los clubes que la tengan, no la deja volver a guardarse, y los formularios muestran sólo el nombre.',
+        date: new Date().toISOString(),
+        tags: ['catálogo de clubes', 'formularios', 'eventos', 'nombres'],
+        type: 'improvement',
+        impact: 'Media: las listas de clubes de los formularios quedan uniformes.',
+        changes: [
+            { type: 'fixed', text: 'Los formularios (inscripción a eventos, postulación, Rotary en Acción y demás) muestran «Fusagasugá» en lugar de «C.R. Fusagasugá». La regla vale para cualquier club con «C.R.», «CR», «C. R.» o «R.C.» delante.' },
+            { type: 'changed', text: 'Limpieza única del Catálogo Maestro: nombre corto sin la abreviatura y nombre oficial completo («Club Rotario Fusagasugá»), cada cambio en la bitácora del club.' },
+            { type: 'changed', text: 'Guardar o importar un club con «C.R.» delante ya no conserva la abreviatura.' },
+            { type: 'improved', text: 'Las inscripciones anteriores que guardaron «C.R. Fusagasugá» siguen reconociéndose como el mismo club.' },
+        ],
+    },
     {
         version: '4.1350.0',
         title: 'Directorio de Clubes: primero los clubes que ya diligenciaron su información 🏛️',
