@@ -34,13 +34,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1353.0 | 2026-11-23 (Ficha técnica: los clubes escritos en «Club Rotario» en la portada y la fila «total» del desglose ya no se suma)
+// UI V4.1354.0 | 2026-11-23 (Ficha técnica: el título y el club principal de la Formulación en la portada; el desglose avisa y no suma la fila del total)
 // Cache bust: 2026-11-19
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1354.0',
+        title: 'Ficha técnica: el título y el club principal que diligenció el club, y el desglose que avisa del total 📄',
+        description: 'Paula Cruz (Pereira del Café) siguió viendo tres cosas en la ficha técnica: el título que cambió en la Formulación no aparecía, el club principal seguía siendo el de la cuenta (Pereira del Café) y no Pereira Perla del Otún, y «ya eliminé el total pero aún me sale». La portada ahora toma el título y el club principal de lo que el club diligenció; el club con el que se inscribió pasa a los participantes. Y una fila sin concepto cuyo monto es la suma de las demás (el total al que sólo se le borró la palabra) tampoco se suma; el formulario muestra la suma de los rubros y avisa de esa fila antes de descargar la ficha.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'ficha técnica', 'pdf', 'presupuesto', 'clubes participantes', 'formulario'],
+        type: 'fix',
+        impact: 'Media: la portada de las fichas técnicas (gestor y comité) y el «Desglose del presupuesto» del formulario del FDD.',
+        changes: [
+            { type: 'fixed', text: 'El título de la portada (y el nombre del archivo) es el de la Formulación; si está vacío, el del FDD, y si no, el del registro. El «Registro inicial de la postulación» sigue mostrando lo inscrito.' },
+            { type: 'fixed', text: 'El club principal de la portada es el primero escrito en «Club Rotario» de la Formulación (o del FDD); el club con el que se inscribió la cuenta pasa a «Clubes participantes». El mismo club con otra escritura («Club Rotario …», sin tildes) se muestra como quedó registrado.' },
+            { type: 'fixed', text: 'Una fila del desglose sin concepto cuyo monto es exactamente la suma de las demás (con al menos dos rubros) se trata como el total del club: no se numera ni se suma.' },
+            { type: 'added', text: 'En el formulario, debajo de un desglose con dinero: «Suma de los rubros» y un aviso cuando una fila parece el total del proyecto, para quitarla con la papelera.' },
+        ],
+    },
     {
         version: '4.1353.0',
         title: 'Ficha técnica: todos los clubes del proyecto en la portada y el desglose sin el total sumado dos veces 📄',
