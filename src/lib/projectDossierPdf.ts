@@ -436,6 +436,7 @@ function repeaterBlock(w: Writer, field: DossierField, label: string, lang: Lang
 function renderDossier(w: Writer, dossier: Dossier, lang: Lang) {
     w.index = new Map();
     for (const g of dossier.groups) for (const s of g.sections || []) for (const f of s.fields || []) w.index.set(f.path, f);
+    const overrides = registrationOverridesOf(dossier, lang);
     for (const g of dossier.groups) {
         const anyField = g.sections.some(s => s.fields.length);
         if (!anyField) continue;
@@ -449,7 +450,17 @@ function renderDossier(w: Writer, dossier: Dossier, lang: Lang) {
         for (const s of g.sections) {
             if (!s.fields.length) continue;
             sectionTitle(w, lang === 'en' ? s.titleEn : s.title);
-            for (const f of s.fields) fieldBlock(w, f, lang);
+            for (const f of s.fields) {
+                const o = overrides.get(f.path);
+                if (!o) { fieldBlock(w, f, lang); continue; }
+                // El valor y su nota van JUNTOS: nunca la nota sola en la página siguiente.
+                const label = lang === 'en' ? (f.labelEn || f.label) : f.label;
+                w.ensure(w.lines(label, 8, CW, true).length * 11 + w.lines(o.value, 10, CW).length * 13.8 + 8 + w.lines(o.note, 8, CW).length * 11 + 6);
+                fieldBlock(w, { ...f, value: o.value, valueEn: o.value, untranslated: false }, lang);
+                w.y -= 4;
+                w.flow(w.lines(o.note, 8, CW), 8, MUTED, M, false, true);
+                w.y += 6;
+            }
         }
     }
 }
@@ -497,7 +508,8 @@ const textAt = (fields: Map<string, DossierField>, path: string) => {
  */
 export const coverIdentityOf = (p: Partial<CoverSource>) => {
     const fields = fieldsOf(p);
-    const projectName = FORM_PROJECT_NAME_PATHS.map(x => textAt(fields, x)).find(Boolean) || String(p.projectName || '').trim();
+    const projectPath = FORM_PROJECT_NAME_PATHS.find(x => textAt(fields, x)) || null;
+    const projectName = (projectPath && textAt(fields, projectPath)) || String(p.projectName || '').trim();
     const written = FORM_CLUB_NAME_PATHS.map(x => splitClubs(textAt(fields, x)));
     const registered = String(p.clubName || '').trim();
     const firstWritten = written.map(l => l[0]).find(Boolean) || '';
@@ -518,8 +530,56 @@ export const coverIdentityOf = (p: Partial<CoverSource>) => {
     if (Array.isArray(listed)) (listed as unknown[]).forEach(push);
     push(p.clubName);
     written.flat().forEach(push);
-    return { projectName, clubName, participating };
+    return { projectName, projectPath, clubName, participating };
 };
+
+/**
+ * v4.1355 — El «Registro inicial de la postulación» dice lo mismo que la
+ * portada.
+ *
+ * Caso Paula Cruz: con la portada ya corregida (v4.1354), al final de la
+ * página 1 «Club postulante → Club Rotario» seguía diciendo «Pereira del
+ * Café», y en la página 2 «Nombre del proyecto» el título viejo: son los
+ * campos del REGISTRO (`submission.clubName` / `projectName`), que no cambian
+ * porque el club es el de la cuenta y el pago. La ficha muestra ahí el club
+ * principal y el título que diligenció el club, y debajo, en gris, lo que
+ * quedó en el registro: no se pierde ni se esconde nada.
+ */
+type RegistroOverride = { value: string; note: string };
+export const registrationOverridesOf = (dossier: Dossier, lang: Lang): Map<string, RegistroOverride> => {
+    const out = new Map<string, RegistroOverride>();
+    const idx = new Map<string, DossierField>();
+    for (const g of dossier.groups || []) for (const s of g.sections || []) for (const f of s.fields || []) idx.set(f.path, f);
+    const regClub = idx.get('submission.clubName');
+    const regProject = idx.get('submission.projectName');
+    const who = coverIdentityOf({
+        es: dossier,
+        clubName: typeof regClub?.value === 'string' ? regClub.value : '',
+        projectName: typeof regProject?.value === 'string' ? regProject.value : '',
+    });
+    const regClubName = String(regClub?.value ?? '').trim();
+    if (regClub && who.clubName && clubKey(who.clubName) !== clubKey(regClubName)) {
+        out.set('submission.clubName', {
+            value: who.clubName,
+            note: lang === 'en' ? `Registered through the account of: ${regClubName}` : `Inscrita con la cuenta del club: ${regClubName}`,
+        });
+    }
+    const regProjectName = String(regProject?.value ?? '').trim();
+    if (regProject && who.projectPath && who.projectName && normLabelText(who.projectName) !== normLabelText(regProjectName)) {
+        // En inglés, el título traducido del formulario; si no lo hay, se deja el del registro.
+        const src = idx.get(who.projectPath);
+        const value = lang === 'en' ? (src && !src.untranslated && typeof src.valueEn === 'string' && src.valueEn.trim() ? src.valueEn.trim() : '') : who.projectName;
+        if (value) {
+            const regShown = lang === 'en' && typeof regProject.valueEn === 'string' && regProject.valueEn.trim() ? regProject.valueEn.trim() : regProjectName;
+            out.set('submission.projectName', {
+                value,
+                note: lang === 'en' ? `Name at initial registration: ${regShown}` : `Nombre en el registro inicial: ${regShown}`,
+            });
+        }
+    }
+    return out;
+};
+const normLabelText = (s: string) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 /** v4.1346 — Los clubes participantes de la portada (ver `coverIdentityOf`). */
 export const participatingClubsOf = (p: Partial<CoverSource>): string[] => coverIdentityOf(p).participating;
