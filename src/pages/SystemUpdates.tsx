@@ -34,13 +34,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1351.0 | 2026-11-23 (Catálogo de clubes: sin «C.R.» delante del nombre)
+// UI V4.1352.0 | 2026-11-23 (Perfil público del club: el logotipo pasa al pie de «Contacto y Reuniones»)
 // Cache bust: 2026-11-19
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1352.0',
+        title: 'Perfil público del club: el logotipo pasa al pie de «Contacto y Reuniones» 🖼️',
+        description: 'En el perfil público de cada club (/clubes/rotary/…) el logotipo aparecía dentro de una caja blanca sobre la foto de portada. Ahora la portada queda limpia —categoría, nombre, lema y datos— y el logotipo se muestra al pie de la sección «Contacto y Reuniones», solo, sin la caja.',
+        date: new Date().toISOString(),
+        tags: ['directorio de clubes', 'perfil del club', 'sitio público', 'diseño'],
+        type: 'improvement',
+        impact: 'Baja: cambio de ubicación del logotipo en la ficha pública de cada club.',
+        changes: [
+            { type: 'removed', text: 'El logotipo con caja blanca de la portada del perfil del club.' },
+            { type: 'added', text: 'El logotipo, centrado y sin caja, al pie de «Contacto y Reuniones» (debajo de «¿Cómo unirte o participar con nuestro club?»). Si el club no tiene logotipo, no aparece nada.' },
+        ],
+    },
     {
         version: '4.1351.0',
         title: 'Clubes sin «C.R.» delante del nombre: «Fusagasugá», no «C.R. Fusagasugá» 🏷️',
