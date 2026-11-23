@@ -20,6 +20,7 @@ import { ensureProjectDossierSchema } from '../lib/ensureProjectDossierSchema.js
 import { routeToModel, getDefaultModel } from '../lib/ai-router.js';
 import D from '../lib/projectDossier.js';
 
+console.log('[projectDossierController] v4.1355.0 cargado — Ficha técnica: «Club postulante» y «Nombre del proyecto» del registro inicial muestran el club principal y el título diligenciados, con lo inscrito debajo.');
 console.log('[projectDossierController] v4.1354.0 cargado — Ficha técnica: la portada toma el título y el club principal de la Formulación (el club del registro pasa a participantes) y una fila sin concepto que suma las demás es el total.');
 console.log('[projectDossierController] v4.1353.0 cargado — Ficha técnica: la portada suma los clubes escritos en «Club Rotario» y la fila «total» del desglose no se cuenta como rubro.');
 console.log('[projectDossierController] v4.1347.0 cargado — Ficha técnica: la Aprobación institucional (districtSpace, la diligencia el club) vuelve a la ficha del gestor; sólo se quita lo adminOnly.');

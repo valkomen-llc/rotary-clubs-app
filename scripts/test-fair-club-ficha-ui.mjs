@@ -307,6 +307,9 @@ window.go = (t) => createRoot(document.getElementById('root')).render(React.crea
                 check('con el club principal de la Formulación (Pereira Perla del Otún), no el del registro (v4.1354)', /Pereira Perla del Otún · Distrito 4281/.test(portada));
                 check('y el club del registro pasa a los participantes, con los escritos en «Club Rotario» (v4.1346, v4.1353, v4.1354)', /Clubes participantes:\s*Pereira, Pereira del Otún, Pereira Nuevo, E-Club Origen, Club Rotario Dosquebradas/.test(portada));
                 check('el registro inicial conserva lo inscrito', /Caimalito construye paz/.test(text));
+                const plano = text.replace(/\s+/g, ' ');
+                check('«Club postulante → Club Rotario» dice el club principal, con la cuenta de inscripción debajo (v4.1355)', /Club postulante Club Rotario Pereira Perla del Otún Inscrita con la cuenta del club: E-Club Origen/.test(plano), (plano.match(/Club postulante.{0,140}/) || [''])[0]);
+                check('«Nombre del proyecto» del registro dice el título vigente, con el inicial debajo (v4.1355)', /Nombre del proyecto Cuna de Vida: Recuperando la atención neonatal en Pereira tras el terremoto Nombre en el registro inicial: Caimalito construye paz/.test(plano), (plano.match(/Proyecto \(registro inicial\).{0,200}/) || [''])[0]);
                 const flat = text.replace(/\s+/g, ' ');
                 check('el desglose sale como tabla con cada rubro y su valor', /Equipment US\$ 132\.727/.test(flat) && /Monitoring\/evaluation US\$ 441/.test(flat) && /Project management US\$ 735/.test(flat) && /4 Operations \(Unforeseen\) US\$ 2\.655/.test(flat));
                 check('la fila «total» del club NO es un rubro: ni se numera ni se suma (v4.1353)', !/(^|\s)5 total/i.test(flat) && /Total del desglose US\$ 136\.558/.test(flat) && !/273\.116/.test(flat), (flat.match(/.{0,80}Total del desglose.{0,60}/) || [''])[0]);

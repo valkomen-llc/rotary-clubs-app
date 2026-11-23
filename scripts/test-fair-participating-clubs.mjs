@@ -113,5 +113,23 @@ ok('el desglose real de Paula no tiene totales', idx(paula) === '');
 const ff2 = read('src/components/project-forms/FormFields.tsx');
 ok('el formulario muestra la suma de los rubros y avisa de la fila que parece el total', /data-desglose-suma/.test(ff2) && /data-desglose-total-aviso/.test(ff2) && /totalRowIndexes\(rows, labelKey, moneyKey\)/.test(ff2));
 
+console.log('\n7. v4.1355 — El «Registro inicial» dice lo mismo que la portada (Paula: «el club postulante es Pereira Perla del Otún y sigue saliendo Pereira del Café»)');
+const dossierPaula = { groups: [
+    { key: 'submission', sections: [{ key: 'club', fields: [{ path: 'submission.clubName', value: 'Pereira del Café' }] }, { key: 'proyecto', fields: [{ path: 'submission.projectName', value: '"Cuna de Vida": Dotación de unidades neonatales', valueEn: '"Cuna de Vida": Neonatal units' }] }] },
+    { key: 'master', sections: [{ key: 'identificacion', fields: [
+        { path: 'master.identificacion.projectName', value: 'Cuna de Vida: Recuperando la atención neonatal en Pereira tras el terremoto', valueEn: 'Cuna de Vida: Restoring neonatal care in Pereira after the earthquake' },
+        { path: 'master.identificacion.clubName', value: 'Pereira Perla del Otún' },
+    ] }] },
+] };
+const ov = P.registrationOverridesOf(dossierPaula, 'es');
+ok('«Club postulante → Club Rotario» muestra el club principal (Pereira Perla del Otún)', ov.get('submission.clubName')?.value === 'Pereira Perla del Otún');
+ok('y debajo, con qué cuenta se inscribió (no se pierde)', ov.get('submission.clubName')?.note === 'Inscrita con la cuenta del club: Pereira del Café');
+ok('«Nombre del proyecto» del registro muestra el título de la Formulación, con el inicial debajo', ov.get('submission.projectName')?.value.startsWith('Cuna de Vida: Recuperando') && /Nombre en el registro inicial: "Cuna de Vida": Dotación/.test(ov.get('submission.projectName')?.note));
+const ovEn = P.registrationOverridesOf(dossierPaula, 'en');
+ok('en inglés: el club igual y el título TRADUCIDO de la Formulación', ovEn.get('submission.clubName')?.value === 'Pereira Perla del Otún' && ovEn.get('submission.projectName')?.value === 'Cuna de Vida: Restoring neonatal care in Pereira after the earthquake' && /Name at initial registration: "Cuna de Vida": Neonatal units/.test(ovEn.get('submission.projectName')?.note));
+const sinCambio = { groups: [{ key: 'submission', sections: [{ key: 'c', fields: [{ path: 'submission.clubName', value: 'Pereira del Café' }, { path: 'submission.projectName', value: 'Cuna' }] }] }, { key: 'master', sections: [{ key: 'identificacion', fields: [{ path: 'master.identificacion.clubName', value: 'Club Rotario Pereira del Cafe' }, { path: 'master.identificacion.projectName', value: 'Cuna' }] }] }] };
+ok('si el club y el título no cambiaron, el registro se muestra tal cual (sin notas)', P.registrationOverridesOf(sinCambio, 'es').size === 0);
+ok('la ficha aplica el reemplazo al dibujar el registro', /const overrides = registrationOverridesOf\(dossier, lang\)/.test(read('src/lib/projectDossierPdf.ts')));
+
 console.log(`\n${fail ? '❌' : '✅'} test:fair:participating-clubs — ${pass} pasaron, ${fail} fallaron.`);
 process.exit(fail ? 1 : 0);

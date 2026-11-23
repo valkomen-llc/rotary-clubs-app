@@ -267,6 +267,30 @@ Pereira Perla del Otún»* y *«ya eliminé el total pero aún me sale»*.
   la portada leída con pdfjs, nombre del archivo, fila sin concepto, y el
   aviso del formulario que desaparece al quitar la fila, a 390 px).
 
+### El «Registro inicial» dice lo mismo que la portada — v4.1355
+
+Cuarta revisión de Paula Cruz: *«el club postulante es Pereira Perla del Otún
+y sigue saliendo Pereira del Café… en la página 1 al final»*. La portada ya
+estaba bien (v4.1354); lo que veía era la sección «Registro inicial de la
+postulación → Club postulante → Club Rotario», que imprime
+`submission.clubName` (el club de la cuenta y del pago, que NO cambia).
+
+- `registrationOverridesOf(dossier, lang)` (en `projectDossierPdf.ts`) usa el
+  MISMO criterio que la portada (`coverIdentityOf`) y, sólo si difiere de lo
+  inscrito (comparando con `clubKey` / sin tildes), reemplaza al dibujar:
+  - `submission.clubName` → el club principal, con «Inscrita con la cuenta
+    del club: …» debajo en gris;
+  - `submission.projectName` → el título de la Formulación (en inglés, su
+    traducción; sin traducción no se reemplaza), con «Nombre en el registro
+    inicial: …» debajo.
+- Es SÓLO presentación de la ficha: la base, el expediente del panel y los
+  listados siguen con lo inscrito. Lo inscrito no se esconde: queda en la nota.
+- El valor y su nota van juntos: `renderDossier` reserva el alto de los dos
+  antes de dibujar (la primera versión dejó la nota sola en la página
+  siguiente, con el pie de página en medio).
+- Pruebas: `test:fair:participating-clubs` (47) y `test:fair:club-ficha:ui`
+  (59, el texto real de la página 1 y 2 leído con pdfjs).
+
 ### Pruebas
 
 - `npm run test:fair:dossier` — criterio y código sin base (va en `prebuild`).

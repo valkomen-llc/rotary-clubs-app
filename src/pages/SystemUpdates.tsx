@@ -34,13 +34,27 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1354.0 | 2026-11-23 (Ficha técnica: el título y el club principal de la Formulación en la portada; el desglose avisa y no suma la fila del total)
+// UI V4.1355.0 | 2026-11-23 (Ficha técnica: «Club postulante» y «Nombre del proyecto» del registro inicial dicen lo mismo que la portada)
 // Cache bust: 2026-11-19
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1355.0',
+        title: 'Ficha técnica: el «Club postulante» del registro inicial ya dice el club principal 📄',
+        description: 'Paula Cruz: «el club postulante es Pereira Perla del Otún y sigue saliendo Pereira del Café», al final de la página 1 de la ficha. La portada ya estaba corregida (v4.1354), pero la sección «Registro inicial de la postulación» seguía mostrando el club y el título con los que se inscribió la cuenta. Ahora «Club postulante → Club Rotario» y «Nombre del proyecto» muestran el club principal y el título que diligenció el club, y debajo, en gris, lo que quedó en el registro.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'ficha técnica', 'pdf', 'club postulante'],
+        type: 'fix',
+        impact: 'Baja: la sección «Registro inicial de la postulación» de las fichas técnicas (gestor y comité, español e inglés).',
+        changes: [
+            { type: 'fixed', text: '«Club postulante → Club Rotario» muestra el club principal de la Formulación (el mismo de la portada), con «Inscrita con la cuenta del club: …» debajo.' },
+            { type: 'fixed', text: '«Proyecto (registro inicial) → Nombre del proyecto» muestra el título vigente, con «Nombre en el registro inicial: …» debajo. En inglés, el título traducido de la Formulación.' },
+            { type: 'improved', text: 'El valor y su nota se mantienen juntos en la misma página.' },
+        ],
+    },
     {
         version: '4.1354.0',
         title: 'Ficha técnica: el título y el club principal que diligenció el club, y el desglose que avisa del total 📄',
