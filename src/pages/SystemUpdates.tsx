@@ -34,13 +34,33 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1347.0 | 2026-11-20 (Ficha técnica: todo lo diligenciado, desglose con total)
+// UI V4.1348.0 | 2026-11-23 (Sitio web de Club Platform: el sitio institucional de la plataforma)
 // Cache bust: 2026-11-19
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1348.0',
+        title: 'Sitio web de Club Platform: la plataforma administra su propio sitio institucional 🌐',
+        description: 'Club Platform no tenía presencia pública: clubplatform.org sólo redirigía al panel. Ahora el panel central tiene el módulo «Sitio web de Club Platform», que crea, edita, previsualiza, revisa, publica y revierte el sitio institucional de la plataforma con el mismo motor por contenedores que usan los sitios del ecosistema y sobre la plantilla institucional. Nace en borrador con las nueve secciones del encargo (portada, qué es, soluciones, cómo funciona, arquitectura, beneficios, sitios del ecosistema, preguntas y contacto). Publicar una versión y ACTIVAR el dominio público son dos decisiones separadas: nada llega a clubplatform.org sin autorización expresa.',
+        date: new Date().toISOString(),
+        tags: ['plataforma', 'sitio institucional', 'editor', 'seo', 'dominio', 'versiones'],
+        type: 'feature',
+        impact: 'Alta: Club Platform puede presentarse públicamente con su propia tecnología, sin un segundo CMS.',
+        changes: [
+            { type: 'added', text: 'Módulo «Sitio web de Club Platform» en el panel central: resumen, páginas y contenido, vista previa, diseño, SEO, dominio, versiones, solicitudes y accesos.' },
+            { type: 'added', text: 'Editor por contenedores con páginas, reordenar, ocultar, fondos, espaciado, animación, imágenes de la Biblioteca y botones de acción controlada.' },
+            { type: 'added', text: 'Flujo Borrador → Vista previa (privada, firmada, en escritorio, tableta y móvil) → Revisión → Publicación, con historial y reversión inmediata a una versión anterior.' },
+            { type: 'added', text: 'Roles propios validados en el servidor: administrador central, editor y revisor. El administrador local de un club no tiene acceso.' },
+            { type: 'added', text: 'Una capacidad sólo se anuncia si está marcada como verificada; los sitios del ecosistema se eligen a mano y muestran sólo nombre, logotipo y enlace.' },
+            { type: 'added', text: 'SEO resuelto en el servidor (título, descripción, Open Graph, canónica, datos estructurados), sitemap y robots propios; la vista previa nunca se indexa.' },
+            { type: 'added', text: 'Analíticas: filtro «Club Platform — Institucional» con coincidencia exacta de dominio y sin el tráfico de /admin, más un conteo propio sin datos personales.' },
+            { type: 'added', text: 'Formulario de solicitud de información con bandeja en el panel, y asistente de redacción que propone textos sin inventar cifras ni clientes.' },
+            { type: 'changed', text: 'clubplatform.org ya no redirige a ciegas: muestra el sitio sólo si está en vivo; si no, lleva al panel como siempre.' },
+        ],
+    },
     {
         version: '4.1347.0',
         title: 'Ficha técnica del proyecto: todo lo diligenciado, y el presupuesto más claro 📊',

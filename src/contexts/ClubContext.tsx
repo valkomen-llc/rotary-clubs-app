@@ -184,13 +184,10 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
     useEffect(() => {
 
 
-        // FORCED REDIRECTION RULE (Nuclear Option)
-        // If we are on the main domain root, redirect to app subdomain IMMEDIATELY.
-        if (isMainPlatform && window.location.pathname === '/') {
-            console.log('Forced Domain Redirect: clubplatform.org -> app.clubplatform.org');
-            window.location.replace('https://app.clubplatform.org/');
-            return;
-        }
+        // El dominio principal ya no redirige a ciegas al panel (v4.1348): es el
+        // dominio del sitio institucional de Club Platform. Lo decide
+        // `PlatformSitePage` con una sola pregunta al servidor: si el sitio está
+        // EN VIVO lo pinta; si no, lleva a app.clubplatform.org como antes.
 
         void loadClub({ initial: true });
     }, []);
