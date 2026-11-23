@@ -175,6 +175,26 @@ los roles de `SITE_ADMIN_ROLES` entraban al Directorio.
 - Chromium (Playwright) contra el build: selector en 1280 px y 390 px (teclado,
   búsqueda, sin resultados) y el panel del Catálogo Maestro.
 
+## El orden del Directorio público: primero los diligenciados (v4.1350)
+
+`GET /api/district-clubs/public` (`getPublicDirectory`) ya no ordena sólo por
+nombre. Orden, todo en el SQL (la búsqueda en memoria lo conserva):
+
+1. **`profileCompleted`** — el perfil lo llenó alguien, no la semilla. Es
+   verdadero si hay una `DistrictClubSubmission` con `status = 'aprobada'` y
+   `profileId` de ese perfil, o si `"publishedBy"` no es nulo (aprobación o
+   edición desde el panel), o si `"auditLog"` tiene el evento
+   `actualizacion_portal_autogestion` (el club lo editó en su portal). La
+   semilla de `ensureDistrictClubDirectorySchema` no escribe ninguno de los
+   tres: por eso NO se usa `completionPercentage` como criterio (un perfil
+   sembrado con logotipo ya suma 25 %).
+2. Con portada (`coverImageUrl` no vacío) primero: el directorio abre con las
+   imágenes de portada.
+3. `completionPercentage` descendente, y luego `officialName`.
+
+Si se agrega otra vía de diligenciar el perfil, sumarla a `profileCompleted` o
+ese club quedará al final. Los conteos, ciudades y filtros no cambian.
+
 ## Pendiente (fase siguiente)
 
 - **Guardar el id del club en los demás formularios.** Hoy eventos,

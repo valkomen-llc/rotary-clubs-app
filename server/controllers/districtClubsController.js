@@ -24,6 +24,7 @@ import { stripSecrets } from '../lib/clubMediaSpec.js';
 // `Number(texto)` (daba NaN y la columna INT rechazaba la aprobación entera).
 import { foundationYearFrom, countFrom } from '../lib/clubProfileNumbers.js';
 
+console.log('[districtClubsController] v4.1350.0 cargado — el Directorio público muestra primero los clubes que ya diligenciaron su información (y entre ellos, los que tienen portada); los perfiles sembrados van después.');
 console.log('[districtClubsController] v4.1336.0 cargado — aprobar ya no falla con «sintaxis de entrada inválida para el tipo entero: NaN»: el año de fundación y los socios escritos como texto («15 de marzo de 1927», «35 socios») se leen sin inventar.');
 console.log('[districtClubsController] v4.1306.0 cargado — archivos del formulario con dueño, vinculados al enviar y publicados al aprobar; sin contraseñas en los borradores');
 
@@ -164,17 +165,41 @@ export const getPublicDirectory = async (req, res) => {
       pIdx++;
     }
 
+    // v4.1350 — Los clubes que YA DILIGENCIARON su información van primero, y
+    // dentro de ellos los que tienen portada: son la cara del directorio. El
+    // resto (los perfiles sembrados del catálogo, con la descripción genérica
+    // y el degradado) sigue después. En cada grupo desempata la completitud y
+    // luego el nombre.
+    //
+    // «Diligenciado» = el perfil lo llenó alguien, no la semilla:
+    //   · una solicitud del formulario público aprobada para este perfil, o
+    //   · el Distrito lo publicó o lo editó desde el panel ("publishedBy"), o
+    //   · el club lo actualizó desde su portal de autogestión.
+    // La semilla de ensureDistrictClubDirectorySchema no escribe ninguno de
+    // los tres. El orden sale de aquí y la búsqueda en memoria lo conserva.
     const { rows: clubs } = await db.query(
       `SELECT 
-        id, "clubId", "districtNumber", "organizationType", "officialName", "shortName",
-        slug, city, state, country, "foundationYear", motto, description,
-        "currentPresident", "rotaryPeriod", "completionPercentage", "lastUpdatedPeriod",
-        "logoUrl", "coverImageUrl", "meetingAddress", "meetingSchedule", "meetingCity",
-        "contactEmail", "contactPhone", "websiteUrl", "socialMedia", "serviceAreas",
-        "sponsorClubId", "sponsorClubName", "publishedAt"
-       FROM "DistrictClubProfile"
+        p.id, p."clubId", p."districtNumber", p."organizationType", p."officialName", p."shortName",
+        p.slug, p.city, p.state, p.country, p."foundationYear", p.motto, p.description,
+        p."currentPresident", p."rotaryPeriod", p."completionPercentage", p."lastUpdatedPeriod",
+        p."logoUrl", p."coverImageUrl", p."meetingAddress", p."meetingSchedule", p."meetingCity",
+        p."contactEmail", p."contactPhone", p."websiteUrl", p."socialMedia", p."serviceAreas",
+        p."sponsorClubId", p."sponsorClubName", p."publishedAt",
+        (
+          p."publishedBy" IS NOT NULL
+          OR COALESCE(p."auditLog", '[]'::jsonb) @> '[{"event":"actualizacion_portal_autogestion"}]'::jsonb
+          OR EXISTS (
+            SELECT 1 FROM "DistrictClubSubmission" s
+             WHERE s."profileId" = p.id AND s.status = 'aprobada'
+          )
+        ) AS "profileCompleted"
+       FROM "DistrictClubProfile" p
        ${whereClause}
-       ORDER BY "officialName" ASC`,
+       ORDER BY
+         "profileCompleted" DESC,
+         (COALESCE(p."coverImageUrl", '') <> '') DESC,
+         COALESCE(p."completionPercentage", 0) DESC,
+         p."officialName" ASC`,
       params
     );
 
