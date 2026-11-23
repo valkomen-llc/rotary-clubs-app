@@ -292,6 +292,9 @@ const BREAKDOWN_TOTALS: Record<string, string> = {
     // El desglose del FDD se concilia con su «Presupuesto total del proyecto».
     'fdd_2026_2027.presupuesto.budgetBreakdown': 'fdd_2026_2027.presupuesto.budgetUsd',
 };
+/** «Total», «TOTAL», «Total general», «Subtotal», «Total presupuesto», «Gran total»… */
+export const TOTAL_ROW_RE = /^(gran\s+)?(sub)?total(es)?(\s+(general|del\s+proyecto|presupuesto|del\s+presupuesto|proyecto|us\$?|usd))?$/;
+const normLabel = (v: any) => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9$]+/g, ' ').trim();
 const toNumber = (v: any): number | null => {
     if (isEmptyValue(v)) return null;
     const n = Number(String(v).replace(/[^\d.-]/g, ''));
@@ -330,8 +333,16 @@ function moneyRepeaterTable(w: Writer, field: DossierField, label: string, lang:
         : d.text(sanitize(colLabel(i)), xOf[i] + 2, w.y)));
     w.y += 16;
 
+    // v4.1353 — Una fila que el club tituló «Total» (caso Paula Cruz: «agregué
+    // el ítem del total, por eso me sale el doble») NO es un rubro: no se
+    // numera ni se suma; se muestra como «Total escrito por el club».
+    const textKey = textCols[0]?.key;
+    const isTotalRow = (r: any) => !!textKey && TOTAL_ROW_RE.test(normLabel(r?.[textKey]));
+    const declared = filled.filter(isTotalRow);
+    const items = filled.filter(r => !isTotalRow(r));
+
     const totals = cols.map(() => 0);
-    filled.forEach((r, ri) => {
+    items.forEach((r, ri) => {
         const cellLines = cols.map(c => (isMoney(c) ? [fmt(c, r?.[c.key])] : w.lines(fmt(c, r?.[c.key]), 9.5, textW - 8)));
         const h = Math.max(...cellLines.map(l => l.length)) * 13 + 5;
         w.ensure(h + 4);
@@ -360,21 +371,38 @@ function moneyRepeaterTable(w: Writer, field: DossierField, label: string, lang:
     cols.forEach((c, i) => { if (isMoney(c)) d.text(plainValue({ type: 'currency' }, Math.round(totals[i] * 100) / 100, lang), xOf[i] + moneyW - 4, w.y, { align: 'right' }); });
     w.y += 14;
 
+    const money = (n: number) => plainValue({ type: 'currency' }, n, lang);
+    const moneyIdx = cols.findIndex(isMoney);
+    const itemsTotal = moneyIdx >= 0 ? Math.round(totals[moneyIdx] * 100) / 100 : 0;
+
+    // La fila «Total» que escribió el club, aparte y comparada con la suma.
+    for (const r of declared) {
+        const n = moneyIdx >= 0 ? toNumber(r?.[cols[moneyIdx].key]) : null;
+        if (n === null) continue;
+        const same = Math.abs(n - itemsTotal) < 0.5;
+        const txt = same
+            ? (lang === 'en' ? `Total entered by the club: ${money(n)} (matches the sum of the items; not added again).` : `Total escrito por el club: ${money(n)} (coincide con la suma de los rubros; no se suma otra vez).`)
+            : (lang === 'en' ? `Total entered by the club: ${money(n)} · Sum of the items: ${money(itemsTotal)}` : `Total escrito por el club: ${money(n)} · Suma de los rubros: ${money(itemsTotal)}`);
+        w.flow(w.lines(txt, 8.5, CW), 8.5, same ? MUTED : [185, 28, 28], M, !same, same);
+    }
+
     // Conciliación con el presupuesto total del formulario.
     const totalPath = BREAKDOWN_TOTALS[field.path];
     const budget = totalPath ? toNumber(w.index.get(totalPath)?.value) : null;
-    const moneyIdx = cols.findIndex(isMoney);
     if (budget !== null && moneyIdx >= 0) {
-        const diff = Math.round((budget - totals[moneyIdx]) * 100) / 100;
-        const money = (n: number) => plainValue({ type: 'currency' }, n, lang);
+        const diff = Math.round((budget - itemsTotal) * 100) / 100;
         const txt = diff === 0
             ? (lang === 'en' ? `Matches the total project budget (${money(budget)}).` : `Coincide con el presupuesto total del proyecto (${money(budget)}).`)
-            : (lang === 'en'
-                ? `Total project budget: ${money(budget)} · Difference not itemized: ${money(diff)}`
-                : `Presupuesto total del proyecto: ${money(budget)} · Diferencia sin detallar: ${money(diff)}`);
+            : diff > 0
+                ? (lang === 'en'
+                    ? `Total project budget: ${money(budget)} · Difference not itemized: ${money(diff)}`
+                    : `Presupuesto total del proyecto: ${money(budget)} · Diferencia sin detallar: ${money(diff)}`)
+                : (lang === 'en'
+                    ? `Total project budget: ${money(budget)} · The breakdown exceeds it by ${money(-diff)}`
+                    : `Presupuesto total del proyecto: ${money(budget)} · El desglose lo supera en ${money(-diff)}`);
         w.flow(w.lines(txt, 8.5, CW), 8.5, diff === 0 ? MUTED : [185, 28, 28], M, diff !== 0, diff === 0);
     }
-    if (filled.some(r => cols.some(c => isMoney(c) && isEmptyValue(r?.[c.key])))) {
+    if (items.some(r => cols.some(c => isMoney(c) && isEmptyValue(r?.[c.key])))) {
         w.flow(w.lines(lang === 'en' ? 'Rows marked «Not provided» have no amount in the form.' : 'Los rubros marcados «Sin valor» no tienen monto en el formulario.', 8, CW), 8, MUTED, M, false, true);
     }
     w.y += 6;
@@ -426,14 +454,46 @@ function renderDossier(w: Writer, dossier: Dossier, lang: Lang) {
     }
 }
 
-/** v4.1346 — Los clubes participantes que el club declaró en la Formulación. */
-const participatingClubsOf = (p: DocumentPayload): string[] => {
-    for (const g of p.es?.groups || []) for (const s of g.sections || []) for (const f of s.fields || []) {
-        if (f.path === 'master.identificacion.participatingClubs' && Array.isArray(f.value)) {
-            return (f.value as unknown[]).map(v => String(v ?? '').trim()).filter(Boolean);
-        }
+/** El nombre de un club comparable: sin tildes, sin «Club Rotario», «C.R.», «Rotary Club». */
+const CLUB_WORDS = new Set(['club', 'rotario', 'rotary', 'c', 'r', 'cr']);
+export const clubKey = (s: string): string => String(s || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ').trim().split(' ')
+    .filter(t => t && !CLUB_WORDS.has(t)).join(' ');
+/** Los campos de texto «Club Rotario» de los formularios (la Formulación y el FDD). */
+const FORM_CLUB_NAME_PATHS = ['master.identificacion.clubName', 'fdd_2026_2027.club.clubName'];
+
+/**
+ * v4.1346 — Los clubes participantes del proyecto, para la portada.
+ *
+ * v4.1353 — No sólo el campo «Clubes participantes en el proyecto»: si el
+ * club escribió los clubes en el texto «Club Rotario» de la Formulación o del
+ * FDD (caso Paula Cruz: «en la hoja 1 aún no salen los 4 clubes»), ese texto
+ * también va a la portada. Nunca se repite el club que postula ni un club ya
+ * listado, comparando sin tildes ni «Club Rotario» / «C.R.».
+ */
+export const participatingClubsOf = (p: Pick<DocumentPayload, 'es' | 'clubName'>): string[] => {
+    const fields = new Map<string, DossierField>();
+    for (const g of p.es?.groups || []) for (const s of g.sections || []) for (const f of s.fields || []) fields.set(f.path, f);
+    const out: string[] = [];
+    const seen = new Set<string>([clubKey(p.clubName || '')].filter(Boolean));
+    const push = (name: string) => {
+        const n = String(name ?? '').trim();
+        const k = clubKey(n);
+        if (!n || !k || seen.has(k)) return;
+        seen.add(k);
+        out.push(n);
+    };
+    const listed = fields.get('master.identificacion.participatingClubs')?.value;
+    if (Array.isArray(listed)) (listed as unknown[]).forEach(v => push(String(v ?? '')));
+    for (const path of FORM_CLUB_NAME_PATHS) {
+        const v = fields.get(path)?.value;
+        if (typeof v !== 'string' || !v.trim()) continue;
+        // Un texto con varios clubes («Pereira, Pereira del Otún y Pereira
+        // Nuevo») se separa; el club que postula y los ya listados se saltan.
+        v.split(/\s*(?:,|;|\/|\n|\s+y\s+|\s+-\s+)\s*/i).forEach(push);
     }
-    return [];
+    return out;
 };
 
 function cover(w: Writer, p: DocumentPayload, title: string, lang: Lang, statusLine?: string | null) {
@@ -604,7 +664,7 @@ export async function buildClubFichaPdf(p: DocumentPayload): Promise<any> {
 }
 
 export const clubFichaFileName = (p: Pick<DocumentPayload, 'publicRef' | 'projectName'>) => {
-    const slug = String(p.projectName || 'proyecto').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').slice(0, 50);
+    const slug = String(p.projectName || 'proyecto').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').slice(0, 50);
     return `${p.publicRef}-${slug}-ficha-tecnica.pdf`;
 };
 
@@ -617,7 +677,7 @@ export async function buildDossierPdf(p: DocumentPayload): Promise<any> {
 }
 
 export const pdfFileName = (p: Pick<DocumentPayload, 'publicRef' | 'projectName' | 'kind'>) => {
-    const slug = String(p.projectName || 'proyecto').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').slice(0, 50);
+    const slug = String(p.projectName || 'proyecto').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').slice(0, 50);
     const suffix = p.kind === 'es' ? 'ficha-es' : p.kind === 'en' ? 'profile-en' : 'ficha-bilingue';
     return `${p.publicRef}-${slug}-${suffix}.pdf`;
 };

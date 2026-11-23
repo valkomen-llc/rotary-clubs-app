@@ -60,5 +60,30 @@ const ff = read('src/components/project-forms/FormFields.tsx');
 ok('el formulario lo dibuja con el selector del Catálogo Maestro', /field\.type === 'clubs' \? \(\s*<ClubsField/.test(ff) && /ClubSelector/.test(read('src/components/project-forms/ClubsField.tsx')));
 ok('la pantalla y el servidor usan el mismo tope', /MAX_CLUBS_PER_FIELD = 12/.test(read('src/lib/projectForms.ts')) && MAX_CLUBS_PER_FIELD === 12);
 
+// v4.1353 — El módulo real del PDF, empaquetado con esbuild (el de Vite),
+// para probar su comportamiento y no sólo su texto.
+console.log('\n5. La ficha en PDF (v4.1353, caso Paula Cruz: «aún no salen los 4 clubes» y «me sale el doble»)');
+const { build } = await import('esbuild');
+const bundle = await build({ entryPoints: [new URL('../src/lib/projectDossierPdf.ts', import.meta.url).pathname], bundle: true, write: false, format: 'esm', platform: 'node', packages: 'external', logLevel: 'silent' });
+const P = await import('data:text/javascript;base64,' + Buffer.from(bundle.outputFiles[0].text).toString('base64'));
+const fichaDe = (fields) => ({ clubName: 'Pereira del Café', es: { groups: [{ sections: [{ fields }] }] } });
+ok('con el campo de la lista: esos clubes, sin repetir el que postula',
+    JSON.stringify(P.participatingClubsOf(fichaDe([{ path: 'master.identificacion.participatingClubs', value: ['Pereira', 'Pereira del Café', 'Pereira Nuevo'] }]))) === JSON.stringify(['Pereira', 'Pereira Nuevo']));
+const enTexto = P.participatingClubsOf(fichaDe([
+    { path: 'master.identificacion.participatingClubs', value: [] },
+    { path: 'master.identificacion.clubName', value: 'Pereira, Pereira del Otún, Club Rotario Pereira del Café y Pereira Nuevo' },
+]));
+ok('los clubes escritos en el texto «Club Rotario» de la Formulación también van a la portada', JSON.stringify(enTexto) === JSON.stringify(['Pereira', 'Pereira del Otún', 'Pereira Nuevo']));
+ok('«C.R.», «Club Rotario» y las tildes no duplican un club', P.participatingClubsOf(fichaDe([
+    { path: 'master.identificacion.participatingClubs', value: ['Pereira del Otún'] },
+    { path: 'master.identificacion.clubName', value: 'Club Rotario Pereira del Cafe' },
+    { path: 'fdd_2026_2027.club.clubName', value: 'C.R. Pereira del Otun' },
+])).length === 1);
+ok('un solo club en el texto (el que postula) no agrega nada', P.participatingClubsOf(fichaDe([{ path: 'master.identificacion.clubName', value: 'Rotary Club Pereira del Café' }])).length === 0);
+const esTotal = (s) => P.TOTAL_ROW_RE.test(String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9$]+/g, ' ').trim());
+ok('una fila «total» / «TOTAL:» / «Total (USD)» / «Subtotal» / «Total general» se reconoce', ['total', 'TOTAL:', 'Total (USD)', 'Subtotal', 'Total general', 'Gran total'].every(esTotal));
+ok('un rubro de verdad NO es un total', !['Operations (Unforeseen)', 'Equipment', 'Total equipment purchase', 'Totalizadores'].some(esTotal));
+ok('la fila «total» no se numera ni se suma y el desglose que supera el presupuesto se dice así', /const items = filled\.filter\(r => !isTotalRow\(r\)\)/.test(pdf) && /Total escrito por el club/.test(pdf) && /El desglose lo supera en/.test(pdf));
+
 console.log(`\n${fail ? '❌' : '✅'} test:fair:participating-clubs — ${pass} pasaron, ${fail} fallaron.`);
 process.exit(fail ? 1 : 0);

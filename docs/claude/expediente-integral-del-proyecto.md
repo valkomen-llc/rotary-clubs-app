@@ -196,6 +196,36 @@ Revisión de Paula Cruz (Pereira del Café) sobre su ficha descargada:
 - **Los calculados salen como dinero** (`plainValue` → `computed`): la ficha
   decía «2000» y «250» donde el formulario muestra US$.
 
+### Los clubes de la portada y la fila «total» del desglose — v4.1353
+
+Segunda revisión de Paula Cruz: *«en la hoja 1 aún no salen los 4 clubes»* y
+*«agregué el ítem del total, por eso me sale el doble»* (US$ 273.116 y una
+«Diferencia sin detallar» de US$ -136.558).
+
+- **`participatingClubsOf` ya no lee sólo la lista** «Clubes participantes en
+  el proyecto» (v4.1346). Suma también los clubes escritos en los textos
+  «Club Rotario» (`master.identificacion.clubName`,
+  `fdd_2026_2027.club.clubName`), separados por coma, punto y coma, «/», « - »
+  o « y ». Nunca repite el club que postula ni uno ya listado: compara con
+  `clubKey` (sin tildes ni «Club Rotario» / «Rotary Club» / «C.R.»). Muchos
+  clubes escriben los aliados en el campo de texto que ya conocen y no ven el
+  campo nuevo, que es opcional.
+- **Una fila del repetidor con dinero titulada «Total»** (`TOTAL_ROW_RE`:
+  total, subtotal, total general, gran total, total presupuesto, total USD…,
+  comparando sin tildes ni puntuación; un rubro como «Total equipment
+  purchase» NO cuenta) no se numera ni se suma. Se muestra debajo como «Total
+  escrito por el club», comparado con la suma de los rubros: gris si
+  coincide, rojo si no. Los datos del club NO se tocan: es sólo cómo los lee
+  la ficha.
+- **Un desglose que supera el presupuesto** dice «El desglose lo supera en
+  US$ …» en vez de una diferencia negativa.
+- Pruebas: `test:fair:participating-clubs` (en `prebuild`) empaqueta el
+  módulo REAL del PDF con esbuild y prueba `participatingClubsOf` y
+  `TOTAL_ROW_RE`; `test:fair:club-ficha:ui` reproduce el desglose actual de
+  Paula (cuatro rubros + «total» 136.558) y un segundo club escrito en el
+  texto del FDD, y lee el PDF con pdfjs. Ojo con las regex sobre el texto
+  plano del PDF: «US$ 2.655 Total del desglose» contiene «5 Total».
+
 ### Pruebas
 
 - `npm run test:fair:dossier` — criterio y código sin base (va en `prebuild`).
