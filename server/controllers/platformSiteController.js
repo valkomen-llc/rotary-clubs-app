@@ -20,7 +20,7 @@ import {
     PLATFORM_SITE_TYPE, PLATFORM_SITE_TYPE_LABEL, ADMIN_HOST, normalizeHost, isCentralAdmin,
 } from '../lib/platformSiteSpec.js';
 
-console.log('[platform-site] v4.1348.0 cargado — Sitio web de Club Platform: borrador, vista previa firmada, revisión, publicación y reversión');
+console.log('[platform-site] v4.1349.0 cargado — Sitio web de Club Platform: borrador, vista previa firmada, revisión, publicación y reversión');
 
 const actorOf = (req) => ({ id: req.user?.id || null, name: req.user?.name || req.user?.email || 'Administración' });
 const fail = (res, e) => { console.error('[platform-site]', e); res.status(500).json({ error: 'No se pudo completar la operación.' }); };

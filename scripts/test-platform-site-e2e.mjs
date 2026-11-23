@@ -199,6 +199,10 @@ try {
             await page.waitForSelector('[data-block="hero"] h1');
             ok((await page.textContent('h1')).includes('Título de la editora') && await noOverflow(page), `sitio público en ${name} (${vp.width}px): portada y sin desborde horizontal`);
             if (name === 'escritorio') {
+                ok(await page.locator('.bg-rotary-topbar a[href="https://www.endpolio.org"]').count() === 1 && await page.locator('.bg-rotary-topbar a[href="https://my.rotary.org"]').count() === 1 && await page.locator('.bg-rotary-topbar button[aria-label="Idioma"]').count() === 1, 'barra superior institucional: Endpolio.org · My Rotary · idioma');
+                ok((await page.locator('header').evaluate(el => getComputedStyle(el).backgroundColor)) === 'rgb(255, 255, 255)' && (await page.locator('.bg-rotary-topbar').first().evaluate(el => getComputedStyle(el).backgroundColor)) === 'rgb(40, 53, 75)', 'cabecera blanca bajo la barra azul #28354b');
+                ok(await page.locator('header a:has-text("Iniciar sesión")').isVisible() && await page.locator('header nav[aria-label="Principal"] a').first().isVisible(), 'menú, botón y «Iniciar sesión» visibles en la cabecera');
+                if (SHOTS) await page.screenshot({ path: `${SHOTS}/publico-cabecera.png`, clip: { x: 0, y: 0, width: vp.width, height: 160 } });
                 ok(page.url() === `${PUB}/`, 'clubplatform.org YA NO redirige al panel: muestra el sitio');
                 ok(await page.locator('h1').count() === 1 && await page.locator('main#contenido').count() === 1 && await page.locator('a[href="#contenido"]').count() === 1, 'un solo h1, <main> y «Saltar al contenido»');
                 ok((await page.title()).includes('Club Platform') && (await page.locator('link[rel="canonical"]').getAttribute('href')) === 'https://clubplatform.org/', 'título y canónica del sitio');

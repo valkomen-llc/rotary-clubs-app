@@ -83,6 +83,16 @@ Por eso:
   apaga sola sólo con el sitio en vivo en ese host.
 - **Clases `bg-rotary-*` sin modificador de opacidad** (v4.719): con
   `bg-rotary-navy/95` la cabecera quedó transparente. Lo fija la prueba.
+- **La cabecera y la barra superior son las de un sitio institucional, no
+  propias (v4.1349).** El sitio nació con una cabecera azul marino y el pedido
+  fue explícito: conservar los estilos de los sitios. Arriba va
+  `<PublicTopBar rotaryLinks />` (`bg-rotary-topbar`, Endpolio.org · My Rotary ·
+  idioma: la misma barra del `Navbar`), y debajo la barra blanca
+  `bg-white shadow-sm sticky` con las clases de enlaces, botón (`CTA_SOLID`) e
+  «Iniciar sesión» copiadas de `Navbar.tsx`. No se monta el `Navbar` entero
+  porque lee el menú, el logotipo y los botones de un CLUB. `test:platform-site`
+  compara las clases contra `Navbar.tsx`: si cambian allá, la prueba avisa. El
+  ajuste `settings.header` quedó sin uso (se conserva en el esquema).
 - **Analíticas**: entrada `platform-site` con `exactHostnames` (filtro
   `inListFilter` de host exacto + `pagePath` que no empiece por `/admin`). El
   conteo propio (`PlatformSiteDaily`) no guarda IP, sólo cuenta el sitio en vivo

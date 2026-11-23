@@ -11,8 +11,9 @@
  *   · títulos `text-3xl md:text-4xl font-light`; tarjetas de ícono con el
  *     círculo `bg-sky-100`; el pie con `SITE_FOOTER_BG`.
  *
- * Lo que es propio de este sitio es la identidad (Club Platform, no un club):
- * su cabecera, su pie y la composición esquemática del producto. Esa
+ * La cabecera y la barra superior son las de un sitio institucional (v4.1349).
+ * Lo propio de este sitio es su marca, su pie y la composición esquemática
+ * del producto. Esa
  * composición NO es una captura ni muestra cifras: representa el panel.
  *
  * ⚠️ Las clases `bg-rotary-*` NO admiten modificador de opacidad (v4.719):
@@ -25,6 +26,7 @@ import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type R
 import { Link } from 'react-router-dom';
 import { ArrowRight, CheckCircle2, ChevronDown, ExternalLink, Image as ImageIcon, Loader2, LogIn, Menu, X } from 'lucide-react';
 import PlatformIcon from './PlatformIcon';
+import PublicTopBar from '../PublicTopBar';
 import { SITE_ACTION_BG, SITE_FOOTER_BG } from '../../lib/siteChrome';
 import { CTA_SOLID, ctaSkin } from '../../lib/ctaStyles';
 import { leerJson } from '../../lib/leerJson';
@@ -428,41 +430,61 @@ const ContactBlock = ({ block, ctx }: { block: ResolvedBlock; ctx: Ctx }) => {
 
 // ── Cabecera y pie ────────────────────────────────────────────────────
 
-const Brand = ({ chrome, dark }: { chrome: ResolvedChrome; dark: boolean }) => (
-    <Link to={chrome.home} className="flex items-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-rotary-gold rounded" aria-label={`${chrome.name} — inicio`} data-no-translate>
-        {chrome.logoUrl ? <img src={chrome.logoUrl} alt={chrome.name} className="h-9 w-auto" /> : (
-            <span className={`text-lg font-bold leading-none ${dark ? 'text-white' : 'text-rotary-blue'}`}>Club Platform <span style={{ color: accentHex(chrome.accent === 'white' ? 'gold' : chrome.accent) }}>for Rotary</span></span>
+/**
+ * La cabecera es la de un sitio institucional del ecosistema, NO una propia
+ * (v4.1349): la barra superior `bg-rotary-topbar` con Endpolio.org · My Rotary ·
+ * idioma (`PublicTopBar`, la misma del `Navbar`), y debajo la barra blanca
+ * `bg-white shadow-sm sticky` con los enlaces `text-rotary-blue font-medium
+ * text-sm hover:text-rotary-gold`, el botón en píldora `CTA_SOLID` y «Iniciar
+ * sesión» con contorno `ring-inset`. Las clases son las de `Navbar.tsx`: al
+ * cambiar allá, cambiar acá. Lo fija `test:platform-site`.
+ */
+const NAV_LINK = 'text-rotary-blue font-medium text-sm hover:text-rotary-gold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-rotary-gold rounded';
+const HEADER_CTA_SHAPE = 'items-center justify-center gap-2 font-bold text-sm px-5 py-2.5 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-rotary-gold';
+const LOGIN_SKIN = 'bg-white text-rotary-blue ring-1 ring-inset ring-rotary-blue/25 hover:bg-rotary-blue hover:text-white hover:ring-rotary-blue';
+
+const Brand = ({ chrome }: { chrome: ResolvedChrome }) => (
+    <Link to={chrome.home} className="flex items-center gap-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-rotary-gold rounded" aria-label={`${chrome.name} — inicio`} data-no-translate>
+        {chrome.logoUrl ? <img src={chrome.logoUrl} alt={chrome.name} className="w-auto h-auto max-h-[60px] max-w-[200px] object-contain object-left" /> : (
+            <span className="flex flex-col leading-tight font-bold text-xl">
+                <span className="text-rotary-blue">Club Platform</span>
+                <span><span style={{ color: accentHex(chrome.accent === 'white' ? 'gold' : chrome.accent) }}>for</span> <span className="text-rotary-blue">Rotary</span></span>
+            </span>
         )}
     </Link>
 );
 
-const SiteHeader = ({ chrome, ctx }: { chrome: ResolvedChrome; ctx: Ctx }) => {
+const SiteHeader = ({ chrome }: { chrome: ResolvedChrome }) => {
     const [open, setOpen] = useState(false);
-    const dark = chrome.header === 'dark';
-    const linkCls = `text-sm font-medium px-3 py-2 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-rotary-gold ${dark ? 'text-white/85 hover:text-white hover:bg-white/10' : 'text-gray-700 hover:text-rotary-blue hover:bg-gray-50'}`;
     useEffect(() => { if (!open) return; const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); }; document.addEventListener('keydown', onKey); return () => document.removeEventListener('keydown', onKey); }, [open]);
+    const close = () => setOpen(false);
     return (
-        <header className={`sticky top-0 z-40 ${dark ? 'bg-rotary-navy border-b border-white/10' : 'bg-white border-b border-gray-100'}`}>
-            <a href="#contenido" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:bg-white focus:text-rotary-blue focus:px-4 focus:py-2 focus:rounded-lg focus:z-50">Saltar al contenido</a>
-            <div className={`${CONTAINER} h-16 flex items-center justify-between gap-4`}>
-                <Brand chrome={chrome} dark={dark} />
-                <nav className="hidden lg:flex items-center gap-1" aria-label="Principal">{chrome.nav.map(l => <SmartLink key={l.id} b={l} className={linkCls}>{l.label}</SmartLink>)}</nav>
-                <div className="hidden lg:flex items-center gap-2">
-                    {chrome.showLogin ? <a href={chrome.loginHref} className={`${linkCls} inline-flex items-center gap-1.5`}><LogIn className="w-4 h-4" aria-hidden /> Ingresar</a> : null}
-                    {chrome.cta ? <SiteButton b={chrome.cta} dark={dark} ctx={ctx} className="!px-5 !py-2.5 !shadow-none text-sm" /> : null}
-                </div>
-                <button type="button" className={`lg:hidden p-2 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-rotary-gold ${dark ? 'text-white' : 'text-gray-800'}`} aria-expanded={open} aria-controls="menu-movil" aria-label={open ? 'Cerrar menú' : 'Abrir menú'} onClick={() => setOpen(o => !o)}>{open ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}</button>
-            </div>
-            {open ? (
-                <nav id="menu-movil" className={`lg:hidden border-t ${dark ? 'border-white/10 bg-rotary-navy' : 'border-gray-100 bg-white'}`} aria-label="Principal (móvil)">
-                    <div className={`${CONTAINER} py-3 flex flex-col gap-1`}>
-                        {chrome.nav.map(l => <SmartLink key={l.id} b={l} className={`${linkCls} block`} onNavigate={() => setOpen(false)}>{l.label}</SmartLink>)}
-                        {chrome.showLogin ? <a href={chrome.loginHref} className={`${linkCls} inline-flex items-center gap-1.5`}><LogIn className="w-4 h-4" aria-hidden /> Ingresar</a> : null}
-                        {chrome.cta ? <div className="pt-2" onClick={() => setOpen(false)}><SiteButton b={chrome.cta} dark={dark} ctx={ctx} className="w-full !shadow-none" /></div> : null}
+        <>
+            <a href="#contenido" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:bg-white focus:text-rotary-blue focus:px-4 focus:py-2 focus:rounded-lg focus:z-[80]">Saltar al contenido</a>
+            <PublicTopBar rotaryLinks />
+            <header className="bg-white shadow-sm sticky top-0 z-50 transition-all duration-300">
+                <div className={CONTAINER}>
+                    <div className="flex items-center justify-between min-h-[4rem] py-2 gap-4">
+                        <Brand chrome={chrome} />
+                        <nav className="hidden md:flex items-center space-x-6" aria-label="Principal">{chrome.nav.map(l => <SmartLink key={l.id} b={l} className={NAV_LINK}>{l.label}</SmartLink>)}</nav>
+                        <div className="flex items-center gap-3">
+                            {chrome.cta ? <SmartLink b={chrome.cta} className={`hidden lg:inline-flex ${HEADER_CTA_SHAPE} ${ctaSkin(CTA_SOLID)}`}>{chrome.cta.label}</SmartLink> : null}
+                            {chrome.showLogin ? <a href={chrome.loginHref} className={`hidden sm:inline-flex ${HEADER_CTA_SHAPE} ${LOGIN_SKIN}`}><LogIn className="w-4 h-4" aria-hidden /> Iniciar sesión</a> : null}
+                            <button type="button" className="md:hidden text-gray-600 p-1 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-rotary-gold" aria-expanded={open} aria-controls="menu-movil" aria-label={open ? 'Cerrar menú' : 'Abrir menú'} onClick={() => setOpen(o => !o)}>{open ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}</button>
+                        </div>
                     </div>
-                </nav>
-            ) : null}
-        </header>
+                    {open ? (
+                        <nav id="menu-movil" className="md:hidden py-4 border-t" aria-label="Principal (móvil)">
+                            <div className="flex flex-col space-y-3 font-medium">
+                                {chrome.nav.map(l => <SmartLink key={l.id} b={l} className="text-rotary-blue" onNavigate={close}>{l.label}</SmartLink>)}
+                                {chrome.cta ? <SmartLink b={chrome.cta} className={`inline-flex ${HEADER_CTA_SHAPE} ${ctaSkin(CTA_SOLID)}`} onNavigate={close}>{chrome.cta.label}</SmartLink> : null}
+                                {chrome.showLogin ? <a href={chrome.loginHref} className={`inline-flex ${HEADER_CTA_SHAPE} ${LOGIN_SKIN}`}><LogIn className="w-4 h-4" aria-hidden /> Iniciar sesión</a> : null}
+                            </div>
+                        </nav>
+                    ) : null}
+                </div>
+            </header>
+        </>
     );
 };
 
@@ -508,7 +530,7 @@ const PlatformSiteView = ({ page, preview = false, previewToken }: { page: Resol
     const ctx: Ctx = { accent: page.chrome.accent, preview, previewToken };
     return (
         <div className="min-h-screen bg-white flex flex-col font-sans text-gray-800" lang={page.chrome.language}>
-            <SiteHeader chrome={page.chrome} ctx={ctx} />
+            <SiteHeader chrome={page.chrome} />
             <main id="contenido" className="flex-1">
                 {page.blocks.map(b => <BlockSwitch key={b.id} block={b} ctx={ctx} />)}
                 {!page.blocks.length ? <div className={`${CONTAINER} py-32 text-center text-gray-500`}>Esta página todavía no tiene contenido publicado.</div> : null}
