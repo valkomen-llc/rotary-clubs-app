@@ -412,6 +412,9 @@ app.use('/api/rotary-en-accion', async (req, res, next) => { try { return (await
 app.use('/api/site-modules', async (req, res, next) => { try { return (await getSiteModules())(req, res, next); } catch (e) { console.error('API Error [site-modules]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/district-clubs', async (req, res, next) => { try { return (await getDistrictClubs())(req, res, next); } catch (e) { console.error('API Error [district-clubs]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/club-catalog', async (req, res, next) => { try { return (await getClubCatalog())(req, res, next); } catch (e) { console.error('API Error [club-catalog]:', e); res.status(500).json({ error: e.message }); } });
+// Sitio web de Club Platform (v4.1348): el sitio institucional de la plataforma.
+let _platformSite; const getPlatformSite = async () => _platformSite || (({ default: _platformSite } = await import('../server/routes/platform-site.js')), _platformSite);
+app.use('/api/platform-site', async (req, res, next) => { try { return (await getPlatformSite())(req, res, next); } catch (e) { console.error('API Error [platform-site]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/programas', async (req, res, next) => { try { return (await getPrograms())(req, res, next); } catch (e) { console.error('API Error [programas]:', e); res.status(500).json({ error: e.message }); } });
 // v4.1321 — AI Agent Command Center, Cursos (LMS) y los módulos de juventud: antes, sólo en server.js.
 app.post('/api/ping-footer', (req, res) => {
@@ -433,6 +436,10 @@ app.use('/api/seo', async (req, res, next) => { try { return (await getSeo())(re
 // con un 200: para Google, un sitio sin robots.txt y sin sitemap.
 app.get('/robots.txt', async (req, res, next) => {
     try {
+        // En el dominio público del sitio institucional EN VIVO, el robots es el suyo (v4.1348).
+        const { platformRobots } = await import('../server/lib/platformSiteServe.js');
+        const own = await platformRobots(req.hostname).catch(() => null);
+        if (own) return res.type('text/plain').send(own);
         const { getRobotsTxt } = await import('../server/controllers/seoController.js');
         return getRobotsTxt(req, res, next);
     } catch (e) {
@@ -442,6 +449,9 @@ app.get('/robots.txt', async (req, res, next) => {
 });
 app.get(['/sitemap.xml', '/sitemap_index.xml'], async (req, res, next) => {
     try {
+        const { platformSitemap } = await import('../server/lib/platformSiteServe.js');
+        const own = await platformSitemap(req.hostname).catch(() => null);
+        if (own) return res.type('application/xml').send(own);
         const { getSitemap } = await import('../server/controllers/seoController.js');
         return getSitemap(req, res, next);
     } catch (e) {
@@ -482,7 +492,19 @@ app.get('*', async (req, res) => {
                          req.path.startsWith('/media') || 
                          req.path.startsWith('/assets');
     
+    // Con el sitio institucional EN VIVO en este host, la redirección al panel
+    // se apaga sola: el dominio público muestra el sitio (v4.1348).
+    let institutionalLive = false;
     if (isMainDomain && !isSystemPath) {
+        try {
+            const { liveSite, hostMatches } = await import('../server/lib/platformSiteServe.js');
+            institutionalLive = hostMatches(await withDeadline(liveSite(), DOCUMENT_BUDGET.redirectsMs, 'platform_site_live'), hostname);
+        } catch { institutionalLive = false; }
+    }
+    // Una vista previa privada nunca se indexa, se sirva donde se sirva.
+    if (req.path.startsWith('/vista-previa')) res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+
+    if (isMainDomain && !isSystemPath && !institutionalLive) {
         try {
             const redirectConfig = await withDeadline(prisma.platformConfig.findFirst({
                 where: { key: 'saas_redirect' }
@@ -711,12 +733,19 @@ app.get('*', async (req, res) => {
     try {
         const { renderPublicDocument } = await import('../server/lib/seoServe.js');
         const key = documentCacheKey(hostname, req.path);
-        const out = await documentCache.get(key, () => renderPublicDocument({
-            html,
-            host: hostname,
-            path: req.path,
-            protocol: req.headers['x-forwarded-proto'] || 'https',
-        }), { deadlineMs: DOCUMENT_BUDGET.renderMs });
+        const out = await documentCache.get(key, async () => {
+            if (institutionalLive) {
+                const { platformDocument } = await import('../server/lib/platformSiteServe.js');
+                const own = await platformDocument({ html, host: hostname, path: req.path });
+                if (own) return own;
+            }
+            return renderPublicDocument({
+                html,
+                host: hostname,
+                path: req.path,
+                protocol: req.headers['x-forwarded-proto'] || 'https',
+            });
+        }, { deadlineMs: DOCUMENT_BUDGET.renderMs });
         doc = out.value;
         source = out.source;
         if (out.error) console.warn(`[doc] ${hostname}${req.path}: se sirve copia previa (${out.error.message})`);

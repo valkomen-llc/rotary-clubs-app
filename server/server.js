@@ -187,6 +187,7 @@ import emailMarketingRoutes from './routes/email-marketing.js';
 import districtClubsRoutes from './routes/district-clubs.js';
 import clubCatalogRoutes from './routes/club-catalog.js';
 import programRoutes from './routes/programs.js';
+import platformSiteRoutes from './routes/platform-site.js';
 // Cursos y capacitaciones (LMS, v4.1302): biblioteca pública, portal del club y revisión.
 import learningRoutes from './routes/learning.js';
 
@@ -248,6 +249,7 @@ app.use('/api/site-modules', siteModulesRoutes);
 app.use('/api/district-clubs', districtClubsRoutes);
 app.use('/api/club-catalog', clubCatalogRoutes);
 app.use('/api/programas', programRoutes);
+app.use('/api/platform-site', platformSiteRoutes);
 app.use('/api/cursos', learningRoutes);
 
 // DIAGNOSTIC PING - Direct route to bypass potential file-loading/middleware issues

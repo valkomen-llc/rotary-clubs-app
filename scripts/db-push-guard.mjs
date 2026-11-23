@@ -143,6 +143,9 @@
 // ProgramContent, ProgramContentVersion, ProgramChangeRequest, ProgramRequest,
 // ProgramSubscriber, ProgramFile, ProgramAuditLog, ProgramMetricDaily,
 // ProgramVisitor, ProgramLanding y ProgramLandingVersion.
+// Y las seis del Sitio web de Club Platform (v4.1348): PlatformSite,
+// PlatformSiteVersion, PlatformSiteEvent, PlatformSiteMember, PlatformSiteLead
+// y PlatformSiteDaily.
 // Y las cinco del Video Pitch Profesional de la Feria de Proyectos (v4.1293):
 // VideoPitchRequest, VideoPitchFile, VideoPitchScript, VideoPitchEvent y
 // VideoPitchNotification — las solicitudes de los clubes, sus materiales, cada

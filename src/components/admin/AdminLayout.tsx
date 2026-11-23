@@ -73,7 +73,7 @@ import {
     Landmark,
     Clapperboard,
     PanelLeftClose,
-    PanelLeftOpen,
+    PanelLeftOpen, AppWindow
 } from 'lucide-react';
 // v4.1333 — Minimizar / maximizar la barra lateral (todos los sitios).
 import { useSidebarCollapse, useNavTooltip, SidebarTooltip } from './sidebarCollapse';
@@ -651,6 +651,8 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
 
         if (isSuperAdmin) {
             items.push(
+                // v4.1348 — El sitio institucional de la propia plataforma (no es el sitio de un club).
+                { icon: AppWindow, label: 'Sitio web de Club Platform', path: '/admin/sitio-institucional', category: 'Management', keywords: ['sitio institucional', 'sitio web de club platform', 'clubplatform.org', 'pagina corporativa', 'landing', 'plataforma', 'publicar sitio'] },
                 { icon: Network, label: 'Distritos', path: '/admin/distritos', category: 'Management', keywords: ['distrito', '4271', '4281'] },
                 { icon: Building2, label: 'Clubes', path: '/admin/clubes', category: 'Management', keywords: ['club', 'gestionar'] },
                 { icon: Globe, label: 'Asociaciones', path: '/admin/asociaciones', category: 'Management', keywords: ['latir', 'emar', 'red', 'asociacion', 'colrotarios'] },

@@ -24,6 +24,9 @@ export interface SetupProgress {
 
 // Pages accessible during setup mode (before 100% completion)
 export const SETUP_ALLOWED_PATHS = [
+    // v4.1348 — El sitio institucional de la plataforma no depende de la configuración del
+    // club de quien entra: su acceso lo decide el servidor (administrador central, editor o revisor).
+    '/admin/sitio-institucional',
     '/admin/dashboard',
     '/admin/mi-club',
     '/admin/imagenes-sitio',

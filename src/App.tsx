@@ -121,7 +121,8 @@ const MyAccountOrders = lazyWithRetry(() => import('./pages/MyAccountOrders'), '
 const ProductDetail = lazyWithRetry(() => import('./pages/ProductDetail'), 'ProductDetail');
 const DistrictMultimediaGallery = lazyWithRetry(() => import('./pages/DistrictMultimediaGallery'), 'DistrictMultimediaGallery');
 const ClubPreview = lazyWithRetry(() => import('./pages/ClubPreview'), 'ClubPreview');
-const LandingPage = lazyWithRetry(() => import('./pages/LandingPage'), 'LandingPage');
+const PlatformSitePage = lazyWithRetry(() => import('./pages/PlatformSitePage'), 'PlatformSitePage');
+const PlatformSiteAdmin = lazyWithRetry(() => import('./pages/admin/PlatformSiteAdmin'), 'PlatformSiteAdmin');
 const RegistroPage = lazyWithRetry(() => import('./pages/RegistroPage'), 'RegistroPage');
 const VerifyEmail = lazyWithRetry(() => import('./pages/VerifyEmail'), 'VerifyEmail');
 const AppLogin = lazyWithRetry(() => import('./pages/AppLogin'), 'AppLogin');
@@ -400,6 +401,16 @@ const ConstructionGate = ({ children }: { children: React.ReactNode }) => {
   return allowed ? <>{children}</> : <SiteUnderConstruction />;
 };
 
+/**
+ * Una dirección que no es ruta de la aplicación. En el dominio de la
+ * plataforma puede ser una PÁGINA del sitio institucional (`/condiciones`);
+ * en cualquier otro sitio es un 404 de siempre (v4.1348).
+ */
+function RutaLibre() {
+  const { isMainPlatform } = useClub();
+  return isMainPlatform ? <PlatformSitePage mode="public" /> : <RutaNoEncontrada />;
+}
+
 function SmartHome() {
   const { isMainPlatform, isAppPortal, isDraft, club } = useClub();
   const { isAuthenticated, user } = useAuth();
@@ -434,7 +445,9 @@ function SmartHome() {
     }
     return <AppLogin />;
   }
-  if (isMainPlatform) return <LandingPage />;
+  // El dominio de la plataforma muestra su sitio institucional si está EN VIVO;
+  // si no, `PlatformSitePage` lleva al panel (v4.1348).
+  if (isMainPlatform) return <PlatformSitePage mode="public" />;
   // El corte por «en construcción» ya NO vive acá: lo hace `ConstructionGate`,
   // que envuelve a todas las rutas. Dejarlo también en la portada tendría dos
   // criterios para lo mismo —y sólo cubría `/`, así que entrar directo a
@@ -689,6 +702,8 @@ function App() {
               <Routes>
                 <Route path="/conferencia" element={<Navigate to="/eventos/2038324a-0e04-497c-9328-fbaeb9ce2992" replace />} />
                 <Route path="/" element={<SmartHome />} />
+                {/* Vista previa PRIVADA del sitio institucional: borrador con token firmado, nunca indexable. */}
+                <Route path="/vista-previa/sitio-institucional/*" element={<PlatformSitePage mode="preview" />} />
                 <Route path="/login" element={<AppLogin />} />
                 {/* Se llega desde el enlace del correo, sin sesión. Va con las
                     públicas a propósito. */}
@@ -980,6 +995,8 @@ function App() {
                     </PrivateRoute>
                   }
                 />
+                {/* Sitio web de Club Platform (v4.1348): el sitio institucional de la plataforma. */}
+                <Route path="/admin/sitio-institucional" element={<PrivateRoute><PlatformSiteAdmin /></PrivateRoute>} />
                 <Route
                   path="/admin/programas"
                   element={
@@ -1541,7 +1558,7 @@ function App() {
                   vuelta de Facebook en `/_=_`. Va ÚLTIMA: una ruta comodín
                   sólo alcanza lo que ninguna otra reclamó.
                 */}
-                <Route path="*" element={<RutaNoEncontrada />} />
+                <Route path="*" element={<RutaLibre />} />
               </Routes>
               </Suspense>
               {/*

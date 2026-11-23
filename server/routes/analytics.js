@@ -484,6 +484,29 @@ async function fetchAuthorizedSites(user, lockedSiteId = null, lockedDistrictId 
             status: 'active',
             districtName: 'Global'
         });
+        // El sitio institucional de Club Platform (v4.1348): una entrada PROPIA,
+        // con coincidencia EXACTA de host. La entrada de arriba filtra por
+        // `CONTAINS 'clubplatform.org'`, que también casa con cada
+        // `{club}.clubplatform.org` y con el panel; ésta mide sólo el sitio
+        // público y deja fuera `/admin`.
+        let institutionalHost = 'clubplatform.org';
+        try {
+            const r = await db.query(`SELECT "publicHost" FROM "PlatformSite" WHERE id = 'main'`);
+            if (r.rows[0]?.publicHost) institutionalHost = r.rows[0].publicHost;
+        } catch { /* la tabla nace con el módulo: sin ella, el dominio previsto */ }
+        sites.push({
+            id: 'platform-site',
+            name: 'Club Platform — Institucional',
+            group: 'platform',
+            category: 'platform',
+            type: 'Sitio institucional de plataforma',
+            domain: institutionalHost,
+            subdomain: '',
+            hostnames: [institutionalHost, `www.${institutionalHost}`],
+            exactHostnames: true,
+            status: 'active',
+            districtName: 'Global'
+        });
     }
 
     // Process Districts
@@ -774,6 +797,7 @@ router.get('/traffic', async (req, res) => {
             targetSite = sites.find(s => s.hostnames.includes(hostname)) || null;
         }
 
+        const exactHosts = Boolean(targetSite?.exactHostnames);
         // Clean & deduplicate hostnames to filter
         // If a hostname has 'www.example.com' and 'example.com', matching on 'example.com' matches both in GA4 CONTAINS!
         // We strip 'www.' to maximize match coverage across both root and www.
@@ -781,7 +805,7 @@ router.get('/traffic', async (req, res) => {
             hostnamesToFilter
                 .map(h => canonicalDomain(h))
                 .filter(Boolean)
-                .map(h => h.replace(/^www\./, ''))
+                .map(h => (exactHosts ? h : h.replace(/^www\./, '')))
         ));
 
         // If in tenant context without any registered hostnames, guarantee no leak
@@ -812,6 +836,19 @@ router.get('/traffic', async (req, res) => {
                             stringFilter: { matchType: 'CONTAINS', value: h },
                         },
                     })),
+                },
+            };
+        }
+
+        // Coincidencia exacta de host y sin el panel: el tráfico administrativo
+        // no es una visita al sitio institucional (v4.1348).
+        if (exactHosts) {
+            dimensionFilter = {
+                andGroup: {
+                    expressions: [
+                        { filter: { fieldName: 'hostName', inListFilter: { values: cleanFilterHostnames.flatMap(h => [h, `www.${h}`]) } } },
+                        { notExpression: { filter: { fieldName: 'pagePath', stringFilter: { matchType: 'BEGINS_WITH', value: '/admin' } } } },
+                    ],
                 },
             };
         }
