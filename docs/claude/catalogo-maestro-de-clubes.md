@@ -195,6 +195,34 @@ nombre. Orden, todo en el SQL (la búsqueda en memoria lo conserva):
 Si se agrega otra vía de diligenciar el perfil, sumarla a `profileCompleted` o
 ese club quedará al final. Los conteos, ciudades y filtros no cambian.
 
+## «C.R.» no es parte del nombre (v4.1351)
+
+«C.R.» es la abreviatura de «Club Rotario». Las listas muestran sólo el nombre:
+«Fusagasugá», nunca «C.R. Fusagasugá» (pedido del Distrito al ver el formulario
+de la Conferencia de Villavicencio). La regla, en `clubCatalogSpec.js`:
+
+- `stripClubAbbreviation` / `hasClubAbbreviation`: «C.R.», «C. R.», «CR»,
+  «C.R.Nombre», «R.C.» como PRIMERA palabra seguida del nombre. «Cristo Rey»,
+  «Cra. 5» o un «CR» suelto no se tocan.
+- `shapeClubInput` (crear, editar, importar): el corto queda sin la
+  abreviatura y el oficial abreviado se escribe completo con
+  `deriveOfficialName` («Club Rotario Fusagasugá»).
+- `coreName` y el `normKey` de `rotaryClubs.js` la ignoran: «C.R. Fusagasugá»
+  y «Fusagasugá» son la MISMA llave, así que las inscripciones viejas que
+  guardaron el texto siguen resolviendo al club y el detector de duplicados
+  los empareja.
+- `buildSnapshot` y `publicClubShape` la quitan AL MOSTRAR aunque alguien la
+  escriba directo en la base.
+- `cleanClubAbbreviationsOnce` (en `ensureClubCatalogSchema`): limpieza única
+  de lo guardado, con un `update` en la bitácora por club y la marca
+  `abbreviation_cleanup`.
+
+Ojo: como la semilla reconciliada (v4.1269) no reconocía «C.R. Fusagasugá»
+como «Fusagasugá», pudo crear un segundo club con el nombre limpio. Tras la
+limpieza los dos se llaman igual: el formulario los muestra una sola vez (la
+lista no repite nombres) y el panel de duplicados los señala con confianza
+alta. La fusión la decide el Distrito, como siempre.
+
 ## Pendiente (fase siguiente)
 
 - **Guardar el id del club en los demás formularios.** Hoy eventos,

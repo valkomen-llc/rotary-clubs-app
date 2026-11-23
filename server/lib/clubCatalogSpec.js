@@ -64,12 +64,22 @@ export const normText = (s) => String(s || '')
     .toLowerCase().replace(/\s+/g, ' ').trim();
 
 /**
+ * v4.1351 — «C.R.» (y «CR», «C. R.», «R.C.») es la abreviatura de «Club
+ * Rotario»: no es parte del nombre. Las listas muestran sólo el nombre
+ * («Fusagasugá», no «C.R. Fusagasugá»). Sólo se quita como PRIMERA palabra
+ * y seguida del resto del nombre: «Cristo Rey» o «Cra. 5» no se tocan.
+ */
+const ABREV_CLUB_ROTARIO = /^\s*(?:(?:c\s*\.\s*r|r\s*\.\s*c)\s*\.\s*|(?:c\s*\.?\s*r|r\s*\.?\s*c)\.?\s+)(?=\S)/i;
+export const hasClubAbbreviation = (s) => ABREV_CLUB_ROTARIO.test(String(s || ''));
+export const stripClubAbbreviation = (s) => String(s ?? '').replace(ABREV_CLUB_ROTARIO, '').trim();
+
+/**
  * El NÚCLEO del nombre: lo que queda al quitar el prefijo institucional y la
  * puntuación. Es lo que hace que «Club Rotario Armenia International»,
  * «Rotary Club Armenia International» y «Armenia International» se reconozcan
  * como el MISMO TEXTO. Que sean el mismo CLUB lo decide una persona.
  */
-export const coreName = (s) => normText(s)
+export const coreName = (s) => normText(stripClubAbbreviation(s))
     .replace(/^(club\s+rotario|rotary\s+club(\s+de)?|club\s+rotaract|rotaract\s+club|club\s+interact|interact\s+club|rotaract|interact|rotary|club|rc)\s+/i, '')
     .replace(/\be\s*-?\s*club\b/g, 'eclub')
     .replace(/\binternacional\b/g, 'international')
@@ -79,7 +89,7 @@ export const coreName = (s) => normText(s)
 
 /** El nombre corto a partir del oficial cuando no se escribe: el que usan las listas. */
 export const deriveShortName = (officialName) => {
-    const n = str(officialName, 200);
+    const n = stripClubAbbreviation(str(officialName, 200));
     const sinPrefijo = n.replace(/^(club\s+rotario|rotary\s+club(\s+de)?|club\s+rotaract|club\s+interact)\s+/i, '');
     if (/^rotary\s+e-?club\b/i.test(sinPrefijo)) return sinPrefijo.replace(/^rotary\s+/i, '');
     return sinPrefijo.replace(/^rotary\s+/i, '') || n;
@@ -87,7 +97,8 @@ export const deriveShortName = (officialName) => {
 
 /** El nombre oficial a partir del corto, en español (misma regla que `publicClubs.clubDisplayName`). */
 export const deriveOfficialName = (shortName, organizationType = 'rotary') => {
-    const n = str(shortName, 200);
+    // «C.R. Fusagasugá» → «Club Rotario Fusagasugá».
+    const n = stripClubAbbreviation(str(shortName, 200));
     if (!n) return '';
     if (/^(club\s+(rotario|rotaract|interact)|rotary|rotaract|interact)\b/i.test(n)) return n;
     if (/^e-?club\b/i.test(n)) return `Rotary ${n}`;
@@ -111,8 +122,11 @@ const normUrl = (u) => {
 /** Normaliza lo que llega del formulario o de una fila de importación. */
 export function shapeClubInput(raw = {}) {
     const organizationType = ORGANIZATION_TYPES[str(raw.organizationType, 20).toLowerCase()] ? str(raw.organizationType, 20).toLowerCase() : 'rotary';
-    const officialIn = str(raw.officialName, 200);
-    const shortIn = str(raw.shortName, 160);
+    // v4.1351 — Sin «C.R.»: el oficial abreviado se escribe completo y el
+    // corto queda sólo con el nombre.
+    const officialRaw = str(raw.officialName, 200);
+    const officialIn = hasClubAbbreviation(officialRaw) ? deriveOfficialName(officialRaw, organizationType) : officialRaw;
+    const shortIn = stripClubAbbreviation(str(raw.shortName, 160));
     const officialName = officialIn || deriveOfficialName(shortIn, organizationType);
     const shortName = shortIn || deriveShortName(officialName);
     const ct = str(raw.clubType, 30).toLowerCase();
@@ -517,8 +531,8 @@ export function summarizeCatalog(clubs = []) {
 /** Lo que un formulario público puede ver de un club. Nada interno. */
 export const publicClubShape = (c) => ({
     id: c.id,
-    name: c.officialName,
-    shortName: c.shortName,
+    name: hasClubAbbreviation(c.officialName) ? deriveOfficialName(c.officialName, c.organizationType || 'rotary') : c.officialName,
+    shortName: stripClubAbbreviation(c.shortName),
     city: c.city || '',
     state: c.state || '',
     country: c.country || '',
@@ -553,7 +567,7 @@ export function searchCatalog(clubs = [], term = '', limit = 20) {
 
 export default {
     CATALOG_STATES, CATALOG_STATE_KEYS, DEFAULT_CATALOG_STATE, ORGANIZATION_TYPES, CLUB_TYPES,
-    normText, coreName, deriveShortName, deriveOfficialName, shapeClubInput, validateClubInput,
+    normText, coreName, hasClubAbbreviation, stripClubAbbreviation, deriveShortName, deriveOfficialName, shapeClubInput, validateClubInput,
     missingFields, isIncomplete, diffClub, aliasesAfterRename, namesOf, similarity,
     findDuplicateCandidates, mapImportRow, matchExisting, classifyImportRows, missingFromSource,
     catalogScopeAllows, summarizeCatalog, publicClubShape, searchCatalog, catalogStateLabel,

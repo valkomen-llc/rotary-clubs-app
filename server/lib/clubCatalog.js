@@ -32,7 +32,7 @@ import {
     shapeClubInput, validateClubInput, diffClub, aliasesAfterRename, coreName, namesOf,
     findDuplicateCandidates, classifyImportRows, missingFromSource, catalogScopeAllows,
     summarizeCatalog, deriveOfficialName, DEFAULT_CATALOG_STATE, AUDITED_FIELDS, missingFields,
-    publicClubShape, searchCatalog,
+    publicClubShape, searchCatalog, hasClubAbbreviation, stripClubAbbreviation,
 } from './clubCatalogSpec.js';
 
 export const SEED_SOURCE_TAG = 'rotaryClubs.js v4.707';
@@ -92,6 +92,7 @@ export async function ensureClubCatalogSchema() {
         await db.query(`CREATE INDEX IF NOT EXISTS idx_ccc_action ON "ClubCatalogChange"(action)`);
     }
     await reconcileSeedOnce();
+    await cleanClubAbbreviationsOnce().catch(e => console.warn('[club-catalog] No se pudo quitar «C.R.» de los nombres:', e?.message || e));
     _ready = true;
 }
 
@@ -141,6 +142,55 @@ async function reconcileSeedOnce() {
     if (agregados.length) console.log(`[club-catalog] Reconciliación: ${agregados.length} clubes de la lista estática incorporados al Catálogo Maestro.`);
 }
 
+/**
+ * v4.1351 — Una sola vez por base: quitar «C.R.» (abreviatura de «Club
+ * Rotario») de los nombres guardados. «C.R. Fusagasugá» queda con nombre
+ * corto «Fusagasugá» y oficial «Club Rotario Fusagasugá»; el nombre anterior
+ * pasa a ALIAS, así las inscripciones que lo guardaron como texto siguen
+ * resolviendo al mismo club. Cada club corregido queda en la bitácora.
+ *
+ * La marca de «ya se hizo» es la bitácora (`action = 'abbreviation_cleanup'`).
+ * Después, `shapeClubInput` impide que la abreviatura vuelva a guardarse y
+ * `buildSnapshot` la quita al mostrar aunque alguien la escriba a mano en la base.
+ */
+async function cleanClubAbbreviationsOnce() {
+    const { rows: hecho } = await db.query(`SELECT 1 FROM "ClubCatalogChange" WHERE action = 'abbreviation_cleanup' LIMIT 1`);
+    if (hecho.length) return;
+    const { rows } = await db.query(
+        `SELECT id, "organizationType", "officialName", "shortName", aliases FROM "DistrictClubProfile"`
+    );
+    const corregidos = [];
+    for (const r of rows) {
+        if (!hasClubAbbreviation(r.officialName) && !hasClubAbbreviation(r.shortName)) continue;
+        const tipo = r.organizationType || 'rotary';
+        const shortName = stripClubAbbreviation(r.shortName || r.officialName);
+        const officialName = hasClubAbbreviation(r.officialName) ? deriveOfficialName(r.officialName, tipo) : r.officialName;
+        if (!shortName || !officialName) continue;
+        const despues = { officialName, shortName };
+        const aliases = aliasesAfterRename({ ...r, aliases: Array.isArray(r.aliases) ? r.aliases : [] }, despues);
+        const changes = diffClub(r, { ...despues, aliases }, ['officialName', 'shortName', 'aliases']);
+        if (!changes.length) continue;
+        await withTx(async (client) => {
+            await client.query(
+                `UPDATE "DistrictClubProfile" SET "officialName" = $2, "shortName" = $3, aliases = $4::jsonb,
+                        "catalogUpdatedAt" = NOW(), "catalogUpdatedBy" = 'Sistema', "updatedAt" = NOW()
+                  WHERE id = $1`,
+                [r.id, officialName, shortName, JSON.stringify(aliases)]
+            );
+            await logChange(client, {
+                clubProfileId: r.id, action: 'update', changes, actor: { name: 'Sistema' },
+                reason: '«C.R.» es la abreviatura de «Club Rotario»: el nombre del club se muestra sin ella.',
+            });
+        });
+        corregidos.push({ id: r.id, from: r.shortName || r.officialName, to: shortName });
+    }
+    await db.query(
+        `INSERT INTO "ClubCatalogChange" (action, changes, reason, "actorName") VALUES ('abbreviation_cleanup', $1::jsonb, $2, 'Sistema')`,
+        [JSON.stringify(corregidos), `Se quitó «C.R.» del nombre de ${corregidos.length} club(es).`]
+    );
+    if (corregidos.length) console.log(`[club-catalog] «C.R.» quitado del nombre de ${corregidos.length} club(es):`, corregidos.map(c => `${c.from} → ${c.to}`).join(', '));
+}
+
 // ─── El catálogo vivo ─────────────────────────────────────────────────
 const TTL_MS = 60_000;
 const FIRST_LOAD_BUDGET_MS = 2_500;
@@ -169,8 +219,11 @@ export function buildSnapshot(rows) {
         if (!n) continue;
         const d = districts[n] || (districts[n] = { active: [], known: [] });
         const status = r.catalogStatus || 'activo';
-        if (status === 'activo') d.active.push(r.shortName || r.officialName);
-        d.known.push({ id: r.id, name: r.shortName || r.officialName, status, names: [r.officialName, ...(r.aliases || [])] });
+        // v4.1351 — Los formularios muestran el nombre sin «C.R.»; el texto
+        // tal como está guardado sigue reconociéndose (va en `names`).
+        const nombre = stripClubAbbreviation(r.shortName || r.officialName) || r.shortName || r.officialName;
+        if (status === 'activo') d.active.push(nombre);
+        d.known.push({ id: r.id, name: nombre, status, names: [r.officialName, r.shortName, ...(r.aliases || [])].filter(Boolean) });
     }
     // Los fusionados reconocen su nombre como el del club que los absorbió.
     const porId = new Map(rows.map(r => [r.id, r]));
