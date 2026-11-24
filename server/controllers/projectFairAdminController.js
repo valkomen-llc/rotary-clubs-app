@@ -32,6 +32,13 @@ import {
 import { buildProjectDocx, DOCX_MIME } from '../lib/projectFairDocx.js';
 // v4.1332 — Seguimiento documental: el criterio (puro) y la lectura por lotes.
 import { compactTracking, hasDocQuery, matchesDocFilters, docSortValue, docViewOptions, DOC_SORTS } from '../lib/projectDocumentTracking.js';
+// v4.1356 — Seguimiento y verificación de traducciones por Cadres (columna
+// «Traducción EN», filtros, orden y CSV), con el mismo cálculo del expediente.
+import {
+    hasTranslationQuery, matchesTranslationFilters, translationSortValue, TRANSLATION_SORTS, translationViewOptions,
+    resolveCadreQuery, TRANSLATION_CSV_HEADERS, translationCsvValues,
+} from '../lib/translationTracking.js';
+import { loadTranslationCompact, checkTranslationValidity } from '../lib/translationTrackingStore.js';
 import { loadTracking } from '../lib/projectDocumentTrackingStore.js';
 import {
     BULK_MAX, BULK_CAPABILITY, planBulk, describeBulkPlan,
@@ -83,6 +90,7 @@ import {
     SQL_FDD_COLUMNS, FDD_SORTABLE, FDD_RANGE_FILTERS, sqlAmount, rangeBound, fddAmountsOf,
 } from '../lib/projectFairFddAmounts.js';
 
+console.log('[projectFairAdminController] v4.1356.0 cargado — Traducción EN: columna, filtros (estado, Cadre, fecha de verificación), orden y CSV con la verificación por Cadres; perfil «cadre» que verifica traducciones y capacidad manageTranslation del administrador.');
 console.log('[projectFairAdminController] v4.1335.0 cargado — Exchange: columna de traslados y conciliación en el listado (lee la Bóveda, no la escribe), perfil exchange_viewer de consulta para el administrador del evento (sin datos personales) y columnas Exchange en el CSV.');
 console.log('[projectFairAdminController] v4.1326.0 cargado — Sin perfil en la Feria no se ve nada: el rol viewer pierde view y withAccess responde 403 NO_FAIR_PROFILE (antes un club_admin de otro club leía correo, teléfono y documento de cada responsable).');
 console.log('[projectFairAdminController] v4.1325.0 cargado — Sólo el sitio de la Feria administra el módulo: el grant RBAC de project_fair.* cuenta sólo si es del sitio de la Feria (un club_admin de otro club ya no resuelve como admin); las listas Finanzas/Revisores/Traductores vuelven a aplicar.');
@@ -143,10 +151,16 @@ export const PRIORITIES = [
 // fichas, `export`. El perfil `translator` lee, traduce y exporta: no edita la
 // postulación, no aprueba y no ve pagos.
 const ROLE_CAPABILITIES = {
-    admin:      { view: true, managePayments: true, viewPayments: true, comment: true, edit: true, changeStatus: true, manageTags: true, export: true, config: true, remove: true, translate: true, approveTranslation: true, viewPersonalData: true, exchangeView: true, exchangeDownload: true, exchangeManage: true, exchangeReconcile: true, exchangeConfig: true, manageUsers: true },
-    finance:    { view: true, managePayments: true, viewPayments: true, comment: true, edit: false, changeStatus: false, manageTags: false, export: true, config: false, remove: false, translate: false, approveTranslation: false, viewPersonalData: true, exchangeView: true, exchangeDownload: true, exchangeManage: true, exchangeReconcile: true, exchangeConfig: false, manageUsers: false },
-    reviewer:   { view: true, managePayments: false, viewPayments: false, comment: true, edit: false, changeStatus: true, manageTags: true, export: true, config: false, remove: false, translate: true, approveTranslation: true, viewPersonalData: true, exchangeView: false, exchangeDownload: false, exchangeManage: false, exchangeReconcile: false, exchangeConfig: false, manageUsers: false },
-    translator: { view: true, managePayments: false, viewPayments: false, comment: true, edit: false, changeStatus: false, manageTags: false, export: true, config: false, remove: false, translate: true, approveTranslation: false, viewPersonalData: true, exchangeView: false, exchangeDownload: false, exchangeManage: false, exchangeReconcile: false, exchangeConfig: false, manageUsers: false },
+    admin:      { view: true, managePayments: true, viewPayments: true, comment: true, edit: true, changeStatus: true, manageTags: true, export: true, config: true, remove: true, translate: true, approveTranslation: true, viewPersonalData: true, exchangeView: true, exchangeDownload: true, exchangeManage: true, exchangeReconcile: true, exchangeConfig: true, manageUsers: true, manageTranslation: true },
+    finance:    { view: true, managePayments: true, viewPayments: true, comment: true, edit: false, changeStatus: false, manageTags: false, export: true, config: false, remove: false, translate: false, approveTranslation: false, viewPersonalData: true, exchangeView: true, exchangeDownload: true, exchangeManage: true, exchangeReconcile: true, exchangeConfig: false, manageUsers: false, manageTranslation: false },
+    reviewer:   { view: true, managePayments: false, viewPayments: false, comment: true, edit: false, changeStatus: true, manageTags: true, export: true, config: false, remove: false, translate: true, approveTranslation: true, viewPersonalData: true, exchangeView: false, exchangeDownload: false, exchangeManage: false, exchangeReconcile: false, exchangeConfig: false, manageUsers: false, manageTranslation: false },
+    translator: { view: true, managePayments: false, viewPayments: false, comment: true, edit: false, changeStatus: false, manageTags: false, export: true, config: false, remove: false, translate: true, approveTranslation: false, viewPersonalData: true, exchangeView: false, exchangeDownload: false, exchangeManage: false, exchangeReconcile: false, exchangeConfig: false, manageUsers: false, manageTranslation: false },
+    // v4.1356 — CADRE: el asesor técnico de Rotary que revisa y CERTIFICA la
+    // traducción inglesa («Traducción verificada por Cadre»). Lee, traduce,
+    // revisa y verifica; no edita la postulación, no ve pagos, no asigna ni
+    // revoca (eso es `manageTranslation`, del administrador). No certifica un
+    // proyecto del que es responsable: lo bloquea el servidor al verificar.
+    cadre:      { view: true, managePayments: false, viewPayments: false, comment: true, edit: false, changeStatus: false, manageTags: false, export: true, config: false, remove: false, translate: true, approveTranslation: true, viewPersonalData: true, exchangeView: false, exchangeDownload: false, exchangeManage: false, exchangeReconcile: false, exchangeConfig: false, manageUsers: false, manageTranslation: false },
     // v4.1326 — `viewer` NO VE NADA. Desde v4.1325 sólo resuelve a `viewer`
     // quien llega de OTRO sitio y no está en ninguna lista de la convocatoria:
     // en el sitio de la Feria todo perfil que pasa la guardia de la ruta es
@@ -155,7 +169,7 @@ const ROLE_CAPABILITIES = {
     // responsable. Cerrarlo aquí cubre TODO lo que pasa por `withAccess`
     // (listado, ficha, expediente, exportaciones, formularios, videos); ocultar
     // campo por campo habría dejado alguna respuesta sin revisar.
-    viewer:     { view: false, managePayments: false, viewPayments: false, comment: false, edit: false, changeStatus: false, manageTags: false, export: false, config: false, remove: false, translate: false, approveTranslation: false, viewPersonalData: false, exchangeView: false, exchangeDownload: false, exchangeManage: false, exchangeReconcile: false, exchangeConfig: false, manageUsers: false },
+    viewer:     { view: false, managePayments: false, viewPayments: false, comment: false, edit: false, changeStatus: false, manageTags: false, export: false, config: false, remove: false, translate: false, approveTranslation: false, viewPersonalData: false, exchangeView: false, exchangeDownload: false, exchangeManage: false, exchangeReconcile: false, exchangeConfig: false, manageUsers: false, manageTranslation: false },
     // v4.1335 — EXCHANGE: el administrador autorizado del EVENTO (por ejemplo,
     // quien administra la Conferencia Distrital en el sitio del Distrito) CONSULTA
     // los comprobantes de traslado de los proyectos de la edición. No es un perfil
@@ -164,7 +178,7 @@ const ROLE_CAPABILITIES = {
     // llega por la capacidad de consulta y SIN datos personales
     // (`viewPersonalData: false`, proyección en lista blanca de `mapRow`). Nunca
     // registra, corrige ni concilia. La descarga la decide el acceso concedido.
-    exchange_viewer: { view: false, managePayments: false, viewPayments: false, comment: false, edit: false, changeStatus: false, manageTags: false, export: false, config: false, remove: false, translate: false, approveTranslation: false, viewPersonalData: false, exchangeView: true, exchangeDownload: false, exchangeManage: false, exchangeReconcile: false, exchangeConfig: false, manageUsers: false },
+    exchange_viewer: { view: false, managePayments: false, viewPayments: false, comment: false, edit: false, changeStatus: false, manageTags: false, export: false, config: false, remove: false, translate: false, approveTranslation: false, viewPersonalData: false, exchangeView: true, exchangeDownload: false, exchangeManage: false, exchangeReconcile: false, exchangeConfig: false, manageUsers: false, manageTranslation: false },
 };
 
 /** Lo que se le dice a quien no tiene perfil en el módulo (v4.1326). */
@@ -258,6 +272,9 @@ export const resolveAccess = (user, cfg, { ownsFairSite = false, exchangeGrant =
     if (user?.role === 'administrator' || user?.role === 'project_fair_manager' || listHas(access.admins, email) || ownsFairSite) role = 'admin';
     else if (listHas(access.finance, email)) role = 'finance';
     else if (listHas(access.reviewers, email)) role = 'reviewer';
+    // v4.1356 — Los Cadres (asesores técnicos) verifican traducciones. Van
+    // antes que «Traductores»: quien está en las dos listas puede certificar.
+    else if (listHas(access.cadres, email)) role = 'cadre';
     else if (listHas(access.translators, email)) role = 'translator';
     // v4.1335 — Sólo quien NO tiene perfil en el comité cae al acceso de
     // consulta de Exchange: un perfil del comité nunca se rebaja por tenerlo.
@@ -1567,6 +1584,12 @@ export const listSubmissions = withAccess(async (req, res, { cfg, access }) => {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const pageSize = Math.min(200, Math.max(1, parseInt(req.query.pageSize, 10) || 25));
     const docSort = Object.prototype.hasOwnProperty.call(DOC_SORTS, String(req.query.sortBy || ''));
+    // v4.1356 — Filtros y orden de TRADUCCIÓN (estado, Cadre, fecha de
+    // verificación). `trCadre=me` lo resuelve el servidor con la sesión.
+    const trQ = resolveCadreQuery(req.query, req.user?.email);
+    const trQuery = access.view && hasTranslationQuery(trQ);
+    const trSort = Object.prototype.hasOwnProperty.call(TRANSLATION_SORTS, String(req.query.sortBy || ''));
+    let translation = null;
     const sortBy = SORTABLE[req.query.sortBy] || SORTABLE.createdAt;
     const sortDir = String(req.query.sortDir).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
 
@@ -1579,13 +1602,13 @@ export const listSubmissions = withAccess(async (req, res, { cfg, access }) => {
     // el documental, y se combinan.
     const exQuery = access.exchangeView && hasExchangeQuery(req.query);
     let exchange = null;
-    if (hasDocQuery(req.query) || exQuery) {
+    if (hasDocQuery(req.query) || exQuery || trQuery) {
         // v4.1332 — Filtro u orden DOCUMENTAL: el avance sale del motor (el
         // mismo de «Mi Proyecto»), no de una columna. Se calcula para todas
         // las filas que pasan los demás filtros —por lotes, una consulta por
         // fuente— y se filtra y ordena aquí. Así se combina con todo lo demás.
         const base = await db.query(`SELECT * FROM "ProjectFairSubmission" ${clause}
-                                     ORDER BY ${docSort ? '"createdAt" DESC' : `${sortBy} ${sortDir} NULLS LAST`}, id ASC LIMIT 5000`, params);
+                                     ORDER BY ${docSort || trSort ? '"createdAt" DESC' : `${sortBy} ${sortDir} NULLS LAST`}, id ASC LIMIT 5000`, params);
         const docQuery = access.view && hasDocQuery(req.query);
         tracking = docQuery ? await loadTracking(base.rows, cfg) : new Map();
         let list = docQuery ? base.rows.filter(r => matchesDocFilters(tracking.get(r.id), req.query)) : base.rows;
@@ -1598,6 +1621,15 @@ export const listSubmissions = withAccess(async (req, res, { cfg, access }) => {
             list = [...list].sort((a, b) => (docSortValue(tracking.get(a.id), req.query.sortBy) - docSortValue(tracking.get(b.id), req.query.sortBy)) * dir
                 || String(a.id).localeCompare(String(b.id)));
         }
+        if (trQuery) {
+            translation = await loadTranslationCompact(list);
+            list = list.filter(r => matchesTranslationFilters(translation.get(r.id), trQ));
+            if (trSort) {
+                const dir = sortDir === 'ASC' ? 1 : -1;
+                list = [...list].sort((a, b) => (translationSortValue(translation.get(a.id), req.query.sortBy) - translationSortValue(translation.get(b.id), req.query.sortBy)) * dir
+                    || String(a.id).localeCompare(String(b.id)));
+            }
+        }
         total = list.length;
         const ids = list.slice((page - 1) * pageSize, page * pageSize).map(r => r.id);
         const full = ids.length
@@ -1605,6 +1637,15 @@ export const listSubmissions = withAccess(async (req, res, { cfg, access }) => {
             : { rows: [] };
         const byId = new Map(full.rows.map(r => [r.id, r]));
         pageRows = ids.map(id => byId.get(id)).filter(Boolean);
+        // v4.1356 — Con sólo un filtro de traducción o de Exchange no se
+        // calculó el seguimiento documental: el de la PÁGINA, para que las
+        // columnas documentales no queden en «—».
+        if (!docQuery && access.view) {
+            tracking = await loadTracking(pageRows, cfg).catch((err) => {
+                console.warn('[project-fair-admin] seguimiento documental:', err?.message);
+                return new Map();
+            });
+        }
     } else {
         const countRes = await db.query(`SELECT COUNT(*)::int AS total FROM "ProjectFairSubmission" ${clause}`, params);
         total = countRes.rows[0]?.total || 0;
@@ -1636,6 +1677,14 @@ export const listSubmissions = withAccess(async (req, res, { cfg, access }) => {
         });
     }
 
+    if (access.view && !translation) {
+        // Información de apoyo: si falla, la tabla se pinta igual sin la columna.
+        translation = await loadTranslationCompact(pageRows).catch((err) => {
+            console.warn('[project-fair-admin] traducción:', err?.message);
+            return new Map();
+        });
+    }
+
     const tagsBySubmission = await loadTagsFor(pageRows.map(r => r.id));
     const sizes = await registrationSizesFor(pageRows);
     res.json({
@@ -1644,6 +1693,7 @@ export const listSubmissions = withAccess(async (req, res, { cfg, access }) => {
             return {
                 ...mapRow({ ...r, tags: tagsBySubmission[r.id] || [], registrationProjects: sizes[r.registrationId] ?? 1 }, access),
                 documents: t ? compactTracking(t) : null,
+                ...(access.view ? { translation: translation?.get(r.id) || null } : {}),
                 ...(access.exchangeView ? { exchange: compactExchange(exchange?.byId.get(String(r.id))) } : {}),
             };
         }),
@@ -1850,6 +1900,9 @@ export const updateSubmission = withAccess(async (req, res, { access }) => {
     }
 
     const tags = await loadTagsFor([req.params.id]);
+    // v4.1356 — Si cambió un texto traducido (nombre o descripción del
+    // proyecto), la verificación de la traducción pierde vigencia aquí mismo.
+    await checkTranslationValidity(req.params.id);
     res.json({ submission: mapRow({ ...updated[0], tags: tags[req.params.id] || [] }, access) });
 }, 'view');
 
@@ -2723,6 +2776,10 @@ export const exportCsv = withAccess(async (req, res, { cfg, access }) => {
     // mismos filtros documentales (si los hay).
     const tracking = await loadTracking(allRows, cfg).catch(() => new Map());
     let rows = allRows.filter(r => !tracking.get(r.id) || matchesDocFilters(tracking.get(r.id), req.query));
+    // v4.1356 — Traducción EN: las mismas cifras de la columna y sus filtros.
+    const trQ = resolveCadreQuery(req.query, req.user?.email);
+    const translation = await loadTranslationCompact(rows).catch(() => new Map());
+    if (hasTranslationQuery(trQ)) rows = rows.filter(r => matchesTranslationFilters(translation.get(r.id), trQ));
     // v4.1335 — Exchange: las mismas cifras de la columna y sus filtros.
     const exchange = access.exchangeView ? await loadExchangeFor(rows).catch(() => null) : null;
     if (exchange && hasExchangeQuery(req.query)) {
@@ -2745,6 +2802,8 @@ export const exportCsv = withAccess(async (req, res, { cfg, access }) => {
         'Formulación (%)', 'Solicitud FDD (%)', 'Presentación', 'Video', 'Video Pitch Profesional',
         'Avance documental (%)', 'Estado documental', 'Validación administrativa', 'Semáforo',
         'Pendientes', 'Última actualización', 'Último recordatorio', 'Recordatorios enviados',
+        // v4.1356 — Traducción EN (verificación por Cadres).
+        ...TRANSLATION_CSV_HEADERS,
     ];
     if (access.exchangeView) headers.push(...EXCHANGE_CSV_HEADERS);
     if (access.viewPayments) headers.push('Referencia Stripe (PaymentIntent)', 'Checkout Session', 'Charge', 'Método de pago', 'Comprobante');
@@ -2772,6 +2831,7 @@ export const exportCsv = withAccess(async (req, res, { cfg, access }) => {
             r.metadata?.payment?.coveredBy ? (r.metadata.payment.coveredByRef || r.metadata.payment.coveredBy) : '',
             r.metadata?.substitution?.role === 'kept' ? (r.metadata.substitution.payer?.name || '') : '',
             ...docCsvValues(tracking.get(r.id)),
+            ...translationCsvValues(translation.get(r.id)),
         ];
         if (access.exchangeView) values.push(...exchangeCsvValues(exchange?.byId.get(String(r.id)), exchange?.operations || {}));
         if (access.viewPayments) {
@@ -2853,6 +2913,8 @@ export const getCatalog = withAccess(async (_req, res, { cfg, access }) => {
         postCloseViews: POST_CLOSE_OPTIONS,
         // v4.1332 — Vistas del Seguimiento documental.
         docViews: docViewOptions(),
+        // v4.1356 — Vistas del seguimiento de traducciones.
+        translationViews: translationViewOptions(),
         // v4.1335 — Filtros de Exchange (traslados y conciliación).
         exchangeFilters: access.exchangeView ? EXCHANGE_FILTERS : [],
         deadline: cfg.deadline || null,

@@ -10,6 +10,7 @@ import { Download, Eye, FileText, Loader2, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import type { DocumentPayload, TranslationStatus } from '../../../../lib/projectDossier';
 import { dossierRequest, TRANSLATION_META } from '../../../../lib/projectDossier';
+import type { TranslationTracking } from '../../../../lib/translationTracking';
 
 const BLUE = '#17458F';
 type Kind = 'es' | 'en' | 'bilingual';
@@ -31,8 +32,10 @@ export const makeDossierPdf = async (submissionId: string, eventId: string, kind
     return { doc, payload, fileName: pdfFileName(payload) };
 };
 
-const ExpedienteFichas = ({ submissionId, eventId, canExport, translation, initialKind }: {
+const ExpedienteFichas = ({ submissionId, eventId, canExport, translation, initialKind, tracking }: {
     submissionId: string; eventId: string; canExport: boolean; translation: TranslationStatus; initialKind?: Kind | null;
+    /** v4.1356 — Para avisar si la ficha inglesa saldrá como oficial (verificada) o marcada. */
+    tracking?: TranslationTracking | null;
 }) => {
     const [kind, setKind] = useState<Kind>(initialKind || 'es');
     const [includeContact, setIncludeContact] = useState(false);
@@ -89,6 +92,12 @@ const ExpedienteFichas = ({ submissionId, eventId, canExport, translation, initi
                 <span className="text-slate-400">Las fichas nunca incluyen el documento de identidad ni datos de pago.</span>
             </div>
 
+            {approvedExists && tracking?.legacyApproved && (
+                <p className="flex items-start gap-2 rounded-xl bg-amber-50 px-4 py-3 text-xs text-amber-900"><ShieldAlert size={14} className="mt-0.5 shrink-0" /> La traducción se aprobó antes de la verificación por Cadres: las fichas en inglés y bilingüe usan ese texto, marcadas «BORRADOR · PENDIENTE DE VERIFICACIÓN» hasta que un Cadre la verifique.</p>
+            )}
+            {approvedExists && tracking?.state === 'needs_update' && (
+                <p className="flex items-start gap-2 rounded-xl bg-red-50 px-4 py-3 text-xs text-red-800"><ShieldAlert size={14} className="mt-0.5 shrink-0" /> El original cambió después de la verificación: la ficha inglesa usa la última versión verificada y lo advierte. Para la versión vigente, verifica de nuevo la traducción.</p>
+            )}
             {!approvedExists && translation.state !== 'not_started' && (
                 <p className="flex items-start gap-2 rounded-xl bg-amber-50 px-4 py-3 text-xs text-amber-900"><ShieldAlert size={14} className="mt-0.5 shrink-0" /> La traducción todavía no está aprobada: las fichas en inglés y bilingüe saldrán marcadas «BORRADOR · DRAFT — NOT APPROVED» en cada página.</p>
             )}

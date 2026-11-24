@@ -27,7 +27,7 @@ import {
 import { matrixRowsToShow } from '../../lib/projectForms';
 // v4.1324 — Expediente integral del proyecto (lectura completa, edición
 // auditada, traducción al inglés, fichas PDF y libretas).
-import { dossierRequest, TRANSLATION_META, type DossierPayload, type TranslationState, type TranslationStatus } from '../../lib/projectDossier';
+import { dossierRequest, TRANSLATION_META, type DossierPayload, type TranslationStatus } from '../../lib/projectDossier';
 import ExpedienteAccionesMenu, { type ExpedientePane, type OpenRequest } from '../../components/admin/feria/expediente/ExpedienteAccionesMenu';
 import ExpedientesLote from '../../components/admin/feria/expediente/ExpedientesLote';
 import ExpedienteFormulario from '../../components/admin/feria/expediente/ExpedienteFormulario';
@@ -83,6 +83,13 @@ import ExchangeDrawer from '../../components/admin/feria/exchange/ExchangeDrawer
 import ExchangeSettings from '../../components/admin/feria/exchange/ExchangeSettings';
 import DocumentTrackingConfigDialog from '../../components/admin/feria/seguimiento/DocumentTrackingConfigDialog';
 import { FormCell, FileCell, PitchCell, OverallCell, MobileDocSummary } from '../../components/admin/feria/seguimiento/DocumentTrackingCells';
+// v4.1356 — Traducción verificada por Cadre: insignia, columna «Traducción EN»,
+// indicadores, asignación de Cadres, recordatorios y fecha límite.
+import TranslationBadge from '../../components/admin/feria/traduccion/TranslationBadge';
+import TranslationCell, { TranslationSummaryInline } from '../../components/admin/feria/traduccion/TranslationCell';
+import TranslationTrackingStrip from '../../components/admin/feria/traduccion/TranslationTrackingStrip';
+import { AssignCadreDialog, CadreRemindersDialog, TranslationConfigDialog } from '../../components/admin/feria/traduccion/TranslationDialogs';
+import { TRACKING_META, translationExcelColumns, type TranslationSummary, type TranslationTracking } from '../../lib/translationTracking';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('rotary_token')}` });
@@ -223,6 +230,8 @@ interface Submission {
     documents?: DocumentsCompact | null;
     // v4.1335 — El estado Exchange (sólo con permiso de consulta de Exchange).
     exchange?: ExchangeCompact | null;
+    // v4.1356 — El seguimiento de la traducción inglesa (verificación por Cadre).
+    translation?: TranslationTracking | null;
 }
 interface TimelineEvent {
     id: string; type: string; title: string; detail: string | null;
@@ -425,6 +434,8 @@ const DOC_HELP: Record<string, string> = {
     'Presentación': 'Estado de entrega: Pendiente, Cargada, En revisión, Validada, Requiere corrección o No aplica. Cargada no implica validada.',
     'Video': 'Video propio del club, revisado en «Videos de proyectos».',
     'Video Pitch': 'Servicio de producción profesional: aparte, no suma al avance documental y su pago no es el de la inscripción.',
+    // v4.1356 — Traducción verificada por Cadre.
+    'Traducción EN': 'Estado de la versión inglesa: Sin traducir, En progreso, Pendiente de revisión, En revisión, Verificada o Requiere actualización. Dos barras: campos traducidos y campos revisados por una persona (la IA no cuenta como revisión). Es independiente del estado del proyecto y del pago.',
     'Avance documental': 'Porcentaje sobre los requisitos OBLIGATORIOS que aplican. Diligenciado y entregado; la validación del comité va aparte. Incluye el semáforo frente a la fecha límite.',
 };
 
@@ -513,10 +524,9 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
     const [loading, setLoading] = useState(true);
     const [tableLoading, setTableLoading] = useState(false);
     const [detailId, setDetailId] = useState<string | null>(null);
-    // v4.1324 — Con qué pestaña se abre el expediente (desde el menú «⋯») y
-    // el estado de traducción de las filas visibles (una sola llamada).
+    // v4.1324 — Con qué pestaña se abre el expediente (desde el menú «⋯»).
+    // (v4.1356: el estado de traducción de cada fila llega con el listado.)
     const [detailOpen, setDetailOpen] = useState<OpenRequest | null>(null);
-    const [docStates, setDocStates] = useState<Record<string, { state: TranslationState; label: string }>>({});
     const [showLote, setShowLote] = useState(false);
     const [docTick, setDocTick] = useState(0);
 
@@ -537,6 +547,9 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
         doc: 'all', docMin: '', docMax: '', actividadDesde: '', actividadHasta: '', responsable: '',
         // v4.1335 — Exchange: estado, referencia bancaria y fecha del traslado.
         exchange: 'all', exchangeRef: '', trasladoDesde: '', trasladoHasta: '',
+        // v4.1356 — Traducción EN: vista, Cadre (correo, «me» o «none») y
+        // fecha de verificación. Los filtra el SERVIDOR.
+        tr: 'all', trCadre: '', trDesde: '', trHasta: '',
         // v4.1024 — Lo archivado no se ve por defecto: es lo que significa
         // archivar. El valor viaja al servidor, que es quien filtra.
         archivadas: 'activas',
@@ -594,6 +607,12 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
     const [docConfigOpen, setDocConfigOpen] = useState(false);
     const [docStripKey, setDocStripKey] = useState(0);
     const [docScopes, setDocScopes] = useState<{ key: string; label: string }[]>([]);
+    // v4.1356 — Seguimiento de traducciones.
+    const [trStripKey, setTrStripKey] = useState(0);
+    const [trSummary, setTrSummary] = useState<TranslationSummary | null>(null);
+    const [trAssignOpen, setTrAssignOpen] = useState(false);
+    const [trRemindIds, setTrRemindIds] = useState<string[] | null>(null);
+    const [trConfigOpen, setTrConfigOpen] = useState(false);
     const toggleDocCols = useCallback(() => setShowDocCols(v => {
         try { localStorage.setItem('pp-doc-cols', v ? '0' : '1'); } catch { /* sin almacenamiento */ }
         return !v;
@@ -601,18 +620,16 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
 
     const selectedIds = useMemo(() => new Set(selected.map(r => r.id)), [selected]);
 
-    // v4.1324 — Estado de traducción de las filas visibles: UNA llamada por
-    // página (el servidor lo deriva de las plantillas y las traducciones). Si
-    // falla, la tabla sigue igual: es información de apoyo.
+    // v4.1356 — El estado de traducción de cada fila llega CON el listado
+    // (`s.translation`, el mismo cálculo de los filtros y del CSV): ya no hay
+    // una segunda llamada por página. Tras cerrar el expediente o traducir en
+    // lote se recarga la página y el bloque de indicadores.
     useEffect(() => {
-        const ids = rows.map(r => r.id);
-        if (!ids.length) { setDocStates({}); return undefined; }
-        let vivo = true;
-        dossierRequest<{ states: Record<string, { en: { state: TranslationState; label: string } }> }>(`/expedientes/estado?ids=${ids.join(',')}`, currentEventId())
-            .then(d => { if (vivo) setDocStates(Object.fromEntries(Object.entries(d.states || {}).map(([k, v]) => [k, { state: v.en.state, label: v.en.label }]))); })
-            .catch(() => { if (vivo) setDocStates({}); });
-        return () => { vivo = false; };
-    }, [rows, docTick]);
+        if (!docTick) return;
+        loadRowsRef.current(pagination.page);
+        setTrStripKey(k => k + 1);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [docTick]);
     // Qué acciones en bloque tiene sentido ofrecer. Es sólo para PINTAR: cada
     // ruta comprueba su propio permiso en el servidor, porque esconder un
     // control no protege un endpoint de quien lo conoce (v4.868).
@@ -915,6 +932,8 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                 ...(access?.viewPayments ? { 'Referencia Stripe': s.stripePaymentIntentId, 'Checkout Session': s.stripeSessionId } : {}),
                 // v4.1332 — Seguimiento documental (mismas cifras del listado).
                 ...docExcelColumns(s.documents),
+                // v4.1356 — Traducción EN (mismas cifras de la columna y del CSV).
+                ...translationExcelColumns(s.translation),
                 // v4.1335 — Exchange (mismas cifras de la columna; el detalle por
                 // operación y por asignación sale en los CSV de Exchange).
                 ...(access?.exchangeView ? exchangeExcelColumns(s.exchange) : {}),
@@ -1609,6 +1628,23 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                 onSummary={(sum) => setDocScopes(sum?.reminderScopes || [])}
                             />
                         )}
+                        {/* ── v4.1356 — Seguimiento de traducciones (verificación por Cadre). */}
+                        {currentEventId() && committeeView && (
+                            <TranslationTrackingStrip
+                                eventId={currentEventId()}
+                                query={queryString({ tr: '', trCadre: '', sortBy: '', sortDir: '', page: '', pageSize: '' })}
+                                activeView={filters.tr}
+                                activeCadre={filters.trCadre}
+                                onPickView={(key) => { setFilters(f => ({ ...f, tr: key })); setSelected([]); setTransferPlan(null); }}
+                                onPickCadre={(email) => { setFilters(f => ({ ...f, trCadre: email })); setSelected([]); setTransferPlan(null); }}
+                                onAssign={() => setTrAssignOpen(true)}
+                                onRemind={() => setTrRemindIds(selectMode ? selected.map(r => r.id) : [])}
+                                onConfig={() => setTrConfigOpen(true)}
+                                selectedCount={selectMode ? selected.length : 0}
+                                reloadKey={trStripKey}
+                                onSummary={setTrSummary}
+                            />
+                        )}
 
                         {showFilters && (
                             <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -1626,6 +1662,8 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                     ['actualizaciones', 'Actualizaciones posteriores al cierre', (catalog?.postCloseViews || []).map((o: { key: string; label: string }) => ({ value: o.key, label: o.label }))],
                                     // v4.1332 — Seguimiento documental (catálogo del servidor).
                                     ['doc', 'Seguimiento documental', (catalog?.docViews || []).map((o: { key: string; label: string }) => ({ value: o.key, label: o.label }))],
+                                    // v4.1356 — Traducción EN (catálogo del servidor).
+                                    ['tr', 'Traducción EN', (catalog?.translationViews || []).map((o: { key: string; label: string }) => ({ value: o.key, label: o.label }))],
                                     // v4.1335 — Exchange (catálogo del servidor; vacío sin permiso).
                                     ...(access?.exchangeView ? [['exchange', 'Exchange (traslado)', (catalog?.exchangeFilters || []).map((o: { key: string; label: string }) => ({ value: o.key, label: o.label }))]] : []),
                                 ].map(([key, label, options]: any) => (
@@ -1650,6 +1688,19 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                     <input type="date" value={filters.from} onChange={e => setFilters(f => ({ ...f, from: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
                                 <label className="block"><span className="mb-1 block text-xs font-semibold text-slate-600">Hasta</span>
                                     <input type="date" value={filters.to} onChange={e => setFilters(f => ({ ...f, to: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
+                                {/* v4.1356 — Traducción EN: Cadre responsable y fecha de verificación. */}
+                                <label className="block"><span className="mb-1 block text-xs font-semibold text-slate-600">Cadre responsable (traducción)</span>
+                                    <select value={filters.trCadre} onChange={e => setFilters(f => ({ ...f, trCadre: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                                        <option value="">Todos</option>
+                                        <option value="me">Asignados a mí</option>
+                                        <option value="none">Sin Cadre asignado</option>
+                                        {[...new Map([...(trSummary?.assignable || []).map(a => [a.email, a.name || a.email] as [string, string]), ...(trSummary?.workload || []).map(w => [w.email.toLowerCase(), w.name || w.email] as [string, string])]).entries()]
+                                            .map(([email, name]) => <option key={email} value={email}>{name}{name !== email ? ` (${email})` : ''}</option>)}
+                                    </select></label>
+                                <label className="block"><span className="mb-1 block text-xs font-semibold text-slate-600">Verificada desde</span>
+                                    <input type="date" value={filters.trDesde} onChange={e => setFilters(f => ({ ...f, trDesde: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
+                                <label className="block"><span className="mb-1 block text-xs font-semibold text-slate-600">Verificada hasta</span>
+                                    <input type="date" value={filters.trHasta} onChange={e => setFilters(f => ({ ...f, trHasta: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
                                 <label className="block"><span className="mb-1 block text-xs font-semibold text-slate-600">Presupuesto mín. (USD)</span>
                                     <input type="number" value={filters.budgetMin} onChange={e => setFilters(f => ({ ...f, budgetMin: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
                                 <label className="block"><span className="mb-1 block text-xs font-semibold text-slate-600">Presupuesto máx. (USD)</span>
@@ -1682,7 +1733,7 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                 ))}
                                 <div className="flex items-end gap-2">
                                     <button onClick={() => loadRows(1)} className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: BLUE }}>Aplicar</button>
-                                    <button onClick={() => { setFilters({ search: '', paymentStatus: 'all', workflowStatus: 'all', district: 'all', focusArea: 'all', priority: 'all', tagId: '', from: '', to: '', budgetMin: '', budgetMax: '', fddMin: '', fddMax: '', fapMin: '', fapMax: '', vista: 'all', proyectos: 'all', indice: 'all', origen: 'all', actualizaciones: 'all', doc: 'all', docMin: '', docMax: '', actividadDesde: '', actividadHasta: '', responsable: '', exchange: 'all', exchangeRef: '', trasladoDesde: '', trasladoHasta: '', archivadas: 'activas' }); reloadNext(); }}
+                                    <button onClick={() => { setFilters({ search: '', paymentStatus: 'all', workflowStatus: 'all', district: 'all', focusArea: 'all', priority: 'all', tagId: '', from: '', to: '', budgetMin: '', budgetMax: '', fddMin: '', fddMax: '', fapMin: '', fapMax: '', vista: 'all', proyectos: 'all', indice: 'all', origen: 'all', actualizaciones: 'all', doc: 'all', docMin: '', docMax: '', actividadDesde: '', actividadHasta: '', responsable: '', exchange: 'all', exchangeRef: '', trasladoDesde: '', trasladoHasta: '', tr: 'all', trCadre: '', trDesde: '', trHasta: '', archivadas: 'activas' }); reloadNext(); }}
                                         className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600">Limpiar</button>
                                 </div>
                             </div>
@@ -1959,7 +2010,7 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                             )}
                                             <div className="min-w-0 flex-1">
                                                 <p className="font-mono text-[11px] font-bold text-slate-500">{s.publicRef}</p>
-                                                <p className="font-semibold text-slate-900">{s.projectName}</p>
+                                                <p className="font-semibold text-slate-900">{s.projectName}<TranslationBadge t={s.translation} project={s.projectName} onOpen={committeeView ? () => { setDetailOpen({ pane: 'traduccion' }); setDetailId(s.id); } : undefined} /></p>
                                                 <p className="text-xs text-slate-500">{s.clubName} · {s.district}</p>
                                                 <p className="text-xs text-slate-500">{s.responsable}</p>
                                                 <div className="mt-1 flex flex-wrap gap-1"><Badge color={wf.color}>{wf.label}</Badge><Badge color={pay.color}>{pay.label}</Badge></div>
@@ -1974,6 +2025,14 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                                     onRegister={() => { setTransferPlan(null); resolverTraslado([s.id]); }} />
                                             </div>
                                         )}
+                                        {s.translation && (
+                                            <button type="button" onClick={() => { setDetailOpen({ pane: 'traduccion' }); setDetailId(s.id); }}
+                                                aria-label={`Traducción al inglés de ${s.projectName}: ${s.translation.label}. Abrir la traducción`}
+                                                className="mt-2 block w-full border-t border-slate-100 pt-2 text-left">
+                                                <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Traducción EN</span>
+                                                <TranslationSummaryInline t={s.translation} />
+                                            </button>
+                                        )}
                                         {s.documents && <MobileDocSummary d={s.documents} project={s.projectName} onOpen={() => setDocDrawerId(s.id)} />}
                                     </li>
                                 );
@@ -1982,7 +2041,7 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                         </ul>
 
                         <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white md:block">
-                            <table className={`w-full ${showDocCols ? 'min-w-[2000px]' : 'min-w-[1540px]'} text-sm`}>
+                            <table className={`w-full ${showDocCols ? 'min-w-[2180px]' : 'min-w-[1720px]'} text-sm`}>
                                 <thead className="bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-500">
                                     <tr>
                                         {selectMode && (
@@ -2005,9 +2064,10 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                            // v4.1335 — Exchange, junto a Pago y Valor: es el seguimiento financiero.
                                            ...(access?.exchangeView ? [['', 'Exchange']] : []),
                                            // v4.1332 — Grupo «Seguimiento documental» (contraíble).
+                                           // v4.1356 — «Traducción EN» abre el grupo documental (visible también contraído).
                                            ...(showDocCols
-                                               ? [['docMaster', 'Formulación'], ['docFdd', 'FDD (avance)'], ['', 'Presentación'], ['', 'Video'], ['', 'Video Pitch'], ['docOverall', 'Avance documental']]
-                                               : [['docOverall', 'Avance documental']]),
+                                               ? [['trState', 'Traducción EN'], ['docMaster', 'Formulación'], ['docFdd', 'FDD (avance)'], ['', 'Presentación'], ['', 'Video'], ['', 'Video Pitch'], ['docOverall', 'Avance documental']]
+                                               : [['trState', 'Traducción EN'], ['docOverall', 'Avance documental']]),
                                            ['', '']] as [string, string][]).map(([sortKey, label], i) => (
                                             <SortHeader key={i} sortKey={sortKey} label={label}
                                                 help={sortKey === 'fddRequestedUsd' || sortKey === 'fapGoalUsd' ? FDD_HELP[sortKey] : DOC_HELP[label]}
@@ -2046,7 +2106,7 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                                 </td>
                                                 <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-500">{fmtDate(s.createdAt)}</td>
                                                 <td className="px-3 py-3">
-                                                    <p className="font-semibold text-slate-900">{s.projectName}</p>
+                                                    <p className="font-semibold text-slate-900">{s.projectName}<TranslationBadge t={s.translation} project={s.projectName} onOpen={committeeView ? () => { setDetailOpen({ pane: 'traduccion' }); setDetailId(s.id); } : undefined} /></p>
                                                     {/* v4.1299 — Posición dentro de la inscripción del club. */}
                                                     {(s.registrationProjects || 1) > 1 || (s.projectIndex || 1) > 1 ? (
                                                         <span className={`mt-0.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${(s.projectIndex || 1) > 1 ? 'bg-emerald-50 text-emerald-700' : 'bg-sky-50 text-sky-700'}`}>
@@ -2083,6 +2143,8 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                                         onOpen={() => setExchangeDrawerId(s.id)}
                                                         onRegister={() => { setTransferPlan(null); resolverTraslado([s.id]); }} />
                                                 )}
+                                                {/* v4.1356 — Traducción EN: abre la pestaña «Traducción». */}
+                                                <TranslationCell t={s.translation} project={s.projectName} onOpen={() => { setDetailOpen({ pane: 'traduccion' }); setDetailId(s.id); }} />
                                                 {/* v4.1332 — Seguimiento documental: cada celda abre el detalle. */}
                                                 {s.documents ? (
                                                     <>
@@ -2111,17 +2173,12 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                                             onOpen={req => { setDetailOpen(req); setDetailId(s.id); }} />
                                                     </div>
                                                     )}
-                                                    {docStates[s.id] && docStates[s.id].state !== 'not_started' && (
-                                                        <span title="Estado de la traducción al inglés" className={`mt-1 inline-block whitespace-nowrap rounded-full px-1.5 py-0.5 text-[10px] font-semibold ring-1 ${TRANSLATION_META[docStates[s.id].state]?.cls || ''}`}>
-                                                            EN · {TRANSLATION_META[docStates[s.id].state]?.label || docStates[s.id].label}
-                                                        </span>
-                                                    )}
                                                 </td>
                                             </tr>
                                         );
                                     })}
                                     {!rows.length && !tableLoading && (
-                                        <tr><td colSpan={(selectMode ? 14 : 13) + (showDocCols ? 6 : 1) + (access?.exchangeView ? 1 : 0)} className="px-4 py-12 text-center text-slate-400">No hay postulaciones que coincidan con los filtros.</td></tr>
+                                        <tr><td colSpan={(selectMode ? 14 : 13) + (showDocCols ? 6 : 1) + 1 + (access?.exchangeView ? 1 : 0)} className="px-4 py-12 text-center text-slate-400">No hay postulaciones que coincidan con los filtros.</td></tr>
                                     )}
                                 </tbody>
                             </table>
@@ -2398,6 +2455,21 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                     onSent={() => { loadRows(pagination.page); setDocStripKey(k => k + 1); }}
                 />
             )}
+            {/* v4.1356 — Seguimiento de traducciones: asignar, recordar, fecha límite. */}
+            {trAssignOpen && (
+                <AssignCadreDialog eventId={currentEventId()}
+                    rows={(selectMode ? selected : []).map(r => ({ id: r.id, publicRef: r.publicRef, projectName: r.projectName, assignee: r.translation?.assignee?.email || null }))}
+                    assignable={trSummary?.assignable || []}
+                    onClose={() => setTrAssignOpen(false)}
+                    onDone={() => { loadRows(pagination.page); setTrStripKey(k => k + 1); }} />
+            )}
+            {trRemindIds && (
+                <CadreRemindersDialog eventId={currentEventId()} selectedIds={trRemindIds}
+                    scopes={trSummary?.reminderScopes?.length ? trSummary.reminderScopes : [{ key: 'pendientes', label: 'Todos los asignados con trabajo pendiente' }, { key: 'seleccion', label: 'Los proyectos seleccionados' }]}
+                    onClose={() => setTrRemindIds(null)}
+                    onSent={() => setTrStripKey(k => k + 1)} />
+            )}
+            {trConfigOpen && <TranslationConfigDialog eventId={currentEventId()} onClose={() => setTrConfigOpen(false)} onSaved={() => setTrStripKey(k => k + 1)} />}
             {docConfigOpen && (
                 <DocumentTrackingConfigDialog
                     eventId={currentEventId()}
@@ -2869,7 +2941,10 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose: closeRaw, onChan
                                     <button key={key} role="tab" aria-selected={pane === key} onClick={() => setPane(key)}
                                         className={`shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-xs font-semibold ${pane === key ? 'border-blue-700 text-blue-700' : 'border-transparent text-slate-500'}`}>
                                         {label}
-                                        {key === 'traduccion' && dossier && dossier.translation.en.state !== 'not_started' && (
+                                        {/* v4.1356 — El estado del seguimiento (Verificada, Requiere actualización…). */}
+                                        {key === 'traduccion' && dossier && dossier.translationTracking?.en && !['no_content', 'untranslated'].includes(dossier.translationTracking.en.state) ? (
+                                            <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] ring-1 ${TRACKING_META[dossier.translationTracking.en.state].cls}`}>{TRACKING_META[dossier.translationTracking.en.state].label}</span>
+                                        ) : key === 'traduccion' && dossier && !dossier.translationTracking?.en && dossier.translation.en.state !== 'not_started' && (
                                             <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] ring-1 ${TRANSLATION_META[dossier.translation.en.state].cls}`}>{TRANSLATION_META[dossier.translation.en.state].label}</span>
                                         )}
                                     </button>
@@ -3055,10 +3130,13 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose: closeRaw, onChan
                             )}
                             {pane === 'traduccion' && dossier && (
                                 <ExpedienteTraduccion submissionId={id} eventId={currentEventId()} access={dossier.access} wide={wide}
-                                    autoStart={!!openRequest?.autoTranslate} onStatusChange={onTranslationStatus} onDirtyChange={setTrDirty} />
+                                    projectName={dossier.submission.projectName}
+                                    autoStart={!!openRequest?.autoTranslate} onStatusChange={onTranslationStatus} onDirtyChange={setTrDirty}
+                                    onTrackingChange={t => setDossier(d => (d ? { ...d, translationTracking: { en: t } } : d))}
+                                    onVerificationChange={() => onChanged()} />
                             )}
                             {pane === 'fichas' && dossier && (
-                                <ExpedienteFichas submissionId={id} eventId={currentEventId()} canExport={dossier.access.export} translation={dossier.translation.en} />
+                                <ExpedienteFichas submissionId={id} eventId={currentEventId()} canExport={dossier.access.export} translation={dossier.translation.en} tracking={dossier.translationTracking?.en} />
                             )}
                             {pane === 'libreta' && dossier && (
                                 <ExpedienteLibreta submissionId={id} eventId={currentEventId()} access={dossier.access}

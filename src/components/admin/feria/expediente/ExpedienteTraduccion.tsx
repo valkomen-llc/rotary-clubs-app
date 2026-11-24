@@ -7,13 +7,122 @@
 // lo aprueba. Regenerar UN campo no toca los demás; «Regenerar todo» respeta
 // lo revisado y lo corregido a mano. Si el español cambia después, el campo
 // queda «desactualizado» con el original anterior a la vista.
+//
+// v4.1356 — «Aprobar versión inglesa» pasa a ser «Verificar traducción»: la
+// MISMA aprobación, reforzada (Traducción verificada por Cadre). Sólo se
+// habilita con todo traducido y revisado, sin desactualizados, sin avisos
+// bloqueantes y sin cambios sin guardar; abre una ventana de confirmación con
+// lo que se certifica y, si hay avisos no bloqueantes, pide la justificación.
+// La verificación vale para la huella exacta que se revisó: si el club cambia
+// el original, pierde vigencia sola. El administrador puede revocarla con
+// motivo. Todo queda en «Historial de verificación».
 // ════════════════════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, BookOpen, CheckCircle2, Languages, Loader2, RefreshCw, Save, ShieldCheck, Sparkles } from 'lucide-react';
+import { AlertTriangle, BadgeCheck, BookOpen, CheckCircle2, History, Languages, Loader2, RefreshCw, Save, ShieldOff, Sparkles, UserRound, X } from 'lucide-react';
 import { toast } from 'sonner';
 import type { DossierCaps, TranslationField, TranslationStatus } from '../../../../lib/projectDossier';
 import { DossierApiError, dossierRequest, FIELD_META, TRANSLATION_META } from '../../../../lib/projectDossier';
 import GlosarioModal from './GlosarioModal';
+import { TRACKING_META, fmtWhen as fmtBogota, roleLabel, type TranslationTracking } from '../../../../lib/translationTracking';
+
+interface VerificationInfo {
+    fingerprint: string;
+    summary: { total: number; translated: number; reviewed: number; warnings: number; reviewers: Record<string, number>; origins: { ai: number; manual: number }; nextVersionNumber: number };
+    canVerify: boolean; blockedReason: string | null; blockedCode: string | null;
+    needsJustification: boolean;
+    nonBlocking: { path: string; label: string; warnings: { code: string; message: string }[] }[];
+    blocking: { path: string; label: string; warnings: { code: string; message: string }[] }[];
+    revokedAt: string | null; revokedBy: string | null; revokeReason: string | null;
+}
+interface TrEvent { id: string; action: string; fromState: string | null; toState: string | null; versionNumber: number | null; reviewedCount: number | null; totalCount: number | null; paths: any; note: string | null; reason: string | null; assigneeEmail: string | null; previousAssignee: string | null; recipient: string | null; deliveryStatus: string | null; actorName: string | null; actorRole: string | null; createdAt: string }
+interface VersionRow { id: string; versionNumber: number; approvedBy: string | null; approvedAt: string; note: string | null; kind: string | null; approvedRole: string | null; totalCount: number | null; reviewedCount: number | null; warningsCount: number | null; justification: string | null }
+
+const EVENT_LABEL: Record<string, string> = {
+    verified: 'Traducción verificada', invalidated: 'La verificación perdió vigencia', revoked: 'Verificación revocada',
+    assigned: 'Cadre asignado', reassigned: 'Cadre reasignado', unassigned: 'Asignación retirada',
+};
+const stateName = (k: string | null) => (k && (TRACKING_META as any)[k] ? (TRACKING_META as any)[k].label : k || '—');
+
+// La ventana de confirmación de la verificación. Componente de primer nivel
+// (nunca dentro de otro: perdería el foco al escribir la justificación).
+const VerifyDialog = ({ projectName, info, actorEmail, actorRole, busy, onCancel, onConfirm }: {
+    projectName: string; info: VerificationInfo; actorEmail: string | null; actorRole: string; busy: boolean;
+    onCancel: () => void; onConfirm: (justification: string, note: string) => void;
+}) => {
+    const [justification, setJustification] = useState('');
+    const [note, setNote] = useState('');
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [onCancel]);
+    const s = info.summary;
+    const short = info.needsJustification && justification.trim().length < 15;
+    return (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/50 p-3" role="dialog" aria-modal="true" aria-labelledby="verify-title" onClick={onCancel}>
+            <div className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
+                <header className="flex items-start gap-3 border-b border-slate-200 px-5 py-4">
+                    <BadgeCheck size={22} className="mt-0.5 shrink-0 text-emerald-600" aria-hidden="true" />
+                    <h2 id="verify-title" className="text-base font-bold text-slate-900">¿Confirmas la verificación de la traducción?</h2>
+                    <button onClick={onCancel} aria-label="Cerrar" className="ml-auto rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"><X size={18} /></button>
+                </header>
+                <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4 text-sm text-slate-700">
+                    <p>Al verificar este proyecto, certificas que la información correspondiente a su versión inglesa ha sido revisada y que conserva el sentido, la precisión y el contexto de la información original.</p>
+                    <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-xl bg-slate-50 p-3 text-xs">
+                        <dt className="text-slate-500">Proyecto</dt><dd className="font-semibold text-slate-900">{projectName}</dd>
+                        <dt className="text-slate-500">Campos traducidos</dt><dd>{s.translated} de {s.total}{s.origins.manual ? ` (${s.origins.manual} editados a mano, ${s.origins.ai} de la IA)` : ''}</dd>
+                        <dt className="text-slate-500">Campos revisados</dt><dd>{s.reviewed} de {s.total}</dd>
+                        <dt className="text-slate-500">Avisos pendientes</dt><dd className={s.warnings ? 'font-semibold text-amber-700' : ''}>{s.warnings || 'Ninguno'}</dd>
+                        <dt className="text-slate-500">Responsable</dt><dd>{actorEmail || '—'}{actorRole ? ` · ${roleLabel(actorRole)}` : ''}</dd>
+                        <dt className="text-slate-500">Versión</dt><dd>{s.nextVersionNumber}</dd>
+                    </dl>
+                    {info.needsJustification && (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                            <p className="text-xs font-semibold text-amber-900">Estos campos tienen avisos no bloqueantes. Explica por qué la traducción es correcta:</p>
+                            <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-amber-900">
+                                {info.nonBlocking.map(f => <li key={f.path}>{f.label}: {f.warnings.map(w => w.message).join(' · ')}</li>)}
+                            </ul>
+                            <label className="mt-2 block text-xs font-semibold text-amber-900" htmlFor="verify-justification">Justificación (queda registrada con la versión)</label>
+                            <textarea id="verify-justification" value={justification} onChange={e => setJustification(e.target.value)} rows={3} maxLength={2000}
+                                className="mt-1 w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm" placeholder="Ej.: la cifra está escrita en letras en la versión inglesa." />
+                            {short && <p className="mt-1 text-[11px] text-amber-800">Mínimo 15 caracteres.</p>}
+                        </div>
+                    )}
+                    <label className="block text-xs font-semibold text-slate-600" htmlFor="verify-note">Observación (opcional)</label>
+                    <input id="verify-note" value={note} onChange={e => setNote(e.target.value)} maxLength={500} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+                    <p className="text-[11px] text-slate-500">La verificación certifica sólo la traducción: no es una aprobación técnica, financiera ni administrativa del proyecto. Si el club cambia después un texto, la verificación pierde vigencia sola.</p>
+                </div>
+                <footer className="flex flex-wrap justify-end gap-2 border-t border-slate-200 px-5 py-3">
+                    <button onClick={onCancel} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Cancelar</button>
+                    <button onClick={() => onConfirm(justification, note)} disabled={busy || short}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
+                        {busy ? <Loader2 size={14} className="animate-spin" /> : <BadgeCheck size={14} />} Confirmar verificación
+                    </button>
+                </footer>
+            </div>
+        </div>
+    );
+};
+
+const RevokeDialog = ({ busy, onCancel, onConfirm }: { busy: boolean; onCancel: () => void; onConfirm: (reason: string) => void }) => {
+    const [reason, setReason] = useState('');
+    return (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/50 p-3" role="dialog" aria-modal="true" aria-labelledby="revoke-title" onClick={onCancel}>
+            <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
+                <h2 id="revoke-title" className="flex items-center gap-2 text-base font-bold text-slate-900"><ShieldOff size={18} className="text-red-600" /> Revocar la verificación</h2>
+                <p className="mt-2 text-sm text-slate-600">La traducción deja de figurar como verificada y la insignia desaparece. La versión verificada y las revisiones campo a campo se conservan.</p>
+                <label className="mt-3 block text-xs font-semibold text-slate-600" htmlFor="revoke-reason">Motivo (obligatorio, queda en la bitácora)</label>
+                <textarea id="revoke-reason" value={reason} onChange={e => setReason(e.target.value)} rows={3} maxLength={1000} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+                <div className="mt-4 flex justify-end gap-2">
+                    <button onClick={onCancel} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Cancelar</button>
+                    <button onClick={() => onConfirm(reason)} disabled={busy || reason.trim().length < 10} className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
+                        {busy && <Loader2 size={14} className="animate-spin" />} Revocar
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const BLUE = '#17458F';
 type Filter = 'all' | 'pending' | 'outdated' | 'warnings';
@@ -24,15 +133,27 @@ interface Props {
     access: DossierCaps;
     wide?: boolean;
     autoStart?: boolean;
+    /** v4.1356 — Nombre del proyecto (para la ventana de verificación). */
+    projectName?: string;
     onStatusChange: (s: TranslationStatus) => void;
+    /** v4.1356 — El seguimiento leído del servidor (para la pestaña del expediente). */
+    onTrackingChange?: (t: TranslationTracking) => void;
+    /** v4.1356 — Se verificó o revocó: el listado y los indicadores se refrescan. */
+    onVerificationChange?: () => void;
     onDirtyChange?: (dirty: boolean) => void;
 }
 
 const fmtWhen = (iso?: string | null) => (iso ? new Date(iso).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' }) : '');
 
-const ExpedienteTraduccion = ({ submissionId, eventId, access, wide = false, autoStart = false, onStatusChange, onDirtyChange }: Props) => {
+const ExpedienteTraduccion = ({ submissionId, eventId, access, wide = false, autoStart = false, projectName = '', onStatusChange, onTrackingChange, onVerificationChange, onDirtyChange }: Props) => {
     const [status, setStatus] = useState<TranslationStatus | null>(null);
-    const [versions, setVersions] = useState<{ id: string; versionNumber: number; approvedBy: string | null; approvedAt: string; note: string | null }[]>([]);
+    const [versions, setVersions] = useState<VersionRow[]>([]);
+    const [tracking, setTracking] = useState<TranslationTracking | null>(null);
+    const [verification, setVerification] = useState<VerificationInfo | null>(null);
+    const [events, setEvents] = useState<TrEvent[]>([]);
+    const [actor, setActor] = useState<{ email: string | null; role: string }>({ email: null, role: '' });
+    const [showVerify, setShowVerify] = useState(false);
+    const [showRevoke, setShowRevoke] = useState(false);
     const [edits, setEdits] = useState<Record<string, { text: string; reviewed: boolean }>>({});
     const [busy, setBusy] = useState<string | null>(null);
     const [filter, setFilter] = useState<Filter>('all');
@@ -43,11 +164,18 @@ const ExpedienteTraduccion = ({ submissionId, eventId, access, wide = false, aut
     // que la recree en cada render dispararía la carga en bucle.
     const notify = useRef(onStatusChange);
     notify.current = onStatusChange;
+    const notifyTracking = useRef(onTrackingChange);
+    notifyTracking.current = onTrackingChange;
+    const notifyVerification = useRef(onVerificationChange);
+    notifyVerification.current = onVerificationChange;
 
     const load = useCallback(async () => {
         try {
-            const d = await dossierRequest<{ status: TranslationStatus; versions: any[] }>(`/postulaciones/${submissionId}/traduccion/en`, eventId);
+            const d = await dossierRequest<{ status: TranslationStatus; versions: VersionRow[]; tracking: TranslationTracking; verification: VerificationInfo; events: TrEvent[]; actor: { email: string | null; role: string } }>(`/postulaciones/${submissionId}/traduccion/en`, eventId);
             setStatus(d.status); setVersions(d.versions || []); notify.current(d.status);
+            setTracking(d.tracking || null); setVerification(d.verification || null); setEvents(d.events || []);
+            if (d.tracking) notifyTracking.current?.(d.tracking);
+            if (d.actor) setActor(d.actor);
         } catch (e: any) { toast.error(e?.message || 'No se pudo cargar la traducción'); }
     }, [submissionId, eventId]);
     useEffect(() => { load(); }, [load]);
@@ -55,7 +183,9 @@ const ExpedienteTraduccion = ({ submissionId, eventId, access, wide = false, aut
     const dirtyCount = Object.keys(edits).length;
     useEffect(() => { onDirtyChange?.(dirtyCount > 0); }, [dirtyCount, onDirtyChange]);
 
-    const apply = (s: TranslationStatus) => { setStatus(s); notify.current(s); };
+    // Tras cada cambio se recarga el seguimiento (estado, huella, permisos de
+    // verificación): el servidor es quien decide si ya se puede verificar.
+    const apply = (s: TranslationStatus) => { setStatus(s); notify.current(s); load(); };
 
     const generate = useCallback(async (paths?: string[]) => {
         setBusy(paths?.length === 1 ? paths[0] : 'all');
@@ -104,19 +234,34 @@ const ExpedienteTraduccion = ({ submissionId, eventId, access, wide = false, aut
         save(extra);
     };
 
-    const approve = async (acknowledgeWarnings = false) => {
-        if (dirtyCount) { toast.error('Guarda los cambios antes de aprobar.'); return; }
+    const verify = async (justification: string, note: string) => {
+        if (dirtyCount) { toast.error('Guarda los cambios antes de verificar.'); return; }
+        if (!verification) return;
         setBusy('approve');
         try {
-            const d = await dossierRequest<any>(`/postulaciones/${submissionId}/traduccion/en/aprobar`, eventId, { method: 'POST', body: { acknowledgeWarnings } });
-            apply(d.status);
-            toast.success(`Versión inglesa aprobada (versión ${d.version.versionNumber}).`);
+            const d = await dossierRequest<any>(`/postulaciones/${submissionId}/traduccion/en/verificar`, eventId, { method: 'POST', body: { justification, note, expectedFingerprint: verification.fingerprint } });
+            setShowVerify(false);
+            setStatus(d.status); notify.current(d.status);
+            if (d.tracking) { setTracking(d.tracking); notifyTracking.current?.(d.tracking); }
+            notifyVerification.current?.();
+            toast.success(d.alreadyVerified ? 'La traducción ya estaba verificada.' : `Traducción verificada (versión ${d.version.versionNumber}).`);
             load();
         } catch (e: any) {
-            if (e instanceof DossierApiError && e.body?.needsAcknowledge) {
-                if (window.confirm(`${e.message}\n\n¿Aprobar de todos modos?`)) { setBusy(null); return approve(true); }
-            } else toast.error(e?.message || 'No se pudo aprobar');
+            if (e instanceof DossierApiError && e.body?.code === 'changed') { setShowVerify(false); toast.error(e.message); load(); }
+            else toast.error(e?.message || 'No se pudo verificar');
         } finally { setBusy(null); }
+    };
+
+    const revoke = async (reason: string) => {
+        setBusy('revoke');
+        try {
+            const d = await dossierRequest<any>(`/postulaciones/${submissionId}/traduccion/en/revocar`, eventId, { method: 'POST', body: { reason } });
+            setShowRevoke(false);
+            if (d.tracking) { setTracking(d.tracking); notifyTracking.current?.(d.tracking); }
+            notifyVerification.current?.();
+            toast.success('Verificación revocada.');
+            load();
+        } catch (e: any) { toast.error(e?.message || 'No se pudo revocar'); } finally { setBusy(null); }
     };
 
     const fields = status?.fields || [];
@@ -138,12 +283,18 @@ const ExpedienteTraduccion = ({ submissionId, eventId, access, wide = false, aut
                     <div>
                         <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Traducción inglesa</p>
                         <div className="mt-1 flex flex-wrap items-center gap-2">
-                            <span className={`rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${meta.cls}`}>{meta.label}</span>
+                            {tracking ? (
+                                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${TRACKING_META[tracking.state].cls}`}>
+                                    {tracking.state === 'verified' && <BadgeCheck size={13} aria-hidden="true" />} {TRACKING_META[tracking.state].label}
+                                </span>
+                            ) : <span className={`rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${meta.cls}`}>{meta.label}</span>}
                             <span className="text-xs text-slate-500">{status.counts.reviewed} de {status.total} campos revisados</span>
                             {status.counts.outdated > 0 && <span className="text-xs font-semibold text-red-700">· {status.counts.outdated} desactualizado(s)</span>}
                             {status.warnings > 0 && <span className="text-xs font-semibold text-amber-700">· {status.warnings} con avisos</span>}
                         </div>
-                        {status.approvedAt && <p className="mt-1 text-xs text-slate-500">Última aprobación: {fmtWhen(status.approvedAt)} por {status.approvedBy}{status.state !== 'approved' ? ' — hubo cambios después; la versión aprobada se conserva y la ficha inglesa la sigue usando.' : ''}</p>}
+                        {tracking && tracking.state !== 'no_content' && (
+                            <p className="mt-1 text-xs text-slate-600">Traducción <strong>{tracking.translatedPct ?? 0} %</strong> · Revisión <strong>{tracking.reviewedPct ?? 0} %</strong>{tracking.assignee ? <> · <UserRound size={11} className="inline" aria-hidden="true" /> Cadre: <strong>{tracking.assignee.name || tracking.assignee.email}</strong></> : ' · Sin Cadre asignado'}</p>
+                        )}
                         {status.lastError && <p className="mt-1 text-xs text-red-700">Último error: {status.lastError}</p>}
                         <p className="mt-1 text-[11px] text-slate-400">El estado de traducción es independiente del estado de la postulación y del pago.</p>
                     </div>
@@ -157,13 +308,47 @@ const ExpedienteTraduccion = ({ submissionId, eventId, access, wide = false, aut
                             </button>
                         )}
                         {access.approveTranslation && (
-                            <button onClick={() => approve()} disabled={!!busy || status.state === 'approved'}
+                            <button onClick={() => { if (dirtyCount) { toast.error('Guarda los cambios antes de verificar.'); return; } setShowVerify(true); }}
+                                disabled={!!busy || !verification?.canVerify || dirtyCount > 0}
+                                title={dirtyCount ? 'Guarda los cambios antes de verificar.' : (verification?.blockedReason || 'Certificar la versión inglesa')}
                                 className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
-                                {busy === 'approve' ? <Loader2 size={13} className="animate-spin" /> : <ShieldCheck size={13} />} Aprobar versión inglesa
+                                {busy === 'approve' ? <Loader2 size={13} className="animate-spin" /> : <BadgeCheck size={13} />} Verificar traducción
                             </button>
                         )}
                     </div>
                 </div>
+                {access.approveTranslation && verification && !verification.canVerify && verification.blockedCode !== 'verified' && verification.blockedReason && status.total > 0 && (
+                    <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">Para verificar: {verification.blockedReason}{verification.blocking.length ? ` (${verification.blocking.map(b => b.label).join(', ')})` : ''}</p>
+                )}
+                {dirtyCount > 0 && access.approveTranslation && <p className="mt-2 text-xs font-semibold text-amber-700">Tienes {dirtyCount} cambio(s) sin guardar: guárdalos antes de verificar.</p>}
+                {tracking?.state === 'verified' && tracking.verification && (
+                    <div className="mt-3 flex flex-wrap items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-xs text-emerald-900">
+                        <BadgeCheck size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+                        <p className="flex-1">
+                            <strong>Traducción verificada</strong> por {tracking.verification.by}{tracking.verification.role ? ` (${roleLabel(tracking.verification.role)})` : ''} el {fmtBogota(tracking.verification.at)} · versión {tracking.verification.versionNumber} · {tracking.verification.fieldCount ?? tracking.reviewed} campos revisados · <strong>vigente</strong>.
+                        </p>
+                        {access.manageTranslation && (
+                            <button onClick={() => setShowRevoke(true)} className="inline-flex items-center gap-1 rounded-lg border border-red-300 bg-white px-2.5 py-1 font-semibold text-red-700 hover:bg-red-50"><ShieldOff size={12} /> Revocar</button>
+                        )}
+                    </div>
+                )}
+                {tracking?.state === 'needs_update' && (
+                    <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-900">
+                        <p className="flex items-center gap-1.5 font-bold"><RefreshCw size={13} aria-hidden="true" /> Requiere actualización: el original cambió después de la verificación (versión {tracking.verification?.versionNumber ?? '—'}).</p>
+                        {tracking.invalidatedPaths.length > 0 && <p className="mt-1">Campos afectados: {tracking.invalidatedPaths.map(p => p.label).join(' · ')}.</p>}
+                        <p className="mt-1">Revisa sólo esos campos (filtro «Desactualizados»), márcalos como revisados y vuelve a verificar. La versión verificada anterior se conserva.</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                            <button onClick={() => setFilter('outdated')} className="rounded-lg border border-red-300 bg-white px-2.5 py-1 font-semibold text-red-700">Ver campos afectados</button>
+                            {access.manageTranslation && <button onClick={() => setShowRevoke(true)} className="inline-flex items-center gap-1 rounded-lg border border-red-300 bg-white px-2.5 py-1 font-semibold text-red-700"><ShieldOff size={12} /> Revocar la verificación</button>}
+                        </div>
+                    </div>
+                )}
+                {tracking?.legacyApproved && (
+                    <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">Esta traducción se aprobó el {fmtBogota(tracking.verification?.at)} ({tracking.verification?.by}) con el mecanismo anterior. No se certifica retroactivamente: un Cadre debe verificarla. La ficha inglesa la sigue usando, marcada como pendiente de verificación.</p>
+                )}
+                {verification?.revokedAt && tracking?.state !== 'verified' && (
+                    <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">Verificación revocada el {fmtBogota(verification.revokedAt)} por {verification.revokedBy}: {verification.revokeReason}</p>
+                )}
                 {access.translate && status.state !== 'not_started' && (
                     <label className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-slate-500">
                         <input type="checkbox" checked={includeReviewed} onChange={e => setIncludeReviewed(e.target.checked)} />
@@ -200,7 +385,8 @@ const ExpedienteTraduccion = ({ submissionId, eventId, access, wide = false, aut
                                 <span className="text-sm font-semibold text-slate-800">{f.label}</span>
                                 {f.labelEn && <span className="text-xs text-slate-400">· {f.labelEn}</span>}
                                 <span className={`ml-auto rounded-full px-2 py-0.5 text-[11px] font-semibold ${fm.cls}`}>{fm.label}</span>
-                                {f.origin && <span className="text-[11px] text-slate-400">{f.origin === 'ai' ? 'IA' : 'Corregido a mano'}</span>}
+                                {f.origin && <span className="text-[11px] text-slate-400">{f.origin === 'ai' ? 'Generada por IA' : 'Editada manualmente'}</span>}
+                                {f.reviewed && f.reviewedBy && f.state === 'reviewed' && <span className="text-[11px] text-emerald-700" title={f.reviewedAt ? fmtWhen(f.reviewedAt) : undefined}>· Revisado por {f.reviewedBy}</span>}
                             </div>
                             <div className={`grid gap-0 ${wide ? 'md:grid-cols-2' : 'sm:grid-cols-2'}`}>
                                 <div className="border-b border-slate-100 p-4 sm:border-b-0 sm:border-r">
@@ -250,15 +436,42 @@ const ExpedienteTraduccion = ({ submissionId, eventId, access, wide = false, aut
             })}
             {status.total > 0 && !shown.length && <p className="py-8 text-center text-sm text-slate-500">No hay campos en este filtro.</p>}
 
-            {versions.length > 0 && (
+            {(versions.length > 0 || events.length > 0) && (
                 <section className="rounded-xl border border-slate-200 bg-white p-4">
-                    <h4 className="mb-2 inline-flex items-center gap-1.5 text-sm font-bold text-slate-900"><Languages size={15} /> Versiones aprobadas</h4>
-                    <ul className="space-y-1 text-xs text-slate-600">
-                        {versions.map(v => <li key={v.id}>Versión {v.versionNumber} · {fmtWhen(v.approvedAt)} · {v.approvedBy}{v.note ? ` — ${v.note}` : ''}</li>)}
-                    </ul>
+                    <h4 className="mb-2 inline-flex items-center gap-1.5 text-sm font-bold text-slate-900"><History size={15} /> Historial de verificación</h4>
+                    {events.length > 0 && (
+                        <ol className="space-y-1.5 text-xs text-slate-600">
+                            {events.filter(e => EVENT_LABEL[e.action]).map(e => (
+                                <li key={e.id} className="border-l-2 border-slate-200 pl-2">
+                                    <span className="font-semibold text-slate-800">{EVENT_LABEL[e.action]}</span>
+                                    {e.versionNumber ? ` · versión ${e.versionNumber}` : ''} · {fmtBogota(e.createdAt)} · {e.actorName || '—'}{e.actorRole ? ` (${roleLabel(e.actorRole)})` : ''}
+                                    {(e.fromState || e.toState) && e.action !== 'assigned' && e.action !== 'reassigned' && e.action !== 'unassigned' && <span className="text-slate-400"> · {stateName(e.fromState)} → {stateName(e.toState)}</span>}
+                                    {e.reviewedCount !== null && e.totalCount ? <span> · {e.reviewedCount}/{e.totalCount} campos revisados</span> : null}
+                                    {e.assigneeEmail && e.action !== 'invalidated' && <span> · {e.previousAssignee ? `de ${e.previousAssignee} a ` : ''}{e.assigneeEmail}</span>}
+                                    {e.action === 'unassigned' && e.previousAssignee && <span> · antes: {e.previousAssignee}</span>}
+                                    {Array.isArray(e.paths) && e.action === 'invalidated' && <span className="block text-red-700">Campos afectados: {e.paths.map((p: any) => p.label).join(' · ')}{e.recipient ? ` — aviso a ${e.recipient} (${e.deliveryStatus === 'sent' ? 'enviado' : 'falló'})` : ''}</span>}
+                                    {e.note && <span className="block text-slate-500">Observación: {e.note}</span>}
+                                    {e.reason && <span className="block text-slate-500">{e.action === 'verified' ? 'Justificación de avisos' : 'Motivo'}: {e.reason}</span>}
+                                </li>
+                            ))}
+                        </ol>
+                    )}
+                    {versions.length > 0 && (
+                        <>
+                            <h5 className="mb-1 mt-3 inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-500"><Languages size={13} /> Versiones (inmutables)</h5>
+                            <ul className="space-y-1 text-xs text-slate-600">
+                                {versions.map(v => <li key={v.id}>Versión {v.versionNumber} · {v.kind === 'verification' ? 'verificada' : 'aprobada (mecanismo anterior)'} · {fmtWhen(v.approvedAt)} · {v.approvedBy}{v.approvedRole ? ` (${roleLabel(v.approvedRole)})` : ''}{v.reviewedCount !== null && v.totalCount ? ` · ${v.reviewedCount}/${v.totalCount} campos` : ''}{v.note ? ` — ${v.note}` : ''}{v.justification ? ` — justificación: ${v.justification}` : ''}</li>)}
+                            </ul>
+                        </>
+                    )}
                 </section>
             )}
 
+            {showVerify && verification && (
+                <VerifyDialog projectName={projectName || 'Proyecto'} info={verification} actorEmail={actor.email} actorRole={actor.role} busy={busy === 'approve'}
+                    onCancel={() => setShowVerify(false)} onConfirm={verify} />
+            )}
+            {showRevoke && <RevokeDialog busy={busy === 'revoke'} onCancel={() => setShowRevoke(false)} onConfirm={revoke} />}
             {showGlossary && <GlosarioModal eventId={eventId} canManage={access.config} onClose={() => setShowGlossary(false)} />}
         </div>
     );

@@ -102,7 +102,7 @@ export interface FairConfig {
         branding?: { headerLogoUrl?: string; footerLogoUrl?: string; footerText?: string };
         sender?: { name?: string; email?: string; replyTo?: string };
     };
-    access: { admins: string[]; finance: string[]; reviewers: string[]; translators?: string[] };
+    access: { admins: string[]; finance: string[]; reviewers: string[]; translators?: string[]; cadres?: string[] };
     registrationPanel?: Partial<RegistrationPanelConfig>;
     clubId: string | null;
 }
@@ -787,7 +787,14 @@ const ConvocatoriaConfig: React.FC<{ canEdit?: boolean; onSaved?: () => void }> 
                         label="Revisores"
                         value={(config.access?.reviewers || []).join(', ')}
                         onChange={(e: ChangeEvent) => patch('access.reviewers', e.target.value.split(',').map((x: string) => x.trim()).filter(Boolean))}
-                        hint="Consultan proyectos, registran observaciones, mueven estados de revisión y aprueban traducciones. No ven datos financieros."
+                        hint="Consultan proyectos, registran observaciones, mueven estados de revisión y verifican traducciones. No ven datos financieros."
+                    />
+                    {/* v4.1356 — Cadres: verifican (certifican) la traducción inglesa. */}
+                    <Input
+                        label="Cadres (verificación de traducciones)"
+                        value={(config.access?.cadres || []).join(', ')}
+                        onChange={(e: ChangeEvent) => patch('access.cadres', e.target.value.split(',').map((x: string) => x.trim()).filter(Boolean))}
+                        hint="Asesores técnicos de Rotary. Revisan la traducción al inglés campo a campo y la VERIFICAN («Traducción verificada por Cadre»). No editan la postulación, no ven pagos y nunca verifican un proyecto del que son responsables. Se les asignan proyectos desde «Seguimiento de traducciones»."
                     />
                     <Input
                         label="Traductores"

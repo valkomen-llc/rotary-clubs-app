@@ -609,7 +609,12 @@ const translationLine = (p: DocumentPayload): string | null => {
     if (!t) return null;
     if (t.mode === 'approved') {
         const when = t.approvedAt ? new Date(t.approvedAt).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
-        return `Approved translation · version ${t.versionNumber}${when ? ` · ${when}` : ''}${t.outdatedSinceApproval ? ' · Note: the Spanish original changed after this approval.' : ''}`;
+        // v4.1356 — Sólo una VERIFICACIÓN es documento oficial; una aprobación
+        // anterior a la verificación por Cadres se identifica como tal.
+        const head = t.verified
+            ? `Translation verified by ${t.verifiedRole === 'cadre' ? 'a Rotary Cadre' : 'an authorized reviewer'}`
+            : 'Approved translation — pending Cadre verification';
+        return `${head} · version ${t.versionNumber}${when ? ` · ${when}` : ''}${t.outdatedSinceApproval ? ' · Note: the Spanish original changed after this verification.' : ''}`;
     }
     if (t.mode === 'draft') return `DRAFT translation (${t.label.toLowerCase()}): not approved, not for official use.`;
     return 'This project has not been translated yet.';
@@ -630,8 +635,14 @@ function finish(doc: any, p: { publicRef: string; generatedAt: string }, lang: L
 /** Dibuja UN proyecto en un documento (nuevo o existente). */
 async function drawProject(doc: any, p: DocumentPayload, first: boolean) {
     const kind = p.kind;
-    const draft = (kind === 'en' || kind === 'bilingual') && p.translation?.mode !== 'approved';
-    const mark = draft ? 'BORRADOR · DRAFT — NOT APPROVED' : null;
+    // v4.1356 — En inglés, sólo la versión VERIFICADA sale sin marca. Una
+    // aprobación heredada se usa como texto, pero marcada: no se certifica
+    // retroactivamente.
+    const english = kind === 'en' || kind === 'bilingual';
+    const approved = p.translation?.mode === 'approved';
+    const unverified = approved && p.translation?.verified === false;
+    const draft = english && (!approved || unverified);
+    const mark = !draft ? null : unverified ? 'BORRADOR · PENDIENTE DE VERIFICACIÓN — NOT VERIFIED' : 'BORRADOR · DRAFT — NOT APPROVED';
     if (kind === 'es') {
         const w = new Writer(doc, `${p.edition} · ${T.es.sheet}`, null);
         if (!first) doc.addPage();
