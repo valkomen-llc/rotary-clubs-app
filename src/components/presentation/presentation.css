@@ -60,15 +60,18 @@
 /* ── El lienzo (base = impresión = escenario) ────────────────────────── */
 .cpd-stage { width: 1600px; height: 900px; position: relative; flex: none; background: #fff; }
 .cpd-slide { position: absolute; inset: 0; padding: 60px 84px 64px; display: flex; flex-direction: column; overflow: hidden; background: #fff; }
-.cpd-slide__foot { position: absolute; left: 84px; right: 84px; bottom: 22px; display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--cpd-muted); letter-spacing: .04em; }
-.cpd-slide__foot img { height: 26px; width: auto; }
+.cpd-slide__foot { position: absolute; left: 84px; right: 84px; bottom: 14px; display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--cpd-muted); letter-spacing: .04em; pointer-events: none; }
+.cpd-slide__foot--bottom-right { flex-direction: row-reverse; }
 .cpd-slide__foot b { color: var(--cpd-blue); font-variant-numeric: tabular-nums; }
+/* El logotipo: se fija la altura y el ancho sale solo. Nunca se deforma. */
+.cpd-logo { height: var(--cpd-logo-h, 44px); width: auto; max-width: 100%; object-fit: contain; object-position: left center; display: block; flex: none; }
+.cpd-cover__logo { margin-bottom: 26px; align-self: flex-start; }
 .cpd-note { font-size: 11.5px; color: var(--cpd-muted); }
 
 .cpd-eyebrow { display: flex; flex-direction: column; gap: 14px; font-size: 14px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--cpd-blue); }
 .cpd-eyebrow::before { content: ''; width: 64px; height: 5px; border-radius: 3px; background: var(--cpd-gold); }
 .cpd-title { margin: 14px 0 0; font-size: 50px; line-height: 1.08; font-weight: 700; letter-spacing: -.022em; color: var(--cpd-navy); text-wrap: balance; }
-.cpd-title--xl { font-size: 68px; line-height: 1.03; }
+.cpd-title--xl { font-size: 64px; line-height: 1.03; }
 .cpd-title--sm { font-size: 42px; }
 .cpd-lead { margin: 16px 0 0; font-size: 21px; line-height: 1.45; font-weight: 400; color: var(--cpd-muted); max-width: 1050px; text-wrap: pretty; }
 .cpd-closing { margin: 0; padding-left: 18px; border-left: 4px solid var(--cpd-gold); font-size: 21px; line-height: 1.35; font-weight: 700; color: var(--cpd-navy); }
@@ -78,7 +81,7 @@
 /* ── Slide 1: portada ────────────────────────────────────────────────── */
 .cpd-cover { display: grid; grid-template-columns: 45fr 55fr; gap: 56px; flex: 1; min-height: 0; align-items: center; }
 .cpd-cover__text { display: flex; flex-direction: column; }
-.cpd-pillars { list-style: none; margin: 34px 0 34px; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 14px 22px; }
+.cpd-pillars { list-style: none; margin: 28px 0 28px; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 14px 22px; }
 .cpd-pillar { display: flex; align-items: center; gap: 12px; font-size: 16.5px; font-weight: 600; color: var(--cpd-ink); line-height: 1.25; }
 .cpd-chip { flex: none; width: 42px; height: 42px; border-radius: 50%; background: var(--cpd-sky); color: var(--cpd-blue); display: inline-flex; align-items: center; justify-content: center; }
 .cpd-chip svg { width: 20px; height: 20px; }
@@ -86,7 +89,7 @@
 .cpd-cover__panel { position: absolute; right: -84px; top: 30px; bottom: 40px; width: 62%; border-radius: 28px 0 0 28px; }
 .cpd-orbit { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .cpd-cover__laptop { position: absolute; left: 0; top: 78px; width: 690px; }
-.cpd-cover__phone { position: absolute; right: 26px; bottom: 26px; width: 178px; }
+.cpd-cover__phone { position: absolute; right: 26px; bottom: 14px; width: 178px; }
 
 /* Dispositivos. Las medidas interiores van en `cqw`: el mockup conserva sus
    proporciones al tamaño que sea. */
@@ -95,7 +98,7 @@
 .cpd-laptop__base { height: 14px; margin: 0 -7%; background: linear-gradient(#d9dee6, #b9c1cd); border-radius: 2px 2px 14px 14px; position: relative; }
 .cpd-laptop__base::after { content: ''; position: absolute; left: 50%; top: 0; width: 16%; height: 5px; transform: translateX(-50%); background: #aab2bf; border-radius: 0 0 6px 6px; }
 .cpd-phone { background: #1b2433; border-radius: 28px; padding: 7px; box-shadow: 0 26px 50px -22px rgba(9, 48, 83, .6); }
-.cpd-phone__screen { aspect-ratio: 9 / 19; background: #fff; border-radius: 22px; overflow: hidden; container-type: inline-size; position: relative; }
+.cpd-phone__screen { aspect-ratio: 9 / 19.5; background: #fff; border-radius: 22px; overflow: hidden; container-type: inline-size; position: relative; }
 .cpd-phone__screen::before { content: ''; position: absolute; top: 2.5cqw; left: 50%; width: 30cqw; height: 6cqw; transform: translateX(-50%); background: #1b2433; border-radius: 6cqw; z-index: 2; }
 .cpd-shot { width: 100%; height: 100%; object-fit: cover; object-position: top center; display: block; }
 
@@ -321,7 +324,7 @@
   .cpd--flow .cpd-stage { width: auto; height: auto; }
   .cpd--flow .cpd-slide { position: relative; inset: auto; padding: 44px 22px 40px; overflow: visible; border-bottom: 1px solid var(--cpd-line); scroll-margin-top: 54px; }
   .cpd--flow .cpd-slide__foot { position: static; margin-top: 28px; }
-  .cpd--flow .cpd-slide__foot img { height: 22px; }
+  .cpd--flow .cpd-logo { height: calc(var(--cpd-logo-h, 44px) * .72); }
   .cpd--flow .cpd-title, .cpd--flow .cpd-title--sm { font-size: clamp(28px, 7.4vw, 44px); }
   .cpd--flow .cpd-title--xl { font-size: clamp(34px, 9.6vw, 56px); }
   .cpd--flow .cpd-lead { font-size: 17px; }

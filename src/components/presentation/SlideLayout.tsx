@@ -17,10 +17,18 @@ export const DeckIcon = ({ name }: { name: string }) => {
 
 const two = (n: number) => String(n).padStart(2, '0');
 
-interface FrameProps { index: number; active: boolean; stage: boolean; label: string; id: string; children: ReactNode }
+const hideBroken = (e: { target: EventTarget }) => { (e.target as HTMLImageElement).style.visibility = 'hidden'; };
 
-export const SlideFrame = ({ index, active, stage, label, id, children }: FrameProps) => {
+/** El logotipo de Club Platform. Sólo se fija la ALTURA: conserva sus proporciones. */
+export const BrandLogo = ({ height, className = '' }: { height: number; className?: string }) => (
+    <img className={`cpd-logo ${className}`} src={PRESENTATION.brand.logo} alt={PRESENTATION.brand.name} style={{ ['--cpd-logo-h' as string]: `${height}px` }} onError={hideBroken} />
+);
+
+interface FrameProps { index: number; active: boolean; stage: boolean; label: string; id: string; children: ReactNode; /** La portada lleva el logotipo grande arriba: no repite la marca de esquina. */ noMark?: boolean }
+
+export const SlideFrame = ({ index, active, stage, label, id, children, noMark }: FrameProps) => {
     const hidden = stage && !active;
+    const { corner, height } = PRESENTATION.brand.mark;
     return (
         <section
             id={`slide-${id}`}
@@ -32,9 +40,9 @@ export const SlideFrame = ({ index, active, stage, label, id, children }: FrameP
             inert={hidden || undefined}
         >
             {children}
-            <div className="cpd-slide__foot">
-                <img src={PRESENTATION.brand.logo} alt={PRESENTATION.brand.name} onError={e => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }} />
-                <span><b>{two(index + 1)}</b> / {two(SLIDE_COUNT)}</span>
+            <div className={`cpd-slide__foot cpd-slide__foot--${corner}`}>
+                {noMark ? <span /> : <BrandLogo height={height} className="cpd-slide__mark" />}
+                <span className="cpd-slide__n"><b>{two(index + 1)}</b> / {two(SLIDE_COUNT)}</span>
             </div>
         </section>
     );

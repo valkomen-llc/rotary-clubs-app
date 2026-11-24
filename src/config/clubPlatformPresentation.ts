@@ -37,6 +37,13 @@ export const PRESENTATION = {
         name: 'Club Platform for Rotary',
         logo: 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/platform/logo/1776225800089-Club_Platform_for_Rotary.png',
         district: 'Distrito 4281',
+        /**
+         * La marca de Club Platform en la presentación. Va por defecto en
+         * TODOS los slides, en la misma esquina, y más grande en la portada.
+         * `corner`: 'bottom-left' | 'bottom-right'. Alturas en px del lienzo
+         * de 1600 × 900; el ancho sale solo (el logotipo nunca se deforma).
+         */
+        mark: { corner: 'bottom-left' as 'bottom-left' | 'bottom-right', height: 44, coverHeight: 84 },
     },
 
     /** Información de contacto. `null` → no se pinta. Nada de esto se inventa. */
@@ -52,8 +59,11 @@ export const PRESENTATION = {
      */
     media: {
         screens: {
-            siteDesktop: null as string | null,   // 16:10 — portada de un sitio de club
-            siteMobile: null as string | null,    // 9:19 — el mismo sitio en móvil
+            // Portada de un sitio en producción. Guardar los archivos en
+            // `public/presentacion/` y escribir acá su ruta (`/presentacion/…`),
+            // o pegar una URL pública. Se recortan desde arriba, sin deformar.
+            siteDesktop: null as string | null,   // 16:10 — p. ej. 1440 × 900
+            siteMobile: null as string | null,    // 9:19,5 — p. ej. 390 × 844
             cloud: null as string | null,         // módulo de almacenamiento
             crowdfunding: null as string | null,
             fundraising: null as string | null,

@@ -44,6 +44,12 @@ vinculación. Léelo antes de tocar el módulo.
   'concept'` la rotula «Representación conceptual · próximamente».
 - **Un enlace que no existe no se inventa.** `href: null` deja el botón sin
   pintar; la prueba exige que una ruta interna esté registrada en `App.tsx`.
+- **La marca de Club Platform va por defecto en todos los slides** (`brand.mark`):
+  logotipo en la esquina inferior (izquierda de fábrica, configurable) y, en la
+  portada, grande sobre el título en vez de en la esquina. Sólo se fija la
+  altura: el logotipo nunca se deforma.
+- **Las capturas del slide 1 van en `public/presentacion/`** y su ruta en
+  `media.screens.siteDesktop` / `siteMobile` (ver el LEEME de esa carpeta).
 - **Tres modos, un marcado.** Escenario (lienzo de 1600 × 900 escalado) desde
   1024 px con proporción ≥ 5:4; flujo (slides apilados y reorganizados) por
   debajo; impresión siempre con el lienzo. Lo propio del escenario y del flujo

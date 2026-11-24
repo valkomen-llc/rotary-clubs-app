@@ -9,7 +9,7 @@
  */
 import { CreditCard, Globe2, LineChart } from 'lucide-react';
 import { PRESENTATION } from '../../config/clubPlatformPresentation';
-import { Closing, DeckIcon, SlideFrame, SlideHeader } from './SlideLayout';
+import { BrandLogo, Closing, DeckIcon, SlideFrame, SlideHeader } from './SlideLayout';
 import { enter } from './motion';
 import { ConnectivityGraphic, LaptopMockup, PhoneMockup } from './DeviceMockups';
 import { CloudExplorer, Mailboxes } from './InfrastructureVisual';
@@ -18,16 +18,17 @@ import { AutomationFlow } from './AutomationFlow';
 import { ClosingCta, ImplementationRoute, PlanCard } from './PlanCards';
 
 const [S1, S2, S3, S4, S5] = PRESENTATION.slides;
-const { media, sampleDomain } = PRESENTATION;
+const { media, sampleDomain, brand } = PRESENTATION;
 const screens = media.screens;
 const anySchematic = (...shots: (string | null)[]) => shots.some(s => !s);
 
 export interface SlideProps { index: number; active: boolean; stage: boolean }
 
 export const CoverSlide = (p: SlideProps) => (
-    <SlideFrame {...p} id={S1.id} label={S1.nav}>
+    <SlideFrame {...p} id={S1.id} label={S1.nav} noMark>
         <div className="cpd-cover">
             <div className="cpd-cover__text">
+                <BrandLogo height={brand.mark.coverHeight} className="cpd-cover__logo" />
                 <SlideHeader eyebrow={S1.eyebrow} title={S1.title} description={S1.description} size="xl" level={1} />
                 <ul className="cpd-pillars">
                     {S1.pillars.map((x, i) => (
@@ -39,7 +40,7 @@ export const CoverSlide = (p: SlideProps) => (
             <div className="cpd-cover__visual cpd-in" style={enter(3)}>
                 <div className="cpd-cover__panel bg-rotary-geo" aria-hidden />
                 <ConnectivityGraphic />
-                <LaptopMockup className="cpd-cover__laptop" src={screens.siteDesktop} alt="Sitio institucional de un club en un portátil" />
+                <LaptopMockup className="cpd-cover__laptop" src={screens.siteDesktop} alt="Sitio institucional construido con Club Platform, en un portátil" />
                 <PhoneMockup className="cpd-cover__phone" src={screens.siteMobile} alt="El mismo sitio en un teléfono móvil" />
             </div>
         </div>
