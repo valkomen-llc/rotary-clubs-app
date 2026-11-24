@@ -27,6 +27,7 @@ import {
     HEADER_SQL, loadTranslationTracking, checkTranslationValidity, insertTranslationEvent, adminLinkFor,
 } from '../lib/translationTrackingStore.js';
 
+console.log('[projectDossierController] v4.1357.0 cargado — «Verificar traducción» en un paso: con campos traducidos sin marcar, la ventana pide confirmar que se revisaron y los marca al verificar (misma transacción); verificación desde la columna «Traducción EN» del listado y en lote.');
 console.log('[projectDossierController] v4.1356.0 cargado — Traducción verificada por Cadre: «Verificar traducción» (la aprobación de siempre, reforzada: todo revisado, sin avisos bloqueantes, justificación, huella exacta y sin autocertificación), vigencia automática por huella, revocación, asignación de Cadres, indicadores, filtros, recordatorios y bitácora.');
 console.log('[projectDossierController] v4.1355.0 cargado — Ficha técnica: «Club postulante» y «Nombre del proyecto» del registro inicial muestran el club principal y el título diligenciados, con lo inscrito debajo.');
 console.log('[projectDossierController] v4.1354.0 cargado — Ficha técnica: la portada toma el título y el club principal de la Formulación (el club del registro pasa a participantes) y una fila sin concepto que suma las demás es el total.');
@@ -346,6 +347,9 @@ export const getTranslation = withSchema(async (req, res, { access }) => {
     const present = fieldRows.filter(r => items.some(i => i.path === r.path));
     const nextVersion = (versions.rows[0]?.versionNumber || 0) + 1;
     const check = T.verificationCheck(status, { actorEmail: req.user?.email, projectEmail: row.email, justification: 'x'.repeat(T.JUSTIFICATION_MIN) });
+    // v4.1357 — ¿Se podría verificar marcando en el mismo paso los campos
+    // traducidos que faltan por marcar como revisados?
+    const checkMarking = T.verificationCheck(T.asIfReviewed(status), { actorEmail: req.user?.email, projectEmail: row.email, justification: 'x'.repeat(T.JUSTIFICATION_MIN) });
     res.json({
         lang, status, tracking, glossary: glossary.merged, versions: versions.rows, events: events.rows,
         verification: {
@@ -355,11 +359,15 @@ export const getTranslation = withSchema(async (req, res, { access }) => {
             summary: T.verificationSummary(status, { nextVersionNumber: nextVersion }),
             // ¿Qué impide verificar HOY, sin contar la justificación (la pide la ventana)?
             canVerify: !!access.approveTranslation && check.ok && tracking.state !== 'verified',
-            blockedReason: tracking.state === 'verified' ? 'La traducción ya está verificada y vigente.' : (check.ok ? null : check.error),
-            blockedCode: tracking.state === 'verified' ? 'verified' : (check.ok ? null : check.code),
-            needsJustification: (check.nonBlocking || []).length > 0,
-            nonBlocking: check.nonBlocking || [],
-            blocking: check.blocking || [],
+            // v4.1357 — El botón se habilita también con campos sin marcar: la
+            // ventana pide confirmar que se revisaron y los marca al verificar.
+            canVerifyMarkingReviewed: !!access.approveTranslation && checkMarking.ok && tracking.state !== 'verified',
+            pendingReview: status.counts.draft,
+            blockedReason: tracking.state === 'verified' ? 'La traducción ya está verificada y vigente.' : (checkMarking.ok ? null : checkMarking.error),
+            blockedCode: tracking.state === 'verified' ? 'verified' : (checkMarking.ok ? null : checkMarking.code),
+            needsJustification: (checkMarking.nonBlocking || []).length > 0,
+            nonBlocking: checkMarking.nonBlocking || [],
+            blocking: checkMarking.blocking || [],
             revokedAt: h?.revokedAt || null, revokedBy: h?.revokedBy || null, revokeReason: h?.revokeReason || null,
         },
         actor: { email: req.user?.email || null, role: access.role },
@@ -557,6 +565,11 @@ export const approveTranslation = withSchema(async (req, res, { access }) => {
     const justification = clean(req.body?.justification, 2000);
     const note = clean(req.body?.note, 500) || null;
     const expectedFingerprint = clean(req.body?.expectedFingerprint, 64) || null;
+    // v4.1357 — «Marcar revisados y verificar» en UN paso: quien verifica
+    // declara que revisó los campos traducidos pendientes de marcar. Se marcan
+    // a su nombre DENTRO de la misma transacción (si algo falla, no queda
+    // ninguno marcado). Los faltantes y desactualizados siguen bloqueando.
+    const markAllReviewed = req.body?.markAllReviewed === true;
 
     const client = await db.pool.connect();
     let version, fromState, check, status, items, present;
@@ -576,7 +589,7 @@ export const approveTranslation = withSchema(async (req, res, { access }) => {
             await client.query('ROLLBACK');
             return res.json({ ok: true, alreadyVerified: true, version: { id: st.header.approvedVersionId, versionNumber: st.header.approvedVersionNumber, approvedAt: st.header.approvedAt }, status, tracking: st.tracking });
         }
-        check = T.verificationCheck(status, {
+        check = T.verificationCheck(markAllReviewed ? T.asIfReviewed(status) : status, {
             justification, expectedFingerprint, currentFingerprint: fingerprint,
             actorEmail: req.user?.email, projectEmail: fresh.email,
         });
@@ -584,6 +597,18 @@ export const approveTranslation = withSchema(async (req, res, { access }) => {
             await client.query('ROLLBACK');
             const code = check.code === 'self_certification' ? 403 : (check.code === 'changed' || check.code === 'needs_justification') ? 409 : 400;
             return res.status(code).json({ ...check, status, tracking: st.tracking });
+        }
+        const pendingDrafts = markAllReviewed ? status.fields.filter(f => f.state === 'draft') : [];
+        if (pendingDrafts.length) {
+            await client.query(`UPDATE "ProjectDossierTranslationField" SET reviewed = TRUE, "reviewedAt" = NOW(), "reviewedBy" = $3, "updatedAt" = NOW()
+                WHERE "submissionId" = $1 AND lang = $2 AND path = ANY($4::text[]) AND reviewed = FALSE`,
+            [row.id, lang, actor.name, pendingDrafts.map(f => f.path)]);
+            for (const f of pendingDrafts) {
+                await insertRevision(client, { submissionId: row.id, kind: 'translation_review', lang, path: f.path, label: f.label, before: false, after: true, reason: 'Marcado como revisado al verificar', actor });
+            }
+            const again = await statusFor(dossier, row.id, lang, client);
+            ({ status, items } = again);
+            present = again.fieldRows.filter(r => status.fields.some(f => f.path === r.path));
         }
         const summary = T.verificationSummary(status);
         const snapshot = Object.fromEntries(status.fields.map(f => [f.path, { label: f.label, source: f.source, text: f.text, sourceHash: f.sourceHash, origin: f.origin, reviewedBy: f.reviewedBy, reviewedAt: f.reviewedAt, warnings: f.warnings }]));

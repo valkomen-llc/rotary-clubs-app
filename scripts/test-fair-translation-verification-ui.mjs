@@ -171,7 +171,9 @@ console.log('\n▸ Administrador, escritorio (1500 px)');
     await page.waitForTimeout(600);
     check('generada por IA: Pendiente de revisión y revisión 0 %', /Revisión\s*0 %/.test(await page.locator('section', { hasText: 'Traducción inglesa' }).first().innerText()));
     check('cada campo dice que lo generó la IA', (await page.getByText('Generada por IA').count()) >= 2);
-    check('sin revisar, verificar sigue inactivo y dice por qué', await verificar.isDisabled() && await page.getByText(/Para verificar: Faltan \d+ campo\(s\) por marcar como revisados/).isVisible());
+    // v4.1357 — Sin marcar campos, el botón ya se habilita: la ventana pide
+    // confirmar la revisión y los marca en el mismo paso.
+    check('sin marcar campos, «Verificar traducción» ya está habilitado (v4.1357)', await verificar.isEnabled() && (await page.getByText(/Para verificar: Faltan \d+ campo\(s\) por marcar/).count()) === 0);
     await page.getByRole('button', { name: /Marcar todos como revisados/ }).click();
     await page.waitForTimeout(1200);
     check('todo revisado: «Verificar traducción» se habilita', await verificar.isEnabled());
@@ -236,6 +238,39 @@ console.log('\n▸ Administrador, escritorio (1500 px)');
     check('la tarjeta «Sin traducir» filtra la tabla', refs.length === 1 && refs[0].includes('FP-TRU002'), refs.join(' | '));
     await page.locator('section', { hasText: 'Seguimiento de traducciones' }).getByRole('button', { name: /Proyectos con textos/ }).click();
     await page.waitForTimeout(1000);
+    check('errores de consola: ninguno', !errores.length, errores.join(' | '));
+    await page.close();
+}
+
+console.log('\n▸ v4.1357 — Verificar desde el listado, en un paso');
+{
+    const { page, errores } = await abrir({ width: 1500, height: 1000 }, ADMIN, 'administrator');
+    // Traducida por la IA y sin marcar ningún campo (como el caso reportado).
+    await fila(page, 'FP-TRU002').getByRole('button', { name: /Traducción al inglés de Agua para comunidades/ }).click();
+    await page.getByText('Traducción inglesa', { exact: true }).waitFor({ timeout: 10000 });
+    await page.getByRole('button', { name: /Traducir proyecto al inglés/ }).click();
+    await page.getByText('Generada por IA').first().waitFor({ timeout: 20000 });
+    await page.waitForTimeout(800);
+    check('en la pestaña, «Verificar traducción» se habilita sin marcar campo por campo', await page.getByRole('button', { name: 'Verificar traducción' }).isEnabled());
+    await page.mouse.click(20, 500);
+    await page.waitForTimeout(1500);
+    const boton = fila(page, 'FP-TRU002').getByRole('button', { name: 'Verificar la traducción de Agua para comunidades' });
+    check('la columna «Traducción EN» ofrece «Verificar traducción»', await boton.isVisible());
+    await boton.click();
+    const dlg = page.getByRole('dialog', { name: /Confirmas la verificación de la traducción/ });
+    await dlg.getByText(/se marcarán como revisados/).waitFor({ timeout: 10000 });
+    const confirmar = dlg.getByRole('button', { name: 'Confirmar verificación' });
+    check('la ventana pide confirmar la revisión antes de verificar', await confirmar.isDisabled());
+    await dlg.getByRole('checkbox').first().check();
+    check('… y con la confirmación se habilita', await confirmar.isEnabled());
+    if (SHOT) await page.screenshot({ path: `${SHOT}/verificar-desde-listado.png` });
+    await confirmar.click();
+    await dlg.getByText(/Verificada · versión 1/).waitFor({ timeout: 15000 });
+    await dlg.getByRole('button', { name: 'Cerrar', exact: true }).last().click();
+    await page.waitForTimeout(1500);
+    check('el proyecto queda con la insignia «EN ✓» y la columna «Verificada»', await fila(page, 'FP-TRU002').getByRole('button', { name: /Traducción inglesa verificada de Agua para comunidades/ }).isVisible() && /Verificada/.test(await fila(page, 'FP-TRU002').innerText()));
+    check('un proyecto ya verificado no ofrece el botón', (await fila(page, 'FP-TRU002').getByRole('button', { name: /Verificar la traducción de/ }).count()) === 0);
+    if (SHOT) await page.screenshot({ path: `${SHOT}/listado-verificado.png` });
     check('errores de consola: ninguno', !errores.length, errores.join(' | '));
     await page.close();
 }

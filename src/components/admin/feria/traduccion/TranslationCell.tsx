@@ -6,7 +6,7 @@
 // traducción de la IA nunca cuenta como revisada. Abajo, el Cadre asignado.
 // La celda es un botón: abre la pestaña «Traducción» del expediente.
 // ════════════════════════════════════════════════════════════════════════════
-import { AlertTriangle, UserRound } from 'lucide-react';
+import { AlertTriangle, BadgeCheck, UserRound } from 'lucide-react';
 import { TRACKING_META, type TranslationTracking } from '../../../../lib/translationTracking';
 
 const Bar = ({ label, pct, cls }: { label: string; pct: number | null; cls: string }) => (
@@ -43,9 +43,17 @@ export const TranslationSummaryInline = ({ t }: { t: TranslationTracking }) => {
     );
 };
 
-interface Props { t: TranslationTracking | null | undefined; project: string; onOpen: () => void }
+/**
+ * v4.1357 — ¿Se ofrece «Verificar» desde el listado? Con todo traducido y nada
+ * desactualizado; si faltan campos por marcar como revisados, la ventana los
+ * marca al verificar. El servidor vuelve a decidir.
+ */
+export const canOfferVerify = (t?: TranslationTracking | null) =>
+    !!t && t.total > 0 && t.state !== 'verified' && t.missing === 0 && t.outdated === 0 && !t.generating;
 
-const TranslationCell = ({ t, project, onOpen }: Props) => {
+interface Props { t: TranslationTracking | null | undefined; project: string; onOpen: () => void; onVerify?: () => void }
+
+const TranslationCell = ({ t, project, onOpen, onVerify }: Props) => {
     if (!t) return <td className="px-3 py-3 text-xs text-slate-400">—</td>;
     return (
         <td className="px-3 py-3 align-middle">
@@ -61,6 +69,13 @@ const TranslationCell = ({ t, project, onOpen }: Props) => {
                     <span className="mt-1 block text-[10px] italic text-slate-400">Sin Cadre asignado</span>
                 ) : null}
             </button>
+            {onVerify && canOfferVerify(t) && (
+                <button type="button" onClick={onVerify}
+                    aria-label={`Verificar la traducción de ${project}`}
+                    className="mt-1 inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700">
+                    <BadgeCheck size={12} aria-hidden="true" /> Verificar traducción
+                </button>
+            )}
         </td>
     );
 };

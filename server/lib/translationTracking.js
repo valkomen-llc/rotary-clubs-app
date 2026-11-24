@@ -164,6 +164,21 @@ export const verificationCheck = (status, {
     return { ok: true, nonBlocking };
 };
 
+/**
+ * v4.1357 — El estado COMO SI la persona marcara como revisados todos los
+ * campos traducidos y vigentes («Marcar revisados y verificar» en un paso).
+ * Nunca convierte en revisado un campo faltante ni uno desactualizado: esos
+ * siguen bloqueando. Puro: sólo sirve para decidir antes de escribir.
+ */
+export const asIfReviewed = (status) => {
+    if (!status) return status;
+    const fields = Array.isArray(status.fields) ? status.fields.map(f => (f.state === 'draft' ? { ...f, state: 'reviewed', reviewed: true } : f)) : status.fields;
+    const counts = { ...(status.counts || {}) };
+    counts.reviewed = (counts.reviewed || 0) + (counts.draft || 0);
+    counts.draft = 0;
+    return { ...status, counts, fields };
+};
+
 /** Lo que se muestra en la ventana de confirmación (y se guarda con la versión). */
 export const verificationSummary = (status, { nextVersionNumber = 1 } = {}) => {
     const fields = Array.isArray(status?.fields) ? status.fields : [];
@@ -433,7 +448,7 @@ export const PERMISSION_MATRIX = [
 
 export default {
     VERIFICATION_KIND, TRACKING_STATES, TRACKING_KEYS, BLOCKING_WARNING_CODES, JUSTIFICATION_MIN,
-    pctOf, isVerification, trackingOf, sourceFingerprintOf, verificationCheck, verificationSummary, invalidationOf,
+    pctOf, isVerification, trackingOf, sourceFingerprintOf, verificationCheck, asIfReviewed, verificationSummary, invalidationOf,
     TRANSLATION_VIEWS, translationViewOptions, hasTranslationQuery, resolveCadreQuery, TRANSLATION_CSV_HEADERS, translationCsvValues, roleLabelOf, matchesTranslationFilters, TRANSLATION_SORTS, translationSortValue,
     summarizeTranslations, workloadByCadre, normalizeTranslationConfig, daysToDeadline,
     REMINDER_SCOPES, REMINDER_SCOPE_KEYS, reminderVerdict, groupByCadre, reminderDedupeKey, PERMISSION_MATRIX,

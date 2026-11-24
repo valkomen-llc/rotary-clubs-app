@@ -190,6 +190,33 @@ uno por Cadre; dedupe por correo + proyectos + día (índice único parcial de
   traducir, revisar, cambio sin guardar, ventana, insignia con cursor y
   teclado, filtro por tarjeta, cambio del club, Cadre vs. traductora, 390 px. 42.
 
+### Verificar en un paso y desde el listado — v4.1357
+
+Reporte del comité: *«no aparece el botón para marcar como traducidos los
+proyectos que ya tradujeron los Cadres»*. El botón existía en la pestaña, pero
+APAGADO hasta marcar uno por uno los 20 campos como revisados, y el listado no
+ofrecía ninguna acción.
+
+- **`markAllReviewed: true`** en `POST …/verificar`: quien verifica declara que
+  la traducción fue revisada; el servidor decide con `asIfReviewed(status)`
+  (los `draft` cuentan como revisados; faltantes y desactualizados NO) y, si
+  pasa, marca esos campos a su nombre (`reviewedBy`, una fila
+  `translation_review` por campo con «Marcado como revisado al verificar»)
+  DENTRO de la misma transacción de la verificación. Si algo falla (p. ej.
+  autocertificación), ROLLBACK: no queda ninguno marcado.
+- `GET …/traduccion/en` devuelve `canVerifyMarkingReviewed` y `pendingReview`;
+  el botón de la pestaña se habilita con eso y la ventana exige marcar «Confirmo
+  que la traducción fue revisada… los N campos quedan marcados a mi nombre».
+- **Listado**: «Verificar traducción» en la celda de la columna (y en la tarjeta
+  móvil) cuando `canOfferVerify(t)` —todo traducido, nada desactualizado, no
+  verificada—; «Verificar seleccionados» en el bloque, con la selección.
+  `VerifyTranslationsDialog` lee el estado real de cada proyecto, muestra qué se
+  certifica y cuáles no se pueden verificar y por qué, y llama al endpoint de a
+  uno (cada llamada lejos de los 120 s), con el resultado por proyecto.
+- Pruebas: 6 comprobaciones nuevas con Postgres (paso único, transacción,
+  bitácora, permisos) y 7 en navegador (botón en la columna, confirmación
+  obligatoria, insignia al terminar).
+
 ### Pendientes / recomendaciones
 
 - Fecha límite: se muestra y se manda en los recordatorios; no hay

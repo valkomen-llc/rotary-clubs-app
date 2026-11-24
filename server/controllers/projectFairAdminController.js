@@ -90,6 +90,7 @@ import {
     SQL_FDD_COLUMNS, FDD_SORTABLE, FDD_RANGE_FILTERS, sqlAmount, rangeBound, fddAmountsOf,
 } from '../lib/projectFairFddAmounts.js';
 
+console.log('[projectFairAdminController] v4.1357.0 cargado — «Verificar traducción» desde la columna «Traducción EN» del listado y en lote (marca los campos revisados en el mismo paso).');
 console.log('[projectFairAdminController] v4.1356.0 cargado — Traducción EN: columna, filtros (estado, Cadre, fecha de verificación), orden y CSV con la verificación por Cadres; perfil «cadre» que verifica traducciones y capacidad manageTranslation del administrador.');
 console.log('[projectFairAdminController] v4.1335.0 cargado — Exchange: columna de traslados y conciliación en el listado (lee la Bóveda, no la escribe), perfil exchange_viewer de consulta para el administrador del evento (sin datos personales) y columnas Exchange en el CSV.');
 console.log('[projectFairAdminController] v4.1326.0 cargado — Sin perfil en la Feria no se ve nada: el rol viewer pierde view y withAccess responde 403 NO_FAIR_PROFILE (antes un club_admin de otro club leía correo, teléfono y documento de cada responsable).');

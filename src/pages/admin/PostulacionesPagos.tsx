@@ -86,7 +86,8 @@ import { FormCell, FileCell, PitchCell, OverallCell, MobileDocSummary } from '..
 // v4.1356 — Traducción verificada por Cadre: insignia, columna «Traducción EN»,
 // indicadores, asignación de Cadres, recordatorios y fecha límite.
 import TranslationBadge from '../../components/admin/feria/traduccion/TranslationBadge';
-import TranslationCell, { TranslationSummaryInline } from '../../components/admin/feria/traduccion/TranslationCell';
+import TranslationCell, { TranslationSummaryInline, canOfferVerify } from '../../components/admin/feria/traduccion/TranslationCell';
+import VerifyTranslationsDialog from '../../components/admin/feria/traduccion/VerifyTranslationsDialog';
 import TranslationTrackingStrip from '../../components/admin/feria/traduccion/TranslationTrackingStrip';
 import { AssignCadreDialog, CadreRemindersDialog, TranslationConfigDialog } from '../../components/admin/feria/traduccion/TranslationDialogs';
 import { TRACKING_META, translationExcelColumns, type TranslationSummary, type TranslationTracking } from '../../lib/translationTracking';
@@ -613,6 +614,8 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
     const [trAssignOpen, setTrAssignOpen] = useState(false);
     const [trRemindIds, setTrRemindIds] = useState<string[] | null>(null);
     const [trConfigOpen, setTrConfigOpen] = useState(false);
+    // v4.1357 — Verificar la traducción desde el listado (una fila o la selección).
+    const [trVerifyRows, setTrVerifyRows] = useState<{ id: string; publicRef: string; projectName: string }[] | null>(null);
     const toggleDocCols = useCallback(() => setShowDocCols(v => {
         try { localStorage.setItem('pp-doc-cols', v ? '0' : '1'); } catch { /* sin almacenamiento */ }
         return !v;
@@ -1640,6 +1643,7 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                 onAssign={() => setTrAssignOpen(true)}
                                 onRemind={() => setTrRemindIds(selectMode ? selected.map(r => r.id) : [])}
                                 onConfig={() => setTrConfigOpen(true)}
+                                onVerifySelected={() => setTrVerifyRows(selected.map(r => ({ id: r.id, publicRef: r.publicRef, projectName: r.projectName })))}
                                 selectedCount={selectMode ? selected.length : 0}
                                 reloadKey={trStripKey}
                                 onSummary={setTrSummary}
@@ -2033,6 +2037,13 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                                 <TranslationSummaryInline t={s.translation} />
                                             </button>
                                         )}
+                                        {access?.approveTranslation && canOfferVerify(s.translation) && (
+                                            <button type="button" onClick={() => setTrVerifyRows([{ id: s.id, publicRef: s.publicRef, projectName: s.projectName }])}
+                                                aria-label={`Verificar la traducción de ${s.projectName}`}
+                                                className="mt-2 inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white">
+                                                Verificar traducción
+                                            </button>
+                                        )}
                                         {s.documents && <MobileDocSummary d={s.documents} project={s.projectName} onOpen={() => setDocDrawerId(s.id)} />}
                                     </li>
                                 );
@@ -2144,7 +2155,8 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                                                         onRegister={() => { setTransferPlan(null); resolverTraslado([s.id]); }} />
                                                 )}
                                                 {/* v4.1356 — Traducción EN: abre la pestaña «Traducción». */}
-                                                <TranslationCell t={s.translation} project={s.projectName} onOpen={() => { setDetailOpen({ pane: 'traduccion' }); setDetailId(s.id); }} />
+                                                <TranslationCell t={s.translation} project={s.projectName} onOpen={() => { setDetailOpen({ pane: 'traduccion' }); setDetailId(s.id); }}
+                                                    onVerify={access?.approveTranslation ? () => setTrVerifyRows([{ id: s.id, publicRef: s.publicRef, projectName: s.projectName }]) : undefined} />
                                                 {/* v4.1332 — Seguimiento documental: cada celda abre el detalle. */}
                                                 {s.documents ? (
                                                     <>
@@ -2468,6 +2480,11 @@ const PostulacionesPagos: React.FC<PostulacionesPagosProps> = ({ embedded = fals
                     scopes={trSummary?.reminderScopes?.length ? trSummary.reminderScopes : [{ key: 'pendientes', label: 'Todos los asignados con trabajo pendiente' }, { key: 'seleccion', label: 'Los proyectos seleccionados' }]}
                     onClose={() => setTrRemindIds(null)}
                     onSent={() => setTrStripKey(k => k + 1)} />
+            )}
+            {trVerifyRows && (
+                <VerifyTranslationsDialog eventId={currentEventId()} rows={trVerifyRows}
+                    onClose={() => setTrVerifyRows(null)}
+                    onDone={() => { loadRows(pagination.page); setTrStripKey(k => k + 1); }} />
             )}
             {trConfigOpen && <TranslationConfigDialog eventId={currentEventId()} onClose={() => setTrConfigOpen(false)} onSaved={() => setTrStripKey(k => k + 1)} />}
             {docConfigOpen && (

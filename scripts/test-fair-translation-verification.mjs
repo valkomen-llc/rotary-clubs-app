@@ -88,6 +88,10 @@ ok('correo o enlace cambiado → BLOQUEANTE, ni con justificación', T.verificat
 ok('el responsable del proyecto NO certifica lo suyo', T.verificationCheck(stAll, { actorEmail: 'Paula@Example.org', projectEmail: 'paula@example.org' }).code === 'self_certification');
 ok('la huella que se tenía en pantalla debe coincidir (otro guardó) → conflicto', T.verificationCheck(stAll, { expectedFingerprint: 'a', currentFingerprint: 'b' }).code === 'changed');
 const sum = T.verificationSummary(statusOf(allRev), { nextVersionNumber: 3 });
+const draftAll = statusOf(items.map(i => rowFor(i)));
+const asRev = T.asIfReviewed(draftAll);
+ok('v4.1357 — «como si se marcaran»: los traducidos cuentan como revisados', asRev.counts.draft === 0 && asRev.counts.reviewed === 4 && T.verificationCheck(asRev).ok && !T.verificationCheck(draftAll).ok);
+ok('v4.1357 — … pero un faltante o un desactualizado sigue bloqueando', T.verificationCheck(T.asIfReviewed(statusOf(items.slice(0, 3).map(i => rowFor(i))))).code === 'missing' && T.verificationCheck(T.asIfReviewed(st2)).code === 'outdated');
 ok('resumen para la ventana: traducidos, revisados, avisos, revisores y versión', sum.total === 4 && sum.reviewed === 4 && sum.translated === 4 && sum.reviewers['cadre@feria.org'] === 4 && sum.nextVersionNumber === 3);
 
 console.log('\n3. Filtros, orden, indicadores y carga por Cadre');
@@ -212,6 +216,7 @@ if (!URL_DB) {
         await db.query('DELETE FROM "ProjectDossierTranslationVersion" WHERE "submissionId" = ANY($1)', [SUBS]);
         await db.query('DELETE FROM "ProjectDossierTranslationEvent" WHERE "eventId" = $1 OR "submissionId" = ANY($2)', ['evt-tr', SUBS]);
         await db.query('DELETE FROM "ProjectFairMasterForm" WHERE "submissionId" = ANY($1)', [SUBS]);
+        await db.query('DELETE FROM "ProjectDossierRevision" WHERE "submissionId" = ANY($1)', [SUBS]);
         const cols = ['id', 'publicRef', 'eventId', 'firstName', 'lastName', 'email', 'clubName', 'district', 'projectName', 'projectDescription', 'status', 'workflowStatus', 'amountCop', 'paidAt', 'appliedAt'];
         const ins = (row) => db.query(`INSERT INTO "ProjectFairSubmission" (${cols.map(c => `"${c}"`).join(',')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(',')})`, cols.map(c => row[c] ?? null));
         const base = { eventId: 'evt-tr', firstName: 'Paula', lastName: 'Cruz', clubName: 'Pereira del Café', district: 'Rotary Distrito 4281', status: 'paid', workflowStatus: 'received', amountCop: '250000', paidAt: '2026-10-01T00:00:00Z', appliedAt: '2026-10-01T00:00:00Z' };
@@ -229,7 +234,7 @@ if (!URL_DB) {
         ok('el Cadre genera la traducción (edita traducciones)', g.status === 200 && g.body.translated >= 3, JSON.stringify(g.body).slice(0, 200));
         let t = await call(ctl.getTranslation, { ...P('tr-1'), user: CADRE });
         ok('recién generada: Pendiente de revisión, traducción 100 %, revisión 0 %', t.body.tracking.state === 'pending_review' && t.body.tracking.translatedPct === 100 && t.body.tracking.reviewedPct === 0);
-        ok('la pantalla recibe la huella y por qué no se puede verificar aún', t.body.verification.fingerprint && !t.body.verification.canVerify && t.body.verification.blockedCode === 'unreviewed');
+        ok('la pantalla recibe la huella; sin campos marcados no se verifica «estricto» pero sí marcándolos en el paso (v4.1357)', t.body.verification.fingerprint && !t.body.verification.canVerify && t.body.verification.canVerifyMarkingReviewed && t.body.verification.blockedCode === null && t.body.verification.pendingReview > 0);
         const fieldsAll = t.body.status.fields;
         await call(ctl.saveTranslation, { ...P('tr-1'), user: CADRE, body: { fields: [{ path: fieldsAll[0].path, text: fieldsAll[0].text, reviewed: true }] } });
         t = await call(ctl.getTranslation, { ...P('tr-1'), user: CADRE });
@@ -391,6 +396,25 @@ if (!URL_DB) {
         ok('el mismo envío el mismo día → sin duplicados', again.body.sent === 0 && again.body.duplicates === 2 && mails.length === 2);
         const regs = await call(ctl.listTranslationReminders, { query: Q, user: ADMIN });
         ok('registro de recordatorios con su estado', regs.body.reminders.filter(r => r.action === 'reminder' && r.deliveryStatus === 'sent').length === 2);
+
+        // ── v4.1357 — Marcar revisados y verificar en UN paso ───────────
+        await call(ctl.generateTranslation, { ...P('tr-2'), user: CADRE, body: {} });
+        let t2 = await call(ctl.getTranslation, { ...P('tr-2'), user: CADRE });
+        ok('v4.1357 — traducida sin marcar: no se verifica «estricto», pero sí marcando', !t2.body.verification.canVerify && t2.body.verification.canVerifyMarkingReviewed && t2.body.verification.pendingReview === t2.body.status.total);
+        ok('v4.1357 — sin markAllReviewed sigue pidiendo revisar', (await call(ctl.verifyTranslation, { ...P('tr-2'), user: CADRE, body: { expectedFingerprint: t2.body.verification.fingerprint } })).body.code === 'unreviewed');
+        ok('v4.1357 — un traductor tampoco verifica marcando → 403', (await call(ctl.verifyTranslation, { ...P('tr-2'), user: TRANSLATOR, body: { markAllReviewed: true } })).status === 403);
+        await db.query(`UPDATE "ProjectFairSubmission" SET email = 'cadre@feria.org' WHERE id = 'tr-2'`);
+        const selfMark = await call(ctl.verifyTranslation, { ...P('tr-2'), user: CADRE, body: { markAllReviewed: true } });
+        const marcadosTrasFallo = (await db.query(`SELECT COUNT(*)::int AS n FROM "ProjectDossierTranslationField" WHERE "submissionId" = 'tr-2' AND reviewed`)).rows[0].n;
+        ok('v4.1357 — si la verificación falla, NO queda ningún campo marcado (transacción)', selfMark.status === 403 && marcadosTrasFallo === 0);
+        await db.query(`UPDATE "ProjectFairSubmission" SET email = 'otro@club.org' WHERE id = 'tr-2'`);
+        const one = await call(ctl.verifyTranslation, { ...P('tr-2'), user: CADRE, body: { markAllReviewed: true, expectedFingerprint: t2.body.verification.fingerprint } });
+        const marcados = (await db.query(`SELECT reviewed, "reviewedBy" FROM "ProjectDossierTranslationField" WHERE "submissionId" = 'tr-2'`)).rows;
+        ok('v4.1357 — en un paso: marca los campos a nombre de quien verifica y verifica', one.status === 200 && one.body.tracking.state === 'verified' && marcados.every(r => r.reviewed && r.reviewedBy === CADRE.email), JSON.stringify(one.body).slice(0, 200));
+        const revMarks = (await db.query(`SELECT COUNT(*)::int AS n FROM "ProjectDossierRevision" WHERE "submissionId" = 'tr-2' AND kind = 'translation_review' AND reason = 'Marcado como revisado al verificar'`)).rows[0].n;
+        ok('v4.1357 — cada campo marcado queda en la bitácora del expediente', revMarks === marcados.length);
+        const v2row = (await db.query(`SELECT "reviewedCount", "totalCount" FROM "ProjectDossierTranslationVersion" WHERE "submissionId" = 'tr-2'`)).rows[0];
+        ok('v4.1357 — la versión registra todos los campos como revisados', v2row.reviewedCount === v2row.totalCount);
 
         // ── Configuración ────────────────────────────────────────────────
         ok('un Cadre NO configura → 403', (await call(ctl.saveTranslationConfig, { query: Q, user: CADRE, body: { deadline: '2026-12-15' } })).status === 403);
