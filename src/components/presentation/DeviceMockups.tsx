@@ -5,7 +5,7 @@
  * ella pintan un sitio institucional ESQUEMÁTICO con los rasgos de la
  * plantilla (barra `rotary-topbar`, cabecera blanca, portada con el patrón
  * geométrico): no es una captura y el slide lo dice.
- * Proporciones: pantalla 16:10 y 9:19; las medidas interiores van en `cqw`.
+ * Proporciones: portátil 26:15, tableta 8:7 y teléfono 9:15,6; las medidas interiores van en `cqw`.
  */
 import { PRESENTATION } from '../../config/clubPlatformPresentation';
 
@@ -44,6 +44,12 @@ export const LaptopMockup = ({ src, alt, className = '' }: { src: string | null;
 export const PhoneMockup = ({ src, alt, className = '' }: { src: string | null; alt: string; className?: string }) => (
     <div className={`cpd-phone ${className}`} role="img" aria-label={alt}>
         <div className={`cpd-phone__screen${src ? ' has-shot' : ''}`}>{src ? <img className="cpd-shot" src={src} alt="" /> : <SiteSchematic mobile />}</div>
+    </div>
+);
+
+export const TabletMockup = ({ src, alt, className = '' }: { src: string | null; alt: string; className?: string }) => (
+    <div className={`cpd-tablet ${className}`} role="img" aria-label={alt}>
+        <div className="cpd-tablet__screen">{src ? <img className="cpd-shot" src={src} alt="" /> : <SiteSchematic />}</div>
     </div>
 );
 

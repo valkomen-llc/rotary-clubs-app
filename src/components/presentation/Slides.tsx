@@ -11,7 +11,7 @@ import { CreditCard, Globe2, LineChart } from 'lucide-react';
 import { PRESENTATION } from '../../config/clubPlatformPresentation';
 import { BrandLogo, Closing, DeckIcon, SlideFrame, SlideHeader } from './SlideLayout';
 import { enter } from './motion';
-import { ConnectivityGraphic, LaptopMockup, PhoneMockup } from './DeviceMockups';
+import { ConnectivityGraphic, LaptopMockup, PhoneMockup, TabletMockup } from './DeviceMockups';
 import { CloudExplorer, Mailboxes } from './InfrastructureVisual';
 import { ToolTile } from './ResourceTools';
 import { AutomationFlow } from './AutomationFlow';
@@ -49,6 +49,7 @@ export const CoverSlide = (p: SlideProps) => (
                 <div className="cpd-cover__panel bg-rotary-geo" aria-hidden />
                 <ConnectivityGraphic />
                 <LaptopMockup className="cpd-cover__laptop" src={screens.siteDesktop} alt="Sitio institucional construido con Club Platform, en un portátil" />
+                <TabletMockup className="cpd-cover__tablet" src={screens.siteTablet} alt="El mismo sitio en una tableta" />
                 <PhoneMockup className="cpd-cover__phone" src={screens.siteMobile} alt="El mismo sitio en un teléfono móvil" />
             </div>
         </div>

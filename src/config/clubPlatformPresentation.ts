@@ -77,6 +77,7 @@ export const PRESENTATION = {
             // `public/presentacion/` y escribir acá su ruta (`/presentacion/…`),
             // o pegar una URL pública. Se recortan desde arriba, sin deformar.
             siteDesktop: '/presentacion/sitio-escritorio.jpg' as string | null,   // captura real, 1702 × 983
+            siteTablet: '/presentacion/sitio-tableta.jpg' as string | null,    // captura real, 1100 × 1100
             siteMobile: '/presentacion/sitio-movil.jpg' as string | null,    // captura real, 780 × 1353
             cloud: null as string | null,         // módulo de almacenamiento
             crowdfunding: null as string | null,
