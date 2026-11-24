@@ -1,10 +1,11 @@
 /**
- * Presentación comercial — los cinco slides (v4.1356.0)
+ * Presentación comercial — los seis slides (v4.1356.0)
  *
  * Cada uno tiene una composición distinta sobre una identidad común:
  *   01 portada partida 45/55 con dispositivos · 02 arquitectura + repositorio ·
  *   03 cuadrícula de cuatro interfaces · 04 diagrama de automatización ·
- *   05 planes comparables, ruta y cierre.
+ *   05 planes comparables, ruta y cierre · 06 quiénes lo usan: logotipos
+ *   rotarios arriba, aliados tecnológicos abajo.
  * El texto llega de `config/clubPlatformPresentation.ts`; acá no se escribe copy.
  */
 import { CreditCard, Globe2, LineChart } from 'lucide-react';
@@ -16,8 +17,9 @@ import { CloudExplorer, Mailboxes } from './InfrastructureVisual';
 import { ToolTile } from './ResourceTools';
 import { AutomationFlow } from './AutomationFlow';
 import { ClosingCta, ImplementationRoute, PlanCard } from './PlanCards';
+import { LogoWall } from './LogoWall';
 
-const [S1, S2, S3, S4, S5] = PRESENTATION.slides;
+const [S1, S2, S3, S4, S5, S6] = PRESENTATION.slides;
 const { media, sampleDomain, brand, audience } = PRESENTATION;
 const screens = media.screens;
 const anySchematic = (...shots: (string | null)[]) => shots.some(s => !s);
@@ -139,6 +141,16 @@ export const PlansSlide = (p: SlideProps) => (
         <div className="cpd-close cpd-in" style={enter(7)}>
             <ImplementationRoute route={S5.route} />
             <ClosingCta cta={S5.cta} />
+        </div>
+    </SlideFrame>
+);
+
+export const CommunitySlide = (p: SlideProps) => (
+    <SlideFrame {...p} id={S6.id} label={S6.nav}>
+        <SlideHeader eyebrow={S6.eyebrow} title={S6.title} size="sm" />
+        <div className="cpd-community">
+            <LogoWall label={S6.rotary.label} logos={S6.rotary.logos} columns={4} order={2} />
+            <LogoWall label={S6.allies.label} logos={S6.allies.logos} columns={5} pending={S6.allies.pending} order={3} />
         </div>
     </SlideFrame>
 );

@@ -10,11 +10,11 @@ import { PRESENTATION, PRESENTATION_PATH } from '../config/clubPlatformPresentat
 import { useSEO } from '../hooks/useSEO';
 import { useDeck } from '../components/presentation/useDeck';
 import { DeckBar, DeckNav } from '../components/presentation/DeckChrome';
-import { CoverSlide, EcosystemSlide, InfrastructureSlide, PlansSlide, ResourcesSlide } from '../components/presentation/Slides';
+import { CommunitySlide, CoverSlide, EcosystemSlide, InfrastructureSlide, PlansSlide, ResourcesSlide } from '../components/presentation/Slides';
 import '../components/presentation/presentation.css';
 
 /** El orden de los slides. Su longitud tiene que ser la de la configuración. */
-const SLIDE_COMPONENTS = [CoverSlide, InfrastructureSlide, ResourcesSlide, EcosystemSlide, PlansSlide];
+const SLIDE_COMPONENTS = [CoverSlide, InfrastructureSlide, ResourcesSlide, EcosystemSlide, PlansSlide, CommunitySlide];
 
 export default function PresentacionClubPlatform() {
     const { rootRef, viewportRef, index, stage, scale, present, idle, go, next, prev, togglePresent, onTouchStart, onTouchEnd } = useDeck(SLIDE_COMPONENTS.length);

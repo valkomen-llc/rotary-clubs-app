@@ -817,7 +817,7 @@ function App() {
                 <Route path="/formulario-programas" element={<FormularioProgramas />} />
                 <Route path="/rotary-en-accion/visitas-del-gobernador" element={<VisitasGobernadorRedirect />} />
                 <Route path="/activar-mi-club" element={<ActivarMiClub />} />
-                {/* v4.1356 — Presentación comercial interactiva de Club Platform (pública, cinco slides). */}
+                {/* v4.1356 — Presentación comercial interactiva de Club Platform (pública, seis slides). */}
                 <Route path="/presentacion" element={<PresentacionClubPlatform />} />
                 <Route path="/activar-club" element={<Navigate to="/activar-mi-club" replace />} />
                 <Route path="/aportar-contenido/:ref" element={<LegacyAportarRedirect />} />

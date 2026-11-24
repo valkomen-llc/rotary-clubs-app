@@ -39,7 +39,7 @@
 .cpd-bar__logo { height: 38px; width: auto; flex: none; }
 .cpd-bar__name { font-size: 14px; font-weight: 700; color: var(--cpd-blue); }
 .cpd-tabs { display: flex; gap: 4px; margin: 0 auto; }
-.cpd-tab { border: 0; background: transparent; padding: 8px 14px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--cpd-muted); cursor: pointer; white-space: nowrap; transition: background-color .2s, color .2s; }
+.cpd-tab { border: 0; background: transparent; padding: 8px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--cpd-muted); cursor: pointer; white-space: nowrap; transition: background-color .2s, color .2s; }
 .cpd-tab:hover { background: var(--cpd-soft); color: var(--cpd-blue); }
 .cpd-tab[aria-current='true'] { background: var(--cpd-sky); color: var(--cpd-blue); }
 .cpd-tab__n { font-variant-numeric: tabular-nums; opacity: .6; margin-right: 6px; }
@@ -299,6 +299,16 @@
 .cpd-btn:hover { transform: translateY(-1px); }
 .cpd-contact { font-size: 12px; color: var(--cpd-muted); }
 
+/* ── Slide 6: quiénes lo usan ────────────────────────────────────────── */
+.cpd-community { flex: 1; min-height: 0; display: grid; grid-template-rows: 1.55fr 1fr; gap: 22px; margin: 22px 0 14px; }
+.cpd-wall { display: flex; flex-direction: column; min-height: 0; border: 1px solid var(--cpd-line); border-radius: 18px; padding: 18px 26px 16px; background: #fff; }
+.cpd-wall__label { margin: 0 0 6px; font-size: 12.5px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--cpd-blue); display: flex; align-items: center; gap: 14px; }
+.cpd-wall__label::after { content: ''; flex: 1; height: 1px; background: var(--cpd-line); }
+.cpd-wall__grid { list-style: none; margin: 0; padding: 0; flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(var(--cpd-cols, 4), 1fr); align-items: center; justify-items: center; gap: 6px 18px; }
+.cpd-wall__cell { display: flex; align-items: center; justify-content: center; padding: 10px; }
+.cpd-wall__cell img { display: block; max-width: 100%; height: auto; object-fit: contain; }
+.cpd-wall__pending { flex: 1; margin: 6px 0 0; display: flex; align-items: center; justify-content: center; border: 1.5px dashed var(--cpd-line); border-radius: 12px; font-size: 14px; color: var(--cpd-muted); }
+
 /* ── Movimiento ──────────────────────────────────────────────────────── */
 @keyframes cpd-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
 @keyframes cpd-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
@@ -385,6 +395,11 @@
   .cpd--flow .cpd-district { margin-top: 16px; flex-wrap: wrap; }
   .cpd--flow .cpd-caps { grid-template-columns: 1fr; gap: 16px; }
 
+  .cpd--flow .cpd-community { grid-template-rows: auto auto; margin-bottom: 0; }
+  .cpd--flow .cpd-wall { padding: 16px 14px; }
+  .cpd--flow .cpd-wall__grid { grid-template-columns: repeat(2, 1fr); gap: 4px 8px; }
+  .cpd--flow .cpd-wall__cell img { max-height: 54px; width: auto; }
+  .cpd--flow .cpd-wall__pending { min-height: 110px; }
   .cpd--flow .cpd-plans-head { flex-direction: column; align-items: flex-start; gap: 12px; }
   .cpd--flow .cpd-plans-head .cpd-lead { text-align: left; }
   .cpd--flow .cpd-plans { grid-template-columns: 1fr; }
@@ -407,6 +422,7 @@
   .cpd--flow .cpd-mails { grid-template-columns: repeat(3, 1fr); }
   .cpd--flow .cpd-caps { grid-template-columns: repeat(2, 1fr); }
   .cpd--flow .cpd-route { grid-template-columns: repeat(4, 1fr); }
+  .cpd--flow .cpd-wall__grid { grid-template-columns: repeat(4, 1fr); }
   .cpd--flow .cpd-btn { width: auto; }
   .cpd--flow .cpd-cover__visual { max-width: 640px; }
 }

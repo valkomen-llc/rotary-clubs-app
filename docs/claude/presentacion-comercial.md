@@ -1,6 +1,6 @@
 # Presentación comercial de Club Platform — v4.1356
 
-Presentación web pública de **cinco slides** en `/presentacion`, para reuniones
+Presentación web pública de **seis slides** en `/presentacion`, para reuniones
 con presidentes, juntas directivas, capacitaciones distritales y campañas de
 vinculación. Léelo antes de tocar el módulo.
 
@@ -28,7 +28,8 @@ vinculación. Léelo antes de tocar el módulo.
 
 ## Reglas durables
 
-- **Son exactamente cinco slides.** La prueba cuenta los de la configuración y
+- **Son exactamente seis slides** (el sexto, «Quiénes lo usan», se agregó el
+  2026-11-24). La prueba cuenta los de la configuración y
   los componentes de `SLIDE_COMPONENTS` (en la página).
 - **El copy vive en la configuración, no en los componentes.** Cambiar un
   precio, un texto o un enlace es tocar un solo archivo.
@@ -57,6 +58,12 @@ vinculación. Léelo antes de tocar el módulo.
   rotulada con lo que ES (`cloud.shotTitle`), no como repositorio. Con `null`
   vuelve el repositorio esquemático por periodos rotarios. La captura se guardó
   sin la franja de aviso superior ni el bloque con nombre y correo del usuario.
+- **El slide 6 es un muro de logotipos en dos mitades**: arriba clubes, distritos
+  y organizaciones rotarias; abajo aliados tecnológicos y proveedores. Los
+  archivos van en `public/presentacion/logos/` y cada uno declara su `ratio`
+  (ancho ÷ alto): `logoBox` les da la MISMA superficie. No se recolorean ni se
+  deforman. La mitad de aliados muestra «por incorporar» mientras esté vacía:
+  **no publicar con ese rótulo a la vista**.
 - **Tres modos, un marcado.** Escenario (lienzo de 1600 × 900 escalado) desde
   1024 px con proporción ≥ 5:4; flujo (slides apilados y reorganizados) por
   debajo; impresión siempre con el lienzo. Lo propio del escenario y del flujo
@@ -77,7 +84,7 @@ vinculación. Léelo antes de tocar el módulo.
 
 - Enlace público: `https://app.clubplatform.org/presentacion` (funciona en
   cualquier host que sirva la aplicación).
-- Teclado: ← → (o Re Pág / Av Pág, espacio), Inicio, Fin, 1–5, `F` pantalla
+- Teclado: ← → (o Re Pág / Av Pág, espacio), Inicio, Fin, 1–6, `F` pantalla
   completa, Esc para salir.
 - PDF: botón de impresora → «Guardar como PDF». Sale en 16:9, un slide por
   página, con fondos.

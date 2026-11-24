@@ -6,7 +6,7 @@
  * funcionalidad. Los componentes de `src/components/presentation/` sólo pintan.
  *
  * Reglas (detalle en `docs/claude/presentacion-comercial.md`):
- *   · Son EXACTAMENTE cinco slides. Lo fija `scripts/test-presentation.mjs`.
+ *   · Son EXACTAMENTE seis slides. Lo fija `scripts/test-presentation.mjs`.
  *   · Los precios vigentes son los de este archivo y prevalecen sobre cualquier
  *     documento comercial anterior.
  *   · Una interfaz dibujada NO es una captura. Mientras `media.screens.*` esté
@@ -252,6 +252,41 @@ export const PRESENTATION = {
             cta: {
                 title: 'Activa el ecosistema digital de tu club.',
                 text: 'Agenda tu sesión de onboarding y comienza tu proceso de transformación digital.',
+            },
+        },
+        {
+            id: 'ecosistema',
+            nav: 'Quiénes lo usan',
+            eyebrow: 'Ecosistema Club Platform',
+            title: 'Una red rotaria que ya trabaja en un mismo ecosistema.',
+            description: '',
+            /**
+             * Mitad superior: clubes, distritos y organizaciones rotarias que usan
+             * la plataforma. `ratio` = ancho ÷ alto del archivo: con él todos los
+             * logotipos ocupan la misma superficie, sin deformarse ni recolorearse.
+             */
+            rotary: {
+                label: 'Clubes, distritos y organizaciones rotarias',
+                logos: [
+                    { name: 'COLROTARIOS — Fundación Colombiana de Rotarios', src: '/presentacion/logos/colrotarios.png', ratio: 4.79 },
+                    { name: 'Rotary Distrito 4281', src: '/presentacion/logos/distrito-4281.png', ratio: 2.68 },
+                    { name: 'Feria de Proyectos, Distritos 4271 y 4281', src: '/presentacion/logos/feria-de-proyectos.png', ratio: 4.95 },
+                    { name: 'Club Rotario Armenia International', src: '/presentacion/logos/armenia-international.png', ratio: 3.83 },
+                    { name: 'Club Rotario Bogotá Chicó', src: '/presentacion/logos/bogota-chico.png', ratio: 2.59 },
+                    { name: 'Club Rotario Bogotá Occidente', src: '/presentacion/logos/bogota-occidente.png', ratio: 3.12 },
+                    { name: 'Club Rotario Bogotá Usaquén', src: '/presentacion/logos/bogota-usaquen.png', ratio: 2.95 },
+                    { name: 'Club Rotario Buenaventura Pacífico', src: '/presentacion/logos/buenaventura-pacifico.png', ratio: 3.85 },
+                    { name: 'Rotary E-Club Origen', src: '/presentacion/logos/e-club-origen.png', ratio: 2.65 },
+                    { name: 'Club Rotario Nuevo Cali', src: '/presentacion/logos/nuevo-cali.png', ratio: 2.45 },
+                    { name: 'Club Rotario Pereira', src: '/presentacion/logos/pereira.png', ratio: 2.38 },
+                    { name: 'Club Rotario Santa Rosa de Cabal', src: '/presentacion/logos/santa-rosa-de-cabal.png', ratio: 5.92 },
+                ] as { name: string; src: string; ratio: number }[],
+            },
+            /** Mitad inferior: aliados tecnológicos y proveedores. Vacía hasta recibir sus logotipos. */
+            allies: {
+                label: 'Aliados tecnológicos y proveedores',
+                pending: 'Logotipos por incorporar',
+                logos: [] as { name: string; src: string; ratio: number }[],
             },
         },
     ],

@@ -3,7 +3,7 @@
 // Presentación comercial de Club Platform — EL CRITERIO (v4.1356.0)
 // npm run test:presentation (en `prebuild`). Sin base ni red.
 //
-//   · son EXACTAMENTE cinco slides, y hay un componente por cada uno;
+//   · son EXACTAMENTE seis slides, y hay un componente por cada uno;
 //   · los precios vigentes y su equivalente mensual cuadran;
 //   · los botones del cierre apuntan a rutas que EXISTEN en la aplicación;
 //   · el <head> del servidor (lo que lee WhatsApp) dice lo mismo que la
@@ -30,10 +30,17 @@ const api = read('api/index.js');
 
 // ── Cinco slides ────────────────────────────────────────────────────
 const ids = [...config.matchAll(/^ {12}id: '([a-z-]+)',$/gm)].map(m => m[1]);
-eq(ids.length, 5, `la presentación tiene exactamente cinco slides (hay ${ids.length})`);
-eq(new Set(ids).size, 5, 'los identificadores de slide no se repiten');
+eq(ids.length, 6, `la presentación tiene exactamente seis slides (hay ${ids.length})`);
+eq(new Set(ids).size, 6, 'los identificadores de slide no se repiten');
 const comps = read('src/pages/PresentacionClubPlatform.tsx').match(/SLIDE_COMPONENTS = \[([^\]]+)\]/)?.[1].split(',').map(s => s.trim()).filter(Boolean) || [];
-eq(comps.length, 5, 'hay un componente por slide');
+eq(comps.length, 6, 'hay un componente por slide');
+
+// ── Slide 6: cada logotipo existe y declara su proporción ───────────
+const logos = [...config.matchAll(/src: '(\/presentacion\/logos\/[^']+)', ratio: ([\d.]+)/g)];
+ok(logos.length >= 12, `el slide de la comunidad lista sus logotipos (${logos.length})`);
+const { existsSync } = await import('node:fs');
+for (const [, src] of logos) ok(existsSync(`${REPO}/public${src}`), `existe ${src}`);
+eq(new Set(logos.map(m => m[1])).size, logos.length, 'ningún logotipo está repetido');
 
 // ── Precios vigentes ────────────────────────────────────────────────
 const cop = (v) => `$${Math.round(v).toLocaleString('de-DE')}`;

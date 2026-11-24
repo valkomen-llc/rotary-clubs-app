@@ -44,7 +44,7 @@ const TRAMO_1: UpdateItem[] = [
     {
         version: '4.1356.0',
         title: 'Presentación comercial interactiva de Club Platform for Rotary 🖥️',
-        description: 'Una presentación web pública de cinco slides en /presentacion para reuniones con presidentes, juntas directivas y capacitaciones distritales: portada, patrimonio digital, generación de recursos, ecosistema inteligente y planes (Club Digital $1.000.000 y Club Inteligente $1.480.000 COP al año). Hereda la tipografía, los colores y los botones de los sitios del ecosistema; no trae un sistema de diseño propio. Los textos, precios, enlaces y capturas viven en un solo archivo de configuración.',
+        description: 'Una presentación web pública de seis slides en /presentacion para reuniones con presidentes, juntas directivas y capacitaciones distritales: portada, patrimonio digital, generación de recursos, ecosistema inteligente, planes (Club Digital $1.000.000 y Club Inteligente $1.480.000 COP al año) y quiénes ya usan el ecosistema. Hereda la tipografía, los colores y los botones de los sitios del ecosistema; no trae un sistema de diseño propio. Los textos, precios, enlaces y capturas viven en un solo archivo de configuración.',
         date: new Date().toISOString(),
         tags: ['presentación', 'comercial', 'planes', 'club platform'],
         type: 'feature',
