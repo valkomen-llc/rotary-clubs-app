@@ -15,7 +15,7 @@ const AREA = 15500;
 const MAX_W = 300;
 
 /** Puro: caja de un logotipo de proporción `ratio` con la superficie común. */
-export function logoBox(ratio: number, area = AREA, maxW = MAX_W) {
+function logoBox(ratio: number, area = AREA, maxW = MAX_W) {
     const r = Number.isFinite(ratio) && ratio > 0 ? ratio : 3;
     const w = Math.min(Math.sqrt(area * r), maxW);
     return { width: Math.round(w), height: Math.round(w / r) };
