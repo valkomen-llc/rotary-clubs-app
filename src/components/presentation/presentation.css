@@ -170,6 +170,8 @@
 .cpd-folders { list-style: none; margin: 0; padding: 16px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; align-content: start; }
 .cpd-folder { border: 1px solid var(--cpd-line); border-radius: 10px; padding: 11px 10px; display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; font-weight: 600; line-height: 1.25; color: var(--cpd-ink); }
 .cpd-folder svg { width: 24px; height: 24px; color: var(--cpd-gold); fill: hsl(43 90% 50% / .22); }
+.cpd-window__shot { flex: 1; min-height: 0; position: relative; }
+.cpd-window__shot .cpd-shot { position: absolute; inset: 0; object-position: left top; }
 .cpd-window__main { display: flex; flex-direction: column; min-height: 0; }
 .cpd-files { margin: 0 16px 14px; border-top: 1px solid var(--cpd-line); padding-top: 12px; display: flex; flex-direction: column; gap: 2px; }
 .cpd-files__label { font-size: 11.5px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--cpd-muted); margin-bottom: 4px; }
@@ -358,6 +360,7 @@
   .cpd--flow .cpd-laptop__base { height: 8px; }
 
   .cpd--flow .cpd-infra { grid-template-columns: 1fr; gap: 28px; }
+  .cpd--flow .cpd-window__shot { aspect-ratio: 16 / 10; flex: none; }
   .cpd--flow .cpd-window__body { grid-template-columns: 1fr; }
   .cpd--flow .cpd-tree { border-right: 0; border-bottom: 1px solid var(--cpd-line); }
   .cpd--flow .cpd-folders { grid-template-columns: repeat(2, 1fr); }

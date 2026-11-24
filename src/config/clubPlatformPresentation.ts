@@ -79,7 +79,9 @@ export const PRESENTATION = {
             siteDesktop: '/presentacion/sitio-escritorio.jpg' as string | null,   // captura real, 1702 × 983
             siteTablet: '/presentacion/sitio-tableta.jpg' as string | null,    // captura real, 1100 × 1100
             siteMobile: '/presentacion/sitio-movil.jpg' as string | null,    // captura real, 780 × 1353
-            cloud: null as string | null,         // módulo de almacenamiento
+            // Ventana grande del slide 2. Hoy es una captura del panel de control
+            // (Estudio de Contenido); con `null` vuelve el repositorio por periodos.
+            cloud: '/presentacion/panel-estudio-de-contenido.jpg' as string | null,
             crowdfunding: null as string | null,
             fundraising: null as string | null,
             memberships: null as string | null,
@@ -123,6 +125,8 @@ export const PRESENTATION = {
             ],
             cloud: {
                 title: 'Repositorio institucional',
+                /** Rótulo de la ventana cuando muestra una captura real (dice lo que la captura ES). */
+                shotTitle: 'Panel de control del club · Estudio de Contenido',
                 periods: ['Periodo rotario 2024–2025', 'Periodo rotario 2025–2026', 'Periodo rotario 2026–2027', 'Periodo rotario 2027–2028'],
                 /** Índice del periodo que se muestra abierto. */
                 openPeriod: 2,

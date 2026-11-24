@@ -53,6 +53,10 @@ vinculación. Léelo antes de tocar el módulo.
   para otro club se cambian nombre y logotipo, o `null` para una versión general.
 - **Las capturas del slide 1 van en `public/presentacion/`** y su ruta en
   `media.screens.siteDesktop` / `siteMobile` (ver el LEEME de esa carpeta).
+- **La ventana del slide 2** muestra una captura real del panel (`media.screens.cloud`),
+  rotulada con lo que ES (`cloud.shotTitle`), no como repositorio. Con `null`
+  vuelve el repositorio esquemático por periodos rotarios. La captura se guardó
+  sin la franja de aviso superior ni el bloque con nombre y correo del usuario.
 - **Tres modos, un marcado.** Escenario (lienzo de 1600 × 900 escalado) desde
   1024 px con proporción ≥ 5:4; flujo (slides apilados y reorganizados) por
   debajo; impresión siempre con el lienzo. Lo propio del escenario y del flujo

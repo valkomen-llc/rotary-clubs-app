@@ -6,12 +6,12 @@
 import { Cloud, FileText, Folder, FolderOpen, Mail } from 'lucide-react';
 import { PRESENTATION } from '../../config/clubPlatformPresentation';
 
-interface CloudProps { title: string; periods: readonly string[]; openPeriod: number; folders: readonly string[]; recentLabel: string; recent: readonly { name: string; folder: string }[]; src: string | null }
+interface CloudProps { title: string; shotTitle: string; periods: readonly string[]; openPeriod: number; folders: readonly string[]; recentLabel: string; recent: readonly { name: string; folder: string }[]; src: string | null }
 
-export const CloudExplorer = ({ title, periods, openPeriod, folders, recentLabel, recent, src }: CloudProps) => (
-    <div className="cpd-window" role="img" aria-label={`${title}: carpetas por periodo rotario con ${folders.join(', ').toLowerCase()}`}>
-        <div className="cpd-window__bar"><Cloud aria-hidden /><span>{title}</span><span className="cpd-window__path">{PRESENTATION.sampleDomain} / {periods[openPeriod]}</span></div>
-        {src ? <img className="cpd-shot" src={src} alt="" /> : (
+export const CloudExplorer = ({ title, shotTitle, periods, openPeriod, folders, recentLabel, recent, src }: CloudProps) => (
+    <div className="cpd-window" role="img" aria-label={src ? shotTitle : `${title}: carpetas por periodo rotario con ${folders.join(', ').toLowerCase()}`}>
+        <div className="cpd-window__bar"><Cloud aria-hidden /><span>{src ? shotTitle : title}</span>{src ? null : <span className="cpd-window__path">{PRESENTATION.sampleDomain} / {periods[openPeriod]}</span>}</div>
+        {src ? <div className="cpd-window__shot"><img className="cpd-shot" src={src} alt="" /></div> : (
             <div className="cpd-window__body" aria-hidden>
                 <ul className="cpd-tree">
                     {periods.map((p, i) => (
