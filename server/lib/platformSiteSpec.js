@@ -104,7 +104,7 @@ const ACTION_IDS = BUTTON_ACTIONS.map(a => a.id);
 export const RESERVED_SLUGS = [
     'admin', 'api', 'login', 'registro', 'restablecer', 'verify-email', 'assets', 'static', 'sitemap.xml', 'robots.txt', 'favicon.ico',
     'blog', 'proyectos', 'eventos', 'contacto', 'programas', 'cursos', 'mis-cursos', 'aportes', 'checkout', 'tienda', 'shop', 'cart', 'order',
-    'quienes-somos', 'nuestras-causas', 'mi-proyecto', 'mi-inscripcion', 'capacitaciones', 'descargas', 'donacion', 'r', 'l', 'vista-previa',
+    'quienes-somos', 'nuestras-causas', 'mi-proyecto', 'mi-inscripcion', 'capacitaciones', 'descargas', 'donacion', 'r', 'l', 'vista-previa', 'presentacion',
 ];
 
 export const slugify = (v) => String(v ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);

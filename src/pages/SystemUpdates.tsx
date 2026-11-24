@@ -34,13 +34,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1355.0 | 2026-11-23 (Ficha técnica: «Club postulante» y «Nombre del proyecto» del registro inicial dicen lo mismo que la portada)
+// UI V4.1356.0 | 2026-11-23 (Presentación comercial interactiva de Club Platform en /presentacion)
 // Cache bust: 2026-11-19
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1356.0',
+        title: 'Presentación comercial interactiva de Club Platform for Rotary 🖥️',
+        description: 'Una presentación web pública de cinco slides en /presentacion para reuniones con presidentes, juntas directivas y capacitaciones distritales: portada, patrimonio digital, generación de recursos, ecosistema inteligente y planes (Club Digital $1.000.000 y Club Inteligente $1.480.000 COP al año). Hereda la tipografía, los colores y los botones de los sitios del ecosistema; no trae un sistema de diseño propio. Los textos, precios, enlaces y capturas viven en un solo archivo de configuración.',
+        date: new Date().toISOString(),
+        tags: ['presentación', 'comercial', 'planes', 'club platform'],
+        type: 'feature',
+        impact: 'Baja: una ruta pública nueva. No cambia ningún sitio publicado ni el panel.',
+        changes: [
+            { type: 'added', text: 'Ruta pública /presentacion, sin sesión: anterior y siguiente, flechas del teclado, gestos táctiles, acceso directo a cada slide, progreso, numeración, volver al inicio y pantalla completa.' },
+            { type: 'added', text: 'Tres composiciones con el mismo contenido: lienzo 16:9 que se escala en escritorio y proyector, slides apilados y reorganizados en móvil y tableta, e impresión o PDF con un slide por página.' },
+            { type: 'added', text: 'El enlace se previsualiza en WhatsApp, correo y redes con su propio título y descripción, resueltos en el servidor.' },
+            { type: 'improved', text: 'Las interfaces se muestran como representación esquemática y se indica; cada una acepta una captura real desde la configuración.' },
+        ],
+    },
     {
         version: '4.1355.0',
         title: 'Ficha técnica: el «Club postulante» del registro inicial ya dice el club principal 📄',

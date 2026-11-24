@@ -230,6 +230,7 @@ const ClubPlatformInsights = lazyWithRetry(() => import('./pages/admin/ClubPlatf
 const AgendaSoporte = lazyWithRetry(() => import('./pages/admin/AgendaSoporte'), 'AgendaSoporte');
 const CapacitacionesAdmin = lazyWithRetry(() => import('./pages/admin/CapacitacionesAdmin'), 'CapacitacionesAdmin');
 const AgendarCapacitacion = lazyWithRetry(() => import('./pages/AgendarCapacitacion'), 'AgendarCapacitacion');
+const PresentacionClubPlatform = lazyWithRetry(() => import('./pages/PresentacionClubPlatform'), 'PresentacionClubPlatform');
 const Capacitaciones = lazyWithRetry(() => import('./pages/Capacitaciones'), 'Capacitaciones');
 // Programas (v4.1280): catálogo del sitio y página de cada programa; administración en /admin/programas.
 const Programas = lazyWithRetry(() => import('./pages/Programas'), 'Programas');
@@ -595,7 +596,7 @@ const ProjectFormRedirect = () => {
 // en un sitio vencido quedaba un hueco donde no hay ninguna barra — el
 // acoplamiento que v4.878 dejó documentado. Una página que lleva el marco del
 // sitio lleva también sus avisos, como la postulación de proyectos.
-const HIDE_BANNERS_PATHS = ['/generador-pendones', '/agendar-capacitacion', '/mi-capacitacion', '/plantillas', '/aniversarios'];
+const HIDE_BANNERS_PATHS = ['/generador-pendones', '/agendar-capacitacion', '/mi-capacitacion', '/plantillas', '/aniversarios', '/presentacion'];
 const GlobalBanners = () => {
   const { pathname } = useLocation();
   if (HIDE_BANNERS_PATHS.some(p => pathname.startsWith(p))) return null;
@@ -816,6 +817,8 @@ function App() {
                 <Route path="/formulario-programas" element={<FormularioProgramas />} />
                 <Route path="/rotary-en-accion/visitas-del-gobernador" element={<VisitasGobernadorRedirect />} />
                 <Route path="/activar-mi-club" element={<ActivarMiClub />} />
+                {/* v4.1356 — Presentación comercial interactiva de Club Platform (pública, cinco slides). */}
+                <Route path="/presentacion" element={<PresentacionClubPlatform />} />
                 <Route path="/activar-club" element={<Navigate to="/activar-mi-club" replace />} />
                 <Route path="/aportar-contenido/:ref" element={<LegacyAportarRedirect />} />
 

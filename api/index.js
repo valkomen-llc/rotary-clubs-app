@@ -734,6 +734,12 @@ app.get('*', async (req, res) => {
         const { renderPublicDocument } = await import('../server/lib/seoServe.js');
         const key = documentCacheKey(hostname, req.path);
         const out = await documentCache.get(key, async () => {
+            // La presentación comercial (v4.1356) lleva su propio <head> en
+            // cualquier host: es puro, sin base, y va antes que el del sitio.
+            const { isPresentationPath, renderPresentationHead } = await import('../server/lib/presentationHead.js');
+            if (isPresentationPath(req.path)) {
+                return { html: renderPresentationHead(html, { host: hostname, protocol: req.headers['x-forwarded-proto'] || 'https' }), status: 200 };
+            }
             if (institutionalLive) {
                 const { platformDocument } = await import('../server/lib/platformSiteServe.js');
                 const own = await platformDocument({ html, host: hostname, path: req.path });
