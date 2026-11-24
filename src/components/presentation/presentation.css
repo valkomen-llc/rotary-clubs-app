@@ -256,7 +256,8 @@
 .cpd-plans-head .cpd-lead { margin: 0 0 6px; font-size: 18px; max-width: 470px; text-align: right; }
 .cpd-plans { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-top: 20px; flex: 1; min-height: 0; }
 .cpd-plan { position: relative; border: 1px solid var(--cpd-line); border-radius: 18px; padding: 20px 26px 18px; display: flex; flex-direction: column; background: #fff; min-height: 0; }
-.cpd-plan--featured { background: var(--cpd-navy); border-color: var(--cpd-navy); color: #fff; box-shadow: 0 28px 50px -30px rgba(9, 48, 83, .8); }
+/* Sin sombra: algunos navegadores la pintan como un recuadro duro detrás de la tarjeta. */
+.cpd-plan--featured { background: var(--cpd-navy); border-color: var(--cpd-navy); color: #fff; }
 .cpd-plan--featured::before { content: ''; position: absolute; left: 26px; right: 26px; top: 0; height: 5px; border-radius: 0 0 5px 5px; background: var(--cpd-gold); }
 .cpd-plan__top { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .cpd-plan__label { font-size: 12px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; color: var(--cpd-blue); }
@@ -423,6 +424,7 @@
   body.cpd-body .cpd-bar, body.cpd-body .cpd-nav { display: none !important; }
   .cpd-root { position: absolute; left: 0; top: 0; width: 1600px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .cpd-stage { transform: none !important; height: auto; box-shadow: none; }
+  .cpd-root * { box-shadow: none !important; }
   .cpd-slide { position: relative; width: 1600px; height: 900px; break-after: page; page-break-after: always; break-inside: avoid; }
   .cpd-slide:last-child { break-after: auto; page-break-after: auto; }
 }
