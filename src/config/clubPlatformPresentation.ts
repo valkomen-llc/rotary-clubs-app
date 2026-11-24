@@ -63,7 +63,8 @@ export const PRESENTATION = {
     /** Información de contacto. `null` → no se pinta. Nada de esto se inventa. */
     contact: {
         email: null as string | null,
-        whatsapp: null as string | null,
+        /** Línea de WhatsApp comercial. Los dos botones del cierre abren un chat con ella. */
+        whatsapp: '+57 315 8372895' as string | null,
         web: 'clubplatform.org',
     },
 
@@ -307,12 +308,23 @@ export const PRESENTATION = {
     ],
 
     /**
-     * Los dos botones del cierre. Apuntan a rutas que YA existen en la
-     * aplicación; `href: null` deja el botón sin pintar. Cambiarlos acá.
+     * Los dos botones del cierre. Con `contact.whatsapp` abren un chat de
+     * WhatsApp con `message` ya escrito; `{club}` se reemplaza por
+     * « para el <destinatario>» (`audience.name`) o por nada si no hay
+     * destinatario. Sin número de WhatsApp usan `href`, una ruta que YA
+     * existe en la aplicación; con `href: null` y sin número, no se pintan.
      */
     actions: {
-        primary: { label: 'Solicitar implementación', href: '/activar-mi-club' as string | null },
-        secondary: { label: 'Agendar una demostración', href: '/agendar-capacitacion' as string | null },
+        primary: {
+            label: 'Solicitar implementación',
+            href: '/activar-mi-club' as string | null,
+            message: 'Hola, quiero solicitar la implementación de Club Platform for Rotary{club}.',
+        },
+        secondary: {
+            label: 'Agendar una demostración',
+            href: '/agendar-capacitacion' as string | null,
+            message: 'Hola, quiero agendar una demostración de Club Platform for Rotary{club}.',
+        },
     },
 
     ui: {

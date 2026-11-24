@@ -55,12 +55,22 @@ for (const p of plans) {
 ok(!/garantiza(mos)? (resultados|posicionamiento)/i.test(config.replace(/No se garantizan resultados financieros/g, '')), 'no se promete un resultado garantizado');
 
 // ── Los botones llevan a rutas reales ───────────────────────────────
-const hrefs = [...config.matchAll(/label: '[^']+', href: ('([^']+)'|null)/g)].map(m => m[2] ?? null);
+const hrefs = [...config.matchAll(/label: '[^']+',\s+href: ('([^']+)'|null)/g)].map(m => m[2] ?? null);
 eq(hrefs.length, 2, 'el cierre tiene dos acciones');
 for (const h of hrefs.filter(Boolean)) {
     if (/^https?:\/\//.test(h)) continue;
     ok(app.includes(`<Route path="${h}"`), `«${h}» es una ruta registrada en App.tsx`);
 }
+
+// ── WhatsApp: los botones abren el chat con el mensaje ya escrito ───
+const wa = config.match(/whatsapp: '([^']+)'/)?.[1] || '';
+const waDigits = wa.replace(/\D/g, '');
+ok(/^57\d{10}$/.test(waDigits), `la línea de WhatsApp es un número colombiano completo (${wa})`);
+const messages = [...config.matchAll(/message: '([^']+)'/g)].map(m => m[1]);
+eq(messages.length, 2, 'cada botón tiene su mensaje');
+ok(messages.every(m => m.includes('{club}')), 'los mensajes nombran al destinatario');
+ok(/solicitar la implementación/.test(messages[0]) && /agendar una demostración/.test(messages[1]), 'cada mensaje dice lo que pide su botón');
+ok(read('src/components/presentation/whatsapp.ts').includes('https://wa.me/${digits}?text=${encodeURIComponent(message)}'), 'el enlace es wa.me con el mensaje codificado');
 
 // ── Head en el servidor ─────────────────────────────────────────────
 ok(config.includes(`title: '${H.PRESENTATION_META.title}'`), 'el título del servidor es el de la configuración');

@@ -43,6 +43,10 @@ vinculación. Léelo antes de tocar el módulo.
   promete un recaudo.
 - **Una herramienta que no está operativa no se simula.** `availability:
   'concept'` la rotula «Representación conceptual · próximamente».
+- **Los dos botones del cierre abren WhatsApp** (`contact.whatsapp`, hoy
+  +57 315 8372895) con el mensaje de `actions.*.message` ya escrito y el
+  destinatario de `audience.name` («…para el Club Rotario Cali Pance.»). Sin
+  número, vuelven a `href` (`/activar-mi-club`, `/agendar-capacitacion`).
 - **Un enlace que no existe no se inventa.** `href: null` deja el botón sin
   pintar; la prueba exige que una ruta interna esté registrada en `App.tsx`.
 - **La marca de Club Platform va por defecto en todos los slides** (`brand.mark`):
@@ -98,7 +102,7 @@ vinculación. Léelo antes de tocar el módulo.
    subirlas a la Biblioteca y pegar las URL en `media.screens`.
 2. **Imagen para compartir** de 1200 × 630 (`meta.shareImage` y
    `PRESENTATION_META.image`, con `largeImage: true`). Hoy se usa el logotipo.
-3. **Contacto** (`contact.email`, `contact.whatsapp`): vacíos a propósito.
+3. **Correo de contacto** (`contact.email`): vacío a propósito.
 4. Confirmar que «Agendar una demostración» debe llevar a
    `/agendar-capacitacion` (hoy es la agenda de capacitaciones y soporte) o
    crear allí una categoría de demostración abierta.

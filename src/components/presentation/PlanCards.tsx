@@ -9,6 +9,7 @@ import { ArrowRight, CalendarCheck, Check, LifeBuoy, Sparkles } from 'lucide-rea
 import { CTA_SOFT, CTA_SOLID, ctaSkin } from '../../lib/ctaStyles';
 import { PRESENTATION } from '../../config/clubPlatformPresentation';
 import { enter } from './motion';
+import { actionMessage, whatsappLink } from './whatsapp';
 
 type PlansSlide = (typeof PRESENTATION.slides)[4];
 type Plan = PlansSlide['plans'][number];
@@ -44,19 +45,23 @@ export const ImplementationRoute = ({ route }: { route: PlansSlide['route'] }) =
     </div>
 );
 
-const ActionLink = ({ action, solid }: { action: { label: string; href: string | null }; solid?: boolean }) => {
-    if (!action.href) return null;
+interface Action { label: string; href: string | null; message: string }
+
+const ActionLink = ({ action, solid }: { action: Action; solid?: boolean }) => {
+    const { contact, audience } = PRESENTATION;
+    const href = whatsappLink(contact.whatsapp, actionMessage(action.message, audience?.name)) || action.href;
+    if (!href) return null;
     const cls = `cpd-btn ${ctaSkin(solid ? CTA_SOLID : CTA_SOFT)}`;
     const Icon = solid ? ArrowRight : CalendarCheck;
     const inner = <>{solid ? null : <Icon aria-hidden />}<span>{action.label}</span>{solid ? <Icon aria-hidden /> : null}</>;
-    return /^https?:\/\//.test(action.href)
-        ? <a className={cls} href={action.href} target="_blank" rel="noopener noreferrer">{inner}</a>
-        : <Link className={cls} to={action.href}>{inner}</Link>;
+    return /^https?:\/\//.test(href)
+        ? <a className={cls} href={href} target="_blank" rel="noopener noreferrer">{inner}</a>
+        : <Link className={cls} to={href}>{inner}</Link>;
 };
 
 export const ClosingCta = ({ cta }: { cta: PlansSlide['cta'] }) => {
     const { contact, actions } = PRESENTATION;
-    const lines = [contact.email, contact.whatsapp, contact.web].filter(Boolean).join(' · ');
+    const lines = [contact.whatsapp ? `WhatsApp ${contact.whatsapp}` : null, contact.email, contact.web].filter(Boolean).join(' · ');
     return (
         <div className="cpd-cta">
             <h3>{cta.title}</h3>
