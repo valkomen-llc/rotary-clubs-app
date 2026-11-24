@@ -30,6 +30,8 @@ export interface Dossier { groups: DossierGroup[] }
 export interface DossierCaps {
     role: string; view: boolean; edit: boolean; translate: boolean; approveTranslation: boolean;
     export: boolean; config: boolean; viewPayments: boolean;
+    /** v4.1356 — Asignar Cadres, revocar verificaciones, recordatorios. */
+    manageTranslation?: boolean;
 }
 
 export type TranslationState = 'not_started' | 'generating' | 'draft' | 'pending_review' | 'reviewed' | 'approved' | 'outdated' | 'error';
@@ -59,6 +61,8 @@ export interface DossierPayload {
     dossier: Dossier;
     forms: { key: string; title: string; started: boolean; completionPct: number; status: string | null; submittedAt: string | null; lockedAt: string | null }[];
     translation: { en: TranslationStatus };
+    /** v4.1356 — El seguimiento (verificación por Cadre, porcentajes, vigencia). */
+    translationTracking?: { en: import('./translationTracking').TranslationTracking };
     booklets: { lang: string; status: string; versionNumber: number; createdAt: string }[];
     documents: {
         files: { id: string; fileName: string; fileUrl: string; fileSize: number | null; contentType: string | null; uploadedBy: string | null; createdAt: string }[];
@@ -74,7 +78,9 @@ export interface DocumentPayload {
     id: string; publicRef: string; kind: 'es' | 'en' | 'bilingual'; edition: string;
     projectName: string; clubName: string; district: string; generatedAt: string;
     es: Dossier; en?: Dossier;
-    translation?: { mode: 'approved' | 'draft' | 'none'; state: TranslationState; label: string; approvedAt: string | null; approvedBy: string | null; versionNumber: number | null; outdatedSinceApproval: boolean };
+    translation?: { mode: 'approved' | 'draft' | 'none'; state: TranslationState; label: string; approvedAt: string | null; approvedBy: string | null; versionNumber: number | null; outdatedSinceApproval: boolean;
+        /** v4.1356 — Sólo una VERIFICACIÓN es documento oficial (una aprobación heredada no). */
+        verified?: boolean; verifiedRole?: string | null };
     /** v4.1345 — La ficha que descarga el club desde «Mi Proyecto». */
     audience?: 'club';
     /** Logotipo del sitio de la Feria como data URL (lo trae el servidor), o null. */

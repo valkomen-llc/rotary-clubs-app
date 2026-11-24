@@ -12,14 +12,22 @@
 // estado de la postulación ni el pago.
 // ════════════════════════════════════════════════════════════════════════════
 import db from '../lib/db.js';
-import { withAccess, actorFrom } from './projectFairAdminController.js';
-import { logEvent, readConfigForSubmission, readEditionEvent } from './projectFairController.js';
+import { withAccess, actorFrom, buildFilters } from './projectFairAdminController.js';
+import { logEvent, readConfigForSubmission, readEditionEvent, sendFairEmail, headerLogoHtml, footerBrandingHtml } from './projectFairController.js';
 import { resolveForms, storageOf, storageIsShared } from '../lib/projectFormsRegistry.js';
 import { withComputed, completionOf, validateAnswers } from '../lib/projectFormEngine.js';
 import { ensureProjectDossierSchema } from '../lib/ensureProjectDossierSchema.js';
 import { routeToModel, getDefaultModel } from '../lib/ai-router.js';
+import { hasDocQuery, matchesDocFilters } from '../lib/projectDocumentTracking.js';
+import { loadTracking } from '../lib/projectDocumentTrackingStore.js';
 import D from '../lib/projectDossier.js';
+// v4.1356 — Verificación y seguimiento de traducciones por Cadres.
+import T from '../lib/translationTracking.js';
+import {
+    HEADER_SQL, loadTranslationTracking, checkTranslationValidity, insertTranslationEvent, adminLinkFor,
+} from '../lib/translationTrackingStore.js';
 
+console.log('[projectDossierController] v4.1356.0 cargado — Traducción verificada por Cadre: «Verificar traducción» (la aprobación de siempre, reforzada: todo revisado, sin avisos bloqueantes, justificación, huella exacta y sin autocertificación), vigencia automática por huella, revocación, asignación de Cadres, indicadores, filtros, recordatorios y bitácora.');
 console.log('[projectDossierController] v4.1355.0 cargado — Ficha técnica: «Club postulante» y «Nombre del proyecto» del registro inicial muestran el club principal y el título diligenciados, con lo inscrito debajo.');
 console.log('[projectDossierController] v4.1354.0 cargado — Ficha técnica: la portada toma el título y el club principal de la Formulación (el club del registro pasa a participantes) y una fila sin concepto que suma las demás es el total.');
 console.log('[projectDossierController] v4.1353.0 cargado — Ficha técnica: la portada suma los clubes escritos en «Club Rotario» y la fila «total» del desglose no se cuenta como rubro.');
@@ -40,6 +48,8 @@ const capsOf = (access) => ({
     view: !!access.view, edit: !!access.edit, translate: !!access.translate,
     approveTranslation: !!access.approveTranslation, export: !!access.export,
     config: !!access.config, viewPayments: !!access.viewPayments,
+    // v4.1356 — Asignar Cadres, revocar verificaciones, recordatorios.
+    manageTranslation: !!access.manageTranslation,
 });
 
 // ── Alcance ────────────────────────────────────────────────────────────────
@@ -100,16 +110,20 @@ const loadGlossary = async (lang = 'en') => {
 
 const loadTranslation = async (submissionId, lang, q = db) => {
     const [h, f] = await Promise.all([
-        q.query('SELECT * FROM "ProjectDossierTranslation" WHERE "submissionId" = $1 AND lang = $2 LIMIT 1', [submissionId, lang]),
+        // v4.1356 — Con el número de la versión verificada (lo dice la insignia).
+        q.query(HEADER_SQL, [[submissionId], lang]),
         q.query('SELECT * FROM "ProjectDossierTranslationField" WHERE "submissionId" = $1 AND lang = $2', [submissionId, lang]),
     ]);
     return { header: h.rows[0] || null, fieldRows: f.rows };
 };
 
-const statusFor = async (dossier, submissionId, lang) => {
+const statusFor = async (dossier, submissionId, lang, q = db) => {
     const items = D.translatableItems(dossier);
-    const { header, fieldRows } = await loadTranslation(submissionId, lang);
-    return { items, header, fieldRows, status: D.translationStatus({ items, fieldRows, header, now: Date.now() }) };
+    const { header, fieldRows } = await loadTranslation(submissionId, lang, q);
+    const status = D.translationStatus({ items, fieldRows, header, now: Date.now() });
+    // v4.1356 — El seguimiento (estado del listado, porcentajes, vigencia) sale
+    // del MISMO estado: no hay un segundo cálculo.
+    return { items, header, fieldRows, status, tracking: T.trackingOf(status, header) };
 };
 
 const summaryOf = (status) => {
@@ -170,7 +184,7 @@ const documentsOf = async (row, dossier, access) => {
 export const getDossier = withSchema(async (req, res, { access }) => {
     const row = await loadScoped(req, res); if (!row) return;
     const { cfg, forms, dossier } = await loadDossier(row);
-    const [{ status }, documents, edition] = await Promise.all([
+    const [{ status, tracking }, documents, edition] = await Promise.all([
         statusFor(dossier, row.id, 'en'),
         documentsOf(row, dossier, access),
         readEditionEvent(row.eventId).catch(() => null),
@@ -182,6 +196,7 @@ export const getDossier = withSchema(async (req, res, { access }) => {
         dossier,
         forms: forms.map(f => ({ key: f.key, title: f.template?.title || f.key, started: !!f.record, completionPct: Number(f.record?.completionPct || 0), status: f.record?.status || null, submittedAt: f.record?.submittedAt || null, lockedAt: f.record?.lockedAt || null })),
         translation: { en: summaryOf(status) },
+        translationTracking: { en: tracking },
         booklets,
         documents,
         access: capsOf(access),
@@ -277,6 +292,9 @@ export const updateDossier = withSchema(async (req, res, { access }) => {
     }).catch(() => {});
 
     const fresh = (await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = $1', [row.id])).rows[0];
+    // v4.1356 — Si el comité cambió un original de una traducción verificada,
+    // la verificación pierde vigencia aquí mismo (y se avisa al Cadre).
+    await checkTranslationValidity(row.id);
     const { dossier } = await loadDossier(fresh);
     const { status } = await statusFor(dossier, row.id, 'en');
     res.json({ ok: true, changed: plan.changes.map(c => c.path), dossier, translation: { en: summaryOf(status) } });
@@ -287,13 +305,14 @@ export const updateDossier = withSchema(async (req, res, { access }) => {
 // ════════════════════════════════════════════════════════════════════════════
 export const getDossierHistory = withSchema(async (req, res) => {
     const row = await loadScoped(req, res); if (!row) return;
-    const [revisions, versions, booklets, exportsRows] = await Promise.all([
+    const [revisions, versions, booklets, exportsRows, trEvents] = await Promise.all([
         db.query('SELECT * FROM "ProjectDossierRevision" WHERE "submissionId" = $1 ORDER BY "createdAt" DESC LIMIT 400', [row.id]),
-        db.query('SELECT id, lang, "versionNumber", "approvedBy", "approvedAt", note, (SELECT COUNT(*) FROM jsonb_object_keys(fields))::int AS "fieldCount" FROM "ProjectDossierTranslationVersion" WHERE "submissionId" = $1 ORDER BY "approvedAt" DESC', [row.id]),
+        db.query('SELECT id, lang, "versionNumber", "approvedBy", "approvedAt", note, kind, "approvedRole", "reviewedCount", "totalCount", "warningsCount", justification, (SELECT COUNT(*) FROM jsonb_object_keys(fields))::int AS "fieldCount" FROM "ProjectDossierTranslationVersion" WHERE "submissionId" = $1 ORDER BY "approvedAt" DESC', [row.id]),
         db.query('SELECT id, lang, "versionNumber", status, "approvedAt", "approvedBy", "createdBy", "createdAt" FROM "ProjectDossierBooklet" WHERE "submissionId" = $1 ORDER BY "createdAt" DESC', [row.id]),
         db.query('SELECT id, kind, lang, mode, "actorName", "createdAt", jsonb_array_length("submissionIds") AS projects FROM "ProjectDossierExport" WHERE "submissionIds" ? $1 ORDER BY "createdAt" DESC LIMIT 100', [row.id]),
+        db.query('SELECT * FROM "ProjectDossierTranslationEvent" WHERE "submissionId" = $1 ORDER BY "createdAt" DESC LIMIT 200', [row.id]).catch(() => ({ rows: [] })),
     ]);
-    res.json({ revisions: revisions.rows, translationVersions: versions.rows, booklets: booklets.rows, exports: exportsRows.rows });
+    res.json({ revisions: revisions.rows, translationVersions: versions.rows, booklets: booklets.rows, exports: exportsRows.rows, translationEvents: trEvents.rows });
 }, 'view');
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -310,12 +329,42 @@ export const getTranslation = withSchema(async (req, res, { access }) => {
     const lang = langOf(req, res); if (!lang) return;
     const row = await loadScoped(req, res); if (!row) return;
     const { dossier } = await loadDossier(row);
-    const [{ status }, glossary, versions] = await Promise.all([
+    const [{ status, header, fieldRows, items }, glossary, versions, events] = await Promise.all([
         statusFor(dossier, row.id, lang),
         loadGlossary(lang),
-        db.query('SELECT id, "versionNumber", "approvedBy", "approvedAt", note FROM "ProjectDossierTranslationVersion" WHERE "submissionId" = $1 AND lang = $2 ORDER BY "versionNumber" DESC', [row.id, lang]),
+        db.query('SELECT id, "versionNumber", "approvedBy", "approvedAt", note, kind, "approvedRole", "totalCount", "reviewedCount", "warningsCount", justification, reviewers, origins FROM "ProjectDossierTranslationVersion" WHERE "submissionId" = $1 AND lang = $2 ORDER BY "versionNumber" DESC', [row.id, lang]),
+        db.query('SELECT id, action, "fromState", "toState", "versionNumber", "reviewedCount", "totalCount", paths, note, reason, "assigneeEmail", "previousAssignee", recipient, "deliveryStatus", "actorName", "actorRole", "createdAt" FROM "ProjectDossierTranslationEvent" WHERE "submissionId" = $1 AND lang = $2 ORDER BY "createdAt" DESC LIMIT 100', [row.id, lang]).catch(() => ({ rows: [] })),
     ]);
-    res.json({ lang, status, glossary: glossary.merged, versions: versions.rows, access: capsOf(access) });
+    // v4.1356 — La barrida de vigencia también corre al abrir la traducción:
+    // si el original cambió, queda registrado antes de pintar.
+    let h = header;
+    let tracking = T.trackingOf(status, header);
+    if (T.invalidationOf(status, header)) {
+        const fresh = (await loadTranslationTracking([row], { lang })).get(row.id);
+        if (fresh) { h = fresh.header; tracking = fresh.tracking; }
+    }
+    const present = fieldRows.filter(r => items.some(i => i.path === r.path));
+    const nextVersion = (versions.rows[0]?.versionNumber || 0) + 1;
+    const check = T.verificationCheck(status, { actorEmail: req.user?.email, projectEmail: row.email, justification: 'x'.repeat(T.JUSTIFICATION_MIN) });
+    res.json({
+        lang, status, tracking, glossary: glossary.merged, versions: versions.rows, events: events.rows,
+        verification: {
+            // Lo que verá la ventana de confirmación y la huella que se devuelve
+            // al verificar (si otro cambia algo entre medio → 409).
+            fingerprint: D.fingerprintOf(present),
+            summary: T.verificationSummary(status, { nextVersionNumber: nextVersion }),
+            // ¿Qué impide verificar HOY, sin contar la justificación (la pide la ventana)?
+            canVerify: !!access.approveTranslation && check.ok && tracking.state !== 'verified',
+            blockedReason: tracking.state === 'verified' ? 'La traducción ya está verificada y vigente.' : (check.ok ? null : check.error),
+            blockedCode: tracking.state === 'verified' ? 'verified' : (check.ok ? null : check.code),
+            needsJustification: (check.nonBlocking || []).length > 0,
+            nonBlocking: check.nonBlocking || [],
+            blocking: check.blocking || [],
+            revokedAt: h?.revokedAt || null, revokedBy: h?.revokedBy || null, revokeReason: h?.revokeReason || null,
+        },
+        actor: { email: req.user?.email || null, role: access.role },
+        access: capsOf(access),
+    });
 }, 'view');
 
 const runBatch = async (slug, system, batch, notes) => {
@@ -486,33 +535,81 @@ export const saveTranslation = withSchema(async (req, res, { access }) => {
     res.json({ ok: true, saved: plan.length, status: after.status });
 }, 'translate');
 
-// POST /admin/postulaciones/:id/traduccion/:lang/aprobar   { acknowledgeWarnings, note }
+// ════════════════════════════════════════════════════════════════════════════
+// v4.1356 — VERIFICAR la traducción («Traducción verificada por Cadre»)
+//
+// POST /admin/postulaciones/:id/traduccion/:lang/verificar
+// POST /admin/postulaciones/:id/traduccion/:lang/aprobar   (la ruta de siempre)
+//   { justification?, expectedFingerprint?, note? }
+//
+// ES el botón «Aprobar versión inglesa» de v4.1324, reforzado — no un segundo
+// proceso de aprobación—: todo traducido y revisado por una persona, nada
+// desactualizado, ningún aviso bloqueante (correos o enlaces cambiados), una
+// justificación escrita para los avisos no bloqueantes, la MISMA huella que
+// la persona tenía en pantalla (409 si otro cambió algo) y nunca el
+// responsable del proyecto certificando lo suyo. Todo se vuelve a leer DENTRO
+// del candado: lo que se certifica es exactamente lo que queda guardado.
+// ════════════════════════════════════════════════════════════════════════════
 export const approveTranslation = withSchema(async (req, res, { access }) => {
     const lang = langOf(req, res); if (!lang) return;
     const row = await loadScoped(req, res); if (!row) return;
     const actor = actorFrom(req, access);
-    const { dossier } = await loadDossier(row);
-    const { status, fieldRows } = await statusFor(dossier, row.id, lang);
-    const check = D.approvalCheck(status, { acknowledgeWarnings: req.body?.acknowledgeWarnings === true });
-    if (!check.ok) return res.status(check.needsAcknowledge ? 409 : 400).json({ ...check, status });
+    const justification = clean(req.body?.justification, 2000);
+    const note = clean(req.body?.note, 500) || null;
+    const expectedFingerprint = clean(req.body?.expectedFingerprint, 64) || null;
 
-    const present = fieldRows.filter(r => status.fields.some(f => f.path === r.path));
-    const fingerprint = D.fingerprintOf(present);
-    const snapshot = Object.fromEntries(status.fields.map(f => [f.path, { label: f.label, source: f.source, text: f.text, sourceHash: f.sourceHash }]));
     const client = await db.pool.connect();
-    let version;
+    let version, fromState, check, status, items, present;
     try {
         await client.query('BEGIN');
         await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`dossier-approve:${row.id}:${lang}`]);
+        const fresh = (await client.query('SELECT * FROM "ProjectFairSubmission" WHERE id = $1', [row.id])).rows[0] || row;
+        const { dossier } = await loadDossier(fresh, client);
+        const st = await statusFor(dossier, row.id, lang, client);
+        ({ status, items } = st);
+        present = st.fieldRows.filter(r => status.fields.some(f => f.path === r.path));
+        fromState = st.tracking.state;
+        const fingerprint = D.fingerprintOf(present);
+        // Idempotente: dos clics (o dos personas) sobre lo mismo ya verificado
+        // y vigente no crean una segunda versión idéntica.
+        if (st.tracking.state === 'verified' && st.header?.approvedFingerprint === fingerprint) {
+            await client.query('ROLLBACK');
+            return res.json({ ok: true, alreadyVerified: true, version: { id: st.header.approvedVersionId, versionNumber: st.header.approvedVersionNumber, approvedAt: st.header.approvedAt }, status, tracking: st.tracking });
+        }
+        check = T.verificationCheck(status, {
+            justification, expectedFingerprint, currentFingerprint: fingerprint,
+            actorEmail: req.user?.email, projectEmail: fresh.email,
+        });
+        if (!check.ok) {
+            await client.query('ROLLBACK');
+            const code = check.code === 'self_certification' ? 403 : (check.code === 'changed' || check.code === 'needs_justification') ? 409 : 400;
+            return res.status(code).json({ ...check, status, tracking: st.tracking });
+        }
+        const summary = T.verificationSummary(status);
+        const snapshot = Object.fromEntries(status.fields.map(f => [f.path, { label: f.label, source: f.source, text: f.text, sourceHash: f.sourceHash, origin: f.origin, reviewedBy: f.reviewedBy, reviewedAt: f.reviewedAt, warnings: f.warnings }]));
+        const sourceFingerprint = T.sourceFingerprintOf(items);
         const n = await client.query('SELECT COALESCE(MAX("versionNumber"),0)+1 AS n FROM "ProjectDossierTranslationVersion" WHERE "submissionId" = $1 AND lang = $2', [row.id, lang]);
-        const { rows } = await client.query(`INSERT INTO "ProjectDossierTranslationVersion" ("submissionId", lang, "versionNumber", fields, fingerprint, note, "approvedBy", "approvedById")
-            VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8) RETURNING *`,
-        [row.id, lang, Number(n.rows[0].n), JSON.stringify(snapshot), fingerprint, clean(req.body?.note, 500) || null, actor.name, actor.id]);
+        const { rows } = await client.query(`INSERT INTO "ProjectDossierTranslationVersion" ("submissionId", lang, "versionNumber", fields, fingerprint, note, "approvedBy", "approvedById",
+                kind, "approvedRole", "totalCount", "reviewedCount", "warningsCount", justification, "sourceFingerprint", reviewers, origins)
+            VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17::jsonb) RETURNING *`,
+        [row.id, lang, Number(n.rows[0].n), JSON.stringify(snapshot), fingerprint, note, actor.name, actor.id,
+            T.VERIFICATION_KIND, access.role, summary.total, summary.reviewed, summary.warnings, summary.warnings ? justification : null,
+            sourceFingerprint, JSON.stringify(summary.reviewers), JSON.stringify(summary.origins)]);
         version = rows[0];
-        await client.query(`INSERT INTO "ProjectDossierTranslation" ("submissionId", lang, status, "approvedAt", "approvedBy", "approvedFingerprint", "approvedVersionId")
-            VALUES ($1,$2,'idle',NOW(),$3,$4,$5)
-            ON CONFLICT ("submissionId", lang) DO UPDATE SET "approvedAt" = NOW(), "approvedBy" = $3, "approvedFingerprint" = $4, "approvedVersionId" = $5, "updatedAt" = NOW()`,
-        [row.id, lang, actor.name, fingerprint, version.id]);
+        await client.query(`INSERT INTO "ProjectDossierTranslation" ("submissionId", lang, status, "approvedAt", "approvedBy", "approvedFingerprint", "approvedVersionId", "approvalKind", "approvedRole", "approvedById")
+            VALUES ($1,$2,'idle',NOW(),$3,$4,$5,$6,$7,$8)
+            ON CONFLICT ("submissionId", lang) DO UPDATE SET "approvedAt" = NOW(), "approvedBy" = $3, "approvedFingerprint" = $4, "approvedVersionId" = $5,
+                "approvalKind" = $6, "approvedRole" = $7, "approvedById" = $8,
+                "invalidatedAt" = NULL, "invalidatedVersionId" = NULL, "invalidatedPaths" = NULL,
+                "revokedAt" = NULL, "revokedBy" = NULL, "revokeReason" = NULL, "updatedAt" = NOW()`,
+        [row.id, lang, actor.name, fingerprint, version.id, T.VERIFICATION_KIND, access.role, actor.id]);
+        await insertTranslationEvent(client, {
+            submissionId: row.id, eventId: row.eventId, lang, action: 'verified', fromState, toState: 'verified',
+            versionId: version.id, versionNumber: version.versionNumber, sourceFingerprint, translationFingerprint: fingerprint,
+            reviewedCount: summary.reviewed, totalCount: summary.total,
+            paths: summary.warnings ? check.nonBlocking.map(f => ({ path: f.path, label: f.label, warnings: f.warnings.map(w => w.code) })) : null,
+            note, reason: summary.warnings ? justification : null, actor,
+        });
         await client.query('COMMIT');
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
@@ -521,14 +618,47 @@ export const approveTranslation = withSchema(async (req, res, { access }) => {
 
     await logEvent(row.id, {
         type: 'dossier_translation_approved',
-        title: `Traducción al inglés aprobada (versión ${version.versionNumber})`,
-        detail: clean(req.body?.note, 500) || null,
+        title: `Traducción al inglés verificada (versión ${version.versionNumber})`,
+        detail: [note, version.justification ? `Justificación de avisos: ${version.justification}` : null].filter(Boolean).join(' · ') || null,
         actor,
-        metadata: { lang, versionId: version.id, versionNumber: version.versionNumber, fields: status.total },
+        metadata: { lang, versionId: version.id, versionNumber: version.versionNumber, fields: status.total, reviewed: version.reviewedCount, role: access.role, kind: T.VERIFICATION_KIND },
     }).catch(() => {});
+    const { dossier } = await loadDossier(row);
     const after = await statusFor(dossier, row.id, lang);
-    res.json({ ok: true, version: { id: version.id, versionNumber: version.versionNumber, approvedAt: version.approvedAt }, status: after.status });
+    res.json({ ok: true, version: { id: version.id, versionNumber: version.versionNumber, approvedAt: version.approvedAt }, status: after.status, tracking: after.tracking });
 }, 'approveTranslation');
+export const verifyTranslation = approveTranslation;
+
+// POST /admin/postulaciones/:id/traduccion/:lang/revocar   { reason }
+// La verificación deja de certificar; la versión inmutable y el trabajo de
+// revisión se conservan. Sólo con `manageTranslation` y con motivo.
+export const revokeTranslation = withSchema(async (req, res, { access }) => {
+    const lang = langOf(req, res); if (!lang) return;
+    const row = await loadScoped(req, res); if (!row) return;
+    const reason = clean(req.body?.reason, 1000);
+    if (reason.length < 10) return res.status(400).json({ error: 'Escribe el motivo de la revocación (mínimo 10 caracteres).' });
+    const actor = actorFrom(req, access);
+    const { dossier } = await loadDossier(row);
+    const before = await statusFor(dossier, row.id, lang);
+    if (!T.isVerification(before.header)) return res.status(409).json({ error: 'Este proyecto no tiene una verificación que revocar.' });
+    const { rows } = await db.query(`UPDATE "ProjectDossierTranslation"
+        SET "revokedAt" = NOW(), "revokedBy" = $4, "revokeReason" = $5,
+            "approvedAt" = NULL, "approvedBy" = NULL, "approvedFingerprint" = NULL, "approvedVersionId" = NULL,
+            "approvalKind" = NULL, "approvedRole" = NULL, "approvedById" = NULL,
+            "invalidatedAt" = NULL, "invalidatedVersionId" = NULL, "invalidatedPaths" = NULL, "updatedAt" = NOW()
+        WHERE "submissionId" = $1 AND lang = $2 AND "approvedVersionId" = $3 RETURNING id`,
+    [row.id, lang, before.header.approvedVersionId, actor.name, reason]);
+    if (!rows[0]) return res.status(409).json({ error: 'La verificación cambió mientras tanto. Vuelve a cargar.' });
+    await insertTranslationEvent(db, {
+        submissionId: row.id, eventId: row.eventId, lang, action: 'revoked', fromState: before.tracking.state, toState: null,
+        versionId: before.header.approvedVersionId, versionNumber: before.header.approvedVersionNumber ?? null,
+        sourceFingerprint: T.sourceFingerprintOf(before.items), totalCount: before.status.total, reviewedCount: before.status.counts.reviewed,
+        reason, actor,
+    });
+    await logEvent(row.id, { type: 'dossier_translation_revoked', title: `Verificación de la traducción al inglés revocada (versión ${before.header.approvedVersionNumber ?? '—'})`, detail: reason, actor, metadata: { lang, versionId: before.header.approvedVersionId } }).catch(() => {});
+    const after = await statusFor(dossier, row.id, lang);
+    res.json({ ok: true, status: after.status, tracking: after.tracking });
+}, 'manageTranslation');
 
 // ════════════════════════════════════════════════════════════════════════════
 // Fichas (PDF): el servidor arma los DATOS; el navegador dibuja el PDF.
@@ -569,11 +699,19 @@ const documentPayload = async (row, { kind, use, includeContact, glossary }) => 
             mode = 'draft';
         }
         out.en = D.englishView(base, translations, glossary);
+        // v4.1356 — Sólo una VERIFICACIÓN (por Cadre o perfil autorizado,
+        // con todo revisado) es documento oficial. Una aprobación heredada
+        // (anterior a la verificación) sigue siendo la fuente del texto, pero
+        // la ficha sale marcada como pendiente de verificación: no se
+        // certifica retroactivamente.
+        const verified = mode === 'approved' && approvedVersion?.kind === T.VERIFICATION_KIND;
         out.translation = {
             mode, state: status.state, label: status.label,
             approvedAt: approvedVersion?.approvedAt || null, approvedBy: approvedVersion?.approvedBy || null,
             versionNumber: approvedVersion?.versionNumber || null,
             outdatedSinceApproval: mode === 'approved' && status.state !== 'approved',
+            verified,
+            verifiedRole: verified ? (approvedVersion.approvedRole || null) : null,
         };
     }
     return out;
@@ -681,7 +819,7 @@ export const getDossierStates = withSchema(async (req, res) => {
         db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = ANY($1::text[])', [ids]),
         db.query('SELECT * FROM "ProjectFairMasterForm" WHERE "submissionId" = ANY($1::text[])', [ids]).catch(() => ({ rows: [] })),
         db.query('SELECT * FROM "ProjectFairProjectForm" WHERE "submissionId" = ANY($1::text[])', [ids]).catch(() => ({ rows: [] })),
-        db.query('SELECT * FROM "ProjectDossierTranslation" WHERE "submissionId" = ANY($1::text[]) AND lang = $2', [ids, 'en']),
+        db.query(HEADER_SQL, [ids, 'en']),
         db.query('SELECT "submissionId", path, "sourceHash", text, reviewed, warnings FROM "ProjectDossierTranslationField" WHERE "submissionId" = ANY($1::text[]) AND lang = $2', [ids, 'en']),
     ]);
     const states = {};
@@ -695,18 +833,292 @@ export const getDossierStates = withSchema(async (req, res) => {
                 : master.rows.find(r => r.submissionId === row.id) || null;
         }
         const { dossier, forms } = assemble(row, cfg, records);
+        const header = headers.rows.find(h => h.submissionId === row.id) || null;
         const st = D.translationStatus({
             items: D.translatableItems(dossier),
             fieldRows: fields.rows.filter(f => f.submissionId === row.id),
-            header: headers.rows.find(h => h.submissionId === row.id) || null,
+            header,
             now: Date.now(),
         });
         states[row.id] = {
             en: { state: st.state, label: st.label, color: st.color, counts: st.counts, total: st.total },
+            // v4.1356 — El seguimiento (verificación por Cadre, porcentajes).
+            tracking: T.trackingOf(st, header),
             forms: forms.map(f => ({ key: f.key, started: !!f.record, completionPct: Number(f.record?.completionPct || 0) })),
         };
     }
     res.json({ states });
+}, 'view');
+
+// ════════════════════════════════════════════════════════════════════════════
+// v4.1356 — SEGUIMIENTO DE TRADUCCIONES (indicadores, asignación de Cadres,
+// configuración y recordatorios). Todo por `withAccess` con su capacidad; las
+// cifras salen de `loadTranslationTracking`, el mismo cálculo del listado y
+// de las exportaciones.
+// ════════════════════════════════════════════════════════════════════════════
+const CADRE_ROLES = [['cadres', 'cadre', 'Cadre'], ['reviewers', 'reviewer', 'Revisor'], ['translators', 'translator', 'Traductor']];
+
+/** Quiénes pueden recibir proyectos: Cadres primero, luego revisores y traductores. */
+const assignableOf = async (cfg) => {
+    const seen = new Set();
+    const out = [];
+    for (const [list, role, roleLabel] of CADRE_ROLES) {
+        for (const raw of Array.isArray(cfg?.access?.[list]) ? cfg.access[list] : []) {
+            const email = String(raw || '').trim().toLowerCase();
+            if (!email || seen.has(email)) continue;
+            seen.add(email);
+            out.push({ email, role, roleLabel, name: null });
+        }
+    }
+    if (out.length) {
+        const { rows } = await db.query('SELECT lower(email) AS email, name FROM "User" WHERE lower(email) = ANY($1::text[])', [out.map(o => o.email)]).catch(() => ({ rows: [] }));
+        const names = new Map(rows.map(r => [r.email, r.name]));
+        for (const o of out) o.name = names.get(o.email) || null;
+    }
+    return out;
+};
+
+/** `trCadre=me` se resuelve al correo de quien consulta. */
+export const resolveTranslationQuery = (req) => {
+    const q = { ...(req.query || {}) };
+    if (String(q.trCadre || '').toLowerCase() === 'me') q.trCadre = String(req.user?.email || '__nadie__').toLowerCase();
+    return q;
+};
+
+/** Las filas de la edición que pasan los filtros del listado (SIN la vista de traducción). */
+const filteredRows = async (req, cfg, { keepView = false } = {}) => {
+    const q = resolveTranslationQuery(req);
+    const { clause, params } = buildFilters(q);
+    const { rows } = await db.query(`SELECT * FROM "ProjectFairSubmission" ${clause} ORDER BY "createdAt" DESC LIMIT 5000`, params);
+    let list = rows;
+    // Los filtros documentales también se combinan (pago confirmado +
+    // documentación completa + traducción pendiente).
+    if (hasDocQuery(q)) {
+        const docs = await loadTracking(list, cfg);
+        list = list.filter(r => matchesDocFilters(docs.get(r.id), { ...q, sortBy: undefined }));
+    }
+    const tr = await loadTranslationTracking(list);
+    const tq = keepView ? q : { ...q, tr: undefined };
+    return list.map(r => ({ row: r, tracking: tr.get(r.id)?.tracking || null })).filter(x => x.tracking && T.matchesTranslationFilters(x.tracking, tq));
+};
+
+// GET /admin/traducciones?evento=…&<filtros del listado>
+export const getTranslationSummary = withSchema(async (req, res, { cfg, access }) => {
+    const entries = await filteredRows(req, cfg);
+    const config = T.normalizeTranslationConfig(cfg.translationTracking);
+    const me = String(req.user?.email || '').toLowerCase();
+    res.json({
+        kpis: T.summarizeTranslations(entries.map(e => e.tracking)),
+        workload: T.workloadByCadre(entries),
+        mine: entries.filter(e => e.tracking.assignee && e.tracking.assignee.email.toLowerCase() === me).length,
+        config,
+        daysToDeadline: T.daysToDeadline(config.deadline),
+        views: T.translationViewOptions(),
+        states: T.TRACKING_STATES,
+        reminderScopes: T.REMINDER_SCOPES,
+        assignable: access.manageTranslation ? await assignableOf(cfg) : [],
+        access: capsOf(access),
+        generatedAt: new Date().toISOString(),
+    });
+}, 'view');
+
+// ── Configuración (fecha límite de traducción y avisos) ───────────────────
+export const getTranslationConfig = withSchema(async (req, res, { cfg }) => {
+    res.json({ config: T.normalizeTranslationConfig(cfg.translationTracking), history: Array.isArray(cfg.translationTrackingHistory) ? cfg.translationTrackingHistory.slice(0, 30) : [] });
+}, 'view');
+
+export const saveTranslationConfig = withSchema(async (req, res, { cfg, access }) => {
+    const eventId = clean(req.query?.evento, 60);
+    if (!eventId) return res.status(400).json({ error: 'Abre una edición para configurar su seguimiento de traducciones.' });
+    const { rows } = await db.query('SELECT 1 FROM "ProjectFairConfig" WHERE "eventId" = $1 LIMIT 1', [eventId]);
+    if (!rows[0]) return res.status(409).json({ error: 'Esta edición todavía no tiene Convocatoria guardada. Guárdala primero.' });
+    const before = T.normalizeTranslationConfig(cfg.translationTracking);
+    const next = T.normalizeTranslationConfig({ ...before, ...(req.body?.config || req.body || {}) });
+    const changed = Object.keys(next).filter(k => JSON.stringify(next[k]) !== JSON.stringify(before[k]));
+    const actor = actorFrom(req, access);
+    const history = [{ at: new Date().toISOString(), by: actor.name, changed, deadline: next.deadline }, ...(Array.isArray(cfg.translationTrackingHistory) ? cfg.translationTrackingHistory : [])].slice(0, 30);
+    await db.query(`UPDATE "ProjectFairConfig"
+                    SET config = COALESCE(config, '{}'::jsonb) || jsonb_build_object('translationTracking', $2::jsonb, 'translationTrackingHistory', $3::jsonb),
+                        "updatedAt" = NOW()
+                    WHERE "eventId" = $1`, [eventId, JSON.stringify(next), JSON.stringify(history)]);
+    res.json({ config: next, changed, history });
+}, 'config');
+
+// ── Correo al Cadre (asignación y recordatorio) ───────────────────────────
+const fmtDay = (d) => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'America/Bogota' }) : '');
+export const cadreEmailHtml = ({ cfg, name, intro, items, config, link }) => {
+    const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const rows = items.map(({ row, tracking: t }) => `
+      <div style="border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin:0 0 12px">
+        <p style="margin:0 0 6px;font-size:15px"><strong>${esc(row.projectName)}</strong> <span style="color:#64748b">(${esc(row.publicRef)})</span></p>
+        <p style="margin:0 0 4px;font-size:14px">${esc(row.clubName)} · ${esc(row.district)}</p>
+        <p style="margin:0;font-size:14px">Estado: <strong>${esc(t?.label || 'Sin traducir')}</strong> · traducción ${t?.translatedPct ?? 0} % · revisión ${t?.reviewedPct ?? 0} %${t?.outdated ? ` · <span style="color:#b91c1c">${t.outdated} campo(s) desactualizado(s)</span>` : ''}</p>
+      </div>`).join('');
+    const deadline = config.deadline ? fmtDay(config.deadline) : null;
+    return `
+<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1f2937;max-width:640px;margin:0 auto;padding:24px 0">
+  <div style="background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb">
+    <div style="background:#17458F;color:#fff;padding:26px 32px">${headerLogoHtml(cfg)}<div style="font-size:18px;font-weight:700">${esc(cfg.edition?.name || 'Feria de Proyectos Rotary Colombia')}</div></div>
+    <div style="padding:30px 32px">
+      <p style="font-size:15px;line-height:1.6;margin:0 0 14px">Hola${name ? ` ${esc(name)}` : ''}:</p>
+      <p style="font-size:15px;line-height:1.6;margin:0 0 16px">${intro}</p>
+      ${rows}
+      ${deadline ? `<p style="font-size:14px;line-height:1.6;margin:0 0 14px">Fecha límite de traducción: <strong>${esc(deadline)}</strong>.</p>` : ''}
+      ${config.reminderNote ? `<p style="font-size:14px;line-height:1.6;margin:0 0 14px;white-space:pre-line">${esc(config.reminderNote)}</p>` : ''}
+      <p style="font-size:14px;line-height:1.6;margin:0 0 14px;color:#475569">En «Proyectos postulados», abre cada proyecto → pestaña «Traducción»: revisa cada campo, márcalo como revisado y pulsa «Verificar traducción».</p>
+      <p style="margin:22px 0"><a href="${esc(link)}" style="display:inline-block;background:#17458F;color:#fff;padding:12px 26px;border-radius:8px;text-decoration:none;font-weight:bold">Abrir Proyectos postulados</a></p>
+      <p style="font-size:15px;line-height:1.6;margin:0">Equipo organizador<br>Feria de Proyectos Rotary Colombia</p>
+    </div>
+    ${footerBrandingHtml(cfg)}
+  </div>
+</div>`;
+};
+
+// POST /admin/traducciones/asignar   { ids:[], email: 'cadre@…' | '' , notify }
+export const assignTranslations = withSchema(async (req, res, { cfg, access }) => {
+    const ids = [...new Set((Array.isArray(req.body?.ids) ? req.body.ids : []).map(x => clean(x, 80)).filter(Boolean))].slice(0, 300);
+    if (!ids.length) return res.status(400).json({ error: 'Selecciona al menos un proyecto.' });
+    const email = clean(req.body?.email, 200).toLowerCase();
+    const assignable = await assignableOf(cfg);
+    const person = email ? assignable.find(a => a.email === email) : null;
+    if (email && !person) return res.status(400).json({ error: 'Esa persona no está en Cadres, Revisores ni Traductores de la convocatoria. Agrégala primero en Convocatoria → Perfiles del módulo.' });
+    const evento = clean(req.query?.evento, 60);
+    const { rows } = await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = ANY($1::text[])', [ids]);
+    const inScope = rows.filter(r => !evento || !r.eventId || r.eventId === evento);
+    if (person) {
+        // Nunca se asigna a alguien el proyecto del que es responsable: no
+        // podría verificarlo.
+        const own = inScope.filter(r => String(r.email || '').toLowerCase() === person.email);
+        if (own.length) return res.status(409).json({ error: `${person.email} es responsable de ${own.map(r => r.publicRef).join(', ')}: no puede verificar su propio proyecto.` });
+    }
+    const actor = actorFrom(req, access);
+    const before = await loadTranslationTracking(inScope, { sweep: false });
+    const changed = [];
+    for (const row of inScope) {
+        const prev = before.get(row.id)?.header?.assigneeEmail || null;
+        if ((prev || '') === (person?.email || '')) continue;
+        await db.query(`INSERT INTO "ProjectDossierTranslation" ("submissionId", lang, "assigneeEmail", "assigneeName", "assignedAt", "assignedBy")
+            VALUES ($1, 'en', $2, $3, CASE WHEN $2::text IS NULL THEN NULL ELSE NOW() END, $4)
+            ON CONFLICT ("submissionId", lang) DO UPDATE SET "assigneeEmail" = $2, "assigneeName" = $3,
+                "assignedAt" = CASE WHEN $2::text IS NULL THEN NULL ELSE NOW() END, "assignedBy" = $4, "updatedAt" = NOW()`,
+        [row.id, person?.email || null, person?.name || null, actor.name]);
+        const action = !person ? 'unassigned' : (prev ? 'reassigned' : 'assigned');
+        await insertTranslationEvent(db, {
+            submissionId: row.id, eventId: row.eventId, lang: 'en', action,
+            fromState: before.get(row.id)?.tracking?.state || null, toState: before.get(row.id)?.tracking?.state || null,
+            assigneeEmail: person?.email || null, previousAssignee: prev, note: clean(req.body?.note, 500) || null, actor,
+        });
+        await logEvent(row.id, {
+            type: 'dossier_translation_assigned',
+            title: person ? `Traducción asignada a ${person.email}${prev ? ` (antes: ${prev})` : ''}` : `Traducción sin Cadre asignado (antes: ${prev})`,
+            actor, metadata: { assignee: person?.email || null, previous: prev },
+        }).catch(() => {});
+        changed.push(row);
+    }
+    let notified = null;
+    const config = T.normalizeTranslationConfig(cfg.translationTracking);
+    if (person && changed.length && req.body?.notify !== false && config.notifyOnAssignment) {
+        const after = await loadTranslationTracking(changed, { sweep: false });
+        const r = await sendFairEmail({
+            to: person.email, cfg,
+            subject: `Proyectos asignados para verificar su traducción — ${cfg.edition?.name || 'Feria de Proyectos Rotary Colombia'}`,
+            html: cadreEmailHtml({
+                cfg, name: person.name, config, link: adminLinkFor(changed[0]),
+                intro: `Se te ${changed.length === 1 ? 'asignó un proyecto' : `asignaron ${changed.length} proyectos`} para revisar y verificar su traducción al inglés.`,
+                items: changed.map(row => ({ row, tracking: after.get(row.id)?.tracking })),
+            }),
+        }).catch(e => ({ success: false, error: e?.message }));
+        notified = { to: person.email, status: r?.success ? 'sent' : 'failed', error: r?.success ? null : (r?.error || 'No se pudo enviar') };
+        await insertTranslationEvent(db, { eventId: evento || null, lang: 'en', action: 'assignment_notice', recipient: person.email, submissionIds: changed.map(r => r.id), deliveryStatus: notified.status, deliveryError: notified.error, actor });
+    }
+    res.json({ ok: true, changed: changed.length, skipped: ids.length - inScope.length, unchanged: inScope.length - changed.length, notified, assignee: person });
+}, 'manageTranslation');
+
+// ── Recordatorios a los Cadres ────────────────────────────────────────────
+const planTranslationReminders = async ({ cfg, eventId, scope, ids }) => {
+    let rows;
+    if (scope === 'seleccion') {
+        rows = (await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = ANY($1::text[]) AND ("eventId" = $2 OR "eventId" IS NULL)', [ids, eventId])).rows;
+    } else {
+        const { clause, params } = buildFilters({ evento: eventId, archivadas: 'activas' });
+        rows = (await db.query(`SELECT * FROM "ProjectFairSubmission" ${clause} ORDER BY "createdAt" ASC LIMIT 2000`, params)).rows;
+    }
+    const tr = await loadTranslationTracking(rows);
+    const plan = [];
+    for (const row of rows) {
+        const t = tr.get(row.id)?.tracking;
+        if (scope === 'desactualizadas' && t?.state !== 'needs_update') continue;
+        const v = T.reminderVerdict(t);
+        plan.push({
+            id: row.id, publicRef: row.publicRef, projectName: row.projectName, clubName: row.clubName,
+            cadreEmail: t?.assignee?.email || null, cadreName: t?.assignee?.name || null,
+            state: t?.state || null, label: t?.label || null, reviewedPct: t?.reviewedPct ?? null,
+            send: v.ok, code: v.code || null, reason: v.reason || null, _row: row, _t: t,
+        });
+    }
+    return { plan, recipients: T.groupByCadre(plan) };
+};
+
+// POST /admin/traducciones/recordatorios   { scope, ids?, confirm? }
+// Sin `confirm: true` sólo devuelve el plan, los destinatarios y la vista
+// previa del correo. Con confirmación, uno por Cadre, registrado ANTES de
+// salir con una huella única por día (un doble clic no manda dos).
+export const sendTranslationReminders = withSchema(async (req, res, { cfg, access }) => {
+    const eventId = clean(req.query?.evento, 60);
+    if (!eventId) return res.status(400).json({ error: 'Abre una edición para enviar recordatorios.' });
+    const scope = T.REMINDER_SCOPE_KEYS.includes(clean(req.body?.scope, 30)) ? clean(req.body.scope, 30) : 'pendientes';
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(x => clean(x, 80)).filter(Boolean).slice(0, 500) : [];
+    if (scope === 'seleccion' && !ids.length) return res.status(400).json({ error: 'Selecciona al menos un proyecto.' });
+    const config = T.normalizeTranslationConfig(cfg.translationTracking);
+    const { plan, recipients } = await planTranslationReminders({ cfg, eventId, scope, ids });
+    const subject = `Traducciones pendientes de verificar — ${cfg.edition?.name || 'Feria de Proyectos Rotary Colombia'}`;
+    const htmlFor = (g) => cadreEmailHtml({
+        cfg, name: g.name, config, link: adminLinkFor(g.projects[0]._row),
+        intro: `Tienes ${g.projects.length === 1 ? 'un proyecto' : `${g.projects.length} proyectos`} con la traducción al inglés pendiente de revisión o verificación.`,
+        items: g.projects.map(p => ({ row: p._row, tracking: p._t })),
+    });
+    const publicPlan = plan.map(({ _row, _t, ...rest }) => rest);
+    if (req.body?.confirm !== true) {
+        return res.json({
+            preview: true, scope, plan: publicPlan,
+            recipients: recipients.map(g => ({ email: g.email, name: g.name, projects: g.projects.map(p => ({ id: p.id, publicRef: p.publicRef, projectName: p.projectName, label: p.label })) })),
+            willSend: recipients.length, projects: recipients.reduce((a, g) => a + g.projects.length, 0),
+            skipped: plan.filter(p => !p.send).length,
+            sample: recipients[0] ? { to: recipients[0].email, subject, html: htmlFor(recipients[0]) } : null,
+            deadline: config.deadline,
+        });
+    }
+    const actor = actorFrom(req, access);
+    const outcomes = [];
+    for (const g of recipients) {
+        const subIds = g.projects.map(p => p.id);
+        const ins = await insertTranslationEvent(db, {
+            eventId, lang: 'en', action: 'reminder', recipient: g.email, submissionIds: subIds,
+            deliveryStatus: 'queued', dedupeKey: T.reminderDedupeKey(g.email, subIds), actor,
+        });
+        if (!ins.rows[0]) { outcomes.push({ email: g.email, status: 'duplicate', projects: subIds.length }); continue; }
+        const r = await sendFairEmail({ to: g.email, subject, html: htmlFor(g), cfg }).catch(e => ({ success: false, error: e?.message }));
+        await db.query('UPDATE "ProjectDossierTranslationEvent" SET "deliveryStatus" = $2, "deliveryError" = $3 WHERE id = $1',
+            [ins.rows[0].id, r?.success ? 'sent' : 'failed', r?.success ? null : clean(r?.error || 'No se pudo enviar', 500)]);
+        outcomes.push({ id: ins.rows[0].id, email: g.email, status: r?.success ? 'sent' : 'failed', error: r?.success ? null : (r?.error || 'No se pudo enviar'), projects: subIds.length });
+    }
+    res.json({
+        preview: false,
+        sent: outcomes.filter(o => o.status === 'sent').length,
+        failed: outcomes.filter(o => o.status === 'failed').length,
+        duplicates: outcomes.filter(o => o.status === 'duplicate').length,
+        skipped: publicPlan.filter(p => !p.send),
+        outcomes,
+    });
+}, 'manageTranslation');
+
+// GET /admin/traducciones/recordatorios — el registro de avisos a los Cadres.
+export const listTranslationReminders = withSchema(async (req, res) => {
+    const eventId = clean(req.query?.evento, 60) || null;
+    const { rows } = await db.query(`SELECT id, action, recipient, "submissionIds", "deliveryStatus", "deliveryError", "actorName", "createdAt"
+        FROM "ProjectDossierTranslationEvent" WHERE action IN ('reminder', 'assignment_notice') AND ($1::text IS NULL OR "eventId" = $1)
+        ORDER BY "createdAt" DESC LIMIT 200`, [eventId]);
+    res.json({ reminders: rows });
 }, 'view');
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -844,7 +1256,8 @@ export async function agentDossierSnapshot(submissionId, { translation = false }
 
 export default {
     getDossier, updateDossier, getDossierHistory,
-    getTranslation, generateTranslation, saveTranslation, approveTranslation,
+    getTranslation, generateTranslation, saveTranslation, approveTranslation, verifyTranslation, revokeTranslation,
+    getTranslationSummary, getTranslationConfig, saveTranslationConfig, assignTranslations, sendTranslationReminders, listTranslationReminders,
     getDocument, getDocumentsBulk, getDossierStates, getPortalDocument,
     getGlossary, saveGlossaryEntry, deleteGlossaryEntry,
     getBooklet, prepareBooklet, saveBooklet, approveBooklet,

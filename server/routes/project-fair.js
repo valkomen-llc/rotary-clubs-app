@@ -226,6 +226,14 @@ router.post('/admin/expedientes/documentos', authMiddleware, fairRead, express.j
 router.get('/admin/expedientes/glosario', authMiddleware, fairRead, dossier.getGlossary);
 router.post('/admin/expedientes/glosario', authMiddleware, fairManage, express.json(), dossier.saveGlossaryEntry);
 router.delete('/admin/expedientes/glosario/:glossaryId', authMiddleware, fairManage, dossier.deleteGlossaryEntry);
+// v4.1356 — Seguimiento y verificación de traducciones por Cadres
+// (indicadores, configuración, asignación y recordatorios). Literales.
+router.get('/admin/traducciones', authMiddleware, fairRead, dossier.getTranslationSummary);
+router.get('/admin/traducciones/config', authMiddleware, fairRead, dossier.getTranslationConfig);
+router.put('/admin/traducciones/config', authMiddleware, fairManage, express.json(), dossier.saveTranslationConfig);
+router.post('/admin/traducciones/asignar', authMiddleware, fairEdit, express.json(), dossier.assignTranslations);
+router.get('/admin/traducciones/recordatorios', authMiddleware, fairRead, dossier.listTranslationReminders);
+router.post('/admin/traducciones/recordatorios', authMiddleware, fairEdit, express.json(), dossier.sendTranslationReminders);
 router.get('/admin/postulaciones/:id/expediente', authMiddleware, fairRead, dossier.getDossier);
 router.patch('/admin/postulaciones/:id/expediente', authMiddleware, fairEdit, express.json({ limit: '2mb' }), dossier.updateDossier);
 router.get('/admin/postulaciones/:id/expediente/historial', authMiddleware, fairRead, dossier.getDossierHistory);
@@ -234,6 +242,9 @@ router.get('/admin/postulaciones/:id/traduccion/:lang', authMiddleware, fairRead
 router.post('/admin/postulaciones/:id/traduccion/:lang/generar', authMiddleware, fairEdit, express.json(), dossier.generateTranslation);
 router.put('/admin/postulaciones/:id/traduccion/:lang', authMiddleware, fairEdit, express.json({ limit: '2mb' }), dossier.saveTranslation);
 router.post('/admin/postulaciones/:id/traduccion/:lang/aprobar', authMiddleware, fairEdit, express.json(), dossier.approveTranslation);
+// v4.1356 — «Verificar traducción» es la misma aprobación, reforzada; y su revocación.
+router.post('/admin/postulaciones/:id/traduccion/:lang/verificar', authMiddleware, fairEdit, express.json(), dossier.verifyTranslation);
+router.post('/admin/postulaciones/:id/traduccion/:lang/revocar', authMiddleware, fairEdit, express.json(), dossier.revokeTranslation);
 router.get('/admin/postulaciones/:id/libreta', authMiddleware, fairRead, dossier.getBooklet);
 router.post('/admin/postulaciones/:id/libreta/preparar', authMiddleware, fairEdit, express.json(), dossier.prepareBooklet);
 router.put('/admin/postulaciones/:id/libreta', authMiddleware, fairEdit, express.json({ limit: '1mb' }), dossier.saveBooklet);

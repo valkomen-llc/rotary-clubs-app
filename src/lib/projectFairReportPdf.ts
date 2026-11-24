@@ -39,7 +39,23 @@ export interface ReportSubmission {
     documents?: { overallPct: number } | null;
     // v4.1335 — Estado Exchange (lo calcula el servidor; el PDF sólo lo pinta).
     exchange?: { state: string; label: string } | null;
+    // v4.1356 — Traducción EN (verificación por Cadre; la calcula el servidor).
+    translation?: { state: string; translatedPct: number | null; reviewedPct: number | null } | null;
 }
+
+/** v4.1356 — Rótulo corto de la traducción inglesa para la tabla del PDF. */
+const enShort = (t?: ReportSubmission['translation']): string => {
+    if (!t) return '—';
+    switch (t.state) {
+        case 'verified': return 'Verif.';
+        case 'needs_update': return 'Actualizar';
+        case 'in_review': return `Rev. ${t.reviewedPct ?? 0}%`;
+        case 'pending_review': return 'Por revisar';
+        case 'in_progress': return `Trad. ${t.translatedPct ?? 0}%`;
+        case 'untranslated': return 'Sin trad.';
+        default: return '—';
+    }
+};
 
 /** v4.1335 — Rótulo corto de Exchange para la tabla del PDF. */
 const EXCH_SHORT: Record<string, string> = {
@@ -190,6 +206,7 @@ export async function generateProjectFairReportPdf(
         'FDD: cantidad solicitada al Distrito del Fondo Distrital Designado 2026-2027 (USD). ' +
         'FAP: meta de aportes al Fondo Anual de Programas 2026-2027 (USD). «—»: el club aún no lo escribió. ' +
         'DOC.: avance documental sobre los requisitos obligatorios que aplican (diligenciado y entregado; la validación va aparte). ' +
+        'EN: traducción inglesa (Verif. = verificada por Cadre y vigente; Rev. = % de campos revisados; Trad. = % traducido). ' +
         (hasExch ? 'EXCH.: traslado de lo recibido y su conciliación (Exchange), independiente del pago.' : ''),
         M, r.y, { maxWidth: CONTENT_W } as any);
     r.y += 18;
@@ -198,10 +215,10 @@ export async function generateProjectFairReportPdf(
         r.note('Aún no hay postulaciones registradas en esta edición.');
     } else {
         // Geometría de la tabla (ancho total = CONTENT_W, sin invasiones).
-        const W_REF = 54, W_EST = 96, W_PAGO = 78, W_AMT = 56, W_DOC = 34;
+        const W_REF = 54, W_EST = 96, W_PAGO = 78, W_AMT = 56, W_DOC = 34, W_EN = 48;
         // v4.1335 — EXCH. sólo cuando el listado trae Exchange (permiso).
         const W_EXCH = hasExch ? 52 : 0;
-        const W_PROJ = CONTENT_W - W_REF - W_EST - W_PAGO - 2 * W_AMT - W_DOC - W_EXCH;
+        const W_PROJ = CONTENT_W - W_REF - W_EST - W_PAGO - 2 * W_AMT - W_DOC - W_EN - W_EXCH;
         const PROJ_LH = 11;
         const ROW_PAD = 11;
 
@@ -216,6 +233,7 @@ export async function generateProjectFairReportPdf(
             d.text('FDD', x + W_AMT - 8, r.y + 12, { align: 'right' } as any); x += W_AMT;
             d.text('FAP', x + W_AMT - 8, r.y + 12, { align: 'right' } as any); x += W_AMT;
             d.text('DOC.', x + W_DOC - 6, r.y + 12, { align: 'right' } as any); x += W_DOC;
+            d.text('EN', x + 4, r.y + 12); x += W_EN;
             if (W_EXCH) { d.text('EXCH.', x + 4, r.y + 12); x += W_EXCH; }
             d.text('ESTADO', x + (W_EST - d.getTextWidth('ESTADO')) / 2, r.y + 12); x += W_EST;
             d.text('PAGO', x + (W_PAGO - d.getTextWidth('PAGO')) / 2, r.y + 12);
@@ -284,11 +302,13 @@ export async function generateProjectFairReportPdf(
                 d.text(pdfUsd(s.fddRequestedUsd), x + W_PROJ + W_AMT - 8, cy + 2, { align: 'right' } as any);
                 d.text(pdfUsd(s.fapGoalUsd), x + W_PROJ + 2 * W_AMT - 8, cy + 2, { align: 'right' } as any);
                 d.text(s.documents ? `${s.documents.overallPct}%` : '—', x + W_PROJ + 2 * W_AMT + W_DOC - 6, cy + 2, { align: 'right' } as any);
+                d.setFont('helvetica', s.translation?.state === 'verified' ? 'bold' : 'normal').setFontSize(7).setTextColor(...INK);
+                d.text(enShort(s.translation), x + W_PROJ + 2 * W_AMT + W_DOC + 4, cy + 2);
                 if (W_EXCH) {
                     d.setFont('helvetica', 'normal').setFontSize(7).setTextColor(...INK);
-                    d.text(s.exchange ? (EXCH_SHORT[s.exchange.state] || s.exchange.label).slice(0, 12) : '—', x + W_PROJ + 2 * W_AMT + W_DOC + 4, cy + 2);
+                    d.text(s.exchange ? (EXCH_SHORT[s.exchange.state] || s.exchange.label).slice(0, 12) : '—', x + W_PROJ + 2 * W_AMT + W_DOC + W_EN + 4, cy + 2);
                 }
-                const xEst = x + W_PROJ + 2 * W_AMT + W_DOC + W_EXCH;
+                const xEst = x + W_PROJ + 2 * W_AMT + W_DOC + W_EN + W_EXCH;
                 const wb = wfBadge(s.workflowStatus, input.catalog);
                 r.badge(xEst, cy, W_EST, wb.label.slice(0, 26), wb.tone);
                 const pb = payBadge(s.paymentStatus, input.catalog);

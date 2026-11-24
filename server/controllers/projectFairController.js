@@ -287,6 +287,7 @@ export const DEFAULT_CONFIG = {
         finance: [],    // ven pagos, comprobantes y pueden sincronizar con Stripe
         reviewers: [],  // consultan, comentan y mueven estados de revisión
         translators: [], // v4.1324 — leen expedientes, traducen y descargan fichas
+        cadres: [],      // v4.1356 — revisan y VERIFICAN la traducción inglesa (Traducción verificada por Cadre)
     },
     // ── Panel público de registro (v4.602) ──────────────────────────
     // Copia del panel de inscripción de la Conferencia LATIR: logo, cuenta

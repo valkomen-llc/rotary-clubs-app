@@ -49,7 +49,7 @@ const page = read('src/pages/admin/PostulacionesPagos.tsx');
 const portal = read('server/controllers/projectFairPortalController.js');
 
 const caps = admin.slice(admin.indexOf('const ROLE_CAPABILITIES = {'), admin.indexOf('};', admin.indexOf('const ROLE_CAPABILITIES = {')));
-ok('sólo el perfil admin tiene `manageUsers`', /admin:\s+\{[^}]*manageUsers: true/.test(caps) && (caps.match(/manageUsers: true/g) || []).length === 1 && (caps.match(/manageUsers: false/g) || []).length === 5);
+ok('sólo el perfil admin tiene `manageUsers`', /admin:\s+\{[^}]*manageUsers: true/.test(caps) && (caps.match(/manageUsers: true/g) || []).length === 1 && (caps.match(/manageUsers: false/g) || []).length === 6); // v4.1356: + el perfil cadre
 ok('las cuatro rutas pasan por withAccess(…, \'manageUsers\')', (ctrl.match(/withAccess\(\w+, 'manageUsers'\)/g) || []).length === 4);
 ok('las rutas existen con la guardia de gestión', /'\/admin\/usuarios', authMiddleware, fairManage/.test(routes) && /'\/admin\/usuarios\/:realm\/:id\/password', authMiddleware, fairManage/.test(routes) && /'\/admin\/usuarios\/:realm\/:id\/reset-link', authMiddleware, fairManage/.test(routes));
 ok('en la base sólo queda el hash bcrypt', /bcrypt\.hash\(password, 10\)/.test(ctrl) && !/"passwordHash" = \$1[^,]*password\b(?!Hash)/.test(ctrl));

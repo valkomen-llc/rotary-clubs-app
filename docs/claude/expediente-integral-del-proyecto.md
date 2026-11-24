@@ -291,6 +291,12 @@ postulación → Club postulante → Club Rotario», que imprime
 - Pruebas: `test:fair:participating-clubs` (47) y `test:fair:club-ficha:ui`
   (59, el texto real de la página 1 y 2 leído con pdfjs).
 
+### Verificación por Cadres — v4.1356
+
+«Aprobar versión inglesa» es ahora «Verificar traducción» (la misma
+aprobación, reforzada), con insignia, columna, indicadores, asignación y
+vigencia automática. Todo en `verificacion-de-traducciones-por-cadres.md`.
+
 ### Pruebas
 
 - `npm run test:fair:dossier` — criterio y código sin base (va en `prebuild`).

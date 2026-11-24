@@ -214,7 +214,7 @@ ok('una cifra del expediente no se marca', D.auditBooklet({ blocks: [{ key: 'mes
 console.log('\n· Invariantes del código');
 const ctrl = leer('server/controllers/projectDossierController.js');
 ok('el controlador no escribe pagos ni estados', !/SET[^;]*\b(status|"workflowStatus"|"amountCop"|"amountUsd"|"paidAt"|"amountReceived")\s*=/.test(ctrl.replace(/"ProjectDossierTranslation" SET status/g, '').replace(/SET status = 'approved'/g, '').replace(/SET status = \$3/g, '').replace(/SET status = 'error'/g, '').replace(/DO UPDATE SET status = 'generating'/g, '')));
-ok('todo endpoint pasa por withAccess con su capacidad', (ctrl.match(/withSchema\(async/g) || []).length === (ctrl.match(/\}, '(view|edit|translate|approveTranslation|export|config)'\);/g) || []).length);
+ok('todo endpoint pasa por withAccess con su capacidad', (ctrl.match(/withSchema\(async/g) || []).length === (ctrl.match(/\}, '(view|edit|translate|approveTranslation|manageTranslation|export|config)'\);/g) || []).length);
 ok('Gemini recibe el lote entero (maxInputChars declarado)', /maxInputChars:\s*30000/.test(ctrl));
 const schema = leer('server/lib/ensureProjectDossierSchema.js');
 const { OWNED_COLUMNS } = await import('../server/lib/ensureProjectDossierSchema.js');
@@ -222,7 +222,7 @@ for (const t of Object.keys(OWNED_COLUMNS)) ok(`${t} se crea`, new RegExp(`CREAT
 const adds = [...schema.matchAll(/ADD COLUMN IF NOT EXISTS "?(\w+)"?/g)].map(m => m[1]);
 ok('todo ADD COLUMN está enumerado en OWNED_COLUMNS', adds.every(c => Object.values(OWNED_COLUMNS).some(cols => cols.includes(c))));
 const claude = leer('CLAUDE.md');
-ok('las siete tablas están en la lista protegida de CLAUDE.md', Object.keys(OWNED_COLUMNS).every(t => claude.includes(`\`${t}\``)));
+ok('las tablas del expediente (y la bitácora de verificación, v4.1356) están en la lista protegida de CLAUDE.md', Object.keys(OWNED_COLUMNS).every(t => claude.includes(`\`${t}\``)));
 const routes = leer('server/routes/project-fair.js');
 ok('las rutas literales /admin/expedientes/* van antes que /admin/postulaciones/:id', routes.indexOf("'/admin/expedientes/estado'") < routes.indexOf("'/admin/postulaciones/:id'"));
 

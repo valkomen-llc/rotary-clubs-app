@@ -43,6 +43,9 @@ import { lockedFieldsFor, applyFieldLocks, diffAnswers, pendingFieldsOf, sameVal
 import { ensureProjectDossierSchema } from '../lib/ensureProjectDossierSchema.js';
 import { ensureTables, logEvent, readConfigForSubmission, APPLICANT_ROLES, sendFairEmail } from './projectFairController.js';
 import { withAccess, actorFrom } from './projectFairAdminController.js';
+// v4.1356 — Guardar el formulario puede dejar sin vigencia una traducción
+// verificada: se registra y se avisa al Cadre en el acto.
+import { checkTranslationValidity } from '../lib/translationTrackingStore.js';
 import {
     completionOf, missingRequired, validateAnswers, stripProtected,
     withComputed, flattenFields, districtSectionOf, isProtectedSection,
@@ -694,6 +697,7 @@ export const saveForm = async (req, res) => {
         await saveRevision(submission.id, form.key, {
             answers, pct, action: 'save', actorType: 'club', actorName: submission.email,
         });
+        await checkTranslationValidity(submission.id);
 
         res.json({
             completionPct: pct, savedAt: saved.lastEditedAt, status: saved.status,
@@ -775,6 +779,7 @@ export const submitForm = async (req, res) => {
             metadata: { formKey: form.key, postClose },
         });
 
+        await checkTranslationValidity(submission.id);
         res.json({ status: 'submitted', state: deriveState(saved), completionPct: pct, submittedAt: saved.submittedAt });
     } catch (error) {
         console.error('[project-forms] submitForm:', error);

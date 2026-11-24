@@ -34,13 +34,32 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1355.0 | 2026-11-23 (Ficha técnica: «Club postulante» y «Nombre del proyecto» del registro inicial dicen lo mismo que la portada)
+// UI V4.1356.0 | 2026-11-24 (Traducción verificada por Cadre: verificación, insignia EN, columna, indicadores, asignación y vigencia automática)
 // Cache bust: 2026-11-19
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1356.0',
+        title: 'Traducción verificada por Cadre: insignia EN ✓, columna «Traducción EN» y seguimiento de traducciones 🌐',
+        description: 'La Feria de Proyectos ya distingue qué proyectos tienen su versión inglesa revisada y certificada por un Cadre. «Aprobar versión inglesa» pasa a ser «Verificar traducción» (la misma aprobación, reforzada: todo traducido y revisado por una persona, sin avisos bloqueantes, con justificación de los avisos y sobre la versión exacta revisada). Los proyectos verificados llevan la insignia «EN ✓» junto al nombre, el listado suma la columna «Traducción EN» con el avance de traducción y de revisión, y un bloque de indicadores filtra la tabla. Si el club cambia un texto después de verificado, la verificación pierde vigencia sola, se marca «Requiere actualización» y se avisa al Cadre.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'traducción', 'cadres', 'verificación', 'inglés', 'seguimiento'],
+        type: 'added',
+        impact: 'Media: «Proyectos postulados» (columna, insignia, indicadores, filtros, exportaciones) y la pestaña «Traducción» del expediente. No toca estados de postulación, pagos ni el avance documental.',
+        changes: [
+            { type: 'added', text: '«Verificar traducción» en la pestaña Traducción, con ventana de confirmación (proyecto, campos traducidos y revisados, avisos, responsable y versión). Se habilita sólo con todo traducido y revisado, sin desactualizados, sin avisos bloqueantes y sin cambios sin guardar.' },
+            { type: 'added', text: 'Insignia «EN ✓» junto al nombre del proyecto verificado, con quién verificó, fecha, campos revisados, versión, vigencia y acceso a la traducción. Accesible con teclado y lector de pantalla.' },
+            { type: 'added', text: 'Columna «Traducción EN» con el estado (Sin traducir, En progreso, Pendiente de revisión, En revisión, Verificada, Requiere actualización) y dos porcentajes independientes: traducción y revisión. La IA nunca cuenta como revisión.' },
+            { type: 'added', text: 'Bloque «Seguimiento de traducciones» (contraíble): indicadores que filtran la tabla, avance general verificado, fecha límite de traducción por edición y carga de trabajo por Cadre.' },
+            { type: 'added', text: 'Perfil «Cadres» en Convocatoria → Perfiles del módulo; asignación y reasignación de proyectos a Cadres con aviso por correo; recordatorios con vista previa y sin duplicados; filtros por estado, Cadre y fecha de verificación, combinables con los de siempre.' },
+            { type: 'added', text: 'Vigencia automática: si el club o el comité cambian un texto traducido, la verificación pierde vigencia, se registran los campos afectados, se retira la insignia y se avisa al Cadre una sola vez. Cambios de pago o estado no la afectan.' },
+            { type: 'added', text: 'Historial de verificación (verificaciones, pérdidas de vigencia, revocaciones con motivo y asignaciones) y versiones inmutables con el rol de quien verificó y la justificación de los avisos.' },
+            { type: 'improved', text: 'CSV, Excel e informe PDF incluyen la traducción inglesa. La ficha en inglés sólo sale como oficial desde una versión verificada; las aprobaciones anteriores no se certifican retroactivamente y salen marcadas «Pendiente de verificación».' },
+        ],
+    },
     {
         version: '4.1355.0',
         title: 'Ficha técnica: el «Club postulante» del registro inicial ya dice el club principal 📄',
