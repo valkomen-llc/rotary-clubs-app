@@ -9,7 +9,7 @@
 // avance general) y se expande; la preferencia queda en el navegador.
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useState } from 'react';
-import { AlertTriangle, CalendarClock, ChevronDown, ChevronUp, Languages, Loader2, Mail, RefreshCw, Settings, UserPlus } from 'lucide-react';
+import { AlertTriangle, BadgeCheck, CalendarClock, ChevronDown, ChevronUp, Languages, Loader2, Mail, RefreshCw, Settings, UserPlus } from 'lucide-react';
 import { dossierRequest } from '../../../../lib/projectDossier';
 import { fmtWhen, type TranslationSummary } from '../../../../lib/translationTracking';
 
@@ -24,6 +24,8 @@ interface Props {
     onAssign: () => void;
     onRemind: () => void;
     onConfig: () => void;
+    /** v4.1357 — Verificar la traducción de los proyectos seleccionados. */
+    onVerifySelected?: () => void;
     selectedCount: number;
     reloadKey: number;
     onSummary?: (s: TranslationSummary | null) => void;
@@ -44,7 +46,7 @@ const CARDS: { view: string; label: string; key: keyof TranslationSummary['kpis'
 
 const readOpen = () => { try { return localStorage.getItem('pp-tr-open') === '1'; } catch { return false; } };
 
-const TranslationTrackingStrip = ({ eventId, query, activeView, activeCadre, onPickView, onPickCadre, onAssign, onRemind, onConfig, selectedCount, reloadKey, onSummary }: Props) => {
+const TranslationTrackingStrip = ({ eventId, query, activeView, activeCadre, onPickView, onPickCadre, onAssign, onRemind, onConfig, onVerifySelected, selectedCount, reloadKey, onSummary }: Props) => {
     const [data, setData] = useState<TranslationSummary | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
@@ -112,6 +114,13 @@ const TranslationTrackingStrip = ({ eventId, query, activeView, activeCadre, onP
                         <button type="button" onClick={() => onPickCadre(activeCadre === 'me' ? '' : 'me')} aria-pressed={activeCadre === 'me'}
                             className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${activeCadre === 'me' ? 'border-[#17458F] bg-sky-50 text-[#17458F]' : 'border-slate-300 text-slate-700 hover:bg-slate-50'}`}>
                             Asignados a mí ({data!.mine})
+                        </button>
+                    )}
+                    {can.approveTranslation && onVerifySelected && (
+                        <button type="button" onClick={onVerifySelected} disabled={!selectedCount}
+                            title={selectedCount ? `Verificar la traducción de los ${selectedCount} seleccionados` : 'Activa «Seleccionar» y marca proyectos para verificarlos juntos; o usa «Verificar traducción» en cada fila'}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">
+                            <BadgeCheck size={13} aria-hidden="true" /> Verificar seleccionados{selectedCount ? ` (${selectedCount})` : ''}
                         </button>
                     )}
                     {can.manageTranslation && (

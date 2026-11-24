@@ -29,6 +29,8 @@ interface VerificationInfo {
     fingerprint: string;
     summary: { total: number; translated: number; reviewed: number; warnings: number; reviewers: Record<string, number>; origins: { ai: number; manual: number }; nextVersionNumber: number };
     canVerify: boolean; blockedReason: string | null; blockedCode: string | null;
+    /** v4.1357 — Se puede verificar marcando en el mismo paso los campos pendientes. */
+    canVerifyMarkingReviewed?: boolean; pendingReview?: number;
     needsJustification: boolean;
     nonBlocking: { path: string; label: string; warnings: { code: string; message: string }[] }[];
     blocking: { path: string; label: string; warnings: { code: string; message: string }[] }[];
@@ -51,6 +53,9 @@ const VerifyDialog = ({ projectName, info, actorEmail, actorRole, busy, onCancel
 }) => {
     const [justification, setJustification] = useState('');
     const [note, setNote] = useState('');
+    // v4.1357 — Con campos traducidos sin marcar, se confirma que se revisaron.
+    const [certify, setCertify] = useState(false);
+    const pending = info.pendingReview || 0;
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
         window.addEventListener('keydown', onKey);
@@ -58,6 +63,7 @@ const VerifyDialog = ({ projectName, info, actorEmail, actorRole, busy, onCancel
     }, [onCancel]);
     const s = info.summary;
     const short = info.needsJustification && justification.trim().length < 15;
+    const blockedByCertify = pending > 0 && !certify;
     return (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/50 p-3" role="dialog" aria-modal="true" aria-labelledby="verify-title" onClick={onCancel}>
             <div className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -71,11 +77,17 @@ const VerifyDialog = ({ projectName, info, actorEmail, actorRole, busy, onCancel
                     <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-xl bg-slate-50 p-3 text-xs">
                         <dt className="text-slate-500">Proyecto</dt><dd className="font-semibold text-slate-900">{projectName}</dd>
                         <dt className="text-slate-500">Campos traducidos</dt><dd>{s.translated} de {s.total}{s.origins.manual ? ` (${s.origins.manual} editados a mano, ${s.origins.ai} de la IA)` : ''}</dd>
-                        <dt className="text-slate-500">Campos revisados</dt><dd>{s.reviewed} de {s.total}</dd>
+                        <dt className="text-slate-500">Campos revisados</dt><dd>{s.reviewed} de {s.total}{pending ? ` (+${pending} que se marcarán al verificar)` : ''}</dd>
                         <dt className="text-slate-500">Avisos pendientes</dt><dd className={s.warnings ? 'font-semibold text-amber-700' : ''}>{s.warnings || 'Ninguno'}</dd>
                         <dt className="text-slate-500">Responsable</dt><dd>{actorEmail || '—'}{actorRole ? ` · ${roleLabel(actorRole)}` : ''}</dd>
                         <dt className="text-slate-500">Versión</dt><dd>{s.nextVersionNumber}</dd>
                     </dl>
+                    {pending > 0 && (
+                        <label className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
+                            <input type="checkbox" checked={certify} onChange={e => setCertify(e.target.checked)} className="mt-0.5" />
+                            <span>Confirmo que la traducción fue revisada (por mí o por los Cadres) y que los <strong>{pending}</strong> campo(s) traducidos que faltan por marcar quedan marcados como revisados a mi nombre.</span>
+                        </label>
+                    )}
                     {info.needsJustification && (
                         <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
                             <p className="text-xs font-semibold text-amber-900">Estos campos tienen avisos no bloqueantes. Explica por qué la traducción es correcta:</p>
@@ -94,7 +106,7 @@ const VerifyDialog = ({ projectName, info, actorEmail, actorRole, busy, onCancel
                 </div>
                 <footer className="flex flex-wrap justify-end gap-2 border-t border-slate-200 px-5 py-3">
                     <button onClick={onCancel} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Cancelar</button>
-                    <button onClick={() => onConfirm(justification, note)} disabled={busy || short}
+                    <button onClick={() => onConfirm(justification, note)} disabled={busy || short || blockedByCertify}
                         className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
                         {busy ? <Loader2 size={14} className="animate-spin" /> : <BadgeCheck size={14} />} Confirmar verificación
                     </button>
@@ -194,7 +206,7 @@ const ExpedienteTraduccion = ({ submissionId, eventId, access, wide = false, aut
             apply(d.status);
             if (paths) setEdits(e => { const n = { ...e }; paths.forEach(p => delete n[p]); return n; });
             if (d.translated === 0) toast.info(d.message || 'No había campos pendientes.');
-            else toast.success(`${d.translated} campo(s) traducidos. Revísalos antes de aprobar.${d.errors?.length ? ` Algunos fallaron: ${d.errors[0]}` : ''}`);
+            else toast.success(`${d.translated} campo(s) traducidos. Revísalos y pulsa «Verificar traducción».${d.errors?.length ? ` Algunos fallaron: ${d.errors[0]}` : ''}`);
         } catch (e: any) {
             if (e instanceof DossierApiError && e.body?.status) apply(e.body.status);
             toast.error(e?.message || 'No se pudo traducir');
@@ -239,7 +251,7 @@ const ExpedienteTraduccion = ({ submissionId, eventId, access, wide = false, aut
         if (!verification) return;
         setBusy('approve');
         try {
-            const d = await dossierRequest<any>(`/postulaciones/${submissionId}/traduccion/en/verificar`, eventId, { method: 'POST', body: { justification, note, expectedFingerprint: verification.fingerprint } });
+            const d = await dossierRequest<any>(`/postulaciones/${submissionId}/traduccion/en/verificar`, eventId, { method: 'POST', body: { justification, note, expectedFingerprint: verification.fingerprint, markAllReviewed: (verification.pendingReview || 0) > 0 } });
             setShowVerify(false);
             setStatus(d.status); notify.current(d.status);
             if (d.tracking) { setTracking(d.tracking); notifyTracking.current?.(d.tracking); }
@@ -309,7 +321,7 @@ const ExpedienteTraduccion = ({ submissionId, eventId, access, wide = false, aut
                         )}
                         {access.approveTranslation && (
                             <button onClick={() => { if (dirtyCount) { toast.error('Guarda los cambios antes de verificar.'); return; } setShowVerify(true); }}
-                                disabled={!!busy || !verification?.canVerify || dirtyCount > 0}
+                                disabled={!!busy || !(verification?.canVerifyMarkingReviewed ?? verification?.canVerify) || dirtyCount > 0}
                                 title={dirtyCount ? 'Guarda los cambios antes de verificar.' : (verification?.blockedReason || 'Certificar la versión inglesa')}
                                 className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
                                 {busy === 'approve' ? <Loader2 size={13} className="animate-spin" /> : <BadgeCheck size={13} />} Verificar traducción
@@ -317,7 +329,7 @@ const ExpedienteTraduccion = ({ submissionId, eventId, access, wide = false, aut
                         )}
                     </div>
                 </div>
-                {access.approveTranslation && verification && !verification.canVerify && verification.blockedCode !== 'verified' && verification.blockedReason && status.total > 0 && (
+                {access.approveTranslation && verification && !(verification.canVerifyMarkingReviewed ?? verification.canVerify) && verification.blockedCode !== 'verified' && verification.blockedReason && status.total > 0 && (
                     <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">Para verificar: {verification.blockedReason}{verification.blocking.length ? ` (${verification.blocking.map(b => b.label).join(', ')})` : ''}</p>
                 )}
                 {dirtyCount > 0 && access.approveTranslation && <p className="mt-2 text-xs font-semibold text-amber-700">Tienes {dirtyCount} cambio(s) sin guardar: guárdalos antes de verificar.</p>}

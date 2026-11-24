@@ -34,13 +34,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1356.0 | 2026-11-24 (Traducción verificada por Cadre: verificación, insignia EN, columna, indicadores, asignación y vigencia automática)
+// UI V4.1357.0 | 2026-11-24 (Verificar traducción en un paso y desde el listado: botón en la columna «Traducción EN» y en lote)
 // Cache bust: 2026-11-19
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1357.0',
+        title: 'Verificar traducción en un paso y desde el listado: botón en la columna «Traducción EN» ✅',
+        description: 'El comité no encontraba cómo marcar como traducidos los proyectos que ya revisaron los Cadres: «Verificar traducción» quedaba apagado hasta marcar uno por uno los 20 campos como revisados, y el listado no tenía un botón. Ahora la columna «Traducción EN» muestra «Verificar traducción» en cada proyecto traducido, el bloque de indicadores permite verificar los seleccionados en lote, y en la pestaña «Traducción» el botón se habilita aunque falten campos por marcar: la ventana pide confirmar que la traducción fue revisada y los marca en el mismo paso.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'traducción', 'cadres', 'verificación'],
+        type: 'improved',
+        impact: 'Media: «Proyectos postulados» (columna «Traducción EN» y bloque de indicadores) y la pestaña «Traducción» del expediente.',
+        changes: [
+            { type: 'added', text: 'Botón «Verificar traducción» en la columna «Traducción EN» (y en la tarjeta móvil) de cada proyecto traducido y no verificado.' },
+            { type: 'added', text: '«Verificar seleccionados» en el bloque «Seguimiento de traducciones»: verifica varios proyectos con una sola confirmación e informa el resultado de cada uno.' },
+            { type: 'improved', text: 'Ya no hay que marcar campo por campo: con la confirmación «la traducción fue revisada», los campos traducidos pendientes se marcan como revisados a nombre de quien verifica, en la misma operación. Si la verificación falla, no se marca ninguno.' },
+            { type: 'improved', text: 'Siguen bloqueando lo que no está traducido, lo desactualizado y los correos o enlaces cambiados; los avisos de cifras o largo piden una justificación.' },
+        ],
+    },
     {
         version: '4.1356.0',
         title: 'Traducción verificada por Cadre: insignia EN ✓, columna «Traducción EN» y seguimiento de traducciones 🌐',
