@@ -282,11 +282,26 @@ export const PRESENTATION = {
                     { name: 'Club Rotario Santa Rosa de Cabal', src: '/presentacion/logos/santa-rosa-de-cabal.png', ratio: 5.92 },
                 ] as { name: string; src: string; ratio: number }[],
             },
-            /** Mitad inferior: aliados tecnológicos y proveedores. Vacía hasta recibir sus logotipos. */
+            /**
+             * Mitad inferior: aliados tecnológicos y proveedores de la
+             * infraestructura. Las insignias «Partner» (AWS, Google Cloud, Meta)
+             * sólo las puede usar quien está inscrito en ese programa: confirmar
+             * la vigencia antes de publicar, o cambiarlas por el logotipo simple.
+             */
             allies: {
-                label: 'Aliados tecnológicos y proveedores',
+                label: 'Aliados tecnológicos y proveedores de infraestructura',
                 pending: 'Logotipos por incorporar',
-                logos: [] as { name: string; src: string; ratio: number }[],
+                logos: [
+                    { name: 'Valkomen', src: '/presentacion/logos/valkomen.png', ratio: 9.76 },
+                    { name: 'AWS Partner Network', src: '/presentacion/logos/aws-partner-network.png', ratio: 3.63 },
+                    { name: 'Google Cloud Partner', src: '/presentacion/logos/google-cloud-partner.png', ratio: 4.12 },
+                    { name: 'Meta Business Partner', src: '/presentacion/logos/meta-business-partner.png', ratio: 2.52 },
+                    { name: 'Vercel', src: '/presentacion/logos/vercel.png', ratio: 5.0 },
+                    { name: 'Supabase', src: '/presentacion/logos/supabase.png', ratio: 5.19 },
+                    { name: 'Resend', src: '/presentacion/logos/resend.png', ratio: 4.71 },
+                    { name: 'OpenAI', src: '/presentacion/logos/openai.png', ratio: 3.64 },
+                    { name: 'Anthropic', src: '/presentacion/logos/anthropic.png', ratio: 8.83 },
+                ] as { name: string; src: string; ratio: number }[],
             },
         },
     ],

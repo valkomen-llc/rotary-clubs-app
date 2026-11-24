@@ -304,8 +304,9 @@
 .cpd-wall { display: flex; flex-direction: column; min-height: 0; border: 1px solid var(--cpd-line); border-radius: 18px; padding: 18px 26px 16px; background: #fff; }
 .cpd-wall__label { margin: 0 0 6px; font-size: 12.5px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--cpd-blue); display: flex; align-items: center; gap: 14px; }
 .cpd-wall__label::after { content: ''; flex: 1; height: 1px; background: var(--cpd-line); }
-.cpd-wall__grid { list-style: none; margin: 0; padding: 0; flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(var(--cpd-cols, 4), 1fr); align-items: center; justify-items: center; gap: 6px 18px; }
-.cpd-wall__cell { display: flex; align-items: center; justify-content: center; padding: 10px; }
+/* Flex y no rejilla: una última fila incompleta queda CENTRADA. */
+.cpd-wall__grid { list-style: none; margin: 0; padding: 0; flex: 1; min-height: 0; display: flex; flex-wrap: wrap; justify-content: center; align-content: space-around; }
+.cpd-wall__cell { width: calc(100% / var(--cpd-cols, 4)); display: flex; align-items: center; justify-content: center; padding: 10px 14px; }
 .cpd-wall__cell img { display: block; max-width: 100%; height: auto; object-fit: contain; }
 .cpd-wall__pending { flex: 1; margin: 6px 0 0; display: flex; align-items: center; justify-content: center; border: 1.5px dashed var(--cpd-line); border-radius: 12px; font-size: 14px; color: var(--cpd-muted); }
 
@@ -397,7 +398,7 @@
 
   .cpd--flow .cpd-community { grid-template-rows: auto auto; margin-bottom: 0; }
   .cpd--flow .cpd-wall { padding: 16px 14px; }
-  .cpd--flow .cpd-wall__grid { grid-template-columns: repeat(2, 1fr); gap: 4px 8px; }
+  .cpd--flow .cpd-wall__grid { --cpd-cols: 2 !important; }
   .cpd--flow .cpd-wall__cell img { max-height: 54px; width: auto; }
   .cpd--flow .cpd-wall__pending { min-height: 110px; }
   .cpd--flow .cpd-plans-head { flex-direction: column; align-items: flex-start; gap: 12px; }
@@ -422,7 +423,7 @@
   .cpd--flow .cpd-mails { grid-template-columns: repeat(3, 1fr); }
   .cpd--flow .cpd-caps { grid-template-columns: repeat(2, 1fr); }
   .cpd--flow .cpd-route { grid-template-columns: repeat(4, 1fr); }
-  .cpd--flow .cpd-wall__grid { grid-template-columns: repeat(4, 1fr); }
+  .cpd--flow .cpd-wall__grid { --cpd-cols: 4 !important; }
   .cpd--flow .cpd-btn { width: auto; }
   .cpd--flow .cpd-cover__visual { max-width: 640px; }
 }

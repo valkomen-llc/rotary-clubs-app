@@ -21,15 +21,15 @@ function logoBox(ratio: number, area = AREA, maxW = MAX_W) {
     return { width: Math.round(w), height: Math.round(w / r) };
 }
 
-interface Props { label: string; logos: readonly LogoItem[]; columns: number; pending?: string; order: number }
+interface Props { label: string; logos: readonly LogoItem[]; columns: number; pending?: string; order: number; /** Superficie por logotipo (px²) y ancho máximo, si esta mitad necesita otra escala. */ area?: number; maxW?: number }
 
-export const LogoWall = ({ label, logos, columns, pending, order }: Props) => (
+export const LogoWall = ({ label, logos, columns, pending, order, area, maxW }: Props) => (
     <section className="cpd-wall cpd-in" style={enter(order)} aria-label={label}>
         <h3 className="cpd-wall__label">{label}</h3>
         {logos.length ? (
             <ul className="cpd-wall__grid" style={{ ['--cpd-cols' as string]: columns } as CSSProperties}>
                 {logos.map(l => {
-                    const box = logoBox(l.ratio);
+                    const box = logoBox(l.ratio, area, maxW);
                     return <li key={l.src} className="cpd-wall__cell"><img src={l.src} alt={l.name} width={box.width} height={box.height} loading="lazy" /></li>;
                 })}
             </ul>

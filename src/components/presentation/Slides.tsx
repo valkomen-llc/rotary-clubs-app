@@ -150,7 +150,7 @@ export const CommunitySlide = (p: SlideProps) => (
         <SlideHeader eyebrow={S6.eyebrow} title={S6.title} size="sm" />
         <div className="cpd-community">
             <LogoWall label={S6.rotary.label} logos={S6.rotary.logos} columns={4} order={2} />
-            <LogoWall label={S6.allies.label} logos={S6.allies.logos} columns={5} pending={S6.allies.pending} order={3} />
+            <LogoWall label={S6.allies.label} logos={S6.allies.logos} columns={5} pending={S6.allies.pending} order={3} area={8200} maxW={230} />
         </div>
     </SlideFrame>
 );

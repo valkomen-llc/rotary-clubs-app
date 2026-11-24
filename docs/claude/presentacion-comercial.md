@@ -62,8 +62,10 @@ vinculación. Léelo antes de tocar el módulo.
   y organizaciones rotarias; abajo aliados tecnológicos y proveedores. Los
   archivos van en `public/presentacion/logos/` y cada uno declara su `ratio`
   (ancho ÷ alto): `logoBox` les da la MISMA superficie. No se recolorean ni se
-  deforman. La mitad de aliados muestra «por incorporar» mientras esté vacía:
-  **no publicar con ese rótulo a la vista**.
+  deforman. La mitad de aliados lleva nueve logotipos (2026-11-24). Las insignias
+  «Partner» de AWS, Google Cloud y Meta son de programas con inscripción:
+  **confirmar que la empresa está inscrita antes de publicar**; si no, usar el
+  logotipo simple del proveedor.
 - **Tres modos, un marcado.** Escenario (lienzo de 1600 × 900 escalado) desde
   1024 px con proporción ≥ 5:4; flujo (slides apilados y reorganizados) por
   debajo; impresión siempre con el lienzo. Lo propio del escenario y del flujo
