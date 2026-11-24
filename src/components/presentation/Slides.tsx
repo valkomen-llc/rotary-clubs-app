@@ -18,7 +18,7 @@ import { AutomationFlow } from './AutomationFlow';
 import { ClosingCta, ImplementationRoute, PlanCard } from './PlanCards';
 
 const [S1, S2, S3, S4, S5] = PRESENTATION.slides;
-const { media, sampleDomain, brand } = PRESENTATION;
+const { media, sampleDomain, brand, audience } = PRESENTATION;
 const screens = media.screens;
 const anySchematic = (...shots: (string | null)[]) => shots.some(s => !s);
 
@@ -28,7 +28,15 @@ export const CoverSlide = (p: SlideProps) => (
     <SlideFrame {...p} id={S1.id} label={S1.nav} noMark>
         <div className="cpd-cover">
             <div className="cpd-cover__text">
-                <BrandLogo height={brand.mark.coverHeight} className="cpd-cover__logo" />
+                <div className="cpd-cover__brands cpd-in">
+                    <BrandLogo height={brand.mark.coverHeight} />
+                    {audience ? (
+                        <div className="cpd-cover__for">
+                            <span>{audience.label}</span>
+                            <img className="cpd-logo" src={audience.logo} alt={audience.name} style={{ ['--cpd-logo-h' as string]: `${audience.height}px` }} />
+                        </div>
+                    ) : null}
+                </div>
                 <SlideHeader eyebrow={S1.eyebrow} title={S1.title} description={S1.description} size="xl" level={1} />
                 <ul className="cpd-pillars">
                     {S1.pillars.map((x, i) => (

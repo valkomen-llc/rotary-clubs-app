@@ -65,13 +65,17 @@
 .cpd-slide__foot b { color: var(--cpd-blue); font-variant-numeric: tabular-nums; }
 /* El logotipo: se fija la altura y el ancho sale solo. Nunca se deforma. */
 .cpd-logo { height: var(--cpd-logo-h, 44px); width: auto; max-width: 100%; object-fit: contain; object-position: left center; display: block; flex: none; }
-.cpd-cover__logo { margin-bottom: 26px; align-self: flex-start; }
+.cpd-cover__brands { display: flex; align-items: center; gap: 30px; margin-bottom: 30px; }
+/* El logotipo del club va separado por una línea y con aire alrededor: es la
+   zona de protección de la marca Rotary. No se recolorea ni se superpone. */
+.cpd-cover__for { display: flex; flex-direction: column; gap: 6px; padding-left: 30px; border-left: 1px solid var(--cpd-line); }
+.cpd-cover__for span { font-size: 11.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--cpd-muted); }
 .cpd-note { font-size: 11.5px; color: var(--cpd-muted); }
 
 .cpd-eyebrow { display: flex; flex-direction: column; gap: 14px; font-size: 14px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--cpd-blue); }
 .cpd-eyebrow::before { content: ''; width: 64px; height: 5px; border-radius: 3px; background: var(--cpd-gold); }
 .cpd-title { margin: 14px 0 0; font-size: 50px; line-height: 1.08; font-weight: 700; letter-spacing: -.022em; color: var(--cpd-navy); text-wrap: balance; }
-.cpd-title--xl { font-size: 64px; line-height: 1.03; }
+.cpd-title--xl { font-size: 62px; line-height: 1.03; }
 .cpd-title--sm { font-size: 42px; }
 .cpd-lead { margin: 16px 0 0; font-size: 21px; line-height: 1.45; font-weight: 400; color: var(--cpd-muted); max-width: 1050px; text-wrap: pretty; }
 .cpd-closing { margin: 0; padding-left: 18px; border-left: 4px solid var(--cpd-gold); font-size: 21px; line-height: 1.35; font-weight: 700; color: var(--cpd-navy); }
@@ -89,17 +93,17 @@
 .cpd-cover__panel { position: absolute; right: -84px; top: 30px; bottom: 40px; width: 62%; border-radius: 28px 0 0 28px; }
 .cpd-orbit { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .cpd-cover__laptop { position: absolute; left: 0; top: 78px; width: 690px; }
-.cpd-cover__phone { position: absolute; right: 26px; bottom: 14px; width: 178px; }
+.cpd-cover__phone { position: absolute; right: 22px; bottom: 34px; width: 196px; }
 
 /* Dispositivos. Las medidas interiores van en `cqw`: el mockup conserva sus
    proporciones al tamaño que sea. */
 .cpd-laptop__lid { background: #1b2433; border-radius: 16px 16px 4px 4px; padding: 2.2% 2.2% 2.6%; box-shadow: 0 30px 60px -28px rgba(9, 48, 83, .45); }
-.cpd-laptop__screen { aspect-ratio: 16 / 10; background: #fff; border-radius: 4px; overflow: hidden; container-type: inline-size; }
+.cpd-laptop__screen { aspect-ratio: 26 / 15; background: #fff; border-radius: 4px; overflow: hidden; container-type: inline-size; }
 .cpd-laptop__base { height: 14px; margin: 0 -7%; background: linear-gradient(#d9dee6, #b9c1cd); border-radius: 2px 2px 14px 14px; position: relative; }
 .cpd-laptop__base::after { content: ''; position: absolute; left: 50%; top: 0; width: 16%; height: 5px; transform: translateX(-50%); background: #aab2bf; border-radius: 0 0 6px 6px; }
 .cpd-phone { background: #1b2433; border-radius: 28px; padding: 7px; box-shadow: 0 26px 50px -22px rgba(9, 48, 83, .6); }
-.cpd-phone__screen { aspect-ratio: 9 / 19.5; background: #fff; border-radius: 22px; overflow: hidden; container-type: inline-size; position: relative; }
-.cpd-phone__screen::before { content: ''; position: absolute; top: 2.5cqw; left: 50%; width: 30cqw; height: 6cqw; transform: translateX(-50%); background: #1b2433; border-radius: 6cqw; z-index: 2; }
+.cpd-phone__screen { aspect-ratio: 9 / 15.6; background: #fff; border-radius: 22px; overflow: hidden; container-type: inline-size; position: relative; }
+.cpd-phone__screen:not(.has-shot)::before { content: ''; position: absolute; top: 2.5cqw; left: 50%; width: 30cqw; height: 6cqw; transform: translateX(-50%); background: #1b2433; border-radius: 6cqw; z-index: 2; }
 .cpd-shot { width: 100%; height: 100%; object-fit: cover; object-position: top center; display: block; }
 
 /* Sitio institucional esquemático: barra `rotary-topbar`, cabecera blanca,
@@ -332,6 +336,8 @@
   .cpd--flow .cpd-eyebrow { font-size: 12px; letter-spacing: .13em; }
 
   .cpd--flow .cpd-cover { grid-template-columns: 1fr; gap: 34px; }
+  .cpd--flow .cpd-cover__brands { gap: 18px; margin-bottom: 22px; flex-wrap: wrap; }
+  .cpd--flow .cpd-cover__for { padding-left: 18px; }
   .cpd--flow .cpd-pillars { margin: 26px 0; gap: 12px 14px; }
   .cpd--flow .cpd-pillar { font-size: 14.5px; }
   .cpd--flow .cpd-cover__visual { height: auto; padding: 24px 0 8% 0; }

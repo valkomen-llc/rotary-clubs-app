@@ -43,7 +43,7 @@ export const LaptopMockup = ({ src, alt, className = '' }: { src: string | null;
 
 export const PhoneMockup = ({ src, alt, className = '' }: { src: string | null; alt: string; className?: string }) => (
     <div className={`cpd-phone ${className}`} role="img" aria-label={alt}>
-        <div className="cpd-phone__screen">{src ? <img className="cpd-shot" src={src} alt="" /> : <SiteSchematic mobile />}</div>
+        <div className={`cpd-phone__screen${src ? ' has-shot' : ''}`}>{src ? <img className="cpd-shot" src={src} alt="" /> : <SiteSchematic mobile />}</div>
     </div>
 );
 

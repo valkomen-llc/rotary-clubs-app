@@ -48,6 +48,9 @@ vinculación. Léelo antes de tocar el módulo.
   logotipo en la esquina inferior (izquierda de fábrica, configurable) y, en la
   portada, grande sobre el título en vez de en la esquina. Sólo se fija la
   altura: el logotipo nunca se deforma.
+- **La portada nombra al destinatario** (`audience`): su logotipo va junto al de
+  Club Platform, separado por una línea. Hoy es el Club Rotario Cali Pance;
+  para otro club se cambian nombre y logotipo, o `null` para una versión general.
 - **Las capturas del slide 1 van en `public/presentacion/`** y su ruta en
   `media.screens.siteDesktop` / `siteMobile` (ver el LEEME de esa carpeta).
 - **Tres modos, un marcado.** Escenario (lienzo de 1600 × 900 escalado) desde

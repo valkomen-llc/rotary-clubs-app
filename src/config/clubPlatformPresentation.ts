@@ -35,7 +35,8 @@ export const PRESENTATION = {
 
     brand: {
         name: 'Club Platform for Rotary',
-        logo: 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/platform/logo/1776225800089-Club_Platform_for_Rotary.png',
+        /** El logotipo oficial, servido por la propia aplicación (`public/presentacion/`). */
+        logo: '/presentacion/club-platform-for-rotary.png',
         district: 'Distrito 4281',
         /**
          * La marca de Club Platform en la presentación. Va por defecto en
@@ -43,8 +44,21 @@ export const PRESENTATION = {
          * `corner`: 'bottom-left' | 'bottom-right'. Alturas en px del lienzo
          * de 1600 × 900; el ancho sale solo (el logotipo nunca se deforma).
          */
-        mark: { corner: 'bottom-left' as 'bottom-left' | 'bottom-right', height: 44, coverHeight: 84 },
+        mark: { corner: 'bottom-left' as 'bottom-left' | 'bottom-right', height: 40, coverHeight: 76 },
     },
+
+    /**
+     * A quién va dirigida ESTA versión de la presentación. Su logotipo sale en
+     * la portada, junto al de Club Platform. Para otro club: cambiar nombre y
+     * logotipo. Con `null` la portada lleva sólo la marca de Club Platform.
+     */
+    audience: {
+        label: 'Presentación para',
+        name: 'Club Rotario Cali Pance',
+        logo: '/presentacion/rotary-cali-pance.png',
+        /** Altura en px del lienzo. El logotipo de Rotary no se deforma ni se recolorea. */
+        height: 92,
+    } as { label: string; name: string; logo: string; height: number } | null,
 
     /** Información de contacto. `null` → no se pinta. Nada de esto se inventa. */
     contact: {
@@ -62,8 +76,8 @@ export const PRESENTATION = {
             // Portada de un sitio en producción. Guardar los archivos en
             // `public/presentacion/` y escribir acá su ruta (`/presentacion/…`),
             // o pegar una URL pública. Se recortan desde arriba, sin deformar.
-            siteDesktop: null as string | null,   // 16:10 — p. ej. 1440 × 900
-            siteMobile: null as string | null,    // 9:19,5 — p. ej. 390 × 844
+            siteDesktop: '/presentacion/sitio-escritorio.jpg' as string | null,   // captura real, 1702 × 983
+            siteMobile: '/presentacion/sitio-movil.jpg' as string | null,    // captura real, 780 × 1353
             cloud: null as string | null,         // módulo de almacenamiento
             crowdfunding: null as string | null,
             fundraising: null as string | null,
