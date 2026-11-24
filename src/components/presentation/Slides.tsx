@@ -46,10 +46,12 @@ export const CoverSlide = (p: SlideProps) => (
                 <Closing light delay={7}>{S1.closing}</Closing>
             </div>
             <div className="cpd-cover__visual cpd-in" style={enter(3)}>
-                <div className="cpd-cover__panel bg-rotary-geo" aria-hidden />
-                <ConnectivityGraphic />
+                {/* La tableta va AL FONDO, detrás del portátil y del teléfono: ocupa el
+                    lugar del panel azul. Sin captura, vuelve el panel con el patrón. */}
+                {screens.siteTablet
+                    ? <TabletMockup className="cpd-cover__panel cpd-cover__panel--tablet" src={screens.siteTablet} alt="El mismo sitio en una tableta" />
+                    : <><div className="cpd-cover__panel bg-rotary-geo" aria-hidden /><ConnectivityGraphic /></>}
                 <LaptopMockup className="cpd-cover__laptop" src={screens.siteDesktop} alt="Sitio institucional construido con Club Platform, en un portátil" />
-                <TabletMockup className="cpd-cover__tablet" src={screens.siteTablet} alt="El mismo sitio en una tableta" />
                 <PhoneMockup className="cpd-cover__phone" src={screens.siteMobile} alt="El mismo sitio en un teléfono móvil" />
             </div>
         </div>
