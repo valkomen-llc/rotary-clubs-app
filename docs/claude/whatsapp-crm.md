@@ -935,3 +935,49 @@ recibirlos; el aviso lo dice). Lo confirma el diagnóstico en verde y un mensaje
 real por WhatsApp.
 
 Pruebas: `test:whatsapp:connections` (163) y `test:whatsapp:inbound` (101).
+
+### El 131049 de Meta en las campañas: motivo, sin «Corregir número» ni reintentos inútiles — v4.1363
+
+**El caso (2026-11-27).** Campaña «Ver el video de invitación de John - 002»
+por la línea de la Feria, tras dirigir el webhook (v4.1362): 51 destinatarios,
+9 enviados, 8 entregados, 1 leído y **42 fallidos** con «In order to maintain a
+healthy ecosystem engagement, the message failed to be delivered» (131049). Los
+números visibles eran todos +1 (EE. UU.). La línea funciona: que vuelvan
+estados de entrega y de fallo es la prueba de que el webhook ya llega.
+
+**Qué es el 131049.** Meta ACEPTA el envío y luego avisa por el webhook que no
+lo entregó. Dos situaciones:
+- **Número de EE. UU. (+1) + plantilla de MARKETING**: Meta no entrega
+  plantillas de marketing a números de EE. UU. (pausa vigente desde abril de
+  2025). Ni reintentar ni corregir el número sirve. Sólo una plantilla de
+  UTILIDAD (si el contenido lo es de verdad) o responder dentro de las 24 h
+  después de que la persona escriba.
+- **Otro país**: límite por persona de mensajes de marketing. Reintentar antes
+  de 24 h vuelve a fallar.
+
+**El criterio** (`server/lib/whatsappCampaignFailure.js`, PURO):
+`classifyCampaignFailure({ errorMessage, phone, country, templateCategory,
+failedAt, now })` → `kind` (`meta_us_marketing` | `meta_marketing_limit` |
+`meta_experiment` | `invalid_phone` | `other`), `title`, `explanation`,
+`action`, `retryable`, `canFixNumber`. `isUsNumber`: +1 de 11 dígitos salvo
+contacto de Canadá. Se le pasa `errorCode` + `errorMessage` juntos.
+
+**Dónde se usa:**
+- `getCampaignLogs`: cada fila fallida lleva `failure`.
+- `sendCampaign`: omite a los contactos cuyo último fallo no es `retryable`
+  (`blockedIds`) y lo dice en el mensaje (`skippedPolicy`). Aplica al reintento
+  y a la reanudación.
+- `getCampaignPreflight`: `stats.usMarketingBlocked`, `warnings` y
+  `metaUsMarketing` por contacto; la pantalla abre la verificación también por
+  esto.
+- `WhatsAppCampaigns.tsx`: motivo + qué hacer por fila; «Corregir número» sólo
+  con `canFixNumber`; aviso encima de la tabla; «Reintentar fallidos» apagado
+  si nada es reintentable.
+
+**Reglas durables:**
+- **Un fallo de la política de Meta no es un número mal escrito.** No ofrecer
+  «Corregir número» ni reintentar a ciegas: no llega a nadie y empeora la
+  calidad de la línea.
+- **Sin `failedAt`, un límite de marketing NO se reintenta** (prudente).
+
+Prueba: `test:whatsapp:campaign-failure` (27, en `prebuild`).
