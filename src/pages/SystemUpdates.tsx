@@ -34,13 +34,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1358.0 | 2026-11-27 (Ficha técnica: el presupuesto y el área de enfoque del registro inicial dicen lo diligenciado)
+// UI V4.1359.0 | 2026-11-27 (Un club no puede quedar con el dominio de otro sitio; slug automático)
 // Cache bust: 2026-11-19
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1359.0',
+        title: 'Un club ya no puede quedar con el dominio del Distrito (o de otro sitio) 🌐',
+        description: 'El Club Rotario Tuluá El Lago se creó con «rotary4281.org» —el dominio del Distrito— como dominio propio. Por eso «Abrir Sitio» llevaba a la página del Distrito y Analíticas mostraba el tráfico del Distrito como si fuera del club. Ahora la plataforma no deja guardar en un club el dominio de otro club o de un Distrito (explica qué hacer), un club sin slug recibe uno a partir de su nombre («tulua-el-lago») para que «Abrir Sitio» lleve a su propio sitio, y el listado de sitios marca en rojo los clubes que ya tienen un dominio ajeno para corregirlos.',
+        date: new Date().toISOString(),
+        tags: ['sitios', 'dominios', 'analíticas', 'super admin'],
+        type: 'fix',
+        impact: 'Media: alta y edición de sitios (Super Admin) y lo que muestran «Abrir Sitio» y Analíticas en el panel de un club.',
+        changes: [
+            { type: 'fixed', text: 'Crear o editar un club con el dominio de otro sitio o de un Distrito responde con un aviso claro y no se guarda. El sitio del propio Distrito sí puede compartir su dominio.' },
+            { type: 'added', text: 'Si un club se crea o se guarda sin subdominio, se genera uno a partir de su nombre (sin tildes ni «Club Rotario»), único.' },
+            { type: 'added', text: 'En el listado de sitios, los clubes con un dominio ajeno muestran un aviso rojo con la indicación para corregirlos.' },
+            { type: 'improved', text: 'El campo «Dominio Propio» ya no se autocompleta con dominios usados antes y explica que nunca va el del Distrito.' },
+        ],
+    },
     {
         version: '4.1358.0',
         title: 'Ficha técnica: el presupuesto del registro inicial dice el valor actualizado por el club 📄',

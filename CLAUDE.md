@@ -428,7 +428,7 @@ es **rotar la credencial en Neon**, no sólo borrar el archivo.
 | Aportes por PayPal — v4.866 | `docs/claude/aportes-por-paypal.md` |
 | SEO Inteligente (AI SEO Engine) — v4.703 | `docs/claude/seo-inteligente.md` |
 | Tipo de sitio y portada — v4.737 | `docs/claude/tipo-de-sitio-y-portada.md` |
-| El dominio propio de un sitio — v4.743 | `docs/claude/el-dominio-propio-de-un-sitio.md` |
+| El dominio propio de un sitio — v4.743 (**un club no guarda el dominio de otro club o de un Distrito —409 `DOMAIN_TAKEN`—, slug automático del nombre y aviso en el listado; caso Tuluá El Lago con rotary4281.org: v4.1359**) | `docs/claude/el-dominio-propio-de-un-sitio.md` |
 | El pool registrador de un dominio — v4.877 | `docs/claude/el-pool-registrador-de-un-dominio.md` |
 | Un PDF público de la Biblioteca se abre en el móvil — v4.1016 | `docs/claude/un-pdf-publico-de-la-biblioteca-se-abre-en-el-movil.md` |
 | Qué entra en el menú y qué botones se muestran — v4.1022 | `docs/claude/que-entra-en-el-menu-y-que-botones-se-muestran.md` |

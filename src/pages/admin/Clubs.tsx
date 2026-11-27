@@ -24,6 +24,8 @@ interface Club {
     country: string;
     domain: string | null;
     subdomain: string | null;
+    /** v4.1359 — El dominio ya es de otro sitio ('club') o de un Distrito ('district'). */
+    domainConflict?: 'club' | 'district' | null;
     status: string;
     type: string;
     districtId?: string | null;
@@ -630,6 +632,13 @@ const ClubsManagement: React.FC = () => {
                                     <div className="flex items-center gap-1">
                                         <Globe className="w-3 h-3 text-rotary-blue" /> {club.domain || 'N/A'}
                                     </div>
+                                    {/* v4.1359 — Un dominio que ya es de otro sitio: «Abrir Sitio» y
+                                        Analíticas mostrarían ese otro sitio (caso Tuluá El Lago). */}
+                                    {club.domainConflict && (
+                                        <div className="max-w-[260px] whitespace-normal rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-semibold leading-snug text-red-700" role="alert">
+                                            Este dominio es {club.domainConflict === 'district' ? 'del sitio de un Distrito' : 'de otro sitio'}. Edita el club y deja «Dominio Propio» vacío (o escribe el suyo).
+                                        </div>
+                                    )}
                                     <div className="text-sm text-gray-500 truncate whitespace-normal">
                                         <a href={`https://app.clubplatform.org/?club=${club.subdomain || 'no-sub'}`} target="_blank" rel="noopener noreferrer" className="text-rotary-blue hover:underline text-[10px]">
                                             app.clubplatform.org/?club={club.subdomain || 'no-sub'}
@@ -893,7 +902,9 @@ const ClubsManagement: React.FC = () => {
                                         value={formData.domain}
                                         onChange={(e) => setFormData({ ...formData, domain: e.target.value.toLowerCase().replace(/https?:\/\//g, '').replace(/^www\./, '') })}
                                         placeholder="ej: rotarymiciudad.org"
+                                        autoComplete="off"
                                     />
+                                    <p className="mt-1 text-xs text-gray-500">Sólo si el club tiene SU propio dominio. Nunca el del Distrito ni el de otro sitio: déjalo vacío y el club usa app.clubplatform.org/?club={formData.subdomain || '<slug>'}. Si el subdominio queda vacío, se genera del nombre.</p>
                                     {formData.domain && (
                                         <div className="mt-3 bg-emerald-50 border border-emerald-100 p-3 rounded-lg flex items-start gap-3 text-sm">
                                             <div className="text-emerald-700 mt-0.5">ℹ️</div>
