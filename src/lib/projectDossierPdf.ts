@@ -535,7 +535,7 @@ export const coverIdentityOf = (p: Partial<CoverSource>) => {
 
 /**
  * v4.1355 — El «Registro inicial de la postulación» dice lo mismo que la
- * portada.
+ * portada. (v4.1358: también el presupuesto y el área de enfoque.)
  *
  * Caso Paula Cruz: con la portada ya corregida (v4.1354), al final de la
  * página 1 «Club postulante → Club Rotario» seguía diciendo «Pereira del
@@ -577,7 +577,70 @@ export const registrationOverridesOf = (dossier: Dossier, lang: Lang): Map<strin
             });
         }
     }
+    // v4.1358 — El PRESUPUESTO del registro también dice lo diligenciado.
+    // Caso Pilar Macías (C.R. Bucaramanga Ruitoque, FP-6YFC4X): actualizaron
+    // el presupuesto a US$ 30.000 en los formularios (páginas 6 y 9 de la
+    // ficha) y el «Registro inicial» seguía con los US$ 15.000 de la
+    // inscripción. Fuente vigente: Solicitud de Aportes del FDD → «Presupuesto
+    // total del proyecto» → Formulación → «Costo del Proyecto» (US$).
+    const regBudgetField = idx.get('submission.budgetUsd');
+    const current = currentBudgetOf(idx);
+    const regBudget = moneyNumber(regBudgetField?.value);
+    if (regBudgetField && current && (regBudget === null || Math.abs(current.value - regBudget) >= 0.5)) {
+        const shown = plainValue({ type: 'currency' }, current.value, lang);
+        const before = regBudget === null ? (lang === 'en' ? 'not provided' : 'sin valor') : plainValue({ type: 'currency' }, regBudget, lang);
+        out.set('submission.budgetUsd', {
+            value: shown,
+            note: lang === 'en'
+                ? `Updated in the ${current.sourceEn}. Amount at initial registration: ${before}`
+                : `Actualizado en ${current.source}. Valor en el registro inicial: ${before}`,
+        });
+    }
+    // v4.1358 — Y el ÁREA DE ENFOQUE: la(s) que marcó el club en la Formulación.
+    const regFocus = idx.get('submission.focusArea');
+    const formFocus = idx.get('master.identificacion.focusAreas');
+    const focusList = Array.isArray(formFocus?.value) ? (formFocus!.value as unknown[]).map(x => String(x ?? '').trim()).filter(Boolean) : [];
+    const regFocusText = String(regFocus?.value ?? '').trim();
+    if (regFocus && focusList.length && !(focusList.length === 1 && normLabelText(focusList[0]) === normLabelText(regFocusText))) {
+        const enList = Array.isArray(formFocus?.valueEn) ? (formFocus!.valueEn as unknown[]).map(x => String(x ?? '').trim()).filter(Boolean) : [];
+        const value = lang === 'en' ? (enList.length === focusList.length ? enList.join(', ') : '') : focusList.join(', ');
+        if (value) {
+            const regShown = lang === 'en' && typeof regFocus.valueEn === 'string' && regFocus.valueEn.trim() ? regFocus.valueEn.trim() : (regFocusText || (lang === 'en' ? 'not provided' : 'sin valor'));
+            out.set('submission.focusArea', {
+                value,
+                note: lang === 'en' ? `As marked in the Project formulation. At initial registration: ${regShown}` : `Según la Formulación del proyecto. En el registro inicial: ${regShown}`,
+            });
+        }
+    }
     return out;
+};
+
+/**
+ * v4.1358 — Un monto escrito por el club, como número: «30000», «30.000»,
+ * «30,000», «US$ 30.000,50». Los puntos o comas seguidos de exactamente tres
+ * cifras son separadores de miles. null si no es un monto.
+ */
+export const moneyNumber = (v: unknown): number | null => {
+    if (v === null || v === undefined) return null;
+    if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+    let t = String(v).replace(/[^\d.,-]/g, '');
+    if (!/\d/.test(t)) return null;
+    if (/^-?\d{1,3}([.,]\d{3})+$/.test(t)) t = t.replace(/[.,]/g, '');
+    else if (/^-?\d{1,3}(\.\d{3})+,\d+$/.test(t)) t = t.replace(/\./g, '').replace(',', '.');
+    else if (/^-?\d{1,3}(,\d{3})+\.\d+$/.test(t)) t = t.replace(/,/g, '');
+    else t = t.replace(',', '.');
+    const n = Number(t);
+    return Number.isFinite(n) ? n : null;
+};
+
+/** El presupuesto VIGENTE que diligenció el club y de qué formulario sale. */
+export const currentBudgetOf = (idx: Map<string, DossierField>): { value: number; path: string; source: string; sourceEn: string } | null => {
+    const fdd = moneyNumber(idx.get('fdd_2026_2027.presupuesto.budgetUsd')?.value);
+    if (fdd !== null && fdd > 0) return { value: fdd, path: 'fdd_2026_2027.presupuesto.budgetUsd', source: 'la Solicitud de Aportes del FDD', sourceEn: 'District Designated Fund request' };
+    const table = idx.get('master.presupuesto.budgetTable')?.value as any;
+    const master = moneyNumber(table?.projectCost?.usd);
+    if (master !== null && master > 0) return { value: master, path: 'master.presupuesto.budgetTable', source: 'la Formulación del proyecto', sourceEn: 'Project formulation' };
+    return null;
 };
 const normLabelText = (s: string) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 

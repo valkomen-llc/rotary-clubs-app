@@ -84,6 +84,9 @@ const sub = async (ref, name, doc) => (await db.query(`
     VALUES ($1,'evt-ficha','Leidy','Ávila',$2,'E-Club Origen','4281',$3,'in_review','paid','+57 3001112233','paz',250000,1, NOW()) RETURNING *`,
 [ref, `${ref.toLowerCase()}@club.org`, name])))).rows[0];
 const S = await sub('FP-6K5MAX', 'Caimalito construye paz', '1088123456');
+// v4.1358 — Presupuesto de la INSCRIPCIÓN distinto del que diligenció el club
+// en el FDD (caso Pilar Macías, FP-6YFC4X: 15.000 inscrito, 30.000 en los formularios).
+await db.query('UPDATE "ProjectFairSubmission" SET "budgetUsd" = 15000 WHERE id = $1', [S.id]);
 const X = await sub('FP-OTRO', 'Proyecto de otro club', '999');
 
 const app = express();
@@ -310,6 +313,8 @@ window.go = (t) => createRoot(document.getElementById('root')).render(React.crea
                 const plano = text.replace(/\s+/g, ' ');
                 check('«Club postulante → Club Rotario» dice el club principal, con la cuenta de inscripción debajo (v4.1355)', /Club postulante Club Rotario Pereira Perla del Otún Inscrita con la cuenta del club: E-Club Origen/.test(plano), (plano.match(/Club postulante.{0,140}/) || [''])[0]);
                 check('«Nombre del proyecto» del registro dice el título vigente, con el inicial debajo (v4.1355)', /Nombre del proyecto Cuna de Vida: Recuperando la atención neonatal en Pereira tras el terremoto Nombre en el registro inicial: Caimalito construye paz/.test(plano), (plano.match(/Proyecto \(registro inicial\).{0,200}/) || [''])[0]);
+                check('«Presupuesto del proyecto» del registro dice el vigente del FDD, con el inscrito debajo (v4.1358)', /Presupuesto del proyecto \(US\$\) US\$ 136\.558 Actualizado en la Solicitud de Aportes del FDD\. Valor en el registro inicial: US\$ 15\.000/.test(plano), (plano.match(/Presupuesto del proyecto.{0,160}/) || [''])[0]);
+                check('y el presupuesto inscrito ya no aparece SOLO como si fuera el vigente (v4.1358)', !/Presupuesto del proyecto \(US\$\) US\$ 15\.000/.test(plano));
                 const flat = text.replace(/\s+/g, ' ');
                 check('el desglose sale como tabla con cada rubro y su valor', /Equipment US\$ 132\.727/.test(flat) && /Monitoring\/evaluation US\$ 441/.test(flat) && /Project management US\$ 735/.test(flat) && /4 Operations \(Unforeseen\) US\$ 2\.655/.test(flat));
                 check('la fila «total» del club NO es un rubro: ni se numera ni se suma (v4.1353)', !/(^|\s)5 total/i.test(flat) && /Total del desglose US\$ 136\.558/.test(flat) && !/273\.116/.test(flat), (flat.match(/.{0,80}Total del desglose.{0,60}/) || [''])[0]);
