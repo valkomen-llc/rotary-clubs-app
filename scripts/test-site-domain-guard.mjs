@@ -55,8 +55,13 @@ const pub = read('server/routes/clubs.js');
 ok('v4.1360 — un club común no se queda con el dominio de un Distrito en el sitio público (ni por la vía suelta)', (pub.match(/stealsDistrictDomain\(activeEntity\)/g) || []).length === 2);
 ok('v4.1360 — el panel puede pedir su sitio por el id del club', /findUnique\(\{\s*where: \{ id: String\(domain\)/.test(pub) && /const ownId = lsUser\?\.club\?\.id \|\| lsUser\?\.clubId/.test(read('src/contexts/ClubContext.tsx')));
 const lay = read('src/components/admin/AdminLayout.tsx');
-ok('v4.1360 — «Abrir Sitio» usa /admin/my-site (el club del usuario)', /\/admin\/my-site/.test(lay) && /const verMiSitioUrl = mySite \? mySite\.url : verMiSitioUrlContexto;/.test(lay));
+ok('v4.1360 — «Abrir Sitio» usa /admin/my-site (el club del usuario)', /\/admin\/my-site/.test(lay) && /mySite\?\.url/.test(lay));
 ok('v4.1360 — Analíticas elige primero el club del usuario', /const ownClubId = /.test(read('src/pages/admin/Analytics.tsx')));
+ok('v4.1361 — `?hostname=` sólo cambia el alcance para el operador de la plataforma', /const testDomain = \(isPlatformOperator && isHostPlatform/.test(an));
+ok('v4.1361 — un club ve sólo su club, por la SESIÓN y antes que el dominio del panel (sólo el sitio del Distrito suma a sus clubes)', /if \(user\.clubId\) \{\s*const ownClub[\s\S]{0,300}lockedDistrictId: null/.test(an) && an.indexOf('const ownClub') < an.indexOf('if (effectiveDomain)') && an.indexOf('const ownClub') < an.indexOf('if (user.districtId) {'));
+ok('v4.1361 — la cabecera de un sitio no manda `hostname` (el servidor usa el de la sesión)', /if \(!isSuperAdmin && token\) \{[\s\S]{0,400}analytics\/traffic\?days=30`, \{ headers: analyticsAuthHeaders \}/.test(lay));
+ok('v4.1361 — «Abrir Sitio» de un usuario de club: SÓLO la dirección del servidor', /const verMiSitioUrl = isClubUser \? \(mySite\?\.url \|\| null\)/.test(lay));
+ok('v4.1361 — si el panel cargó otro sitio, se corrige la sesión y se recarga el contexto', /refreshClubRef\.current\?\.\(\)/.test(lay));
 const ui = read('src/pages/admin/Clubs.tsx');
 ok('el formulario apaga el autocompletado del dominio y lo explica', /autoComplete="off"/.test(ui) && /Nunca el del Distrito/.test(ui));
 ok('el listado muestra el aviso', /club\.domainConflict &&/.test(ui));
@@ -125,6 +130,19 @@ if (!URL_DB) {
         ok('… y el slug queda guardado', !!(await db.query(`SELECT subdomain FROM "Club" WHERE id = 'c-lago2'`)).rows[0].subdomain);
         const msDist = await call(ctl.getMySite, { user: { id: 'u-d', role: 'club_admin', clubId: 'c-dist' } });
         ok('el sitio del Distrito sí abre su dominio', msDist.body.site.url === 'https://rotary4281.org' || /rotary4281\.org/.test(msDist.body.site.url), JSON.stringify(msDist.body.site));
+        // v4.1361 — El Distrito con el dominio guardado de otra forma, y sin
+        // ningún otro club con ese dominio: igual es ajeno.
+        await db.query(`UPDATE "Club" SET domain = NULL WHERE id = 'c-dist'`);
+        await db.query(`UPDATE "District" SET domain = 'HTTPS://www.Rotary4281.org/' WHERE id = 'd-4281'`);
+        const ms2 = await call(ctl.getMySite, { user: { id: 'u-tl', role: 'club_admin', clubId: 'c-lago2' } });
+        ok('v4.1361 — Distrito guardado como «HTTPS://www.Rotary4281.org/»: el club no lo usa', ms2.body.site?.ownDomain === null && /app\.clubplatform\.org\/\?club=/.test(ms2.body.site?.url), JSON.stringify(ms2.body.site));
+        await db.query(`UPDATE "District" SET domain = NULL, subdomain = 'rotary4281' WHERE id = 'd-4281'`);
+        const ms3 = await call(ctl.getMySite, { user: { id: 'u-tl', role: 'club_admin', clubId: 'c-lago2' } });
+        ok('v4.1361 — Distrito sin dominio guardado pero con subdominio «rotary4281»: tampoco', ms3.body.site?.ownDomain === null && /app\.clubplatform\.org\/\?club=/.test(ms3.body.site?.url), JSON.stringify(ms3.body.site));
+        ok('v4.1361 — … y Analíticas lo reconoce como ajeno', G.isForeignDistrictDomain({ type: 'club', domain: 'rotary4281.org' }, await G.districtDomainsOf(db)));
+        const list3 = await call(ctl.getAllClubs, {});
+        ok('v4.1361 — el listado sigue sin fallar con la normalización en SQL', list3.status === 200 && Array.isArray(list3.body), JSON.stringify(list3.body).slice(0, 200));
+        await db.query(`UPDATE "District" SET domain = 'rotary4281.org', subdomain = 'distrito4281' WHERE id = 'd-4281'`);
         const msNone = await call(ctl.getMySite, { user: { id: 'u-x', role: 'administrator' } });
         ok('sin club, sin sitio', msNone.body.site === null);
     } catch (err) {

@@ -12,6 +12,7 @@ import {
 import { getPublicSections } from '../controllers/cmsController.js';
 import { recordPublicArticleView } from '../controllers/submissionArticleController.js';
 import { canonicalDomain, domainCandidates, subdomainLabel } from '../lib/domains.js';
+import { normDomainSql } from '../lib/siteDomainGuard.js';
 import { DISTRICT_SITE_SQL, districtSiteParams, pickDistrictSite, districtBranding } from '../lib/districtSite.js';
 import { serverTiming } from '../lib/resilience.js';
 import { SITE_CONFIG_BUDGET, siteConfigCacheKey } from '../lib/documentBudget.js';
@@ -166,7 +167,14 @@ async function computeSiteConfig(domain, preview) {
         // ese dominio: el sitio público del Distrito manda (caso Tuluá El Lago,
         // creado con rotary4281.org). Sólo se descarta si casó por el DOMINIO
         // (no por el subdominio pedido) y el club no es el sitio del Distrito.
-        const districtOwnsDomain = async () => !!(await db.prisma.district.findFirst({ where: { OR: candidates.map(d => ({ domain: { equals: d, mode: 'insensitive' } })) }, select: { id: true } }).catch(() => null));
+        // v4.1361 — Con el dominio guardado normalizado (un «https://…/» casa) o,
+        // si el Distrito no lo tiene, con su subdominio igual a la etiqueta.
+        const districtOwnsDomain = async () => {
+            const { rows } = await db.query(
+                `SELECT 1 FROM "District" WHERE ${normDomainSql('domain')} = $1 OR lower(subdomain) = $2 LIMIT 1`,
+                [cleanDomain, label]).catch(() => ({ rows: [] }));
+            return rows.length > 0;
+        };
         const stealsDistrictDomain = async (entity) => !!entity
             && entity.type !== 'district' && entity.category !== 'district'
             && canonicalDomain(entity.domain) === cleanDomain

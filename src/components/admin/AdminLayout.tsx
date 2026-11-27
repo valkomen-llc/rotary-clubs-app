@@ -191,9 +191,13 @@ const MoneyByCurrency: React.FC<{
 const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ children, wide = true }) => {
     const { logout, user, isImpersonating, revertImpersonation } = useAuth();
     // v4.1360 — La dirección del sitio del club del usuario («Abrir Sitio»).
-    const [mySite, setMySite] = useState<{ url: string | null; slug: string | null; ownDomain: string | null; foreignDomain: string | null } | null>(null);
+    const [mySite, setMySite] = useState<{ id: string; name: string; url: string | null; slug: string | null; ownDomain: string | null; foreignDomain: string | null } | null>(null);
+    const [mySiteResolved, setMySiteResolved] = useState(false);
     useEffect(() => {
-        if (!user?.clubId || user?.role === 'administrator') { setMySite(null); return undefined; }
+        // v4.1361 — Para TODO usuario que no sea el operador de la plataforma:
+        // el servidor sabe su club por la sesión aunque el objeto del navegador
+        // no traiga `clubId`.
+        if (!user || (user?.role === 'administrator' && !user?.clubId)) { setMySite(null); setMySiteResolved(true); return undefined; }
         const token = localStorage.getItem('rotary_token');
         if (!token) return undefined;
         let vivo = true;
@@ -202,23 +206,32 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
         fetch(`${API}/admin/my-site`, { headers: { Authorization: `Bearer ${token}` }, signal: ctrl.signal })
             .then(r => (r.ok ? r.json() : null))
             .then(d => {
-                if (!vivo || !d?.site) return;
+                if (!vivo) return;
+                setMySiteResolved(true);
+                if (!d?.site) return;
                 setMySite(d.site);
                 // El slug también sirve al contexto del panel: con él, el
                 // navegador carga la configuración de ESTE club (no la de la
                 // plataforma) la próxima vez.
                 try {
                     const lsUser = JSON.parse(localStorage.getItem('rotary_user') || 'null');
-                    if (lsUser && d.site.slug && lsUser.club && !lsUser.club.subdomain) {
-                        lsUser.club.subdomain = d.site.slug;
+                    // v4.1361 — Si la sesión guardada no apunta a SU club (o le
+                    // falta el slug), se corrige y el contexto del panel se
+                    // recarga con el club del usuario: la barra lateral decía
+                    // «Nombre del club» porque el panel tenía cargado otro sitio.
+                    const own = { id: d.site.id, name: d.site.name, subdomain: d.site.slug };
+                    if (lsUser && d.site.slug && (lsUser.club?.subdomain !== d.site.slug || lsUser.club?.id !== d.site.id)) {
+                        lsUser.club = { ...(lsUser.club || {}), ...own };
+                        if (!lsUser.clubId) lsUser.clubId = d.site.id;
                         localStorage.setItem('rotary_user', JSON.stringify(lsUser));
+                        refreshClubRef.current?.();
                     }
                 } catch { /* sin almacenamiento */ }
             })
-            .catch(() => { /* «Abrir Sitio» cae al cálculo del contexto */ })
+            .catch(() => { if (vivo) setMySiteResolved(true); })
             .finally(() => clearTimeout(timer));
         return () => { vivo = false; clearTimeout(timer); ctrl.abort(); };
-    }, [user?.clubId, user?.role]);
+    }, [user?.id, user?.clubId, user?.role]);
     // ⚠️ TODO HOOK ARRIBA DEL COMPONENTE, ANTES DE CUALQUIER `return`. React
     // identifica cada hook por su ORDEN de llamada: uno escrito debajo de un
     // return temprano no corre en el primer render y sí en el segundo, y React
@@ -231,7 +244,10 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
     const anclaPerfil = React.useRef<HTMLDivElement | null>(null);
     // ¿Este usuario tiene además un proyecto postulado en la feria?
     const projectLink = useProjectFairLink(!!user);
-    const { club } = useClub();
+    const { club, refreshClub } = useClub();
+    // v4.1361 — Para recargar el contexto con el club del usuario (ver «mySite»).
+    const refreshClubRef = useRef(refreshClub);
+    refreshClubRef.current = refreshClub;
     const navigate = useNavigate();
     const location = useLocation();
     const [searchQuery, setSearchQuery] = useState('');
@@ -364,7 +380,11 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
         ? `https://${cleanDomain}`
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         : ((club as any)?.subdomain ? `https://app.clubplatform.org/?${paramKey}=${(club as any).subdomain}` : null));
-    const verMiSitioUrl = mySite ? mySite.url : verMiSitioUrlContexto;
+    // v4.1361 — Para un usuario de club, SÓLO la dirección que decide el
+    // servidor: nunca el dominio del sitio que cargó el navegador (que llevaba
+    // a rotary4281.org). Mientras llega, el botón no se muestra.
+    const isClubUser = !!user && !(user?.role === 'administrator' && !user?.clubId);
+    const verMiSitioUrl = isClubUser ? (mySite?.url || null) : (mySite ? mySite.url : (mySiteResolved ? verMiSitioUrlContexto : null));
 
     // Redirect to dashboard if trying to access locked route
     useEffect(() => {
@@ -417,7 +437,15 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
 
         // Fetch GA4 totals
         const analyticsAuthHeaders = token ? { Authorization: `Bearer ${token}` } : undefined;
-        if (clubHostname) {
+        if (!isSuperAdmin && token) {
+            // v4.1361 — Un sitio (club o distrito) NO elige qué medir: el
+            // servidor usa el de la sesión. Mandar `hostname` con el dominio
+            // del contexto daba las cifras del Distrito a un club.
+            fetch(`${API}/analytics/traffic?days=30`, { headers: analyticsAuthHeaders })
+                .then(r => r.json())
+                .then(d => { setGaMock(!!d.mock); if (d.totals) setGaTotals(d.totals); })
+                .catch(() => setGaMock(true));
+        } else if (clubHostname) {
             fetch(`${API}/analytics/traffic?days=30&hostname=${encodeURIComponent(clubHostname)}`, {
                 headers: analyticsAuthHeaders
             })

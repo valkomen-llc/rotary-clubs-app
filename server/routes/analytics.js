@@ -8,6 +8,8 @@ import { DISTRICT_SITE_SQL, districtSiteParams, pickDistrictSite } from '../lib/
 // v4.1360 — Un club común no mide con el dominio de un Distrito (caso Tuluá El Lago).
 import { districtDomainsOf, isForeignDistrictDomain } from '../lib/siteDomainGuard.js';
 
+console.log('[analytics] v4.1361.0 — Un club ve SÓLO su sitio, decidido por la sesión (ni `?hostname=` ni el dominio del panel le dan otro alcance); `?hostname=` sólo para el administrador de la plataforma.');
+
 const router = express.Router();
 
 // ── In-Memory Cache (TTL: 5 mins default) to protect GA4 quotas and speed up UI ──
@@ -67,9 +69,30 @@ async function resolveAnalyticsScope(req) {
     }
 
     // Support developer/testing query override on localhost if explicitly requested
-    const testDomain = (isHostPlatform && req.query.hostname && req.query.hostname !== 'localhost' && !PLATFORM_HOSTS.includes(req.query.hostname))
+    // ⚠️ v4.1361 — SÓLO para el administrador de la PLATAFORMA. Hasta v4.1360
+    // cualquier usuario autenticado que mandara `?hostname=rotary4281.org`
+    // recibía el alcance de ESE sitio: la cabecera del panel de un club lo
+    // mandaba con el dominio del sitio que había cargado el navegador, y el
+    // club Tuluá El Lago veía las cifras del Distrito (1.5k / 6.6k). Además era
+    // una fuga: cualquier sitio podía leer las analíticas de otro.
+    const isPlatformOperator = (user.role === 'administrator' || user.role === 'superadmin') && !user.clubId;
+    const testDomain = (isPlatformOperator && isHostPlatform && req.query.hostname && req.query.hostname !== 'localhost' && !PLATFORM_HOSTS.includes(req.query.hostname))
         ? canonicalDomain(req.query.hostname)
         : null;
+
+    // v4.1361 — Un CLUB independiente ve sólo sus datos, decidido por la
+    // SESIÓN y antes que el dominio por el que se abre el panel: ni su
+    // `districtId` (pertenece al distrito, no lo administra) ni entrar por
+    // rotary4281.org/admin le dan el alcance del Distrito. Sólo el sitio de un
+    // Distrito suma a sus clubes. Hasta v4.1360 el usuario de Tuluá El Lago
+    // recibía el alcance del Distrito 4281 (y el «tiempo real» filtraba por
+    // «4281»: «3 visitantes activos»).
+    if (user.clubId) {
+        const ownClub = await prisma.club.findUnique({ where: { id: user.clubId } }).catch(() => null);
+        if (ownClub && ownClub.type !== 'district' && ownClub.category !== 'district') {
+            return { isGlobal: false, lockedSiteId: ownClub.id, lockedDistrictId: null, club: ownClub, district: null, user };
+        }
+    }
 
     // If accessed through a custom domain (e.g. rotary4281.org or rotarynuevocali.org)
     const effectiveDomain = testDomain || (!isHostPlatform ? host : (!isOriginPlatform ? origin : null));

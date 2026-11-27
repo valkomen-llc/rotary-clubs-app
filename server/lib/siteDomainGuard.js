@@ -15,7 +15,14 @@
 //     nombre, si se creó sin él —«Club Rotario Tuluá El Lago» → «tulua-el-lago»—,
 //     para que «Abrir Sitio» tenga a dónde ir: app.clubplatform.org/?club=…
 // ════════════════════════════════════════════════════════════════════════════
-import { canonicalDomain, domainCandidates } from './domains.js';
+import { canonicalDomain, subdomainLabel } from './domains.js';
+
+// v4.1361 — El dominio GUARDADO normalizado en SQL con el mismo criterio que
+// canonicalDomain (protocolo, ruta, puerto, «www.», mayúsculas). Sin esto, un
+// Distrito guardado como «https://rotary4281.org/» no casaba con
+// «rotary4281.org» y el club que lo copió lo usaba como propio.
+export const normDomainSql = (col) =>
+    `regexp_replace(regexp_replace(regexp_replace(lower(btrim(COALESCE(${col}, ''))), '^[a-z][a-z0-9+.-]*://', ''), '[/?#:].*$', ''), '^www[.]', '')`;
 
 const PREFIXES = /^(club\s+rotario|rotary\s+club(\s+de|\s+of)?|club\s+rotaract|rotaract\s+club|c\s*\.?\s*r\s*\.?)\s+/i;
 
@@ -60,16 +67,30 @@ export const isDistrictSiteOf = (club, district) => {
 export const findDomainConflict = async (q, domain, club = {}) => {
     const clean = canonicalDomain(domain);
     if (!clean) return null;
-    const candidates = domainCandidates(clean).map(d => d.toLowerCase());
     const otherClub = await q.query(
-        `SELECT id, name, domain FROM "Club" WHERE lower(domain) = ANY($1::text[]) AND ($2::text IS NULL OR id <> $2) LIMIT 1`,
-        [candidates, club.id || null]).catch(() => ({ rows: [] }));
+        `SELECT id, name, domain FROM "Club" WHERE ${normDomainSql('domain')} = $1 AND ($2::text IS NULL OR id <> $2) LIMIT 1`,
+        [clean, club.id || null]).catch(() => ({ rows: [] }));
     if (otherClub.rows[0]) return { kind: 'club', ...otherClub.rows[0] };
     const district = await q.query(
-        `SELECT id, name, number, domain FROM "District" WHERE lower(domain) = ANY($1::text[]) LIMIT 1`,
-        [candidates]).catch(() => ({ rows: [] }));
+        `SELECT id, name, number, domain FROM "District" WHERE ${normDomainSql('domain')} = $1 LIMIT 1`,
+        [clean]).catch(() => ({ rows: [] }));
     const d = district.rows[0];
     if (d && !isDistrictSiteOf(club, d)) return { kind: 'district', id: d.id, name: d.name || `Distrito ${d.number}`, domain: d.domain };
+    if (d) return null;
+    // v4.1361 — La resolución pública también casa la PRIMERA ETIQUETA del
+    // dominio con el subdominio de un sitio (rotary4281.org → «rotary4281»).
+    // Si esa etiqueta ya es el subdominio de un Distrito o de otro club, el
+    // dominio lleva a ESE sitio: tampoco es de este club.
+    const label = subdomainLabel(clean);
+    if (!label) return null;
+    const byLabelDistrict = await q.query(
+        `SELECT id, name, number, domain FROM "District" WHERE lower(subdomain) = $1 LIMIT 1`, [label]).catch(() => ({ rows: [] }));
+    const ld = byLabelDistrict.rows[0];
+    if (ld) return isDistrictSiteOf(club, ld) ? null : { kind: 'district', id: ld.id, name: ld.name || `Distrito ${ld.number}`, domain: ld.domain || clean };
+    const byLabelClub = await q.query(
+        `SELECT id, name, domain FROM "Club" WHERE lower(subdomain) = $1 AND ($2::text IS NULL OR id <> $2) LIMIT 1`,
+        [label, club.id || null]).catch(() => ({ rows: [] }));
+    if (byLabelClub.rows[0]) return { kind: 'club', ...byLabelClub.rows[0] };
     return null;
 };
 
@@ -90,8 +111,8 @@ export const ownDomainOf = async (q, club) => {
     const clean = canonicalDomain(club.domain);
     // El sitio del Distrito dueño del dominio lo conserva aunque un club
     // intruso lo tenga copiado.
-    const owner = await q.query(`SELECT id, number FROM "District" WHERE lower(domain) = ANY($1::text[]) LIMIT 1`,
-        [domainCandidates(clean).map(d => d.toLowerCase())]).catch(() => ({ rows: [] }));
+    const owner = await q.query(`SELECT id, number FROM "District" WHERE ${normDomainSql('domain')} = $1 LIMIT 1`,
+        [clean]).catch(() => ({ rows: [] }));
     if (owner.rows[0]) return isDistrictSiteOf(club, owner.rows[0]) ? clean : null;
     const conflict = await findDomainConflict(q, club.domain, club);
     return conflict ? null : canonicalDomain(club.domain);
@@ -111,19 +132,23 @@ export const siteUrlOf = ({ club, ownDomain, slug }) => {
 
 /** Los dominios de los Distritos (para no medir ni abrir el de otro sitio). */
 export const districtDomainsOf = async (q) => {
-    const { rows } = await q.query(`SELECT id, number, domain FROM "District" WHERE COALESCE(domain, '') <> ''`).catch(() => ({ rows: [] }));
-    return rows.map(r => ({ ...r, clean: canonicalDomain(r.domain) })).filter(r => r.clean);
+    const { rows } = await q.query(`SELECT id, number, domain, subdomain FROM "District" WHERE COALESCE(domain, '') <> '' OR COALESCE(subdomain, '') <> ''`).catch(() => ({ rows: [] }));
+    return rows.map(r => ({ ...r, clean: canonicalDomain(r.domain), label: String(r.subdomain || '').trim().toLowerCase() }))
+        .filter(r => r.clean || r.label);
 };
 
 /** ¿El dominio de este club (común) es el de un Distrito? Puro, con la lista ya leída. */
 export const isForeignDistrictDomain = (club, districts = []) => {
     const clean = canonicalDomain(club?.domain);
     if (!clean) return false;
-    const d = districts.find(x => x.clean === clean);
+    const label = subdomainLabel(clean);
+    // Por su dominio o, si el Distrito no lo tiene guardado, por la etiqueta
+    // que la resolución pública casa con su subdominio (v4.1361).
+    const d = districts.find(x => x.clean && x.clean === clean) || districts.find(x => x.label && x.label === label);
     return !!d && !isDistrictSiteOf(club, d);
 };
 
 export default {
     slugFromName, uniqueSlug, isDistrictSiteOf, findDomainConflict, domainConflictMessage,
-    ownDomainOf, siteParamKey, siteUrlOf, districtDomainsOf, isForeignDistrictDomain,
+    ownDomainOf, siteParamKey, normDomainSql, siteUrlOf, districtDomainsOf, isForeignDistrictDomain,
 };
