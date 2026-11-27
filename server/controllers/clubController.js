@@ -2,6 +2,8 @@ import db from '../lib/db.js';
 import VercelService from '../services/VercelService.js';
 import prisma from '../lib/prisma.js'; // CLIENTE CENTRALIZADO (EVITA ERROR 500 POR CONEXIONES)
 import { canonicalDomain } from '../lib/domains.js';
+// v4.1359 — Un club no guarda el dominio de OTRO sitio y siempre tiene slug.
+import { findDomainConflict, domainConflictMessage, uniqueSlug } from '../lib/siteDomainGuard.js';
 
 import { normalizeFloatingButton } from '../lib/floatingButton.js';
 import { shouldClearManualBanner } from '../lib/subscriptionHealth.js';
@@ -11,6 +13,7 @@ import { normalizeAboutMenu, normalizeHeaderCtas } from '../lib/headerMenu.js';
 // Clubes: el selector ahora incluye 'Evento o Convención', así que un registro mal
 // categorizado (ej. un evento guardado como club) puede moverse a su sección correcta
 // vía updateClub (addField('type', ...)) sin tocar la base de datos directamente.
+console.log('[clubController] v4.1359.0 cargado — Un club no guarda el dominio de otro sitio (club o Distrito; 409 DOMAIN_TAKEN) y recibe un slug del nombre si no lo tiene; el listado marca los dominios ajenos.');
 console.log('[clubController] v4.699.0 — El logo del encabezado sigue al idioma activo: `logo_intl` (Setting) se sirve como `logoIntl` en /clubs/by-domain y el navegador elige con src/lib/audienceAssets.ts.');
 console.log('[clubController] v4.551.0 — Editar Club: nuevo campo "Distrito al que pertenece" (persiste districtId) para segmentar la difusión de noticias por distrito.');
 console.log('[clubController] v4.482.0 — Evento/Convención: colores + hero + menú reordenable + secciones editables + footer configurable | scroll-to-top | correo: envío directo vía Resend (multi-destinatario) + Enviados persistentes + recepción vía Resend (email.received → fetch del cuerpo vía API de recepción, firma Svix no bloqueante) + botón Enviar robusto + Diagnóstico (lee dominio/MX con key de lectura + verifica webhook email.received + probar envío real)');
@@ -51,7 +54,17 @@ export const getAllClubs = async (req, res) => {
             SELECT c.*, 
                 (SELECT COUNT(*) FROM "User" u WHERE u."clubId" = c.id) as "userCount",
                 (SELECT COUNT(*) FROM "Project" p WHERE p."clubId" = c.id) as "projectCount",
-                (SELECT COUNT(*) FROM "Post" po WHERE po."clubId" = c.id) as "postCount"
+                (SELECT COUNT(*) FROM "Post" po WHERE po."clubId" = c.id) as "postCount",
+                -- v4.1359: el dominio ya es de OTRO sitio (otro club o un Distrito
+                -- que no es el suyo): el panel lo marca para corregirlo.
+                CASE WHEN COALESCE(c.domain, '') = '' THEN NULL
+                     -- El sitio-club del Distrito dueño del dominio es el legítimo: no se marca.
+                     WHEN c.type = 'district' AND EXISTS (SELECT 1 FROM "District" d0 WHERE lower(regexp_replace(COALESCE(d0.domain, ''), '^www[.]', '')) = lower(regexp_replace(c.domain, '^www[.]', ''))
+                                  AND (c."districtId" = d0.id OR c.district = d0.number::text)) THEN NULL
+                     WHEN EXISTS (SELECT 1 FROM "Club" o WHERE o.id <> c.id AND lower(regexp_replace(COALESCE(o.domain, ''), '^www[.]', '')) = lower(regexp_replace(c.domain, '^www[.]', ''))) THEN 'club'
+                     WHEN EXISTS (SELECT 1 FROM "District" d WHERE lower(regexp_replace(COALESCE(d.domain, ''), '^www[.]', '')) = lower(regexp_replace(c.domain, '^www[.]', ''))
+                                  AND NOT (c.type = 'district' AND (c."districtId" = d.id OR c.district = d.number::text))) THEN 'district'
+                     ELSE NULL END AS "domainConflict"
             FROM "Club" c ${whereSql} ORDER BY c."createdAt" DESC
         `, params);
         res.json(result.rows);
@@ -191,6 +204,12 @@ export const createClub = async (req, res) => {
         registrarPoolId
     } = req.body;
     try {
+        // v4.1359 — Caso Tuluá El Lago: se creó con el dominio del Distrito
+        // (rotary4281.org) y «Abrir Sitio» y Analíticas mostraban el Distrito.
+        const conflict = await findDomainConflict(db, domain, { id: null, type: type || 'club', district });
+        if (conflict) return res.status(409).json({ error: domainConflictMessage(domain, conflict), code: 'DOMAIN_TAKEN', conflict });
+        // Sin slug, «Abrir Sitio» no tiene a dónde ir: se genera del nombre.
+        const slug = String(subdomain || '').trim() || await uniqueSlug(db, name);
         const result = await db.query(
             `INSERT INTO "Club" (id, name, city, country, district, domain, subdomain, description, status, type, "subscriptionStatus", "expirationDate", "billingContactEmail", "billingContactPhone", "expirationBannerActive", "expirationBannerMessage", "developmentBannerActive", "developmentBannerMessage", "createdAt", "updatedAt")
              VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW(), NOW()) RETURNING *`,
@@ -204,7 +223,7 @@ export const createClub = async (req, res) => {
                 // `https://ejemplo.org` nacía con un dominio que la resolución
                 // no podía casar — y nadie se enteraba hasta visitar el sitio.
                 canonicalDomain(domain) || null,
-                subdomain || null, 
+                slug || null, 
                 description || null, 
                 status || 'active', 
                 type || 'club',
@@ -302,6 +321,14 @@ export const updateClub = async (req, res) => {
 
             if (!entity) return res.status(404).json({ error: 'Entidad no encontrada' });
 
+            // v4.1359 — Un club no puede guardar el dominio de OTRO sitio (un
+            // club o un Distrito). Sólo se revisa si el dominio CAMBIA: así
+            // un club que ya lo tiene mal se puede seguir editando y corregir.
+            if (tableName === 'Club' && normalizedDomain && normalizedDomain !== canonicalDomain(entity.domain)) {
+                const conflict = await findDomainConflict(db, normalizedDomain, { ...entity, type: type || entity.type, districtId: districtId || entity.districtId, district: district || entity.district });
+                if (conflict) return res.status(409).json({ error: domainConflictMessage(normalizedDomain, conflict), code: 'DOMAIN_TAKEN', conflict });
+            }
+
             const updateFields = [];
             const params = [];
             let pIdx = 1;
@@ -375,6 +402,17 @@ export const updateClub = async (req, res) => {
                 result = await db.query(query, params);
             } else {
                 result = await db.query(`UPDATE "${tableName}" SET "updatedAt" = NOW() WHERE id = $1 RETURNING *`, [id]);
+            }
+
+            // v4.1359 — Un club sin slug lo recibe a partir de su nombre, para
+            // que «Abrir Sitio» lleve a app.clubplatform.org/?club=<slug> y no
+            // a otro sitio.
+            if (tableName === 'Club' && result.rows?.[0] && !result.rows[0].subdomain) {
+                const slug = await uniqueSlug(db, result.rows[0].name, { excludeId: id }).catch(() => null);
+                if (slug) {
+                    const r2 = await db.query('UPDATE "Club" SET subdomain = $2, "updatedAt" = NOW() WHERE id = $1 AND subdomain IS NULL RETURNING *', [id, slug]);
+                    if (r2.rows[0]) result = r2;
+                }
             }
 
             // Vercel Auto-provision

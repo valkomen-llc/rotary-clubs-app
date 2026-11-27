@@ -115,3 +115,33 @@ con la base sustituida en memoria). **Sin Postgres, credenciales ni red.**
   `server/lib/db.js` por una base en memoria con un hook de resolución de
   módulos y consulta el endpoint de verdad. Al tocar la resolución por dominio,
   correrla: es lo único que ve este tipo de fallo.
+
+
+## Un club no puede quedar con el dominio de otro sitio — v4.1359
+
+Caso «Club Rotario Tuluá El Lago»: se creó con `rotary4281.org` (el dominio
+del Distrito 4281) en «Dominio Propio». La resolución pública prefiere el
+Distrito, así que el club nunca se mostraba en ese dominio; pero el panel
+confía en `Club.domain`: «Abrir Sitio» (`verMiSitioUrl` en `AdminLayout`) iba
+a la página del Distrito y Analíticas (catálogo `/analytics/sites`, filtrado
+por hostname) medía el tráfico del Distrito como si fuera del club.
+
+- `server/lib/siteDomainGuard.js`: `findDomainConflict` (¿el dominio, con sus
+  variantes `www.`, ya es de OTRO club o de un Distrito? La única excepción es
+  el sitio-club del propio Distrito, `isDistrictSiteOf`), `uniqueSlug` y
+  `slugFromName` («Club Rotario Tuluá El Lago» → `tulua-el-lago`).
+- `createClub` y `updateClub` responden **409 `DOMAIN_TAKEN`** con la
+  explicación. La edición sólo revisa si el dominio CAMBIA: un club que ya lo
+  tiene mal se puede seguir editando y corregir dejándolo vacío.
+- Un club sin `subdomain` recibe uno al crearse o al guardarse: sin slug,
+  «Abrir Sitio» no tiene a dónde ir (`app.clubplatform.org/?club=<slug>`).
+- `getAllClubs` devuelve `domainConflict` (`'club'` | `'district'` | null) y la
+  lista de Super Admin lo pinta en rojo. El dueño legítimo (el sitio del
+  Distrito) no se marca.
+- Quitar el dominio de un club NO lo quita de Vercel (`updateClub` sólo
+  agrega dominios), así que corregir un club no tumba el sitio del Distrito.
+- El campo lleva `autoComplete="off"`: el navegador ofrecía dominios usados
+  antes, como el del Distrito.
+- Prueba: `npm run test:site-domain-guard` (en `prebuild`); con
+  `SITE_DOMAIN_TEST_DATABASE_URL` corre las consultas y los manejadores reales
+  (25 comprobaciones, incluida la corrección del caso Tuluá).
