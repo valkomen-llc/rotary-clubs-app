@@ -137,7 +137,7 @@ const WhatsAppCampaigns: React.FC = () => {
             try {
                 const res = await fetch(`${API}/whatsapp/campaigns/${id}/preflight`, { headers });
                 const data = await res.json();
-                if (data.success && (data.stats.needsReview > 0 || data.stats.invalid > 0)) {
+                if (data.success && (data.stats.needsReview > 0 || data.stats.invalid > 0 || data.stats.usMarketingBlocked > 0)) {
                     setPreflightData({ campaignId: id, campaignName: camp?.name, ...data });
                     setPreflightLoading(false);
                     return;
@@ -727,6 +727,12 @@ const WhatsAppCampaigns: React.FC = () => {
                     return true;
                 });
                 const camp = campaigns.find(c => c.id === viewLogs);
+                // v4.1363 — Cuántos fallos son de la política de Meta (no se
+                // arreglan reintentando ni corrigiendo el número).
+                const failedRows = logs.filter(l => l.status === 'failed');
+                const usBlocked = failedRows.filter(l => l.failure?.kind === 'meta_us_marketing').length;
+                const metaLimited = failedRows.filter(l => l.failure?.kind === 'meta_marketing_limit' || l.failure?.kind === 'meta_experiment').length;
+                const retryableFailed = failedRows.filter(l => !l.failure || l.failure.retryable).length;
                 const funnel = [
                     { key: 'all', label: 'Total', value: total, color: 'text-gray-900', sub: '100%' },
                     { key: 'sent', label: 'Enviados', value: sent, color: 'text-emerald-600', sub: `${pct(sent)}%` },
@@ -744,9 +750,11 @@ const WhatsAppCampaigns: React.FC = () => {
                             </div>
                             <div className="flex items-center gap-2">
                                 {failed > 0 && (
-                                    <button onClick={() => handleRetryFailed(viewLogs)} disabled={retrying}
+                                    <button onClick={() => handleRetryFailed(viewLogs)} disabled={retrying || retryableFailed === 0}
                                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-bold hover:bg-amber-700 disabled:opacity-50 transition-colors shadow-xs"
-                                        title="Reintentar el envío únicamente a los contactos que fallaron (sin duplicar a los enviados)">
+                                        title={retryableFailed === 0
+                                            ? 'Ningún fallido se puede reintentar: Meta los rechazó por su política de mensajes de marketing y volvería a rechazarlos.'
+                                            : `Reintentar a ${retryableFailed} contacto(s). Los que Meta rechazó por su política de marketing no se reintentan.`}>
                                         {retrying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
                                         {retrying ? 'Reintentando…' : 'Reintentar fallidos'}
                                     </button>
@@ -840,6 +848,19 @@ const WhatsAppCampaigns: React.FC = () => {
                             )}
                         </div>
 
+                        {(usBlocked > 0 || metaLimited > 0) && (
+                            <div className="mx-5 mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 space-y-1">
+                                <p className="font-bold">{usBlocked + metaLimited} de los {failed} fallidos los rechazó Meta por su política de mensajes de marketing. La línea y los números están bien.</p>
+                                {usBlocked > 0 && (
+                                    <p><b>{usBlocked}</b> son números de Estados Unidos (+1): Meta no entrega plantillas de MARKETING a esos números. Para llegarles: una plantilla de UTILIDAD (si el contenido lo es de verdad), o responderles dentro de las 24 horas después de que escriban.</p>
+                                )}
+                                {metaLimited > 0 && (
+                                    <p><b>{metaLimited}</b> los limitó Meta porque recibieron muchos mensajes de marketing (o están en un grupo de control de Meta). Reintentar antes de 24 horas vuelve a fallar.</p>
+                                )}
+                                <p className="text-amber-800">«Reintentar fallidos» los omite: sólo reintenta los que pueden llegar.</p>
+                            </div>
+                        )}
+
                         {/* Filtros */}
                         <div className="px-5 pt-3 flex gap-2">
                             {[
@@ -878,8 +899,20 @@ const WhatsAppCampaigns: React.FC = () => {
                                             <td className="p-3 text-[11px] text-gray-500">{fmt(l.readAt)}</td>
                                             <td className={`p-3 text-[11px] ${l.status === 'failed' ? 'text-red-500 font-medium' : 'text-gray-300'}`}>
                                                 <div className="space-y-1.5">
-                                                    <div>{l.errorMessage || (l.status === 'failed' ? 'Error de envío (Meta API)' : '—')}</div>
-                                                    {l.status === 'failed' && (
+                                                    {/* v4.1363 — El motivo en español y qué hacer. Un 131049
+                                                        de Meta no es un número mal escrito: «Corregir número»
+                                                        sólo aparece cuando el número puede ser el problema. */}
+                                                    {l.status === 'failed' && l.failure ? (
+                                                        <div className="space-y-0.5">
+                                                            <div className="font-bold">{l.failure.title}</div>
+                                                            <div className="text-gray-600 font-normal">{l.failure.explanation}</div>
+                                                            <div className="text-gray-700 font-normal"><b>Qué hacer:</b> {l.failure.action}</div>
+                                                            {l.errorMessage && <div className="text-gray-400 font-normal">Meta: {l.errorCode ? `${l.errorCode} · ` : ''}{l.errorMessage}</div>}
+                                                        </div>
+                                                    ) : (
+                                                        <div>{l.errorMessage || (l.status === 'failed' ? 'Error de envío (Meta API)' : '—')}</div>
+                                                    )}
+                                                    {l.status === 'failed' && (!l.failure || l.failure.canFixNumber) && (
                                                         <button
                                                             onClick={() => setEditingContact({
                                                                 id: l.contactId,
@@ -997,6 +1030,10 @@ const WhatsAppCampaigns: React.FC = () => {
                         </div>
 
                         <div className="overflow-auto flex-1 p-4 space-y-2">
+                            {/* v4.1363 — Lo que Meta no va a entregar, dicho antes de enviar. */}
+                            {Array.isArray(preflightData.warnings) && preflightData.warnings.map((w: string, i: number) => (
+                                <div key={i} className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">{w}</div>
+                            ))}
                             <p className="text-xs font-bold text-gray-700">Destinatarios que requieren corrección antes del envío:</p>
                             <div className="divide-y divide-gray-100 border border-gray-100 rounded-xl overflow-hidden">
                                 {preflightData.contacts.filter((c: any) => c.deliveryStatus !== 'ready' && c.deliveryStatus !== 'already_sent').map((c: any) => (

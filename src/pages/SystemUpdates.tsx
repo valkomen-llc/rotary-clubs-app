@@ -34,13 +34,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1362.0 | 2026-11-27 (Dirigir el webhook de WhatsApp desde la tarjeta de la línea)
+// UI V4.1363.0 | 2026-11-27 (Campañas de WhatsApp: el 131049 de Meta explicado, sin reintentos inútiles)
 // Cache bust: 2026-11-19
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1363.0',
+        title: 'Campañas de WhatsApp: por qué Meta no entregó, y qué sí funciona 📵',
+        description: 'La campaña «Ver el video de invitación de John - 002» de la Feria tuvo 42 fallidos de 51 con «In order to maintain a healthy ecosystem engagement…» (código 131049 de Meta). La línea funciona —ahora sí vuelven los estados: 8 entregados y 1 leído—; lo que pasa es que Meta no entrega plantillas de MARKETING a números de Estados Unidos (+1), y en otros países limita cuántos mensajes de marketing recibe cada persona. El seguimiento ofrecía «Corregir número» en esas filas y «Reintentar fallidos» volvía a mandarlos, sin ninguna posibilidad de llegar. Ahora cada fallo dice su motivo en español y qué hacer, «Corregir número» sólo aparece cuando el número puede ser el problema, el reintento omite lo que Meta volvería a rechazar y la verificación previa avisa, antes de enviar, cuántos destinatarios +1 no recibirán una plantilla de marketing.',
+        date: new Date().toISOString(),
+        tags: ['whatsapp', 'campañas', 'meta', '131049'],
+        type: 'fix',
+        impact: 'Media: el seguimiento, el reintento y la verificación previa de las campañas de WhatsApp de todos los sitios.',
+        changes: [
+            { type: 'fixed', text: 'Cada fallido explica el motivo (marketing a EE. UU. +1, límite de marketing de Meta, grupo de control, número inválido u otro) y qué hacer; el texto crudo de Meta queda debajo.' },
+            { type: 'fixed', text: '«Corregir número» ya no aparece en los fallos de la política de Meta: el número está bien.' },
+            { type: 'fixed', text: '«Reintentar fallidos» omite a los +1 con plantilla de marketing, al grupo de control y a los limitados hace menos de 24 h, y dice cuántos omitió; se apaga si no queda nada que pueda llegar.' },
+            { type: 'added', text: 'La verificación previa al envío avisa cuántos destinatarios +1 no recibirán una plantilla de MARKETING y qué alternativa hay (plantilla de UTILIDAD o responder dentro de 24 h).' },
+        ],
+    },
     {
         version: '4.1362.0',
         title: 'El webhook de WhatsApp se dirige a Club Platform desde la tarjeta de la línea 📲',

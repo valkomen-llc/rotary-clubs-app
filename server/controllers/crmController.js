@@ -18,6 +18,7 @@ const WA_API_BASE = `https://graph.facebook.com/${process.env.WA_API_VERSION || 
 // Queda en el arranque en frío para poder confirmar QUÉ versión está atendiendo
 // los webhooks. Es lo primero que hace falta saber cuando el módulo se comporta
 // distinto de lo que dice el código que uno está leyendo.
+console.log('[WA-CRM] Controlador v4.1363 — cada fallo de campaña con su motivo (131049: marketing a EE. UU. +1 / límite de Meta), sin «Corregir número» ni reintento cuando Meta volvería a rechazarlo; aviso previo de los +1.');
 console.log('[WA-CRM] Controlador v4.1285 — traza por mensaje entrante, idempotencia real y lotes completos del webhook.');
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -2051,6 +2052,23 @@ export const getCampaignPreflight = async (req, res) => {
             };
         });
 
+        // v4.1363 — Meta no entrega plantillas de MARKETING a números de EE. UU.
+        // (+1): se avisa ANTES de enviar, con cuántos son.
+        const { isUsNumber, isMarketingTemplate } = await import('../lib/whatsappCampaignFailure.js');
+        const tplR = campaign.templateId
+            ? await db.query(`SELECT category FROM "WhatsAppTemplate" WHERE id=$1 LIMIT 1`, [campaign.templateId]).catch(() => ({ rows: [] }))
+            : { rows: [] };
+        const templateCategory = tplR.rows[0]?.category || 'MARKETING';
+        breakdown.usMarketingBlocked = isMarketingTemplate(templateCategory)
+            ? contactDetails.filter(c => c.deliveryStatus !== 'already_sent' && isUsNumber(c.validation?.e164 || c.phone, c.country)).length
+            : 0;
+        for (const c of contactDetails) {
+            if (isMarketingTemplate(templateCategory) && c.deliveryStatus !== 'already_sent' && isUsNumber(c.validation?.e164 || c.phone, c.country)) c.metaUsMarketing = true;
+        }
+        const warnings = breakdown.usMarketingBlocked
+            ? [`${breakdown.usMarketingBlocked} destinatario(s) tienen número de Estados Unidos (+1) y la plantilla es de MARKETING: Meta no les entregará el mensaje (código 131049). No es un error del número. Para llegarles: una plantilla de UTILIDAD (si el contenido lo es) o responderles dentro de las 24 horas después de que escriban.`]
+            : [];
+
         const qualityScore = breakdown.total > 0
             ? Math.round(((breakdown.readyToSend + breakdown.alreadySent) / breakdown.total) * 100)
             : 0;
@@ -2064,6 +2082,8 @@ export const getCampaignPreflight = async (req, res) => {
                 ...breakdown,
                 qualityScore,
             },
+            templateCategory,
+            warnings,
             contacts: contactDetails,
         });
     } catch (err) {
@@ -2211,7 +2231,28 @@ export const sendCampaign = async (req, res) => {
             [id]
         );
         const alreadySentIds = new Set(alreadySentR.rows.map(r => r.contactId));
-        const pendingContacts = contacts.filter(c => !alreadySentIds.has(c.id));
+        // v4.1363 — No se vuelve a mandar lo que Meta va a rechazar igual: una
+        // plantilla de marketing a un número de EE. UU. (+1), un grupo de
+        // control de Meta, o un límite de marketing de hace menos de 24 h.
+        // Reintentarlos no llega a nadie y empeora la calidad de la línea.
+        const { classifyCampaignFailure } = await import('../lib/whatsappCampaignFailure.js');
+        const failedLogsR = await db.query(
+            `SELECT DISTINCT ON ("contactId") "contactId", phone, "errorCode", "errorMessage", "failedAt"
+               FROM "WhatsAppMessageLog" WHERE "campaignId"=$1 AND status='failed'
+              ORDER BY "contactId", "createdAt" DESC`,
+            [id]
+        ).catch(() => ({ rows: [] }));
+        const contactCountryById = new Map(contacts.map(c => [c.id, c.country]));
+        const blockedIds = new Set(failedLogsR.rows
+            .filter(r => !classifyCampaignFailure({
+                errorMessage: [r.errorCode, r.errorMessage].filter(Boolean).join(' '), phone: r.phone, country: contactCountryById.get(r.contactId),
+                templateCategory: template.category, failedAt: r.failedAt,
+            }).retryable)
+            .map(r => r.contactId));
+        const pendingContacts = contacts.filter(c => !alreadySentIds.has(c.id) && !blockedIds.has(c.id));
+        const skippedNote = blockedIds.size
+            ? ` ${blockedIds.size} no se reintentaron: Meta los rechazó por su política de mensajes de marketing (números de EE. UU. +1, grupo de control o límite de las últimas 24 h) y volvería a rechazarlos.`
+            : '';
 
         const BATCH_SIZE = 10;
         const sendOne = async (contact) => {
@@ -2322,8 +2363,8 @@ export const sendCampaign = async (req, res) => {
 
         res.json({
             success: true,
-            message: `Campaña procesada: ${finalSent} enviados, ${finalFailed} fallidos de ${contacts.length} destinatarios`,
-            campaignId: id, sent: finalSent, failed: finalFailed, total: contacts.length,
+            message: `Campaña procesada: ${finalSent} enviados, ${finalFailed} fallidos de ${contacts.length} destinatarios.${skippedNote}`,
+            campaignId: id, sent: finalSent, failed: finalFailed, total: contacts.length, skippedPolicy: blockedIds.size,
         });
     } catch (err) {
         console.error('WA sendCampaign:', err);
@@ -2341,7 +2382,17 @@ export const getCampaignLogs = async (req, res) => {
              WHERE l."campaignId"=$1 ORDER BY l."createdAt" DESC LIMIT 500`,
             [req.params.id]
         );
-        res.json(r.rows);
+        // v4.1363 — Cada fallo con su motivo en español y lo que se puede hacer:
+        // un 131049 de Meta no es un número mal escrito ni se arregla
+        // reintentando (`whatsappCampaignFailure.js`).
+        const { classifyCampaignFailure } = await import('../lib/whatsappCampaignFailure.js');
+        const tcat = await db.query(
+            `SELECT t.category FROM "WhatsAppCampaign" c LEFT JOIN "WhatsAppTemplate" t ON t.id = c."templateId" WHERE c.id = $1 LIMIT 1`,
+            [req.params.id]).catch(() => ({ rows: [] }));
+        const templateCategory = tcat.rows[0]?.category || 'MARKETING';
+        res.json(r.rows.map((row) => (row.status === 'failed'
+            ? { ...row, failure: classifyCampaignFailure({ errorMessage: [row.errorCode, row.errorMessage].filter(Boolean).join(' '), phone: row.phone, country: row.contactCountry, templateCategory, failedAt: row.failedAt }) }
+            : row)));
     } catch (err) {
         console.error('WA getCampaignLogs:', err);
         res.status(500).json({ error: err.message });
@@ -2359,7 +2410,7 @@ const explainWhatsAppError = (rawMsg) => {
         { re: /131030|not in allowed list|allowed list/, txt: 'El número no está en la lista de destinatarios permitidos (la cuenta de WhatsApp está en modo de prueba o el número no fue aprobado).' },
         { re: /131026|undeliverable|message undeliverable/, txt: 'Mensaje no entregable: el número no tiene WhatsApp, está inactivo o no puede recibir mensajes de esta cuenta.' },
         { re: /131047|re-engagement|reengagement|outside.*24|24.?hour|24h window/, txt: 'Fuera de la ventana de 24 horas: se requiere una plantilla aprobada para volver a contactar a este destinatario.' },
-        { re: /131049|healthy ecosystem|ecosystem engagement|health.*notification|per-user marketing|frequency cap/, txt: 'Meta no entregó este mensaje para cuidar la experiencia del usuario ("healthy ecosystem engagement"): el destinatario ya recibió demasiados mensajes de marketing recientemente, así que Meta limitó la entrega. No es un error de la campaña.' },
+        { re: /131049|healthy ecosystem|ecosystem engagement|health.*notification|per-user marketing|frequency cap/, txt: 'Meta no entregó este mensaje para cuidar la experiencia del usuario ("healthy ecosystem engagement", código 131049). Si el número es de Estados Unidos (+1), Meta no entrega plantillas de MARKETING a esos números; en otros países, el destinatario recibió demasiados mensajes de marketing recientemente. No es un error del número ni de la campaña, y reintentar enseguida vuelve a fallar.' },
         { re: /part of an experiment|experiment/, txt: 'El número fue seleccionado por Meta dentro de un grupo de experimento/control (holdout) para medir la efectividad de los mensajes de marketing. Por eso Meta no entregó este mensaje; no es un fallo de la campaña ni del número.' },
         { re: /131051|unsupported message type/, txt: 'Tipo de mensaje no soportado por el destinatario.' },
         { re: /131056|pair rate limit/, txt: 'Se alcanzó el límite de mensajes entre tu cuenta y este destinatario en poco tiempo.' },
