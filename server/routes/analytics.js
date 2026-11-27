@@ -5,6 +5,8 @@ import prisma from '../lib/prisma.js';
 import { JWT_SECRET, PLATFORM_AUDIENCE } from '../middleware/auth.js';
 import { canonicalDomain, domainCandidates, subdomainLabel } from '../lib/domains.js';
 import { DISTRICT_SITE_SQL, districtSiteParams, pickDistrictSite } from '../lib/districtSite.js';
+// v4.1360 — Un club común no mide con el dominio de un Distrito (caso Tuluá El Lago).
+import { districtDomainsOf, isForeignDistrictDomain } from '../lib/siteDomainGuard.js';
 
 const router = express.Router();
 
@@ -467,6 +469,19 @@ async function fetchAuthorizedSites(user, lockedSiteId = null, lockedDistrictId 
         })
     ]);
 
+    // v4.1360 — El club del usuario aparece AUNQUE no esté publicado todavía
+    // (un sitio en desarrollo tiene sus cifras en 0, no las de otro sitio).
+    if (lockedSiteId && !clubs.some(c => c.id === lockedSiteId) && !districts.some(d => d.id === lockedSiteId)) {
+        const own = await prisma.club.findUnique({
+            where: { id: lockedSiteId },
+            select: { id: true, name: true, category: true, type: true, district: true, domain: true, subdomain: true, status: true, districtId: true, affiliatedDistrict: { select: { id: true, name: true, number: true } } },
+        }).catch(() => null);
+        if (own) clubs.push(own);
+    }
+    // v4.1360 — Los dominios de los Distritos: un club COMÚN con uno de ellos
+    // guardado (caso Tuluá El Lago con rotary4281.org) no lo usa para medir.
+    const allDistrictDomains = await districtDomainsOf(db);
+
     // Build site list
     const sites = [];
 
@@ -565,7 +580,8 @@ async function fetchAuthorizedSites(user, lockedSiteId = null, lockedDistrictId 
         }
 
         const hostnames = new Set();
-        if (c.domain) {
+        const foreignDomain = isForeignDistrictDomain(c, allDistrictDomains);
+        if (c.domain && !foreignDomain) {
             const clean = canonicalDomain(c.domain);
             if (clean) {
                 hostnames.add(clean);
@@ -602,7 +618,7 @@ async function fetchAuthorizedSites(user, lockedSiteId = null, lockedDistrictId 
             group,
             category: c.category,
             type: typeLabel,
-            domain: c.domain || (c.subdomain ? `${c.subdomain}.clubplatform.org` : ''),
+            domain: (!foreignDomain && c.domain) || (c.subdomain ? `${c.subdomain}.clubplatform.org` : ''),
             subdomain: c.subdomain || '',
             hostnames: Array.from(hostnames),
             status: c.status,
@@ -758,12 +774,17 @@ router.get('/traffic', async (req, res) => {
                 const c = await prisma.club.findUnique({ where: { id: targetSiteId } });
                 if (c) {
                     const hosts = new Set();
-                    if (c.domain) {
+                    // v4.1360 — Ni el dominio de un Distrito guardado en un club
+                    // común, ni el del Distrito por tener número de distrito:
+                    // `|| c.district` le sumaba rotary4281.org a CUALQUIER club
+                    // del 4281 que no estuviera publicado (Tuluá El Lago).
+                    const foreign = isForeignDistrictDomain(c, await districtDomainsOf(db));
+                    if (c.domain && !foreign) {
                         const clean = canonicalDomain(c.domain);
                         if (clean) { hosts.add(clean); hosts.add(`www.${clean}`); }
                     }
                     if (c.subdomain) hosts.add(`${c.subdomain}.clubplatform.org`);
-                    if (c.type === 'district' || c.district) {
+                    if (c.type === 'district' || c.category === 'district') {
                         const d = await prisma.district.findFirst({
                             where: {
                                 OR: [
@@ -780,7 +801,7 @@ router.get('/traffic', async (req, res) => {
                     targetSite = {
                         id: c.id,
                         name: c.name,
-                        domain: c.domain || '',
+                        domain: (!foreign && c.domain) || (c.subdomain ? `${c.subdomain}.clubplatform.org` : ''),
                         subdomain: c.subdomain || '',
                         hostnames: Array.from(hosts),
                         type: c.type || 'Club Rotario',

@@ -162,6 +162,29 @@ async function computeSiteConfig(domain, preview) {
             }
         });
 
+        // v4.1360 — Un club COMÚN con el dominio de un Distrito no se queda con
+        // ese dominio: el sitio público del Distrito manda (caso Tuluá El Lago,
+        // creado con rotary4281.org). Sólo se descarta si casó por el DOMINIO
+        // (no por el subdominio pedido) y el club no es el sitio del Distrito.
+        const districtOwnsDomain = async () => !!(await db.prisma.district.findFirst({ where: { OR: candidates.map(d => ({ domain: { equals: d, mode: 'insensitive' } })) }, select: { id: true } }).catch(() => null));
+        const stealsDistrictDomain = async (entity) => !!entity
+            && entity.type !== 'district' && entity.category !== 'district'
+            && canonicalDomain(entity.domain) === cleanDomain
+            && await districtOwnsDomain();
+        if (await stealsDistrictDomain(activeEntity)) {
+            console.warn(`[by-domain] ${cleanDomain}: el club ${activeEntity.id} tiene el dominio del Distrito; se sirve el Distrito.`);
+            activeEntity = null;
+        }
+
+        // v4.1360 — El panel puede pedir el sitio por el ID del club cuando el
+        // club todavía no tiene slug (sin esto caía al sitio de la plataforma).
+        if (!activeEntity && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(domain).trim())) {
+            activeEntity = await db.prisma.club.findUnique({
+                where: { id: String(domain).trim().toLowerCase() },
+                include: { settings: true, _count: { select: { products: { where: { status: 'active' } }, events: true } } },
+            }).catch(() => null);
+        }
+
         let entityType = 'club';
         // Cómo se resolvió la visita. Viaja en la respuesta para que el panel
         // pueda decirle a un administrador si su dominio está atado a su sitio
@@ -184,6 +207,8 @@ async function computeSiteConfig(domain, preview) {
                     }
                 });
                 if (activeEntity) resolvedBy = 'club_loose';
+                // v4.1360 — Tampoco por la vía «suelta».
+                if (await stealsDistrictDomain(activeEntity)) { activeEntity = null; resolvedBy = null; }
             }
         }
 

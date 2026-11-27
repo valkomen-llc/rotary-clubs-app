@@ -34,13 +34,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1359.0 | 2026-11-27 (Un club no puede quedar con el dominio de otro sitio; slug automático)
+// UI V4.1360.0 | 2026-11-27 (Abrir Sitio y Analíticas de un club nuevo: su propio sitio y cifras en 0)
 // Cache bust: 2026-11-19
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1360.0',
+        title: 'Un club nuevo abre SU sitio y ve SUS analíticas (no las del Distrito) 🧭',
+        description: 'El panel del Club Rotario Tuluá El Lago mostraba las estadísticas del Distrito y «Abrir Sitio» llevaba a rotary4281.org. Había cuatro causas encadenadas y se corrigieron todas, sin depender de editar datos a mano: el panel tomaba el sitio que resolvía el navegador (en app.clubplatform.org, el de la plataforma) en vez del club del usuario; Analíticas le sumaba el dominio del Distrito a cualquier club con número de distrito que todavía no estuviera publicado; con un perfil ligado al distrito, la lista de Analíticas empezaba por el Distrito; y un club con el dominio del Distrito guardado lo usaba como propio. Ahora «Abrir Sitio» lleva a app.clubplatform.org/?club=<slug del club> (o a su dominio propio, si lo tiene), y las analíticas de un sitio en desarrollo salen en 0.',
+        date: new Date().toISOString(),
+        tags: ['sitios', 'analíticas', 'abrir sitio', 'dominios'],
+        type: 'fix',
+        impact: 'Media: el panel de los clubes (botón «Abrir Sitio», contadores GA4 de la cabecera y Analíticas) y la resolución pública de un dominio de Distrito.',
+        changes: [
+            { type: 'fixed', text: '«Abrir Sitio» usa el club del usuario, decidido por el servidor: su dominio propio o app.clubplatform.org/?club=<slug>. Si el club no tiene slug, se genera del nombre.' },
+            { type: 'fixed', text: 'Analíticas ya no suma el dominio del Distrito a un club que no está publicado, ignora un dominio guardado que es de un Distrito, mide al club aunque esté en desarrollo (en 0) y elige primero el club del usuario.' },
+            { type: 'fixed', text: 'Un club común con el dominio de un Distrito ya no puede quedarse con el sitio público de ese dominio: siempre se sirve el Distrito.' },
+            { type: 'improved', text: 'El panel carga la configuración del club del usuario por su id cuando todavía no tiene slug (antes mostraba «Nombre del club» genérico).' },
+        ],
+    },
     {
         version: '4.1359.0',
         title: 'Un club ya no puede quedar con el dominio del Distrito (o de otro sitio) 🌐',

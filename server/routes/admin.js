@@ -23,7 +23,7 @@ import {
     postToggleLock,
     getImageUsage,
 } from '../controllers/visualCurationController.js';
-import { getAllClubs, getClubById, createClub, updateClub, deleteClub, batchUpsertMembers } from '../controllers/clubController.js';
+import { getAllClubs, getClubById, createClub, updateClub, deleteClub, batchUpsertMembers, getMySite } from '../controllers/clubController.js';
 import {
     getClubPosts, getPostById, getPostStats, createPost, updatePost, deletePost, bulkDeletePosts, reconcilePosts,
     getPublications, createPublication, updatePublication, deletePublication,
@@ -198,6 +198,8 @@ router.post('/clubs/:id/activation/run', superAdminOnly, async (req, res) => {
     }
 });
 router.post('/clubs', superAdminOnly, createClub);
+// v4.1360 — La dirección del sitio del usuario («Abrir Sitio»), decidida con SU club.
+router.get('/my-site', getMySite);
 router.delete('/clubs/:id', superAdminOnly, deleteClub);
 router.get('/clubs/:clubId/agent-context', roleMiddleware(['administrator', 'club_admin', 'district_admin']), getClubAgentContext);
 

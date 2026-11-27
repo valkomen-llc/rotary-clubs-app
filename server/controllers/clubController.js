@@ -3,7 +3,7 @@ import VercelService from '../services/VercelService.js';
 import prisma from '../lib/prisma.js'; // CLIENTE CENTRALIZADO (EVITA ERROR 500 POR CONEXIONES)
 import { canonicalDomain } from '../lib/domains.js';
 // v4.1359 — Un club no guarda el dominio de OTRO sitio y siempre tiene slug.
-import { findDomainConflict, domainConflictMessage, uniqueSlug } from '../lib/siteDomainGuard.js';
+import { findDomainConflict, domainConflictMessage, uniqueSlug, ownDomainOf, siteUrlOf } from '../lib/siteDomainGuard.js';
 
 import { normalizeFloatingButton } from '../lib/floatingButton.js';
 import { shouldClearManualBanner } from '../lib/subscriptionHealth.js';
@@ -13,6 +13,7 @@ import { normalizeAboutMenu, normalizeHeaderCtas } from '../lib/headerMenu.js';
 // Clubes: el selector ahora incluye 'Evento o Convención', así que un registro mal
 // categorizado (ej. un evento guardado como club) puede moverse a su sección correcta
 // vía updateClub (addField('type', ...)) sin tocar la base de datos directamente.
+console.log('[clubController] v4.1360.0 cargado — GET /admin/my-site: «Abrir Sitio» con el club del usuario (dominio propio o app.clubplatform.org/?club=<slug>, slug generado si falta, dominio ajeno descartado al leer).');
 console.log('[clubController] v4.1359.0 cargado — Un club no guarda el dominio de otro sitio (club o Distrito; 409 DOMAIN_TAKEN) y recibe un slug del nombre si no lo tiene; el listado marca los dominios ajenos.');
 console.log('[clubController] v4.699.0 — El logo del encabezado sigue al idioma activo: `logo_intl` (Setting) se sirve como `logoIntl` en /clubs/by-domain y el navegador elige con src/lib/audienceAssets.ts.');
 console.log('[clubController] v4.551.0 — Editar Club: nuevo campo "Distrito al que pertenece" (persiste districtId) para segmentar la difusión de noticias por distrito.');
@@ -267,6 +268,46 @@ export const createClub = async (req, res) => {
     } catch (error) {
         console.error('Error creating club:', error);
         res.status(500).json({ error: 'Error creating club: ' + (error.detail || error.message) });
+    }
+};
+
+/**
+ * v4.1360 — GET /admin/my-site: la dirección del sitio del usuario que entra
+ * al panel, decidida por el SERVIDOR con su propio club (no con el sitio que
+ * resolvió el navegador, que en app.clubplatform.org es el de la plataforma).
+ *
+ * - El dominio sólo cuenta si es DEL club (no el de un Distrito u otro sitio).
+ * - Sin dominio propio: app.clubplatform.org/?club=<slug>; si el club no
+ *   tiene slug, se le genera uno del nombre (y queda guardado).
+ */
+export const getMySite = async (req, res) => {
+    try {
+        const clubId = req.user?.clubId;
+        if (!clubId) return res.json({ site: null });
+        const { rows } = await db.query('SELECT id, name, type, category, district, "districtId", domain, subdomain, status FROM "Club" WHERE id = $1', [clubId]);
+        const club = rows[0];
+        if (!club) return res.json({ site: null });
+        let slug = club.subdomain || null;
+        if (!slug) {
+            slug = await uniqueSlug(db, club.name, { excludeId: club.id });
+            if (slug) {
+                const up = await db.query('UPDATE "Club" SET subdomain = $2, "updatedAt" = NOW() WHERE id = $1 AND (subdomain IS NULL OR subdomain = \'\') RETURNING subdomain', [club.id, slug]);
+                slug = up.rows[0]?.subdomain || (await db.query('SELECT subdomain FROM "Club" WHERE id = $1', [club.id])).rows[0]?.subdomain || slug;
+            }
+        }
+        const ownDomain = await ownDomainOf(db, club);
+        res.json({
+            site: {
+                id: club.id, name: club.name, type: club.type, status: club.status,
+                slug, ownDomain,
+                // El dominio guardado que NO se usa por ser de otro sitio (para avisar).
+                foreignDomain: club.domain && !ownDomain ? club.domain : null,
+                url: siteUrlOf({ club, ownDomain, slug }),
+            },
+        });
+    } catch (error) {
+        console.error('[getMySite]', error);
+        res.status(500).json({ error: 'No se pudo resolver el sitio del club.' });
     }
 };
 
