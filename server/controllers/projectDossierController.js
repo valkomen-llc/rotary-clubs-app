@@ -27,6 +27,7 @@ import {
     HEADER_SQL, loadTranslationTracking, checkTranslationValidity, insertTranslationEvent, adminLinkFor,
 } from '../lib/translationTrackingStore.js';
 
+console.log('[projectDossierController] v4.1358.0 cargado — Ficha técnica: «Presupuesto del proyecto» y «Área de enfoque» del registro inicial muestran lo diligenciado en el FDD / la Formulación, con lo inscrito debajo.');
 console.log('[projectDossierController] v4.1357.0 cargado — «Verificar traducción» en un paso: con campos traducidos sin marcar, la ventana pide confirmar que se revisaron y los marca al verificar (misma transacción); verificación desde la columna «Traducción EN» del listado y en lote.');
 console.log('[projectDossierController] v4.1356.0 cargado — Traducción verificada por Cadre: «Verificar traducción» (la aprobación de siempre, reforzada: todo revisado, sin avisos bloqueantes, justificación, huella exacta y sin autocertificación), vigencia automática por huella, revocación, asignación de Cadres, indicadores, filtros, recordatorios y bitácora.');
 console.log('[projectDossierController] v4.1355.0 cargado — Ficha técnica: «Club postulante» y «Nombre del proyecto» del registro inicial muestran el club principal y el título diligenciados, con lo inscrito debajo.');

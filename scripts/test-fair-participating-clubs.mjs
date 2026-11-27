@@ -131,5 +131,30 @@ const sinCambio = { groups: [{ key: 'submission', sections: [{ key: 'c', fields:
 ok('si el club y el título no cambiaron, el registro se muestra tal cual (sin notas)', P.registrationOverridesOf(sinCambio, 'es').size === 0);
 ok('la ficha aplica el reemplazo al dibujar el registro', /const overrides = registrationOverridesOf\(dossier, lang\)/.test(read('src/lib/projectDossierPdf.ts')));
 
+console.log('\nv4.1358 — El presupuesto y el área de enfoque del registro dicen lo diligenciado (caso Pilar Macías, FP-6YFC4X)');
+ok('montos escritos por el club: 30000, 30.000, 30,000, US$ 30.000,50', P.moneyNumber('30000') === 30000 && P.moneyNumber('30.000') === 30000 && P.moneyNumber('30,000') === 30000 && P.moneyNumber('US$ 30.000,50') === 30000.5 && P.moneyNumber('1500.5') === 1500.5 && P.moneyNumber('') === null && P.moneyNumber('n/a') === null);
+const ruitoque = (fdd, master, reg = 15000, focus = undefined) => ({ groups: [
+    { key: 'submission', sections: [{ key: 'p', fields: [
+        { path: 'submission.budgetUsd', type: 'currency', value: reg },
+        { path: 'submission.focusArea', type: 'select', value: 'Agua, Saneamiento e Higiene.' },
+    ] }] },
+    { key: 'master', sections: [{ key: 'x', fields: [
+        { path: 'master.presupuesto.budgetTable', type: 'matrix', value: master === undefined ? {} : { projectCost: { usd: master } } },
+        ...(focus ? [{ path: 'master.identificacion.focusAreas', type: 'multiselect', value: focus, valueEn: focus.map(f => `EN ${f}`) }] : []),
+    ] }] },
+    { key: 'fdd_2026_2027', sections: [{ key: 'presupuesto', fields: [{ path: 'fdd_2026_2027.presupuesto.budgetUsd', type: 'currency', value: fdd }] }] },
+] });
+const o1 = P.registrationOverridesOf(ruitoque('30000', '30000'), 'es').get('submission.budgetUsd');
+ok('registro 15.000 y FDD 30.000 → la ficha dice US$ 30.000', o1?.value === 'US$ 30.000');
+ok('… con la fuente y el valor inicial debajo (no se esconde)', o1?.note === 'Actualizado en la Solicitud de Aportes del FDD. Valor en el registro inicial: US$ 15.000');
+const o1en = P.registrationOverridesOf(ruitoque('30000', '30000'), 'en').get('submission.budgetUsd');
+ok('en inglés también', o1en?.value === 'US$ 30,000' && /Amount at initial registration: US\$ 15,000/.test(o1en.note));
+ok('sin FDD, sale de la Formulación («Costo del Proyecto» en US$)', /Formulación/.test(P.registrationOverridesOf(ruitoque('', '30.000'), 'es').get('submission.budgetUsd')?.note || '') && P.registrationOverridesOf(ruitoque('', '30.000'), 'es').get('submission.budgetUsd')?.value === 'US$ 30.000');
+ok('si coinciden (aunque escrito distinto), sin nota', !P.registrationOverridesOf(ruitoque('15.000', '15000'), 'es').has('submission.budgetUsd'));
+ok('sin presupuesto en los formularios, se muestra lo inscrito', !P.registrationOverridesOf(ruitoque('', ''), 'es').has('submission.budgetUsd'));
+const f1 = P.registrationOverridesOf(ruitoque('', '', 15000, ['Salud Materno-Infantil.', 'Agua, Saneamiento e Higiene.']), 'es').get('submission.focusArea');
+ok('área de enfoque: las que marcó el club en la Formulación, con la inicial debajo', f1?.value === 'Salud Materno-Infantil., Agua, Saneamiento e Higiene.' && /En el registro inicial: Agua, Saneamiento e Higiene\./.test(f1.note));
+ok('… y si es la misma, sin nota', !P.registrationOverridesOf(ruitoque('', '', 15000, ['Agua, Saneamiento e Higiene.']), 'es').has('submission.focusArea'));
+
 console.log(`\n${fail ? '❌' : '✅'} test:fair:participating-clubs — ${pass} pasaron, ${fail} fallaron.`);
 process.exit(fail ? 1 : 0);

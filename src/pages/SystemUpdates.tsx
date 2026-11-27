@@ -34,13 +34,27 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1357.0 | 2026-11-24 (Verificar traducción en un paso y desde el listado: botón en la columna «Traducción EN» y en lote)
+// UI V4.1358.0 | 2026-11-27 (Ficha técnica: el presupuesto y el área de enfoque del registro inicial dicen lo diligenciado)
 // Cache bust: 2026-11-19
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1358.0',
+        title: 'Ficha técnica: el presupuesto del registro inicial dice el valor actualizado por el club 📄',
+        description: 'Pilar Macías (C.R. Bucaramanga Ruitoque, FP-6YFC4X): actualizaron el presupuesto a US$ 30.000 en los formularios, y en la página del «Registro inicial» de la ficha seguía apareciendo US$ 15.000, el valor con el que se inscribieron. Ahora «Presupuesto del proyecto» muestra el presupuesto vigente que diligenció el club —el de la Solicitud de Aportes del FDD o, si no la hay, el «Costo del Proyecto» de la Formulación— y debajo, en gris, el valor del registro inicial. El área de enfoque también toma la que marcó el club en la Formulación.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'ficha técnica', 'pdf', 'presupuesto'],
+        type: 'fix',
+        impact: 'Baja: la sección «Registro inicial de la postulación» de las fichas técnicas (gestor y comité, español e inglés).',
+        changes: [
+            { type: 'fixed', text: '«Presupuesto del proyecto (US$)» del registro inicial muestra el presupuesto vigente de la Solicitud de Aportes del FDD (o de la Formulación), con «Actualizado en … Valor en el registro inicial: …» debajo.' },
+            { type: 'fixed', text: '«Área de enfoque» del registro inicial muestra las áreas marcadas en la Formulación, con la inicial debajo.' },
+            { type: 'improved', text: 'Los montos escritos con separador de miles («30.000», «30,000») se leen correctamente al comparar.' },
+        ],
+    },
     {
         version: '4.1357.0',
         title: 'Verificar traducción en un paso y desde el listado: botón en la columna «Traducción EN» ✅',

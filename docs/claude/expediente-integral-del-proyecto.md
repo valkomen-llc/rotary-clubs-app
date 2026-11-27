@@ -297,6 +297,31 @@ postulación → Club postulante → Club Rotario», que imprime
 aprobación, reforzada), con insignia, columna, indicadores, asignación y
 vigencia automática. Todo en `verificacion-de-traducciones-por-cadres.md`.
 
+### El presupuesto y el área de enfoque del registro — v4.1358
+
+Pilar Macías (C.R. Bucaramanga Ruitoque, FP-6YFC4X): *«en la página 3 todavía
+aparece el presupuesto inicial de 15.000 dólares; ya lo actualizamos a 30.000
+y en los formularios está correcto (páginas 6 y 9)»*. Era el mismo caso de
+v4.1355: el «Registro inicial» imprime `submission.budgetUsd`, lo inscrito.
+
+- `registrationOverridesOf` suma `submission.budgetUsd`: el presupuesto
+  VIGENTE (`currentBudgetOf`): Solicitud de Aportes del FDD →
+  `fdd_2026_2027.presupuesto.budgetUsd`; si no, Formulación →
+  `master.presupuesto.budgetTable.projectCost.usd`. Si difiere de lo inscrito
+  (o lo inscrito está vacío), se muestra el vigente y debajo «Actualizado en
+  la Solicitud de Aportes del FDD. Valor en el registro inicial: US$ 15.000».
+- Y `submission.focusArea`: las áreas de `master.identificacion.focusAreas`
+  si no son exactamente la inscrita, con la inicial debajo (en inglés sólo si
+  el campo trae su versión inglesa).
+- `moneyNumber` lee montos escritos con miles («30.000», «30,000», «US$
+  30.000,50»): `Number('30.000')` es 30.
+- Sólo PRESENTACIÓN de la ficha: la base, el listado (columna «Presupuesto») y
+  el expediente siguen con lo inscrito. Para cambiarlo en todas partes, el
+  comité edita «Presupuesto del proyecto» del registro en el expediente (con
+  motivo, por ser cifra).
+- Pruebas: `test:fair:participating-clubs` (56, en `prebuild`) y
+  `test:fair:club-ficha:ui` (61, el PDF real leído con pdfjs).
+
 ### Pruebas
 
 - `npm run test:fair:dossier` — criterio y código sin base (va en `prebuild`).
