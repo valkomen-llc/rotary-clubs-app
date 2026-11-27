@@ -224,7 +224,24 @@ const WhatsAppConnections: React.FC<{ clubId?: string }> = ({ clubId }) => {
     };
 
     const verificar = (id: string) => accion(id, '/verify', {}, 'Meta aceptó la credencial');
-    const suscribir = (id: string) => accion(id, '/subscribe', {}, 'Cuenta suscrita al webhook');
+    /**
+     * v4.1362 — «Dirigir el webhook a esta plataforma» (override de Meta), aquí
+     * mismo. El diagnóstico de esta tarjeta lo pedía y el botón sólo existía en
+     * Automatización; el de esta tarjeta («Suscribir al webhook») volvía a
+     * suscribir la aplicación DUEÑA DEL TOKEN, que si es otra (COLROTARIOS,
+     * Make…) sigue recibiendo ella los mensajes. Con el override, Meta entrega
+     * los eventos de esta cuenta a la URL de Club Platform, sea cual sea la
+     * aplicación del token. Después se vuelve a diagnosticar para verlo.
+     */
+    const suscribir = async (id: string) => {
+        const texto =
+            'Meta entregará los mensajes y estados de esta cuenta de WhatsApp a Club Platform.\n\n' +
+            'Si otra herramienta recibía los eventos de esta cuenta a través de la aplicación dueña del token, ' +
+            'dejará de recibirlos. ¿Continuar?';
+        if (!window.confirm(texto)) return;
+        const r = await accion(id, '/subscribe', { body: JSON.stringify({ mode: 'override' }) }, 'Webhook dirigido a esta plataforma');
+        if (r) diagnosticar(id);
+    };
     const principal = (id: string) => accion(id, '/default', {}, 'Es la línea principal del sitio');
     const cambiarEstado = (id: string, status: string) =>
         accion(id, '/status', { body: JSON.stringify({ status }) },
@@ -452,7 +469,7 @@ const WhatsAppConnections: React.FC<{ clubId?: string }> = ({ clubId }) => {
                                         )}
                                         <button onClick={() => suscribir(c.id)} disabled={!!ocupada}
                                             className="px-2.5 py-1.5 rounded-lg border border-gray-300 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
-                                            {esperando('/subscribe') ? 'Suscribiendo…' : 'Suscribir al webhook'}
+                                            {esperando('/subscribe') ? 'Dirigiendo…' : 'Dirigir el webhook a esta plataforma'}
                                         </button>
                                         <button onClick={() => desconectar(c)} disabled={!!ocupada}
                                             className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-red-300 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50">
@@ -504,6 +521,29 @@ const WhatsAppConnections: React.FC<{ clubId?: string }> = ({ clubId }) => {
                                                     </div>
                                                 </li>
                                             ))}
+                                            {/* v4.1362 — A qué aplicación entrega Meta los eventos
+                                                de esta cuenta, y el botón para dirigirlos aquí. */}
+                                            {diag.webhook && (
+                                                <li className="rounded-lg border border-gray-200 bg-white p-3 text-xs text-gray-700 space-y-1">
+                                                    <p><b>URL del webhook de esta plataforma:</b> <code className="break-all">{diag.webhook.callbackUrl || '—'}</code></p>
+                                                    {diag.webhook.tokenApp && (
+                                                        <p><b>Aplicación dueña del token de esta línea:</b> {diag.webhook.tokenApp.name || '—'} ({diag.webhook.tokenApp.id})
+                                                            {diag.webhook.tokenFromOtherApp && <span className="text-red-700 font-bold"> · no es la de la plataforma</span>}</p>
+                                                    )}
+                                                    {Array.isArray(diag.webhook.subscribedApps) && diag.webhook.subscribedApps.length > 0 && (
+                                                        <p><b>Suscrita a:</b> {diag.webhook.subscribedApps.map((a: any) => `${a.name || a.id}${a.override ? ` → ${a.override}` : ''}`).join(' · ')}</p>
+                                                    )}
+                                                    {diag.webhook.subscriptionState !== 'platform' && (
+                                                        <>
+                                                            <p className="text-gray-600">Cambiar el token y pulsar «Verificar» no cambia esto: «Verificar» sólo comprueba el token.</p>
+                                                            <button onClick={() => suscribir(c.id)} disabled={!!ocupada}
+                                                                className="mt-1 inline-flex items-center gap-2 bg-rotary-blue hover:bg-sky-800 text-white px-3 py-1.5 rounded-lg text-xs font-bold disabled:opacity-50">
+                                                                <Link2 className="w-3.5 h-3.5" /> {esperando('/subscribe') ? 'Dirigiendo…' : 'Dirigir el webhook a esta plataforma'}
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                </li>
+                                            )}
                                         </ul>
                                     )}
                                 </div>
