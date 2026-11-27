@@ -34,13 +34,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1361.0 | 2026-11-27 (Cabecera y «Abrir Sitio» de un club: sólo su sitio, decidido por la sesión)
+// UI V4.1362.0 | 2026-11-27 (Dirigir el webhook de WhatsApp desde la tarjeta de la línea)
 // Cache bust: 2026-11-19
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1362.0',
+        title: 'El webhook de WhatsApp se dirige a Club Platform desde la tarjeta de la línea 📲',
+        description: 'La línea «Feria de Proyectos Rotary Colombia» seguía con «Webhook dirigido a esta plataforma» en rojo aunque se reemplazara el token y se pulsara «Verificar». El diagnóstico pedía pulsar «Dirigir el webhook a esta plataforma», pero ese botón sólo existía en Automatización; en la tarjeta de la línea estaba «Suscribir al webhook», que vuelve a suscribir la aplicación dueña del token (COLROTARIOS, Make…) y Meta le sigue entregando a ella los mensajes. Y «Verificar» sólo comprueba el token: cambiarlo no cambia a qué aplicación está suscrita la cuenta. Ahora el botón de la tarjeta dirige el webhook a Club Platform (override de Meta), vuelve a diagnosticar solo y el diagnóstico dice de qué aplicación es el token.',
+        date: new Date().toISOString(),
+        tags: ['whatsapp', 'crm', 'webhook', 'diagnóstico'],
+        type: 'fix',
+        impact: 'Media: las cuentas de WhatsApp cuyo token es de otra aplicación de Meta (no reciben mensajes hasta dirigir el webhook).',
+        changes: [
+            { type: 'fixed', text: '«Dirigir el webhook a esta plataforma» está en la tarjeta de cada línea (antes «Suscribir al webhook») y dentro de su diagnóstico, con la URL de callback, la aplicación dueña del token y a qué aplicaciones está suscrita la cuenta.' },
+            { type: 'fixed', text: 'Si la línea no tiene token de verificación y el servidor tampoco, se le genera uno: antes el botón respondía 409.' },
+            { type: 'improved', text: 'El diagnóstico nombra la aplicación del token y aclara que «Verificar» o cambiar el token no cambian la suscripción.' },
+            { type: 'improved', text: 'Con el webhook ya dirigido aquí, los 7 días sin eventos pasan a aviso (eran de antes): el primer mensaje nuevo lo confirma.' },
+        ],
+    },
     {
         version: '4.1361.0',
         title: 'Los contadores de la cabecera y «Abrir Sitio» de un club: sólo SU sitio 🔒',

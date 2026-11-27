@@ -30,6 +30,8 @@ import {
   sealToken, openToken, markVerified, markError, adoptLegacyConfig,
 } from '../../lib/whatsappConnectionStore.js';
 
+console.log('[crm/connections] v4.1362.0 — «Dirigir el webhook a esta plataforma» desde la tarjeta de la línea (override); token de verificación propio si falta; el diagnóstico nombra la app del token.');
+
 const WA_API = `https://graph.facebook.com/${process.env.WA_API_VERSION || 'v21.0'}`;
 const OPERATOR_ROLES = ['administrator', 'superadmin'];
 const isOperator = (req) => OPERATOR_ROLES.includes(req.user?.role);
@@ -539,7 +541,19 @@ export const subscribe = async (req, res) => {
     let payload = {};
     if (override) {
       const callbackUrl = platformWebhookUrl(req);
-      const verifyToken = process.env.WA_VERIFY_TOKEN || conn.verifyToken || null;
+      let verifyToken = process.env.WA_VERIFY_TOKEN || conn.verifyToken || null;
+      // v4.1362 — Sin token de verificación en el servidor ni en la línea, se
+      // le genera uno a la línea (`verifyWebhook` acepta el de cada conexión).
+      // Antes el botón respondía 409 y la línea quedaba sin forma de arreglarse.
+      if (!verifyToken) {
+        const fresh = `cp_${crypto.randomBytes(18).toString('hex')}`;
+        const up = await db.query(
+          `UPDATE "WhatsAppConnection" SET "verifyToken" = $2 WHERE id = $1 AND COALESCE("verifyToken", '') = '' RETURNING "verifyToken"`,
+          [conn.id, fresh]).catch(() => ({ rows: [] }));
+        verifyToken = up.rows[0]?.verifyToken
+          || (await db.query(`SELECT "verifyToken" FROM "WhatsAppConnection" WHERE id = $1`, [conn.id]).catch(() => ({ rows: [] }))).rows[0]?.verifyToken
+          || null;
+      }
       if (!callbackUrl || !verifyToken) {
         return res.status(409).json({
           error: 'No se puede dirigir el webhook: falta la URL de callback (WA_WEBHOOK_URL) o el token de verificación (WA_VERIFY_TOKEN).',

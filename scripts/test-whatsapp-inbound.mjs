@@ -506,6 +506,13 @@ grupo('18. Cableado que sólo se ve leyendo los archivos');
   const conns = leer('server/controllers/crm/connections.controller.js');
   check('el diagnóstico compara la suscripción con la app de la plataforma', /judgeSubscription\(\{/.test(conns));
   check('«Dirigir el webhook» usa override_callback_uri', /override_callback_uri: callbackUrl/.test(conns));
+  // v4.1362 — El botón está donde el diagnóstico lo pide, y la línea sin
+  // token de verificación recibe uno en vez de un 409.
+  const card = leer('src/components/admin/whatsapp/WhatsAppConnections.tsx');
+  check('v4.1362 — la tarjeta de la línea dirige el webhook (override) y vuelve a diagnosticar',
+    /body: JSON\.stringify\(\{ mode: 'override' \}\)/.test(card) && /if \(r\) diagnosticar\(id\)/.test(card) && /Dirigir el webhook a esta plataforma/.test(card));
+  check('v4.1362 — la tarjeta muestra la aplicación dueña del token y a qué está suscrita', /diag\.webhook\.tokenApp/.test(card) && /diag\.webhook\.subscribedApps/.test(card));
+  check('v4.1362 — sin token de verificación, la línea recibe uno (no 409)', /if \(!verifyToken\) \{[\s\S]{0,400}crypto\.randomBytes/.test(conns));
   check('el reporte de sin respuesta NO envía nada', !/sendWhatsAppTextMessage/.test(conns.slice(conns.indexOf('export const unanswered'))));
 }
 

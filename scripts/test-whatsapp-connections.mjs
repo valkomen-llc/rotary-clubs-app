@@ -392,6 +392,24 @@ ok('en una conexión nueva, «todavía no llegó nada» es lo normal y se dice a
 eq('sin agente, la base de conocimiento «no aplica» en vez de fallar',
   diagnoseConnection({ agentSource: 'none' }).checks.find((c) => c.key === 'conocimiento').state,
   'unknown');
+// v4.1362 — Caso Feria de Proyectos: suscrita a tres apps ajenas, 336 enviados
+// y ningún evento. El diagnóstico nombra la app del token y dice dónde está el
+// botón; una vez dirigido, lo de los 7 días anteriores ya no es un fallo vigente.
+const ajena = diagnoseConnection({
+  hasToken: true, tokenValid: true, phoneMatchesWaba: true, status: 'active', agentSource: 'own',
+  subscriptionState: 'other_app', subscriptionDetail: 'Suscrita a «COLROTARIOS» (1284262233013103), que NO es la aplicación de esta plataforma.',
+  tokenApp: { id: '1284262233013103', name: 'COLROTARIOS' }, outbound7d: 336, statusesBack7d: 0, lastWebhookAt: null,
+});
+const susc = ajena.checks.find((c) => c.key === 'suscripcion');
+ok('v4.1362 — la suscripción ajena nombra la aplicación del token', susc.state === 'fail' && /token de esta línea es de la aplicación «COLROTARIOS»/.test(susc.detail));
+ok('v4.1362 — y dice que «Verificar» o cambiar el token no la cambian', /NO cambia la suscripción/.test(susc.cause?.fix || ''));
+eq('v4.1362 — con la suscripción ajena, sin eventos sigue siendo fallo', ajena.checks.find((c) => c.key === 'eventos').state, 'fail');
+const dirigida = diagnoseConnection({
+  hasToken: true, tokenValid: true, phoneMatchesWaba: true, status: 'active', agentSource: 'own',
+  subscriptionState: 'platform', outbound7d: 336, statusesBack7d: 0, lastWebhookAt: null,
+});
+eq('v4.1362 — ya dirigida, los 7 días sin eventos son aviso (de antes), no fallo', dirigida.checks.find((c) => c.key === 'eventos').state, 'warn');
+
 ok('el conteo cuadra con las comprobaciones',
   Object.values(sana.counts).reduce((a, b) => a + b, 0) === sana.checks.length);
 

@@ -899,3 +899,39 @@ sigue usando el cerebro del SITIO aunque la línea tenga `brainId` propio. El
 respaldo de `verifyWebhook` que acepta cualquier token si `WhatsAppConfig` está
 vacía se conserva (lo usa el alta inicial). Las pantallas nuevas **no se
 comprobaron en un navegador** (la lección de v4.717).
+
+### Dirigir el webhook desde la tarjeta de la línea — v4.1362
+
+**El caso (2026-11-27).** La misma línea de la Feria (+57 321 6937317): el
+diagnóstico decía «Suscrita a Tickealo Network, Make for Business Messaging y
+COLROTARIOS, que NO es la aplicación de esta plataforma (2190338908168499)» y
+pedía pulsar «Dirigir el webhook a esta plataforma». La persona reemplazó el
+token y pulsó «Verificar»; el rojo seguía.
+
+**Por qué.** (1) El botón que el diagnóstico pedía sólo existía en
+Automatización (`WhatsAppAutomation.tsx`); la tarjeta de la línea
+(`WhatsAppConnections.tsx`, en Comunicaciones CRM y en Configuración) mostraba
+el mismo diagnóstico sin él. (2) Su «Suscribir al webhook» llamaba
+`/subscribe` en modo NORMAL: vuelve a suscribir la app dueña del token, que si
+es otra sigue recibiendo los mensajes. (3) «Verificar» sólo comprueba el token,
+y un token nuevo de la MISMA app no cambia la suscripción.
+
+**Qué cambió.**
+- La tarjeta dirige el webhook con `mode: 'override'` (confirmación que dice
+  qué pasa), y vuelve a diagnosticar. El panel del diagnóstico muestra la URL de
+  callback, la app dueña del token y a qué apps está suscrita la cuenta.
+- `subscribe` con override: si no hay `WA_VERIFY_TOKEN` ni `verifyToken` en la
+  línea, le genera uno (`cp_…`, UPDATE condicional) en vez de responder 409;
+  `verifyWebhook` ya acepta el de cada `WhatsAppConnection`.
+- `diagnoseConnection`: el fallo de suscripción nombra la app del token
+  (`facts.tokenApp`) y su `fix` dice que «Verificar»/cambiar el token no cambia
+  la suscripción. Con `subscriptionState === 'platform'`, los 7 días sin eventos
+  son `warn` (anteriores a dirigirlo), no `fail`.
+
+**Lo que NO se pudo comprobar desde la sesión de desarrollo:** la respuesta real
+de Meta al override para esta cuenta, ni si la app de COLROTARIOS entregaba hoy
+sus eventos a otra herramienta (al dirigirlos, esa herramienta deja de
+recibirlos; el aviso lo dice). Lo confirma el diagnóstico en verde y un mensaje
+real por WhatsApp.
+
+Pruebas: `test:whatsapp:connections` (163) y `test:whatsapp:inbound` (101).

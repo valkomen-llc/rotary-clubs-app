@@ -513,7 +513,7 @@ export const FAILURE_CAUSES = {
   webhook_otra_app: {
     title: 'La cuenta entrega sus mensajes a OTRA aplicación de Meta',
     detail: 'La suscripción de una cuenta de WhatsApp es de la aplicación dueña del token. Si el token de esta línea pertenece a otra aplicación, Meta entrega los mensajes entrantes a la URL de esa aplicación, no a esta plataforma: los envíos y las campañas funcionan (sólo necesitan el token), el simulador funciona (no pasa por Meta) y ningún mensaje real llega. Es el «verde falso» que este diagnóstico daba por bueno hasta v4.1284.',
-    fix: 'Pulsar «Dirigir el webhook a esta plataforma» en el diagnóstico de esta línea (suscribe la cuenta con la URL de callback de Club Platform), o generar el token con un usuario del sistema de la aplicación de la plataforma.',
+    fix: 'Pulsar «Dirigir el webhook a esta plataforma» (botón de esta tarjeta, debajo de este diagnóstico): suscribe la cuenta con la URL de callback de Club Platform. Reemplazar el token y pulsar «Verificar» NO cambia la suscripción: «Verificar» sólo comprueba el token. Otra salida: generar el token con un usuario del sistema de la aplicación de la plataforma y dirigir el webhook.',
     metaCodes: [],
   },
   sin_eventos_de_vuelta: {
@@ -609,7 +609,11 @@ export function diagnoseConnection(facts = {}) {
   if (facts.subscriptionState === 'platform') {
     add('suscripcion', 'Webhook dirigido a esta plataforma', 'ok', facts.subscriptionDetail || 'Meta entregará los eventos de esta cuenta a esta plataforma.');
   } else if (facts.subscriptionState === 'other_app') {
-    add('suscripcion', 'Webhook dirigido a esta plataforma', 'fail', facts.subscriptionDetail || 'La cuenta está suscrita a otra aplicación.', FAILURE_CAUSES.webhook_otra_app);
+    // v4.1362 — Se nombra la aplicación del TOKEN: es la que queda dirigida a
+    // esta plataforma al pulsar el botón, y la razón de que cambiar el token
+    // (de la misma aplicación) no arregle nada.
+    const app = facts.tokenApp?.id ? ` El token de esta línea es de la aplicación «${facts.tokenApp.name || facts.tokenApp.id}» (${facts.tokenApp.id}).` : '';
+    add('suscripcion', 'Webhook dirigido a esta plataforma', 'fail', (facts.subscriptionDetail || 'La cuenta está suscrita a otra aplicación.') + app, FAILURE_CAUSES.webhook_otra_app);
   } else if (facts.subscriptionState === 'none' || facts.subscribed === false) {
     add('suscripcion', 'Webhook dirigido a esta plataforma', 'fail', facts.subscriptionDetail || 'La cuenta no figura suscrita a ninguna aplicación.', FAILURE_CAUSES.webhook_sin_suscripcion);
   } else if (facts.subscriptionState === 'unknown' && facts.subscriptionDetail) {
@@ -620,7 +624,11 @@ export function diagnoseConnection(facts = {}) {
   } else add('suscripcion', 'Webhook dirigido a esta plataforma', 'unknown', 'No se pudo consultar la suscripción (suele faltar el permiso de administración).');
 
   // 4b. La PRUEBA de que los eventos vuelven: salen mensajes y no vuelve nada.
-  if (Number(facts.outbound7d || 0) >= 5 && Number(facts.statusesBack7d || 0) === 0 && !facts.lastWebhookAt) {
+  if (Number(facts.outbound7d || 0) >= 5 && Number(facts.statusesBack7d || 0) === 0 && !facts.lastWebhookAt && facts.subscriptionState === 'platform') {
+    // v4.1362 — La suscripción YA apunta aquí: lo de los 7 días es de antes.
+    // No es un fallo vigente hasta que se demuestre con un mensaje nuevo.
+    add('eventos', 'Meta devuelve eventos de esta línea', 'warn', `El webhook ya apunta a esta plataforma, pero de los ${facts.outbound7d} mensajes de los últimos 7 días no volvió ningún evento (eran de antes de dirigirlo). Envía un mensaje a este número y vuelve a diagnosticar: el primer evento lo confirma.`);
+  } else if (Number(facts.outbound7d || 0) >= 5 && Number(facts.statusesBack7d || 0) === 0 && !facts.lastWebhookAt) {
     add('eventos', 'Meta devuelve eventos de esta línea', 'fail', `Salieron ${facts.outbound7d} mensajes en 7 días y no volvió ningún evento (ni estados ni entrantes).`, FAILURE_CAUSES.sin_eventos_de_vuelta);
   } else if (facts.lastWebhookAt) {
     add('eventos', 'Meta devuelve eventos de esta línea', 'ok', `Último evento recibido: ${facts.lastWebhookAt}.`);
