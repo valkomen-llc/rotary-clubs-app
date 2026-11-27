@@ -145,3 +145,41 @@ por hostname) medía el tráfico del Distrito como si fuera del club.
 - Prueba: `npm run test:site-domain-guard` (en `prebuild`); con
   `SITE_DOMAIN_TEST_DATABASE_URL` corre las consultas y los manejadores reales
   (25 comprobaciones, incluida la corrección del caso Tuluá).
+
+
+## «Abrir Sitio» y Analíticas de un club nuevo — v4.1360
+
+La v4.1359 sólo impedía GUARDAR un dominio ajeno; el club Tuluá El Lago seguía
+viendo las cifras del Distrito y «Abrir Sitio» lo llevaba a rotary4281.org.
+Eran cuatro causas encadenadas, y se corrigen AL LEER (sin editar datos):
+
+1. **El panel tomaba el sitio del navegador, no el del usuario.** En
+   app.clubplatform.org, `ClubContext` pide `lsUser.club.subdomain`; sin slug,
+   pedía el host y recibía el sitio de la plataforma (de ahí «Nombre del club»
+   en la barra lateral) con su dominio. Ahora:
+   - `GET /admin/my-site` (`getMySite`): la dirección del club del usuario,
+     decidida por el servidor: dominio propio (`ownDomainOf`: no cuenta el de
+     un Distrito u otro club; el sitio del Distrito conserva el suyo) o
+     `app.clubplatform.org/?club=<slug>` (`siteUrlOf`). Si falta el slug, lo
+     genera y lo guarda (`uniqueSlug`).
+   - `AdminLayout`: «Abrir Sitio» y los contadores GA4 de la cabecera usan ese
+     resultado; el dominio del contexto sólo vale si el contexto ES el club del
+     usuario. Guarda el slug en `rotary_user` para la próxima carga.
+   - `ClubContext.siteQuery`: sin slug, pide por el ID del club, y
+     `/clubs/by-domain` acepta un UUID de club.
+2. **Analíticas sumaba el dominio del Distrito a cualquier club del distrito.**
+   En el respaldo de `/traffic` (cuando el club no estaba en el catálogo por no
+   estar `active`), `if (c.type === 'district' || c.district)` añadía
+   rotary4281.org a TODO club con número de distrito. Ahora sólo al sitio del
+   Distrito, y el club del usuario entra al catálogo aunque esté en
+   desarrollo (sus cifras: 0).
+3. **Con un perfil ligado al distrito**, el catálogo empezaba por el Distrito y
+   la pantalla lo elegía (`fetchedSites[0]`). Ahora elige primero el club del
+   usuario (`user.clubId`).
+4. **Un dominio de Distrito guardado en un club común** no se usa para medir
+   (`isForeignDistrictDomain`) ni para resolver el sitio público:
+   `/clubs/by-domain` descarta el club que casó por ese dominio
+   (`stealsDistrictDomain`, también por la vía «suelta») y sirve el Distrito.
+
+Prueba: `test:site-domain-guard` (26 sin base en `prebuild`, 42 con Postgres,
+incluido `/admin/my-site` con el club mal guardado y sin slug).

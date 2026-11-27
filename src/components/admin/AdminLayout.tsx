@@ -107,6 +107,9 @@ import { activeMenuPath } from '../../lib/adminMenu';
 import { inboxLink, INBOX_PATH, isContentSubmissionsAllowedSite } from '../../lib/submissionInbox';
 
 const API = import.meta.env.VITE_API_URL || '/api';
+// v4.1360 — ¿El sitio del contexto es el club del usuario? (si no, su dominio no es el suyo)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const contextIsOwnClubForHost = (club: any, user: any) => !user?.clubId || club?.id === user?.clubId;
 const fmtN = (n: number) => n >= 1000000 ? `${(n / 1000000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 
 interface MenuItem {
@@ -187,6 +190,35 @@ const MoneyByCurrency: React.FC<{
 // deliberadamente volver al contenedor acotado clásico, puede pasar explícitamente `wide={false}`.
 const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ children, wide = true }) => {
     const { logout, user, isImpersonating, revertImpersonation } = useAuth();
+    // v4.1360 — La dirección del sitio del club del usuario («Abrir Sitio»).
+    const [mySite, setMySite] = useState<{ url: string | null; slug: string | null; ownDomain: string | null; foreignDomain: string | null } | null>(null);
+    useEffect(() => {
+        if (!user?.clubId || user?.role === 'administrator') { setMySite(null); return undefined; }
+        const token = localStorage.getItem('rotary_token');
+        if (!token) return undefined;
+        let vivo = true;
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 15000);
+        fetch(`${API}/admin/my-site`, { headers: { Authorization: `Bearer ${token}` }, signal: ctrl.signal })
+            .then(r => (r.ok ? r.json() : null))
+            .then(d => {
+                if (!vivo || !d?.site) return;
+                setMySite(d.site);
+                // El slug también sirve al contexto del panel: con él, el
+                // navegador carga la configuración de ESTE club (no la de la
+                // plataforma) la próxima vez.
+                try {
+                    const lsUser = JSON.parse(localStorage.getItem('rotary_user') || 'null');
+                    if (lsUser && d.site.slug && lsUser.club && !lsUser.club.subdomain) {
+                        lsUser.club.subdomain = d.site.slug;
+                        localStorage.setItem('rotary_user', JSON.stringify(lsUser));
+                    }
+                } catch { /* sin almacenamiento */ }
+            })
+            .catch(() => { /* «Abrir Sitio» cae al cálculo del contexto */ })
+            .finally(() => clearTimeout(timer));
+        return () => { vivo = false; clearTimeout(timer); ctrl.abort(); };
+    }, [user?.clubId, user?.role]);
     // ⚠️ TODO HOOK ARRIBA DEL COMPONENTE, ANTES DE CUALQUIER `return`. React
     // identifica cada hook por su ORDEN de llamada: uno escrito debajo de un
     // return temprano no corre en el primer render y sí en el segundo, y React
@@ -307,18 +339,32 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
     // Treat "localhost" and "*.clubplatform.org" as non-custom domains so we properly fallback to the subdomain parameter query
     const cleanDomain = (typeof safeDomain === 'string' && safeDomain.trim() !== '' && !safeDomain.includes('localhost') && !safeDomain.includes('clubplatform.org')) ? safeDomain.trim() : null;
     
+    // v4.1360 — Con el sitio del usuario resuelto por el servidor, los
+    // contadores de GA4 de la cabecera miden SU dominio propio o su subdominio
+    // (nunca el de otro sitio: Tuluá El Lago veía las cifras de rotary4281.org).
     const clubHostname: string | null = isOnClubDomain
         ? currentHost
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        : (cleanDomain || ((club as any)?.subdomain ? `${(club as any).subdomain}.clubplatform.org` : null));
+        : mySite
+            ? (mySite.ownDomain || (mySite.slug ? `${mySite.slug}.clubplatform.org` : null))
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            : (contextIsOwnClubForHost(club, user) ? (cleanDomain || ((club as any)?.subdomain ? `${(club as any).subdomain}.clubplatform.org` : null)) : null);
 
     // Link "Ver mi Sitio" (Fallback approach using ?club= to bypass DNS Wildcard issues)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const paramKey = ((club as any)?.type === 'association' || (club as any)?.type === 'Programa de Intercambio') ? 'asociacion' : ((club as any)?.type === 'district' ? 'distrito' : 'club');
-    const verMiSitioUrl = cleanDomain 
-        ? `https://${cleanDomain}` 
+    // v4.1360 — «Abrir Sitio» va al sitio del CLUB DEL USUARIO, decidido por
+    // el servidor (`GET /admin/my-site`). En app.clubplatform.org el `club` del
+    // contexto es el sitio que resolvió el navegador —el de la plataforma, o
+    // uno ajeno—, y su dominio llevaba a rotary4281.org (caso Tuluá El Lago).
+    // El servidor descarta un dominio que es de otro sitio y, sin dominio
+    // propio, da app.clubplatform.org/?club=<slug> (genera el slug si falta).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const contextIsOwnClub = !user?.clubId || (club as any)?.id === user?.clubId;
+    const verMiSitioUrlContexto = !contextIsOwnClub ? null : (cleanDomain
+        ? `https://${cleanDomain}`
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        : ((club as any)?.subdomain ? `https://app.clubplatform.org/?${paramKey}=${(club as any).subdomain}` : null);
+        : ((club as any)?.subdomain ? `https://app.clubplatform.org/?${paramKey}=${(club as any).subdomain}` : null));
+    const verMiSitioUrl = mySite ? mySite.url : verMiSitioUrlContexto;
 
     // Redirect to dashboard if trying to access locked route
     useEffect(() => {

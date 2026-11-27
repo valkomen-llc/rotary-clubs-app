@@ -78,4 +78,52 @@ export const domainConflictMessage = (domain, conflict) =>
     + 'Un club no puede usar el dominio de otro sitio: «Abrir Sitio» y Analíticas mostrarían ese otro sitio. '
     + 'Déjalo vacío para usar su dirección app.clubplatform.org/?club=<slug>, o escribe el dominio propio del club.';
 
-export default { slugFromName, uniqueSlug, isDistrictSiteOf, findDomainConflict, domainConflictMessage };
+/**
+ * v4.1360 — El dominio que de verdad es de este club, o null.
+ *
+ * Un club común con el dominio de un Distrito (o de otro club) NO lo usa:
+ * ni «Abrir Sitio», ni Analíticas, ni la resolución pública. Así el caso
+ * Tuluá El Lago se corrige al leer, aunque la fila siga mal guardada.
+ */
+export const ownDomainOf = async (q, club) => {
+    if (!club?.domain) return null;
+    const clean = canonicalDomain(club.domain);
+    // El sitio del Distrito dueño del dominio lo conserva aunque un club
+    // intruso lo tenga copiado.
+    const owner = await q.query(`SELECT id, number FROM "District" WHERE lower(domain) = ANY($1::text[]) LIMIT 1`,
+        [domainCandidates(clean).map(d => d.toLowerCase())]).catch(() => ({ rows: [] }));
+    if (owner.rows[0]) return isDistrictSiteOf(club, owner.rows[0]) ? clean : null;
+    const conflict = await findDomainConflict(q, club.domain, club);
+    return conflict ? null : canonicalDomain(club.domain);
+};
+
+/** El parámetro de la dirección de plataforma según el tipo de sitio. */
+export const siteParamKey = (club) => (
+    club?.type === 'association' || club?.type === 'Programa de Intercambio' ? 'asociacion'
+        : (club?.type === 'district' ? 'distrito' : 'club'));
+
+/** La dirección pública del sitio: su dominio propio o app.clubplatform.org/?club=<slug>. */
+export const siteUrlOf = ({ club, ownDomain, slug }) => {
+    if (ownDomain && !/clubplatform\.org$|localhost/.test(ownDomain)) return `https://${ownDomain}`;
+    if (slug) return `https://app.clubplatform.org/?${siteParamKey(club)}=${encodeURIComponent(slug)}`;
+    return null;
+};
+
+/** Los dominios de los Distritos (para no medir ni abrir el de otro sitio). */
+export const districtDomainsOf = async (q) => {
+    const { rows } = await q.query(`SELECT id, number, domain FROM "District" WHERE COALESCE(domain, '') <> ''`).catch(() => ({ rows: [] }));
+    return rows.map(r => ({ ...r, clean: canonicalDomain(r.domain) })).filter(r => r.clean);
+};
+
+/** ¿El dominio de este club (común) es el de un Distrito? Puro, con la lista ya leída. */
+export const isForeignDistrictDomain = (club, districts = []) => {
+    const clean = canonicalDomain(club?.domain);
+    if (!clean) return false;
+    const d = districts.find(x => x.clean === clean);
+    return !!d && !isDistrictSiteOf(club, d);
+};
+
+export default {
+    slugFromName, uniqueSlug, isDistrictSiteOf, findDomainConflict, domainConflictMessage,
+    ownDomainOf, siteParamKey, siteUrlOf, districtDomainsOf, isForeignDistrictDomain,
+};

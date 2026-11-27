@@ -322,7 +322,12 @@ const AnalyticsPage: React.FC = () => {
                 setSites(fetchedSites);
                 if (isTenantMode && fetchedSites.length > 0) {
                     const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
-                    const matched = fetchedSites.find(s =>
+                    // v4.1360 — Primero, el club DEL USUARIO (no el sitio que
+                    // resolvió el navegador: en app.clubplatform.org es el de la
+                    // plataforma, y con un perfil ligado al distrito la lista
+                    // empezaba por el Distrito: Tuluá El Lago veía sus cifras).
+                    const ownClubId = (user as any)?.clubId || (user as any)?.club?.id || null;
+                    const matched = (ownClubId ? fetchedSites.find(s => s.id === ownClubId || (s as any).clubId === ownClubId || (s as any).alternateId === ownClubId) : null) || fetchedSites.find(s =>
                         s.id === club?.id ||
                         (s as any).alternateId === club?.id ||
                         (s as any).clubId === club?.id ||
@@ -338,7 +343,7 @@ const AnalyticsPage: React.FC = () => {
         } catch (err) {
             console.error('[Analytics] Failed to fetch sites catalogue:', err);
         }
-    }, [authHeaders, isTenantMode, club]);
+    }, [authHeaders, isTenantMode, club, user]);
 
     // 2. Fetch Traffic Data (Consolidated or Site-Specific)
     const fetchTraffic = useCallback(async (p: string, site: SiteItem | null, range = customRange) => {

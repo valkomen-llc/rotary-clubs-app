@@ -31,6 +31,16 @@ ok('el sitio-club del Distrito SÍ comparte su dominio', G.isDistrictSiteOf({ ty
 ok('un club común NO (aunque sea del mismo distrito)', !G.isDistrictSiteOf({ type: 'club', districtId: 'd-4281', district: '4281' }, D4281));
 ok('el mensaje explica qué hacer', /ya pertenece a el sitio del Distrito 4281/.test(G.domainConflictMessage('www.rotary4281.org', { kind: 'district', name: 'Distrito 4281' })) && /Déjalo vacío/.test(G.domainConflictMessage('x.org', { kind: 'club', name: 'Otro' })));
 
+console.log('\n1b. v4.1360 — La dirección del sitio y el dominio ajeno');
+const DOMS = [{ id: 'd-4281', number: 4281, clean: 'rotary4281.org' }];
+ok('un club común con el dominio del Distrito → ajeno', G.isForeignDistrictDomain({ type: 'club', district: '4281', domain: 'https://www.rotary4281.org/' }, DOMS));
+ok('el sitio del Distrito con su dominio → propio', !G.isForeignDistrictDomain({ type: 'district', districtId: 'd-4281', domain: 'rotary4281.org' }, DOMS));
+ok('un club con su dominio → propio', !G.isForeignDistrictDomain({ type: 'club', domain: 'rotarytulua.org' }, DOMS));
+ok('sin dominio propio: app.clubplatform.org/?club=<slug>', G.siteUrlOf({ club: { type: 'club' }, ownDomain: null, slug: 'tulua-el-lago' }) === 'https://app.clubplatform.org/?club=tulua-el-lago');
+ok('con dominio propio: https://dominio', G.siteUrlOf({ club: { type: 'club' }, ownDomain: 'rotarytulua.org', slug: 'tulua-el-lago' }) === 'https://rotarytulua.org');
+ok('un distrito usa ?distrito= y una asociación ?asociacion=', /\?distrito=x$/.test(G.siteUrlOf({ club: { type: 'district' }, slug: 'x' })) && /\?asociacion=x$/.test(G.siteUrlOf({ club: { type: 'association' }, slug: 'x' })));
+ok('sin dominio ni slug: sin dirección (no la de otro sitio)', G.siteUrlOf({ club: { type: 'club' } }) === null);
+
 console.log('\n2. Invariantes');
 const ctrl = read('server/controllers/clubController.js');
 ok('el alta revisa el dominio y genera el slug', /findDomainConflict\(db, domain/.test(ctrl) && /uniqueSlug\(db, name\)/.test(ctrl));
@@ -38,6 +48,15 @@ ok('la edición revisa sólo si el dominio CAMBIA (un club mal guardado se puede
 ok('responde 409 DOMAIN_TAKEN', (ctrl.match(/code: 'DOMAIN_TAKEN'/g) || []).length === 2);
 ok('el listado marca los dominios ajenos', /AS "domainConflict"/.test(ctrl));
 ok('ninguna comilla invertida dentro de un SQL nuevo', !/db\.query\(`[^`]*\\`/.test(ctrl));
+const an = read('server/routes/analytics.js');
+ok('v4.1360 — Analíticas ya no suma el dominio del Distrito a cualquier club con número de distrito', !/c\.type === 'district' \|\| c\.district\)/.test(an) && /isForeignDistrictDomain\(c, allDistrictDomains\)/.test(an));
+ok('v4.1360 — el club del usuario se mide aunque no esté publicado', /El club del usuario aparece AUNQUE no esté publicado/.test(an));
+const pub = read('server/routes/clubs.js');
+ok('v4.1360 — un club común no se queda con el dominio de un Distrito en el sitio público (ni por la vía suelta)', (pub.match(/stealsDistrictDomain\(activeEntity\)/g) || []).length === 2);
+ok('v4.1360 — el panel puede pedir su sitio por el id del club', /findUnique\(\{\s*where: \{ id: String\(domain\)/.test(pub) && /const ownId = lsUser\?\.club\?\.id \|\| lsUser\?\.clubId/.test(read('src/contexts/ClubContext.tsx')));
+const lay = read('src/components/admin/AdminLayout.tsx');
+ok('v4.1360 — «Abrir Sitio» usa /admin/my-site (el club del usuario)', /\/admin\/my-site/.test(lay) && /const verMiSitioUrl = mySite \? mySite\.url : verMiSitioUrlContexto;/.test(lay));
+ok('v4.1360 — Analíticas elige primero el club del usuario', /const ownClubId = /.test(read('src/pages/admin/Analytics.tsx')));
 const ui = read('src/pages/admin/Clubs.tsx');
 ok('el formulario apaga el autocompletado del dominio y lo explica', /autoComplete="off"/.test(ui) && /Nunca el del Distrito/.test(ui));
 ok('el listado muestra el aviso', /club\.domainConflict &&/.test(ui));
@@ -95,6 +114,19 @@ if (!URL_DB) {
         ok('dejar el dominio vacío corrige el club y le da su slug', arreglo.status === 200 && tulua.domain === null && tulua.subdomain === 'tulua-el-lago', JSON.stringify([arreglo.status, arreglo.body?.error, tulua]));
         const list2 = await call(ctl.getAllClubs, {});
         ok('… y el listado deja de marcarlo', !list2.body.find(c => c.id === 'c-tulua')?.domainConflict);
+
+        // v4.1360 — «Abrir Sitio» sin tocar el dato: un club con el dominio del
+        // Distrito y sin slug.
+        await db.query(`INSERT INTO "Club" (id, name, type, district, "districtId", domain, subdomain, status, "createdAt") VALUES
+            ('c-lago2', 'Club Rotario Tuluá El Lago', 'club', '4281', 'd-4281', 'rotary4281.org', NULL, 'draft', NOW())`);
+        const ms = await call(ctl.getMySite, { user: { id: 'u-tl', role: 'club_admin', clubId: 'c-lago2' } });
+        ok('/admin/my-site: genera el slug, descarta el dominio ajeno y da app.clubplatform.org/?club=<slug>',
+            ms.status === 200 && ms.body.site.ownDomain === null && ms.body.site.foreignDomain === 'rotary4281.org' && /^https:\/\/app\.clubplatform\.org\/\?club=tulua-el-lago(-\d+)?$/.test(ms.body.site.url), JSON.stringify(ms.body));
+        ok('… y el slug queda guardado', !!(await db.query(`SELECT subdomain FROM "Club" WHERE id = 'c-lago2'`)).rows[0].subdomain);
+        const msDist = await call(ctl.getMySite, { user: { id: 'u-d', role: 'club_admin', clubId: 'c-dist' } });
+        ok('el sitio del Distrito sí abre su dominio', msDist.body.site.url === 'https://rotary4281.org' || /rotary4281\.org/.test(msDist.body.site.url), JSON.stringify(msDist.body.site));
+        const msNone = await call(ctl.getMySite, { user: { id: 'u-x', role: 'administrator' } });
+        ok('sin club, sin sitio', msNone.body.site === null);
     } catch (err) {
         fail++; console.log(`  ✗ excepción: ${err?.stack || err}`);
     } finally {

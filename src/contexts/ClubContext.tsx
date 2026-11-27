@@ -73,6 +73,11 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
             try {
                 const lsUser = JSON.parse(localStorage.getItem('rotary_user') || 'null');
                 if (lsUser?.club?.subdomain) return lsUser.club.subdomain;
+                // v4.1360 — Un club sin slug todavía: se pide por su id (antes
+                // caía al sitio de la plataforma y el panel mostraba el
+                // dominio de otro sitio en «Abrir Sitio»).
+                const ownId = lsUser?.club?.id || lsUser?.clubId;
+                if (ownId) return String(ownId);
             } catch { /* sesión ilegible: se pregunta por el host */ }
         }
         return host;
