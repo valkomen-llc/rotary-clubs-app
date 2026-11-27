@@ -3,7 +3,7 @@ import VercelService from '../services/VercelService.js';
 import prisma from '../lib/prisma.js'; // CLIENTE CENTRALIZADO (EVITA ERROR 500 POR CONEXIONES)
 import { canonicalDomain } from '../lib/domains.js';
 // v4.1359 — Un club no guarda el dominio de OTRO sitio y siempre tiene slug.
-import { findDomainConflict, domainConflictMessage, uniqueSlug, ownDomainOf, siteUrlOf } from '../lib/siteDomainGuard.js';
+import { findDomainConflict, domainConflictMessage, uniqueSlug, ownDomainOf, siteUrlOf, normDomainSql } from '../lib/siteDomainGuard.js';
 
 import { normalizeFloatingButton } from '../lib/floatingButton.js';
 import { shouldClearManualBanner } from '../lib/subscriptionHealth.js';
@@ -13,6 +13,7 @@ import { normalizeAboutMenu, normalizeHeaderCtas } from '../lib/headerMenu.js';
 // Clubes: el selector ahora incluye 'Evento o Convención', así que un registro mal
 // categorizado (ej. un evento guardado como club) puede moverse a su sección correcta
 // vía updateClub (addField('type', ...)) sin tocar la base de datos directamente.
+console.log('[clubController] v4.1361.0 cargado — El dominio de un Distrito se reconoce aunque esté guardado con protocolo, «www.», mayúsculas o barra final (normDomainSql), o sólo por su subdominio: un club que lo copió no lo usa.');
 console.log('[clubController] v4.1360.0 cargado — GET /admin/my-site: «Abrir Sitio» con el club del usuario (dominio propio o app.clubplatform.org/?club=<slug>, slug generado si falta, dominio ajeno descartado al leer).');
 console.log('[clubController] v4.1359.0 cargado — Un club no guarda el dominio de otro sitio (club o Distrito; 409 DOMAIN_TAKEN) y recibe un slug del nombre si no lo tiene; el listado marca los dominios ajenos.');
 console.log('[clubController] v4.699.0 — El logo del encabezado sigue al idioma activo: `logo_intl` (Setting) se sirve como `logoIntl` en /clubs/by-domain y el navegador elige con src/lib/audienceAssets.ts.');
@@ -60,10 +61,10 @@ export const getAllClubs = async (req, res) => {
                 -- que no es el suyo): el panel lo marca para corregirlo.
                 CASE WHEN COALESCE(c.domain, '') = '' THEN NULL
                      -- El sitio-club del Distrito dueño del dominio es el legítimo: no se marca.
-                     WHEN c.type = 'district' AND EXISTS (SELECT 1 FROM "District" d0 WHERE lower(regexp_replace(COALESCE(d0.domain, ''), '^www[.]', '')) = lower(regexp_replace(c.domain, '^www[.]', ''))
+                     WHEN c.type = 'district' AND EXISTS (SELECT 1 FROM "District" d0 WHERE ${normDomainSql('d0.domain')} = ${normDomainSql('c.domain')}
                                   AND (c."districtId" = d0.id OR c.district = d0.number::text)) THEN NULL
-                     WHEN EXISTS (SELECT 1 FROM "Club" o WHERE o.id <> c.id AND lower(regexp_replace(COALESCE(o.domain, ''), '^www[.]', '')) = lower(regexp_replace(c.domain, '^www[.]', ''))) THEN 'club'
-                     WHEN EXISTS (SELECT 1 FROM "District" d WHERE lower(regexp_replace(COALESCE(d.domain, ''), '^www[.]', '')) = lower(regexp_replace(c.domain, '^www[.]', ''))
+                     WHEN EXISTS (SELECT 1 FROM "Club" o WHERE o.id <> c.id AND ${normDomainSql('o.domain')} = ${normDomainSql('c.domain')}) THEN 'club'
+                     WHEN EXISTS (SELECT 1 FROM "District" d WHERE ${normDomainSql('d.domain')} = ${normDomainSql('c.domain')}
                                   AND NOT (c.type = 'district' AND (c."districtId" = d.id OR c.district = d.number::text))) THEN 'district'
                      ELSE NULL END AS "domainConflict"
             FROM "Club" c ${whereSql} ORDER BY c."createdAt" DESC

@@ -34,13 +34,29 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1360.0 | 2026-11-27 (Abrir Sitio y Analíticas de un club nuevo: su propio sitio y cifras en 0)
+// UI V4.1361.0 | 2026-11-27 (Cabecera y «Abrir Sitio» de un club: sólo su sitio, decidido por la sesión)
 // Cache bust: 2026-11-19
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1361.0',
+        title: 'Los contadores de la cabecera y «Abrir Sitio» de un club: sólo SU sitio 🔒',
+        description: 'Tras v4.1360 el panel del Club Rotario Tuluá El Lago seguía mostrando en la cabecera las cifras GA4 del Distrito (1.5k / 6.6k), «3 visitantes activos» y un «Abrir Sitio» que llevaba a rotary4281.org. Quedaban tres huecos. La cabecera pedía las cifras con el dominio del sitio que había cargado el navegador y el servidor lo aceptaba de cualquier usuario: ahora sólo el administrador de la plataforma puede pedir otro sitio, y un club recibe siempre lo suyo, decidido por su sesión —también si abre el panel desde el dominio del Distrito—. «Abrir Sitio», si el servidor tardaba o fallaba, volvía al dominio guardado en la fila del club (el del Distrito): ahora para un usuario de club sólo vale la dirección que da el servidor. Y un Distrito con su dominio guardado como «https://…/» o reconocido sólo por su subdominio no se detectaba como dueño, así que el club que lo copió lo usaba como propio: la comparación ahora normaliza también lo guardado.',
+        date: new Date().toISOString(),
+        tags: ['sitios', 'analíticas', 'abrir sitio', 'dominios', 'seguridad'],
+        type: 'fix',
+        impact: 'Media: la cabecera y Analíticas del panel de un club (y de cualquier usuario que no sea el administrador de la plataforma), y el botón «Abrir Sitio».',
+        changes: [
+            { type: 'fixed', text: 'Las analíticas de un club salen de su sesión: ni `?hostname=` ni el dominio por el que se abre el panel le dan el alcance de otro sitio. `?hostname=` queda sólo para el administrador de la plataforma (antes cualquiera podía leer las cifras de otro sitio).' },
+            { type: 'fixed', text: 'Un club con número de distrito ve sólo su club; sólo el sitio de un Distrito suma a sus clubes. El «tiempo real» ya no cuenta visitas por «4281».' },
+            { type: 'fixed', text: '«Abrir Sitio» de un usuario de club usa sólo la dirección del servidor (app.clubplatform.org/?club=<slug> o su dominio propio); nunca el dominio guardado de otro sitio.' },
+            { type: 'fixed', text: 'El dominio de un Distrito se reconoce aunque esté guardado con protocolo, «www.», mayúsculas o barra final, o sólo por su subdominio.' },
+            { type: 'improved', text: 'Si el navegador cargó otro sitio en el panel («Nombre del club»), la sesión se corrige con el slug del club y el panel recarga su configuración.' },
+        ],
+    },
     {
         version: '4.1360.0',
         title: 'Un club nuevo abre SU sitio y ve SUS analíticas (no las del Distrito) 🧭',

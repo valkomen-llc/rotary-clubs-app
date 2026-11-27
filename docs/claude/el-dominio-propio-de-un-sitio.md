@@ -183,3 +183,43 @@ Eran cuatro causas encadenadas, y se corrigen AL LEER (sin editar datos):
 
 Prueba: `test:site-domain-guard` (26 sin base en `prebuild`, 42 con Postgres,
 incluido `/admin/my-site` con el club mal guardado y sin slug).
+
+## La cabecera y «Abrir Sitio» de un club: sólo su sitio, por la sesión — v4.1361
+
+Tras v4.1360 el panel de Tuluá El Lago seguía con las cifras GA4 del Distrito
+en la cabecera (1.5k / 6.6k), «3 visitantes activos» y «Abrir Sitio» hacia
+rotary4281.org. Tres huecos:
+
+1. **El alcance de Analíticas obedecía al pedido, no a la sesión.**
+   `resolveAnalyticsScope` aceptaba `?hostname=` de CUALQUIER usuario, y la
+   cabecera lo mandaba con el dominio del sitio que había cargado el navegador
+   (era además una fuga: cualquiera leía las cifras de otro sitio). También
+   resolvía por el host/Origin antes que por la sesión, y un club con
+   `districtId` recibía el alcance del Distrito (el «tiempo real» filtraba por
+   «4281»). Ahora:
+   - `?hostname=` sólo vale para el administrador de la PLATAFORMA (sin
+     `clubId`).
+   - Un usuario con `clubId` cuyo club NO es el sitio de un Distrito recibe su
+     club, PRIMERO, antes de mirar host, Origin o `districtId`. Sólo el sitio de
+     un Distrito suma a sus clubes.
+   - La cabecera de cualquier usuario que no sea superadmin pide
+     `/analytics/traffic?days=30` SIN `hostname`.
+2. **«Abrir Sitio» caía al dominio guardado si `/admin/my-site` tardaba o
+   fallaba** (la fila de Tuluá tiene rotary4281.org). Para un usuario de club
+   (`isClubUser`) sólo vale `mySite.url`; mientras no llega, el botón no se
+   muestra. Si el panel cargó otro sitio (`club.id ≠ user.clubId`), se guarda
+   el club con su slug en `rotary_user` y se llama `refreshClub()`.
+3. **El dueño del dominio no se detectaba si estaba guardado de otra forma.**
+   `findDomainConflict`/`ownDomainOf` comparaban `lower(domain)` con
+   `rotary4281.org`/`www.…`: un Distrito guardado como `https://rotary4281.org/`
+   no casaba y el club lo usaba como propio. Ahora `normDomainSql(col)` normaliza
+   lo GUARDADO con el mismo criterio que `canonicalDomain`, y si nadie tiene el
+   dominio, la primera etiqueta (`rotary4281`) contra el subdominio de un
+   Distrito u otro club —la misma regla con la que resuelve el sitio público—.
+   Lo usan también el aviso del listado (`getAllClubs`), `stealsDistrictDomain`
+   y `isForeignDistrictDomain` (`districtDomainsOf` trae el subdominio).
+
+Pruebas: `test:site-domain-guard` (en `prebuild`; 51 con Postgres) y
+`test:admin:open-site:ui` (AdminLayout real en Chromium: el navegador carga el
+sitio con rotary4281.org y el servidor sabe que el usuario es de Tuluá;
+verificado a la inversa: con el AdminLayout anterior fallan 2 de 6).
